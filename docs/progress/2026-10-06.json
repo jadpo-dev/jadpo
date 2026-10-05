@@ -1,0 +1,1159 @@
+{
+  "tasks": {
+    "RM-108": {
+      "id": "RM-108",
+      "epic": "E01",
+      "description": "Compose the reminder job and reviewed mail service with golden queries/actions; implement deterministic clock, provider failure and duplicate-delivery cases.",
+      "state": "in progress",
+      "depends_on": "RM-105, RM-106, RM-107, RM-304, RM-307",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "needs input"
+    },
+    "RM-109": {
+      "id": "RM-109",
+      "epic": "E01",
+      "description": "Complete route/OpenAPI/policy/query audit agreement and SQLite/PostgreSQL golden harness coverage; run every case and retain failures by original case ID.",
+      "state": "in progress",
+      "depends_on": "RM-103, RM-104, RM-105, RM-106, RM-107, RM-108, RM-402, RM-403",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-110": {
+      "id": "RM-110",
+      "epic": "E01",
+      "description": "Close the technical golden gate using a fresh verifier report, full behavioural results, named proof/validation evidence and adversarial cases; preserve frozen versus repaired-toolchain results.",
+      "state": "queued",
+      "depends_on": "RM-109, RM-504, RM-505, RM-603",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-201": {
+      "id": "RM-201",
+      "epic": "E02",
+      "description": "Close NAME-002 with a grammar-derived identifier/reserved-word conformance matrix and table-driven lexer/parser/semantic unit tests plus positive/negative compile fixtures. Inventory every identifier-bearing production and test type and value names in every declaration and reference position, including bindings, parameters, fields, modules/imports, callables, operations, variants, and configuration/auth/job declarations. Specify and test exact case sensitivity; lexical characters (`[A-Za-z_][A-Za-z0-9_]*`), ASCII/Unicode boundaries and token boundaries; leading-digit rejection; standalone/leading underscores; and the semantic `UpperCamelCase` type versus `lower_snake_case` runtime rules, including accepted digits and rejected underscore forms. For every keyword, test variable-name and type-name positions, references to any permitted contextual name, and stable CLI/LSP diagnostic spans. Current regressions distinguish `UserName` from `Username` and check type/runtime naming shapes. A parser probe found `return` is accepted as a binding name but cannot be read as an expression; classify it and similar combinations under the owner-selected reserved-word policy. The owner selected reserved control/declaration words with explicitly safe contextual names; derive the exact matrix and review the authoritative contract before implementation.",
+      "state": "in progress",
+      "depends_on": "\u2014; owner policy selected; public-language review remains",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-202": {
+      "id": "RM-202",
+      "epic": "E02",
+      "description": "Resolve FMT-005's source-line preservation versus line-break-insensitive canonical-output requirement; record the owner decision and update the acceptance contract consistently.",
+      "state": "decision",
+      "depends_on": "\u2014",
+      "estimate": "0.25\u20130.75h (S)",
+      "hours": [
+        0.25,
+        0.75
+      ],
+      "planning": "planned"
+    },
+    "RM-203": {
+      "id": "RM-203",
+      "epic": "E02",
+      "description": "Finish TOOL-005 to the chosen contract: implement AST-guided line reconstruction if selected and exact-output cases; retain token, string, comment, parseability and idempotence checks.",
+      "state": "queued",
+      "depends_on": "RM-202",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-207": {
+      "id": "RM-207",
+      "epic": "E02",
+      "description": "Finalise operational mappings, especially unknown write outcomes and retry safety; implement missing read/write/fallback cases with route/OpenAPI/audit parity and contained defects.",
+      "state": "in progress",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-208": {
+      "id": "RM-208",
+      "epic": "E02",
+      "description": "Decide Set/Map wire semantics and complete boundary round-trip/rejection cases; align generated schemas and runtime representation.",
+      "state": "decision",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-209": {
+      "id": "RM-209",
+      "epic": "E02",
+      "description": "Record the compatibility/deprecation policy for legacy type/persist and current entity syntax; align public examples and migration diagnostics while preserving frozen pressure sources.",
+      "state": "decision",
+      "depends_on": "RM-101",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-210": {
+      "id": "RM-210",
+      "epic": "E02",
+      "description": "Exercise all four snippet adapters in actual renderer hosts, including Highlight.js/Monaco, and verify visual output and exact plain-text fallback. Registration tests alone do not close TOOL-003.",
+      "state": "ready",
+      "depends_on": "\u2014",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-211": {
+      "id": "RM-211",
+      "epic": "E02",
+      "description": "Complete any remaining runtime-event enrichment/exporter coverage with browser/log/trace/provider secret canaries and revision-matched agent packets; retain CLI/JSON/LSP repair parity.",
+      "state": "queued",
+      "depends_on": "RM-501",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-212": {
+      "id": "RM-212",
+      "epic": "E02",
+      "description": "If application evidence requires it, decide compound persistence, composite-reference spelling and relationship extensions (DATA-001/DATA-004) separately. Preserve explicit join entities, per-hop bounds/order, required inverse-one totality, policy-safe traversal and fixed query budgets; include failure-context binding only under RM-215's contract. Add fixtures and separately estimate approved implementation.",
+      "state": "conditional",
+      "depends_on": "RM-101",
+      "estimate": "0.25\u20130.75h (S) per decision",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-214": {
+      "id": "RM-214",
+      "epic": "E02",
+      "description": "Resolve SYN-001's durable documentation, intent/rule/decision annotations and provenance: distinguish human-owned intent from derived docs/audit, preserve rationale and rejected alternatives, and specify links to compiler facts. Finish with an approved contract or explicit deferral plus fixtures; no natural-language annotation may become a proof by itself.",
+      "state": "decision",
+      "depends_on": "\u2014",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-215": {
+      "id": "RM-215",
+      "epic": "E02",
+      "description": "Reconcile TYPE-001 and FAIL-001\u2013004 against implemented validated construction, exact `fails`, `attempt` propagation and exhaustive outcome `match`. Record only the remaining decisions: optional failure-context binding/cause disclosure, compatible public-code aliases, catalogue/422 pressure, localisation ownership and explicit panic. Preserve the implemented model; each approved extension needs fixtures and a separately scoped implementation.",
+      "state": "decision",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-216": {
+      "id": "RM-216",
+      "epic": "E02",
+      "description": "Pressure-test the remaining ordinary-logic/type questions: `for` iteration and collection operations, nested/property/type matching, lambdas, recursion/`while`, generics/user collections, transparent aliases, raw primitive signatures and reviewed representation escapes. Activate when an application demonstrates a gap or the owner selects a language review; document support, rejection or deferral with positive/negative examples and bounded-resource implications. Existing enum/match/value semantics remain the baseline.",
+      "state": "conditional",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-217": {
+      "id": "RM-217",
+      "epic": "E02",
+      "description": "Decide HTTP **disconnect cancellation**, file/upload and streaming failure contracts, including what can be reported after headers/data are sent and how in-flight effects/transactions finish. Separate ordinary cancellation from structured parallelism and durable work. Produce adapter/fixture requirements before implementation; activate on application need or explicit owner selection.",
+      "state": "conditional",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-218": {
+      "id": "RM-218",
+      "epic": "E02",
+      "description": "Specify and audit the previously stated **safe resource defaults**: rate limits, request/body/collection bounds, timeouts, execution/termination budgets and cancellation. Inventory existing enforcement and gaps, define deterministic failure/disclosure behaviour and cross-target adapter limits, and split missing implementations into measured tasks.",
+      "state": "decision",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-219": {
+      "id": "RM-219",
+      "epic": "E02",
+      "description": "Resolve TOOL-001's general non-schema semantic identity and verify **source maps / app.meta / revision-matched debugging** across rebuilds, renames and bugfix branches. Separate persistent logical operation identity from exact deployment/build and call-site identity; preserve original incident evidence while mapping to changed, removed, split or ambiguous current nodes without claiming behavioural equivalence. Show generated runtime failures mapping to the correct Jadpo operation/source or explicitly identified compiler-owned component; retain private target traces and prove stale metadata is rejected. Include unrelated-node insertion, branch divergence and graph-changing fixes. Schema registry identity is already implemented.",
+      "state": "decision",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-220": {
+      "id": "RM-220",
+      "epic": "E02",
+      "description": "Retain future time, configuration and test extensions: recurrence/holidays/business calendars/natural-language time/custom friendly profiles; non-env config sources/live reload/secret-manager adapters; and authored property tests. Activate only on demonstrated application need or explicit selection; assess each independently, preserve deterministic clocks and existing CONFIG/TIME/TEST contracts, and record a decision plus separately scoped implementation.",
+      "state": "conditional",
+      "depends_on": "\u2014",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-221": {
+      "id": "RM-221",
+      "epic": "E02",
+      "description": "Measure and improve compiler-generated Bun HTTP path lookup so routing remains efficient as route tables grow. Compare the current per-route segment split and linear scan with plausible indexed, trie/radix and precompiled-regex approaches on representative static/parameter routes and method mixes; choose the fastest correct design for the selected workload, or retain the baseline if gains are not meaningful. Preserve existing precedence, parameter decoding and malformed-path behaviour, authentication order and deterministic generated artifacts. Proposed completion: repeatable dispatch and generated-HTTP benchmarks report latency, throughput, allocation/memory and startup/build trade-offs, with semantic parity tests for the selected algorithm.",
+      "state": "decision",
+      "depends_on": "\u2014",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-222": {
+      "id": "RM-222",
+      "epic": "E02",
+      "description": "Review syntax **language-wide before the new component/event/graph design**: inventory stacked prefixes and whitespace-separated operation forms across failures, calls, queries, mutations, messaging and routes; distinguish propagation from submission, completion and retry. Retain the selected UpperCamelCase/lower_snake_case conventions and declaration family; review existing `attempt` with typed `emit_event(...)`, clearer query forms and the unnamed singleton principal successor. Preserve exhaustive handling and exact failure contracts. Produce reviewed grammar, positive/negative examples and a separately scoped migration/tooling plan.",
+      "state": "decision",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-223": {
+      "id": "RM-223",
+      "epic": "E02",
+      "description": "Implement RM-222's approved **canonical syntax migration**, including affected parser/AST/failure checking, formatter, LSP/highlighters, diagnostics/docs and supported conversion fixtures. Equivalent programs preserve exact failure, policy, query and transaction behaviour. Keep frozen historical sources/results intact and prevent two competing recommended spellings.",
+      "state": "conditional",
+      "depends_on": "RM-222, RM-110",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-306": {
+      "id": "RM-306",
+      "epic": "E03",
+      "description": "Implement compiler-owned job/event declarations, transactional outbox and durable delivery state; prove atomic enqueue and restart-safe identity/version tracking.",
+      "state": "in progress",
+      "depends_on": "RM-305",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-307": {
+      "id": "RM-307",
+      "epic": "E03",
+      "description": "Implement scheduling and worker execution with bounded selection, retries, cancellation and replay; pass duplicate/crash/exhaustion tests with controlled clocks.",
+      "state": "queued",
+      "depends_on": "RM-306, RM-304",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-308": {
+      "id": "RM-308",
+      "epic": "E03",
+      "description": "Add inspect/retry/dead-letter operator surfaces and evidence exports; verify safe diagnostics and bounded recovery from the recorded terminal states.",
+      "state": "queued",
+      "depends_on": "RM-307",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-309": {
+      "id": "RM-309",
+      "epic": "E03",
+      "description": "Design an enforced **component messaging and subscription contract**, using RM-222's reviewed syntax: forbid direct cross-component behaviour calls while allowing local actions across files; define one typed event API and approved read contracts, a generated catalogue and component subgraphs, mandatory transition-owned event production, multiple typed subscriptions, per-subscriber durable delivery and optional execution configuration with safe defaults. Enforce effect ownership transitively, non-callable subscriber entry points and pure shared helpers; include import/wrapper/relocation bypass tests, including subscriber-only effects within one component. Keep concepts and authored wiring minimal. Resolve payload sufficiency/privacy, async policy authority, local atomicity, ordering, backpressure, joins, completion, cancellation, compensation, uncertainty, versions and replay. Assess stateful subscribers as the single authored coordination model rather than assuming a second workflow DSL. Completion: complete todo/representative order examples and fault/negative cases, reviewed adopt/adapt/defer decision, and separately scoped implementation/migration.",
+      "state": "decision",
+      "depends_on": "RM-222",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-310": {
+      "id": "RM-310",
+      "epic": "E03",
+      "description": "Implement the reviewed **component/effect and automatic-publication compiler slice**: checked logical owners, typed catalogue/multi-event handlers, non-callable subscribers, transitive effect admission and mandatory transition facts on every supported mutation path. CompleteTodo with two receivers is the first slice; prove allowed same-owner cross-file helpers and reject direct/import/wrapper/relocation/same-component reaction bypasses.",
+      "state": "conditional",
+      "depends_on": "RM-309, RM-223, RM-219",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-311": {
+      "id": "RM-311",
+      "epic": "E03",
+      "description": "Extend the existing durable runtime for **independent subscriber delivery**: commit-time enrollment/version identity, per-subscriber obligations, same-domain processed marker/mutations/output facts, safe default execution and scoped ordering. Prove crash/duplicate/fence/exhaustion/capacity/upgrade recovery on SQLite/PostgreSQL; completed peers do not replay because another subscriber fails. Preserve uncertainty and reviewed external-effect rules.",
+      "state": "conditional",
+      "depends_on": "RM-310, RM-307",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-312": {
+      "id": "RM-312",
+      "epic": "E03",
+      "description": "Qualify a separately versioned **golden Todo successor using enforced subscribers**: automatic transition facts, independent reactions, typed defaults, current policy, operator diagnostics and full supported behavioural gate. Preserve original frozen baseline and compare exact-source results; prove missing wiring/bypass cannot compile and rejected/no-op/rollback paths do not publish success facts.",
+      "state": "conditional",
+      "depends_on": "RM-311, RM-308",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-402": {
+      "id": "RM-402",
+      "epic": "E04",
+      "description": "Implement the accepted retry plan and broaden SQLite/PostgreSQL multi-process contention, nested rollback and failure-injection evidence; retain isolated clocks and contiguous change revisions.",
+      "state": "in progress",
+      "depends_on": "RM-401, RM-207 boundary-contract milestone",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-403": {
+      "id": "RM-403",
+      "epic": "E04",
+      "description": "Add required/advisory live dependency checks with bounded deadlines, safe status IDs, recovery and liveness independence; keep startup validation before listener binding.",
+      "state": "in progress",
+      "depends_on": "RM-303",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-404": {
+      "id": "RM-404",
+      "epic": "E04",
+      "description": "Implement the selected platform's promotion/readiness hooks and test failed revision non-promotion or controller rollback while the prior revision stays healthy.",
+      "state": "external",
+      "depends_on": "RM-403, X-PLATFORM",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-405": {
+      "id": "RM-405",
+      "epic": "E04",
+      "description": "If an application requires a physical derived store, approve CONSISTENCY-001 adapter/freshness/recovery semantics and name that store; otherwise record fail-closed deferral.",
+      "state": "conditional",
+      "depends_on": "RM-801",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-406": {
+      "id": "RM-406",
+      "epic": "E04",
+      "description": "Implement the selected derived-store adapter: ordered idempotent outbox delivery, watermarks, lag and explicit freshness/fallback behaviour.",
+      "state": "conditional",
+      "depends_on": "RM-405, RM-306",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-407": {
+      "id": "RM-407",
+      "epic": "E04",
+      "description": "Prove derived-store crash recovery, duplicate delivery, reconciliation and generation-based rebuild/catch-up/switch; reject unsupported cross-domain atomic guarantees.",
+      "state": "conditional",
+      "depends_on": "RM-406",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-408": {
+      "id": "RM-408",
+      "epic": "E04",
+      "description": "Extend **schema/data migrations** beyond the bounded DATA-003 review/SQL core when an application requires it: transforms/backfills, removals, constraints on added fields, lifecycle changes, nominal refinements and enum evolution. Define exact-change-set approval, existing-data validation, forward/rollback/irreversible behaviour and crash evidence for each selected adapter; retain fail-closed unsupported cases.",
+      "state": "conditional",
+      "depends_on": "RM-801",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-409": {
+      "id": "RM-409",
+      "epic": "E04",
+      "description": "Resolve DATA-005's portable **foreign-key/check/exclusion constraint identities** and precise failure mappings. Inventory supported SQLite/PostgreSQL evidence and define compiler-owned identities without parsing ambiguous driver text; add an approved contract and positive/negative adapter cases before extending mappings.",
+      "state": "decision",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-410": {
+      "id": "RM-410",
+      "epic": "E04",
+      "description": "Evaluate **advanced queries and workload-aware index advice** when application/workload evidence requires it: aggregation/complex joins, richer cross-entity planning, patch predicates, adapter EXPLAIN/statistics, selectivity/write cost and compound/partial indexes. Keep static warnings and explicit index acceptance as implemented foundations; never infer production index value from syntax alone. Produce evidence-backed decisions and separately scoped implementations.",
+      "state": "conditional",
+      "depends_on": "\u2014",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-503": {
+      "id": "RM-503",
+      "epic": "E05",
+      "description": "Expand targeted implementation-mutation campaigns from the gap inventory; record killed/surviving mutations and repair missing assertions rather than changing contracts. Five selected mutants across semantic naming, keyword token boundaries, and generated Unicode length are killed; broaden the review across additional obligation areas. See [mutation findings](../tests/validation/rm503-mutation-findings.md).",
+      "state": "in progress",
+      "depends_on": "RM-501",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-504": {
+      "id": "RM-504",
+      "epic": "E05",
+      "description": "Close remaining PostgreSQL-specific auth/policy/query/time evidence, including exact JWT provenance and timezone-rule provenance where claimed; record SQLite-only instrumentation separately.",
+      "state": "queued",
+      "depends_on": "RM-402",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-505": {
+      "id": "RM-505",
+      "epic": "E05",
+      "description": "Add cross-feature hostile cases for lifecycle, auth revocation, policy scoping, services/jobs, transactions and secret boundaries; tie each result to a named obligation.",
+      "state": "queued",
+      "depends_on": "RM-106, RM-304, RM-307, RM-402, RM-501",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-506": {
+      "id": "RM-506",
+      "epic": "E05",
+      "description": "Register new suites/examples and verify artifact, diagnostic, compatibility and formatter contracts in the unified local gate; archive a fresh report with all open gates named.",
+      "state": "queued",
+      "depends_on": "RM-110, RM-201, RM-203, RM-208, RM-209, RM-210, RM-211, RM-502, RM-503, RM-504, RM-505, RM-308, RM-403, RM-508",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-507": {
+      "id": "RM-507",
+      "epic": "E05",
+      "description": "Execute the same required gate in hosted CI and establish protected required checks; retain hosted reports and verify bypass/failure handling. Local workflow files alone are not evidence.",
+      "state": "external",
+      "depends_on": "RM-506, X-CI",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-508": {
+      "id": "RM-508",
+      "epic": "E05",
+      "description": "Reconcile the request for **every compiler diagnostic and language edge case** with actual executed assertions: inventory current public codes and grammar/boundary obligations, map each to real trigger or explicit operational-emitter tests and all human/JSON/LSP/IDE projections, identify unexercised branches, and add missing targeted cases. Catalogue membership, source references and mutation samples alone are not exhaustive coverage; preserve contextual names, root-cause grouping, accurate repair labels, stale-edit rejection and secret canaries.",
+      "state": "ready",
+      "depends_on": "RM-501",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-601": {
+      "id": "RM-601",
+      "epic": "E06",
+      "description": "Produce versioned before/after behavioural artifacts with request/intent, actors, data/effects, proof/evidence classification and exact subject digests; provide a usable non-graphical export.",
+      "state": "in progress",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-602": {
+      "id": "RM-602",
+      "epic": "E06",
+      "description": "Implement the **Revset-inspired focused semantic change graph / web review UI** described [below](#revset-and-the-web-review-ui): before/after actor \u2192 route \u2192 action/query \u2192 field/output paths, newly reachable unchanged declarations, successive agent revisions, scenarios, source/evidence drill-down and narrow approval choices. Include changed behaviour with unchanged graph structure and an equivalent non-graphical export; unchanged review content never implies valid approval.",
+      "state": "queued",
+      "depends_on": "RM-601",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-603": {
+      "id": "RM-603",
+      "epic": "E06",
+      "description": "Implement and locally test attestation validation bound to policy/graph digest, reviewer authority, versions and expiry; reject missing, stale, replayed, forged and scope-mismatched approvals.",
+      "state": "queued",
+      "depends_on": "RM-601",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-604": {
+      "id": "RM-604",
+      "epic": "E06",
+      "description": "Wire validation to the protected CI/review authority; prove source or ordinary repository edits cannot manufacture release approval and test the full policy-weakening attack fixtures.",
+      "state": "external",
+      "depends_on": "RM-603, X-CI",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-605": {
+      "id": "RM-605",
+      "epic": "E06",
+      "description": "Prepare counterbalanced PR-diff, concise behavioural and relationship-aware review tasks with transitive-risk and unchanged-graph cases; freeze scoring and capture comprehension, time and false confidence.",
+      "state": "queued",
+      "depends_on": "RM-602",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-701": {
+      "id": "RM-701",
+      "epic": "E07",
+      "description": "Reconcile all seven P10R packages, claim-to-proof/threat mappings and current documentation authority; preserve original and revised digests plus implementation exposure.",
+      "state": "queued",
+      "depends_on": "RM-506, RM-605",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-702": {
+      "id": "RM-702",
+      "epic": "E07",
+      "description": "Obtain independent contract review, resolve findings and record reviewed versions of golden, proof, threat, approval, user-hypothesis, comparison and documentation packages.",
+      "state": "external",
+      "depends_on": "RM-701, RM-805, RM-806, RM-807, X-REVIEW",
+      "estimate": "Unmeasured (U)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-703": {
+      "id": "RM-703",
+      "epic": "E07",
+      "description": "Conduct at least five matching first-user sessions after technical completion; retain raw observations, adoption objections and synthesis without retrofitting the candidate hypothesis.",
+      "state": "external",
+      "depends_on": "RM-702, X-REVIEW",
+      "estimate": "Unmeasured (U)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-704": {
+      "id": "RM-704",
+      "epic": "E07",
+      "description": "Run formal fresh-agent and first-user repair/comprehension trials with frozen tasks, including all three review surfaces; report accuracy, repair cycles, risk detection and false confidence.",
+      "state": "external",
+      "depends_on": "RM-702, RM-605, X-REVIEW",
+      "estimate": "Unmeasured (U)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-705": {
+      "id": "RM-705",
+      "epic": "E07",
+      "description": "Freeze the reviewed comparison protocol and tooling/context baseline; preserve any threshold revisions, adjudication rubrics and prior implementation exposure before final trials.",
+      "state": "queued",
+      "depends_on": "RM-702, RM-703, RM-704",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-706": {
+      "id": "RM-706",
+      "epic": "E07",
+      "description": "Record the P10R/Milestone C disposition against every exit condition, including protected attestation, hosted checks and applicable deployment evidence; unresolved critical claims remain blocked.",
+      "state": "queued",
+      "depends_on": "RM-705, RM-604, RM-507",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-801": {
+      "id": "RM-801",
+      "epic": "E08",
+      "description": "Write the order/payment pressure dossier and shared acceptance cases: **money/currency/Decimal precision, rounding and overflow**, inventory, declines, webhooks, duplicate/late effects, refunds, migrations, role collisions and pricing. Evaluate payload enums across typing, generated clients, wire/storage compatibility and migrations; record decisions and separately scope any missing language implementation before reference-app completion.",
+      "state": "ready",
+      "depends_on": "\u2014",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-802": {
+      "id": "RM-802",
+      "epic": "E08",
+      "description": "Approve WORKFLOW-001 from those cases: durable steps, idempotency, deadlines, compensation, cancellation, unknown outcomes, reconciliation and operator intervention.",
+      "state": "decision",
+      "depends_on": "RM-801, RM-301, RM-305",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-803": {
+      "id": "RM-803",
+      "epic": "E08",
+      "description": "Implement persisted workflow state/versioning and checkpoint-before-effect/checkpoint-after-outcome execution; prove restart and duplicate-step recovery.",
+      "state": "queued",
+      "depends_on": "RM-802, RM-303, RM-306",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-804": {
+      "id": "RM-804",
+      "epic": "E08",
+      "description": "Implement compensation, cancellation, reconciliation and bounded operator recovery; pass crash, late-success, refund-failure and intervention traces.",
+      "state": "queued",
+      "depends_on": "RM-803",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-805": {
+      "id": "RM-805",
+      "epic": "E08",
+      "description": "Build the Jadpo order/payment reference application against the shared suite; log compiler changes and application adaptation separately and retain original failures.",
+      "state": "queued",
+      "depends_on": "RM-804, RM-110",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-806": {
+      "id": "RM-806",
+      "epic": "E08",
+      "description": "Build a credible, behaviourally equivalent TypeScript baseline with the specified framework/schema/persistence/policy/test/agent facilities; pass the same suite.",
+      "state": "queued",
+      "depends_on": "RM-801",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-807": {
+      "id": "RM-807",
+      "epic": "E08",
+      "description": "Pressure-test project layout on todo, order/payment and multi-domain/application examples; decide broader enforcement/escape rules and whether finite scaffold packs or module extensions are justified.",
+      "state": "decision",
+      "depends_on": "RM-805",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-808": {
+      "id": "RM-808",
+      "epic": "E08",
+      "description": "Run at least three clean counterbalanced trials per stack with identical requirements/context and pinned models/tools; retain per-change time, tokens, defects, interventions, diagnostics and escape-hatch records.",
+      "state": "queued",
+      "depends_on": "RM-705, RM-706, RM-805, RM-806, RM-807",
+      "estimate": "Unmeasured (U)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-809": {
+      "id": "RM-809",
+      "epic": "E08",
+      "description": "Independently adjudicate every trial and friction incident; score all frozen thresholds and record the continuation decision. Critical safety failure blocks the assurance claim regardless of productivity results.",
+      "state": "external",
+      "depends_on": "RM-808, X-REVIEW",
+      "estimate": "Unmeasured (U)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-901": {
+      "id": "RM-901",
+      "epic": "E09",
+      "description": "Complete COV-1's source/backend/host capability inventory and rank unsupported vertical slices; distinguish generated lowering from handwritten fixture evidence.",
+      "state": "ready",
+      "depends_on": "\u2014",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-902": {
+      "id": "RM-902",
+      "epic": "E09",
+      "description": "Prepare the next controlled host campaign, retaining conformance, independent authority, fresh guests, paired baselines, generator headroom and fixed budgets; explicitly reopen the reached monitor stop condition before new optimisation work.",
+      "state": "decision",
+      "depends_on": "RM-901",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-903": {
+      "id": "RM-903",
+      "epic": "E09",
+      "description": "Run the scoped native/workerd monitor campaign and attribute remaining guest/host/control-message costs and Unicode tails; report latency, CPU, RSS, startup and SQL counts against the frozen 2\u00d7 monitor gate.",
+      "state": "external",
+      "depends_on": "RM-902, X-HOST",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-904": {
+      "id": "RM-904",
+      "epic": "E09",
+      "description": "Qualify WAL/FULL writes, sustained checkpoints and crash recovery on a controlled host with matched storage plans; separate storage effects from target effects.",
+      "state": "external",
+      "depends_on": "RM-902, X-HOST",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-905": {
+      "id": "RM-905",
+      "epic": "E09",
+      "description": "If authorised for hosted qualification, run actual Workers cold-start and required capability probes, including transaction/freshness/isolation limits; clean up disposable resources and retain evidence.",
+      "state": "conditional",
+      "depends_on": "RM-902, X-HOST, X-PLATFORM",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-906": {
+      "id": "RM-906",
+      "epic": "E09",
+      "description": "Use COV-2 to qualify one prioritised **compiler-generated** vertical slice and record adopt/extend/defer/reject plus shared-Rust versus direct-Wasm disposition. Include promotion of fixture-local monitor effect sequences, completion bindings and failure mappings into normal versioned compiler artifacts where required; prove regenerated metadata and host enforcement agree. Handwritten fixture evidence is not backend coverage. Scope larger lowering separately.",
+      "state": "queued",
+      "depends_on": "RM-901, RM-903, RM-904",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1001": {
+      "id": "RM-1001",
+      "epic": "E10",
+      "description": "Recheck the seven primary documentation benchmarks\u2014**Rust, Stripe, Django, ArchWiki, PostgreSQL, Godot and Twilio**\u2014plus the [complementary shortlist, evidence standard and 12-part rubric](implementation-history.md#benchmark-set). Complete a real task per site and retain dated teardown evidence, wrong turns, time to success and limitations.",
+      "state": "conditional",
+      "depends_on": "RM-809, X-SITE",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1002": {
+      "id": "RM-1002",
+      "epic": "E10",
+      "description": "Produce the cross-case matrix and adopt/adapt/defer/reject decisions, including audience fit and maintenance cost.",
+      "state": "conditional",
+      "depends_on": "RM-1001",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1003": {
+      "id": "RM-1003",
+      "epic": "E10",
+      "description": "Design the information architecture, content provenance, search/versioning, accessibility and agent-access contracts; prototype the prescribed page types.",
+      "state": "conditional",
+      "depends_on": "RM-1002",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1004": {
+      "id": "RM-1004",
+      "epic": "E10",
+      "description": "Test agreed journeys with representative users; revise and approve the content/architecture brief, then create a separately estimated production-site backlog.",
+      "state": "conditional",
+      "depends_on": "RM-1003, X-REVIEW",
+      "estimate": "Unmeasured (U)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-1005": {
+      "id": "RM-1005",
+      "epic": "E10",
+      "description": "When public-site work is authorised, verify **jadpo.dev** ownership, DNS, hosting and deployment configuration and record a separately approved launch plan. Jadpo naming/CLI/file-extension migration is already reported complete; domain registration and public deployment are not established by that rename. `jadpo.com` remains an optional future acquisition, not a prerequisite.",
+      "state": "conditional",
+      "depends_on": "RM-1004, X-SITE, X-PLATFORM",
+      "estimate": "0.5\u20132h (M)",
+      "hours": [
+        0.5,
+        2.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1101": {
+      "id": "RM-1101",
+      "epic": "E11",
+      "description": "Add historical route/action performance evidence and shared inspection queries: stable operation/source-revision identity, latency/error/volume trends and drill-down to safe incident evidence. Show sample/retention limits, detect a seeded slowdown across comparable runs and measure collection overhead. Reuse existing telemetry and remain database/provider agnostic.",
+      "state": "conditional",
+      "depends_on": "RM-211",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1102": {
+      "id": "RM-1102",
+      "epic": "E11",
+      "description": "Build a developer console for performance trends/slow operations and error investigation, with navigation to matching source and RM-602 behavioural change review. Demonstrate finding a seeded bottleneck, diagnosing a failed operation and reviewing its proposed change without inventing semantics in the UI.",
+      "state": "conditional",
+      "depends_on": "RM-1101, RM-602",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1103": {
+      "id": "RM-1103",
+      "epic": "E11",
+      "description": "Add scheduled-task views: definitions/schedules, upcoming runs and execution history with status, timings, attempts, errors and permitted output, including explicit missing/truncated/expired results. Reuse RM-308 operator contracts and verify failed/retried/cancelled runs remain correctly correlated after restart.",
+      "state": "conditional",
+      "depends_on": "RM-1102, RM-308",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1104": {
+      "id": "RM-1104",
+      "epic": "E11",
+      "description": "Provide a first-party MCP server for bounded inspection of performance history, slow routes/actions, diagnostic context, scheduled tasks and run history/results using the same evidence contracts as the console. Verify a connected developer LLM can investigate representative incidents, with scoped access, output disclosure controls and no implicit mutation authority.",
+      "state": "conditional",
+      "depends_on": "RM-1101, RM-308",
+      "estimate": "2\u20138h (N)",
+      "hours": [
+        2.0,
+        8.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1105": {
+      "id": "RM-1105",
+      "epic": "E11",
+      "description": "Demonstrate an LLM-assisted bottleneck repair workflow: identify a regression through MCP, retrieve revision-matched context, propose a reviewable fix, then compare before/after performance and correctness under equivalent workloads. Surface evidence in the console and keep implementation/deployment subject to the normal authorisation and review boundaries.",
+      "state": "conditional",
+      "depends_on": "RM-1104, RM-1102",
+      "estimate": "1\u20134h (L)",
+      "hours": [
+        1.0,
+        4.0
+      ],
+      "planning": "planned"
+    },
+    "RM-1106": {
+      "id": "RM-1106",
+      "epic": "E11",
+      "description": "Explore the recovered **Jev / optional advisory intelligence** idea: diagnostic root-cause prioritisation, intent drift/change risk, migration/test guidance, and runtime health/anomaly/capacity or threshold-breach prediction. Compare deterministic baselines with a replaceable provider using bounded evidence, uncertainty and false-positive measurements. Compilation, policy and mandatory tests must remain deterministic/offline; no advisory output authorises a change.",
+      "state": "conditional",
+      "depends_on": "RM-1101",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-1107": {
+      "id": "RM-1107",
+      "epic": "E11",
+      "description": "Assess the discussed **paid monitoring/debugging service** over compiler-derived semantic telemetry, with optional provider proxying and later hosted builds/deployment as separate alternatives. Record customer need, privacy/retention, costs, provider terms/portability and a proceed/defer/reject decision; preserve a usable local core. No commercial proposition, provider, pricing or launch is approved.",
+      "state": "conditional",
+      "depends_on": "\u2014",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-1108": {
+      "id": "RM-1108",
+      "epic": "E11",
+      "description": "Add **hierarchical application graphs and live execution overlays** for users and LLMs: connected component/operation subgraphs, node/edge documentation and rationale links, generated flowcharts, request/event/subscriber paths and joins, safe logs/errors, queue versus execution timings, traffic/failure statistics and filtering. UI and structured inspection share one versioned graph/evidence contract. Production incidents retain exact build/source-map evidence and map through stable logical identities into bugfix branches with changed/missing/ambiguous locations explicit. Completion: trace a branched/retried dev request, diagnose a seeded slowdown and production error after graph-changing fixes, and measure collection overhead/disclosure.",
+      "state": "conditional",
+      "depends_on": "RM-222, RM-309, RM-219, RM-1101, RM-311",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "planned"
+    },
+    "RM-1201": {
+      "id": "RM-1201",
+      "epic": "E12",
+      "description": "Explore deep application contracts and optional frontend integration through a **React todo application**. Show representative authored component, query/form/action code, generated types/library and client consumption declarations. Assess public types/constraints/omission, permitted outputs, domain versus operational/unknown outcomes, authentication, freshness/revisions, mutation refresh, concurrency/retry/deduplication and supported-client compatibility. **Proposed acceptance:** a bounded React proof comparing browser rendering, optional SSR, initial-data reuse and colocated versus remote calls; retain enforcement/disclosure checks and stale-read, disconnect, duplicate-submit and older-client evidence. Compare setup/deployment effort, meaningful-content and interaction latency, request counts and maintenance/exit costs; record adopt/adapt/defer/reject and scoped follow-ups.",
+      "state": "conditional",
+      "depends_on": "RM-109; further prerequisites TBD at planning",
+      "estimate": "Unestimated (needs planning)",
+      "hours": null,
+      "planning": "needs planning"
+    }
+  },
+  "completed": {
+    "RM-304": {
+      "title": "2026-10-04 \u2014 RM-304 checked authored service fakes",
+      "date": "2026-10-04"
+    },
+    "RM-305": {
+      "title": "2026-10-04 \u2014 RM-305 durable delivery semantic contract",
+      "date": "2026-10-04"
+    },
+    "RM-303": {
+      "title": "2026-10-03 \u2014 RM-303 checked provider adapter",
+      "date": "2026-10-03"
+    },
+    "RM-302": {
+      "title": "2026-10-03 \u2014 RM-302 checked service contracts",
+      "date": "2026-10-03"
+    },
+    "RM-106": {
+      "title": "2026-10-03 \u2014 RM-106 golden lifecycle routes",
+      "date": "2026-10-03"
+    },
+    "RM-301": {
+      "title": "2026-10-02 \u2014 RM-301 outbound service semantic contract",
+      "date": "2026-10-02"
+    },
+    "RM-205": {
+      "title": "2026-10-02 \u2014 RM-205 entity lifecycle contract",
+      "date": "2026-10-02"
+    },
+    "RM-401": {
+      "title": "2026-10-02 \u2014 RM-401 bounded retry contract",
+      "date": "2026-10-02"
+    },
+    "RM-107": {
+      "title": "2026-10-02 \u2014 RM-107 self-scoped user todo route",
+      "date": "2026-10-02"
+    },
+    "RM-105": {
+      "title": "2026-10-02 \u2014 RM-105 filtered keyset list",
+      "date": "2026-10-02"
+    },
+    "RM-204": {
+      "title": "2026-10-02 \u2014 RM-204 typed route query and header bindings",
+      "date": "2026-10-02"
+    },
+    "RM-104": {
+      "title": "2026-10-02 \u2014 RM-104 generated service credential exchange",
+      "date": "2026-10-02"
+    },
+    "RM-213": {
+      "title": "2026-10-01 \u2014 RM-213 documentation audit and maintenance controls",
+      "date": "2026-10-01"
+    },
+    "RM-101": {
+      "title": "2026-10-01 \u2014 RM-101 golden obligation mapping",
+      "date": "2026-10-01"
+    },
+    "RM-103": {
+      "title": "2026-10-01 \u2014 RM-103 browser origin and CSRF closure",
+      "date": "2026-10-01"
+    },
+    "RM-102": {
+      "title": "2026-10-01 \u2014 RM-102 migrated authentication target",
+      "date": "2026-10-01"
+    },
+    "RM-501": {
+      "title": "2026-10-01 \u2014 RM-501 cross-area validation gap inventory",
+      "date": "2026-10-01"
+    },
+    "RM-502": {
+      "title": "2026-10-01 \u2014 RM-502 seeded semantic fuzz campaign",
+      "date": "2026-10-01"
+    },
+    "RM-206": {
+      "title": "2026-10-03 \u2014 RM-206 lifecycle lowering",
+      "date": "2026-10-03"
+    }
+  },
+  "epics": {
+    "E01": "Complete the golden todo",
+    "E02": "Close language and tooling gaps",
+    "E03": "Add reviewed services and durable jobs",
+    "E04": "Qualify transactions and deployment readiness",
+    "E05": "Complete engineering validation",
+    "E06": "Make policy approval enforceable and reviewable",
+    "E07": "Complete independent assurance and user evidence",
+    "E08": "Test the thesis with order/payment and TypeScript",
+    "E09": "Qualify alternative runtime candidates",
+    "E10": "Research the public documentation site",
+    "E11": "Developer console and MCP runtime inspection",
+    "E12": "Explore application contracts and frontend integration"
+  },
+  "reopened_or_conflicting_ids": [],
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "captured_at": "2026-10-06T00:32:13+01:00",
+  "sources": {
+    "docs/implementation-roadmap.md": "1bd647b4e21c859533f5565ff3c5da1ab1f2f87a7b71c42dba38c5b03ef3c842",
+    "docs/implementation-history.md": "3719a84aae5f217b59f3196b2fb757b3b3d632f24a3e2d3da00f0092545db4f6",
+    "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
+    "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
+    "docs/work-plans/golden-delivery-planning.md": "753fac1974d20417c1a18495b7aff4d473ae1f83c0a7beab0e64e46442576c4c",
+    "docs/work-plans/roadmap-assessment.md": "91a950f82ff1f504ff62b389bba0ab7581a6d3c01d7a37b9ac5f5c2622834c55"
+  },
+  "previous_date": "2026-10-05",
+  "notes": {
+    "summary": "Established the public Git workflow and completed the first parallel native-scheduler/harness-preparation checkpoint. No whole roadmap task closed.",
+    "delivered": [
+      "Partial RM-306: generated native scheduler assembly, cursor correction and independent SQLite/PostgreSQL review; combined supported gate 65/65.",
+      "Partial RM-109: source-bound 44-ID/two-backend protocol and reviewed supporting verifier inventory; all 88 entries remain not_run.",
+      "Refreshed immediate delivery queue and isolated writer ownership without changing stable IDs, scopes or estimates."
+    ],
+    "next": "Continue bounded scheduler recovery and the 18 contract traces, and prepare real golden application adapters; retain required transaction, readiness and final acceptance gates.",
+    "input_needed": "Pending golden-only worker profile: recommended 60-second execution deadline and 40-second renewable claim lease. Alternative leaves the profile unset and worker execution disabled. No answer assumed."
+  },
+  "changes": {
+    "completed": [],
+    "added_or_reopened": [],
+    "removed_without_completion": []
+  }
+}

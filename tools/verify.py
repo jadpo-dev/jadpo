@@ -71,6 +71,29 @@ def verification_environment():
     return environment
 
 
+def collect_golden_case_report(output, environment):
+    """Retain the reviewed protocol inventory separately from supported passes.
+
+    Pending adapters deliberately return one. A crashed command or contradictory
+    exit/status is an infrastructure failure, never an accepted pending result.
+    The protocol command validates its source-bound report before writing it.
+    """
+    path = output / 'golden-cases.json'
+    if path.exists():
+        raise ValueError('Golden case report already exists; fresh evidence is required')
+    code = execute([sys.executable, 'tools/golden_cases.py', '--output', str(path)],
+                   output / 'golden-cases.log', environment)
+    cases = json.loads(path.read_text())
+    if (cases.get('status') not in ('not_run', 'failed', 'observations_passed')
+            or cases.get('release_equivalent') is not False
+            or code != (0 if cases['status'] == 'observations_passed' else 1)):
+        raise ValueError('Golden case command failed or contradicted its supporting report')
+    return {'report': path.name, 'status': cases['status'],
+            'case_backend_entries': len(cases['results']),
+            'counts': {status: sum(entry['status'] == status for entry in cases['results'])
+                       for status in ('passed', 'failed', 'not_run')}}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profile', choices=['full', 'quick'], default='full', help='quick explicitly omits live PostgreSQL')
@@ -146,6 +169,7 @@ def main():
         report['golden'] = {'status': 'compiled' if result.returncode == 0 and diagnostic_report['status'] == 'passed' else 'compile_failed',
                             'diagnostic_count': len(diagnostic_report['diagnostics']),
                             'behavioural_evidence': 'not_run', 'obligations': obligations['cases']}
+        report['golden']['case_protocol'] = collect_golden_case_report(output, environment)
         if args.require_golden:
             raise RuntimeError('Golden behavioural acceptance is not executable yet; see golden-diagnostics.json and the obligation map')
         report['status'] = 'supported_checks_passed_with_open_gates'

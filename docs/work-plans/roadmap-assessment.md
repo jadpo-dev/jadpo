@@ -19,13 +19,42 @@ Three authorised planning agents assessed separate epic groups; the coordinator 
 
 At the 2026-10-01 assessment, all 89 then-open tasks were assessed: **54 planned, 35 needs planning, zero unassessed, zero needs input for that assessment**. The previous snapshot had 26 planned, 19 needs planning and 44 unassessed. The 2026-10-03 sweep below supplies the remaining next-stage plans: **82 currently open tasks planned, zero needing planning**. Adequate planning includes bounded decision, review and inventory procedures; it does not mean implementation can start. All 22 conditional tasks retain their activation gates. No speed multiplier can be inferred from a planning run.
 
-For the next authorised implementation window, use three worker roles with one coordinator:
+### Current parallel delivery window — 2026-10-06
 
-1. **Golden application delivery:** audit RM-103's existing evidence, then implement the checked exchange transport (RM-104) and prove synchronous routes (RM-107). RM-204 typed inputs unlock list work. Use one compiler writer; evidence and fixture preparation can run alongside it.
-2. **Independent coverage work:** RM-201's grammar/name matrix and RM-508's diagnostic trigger inventory share coverage facts but can be assembled without editing compiler files. RM-210 host qualification is another largely independent queue. Land parser changes separately from route grammar work.
-3. **Contract and adversarial review:** reconcile RM-301/RM-401/RM-207 service, retry and uncertain-outcome boundaries, with RM-205 lifecycle review next. Independent review of the actual implementation can replace a worker slot as needed. Reviewers must not certify changes they authored.
+The owner authorised continuing the golden dependency chain in Codex with
+parallel work and a public Git/PR baseline. This refresh replaces the old
+RM-103/RM-104/RM-107 execution queue; those capabilities and RM-303/RM-304/RM-305
+now resolve through [history](../implementation-history.md). It changes no task
+scope, dependency, estimate or completion count. Earlier assessment totals above
+remain dated snapshots rather than a new count of today's backlog.
 
-The runtime has four active-agent slots including the coordinator. More queued task plans would not remove shared compiler-file ownership, review capacity, host access or contract dependencies. Isolate implementation ownership/workspaces and integrate each coherent change before assigning conflicting writers. RM-801 and RM-901 offer additional independent preparation after golden priorities, without opening new implementation tracks.
+| Lane / ownership | Bounded next checkpoint | Gate and integration rule |
+|---|---|---|
+| Compiler/runtime · one writer | RM-306: wire the saved scheduler draft, private bridge and clock helper; verify generated assembly and commit-before-provider behaviour on SQLite/PostgreSQL. | Closed native assembly now passes 65/65 supported integration with scoped independent correction review; full worker/recovery acceptance remains open. Preserve accepted contracts, remaining activation/profile gates and the [owning checkpoint](golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders). |
+| Independent harness · isolated worktree | RM-109 preparation: source-bound result protocol and 44 original case IDs, including missing/not-run/failure reporting and source provenance. | Prepare against known acceptance contracts without changing compiler/runtime or shared records. Final behavioural execution and RM-109 closure still need RM-108/RM-402/RM-403 and all listed prerequisites. |
+| Integration owner · shared records | Integrate each coherent branch, review the combined change, run relevant supported validation and retain failures/checkpoints. | Only the integration owner updates shared roadmap/evidence records. A passing partial gate never closes RM-306/RM-307 or claims golden completion. |
+
+The bounded delivery pin is **actual `gpt-6.1-sol/high`**, established by the
+coordinator's current-chat metadata and inherited by this focused queue-review
+agent. Coupled runtime assembly and authority/dependency consistency review set
+this pin; retain it through this batch and recheck a future batch. The queue
+refresh uses ordinary link, dependency and diff checks, not a product rerun.
+Its timing record is `META-QUEUE-REFRESH-12fcf657af87`; no estimate was invented.
+
+After assembly, the same compiler/runtime owner takes RM-307's 18 generated
+recovery traces, then RM-108 composition when its decision and runtime gates
+permit. RM-402/RM-403 share runtime ownership and are sequenced into that lane
+before full RM-109 acceptance. RM-504/RM-505 and RM-601/RM-603 precede RM-110.
+The [roadmap queue](../implementation-roadmap.md#delivery-order--golden-todo-first)
+owns that order; this working window is not an extra set of counted tasks.
+
+The four-slot runtime permits the coordinator, a harness writer and required
+independent reviewers, but shared compiler files still have one writer. Existing
+RM-201/RM-508 coverage inventories and RM-210 host qualification remain available
+independent plans outside this selected window; they do not displace the golden
+priority. RM-801/RM-901, conditional work and successor implementation keep their
+existing selection and activation gates. More agents alone do not remove contract,
+host, review or acceptance dependencies.
 
 ## Accepted directions
 
@@ -64,7 +93,7 @@ The finding records what was inspected and why a proportional plan is or is not 
 | RM-106 | planned | short staged | Entity-owned lifecycle is selected; current manual deleted-row concealment is not general automatic lifecycle enforcement. Evidence: [lifecycle-plan.md](../lifecycle-plan.md); [todo.jadpo](../../examples/golden-todo-migration/entities/todo.jadpo); [user.jadpo](../../examples/golden-todo-migration/entities/user.jadpo). |
 | RM-107 | planned | short integration | Get/create/patch source exists and create already executes; remaining scoped runtime matrix and UserWithTodos route/query need assessment. Evidence: [todos.jadpo](../../examples/golden-todo-migration/routes/todos.jadpo); [liveness.jadpo](../../examples/golden-todo-migration/routes/liveness.jadpo); [todo.jadpo](../../examples/golden-todo-migration/entities/todo.jadpo); [golden-protected-route.test.ts](../../tests/runtime/golden-protected-route.test.ts). |
 | RM-108 | needs input | decision-dependent composition | Reminder role, 3 scheduled invocations / 1 hour and exact self-disable grants are owner-approved; repaired self-disable is independently reviewed and verified. New input: golden-only 60s execution / 40s renewable lease proposal. See the [owning plan](golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders). RM-307 and checked worker integration remain gates. Preserve pressure provenance and the reviewed persisted-intent successor. |
-| RM-109 | planned | short verifier integration | All original44 IDs are mapped but executed evidence protocol/harness remains missing; old map source gaps must not be confused with executed failures. Evidence: [verify.py](../../tools/verify.py); [golden-obligations.json](../../tests/validation/golden-obligations.json); [manifest.json](../../tests/validation/manifest.json); [acceptance.json](../../examples/golden-todo/acceptance.json). |
+| RM-109 | planned | short verifier integration | All original 44 IDs are mapped; the independent lane has prepared/reviewed source-bound result protocol and 88-entry inventory, with real application adapters still missing. Original map source gaps are not executed failures. Full behavioural execution/closure remains gated by RM-108/RM-402/RM-403 and the other roadmap prerequisites. Evidence: [verify.py](../../tools/verify.py); [golden-obligations.json](../../tests/validation/golden-obligations.json); [manifest.json](../../tests/validation/manifest.json); [acceptance.json](../../examples/golden-todo/acceptance.json). |
 | RM-110 | planned | short final audit | Plan distinguishes technical golden completion from protected hosted/external assurance. Evidence: [verify.py](../../tools/verify.py); [README.md](../../tests/validation/README.md); [acceptance.json](../../examples/golden-todo/acceptance.json). |
 | RM-1101 | planned | conditional measurement/data contract | OperationalLogEvent already carries semanticOperationId/sourceRevision and redacted attributes; no longitudinal latency/error/volume store or retention/sampling contract was found. Avoid rebuilding RM-211. Evidence: [developer-console-mcp.md](developer-console-mcp.md); [target.rs](../../jadpo/crates/core/src/target.rs); [developer-tooling.md](../developer-tooling.md). |
 | RM-1102 | planned | conditional product/authority design | UI journeys are named but delivery/local-remote access and permissions are undecided. Console must consume version-matched facts and RM-602 review, not invent semantics. Evidence: [developer-console-mcp.md](developer-console-mcp.md); [implementation-roadmap.md](../implementation-roadmap.md); [developer-tooling.md](../developer-tooling.md). |
@@ -97,8 +126,8 @@ The finding records what was inspected and why a proportional plan is or is not 
 | RM-303 | planned | staged adapter subsystem | Local real HTTP adapter must prove dispatch certainty and typed receipt, not count in-process fake as conformance. Evidence: [service-plan.md](../service-plan.md); [service-contract-v0.1.json](../../tests/assurance/service-contract-v0.1.json); [failure-model.md](../failure-model.md). |
 | RM-304 | planned | short staged | Existing callable-fixture core provides isolation; service fake shape/outcome boundary remains future extension. Evidence: [time-testing-plan.md](../time-testing-plan.md); [service-plan.md](../service-plan.md); [validation-fixtures-migrations.test.ts](../../tests/runtime/validation-fixtures-migrations.test.ts). |
 | RM-305 | planned | decision/review package | Database-backed/coalesced scheduling direction is selected; canonical grammar, durable trace catalog, fencing and failure freeze remain work. Evidence: [time-testing-plan.md](../time-testing-plan.md); [entity-query-model.md](../entity-query-model.md); [golden-delivery-planning.md](golden-delivery-planning.md). |
-| RM-306 | planned | staged subsystem | Private durable-state foundation is reviewed; nonexecuting typed job frontend is implemented with exact-decimal interval correction awaiting scoped re-review. Checked worker and event acceptance remain open. Current evidence/limits: [owning plan](golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders). |
-| RM-307 | planned | staged subsystem | Detailed claim/crash/retry plan exists but no worker implementation; same-process locks cannot prove fencing. Evidence: [time-testing-plan.md](../time-testing-plan.md); [golden-delivery-planning.md](golden-delivery-planning.md). |
+| RM-306 | planned | staged subsystem | Private durable-state, paging, CI-I01 completion and ACT-STORAGE-TIME-01 corrections are independently reviewed with a final 65/65 supported gate. Closed native scheduler assembly now has scoped independent correction review and SQLite/PostgreSQL boundary evidence; scheduler recovery/continuation is the next checkpoint. Public activation, profile decision and complete worker/event acceptance remain open. Current evidence/limits: [owning plan](golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders). |
+| RM-307 | planned | staged subsystem | The claim/crash/retry plan and private storage foundation exist; checked scheduler/worker execution and the 18 frozen runtime traces remain gated by RM-306 assembly and its acceptance. Use controlled clocks and separate worker processes; same-process locks cannot prove fencing. Evidence: [time-testing-plan.md](../time-testing-plan.md); [golden-delivery-planning.md](golden-delivery-planning.md). |
 | RM-308 | planned | decision then short implementation | Safe inspect/retry/dead-letter requirements are present, but operator authentication/capabilities, retry legality and export/result retention contract are not yet specified. Evidence: [developer-console-mcp.md](developer-console-mcp.md); [golden-delivery-planning.md](golden-delivery-planning.md); [entity-query-model.md](../entity-query-model.md). |
 | RM-401 | planned | decision plus bounded adapter probe | Candidate follows TIME-D05 and has saved SQLite/PostgreSQL abort/lost-ack evidence. Independent correction re-review approved freeze on 2026-10-02; RM-401 is complete, and RM-402 implements retries/full conformance. Evidence: [transaction-retry-plan.md](../transaction-retry-plan.md); [transaction-retry-v0.1.json](../../tests/assurance/transaction-retry-v0.1.json); [rm401-phase-probe-results.json](../../tests/validation/rm401-phase-probe-results.json); [target.rs](../../jadpo/crates/core/src/target.rs). |
 | RM-402 | planned | short staged | Current wrappers/classification do not prove outcome phases; production retry must follow bounded adapter evidence, not optimistically retry begin rejection. Evidence: [transaction-retry-plan.md](../transaction-retry-plan.md); [entity-dossier.test.ts](../../tests/runtime/entity-dossier.test.ts); [entity-dossier-writer.ts](../../tests/runtime/fixtures/entity-dossier-writer.ts); [target.rs](../../jadpo/crates/core/src/target.rs). |

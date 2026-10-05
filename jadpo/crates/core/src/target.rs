@@ -14,6 +14,7 @@ use std::path::Path;
 mod delivery_authority;
 mod delivery_hooks;
 mod delivery_invocation;
+mod delivery_scheduler;
 mod delivery_selection;
 mod first_party;
 
@@ -1004,6 +1005,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
         self.first_party_application(&mut output);
         self.delivery_selection_bridges(&mut output);
         self.delivery_invocation_bridges(&mut output);
+        self.delivery_scheduler_bridges(&mut output);
         self.failure_contracts(&mut output);
         self.invoke_authorization_runtime(&mut output);
         self.service_operation_implementations(&mut output);

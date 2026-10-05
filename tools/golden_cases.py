@@ -11,6 +11,7 @@ import argparse
 from copy import deepcopy
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Callable
 
@@ -55,14 +56,22 @@ observations once implemented. A missing built compiler is explicitly unknown.
 """
     paths = {ACCEPTANCE, OBLIGATIONS, 'tools/golden_cases.py'}
     for directory in ('examples/golden-todo', 'examples/golden-todo-migration'):
-        paths.update(str(p.relative_to(root)) for p in (root / directory).rglob('*')
-                     if p.is_file() and 'build' not in p.relative_to(root / directory).parts)
-    paths.update(str(p.relative_to(root)) for p in (root / 'jadpo').rglob('*')
-                 if p.is_file() and 'target' not in p.relative_to(root / 'jadpo').parts
-                 and p.suffix not in ('.pyc', '.pyo'))
+        paths.update(source_paths(root, root / directory, 'build'))
+    paths.update(source_paths(root, root / 'jadpo', 'target', ('.pyc', '.pyo')))
     compiler = root / 'jadpo/target/debug/jadpo'
     return {'files': {name: digest(root / name) for name in sorted(paths)},
             'compiler_sha256': digest(compiler) if compiler.is_file() else None}
+
+
+def source_paths(root: Path, directory: Path, excluded: str, suffixes=()):
+    # Prune generated trees before traversal. Filtering rglob's results still
+    # walks every compiler cache file on each provenance check.
+    for current, directories, files in os.walk(directory):
+        directories[:] = [name for name in directories if name != excluded]
+        for name in files:
+            path = Path(current) / name
+            if path.is_file() and name != excluded and path.suffix not in suffixes:
+                yield str(path.relative_to(root))
 
 
 def scenarios(case: dict) -> list[dict]:
@@ -99,7 +108,9 @@ def compare(expected: dict, observed: dict) -> list[str]:
             continue
         actual = observed[observation_key]
         if key.endswith('AtMost'):
-            matches = (type(actual) in (int, float) and actual >= 0 and actual <= value)
+            # The frozen AtMost obligations count physical database queries.
+            # Fractional observations cannot establish a count budget.
+            matches = (type(actual) is int and actual >= 0 and actual <= value)
         else:
             # Python considers True == 1; JSON contracts do not.
             matches = same_json(actual, value)

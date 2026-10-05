@@ -78,8 +78,30 @@ class GoldenProtocolTests(unittest.TestCase):
         self.assertTrue(harness.compare({'databaseQueriesAtMost': 1}, {'databaseQueries': 2}))
         self.assertTrue(harness.compare({'databaseQueriesAtMost': 1}, {'databaseQueries': True}))
         self.assertTrue(harness.compare({'databaseQueriesAtMost': 1}, {'databaseQueries': -1}))
+        self.assertTrue(harness.compare({'databaseQueriesAtMost': 1}, {'databaseQueries': 0.5}))
         self.assertTrue(harness.compare({'safe': False}, {}))
         self.assertTrue(harness.compare({'body': {'safe': True}}, {'body': {'safe': 1}}))
+
+    def test_fractional_query_count_fails_driver_and_tampered_report_validation(self):
+        def fractional(case, backend):
+            observations = self.observations()
+            observations[0]['steps'][0]['databaseQueries'] = 0.5
+            return observations
+        report = self.run_synthetic(fractional)
+        self.assertEqual(report['status'], 'failed')
+        self.assertTrue(all(r['status'] == 'failed' for r in report['results']))
+        harness.validate_report(report, self.root)
+        report = self.run_synthetic()
+        report['results'][0]['observations'][0]['steps'][0]['databaseQueries'] = 0.5
+        with self.assertRaises(ValueError):
+            harness.validate_report(report, self.root)
+
+    def test_generated_output_and_compiler_cache_are_excluded_from_source_pins(self):
+        original = harness.provenance(self.root)
+        self.write('examples/golden-todo/build/deep/output.ts', '// disposable output')
+        self.write('examples/golden-todo-migration/build/deep/output.ts', '// disposable output')
+        self.write('jadpo/target/debug/incremental/deep/cache', 'disposable cache')
+        self.assertEqual(harness.provenance(self.root), original)
 
     def test_missing_variant_follow_up_and_reordered_variant_fail(self):
         for mutation in ('variant', 'followup', 'duplicate'):

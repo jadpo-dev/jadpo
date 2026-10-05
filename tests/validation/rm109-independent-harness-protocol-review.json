@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RM-109",
+  "reviewKind": "independent golden harness protocol review",
+  "reviewer": "harness_review",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "reviewedCommit": "5a31c4a",
+  "sourceSha256": {
+    "tools/golden_cases.py": "5f1e7369a5b45501e226bd47e3feeabe4032fa485c6a571fa686b730d7d94337",
+    "tests/validation/test_golden_cases.py": "af723a0a85d7ad95124e879f3268bbda864dcfcbddd25018f7ce292869060c47",
+    "tests/validation/README.md": "efd61ec4aee1f80c0ccdba2fdc5a3f02a83c615d27b486a47f4b9e2cb4665abf",
+    "examples/golden-todo/acceptance.json": "3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608",
+    "tests/validation/golden-obligations.json": "1bb72278815340e902238848d62547a252c63053019281c1d2a313cbf2db666b",
+    "docs/work-plans/golden-delivery-planning.md": "fd73f6114da477936c249f87eaa77e52a3fb4193974969a24110d25da53a1ada"
+  },
+  "disposition": "changes_requested",
+  "scope": [
+    "Frozen 44-case inventory and two backend result completeness",
+    "Variant/follow-up observation completeness and comparison",
+    "Source/contract/compiler provenance and explicit pending CLI behavior",
+    "Supporting protocol preparation only; real generated application adapters are absent"
+  ],
+  "findings": [
+    {
+      "id": "RM109-HARNESS-001",
+      "priority": 2,
+      "file": "tools/golden_cases.py",
+      "line": 104,
+      "claim": "Query-budget comparisons accept fractional physical query counts as successful observations.",
+      "reproduction": "Synthetic driver returning databaseQueries=0.5 for both variants and both backends yields observations_passed and passes validate_report.",
+      "expected": "Physical database query counts must be nonnegative integers; reject fractional floats rather than applying only an upper bound.",
+      "disposition": "open"
+    }
+  ],
+  "verification": {
+    "command": "python3 -m unittest discover -s tests/validation -p test_golden_cases.py -v",
+    "result": "15 tests pass against reviewed commit",
+    "independentProbes": {
+      "unknownStatusRejected": true,
+      "foreignBackendRejected": true,
+      "duplicateBackendSubstitutionRejected": true,
+      "missingFollowupRejected": true,
+      "booleanVariantIndexRejected": true,
+      "nonJsonDriverResultFails": true,
+      "serializedCompleteSyntheticObservationsAcceptedAsSupportingOnly": true,
+      "fractionalPhysicalQueryCountWronglyPasses": true
+    },
+    "timingRun": "RM-109-90b0c76b7ed8"
+  },
+  "limitations": [
+    "No registered adapters execute golden behavior; default actual ledger has 88 not_run entries and CLI exits nonzero.",
+    "A compiler digest and source digests do not prove compiler/source correspondence.",
+    "Local validation cannot establish that supplied adapter observations came from the application. Adapter instrumentation and generated artifact binding require separate review before full golden integration.",
+    "This review does not close RM-109 or approve --require-golden execution."
+  ]
+}

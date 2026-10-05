@@ -527,6 +527,135 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
   });
 });
 
+describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`, () => {
+  // Explicit native test profile; the owner-facing golden profile is unset.
+  const profile = Object.freeze({ executionMs: 120_000, leaseMs: 90_000 });
+  const activate = (proof: unknown, at = scanTime) => app.runDeliveryScheduleActivation(bindingIdentity, proof, profile, at);
+  const activationRows = () => rows('SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [bindingIdentity]);
+  async function fixture() {
+    await clearScanTodos();
+    // Initialize the actual native schema, then isolate this binding's ticks.
+    await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, scanTime));
+    await rows('DELETE FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [bindingIdentity]);
+    const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+    return { ...f, value };
+  }
+  async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+    const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json();
+      // A separate connection observes both durable commits before HTTP.
+      const activation = (await activationRows())[0];
+      const claim = (await rows('SELECT possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
+      calls.push({ body, page: JSON.parse(activation.page), possibleDispatch: Number(claim.possible_dispatch) });
+      if (onCall) await onCall();
+      return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
+    } });
+    const endpoint = `http://127.0.0.1:${server.port}`;
+    setReferenceMailEndpointForTesting(endpoint);
+    try { await work(calls, endpoint); }
+    finally { setReferenceMailEndpointForTesting(null); server.stop(true); if (previous === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previous; }
+  }
+  test("generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick", async () => {
+    const f = await fixture();
+    await provider(async calls => {
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1); expect(calls[0].possibleDispatch).toBe(1);
+      expect(calls[0].page.intentIds).toEqual([calls[0].body.idempotency_key]);
+      expect(calls[0].body).toEqual((await persistence.read_delivery_intent(calls[0].body.idempotency_key)).payload);
+      expect(await activate(f.proof)).toEqual({ status: "idle", selected: 0, attempted: 0, continued: false });
+      expect(calls).toHaveLength(1);
+    });
+    const saved = (await activationRows())[0]; expect(saved.activation_id).toBeNull(); expect(saved.page).toBeNull();
+    expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+  });
+  test("forged credential, unknown binding and missing/invalid profiles refuse before durable enrollment or HTTP", async () => {
+    const f = await fixture();
+    await provider(async calls => {
+      await expect(activate({})).rejects.toMatchObject({ code: "invalid_credentials" });
+      await expect(app.runDeliveryScheduleActivation("foreign-binding", f.proof, profile, scanTime)).rejects.toMatchObject({ code: "authority_invariant" });
+      for (const invalid of [undefined, null, {}, { executionMs: 0, leaseMs: 1 }, { executionMs: 10, leaseMs: 20 }, { ...profile, extra: true }]) {
+        await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, invalid, scanTime)).rejects.toBeDefined();
+      }
+      expect(calls).toHaveLength(0); expect(await activationRows()).toEqual([]); expect(await intentRows(f.value.id)).toEqual([]);
+    });
+    await expect(persistence.delivery_activation_clock()).rejects.toMatchObject({ operation: "delivery.transaction_required" });
+  });
+  test("owning page COMMIT failure leaves no intent/activation and cannot dispatch", async () => {
+    const f = await fixture();
+    await rows('CREATE TABLE rm306_activation_parent (id TEXT PRIMARY KEY)');
+    await rows('CREATE TABLE rm306_activation_child (id TEXT REFERENCES rm306_activation_parent(id) DEFERRABLE INITIALLY DEFERRED)');
+    if (sql) {
+      await rows("CREATE FUNCTION rm306_activation_commit_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.page IS NOT NULL THEN INSERT INTO rm306_activation_child VALUES ('missing-parent'); END IF; RETURN NEW; END $$");
+      await rows('CREATE TRIGGER rm306_activation_commit_fault AFTER UPDATE ON "__jadpo_delivery_activations_v1" FOR EACH ROW EXECUTE FUNCTION rm306_activation_commit_fault()');
+    } else await rows("CREATE TRIGGER rm306_activation_commit_fault AFTER UPDATE OF page ON __jadpo_delivery_activations_v1 WHEN NEW.page IS NOT NULL BEGIN INSERT INTO rm306_activation_child VALUES ('missing-parent'); END");
+    try {
+      await provider(async calls => {
+        await expect(activate(f.proof)).rejects.toBeDefined();
+        expect(calls).toHaveLength(0); expect(await activationRows()).toEqual([]); expect(await intentRows(f.value.id)).toEqual([]);
+      });
+    } finally {
+      await rows(sql ? 'DROP TRIGGER rm306_activation_commit_fault ON "__jadpo_delivery_activations_v1"' : 'DROP TRIGGER rm306_activation_commit_fault');
+      if (sql) await rows('DROP FUNCTION rm306_activation_commit_fault()');
+      await rows('DROP TABLE rm306_activation_child'); await rows('DROP TABLE rm306_activation_parent');
+    }
+    await provider(async calls => { expect((await activate(f.proof)).status).toBe("finished"); expect(calls).toHaveLength(1); });
+  });
+  test("overlapping activation stays idle while the committed singleton page owns the provider call", async () => {
+    const f = await fixture();
+    let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const observed = new Promise<void>(resolve => { entered = resolve; });
+    await provider(async calls => {
+      const first = activate(f.proof);
+      try {
+        await observed;
+        expect((await activate(f.proof)).status).toBe("idle"); expect(calls).toHaveLength(1);
+      } finally { release(); }
+      expect((await first).status).toBe("finished"); expect(calls).toHaveLength(1);
+    }, async () => { entered(); await held; });
+  });
+  async function staged(f: Awaited<ReturnType<typeof fixture>>) {
+    return persistence.withOperationTime(scanTime).transaction(async (tx: any) => {
+      await tx.tick_delivery_schedule(bindingIdentity, 900_000, scanTime);
+      const handle = await tx.claim_delivery_activation(bindingIdentity, scanTime, profile);
+      const page = await tx.select_delivery_intents(bindingIdentity, f.proof, null);
+      expect(await tx.stage_delivery_activation_page(handle, page.intents.map((intent: any) => intent.intentId), page.after)).toBe(true);
+      return page.intents[0];
+    });
+  }
+  const expire = () => rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1,execution_deadline=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", bindingIdentity]);
+  test("malformed/cross-binding retained page and cursor refuse before commit or provider effect, preserving every durable byte", async () => {
+    const valid = { binding: bindingIdentity, operationTime: scanTime, dueAt: dueA, id: "018f57d0-bf42-4f25-9417-000000007001" };
+    for (const after of [{ ...valid, binding: "foreign-binding" }, { ...valid, operationTime: "bad" }, { ...valid, id: "bad" }, { ...valid, dueAt: scanTime }, { ...valid, extra: true }]) {
+      const f = await fixture(), intent = await staged(f); await expire();
+      await rows('UPDATE "__jadpo_delivery_activations_v1" SET page=$1 WHERE binding=$2', [JSON.stringify({ intentIds: [intent.intentId], after }), bindingIdentity]);
+      const before = await activationRows();
+      await provider(async calls => { await expect(activate(f.proof)).rejects.toBeDefined(); expect(calls).toHaveLength(0); });
+      expect(await activationRows()).toEqual(before); expect((await persistence.read_delivery_intent(intent.intentId)).state).toBe("pending");
+    }
+    const f = await fixture(), intent = await staged(f); await expire();
+    await rows('UPDATE "__jadpo_delivery_activations_v1" SET cursor=$1,continuation_for=$2 WHERE binding=$3', [JSON.stringify({ ...valid, binding: "foreign-binding" }), scanTime, bindingIdentity]);
+    const before = await activationRows();
+    await provider(async calls => { await expect(activate(f.proof)).rejects.toBeDefined(); expect(calls).toHaveLength(0); });
+    expect(await activationRows()).toEqual(before); expect((await persistence.read_delivery_intent(intent.intentId)).state).toBe("pending");
+  });
+  test("fresh generated process resumes the immutable staged page with a new operation snapshot and original intent identity", async () => {
+    const f = await fixture(), intent = await staged(f); await expire();
+    // A later source is not allowed to replace or enlarge retained work.
+    const later = todo(); await client.create_Todo(later);
+    const resumedAt = "2026-10-08T08:01:00.000Z";
+    await provider(async (calls, endpoint) => {
+      const code = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});adapter.setReferenceMailEndpointForTesting(${JSON.stringify(endpoint)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(resumedAt)});console.log(JSON.stringify(result));process.exit(0);`;
+      const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", code], { env: { ...Bun.env, NODE_ENV: "test", DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdout: "pipe", stderr: "pipe" });
+      const [out, err, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+      expect(exit, err).toBe(0); expect(JSON.parse(out.trim().split("\n").at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1); expect(calls[0].body.idempotency_key).toBe(intent.intentId); expect(calls[0].page.intentIds).toEqual([intent.intentId]);
+      expect((await stored(later.id))[0].reminder_sent_at).toBeNull(); expect(await intentRows(later.id)).toEqual([]);
+    });
+  }, 30_000);
+});
+
 describe(`committed admission and adapter-origin outcome components (${sql ? "postgres" : "sqlite"})`, () => {
   // Explicit test-owned finite profile, not the unanswered production proposal.
   const profile = Object.freeze({ executionMs: 120_000, leaseMs: 90_000 });

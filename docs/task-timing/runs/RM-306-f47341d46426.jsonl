@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-306-f47341d46426", "task_id": "RM-306", "actor": "scheduler_review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-05T23:18:48.650557+00:00", "phase": "planning"}
+{"at": "2026-10-05T23:18:58.626098+00:00", "phase": "review", "note": "Bounded independent review of closed scheduler assembly; inherited actual gpt-6.1-sol/high matches Sol High consequential review pin"}
+{"at": "2026-10-05T23:23:59.327386+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-scheduler-assembly-review.json"}

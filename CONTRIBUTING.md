@@ -16,7 +16,7 @@ cargo run --locked --manifest-path jadpo/Cargo.toml -p jadpo-cli -- check exampl
 ```
 
 The supported gate is `python3 tools/verify.py`. It requires Rust 1.78,
-Bun 1.2.20, Node.js, Python, Ruby, Bash and PostgreSQL tools; see the
+Bun, Node.js, Python, Ruby, Bash and PostgreSQL tools; see the
 [validation guide](tests/validation/README.md) for the complete setup and suite
 boundaries. Focused checks are useful during implementation. Run the required
 full gate on the integrated revision before landing compiler/runtime changes.

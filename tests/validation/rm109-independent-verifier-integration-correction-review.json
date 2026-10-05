@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RM-109",
+  "reviewKind": "independent corrected supporting golden verifier integration review",
+  "reviewer": "harness_review",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "sourceSha256": {
+    "tools/verify.py": "7ea3b999979ee83cda949e3808e71c11d3555dd8a08891762c6662aa4334dd63",
+    "tests/validation/test_verifier.py": "94aa53e6c01511649c0c02767769bd02fd25b129bda3eaea4138f568eb52cc16",
+    "tools/golden_cases.py": "6ae4910cba815e080d10ba0a5cae3ae38aba07ebbf6c26691a5424cd6af9ed25",
+    "tests/validation/test_golden_cases.py": "91db7fdd9ff1aabda6a18f67681c96742bb7946a5ae57974e917128b8ae40724"
+  },
+  "disposition": "approved_for_supporting_inventory_integration",
+  "originalReview": "tests/validation/rm109-independent-verifier-integration-review.json",
+  "resolvedFindings": [
+    {
+      "id": "RM109-INTEGRATION-001",
+      "disposition": "resolved",
+      "evidence": "Existing golden-cases.json is rejected before execution. Targeted actual-file counterexample preserves stale report bytes and rejects the collection attempt."
+    }
+  ],
+  "verification": {
+    "command": "python3 -m unittest discover -s tests/validation -p test_verifier.py -v",
+    "result": "13 tests pass in 0.232 seconds",
+    "realInventory": "88 original case/backend entries remain not_run; zero passed and zero failed; report release_equivalent is false.",
+    "failureHandling": "Missing crash report and contradictory exit/status are rejected.",
+    "timingRun": "RM-109-8368f529a509"
+  },
+  "scopeAssessment": [
+    "The protocol is invoked in the new report directory after golden compilation diagnosis; resulting status/counts are separately retained under case_protocol.",
+    "Supported check success remains explicitly supported_checks_passed_with_open_gates. Pending inventory is not added as a passed suite.",
+    "--require-golden remains an unconditional failure and no registered real application adapters are introduced."
+  ],
+  "limitations": [
+    "This approval is supporting inventory integration only; RM-109 and the complete 44-case golden gate remain open.",
+    "Full supported validation is being executed separately by integration owner and was not repeated for this review.",
+    "The collector trusts the internally invoked reviewed CLI to validate report contents before writing; local provenance is not protected attestation."
+  ]
+}
