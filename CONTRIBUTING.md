@@ -26,7 +26,13 @@ checks explicitly retain the open golden gates.
 ## Branches and worktrees
 
 `main` is the shared integration baseline. New work uses a `codex/` branch and
-a pull request. Give each editing agent its own worktree and a bounded task,
+a pull request. GitHub requires an up-to-date passing `supported-language`
+check and resolved review conversations before merging, including for
+administrators. Force pushes and deletion of `main` are disabled. There is no
+mandatory human approval count; required independent project reviews remain
+separate acceptance evidence.
+
+Give each editing agent its own worktree and a bounded task,
 with explicit ownership of the files it may change. For example:
 
 ```sh
@@ -60,8 +66,9 @@ Open a pull request to `main` describing the resulting behaviour, validation and
 remaining limitations. Link required review evidence and identify its reviewed
 revision. The integration owner resolves conflicts and reruns affected checks
 after integration; passing tests on separate branches do not establish that the
-combined revision works. GitHub Actions runs the supported gate on pushes and
-pull requests and retains its reports.
+combined revision works. GitHub Actions runs the supported gate on pull requests
+and pushes to `main` and retains its reports. Feature-branch pushes are covered
+by their pull request, avoiding a duplicate full run for the same update.
 
 Use normal merges or fast-forward updates; preserve existing history. Rewriting
 or force-pushing shared branches requires an explicit reason and owner approval.
