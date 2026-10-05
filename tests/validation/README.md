@@ -49,7 +49,8 @@ provide a durable artifact link. Do not force-add the entire generated build tre
 Hosted runs retain their reports as GitHub Actions artifacts.
 
 The [GitHub Actions workflow](https://github.com/richardwillars/jadpo/actions/workflows/validation.yml)
-uses the same full command on pushes and PRs and retains reports even on failure.
+uses the same full command on pushes to `main` and PRs and retains reports even
+on failure. Feature-branch pushes do not create a duplicate full validation run.
 A manually requested golden-gate run defaults to requiring the currently blocked
 golden contract. The public repository is connected as `origin`; the initial
 [hosted validation run](https://github.com/richardwillars/jadpo/actions/runs/37386118262)
