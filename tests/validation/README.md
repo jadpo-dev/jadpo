@@ -39,6 +39,15 @@ The manifest must classify every example and register every runtime test file.
 New suites cannot quietly sit outside the command. The separate-process policy
 avoids shared environment and generated-module caches contaminating runtime tests.
 
+Historical validation reports linked from the specifications, plans and completion
+records are retained with their raw logs at their original `build/validation/`
+paths. These selected snapshots are deliberately versioned even though new build
+output is ignored. Preserve their bytes and failed results; they describe the
+recorded revision, not the current checkout. When a durable record links a new
+local run, explicitly retain that run's report, logs and diagnostics in Git or
+provide a durable artifact link. Do not force-add the entire generated build tree.
+Hosted runs retain their reports as GitHub Actions artifacts.
+
 The [GitHub Actions workflow](https://github.com/richardwillars/jadpo/actions/workflows/validation.yml)
 uses the same full command on pushes and PRs and retains reports even on failure.
 A manually requested golden-gate run defaults to requiring the currently blocked
