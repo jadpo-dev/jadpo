@@ -28,11 +28,15 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.2.20'
+          bun-version: '1.4.2'
       - uses: actions/setup-node@v7
         with:
           node-version: '24.18.1'
           package-manager-cache: false
+      - name: Verify Bun timezone support
+        run: |
+          bun --version
+          bun --no-install --env-file=/dev/null -e 'new Intl.DateTimeFormat("en", { timeZone: "America/Coyhaique" }); console.log("Bun Intl timezone preflight passed");'
       - name: Install compiler and database test tools
         run: |
           rustup toolchain install 1.78.0 --profile minimal
