@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RM-109",
+  "reviewKind": "independent supporting golden verifier integration review",
+  "reviewer": "harness_review",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "sourceSha256": {
+    "tools/verify.py": "b40ef245fea0fb55f927b62fb1a29e4d9fd93b461f26a2a142794c5dba5976fb",
+    "tests/validation/test_verifier.py": "eecc9c05a76d7c180d06073070df296a96e5960e60e20a073551379881869b9b",
+    "tools/golden_cases.py": "6ae4910cba815e080d10ba0a5cae3ae38aba07ebbf6c26691a5424cd6af9ed25",
+    "tests/validation/test_golden_cases.py": "91db7fdd9ff1aabda6a18f67681c96742bb7946a5ae57974e917128b8ae40724"
+  },
+  "disposition": "changes_requested",
+  "findings": [
+    {
+      "id": "RM109-INTEGRATION-001",
+      "priority": 2,
+      "claim": "Existing stale case report is accepted after the actual protocol command crashes with FileExistsError because both pending and that crash exit one.",
+      "reproduction": "Precreate golden-cases.json with status not_run, release_equivalent false, results []; invoke collect_golden_case_report with real execution. Helper returns not_run, zero inventory entries; golden-cases.log ends with FileExistsError.",
+      "scopeLimit": "main currently allocates a fresh report directory, preventing ordinary reuse. Fix the helper precondition to uphold the documented crashed-command rejection and protect future callers.",
+      "expected": "Reject an existing output path before execution; retain existing evidence unchanged.",
+      "disposition": "open"
+    }
+  ],
+  "verification": {
+    "command": "python3 -m unittest discover -s tests/validation -p test_verifier.py -v",
+    "result": "12 tests pass before correction",
+    "timingRun": "RM-109-8368f529a509"
+  },
+  "limitations": [
+    "Supporting inventory only; no real application adapter is enabled.",
+    "--require-golden still raises unconditionally; supported pass cannot close golden acceptance.",
+    "This review does not repeat the full supported gate."
+  ]
+}

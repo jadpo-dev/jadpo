@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-109-8368f529a509", "task_id": "RM-109", "actor": "harness-review-integration", "actor_kind": "agent", "category": "slice", "estimate_hours": null, "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-05T23:25:45.832490+00:00", "phase": "planning"}
+{"at": "2026-10-05T23:26:32.124849+00:00", "phase": "blocked", "note": "Awaiting helper existing-output precondition correction RM109-INTEGRATION-001"}
+{"at": "2026-10-05T23:27:28.867005+00:00", "phase": "review", "note": "Review corrected existing-output precondition and targeted evidence"}
+{"at": "2026-10-05T23:27:45.207242+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm109-independent-verifier-integration-correction-review.json"}

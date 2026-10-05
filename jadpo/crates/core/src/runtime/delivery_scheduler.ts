@@ -68,6 +68,10 @@ function createDeliverySchedulePrimitives(
     return Object.freeze({ intentIds: Object.freeze([...page.intentIds]), after: page.after });
   };
   return {
+    async delivery_activation_clock(): Promise<string> {
+      requireTransaction();
+      return now();
+    },
     async tick_delivery_schedule(binding: string, intervalMs: number, operationTime: string): Promise<void> {
       requireTransaction(); positive(intervalMs); instant(operationTime);
       if (typeof binding !== "string" || binding.length === 0) return fault("delivery.activation_binding");

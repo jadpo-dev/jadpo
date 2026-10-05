@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "review_id": "RM306-CLOSED-SCHEDULER-ASSEMBLY-20261005",
+  "task": "RM-306",
+  "review_completed_at_utc": "2026-10-05T23:23:59.059014+00:00",
+  "disposition": "scoped_approved",
+  "scope": "Closed finished-binding native scheduler assembly, module/bridge insertion and transaction-required adapter clock. Public authored execution/profile and whole worker conformance excluded.",
+  "reviewer": {
+    "independent": true,
+    "did_not_implement_candidate": true,
+    "actor": "scheduler_review",
+    "actual_model": "gpt-6.1-sol",
+    "actual_reasoning_effort": "high",
+    "settings_evidence": "Full-history subagent inherits parent model/effort; parent supplied verified current own-turn gpt-6.1-sol/high at batch entry. Pin Sol/high fits consequential transaction/authority review.",
+    "timer": "docs/task-timing/runs/RM-306-f47341d46426.jsonl"
+  },
+  "tested_source_sha256": {
+    "jadpo/crates/core/src/target/delivery_scheduler.rs": "14a1064d03f1e4faed5e485657911984e24465f388667dc84a6bf2dd0f81d0e0",
+    "jadpo/crates/core/src/runtime/delivery_scheduler.ts": "8dff0f3b462300b348a0b480447152234ad2ebf0fd4a80baf0541a29e203f123",
+    "jadpo/crates/core/src/target.rs": "cf506eeaacc62762ee2e81d0b91b07231070864f8f1c0846e0e75f22c52e202b",
+    "jadpo/crates/core/src/target/delivery_selection.rs": "7fb055197d2135fb36b7a01925b1821da5684e381b8e0922aecd455b7125edbc",
+    "jadpo/crates/core/src/target/delivery_invocation.rs": "69c46c233fa296475d53b59178c9ed07e313b0c923ea5ba1bd7e32c5c5e591b9",
+    "jadpo/crates/core/src/runtime/delivery_outbox.ts": "913492f20277be6068bfdd88b7b5bd0beaa00cddc9c4ca698a12539e68e305c8",
+    "tests/runtime/delivery-hook-components.test.ts": "f5d397aa648eaf30e6af65ab43721cf23952ee11bbc831c46c60f8e57836c43a"
+  },
+  "initial_required_changes_source_sha256": {
+    "jadpo/crates/core/src/target/delivery_scheduler.rs": "c51b0a05ab0eb7f9618b1c570d25590506b60a8053f6d2751cb10313b060b195",
+    "jadpo/crates/core/src/runtime/delivery_scheduler.ts": "8dff0f3b462300b348a0b480447152234ad2ebf0fd4a80baf0541a29e203f123",
+    "jadpo/crates/core/src/target.rs": "cf506eeaacc62762ee2e81d0b91b07231070864f8f1c0846e0e75f22c52e202b",
+    "jadpo/crates/core/src/target/delivery_selection.rs": "7fb055197d2135fb36b7a01925b1821da5684e381b8e0922aecd455b7125edbc",
+    "jadpo/crates/core/src/target/delivery_invocation.rs": "69c46c233fa296475d53b59178c9ed07e313b0c923ea5ba1bd7e32c5c5e591b9",
+    "jadpo/crates/core/src/runtime/delivery_outbox.ts": "913492f20277be6068bfdd88b7b5bd0beaa00cddc9c4ca698a12539e68e305c8"
+  },
+  "stable_capture": {
+    "owner_held_reviewed_product_files": true,
+    "all_final_pins_match_after_execution": true,
+    "separate_target_dir": "/private/tmp/rm306-scheduler-review-8cb7amu7/target",
+    "fresh_production_renderer_compiled": true,
+    "generated_source_rewritten": false,
+    "capture_released": true
+  },
+  "findings": [],
+  "resolved_findings": [
+    {
+      "id": "ACT-ASSEMBLY-CURSOR-01",
+      "initial_disposition": "changes_required",
+      "severity": "P1",
+      "cause": "Resumed handle.page bypassed typed cursor validation. Native page decoder validated bounded distinct nonempty intent IDs but retained arbitrary page.after; handle.cursor validation happened only when no page existed.",
+      "initial_reproduction": {
+        "adapter": "sqlite",
+        "exit_code": 2,
+        "provider_calls": 1,
+        "sent_written": true,
+        "result": {
+          "status": "finished",
+          "selected": 1,
+          "attempted": 1,
+          "continued": true
+        },
+        "bad_binding_published": "wrong-binding",
+        "durable_generation_before": 1,
+        "durable_generation_after": 2,
+        "deliberately_red": true
+      },
+      "correction": "Closed readCursor validates exact finished binding, typed identity/Instant and due strictly before its recorded snapshot. Both handle.cursor and staged page.after are decoded inside owning transaction before any generation/page COMMIT or provider effect; fresh selection rebinds only validated coordinates to the new activation snapshot.",
+      "independent_correction_results": {
+        "sqlite": {
+          "exit_code": 0,
+          "provider_calls": 0,
+          "sent": null,
+          "whole_durable_row_unchanged": true,
+          "fault": {
+            "name": "Error",
+            "message": "delivery.cursor.binding must satisfy the selected binding"
+          }
+        },
+        "postgres": {
+          "exit_code": 0,
+          "provider_calls": 0,
+          "sent": null,
+          "whole_durable_row_unchanged": true,
+          "fault": {
+            "name": "Error",
+            "message": "delivery.cursor.binding must satisfy the selected binding"
+          }
+        }
+      },
+      "disposition": "resolved_on_pinned_source"
+    }
+  ],
+  "independent_execution": [
+    {
+      "command": "env -u DATABASE_URL -u SQLITE_PATH -u JADPO_DELIVERY_HOOK_DATABASE_URL -u JADPO_DELIVERY_HOOK_COMPONENT_VARIANT CARGO_TARGET_DIR=/private/tmp/rm306-scheduler-review-8cb7amu7/target bun --no-install --env-file=/dev/null test tests/runtime/delivery-hook-components.test.ts --test-name-pattern \"closed scheduler assembly components\"",
+      "adapter": "sqlite",
+      "exit_code": 0,
+      "tests_passed": 6,
+      "assertions": 70
+    },
+    {
+      "command": "bash /private/tmp/rm306-scheduler-review-8cb7amu7/postgres-review.sh",
+      "adapter": "postgres16",
+      "exit_code": 0,
+      "tests_passed": 6,
+      "assertions": 70,
+      "cluster": "/private/tmp/rm306-scheduler-review-pg.hnVcH6",
+      "cleanup": "EXIT trap stopped fresh own cluster; pg_ctl status independently confirms no server running."
+    }
+  ],
+  "evidence_sha256": {
+    "/private/tmp/rm306-scheduler-review-8cb7amu7/provider-probe.ts": "46dc97b7c1737f03e2c48c8327f7c713d7ddd54d34634d472e2bc4356a094072",
+    "/private/tmp/rm306-scheduler-review-8cb7amu7/provider-red.log": "f234346bbdcf0fdebc9c4b406089d7c7b71698a68ed8eeaf00225ebced0652b0",
+    "/private/tmp/rm306-scheduler-review-8cb7amu7/corrected-provider-probe.ts": "923232cf036e060f2600e9c8e4381a73edd7e8e36f76ec09eddd42a535faf3ad",
+    "/private/tmp/rm306-scheduler-review-8cb7amu7/provider-corrected.log": "14eaa495c38527bbe81b180f785678309ec9299058a24bfa74ca555013f999db",
+    "/private/tmp/rm306-scheduler-review-8cb7amu7/sqlite-focused.log": "8e14cfd51db7cf67aaa2ccda9ebf79cbd538764deef550326cc2acd190c55742",
+    "/private/tmp/rm306-scheduler-review-8cb7amu7/postgres-focused.log": "c84cee48f32c2e583fc78cae93093e2c84b5b99bc8ff8f17c00f9a8e20af58ef",
+    "/private/tmp/rm306-scheduler-review-8cb7amu7/postgres-corrected.log": "38f31b8cd334860b27a7158ca7565ab1fcc1be8109cad7844202a65b42b5cd67",
+    "/private/tmp/rm306-scheduler-review-8cb7amu7/postgres-review.sh": "cf104c72ea8acb84ec4974f49fc2eb8eb35d7b61796f8a4cc476503dd63d1098"
+  },
+  "reviewed_invariants": [
+    "Selection/enrollment and immutable bounded page share acknowledged owning COMMIT before provider invocation.",
+    "Per-intent dispatch checkpoint and opaque one-use token require separate admission owning COMMIT; no savepoint token/role widening introduced.",
+    "Database authoritative remaining lease/execution clamps monotonic send budget conservatively, charging full staging and admission elapsed.",
+    "Singleton tick/overlap and fenced finish preserve one pending follow-up; restart resumes immutable IDs with fresh TIME-D05 snapshot.",
+    "Existing intent fence/cumulative invocation budget and known-no-effect/unknown containment remain separate from activation identity."
+  ],
+  "limits": [
+    "Focused six-test suites independently exercised both actual generated adapters; no whole supported verifier independently duplicated.",
+    "Provider red uses trusted temporary fixture storage corruption, not an authored remote attack; one real loopback test provider call proved validation ordering.",
+    "Original red probe/log remain unchanged at their hashed paths; summary above preserves the original required finding and deliberate exit2.",
+    "All runtime profiles were explicit test-owned120000/90000 inputs. Pending public60s/40s proposal is neither approved nor activated.",
+    "No whole18ASYNCtrace closure, all44golden executions, renewable lease/hard active-query interruption qualification, wholeRM306/RM307 or release-equivalence approval."
+  ],
+  "conclusion": "Approve the pinned bounded native scheduler assembly after ACT-ASSEMBLY-CURSOR-01 correction. No remaining blocker found in this examined slice; future whole-worker/public execution gates remain open."
+}

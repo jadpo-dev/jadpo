@@ -1,6 +1,6 @@
 # Jadpo implementation roadmap
 
-**Updated:** 2026-10-04 · **Scope:** all recorded work, with open tasks below and completed/deferred context indexed
+**Updated:** 2026-10-06 · **Scope:** all recorded work, with open tasks below and completed/deferred context indexed
 
 Completed capabilities, dated evidence, and the previous phase descriptions are
 in [Implementation history](implementation-history.md). This roadmap owns work
@@ -19,9 +19,11 @@ History contains a preserved source snapshot **including unfinished requirements
 being stored there never means a requirement was completed or withdrawn.
 
 The next product milestone is the complete golden todo on the existing Bun
-target. The latest full supported [validation report](../build/validation/20261003T213248-5311/report.json)
-passes all 58 checks, with recorded golden and release gates still open. The 44
-integrated golden acceptance cases remain unexecuted. Focused UserWithTodos implementation evidence is in
+target. The latest recorded [supported checkpoint](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders)
+passes all 65 checks, with recorded golden and release gates still open. Closed
+native scheduler assembly has independently reviewed SQLite/PostgreSQL boundary
+evidence; full worker/public activation gates remain open.
+The 44 integrated golden acceptance cases remain unexecuted. Focused UserWithTodos implementation evidence is in
 [RM-107 history](implementation-history.md#2026-10-02--rm-107-self-scoped-user-todo-route).
 
 ## How to read and maintain this plan
@@ -101,23 +103,34 @@ not change task dependencies, activate conditional work, or close a task without
 its acceptance evidence. Independent lanes may overlap only with separate
 ownership/workspaces; otherwise keep one writer per checkout.
 
-| Queue | Work | Unlocks / gate |
+| Queue / owner | Next observable checkpoint | Unlocks / gate |
 |---|---|---|
-| 1A | **Prepare and approve RM-305** — freeze the database-backed durable delivery contract. | Enables RM-306. |
-| 1B | **Continue RM-402** — finish deadline/active-call and transaction retry evidence plus its independent review. | Enables RM-504 and contributes to RM-109. |
-| 3A | **RM-303 → RM-304** — implement the reviewed provider adapter, then its fake/integration cases. | Enables RM-307, RM-108, RM-403 and RM-505. |
-| 3B | **RM-306 → RM-307** — implement the outbox/durable state, then worker scheduling, retry and replay evidence. | Enables RM-108 and RM-505. |
-| 4 | **RM-403 and RM-108** — qualify readiness checks and compose the reminder job against the reviewed service/job behaviour. | RM-403 and RM-108 together unlock RM-109. |
-| 5 | **RM-109** — run the complete source-bound golden harness across SQLite/PostgreSQL and retain every case result. | Enables RM-110. |
-| 6 | **RM-504, RM-505 and RM-603**, then **RM-110** — finish residual database/hostile/attestation evidence and close the technical golden gate. | Technical golden Todo completion; external assurance remains separate. |
+| 1A · compiler/runtime writer | **RM-306** — advance from the reviewed native scheduler assembly to bounded recovery/continuation checkpoints, retaining commit-before-provider boundaries on both database adapters. | The integrated native assembly passes 65/65 supported checks with independent correction review; full RM-306 acceptance remains open. Public activation requires the unresolved execution/lease profile and runtime gates. |
+| 1B · independent harness writer | **RM-109 preparation** — use the reviewed 44-ID result protocol to prepare real application adapters in a separate worktree. | Preparation can overlap RM-306; full acceptance execution and task closure still require RM-108, RM-402, RM-403 and the other listed prerequisites. |
+| 2 · compiler/runtime writer | **RM-307** — connect scheduler and worker recovery, then execute the 18 frozen duplicate/crash/retry/exhaustion traces with controlled clocks and separate worker processes. | Depends on RM-306 and the completed RM-304; enables RM-108 and RM-505. Contract-only traces do not satisfy runtime acceptance. |
+| 3 · compiler/runtime writer | **RM-402 / RM-403** — finish transaction hard-bound/replay qualification and readiness hard-bound/platform evidence before final golden acceptance. | Scoped evidence exists; remaining acceptance and independent review stay open. These changes share runtime files and are integrated sequentially. |
+| 4 · application integration owner | **RM-108**, then **RM-109 execution** — compose the checked reminder worker and run the prepared SQLite/PostgreSQL harness, retaining every original case result. | Reminder activation needs the owner-selected execution/lease profile and RM-307; RM-109 closure also needs RM-402/RM-403. |
+| 5 · integration owner | **RM-504, RM-505 and RM-603**, then **RM-110** — finish residual database/hostile/attestation evidence and run the final exact-source technical golden gate. | RM-603 requires RM-601's canonical artifact; technical completion leaves external assurance separate. |
 
-The current critical path runs through **RM-303/RM-304** and
-**RM-305/RM-306/RM-307** into RM-108, then RM-109 and RM-110, with
-RM-402/RM-403/RM-504/RM-505/RM-603 supplying required gates. RM-106 is
-complete and remains a satisfied dependency. RM-201,
-RM-210, RM-503 and RM-601 remain valid independent work, but should not displace
-this queue while the golden Todo milestone is the selected priority. Conditional
-work, E10 and E11 remain parked until their stated triggers or authorisations.
+**Satisfied prerequisites:** [RM-303 provider adapter](implementation-history.md#2026-10-03--rm-303-checked-provider-adapter),
+[RM-304 service fakes](implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes)
+and [RM-305 durable contract](implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract)
+resolve through history. RM-106 is also complete. They remain dependency facts,
+not scheduled remaining work.
+
+The remaining critical path is **RM-306 → RM-307 → RM-108 → RM-109 → RM-110**,
+with RM-402/RM-403/RM-504/RM-505/RM-601/RM-603 supplying required gates.
+The [current delivery window](work-plans/roadmap-assessment.md#current-parallel-delivery-window--2026-10-06)
+defines isolated ownership; the [owning golden plan](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders)
+records the implementation checkpoints and pending decision. One writer owns
+shared compiler/runtime files; the independent harness writer owns only test and
+result-protocol preparation. The integration owner merges changes and updates
+shared roadmap, timing and evidence records after combined validation.
+
+RM-201, RM-210, RM-503 and RM-601 remain valid independent work, but should not
+displace this queue while the golden Todo milestone is the selected priority.
+Conditional work, E10 and E11 remain parked until their stated triggers or
+explicit selection.
 
 There is no meaningful single calendar total while external gates and conditional
 scope remain unresolved; do not sum all epics into a release commitment.
@@ -147,8 +160,8 @@ Sources: [migration checkpoint](../examples/golden-todo-migration/README.md),
 
 | ID | Remaining task and completion condition | Effort | Depends on | State | Next stage / model routing |
 |---|---|---|---|---|---|
-| RM-108 | Compose the reminder job and reviewed mail service with golden queries/actions; implement deterministic clock, provider failure and duplicate-delivery cases. | 1–4h (L) | RM-105, RM-106, RM-107, RM-304, RM-307 | In progress | Owner accepted narrow reminder-service authority, 3 scheduled invocations / 1 hour and exact self-disable field repair; provider keeps 3 attempts / 30 seconds. Two approved update-only grants restore self-disable; fresh full gate passes 61/61 and scoped correction is independently approved. [Plan](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders). Checked worker/clock/crash/duplicate integration remains. Confirmed Sol/high pin. |
-| RM-109 | Complete route/OpenAPI/policy/query audit agreement and SQLite/PostgreSQL golden harness coverage; run every case and retain failures by original case ID. | 1–4h (L) | RM-103, RM-104, RM-105, RM-106, RM-107, RM-108, RM-402, RM-403 | Queued | Build source-bound case-result harness; full closure requires RM-403 CONFIG-003 readiness evidence. Preferred gpt-6-luna xhigh. |
+| RM-108 | Compose the reminder job and reviewed mail service with golden queries/actions; implement deterministic clock, provider failure and duplicate-delivery cases. | 1–4h (L) | RM-105, RM-106, RM-107, RM-304, RM-307 | In progress | Owner accepted narrow reminder-service authority, 3 scheduled invocations / 1 hour and exact self-disable field repair; provider keeps 3 attempts / 30 seconds. Two approved update-only grants restore self-disable; fresh full gate passes 61/61 and scoped correction is independently approved. [Plan](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders). Checked worker/clock/crash/duplicate integration and the pending golden-only 60s execution / 40s renewable lease decision remain. Confirmed Sol/high pin. |
+| RM-109 | Complete route/OpenAPI/policy/query audit agreement and SQLite/PostgreSQL golden harness coverage; run every case and retain failures by original case ID. | 1–4h (L) | RM-103, RM-104, RM-105, RM-106, RM-107, RM-108, RM-402, RM-403 | In progress | Independent lane: source-bound case-result protocol and 44-ID inventory are prepared/reviewed; implement real adapter observations next, and run full acceptance only after all listed prerequisites, including RM-403 CONFIG-003 readiness evidence. [Current window](work-plans/roadmap-assessment.md#current-parallel-delivery-window--2026-10-06); actual bounded delivery pin gpt-6.1-sol/high, reassess a future batch. |
 | RM-110 | Close the technical golden gate using a fresh verifier report, full behavioural results, named proof/validation evidence and adversarial cases; preserve frozen versus repaired-toolchain results. | 0.5–2h (M) | RM-109, RM-504, RM-505, RM-603 | Queued | Run final exact-source require-golden gate and audit every case, proof and review. Preferred gpt-6-sol high. |
 
 ## E02 — Close language and tooling gaps
@@ -197,8 +210,8 @@ Sources: [decision packages D3–D4](decision-sprint.md#d3--service-001-and-the-
 
 | ID | Remaining task and completion condition | Effort | Depends on | State | Next stage / model routing |
 |---|---|---|---|---|---|
-| RM-306 | Implement compiler-owned job/event declarations, transactional outbox and durable delivery state; prove atomic enqueue and restart-safe identity/version tracking. | 2–8h (N) | RM-305 | In progress | Paging, CI-I01 completion and ACT-STORAGE-TIME-01 singleton storage corrections independently approved; final65/65 supported gate. Owner requested stopping at this verified work-item boundary. [Saved resume checkpoint](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders), actual6.1/high. Public jobs remain disabled; numeric profile, scheduler integration and18 generated traces open. |
-| RM-307 | Implement scheduling and worker execution with bounded selection, retries, cancellation and replay; pass duplicate/crash/exhaustion tests with controlled clocks. | 2–8h (N) | RM-306, RM-304 | Queued | Implement scheduling/worker traces on RM-306 with fakes; separate worker processes and controlled clocks. Preferred gpt-6-luna xhigh. |
+| RM-306 | Implement compiler-owned job/event declarations, transactional outbox and durable delivery state; prove atomic enqueue and restart-safe identity/version tracking. | 2–8h (N) | RM-305 | In progress | Reviewed paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage foundation pass 65/65. Next: wire the saved scheduler draft/bridge/clock helper and verify actual generated assembly; the unwired draft has no execution evidence. [Owning checkpoint](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders). Resumed by the owner in this bounded parallel-delivery batch, actual gpt-6.1-sol/high. Profile decision, public activation and 18 generated traces remain open. |
+| RM-307 | Implement scheduling and worker execution with bounded selection, retries, cancellation and replay; pass duplicate/crash/exhaustion tests with controlled clocks. | 2–8h (N) | RM-306, RM-304 | Queued | After RM-306 assembly, prove scheduler/worker recovery with all 18 frozen traces, separate worker processes and controlled clocks; reviewed storage and contract-only traces are insufficient. [Current window](work-plans/roadmap-assessment.md#current-parallel-delivery-window--2026-10-06); retain the bounded delivery pin gpt-6.1-sol/high, reassess a future batch. |
 | RM-308 | Add inspect/retry/dead-letter operator surfaces and evidence exports; verify safe diagnostics and bounded recovery from the recorded terminal states. | 1–4h (L) | RM-307 | Queued | After durable states settle, define operator capability/state-transition matrix and bounded safe export before implementation. Preferred gpt-6-sol high. |
 | RM-309 | Design an enforced **component messaging and subscription contract**, using RM-222's reviewed syntax: forbid direct cross-component behaviour calls while allowing local actions across files; define one typed event API and approved read contracts, a generated catalogue and component subgraphs, mandatory transition-owned event production, multiple typed subscriptions, per-subscriber durable delivery and optional execution configuration with safe defaults. Enforce effect ownership transitively, non-callable subscriber entry points and pure shared helpers; include import/wrapper/relocation bypass tests, including subscriber-only effects within one component. Keep concepts and authored wiring minimal. Resolve payload sufficiency/privacy, async policy authority, local atomicity, ordering, backpressure, joins, completion, cancellation, compensation, uncertainty, versions and replay. Assess stateful subscribers as the single authored coordination model rather than assuming a second workflow DSL. Completion: complete todo/representative order examples and fault/negative cases, reviewed adopt/adapt/defer decision, and separately scoped implementation/migration. | 2–8h (N) | RM-222 | Decision | [Candidate event contract](event-model.md) and [assessed plan/worked traces](work-plans/roadmap-assessment.md#rm-309--one-enforced-interaction-model). Reconcile DATA/TX/ASYNC/SERVICE/WORKFLOW in their owners before freeze; [independent candidate review and correction recheck](../tests/validation/event-design-independent-review.json) completed; final language/policy/effect qualification remains pending. Preserve frozen ASYNC-001 and active RM-306/RM-307. Planning actual gpt-6-astra medium; forecast provisional, excludes implementation/review waiting. |
 | RM-310 | Implement the reviewed **component/effect and automatic-publication compiler slice**: checked logical owners, typed catalogue/multi-event handlers, non-callable subscribers, transitive effect admission and mandatory transition facts on every supported mutation path. CompleteTodo with two receivers is the first slice; prove allowed same-owner cross-file helpers and reject direct/import/wrapper/relocation/same-component reaction bypasses. | Unestimated (needs planning) | RM-309, RM-223, RM-219 | Conditional | After contract/identity freeze and existing golden gate, revalidate the [saved compiler slice plan](work-plans/roadmap-assessment.md#assessed-successor-implementation-plans--2026-10-04) against current IR/lowering. No second action-call boundary pattern; estimate after exact ownership/payload rules settle. |

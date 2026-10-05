@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RM-109",
+  "reviewKind": "independent correction review of golden harness protocol",
+  "reviewer": "harness_review",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "baseReviewedCommit": "5a31c4a",
+  "reviewedSource": "Corrected root working-tree bytes before integration commit",
+  "sourceSha256": {
+    "tools/golden_cases.py": "6ae4910cba815e080d10ba0a5cae3ae38aba07ebbf6c26691a5424cd6af9ed25",
+    "tests/validation/test_golden_cases.py": "91db7fdd9ff1aabda6a18f67681c96742bb7946a5ae57974e917128b8ae40724",
+    "tests/validation/README.md": "64b363da3b7ce6d9015404ca043431b465fa7081fb60ba81b56a50fc22ad8510",
+    "examples/golden-todo/acceptance.json": "3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608",
+    "tests/validation/golden-obligations.json": "1bb72278815340e902238848d62547a252c63053019281c1d2a313cbf2db666b"
+  },
+  "disposition": "approved_for_protocol_preparation",
+  "originalReview": "tests/validation/rm109-independent-harness-protocol-review.json",
+  "resolvedFindings": [
+    {
+      "id": "RM109-HARNESS-001",
+      "disposition": "resolved",
+      "evidence": "AtMost comparisons now require exact nonnegative integers. Direct fractional comparison fails; adapter reports fail; tampered passing observations are rejected. Existing bool, negative and over-budget rejection remains."
+    }
+  ],
+  "additionalReviewedChange": "Provenance traversal prunes generated build/target directories before walking while preserving authored source input coverage.",
+  "verification": {
+    "command": "python3 -m unittest discover -s tests/validation -p test_golden_cases.py -v",
+    "result": "17 tests pass in 0.456 seconds",
+    "independentProbe": "Original filter and new pruning produce identical provenance maps on a temporary source tree including nested generated exclusions, authored compiler data and Python cache files.",
+    "timingRun": "RM-109-90b0c76b7ed8"
+  },
+  "limitations": [
+    "Approval covers supporting protocol preparation, not full RM-109 completion.",
+    "Actual application adapters remain absent; 88 real case/backend entries remain not_run and default CLI exits nonzero.",
+    "Local source/compiler hashes do not attest that a binary matches source or that supplied observations were captured from the application.",
+    "No review of later verify.py integration changes is included in this correction epoch."
+  ]
+}

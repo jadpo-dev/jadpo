@@ -156,3 +156,39 @@ generated schemas advertise JSON representations that handlers reject. The
 accepted contracts do not yet settle key encoding and duplicate handling, so
 these boundaries are recorded as unsupported evidence rather than passing
 collection parity.
+
+## Golden case harness preparation (RM-109)
+
+`python3 tools/golden_cases.py --output build/validation/<new-run>/golden-cases.json`
+prepares a versioned result ledger directly from the frozen acceptance contract
+and its reviewed obligation map. It produces **88 case/backend entries**: all
+44 original IDs on SQLite and PostgreSQL. The command currently exits nonzero,
+with every entry `not_run`, because no source-bound application adapters are
+registered. It does not connect to a database, start an application, consume
+caller credentials or change the full verifier's golden gate.
+
+The protocol requires every fixture variant and ordered follow-up observation
+(for example, all four USER-001 timeline steps). Multi-request sequences and the
+original case's rules remain the adapter's responsibility. Adapters receive a
+copy of the full frozen case and return observations, rather than pass labels.
+Expectation comparison rejects missing fields and checks query-budget upper
+bounds; a failing case makes the aggregate fail. Adapter exceptions retain a
+failure disposition without publishing potentially sensitive exception text.
+
+Each report binds acceptance/obligation files, both candidate and migrated source
+projects, the harness, compiler source/runtime templates/data/locks, and the
+built compiler binary when present. Source changes during a run invalidate it.
+`validate_report` rejects stale bindings, changed scenarios, omitted/duplicate/
+foreign case/backend pairs and unsupported pass/release claims. Existing output
+files are never overwritten. These checks are local integrity checks, **not
+protected attestation**, and cannot establish that a binary was built from the
+recorded source or that supplied observations were obtained from the application.
+
+The registered Python contract tests include synthetic drivers solely to exercise
+protocol counterexamples. Their passes are not golden acceptance evidence.
+Application adapters must still implement real generated HTTP/database/job/
+preflight/policy observations, retain safe raw evidence and generated-artifact
+bindings, demonstrate route/OpenAPI/policy/query-audit agreement, and integrate
+with a fresh compiler build and `--require-golden`. RM-108/RM-402/RM-403 closure
+and required independent review remain prerequisites for full RM-109 completion.
+No adapter or final golden-pass import path is enabled by this preparation.

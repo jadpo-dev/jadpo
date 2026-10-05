@@ -1,0 +1,6 @@
+{"schema_version": 1, "run_id": "RM-306-8123cd2ac864", "task_id": "RM-306", "actor": "01a10e31-cf29-7bb1-b0f6-13828aa5256e", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-05T23:17:04.386515+00:00", "phase": "planning"}
+{"at": "2026-10-05T23:17:11.794590+00:00", "phase": "planning", "note": "Short-plan: wire retained checked-binding scheduler candidate; preserve commit-before-provider and test explicit native profiles without golden activation. Batch pin gpt-6.1-sol/high."}
+{"at": "2026-10-05T23:18:03.224980+00:00", "phase": "implementation", "note": "Wire checked scheduler module and native clock helper; public job activation remains disabled."}
+{"at": "2026-10-05T23:21:59.687063+00:00", "phase": "verification", "note": "Generated native scheduler6 focused boundaries; retain original failedtest and independentcursor redprobe; PG fullcomponent runner next."}
+{"at": "2026-10-05T23:25:25.593078+00:00", "phase": "paused", "note": "Scheduler assembly sourcecapture reviewed andreleased; switch to RM109 supporting verifier integration before combined fullgate."}
+{"at": "2026-10-05T23:32:12.880690+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "build/validation/20261006T002555-52853/report.json"}

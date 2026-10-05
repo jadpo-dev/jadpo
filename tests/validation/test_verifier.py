@@ -104,5 +104,38 @@ class VerificationEnvironmentTests(unittest.TestCase):
             self.assertEqual(verify.os.environ['JADPO_DELIVERY_HOOK_DATABASE_URL'], canaries['JADPO_DELIVERY_HOOK_DATABASE_URL'])
 
 
+class GoldenCaseIntegrationTests(unittest.TestCase):
+    def test_pending_real_protocol_is_retained_separately_from_supported_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = verify.collect_golden_case_report(Path(directory), verify.verification_environment())
+            self.assertEqual(result['status'], 'not_run')
+            self.assertEqual(result['case_backend_entries'], 88)
+            self.assertEqual(result['counts'], {'passed': 0, 'failed': 0, 'not_run': 88})
+            self.assertFalse(json.loads((Path(directory)/result['report']).read_text())['release_equivalent'])
+
+    def test_crashed_or_contradictory_command_is_not_pending_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            with patch.object(verify, 'execute', return_value=1):
+                with self.assertRaises(FileNotFoundError):
+                    verify.collect_golden_case_report(output, {})
+            def contradictory(*args):
+                (output/'golden-cases.json').write_text(json.dumps({'status': 'not_run', 'release_equivalent': False}))
+                return 0
+            with patch.object(verify, 'execute', side_effect=contradictory):
+                with self.assertRaisesRegex(ValueError, 'contradicted'):
+                    verify.collect_golden_case_report(output, {})
+
+    def test_existing_report_cannot_turn_cli_crash_into_pending_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            path = output/'golden-cases.json'
+            original = json.dumps({'status': 'not_run', 'release_equivalent': False, 'results': []})
+            path.write_text(original)
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                verify.collect_golden_case_report(output, verify.verification_environment())
+            self.assertEqual(path.read_text(), original)
+
+
 if __name__ == '__main__':
     unittest.main()

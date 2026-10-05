@@ -35,6 +35,7 @@ impl TargetGenerator<'_> {
         );
         line(output, "  }");
         line(output, "  const started = performance.now();");
+        line(output, "  const readCursor = (value: unknown) => { const cursor = validateDeliverySelectionCursor(binding, value); if (Date.parse(cursor.dueAt) >= Date.parse(cursor.operationTime)) invalid(\"delivery.cursor\", \"coordinates before their recorded selection snapshot\"); return cursor; };");
         line(output, "  const staged = await rootPersistence.withOperationTime(operationTime).transaction(async (tx: any) => {");
         line(
             output,
@@ -44,9 +45,12 @@ impl TargetGenerator<'_> {
         // Continuation coordinates are read from the compiler's durable row.
         // Only their snapshot changes on a new activation; the typed tuple and
         // exact binding cannot come from a user-supplied cursor/ordinary query.
-        line(output, "    let page = handle.page;");
+        // Validate every retained coordinate before the owning transaction can
+        // publish its new generation. A resumed staged page must not bypass the
+        // checked cursor boundary merely because selection is unnecessary.
+        line(output, "    const previous = handle.cursor === null ? null : readCursor(handle.cursor);");
+        line(output, "    let page = handle.page; if (page !== null && page.after !== null) page = Object.freeze({ intentIds: page.intentIds, after: readCursor(page.after) });");
         line(output, "    if (page === null) {");
-        line(output, "      const previous = handle.cursor === null ? null : validateDeliverySelectionCursor(binding, handle.cursor);");
         line(output, "      const after = previous === null ? null : validateDeliverySelectionCursor(binding, { ...previous, operationTime });");
         line(
             output,

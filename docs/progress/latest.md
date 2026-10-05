@@ -1,8 +1,8 @@
-# Jadpo daily progress — 2026-10-05
+# Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-05T23:49:06+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T00:32:13+01:00 · figures reflect the recorded roadmap.
 
-Reminder completion and durable singleton scheduling storage now pass their independent correction reviews and the final supported checks on both databases. Work has stopped at the owner's requested safe checkpoint; scheduler assembly and whole-golden integration remain unfinished.
+Established the public Git workflow and completed the first parallel native-scheduler/harness-preparation checkpoint. No whole roadmap task closed.
 
 ## At a glance
 
@@ -11,22 +11,22 @@ Reminder completion and durable singleton scheduling storage now pass their inde
 | Completed since task-ID tracking began | 19 |
 | Remaining open tasks | 84 |
 | Of those, conditional / not activated | 28 |
-| In progress | 8 |
+| In progress | 9 |
 | Marked ready for work | 4 |
-| Queued behind dependencies | 21 |
+| Queued behind dependencies | 20 |
 | Decision / blocked / external / review | 23 |
 
 Completed counts cover the reorganised roadmap, not all earlier development. Older capabilities are in the history; there is no reliable whole-project percentage.
 
 ## Delivered
 
-- [RM-304 service fakes](../implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes) and [RM-305 durable-delivery contract](../implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract) are completed tasks; no new task closure is claimed.
-- [Worker checkpoint](../work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders) records scoped independent approval of paging, completion timestamp/change-log and fail-closed persisted activation-state corrections, including portable date boundaries and real PostgreSQL late-lock tests. Native singleton storage is not yet the assembled scheduler/worker.
-- The final fresh [supported gate](../../build/validation/20261005T234310-22992/report.json) passes65/65: normal components51/442 assertions SQLite and50/448 PostgreSQL, renamed-field/derived-representation variant52/458 and51/464, plus84 complete persistence tests on each. The scheduler assembly draft remains unregistered/unverified. Full golden remains compile_failed49/all44 cases unexecuted; no task closure or release-equivalent success is claimed.
+- Partial RM-306: generated native scheduler assembly, cursor correction and independent SQLite/PostgreSQL review; combined supported gate 65/65.
+- Partial RM-109: source-bound 44-ID/two-backend protocol and reviewed supporting verifier inventory; all 88 entries remain not_run.
+- Refreshed immediate delivery queue and isolated writer ownership without changing stable IDs, scopes or estimates.
 
 ## Since the previous report
 
-Compared with 2026-10-04: 0 newly recorded complete; 0 added or reopened; 0 removed/reclassified without completion evidence.
+Compared with 2026-10-05: 0 newly recorded complete; 0 added or reopened; 0 removed/reclassified without completion evidence.
 
 ## Planning and implementation
 
@@ -56,10 +56,10 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Stopped after the current independently reviewed, verified completion/storage work item as requested. No further item is being started. On explicit resumption, revalidate the saved pins, wire the retained scheduler assembly draft and missing clock helper, then prove actual bounded scheduler/worker recovery. Public jobs remain disabled;18 worker traces and all44 golden cases remain open.
+Continue bounded scheduler recovery and the 18 contract traces, and prepare real golden application adapters; retain required transaction, readiness and final acceptance gates.
 
 ## Input needed
 
-The original RM-108 question remains unanswered: approve60-second execution /40-second renewable claim lease for the golden reminder worker, or keep its profile unset and execution disabled. No new request or answer is inferred. Existing narrow reminder authority, exact self-disable grants and3 scheduled invocations /1hour remain approved.
+Pending golden-only worker profile: recommended 60-second execution deadline and 40-second renewable claim lease. Alternative leaves the profile unset and worker execution disabled. No answer assumed.
 
 [Roadmap](../implementation-roadmap.md) · [Completed evidence](../implementation-history.md) · [Estimate basis](../task-timing/README.md) · [Reporting rules](README.md)
