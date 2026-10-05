@@ -59,7 +59,7 @@ function browserRequest(path: string, credential: { setCookie: string; csrfToken
 async function insertTodo(id: string, ownerId: string, title: string, status: string, createdAt: Date, dueAt: Date | null, deletedAt: Date | null = null): Promise<void> {
   await sql.unsafe(
     'INSERT INTO "todo" ("id", "owner_id", "title", "status", "due_at", "reminder_sent_at", "created_at", "updated_at", "deleted_at") VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, $7)',
-    [id, ownerId, title, status, dueAt, createdAt, deletedAt],
+    [id, ownerId, title, status, dueAt?.toISOString() ?? null, createdAt.toISOString(), deletedAt?.toISOString() ?? null],
   );
 }
 
@@ -79,7 +79,7 @@ test("PostgreSQL keyset pages preserve scope and use the composite index", async
 
   await sql.unsafe(
     'INSERT INTO "user" ("id", "authentication_subject", "email", "status", "created_at", "disabled_at") VALUES ($1, $2, $3, $4, $5, NULL), ($6, $7, $8, $4, $5, NULL)',
-    [owner, "owner", "owner@example.test", "active", now, otherOwner, "other-owner", "other-owner@example.test"],
+    [owner, "owner", "owner@example.test", "active", now.toISOString(), otherOwner, "other-owner", "other-owner@example.test"],
   );
   await sql.unsafe(`
     INSERT INTO "todo" ("id", "owner_id", "title", "status", "due_at", "reminder_sent_at", "created_at", "updated_at", "deleted_at")
@@ -158,7 +158,7 @@ test("PostgreSQL keyset pages preserve scope and use the composite index", async
   expect(indexMetadata[0]?.indexdef).toContain('(owner_id, created_at DESC, id DESC) WHERE (deleted_at IS NULL)');
   const explainRows = await sql.unsafe(
     `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${plan.postgres_after_sql}`,
-    [owner, "open", null, new Date("2026-01-01T22:53:20.000Z"), "10000000-0000-4000-8000-0000000004000", 26],
+    [owner, "open", null, "2026-01-01T22:53:20.000Z", "10000000-0000-4000-8000-0000000004000", 26],
   );
   const planRoot = (explainRows[0]["QUERY PLAN"] as Array<{ Plan: Record<string, any> }>)[0].Plan;
   const planNodes = (node: Record<string, any>): Record<string, any>[] => [node, ...(node.Plans ?? []).flatMap(planNodes)];
@@ -209,8 +209,10 @@ test("PostgreSQL keyset pages preserve scope and use the composite index", async
   const disabled = await app.handleRequest(browserRequest(`/users/${owner}`, browser, "DELETE"));
   expect(disabled.status).toBe(204);
   expect(await disabled.text()).toBe("");
-  expect(await sql`SELECT "status", "disabled_at" FROM "user" WHERE "id" = ${owner}`)
-    .toMatchObject([{ status: "disabled" }]);
+  const disabledUser = await sql`SELECT "status", "disabled_at" FROM "user" WHERE "id" = ${owner}`;
+  expect(disabledUser).toHaveLength(1);
+  expect(disabledUser[0]?.status).toBe("disabled");
+  expect(disabledUser[0]?.disabled_at).not.toBeNull();
   expect(await sql`SELECT "id" FROM "todo" WHERE "id" = ${created.id}`).toEqual([{ id: created.id }]);
   const repeatedDisable = await app.handleRequest(browserRequest(`/users/${owner}`, browser, "DELETE"));
   expect(repeatedDisable.status).toBe(403);

@@ -51,6 +51,17 @@ Hosted runs retain their reports as GitHub Actions artifacts.
 The [GitHub Actions workflow](https://github.com/richardwillars/jadpo/actions/workflows/validation.yml)
 uses the same full command on pushes to `main` and PRs and retains reports even
 on failure. Feature-branch pushes do not create a duplicate full validation run.
+CI pins [Bun 1.4.2](https://github.com/oven-sh/bun/releases/tag/bun-v1.4.2)
+and preflights `Intl` support for `America/Coyhaique` before compiler validation.
+The earlier [Linux run](https://github.com/richardwillars/jadpo/actions/runs/37387499754)
+passed candidate-contract validation but stopped when Bun 1.2.20 rejected that
+canonical zone during authored tests. Bun 1.4's [official compatibility notes](https://github.com/oven-sh/bun/issues/28792)
+record the bundled Linux/Windows ICU upgrade to 78; macOS uses system ICU.
+The generated canonical-zone checks remain unchanged. The PostgreSQL golden
+route fixture passes its timestamp parameters as exact ISO strings, preserving
+the instants across Bun SQL versions, and checks the disabled user row/status
+and non-null disable timestamp explicitly. The focused fixture passes on both
+Bun 1.2.20 and 1.4.2; a local pass does not replace the full hosted runtime gate.
 A manually requested golden-gate run defaults to requiring the currently blocked
 golden contract. The public repository is connected as `origin`; the initial
 [hosted validation run](https://github.com/richardwillars/jadpo/actions/runs/37386118262)
