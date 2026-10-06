@@ -1199,6 +1199,26 @@ impl<'project> ArtifactModel<'project> {
                                 .unwrap(),
                             );
                         }
+                        if matches!(status, 500 | 503)
+                            && (status == 500 || !self.project.entity_model.entities.is_empty())
+                            && contract.public_fields.is_empty()
+                            && operational_wire_pairs(status)
+                                .iter()
+                                .any(|(code, message)| {
+                                    contract.code == *code
+                                        && contract
+                                            .message
+                                            .as_deref()
+                                            .map_or(true, |value| value == *message)
+                                })
+                        {
+                            overlap.push(
+                                serde_json::from_str::<serde_json::Value>(
+                                    &bun_operational_schema_json(status),
+                                )
+                                .unwrap(),
+                            );
+                        }
                         if !overlap.is_empty() {
                             *reference = serde_json::json!({"allOf":[serde_json::from_str::<serde_json::Value>(reference).unwrap(),{"not":{"anyOf":overlap}}]}).to_string();
                         }
@@ -2344,7 +2364,7 @@ route POST /todos {
 }
 
 fn bun_operational_failures_json(relationships: bool) -> String {
-    let base = r#"[{"code":"internal_fault","http_status":500,"condition":"contained_runtime_defect"},{"code":"transaction_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the operation.","condition":"retryable_no_commit_not_retried_or_exhausted","automatic_retry":false},{"code":"read_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the read.","condition":"checked_query_only_operation_with_listed_structured_driver_cause","automatic_retry":false},{"code":"outcome_unknown","semantic_http_default":null,"http_status":500,"message":"The operation may have completed.","condition":"effect_may_have_occurred","automatic_retry":false}]"#;
+    let base = r#"[{"code":"internal_fault","http_status":500,"message":"An internal error occurred.","condition":"contained_runtime_defect"},{"code":"transaction_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the operation.","condition":"retryable_no_commit_not_retried_or_exhausted","automatic_retry":false},{"code":"read_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the read.","condition":"checked_query_only_operation_with_listed_structured_driver_cause","automatic_retry":false},{"code":"outcome_unknown","semantic_http_default":null,"http_status":500,"message":"The operation may have completed.","condition":"effect_may_have_occurred","automatic_retry":false}]"#;
     if relationships {
         format!(
             "{},{}]",
@@ -2356,17 +2376,49 @@ fn bun_operational_failures_json(relationships: bool) -> String {
     }
 }
 
+fn operational_wire_pairs(status: u16) -> Vec<(&'static str, &'static str)> {
+    match status {
+        409 => vec![(
+            "relationship_conflict",
+            "The operation conflicts with a relationship.",
+        )],
+        503 => vec![
+            (
+                "transaction_unavailable",
+                "A temporary storage issue prevented the operation.",
+            ),
+            (
+                "read_unavailable",
+                "A temporary storage issue prevented the read.",
+            ),
+        ],
+        _ => vec![
+            ("internal_fault", "An internal error occurred."),
+            ("outcome_unknown", "The operation may have completed."),
+        ],
+    }
+}
 fn bun_operational_schema_json(status: u16) -> String {
-    let codes = if status == 409 {
-        vec!["relationship_conflict"]
-    } else if status == 503 {
-        vec!["transaction_unavailable", "read_unavailable"]
-    } else {
-        vec!["internal_fault", "outcome_unknown"]
-    };
-    serde_json::json!({"type":"object","additionalProperties":false,"required":["error"],"properties":{
+    let pairs = operational_wire_pairs(status);
+    let codes = pairs.iter().map(|(code, _)| *code).collect::<Vec<_>>();
+    let mut schema = serde_json::json!({"type":"object","additionalProperties":false,"required":["error"],"properties":{
         "error":{"type":"object","additionalProperties":false,"required":["code","message","request_id"],"properties":{
             "code":{"type":"string","enum":codes},"message": if status == 409 { serde_json::json!({"type":"string","enum":["The operation conflicts with a relationship."]}) } else { serde_json::json!({"type":"string"}) },"request_id":{"type":"string"}
         }}
-    }}).to_string()
+    }});
+    if status != 409 {
+        // Preserve code.enum while binding native codes to their actual static
+        // safe messages. Custom declared messages keep their own references.
+        schema["properties"]["error"]["oneOf"] = serde_json::Value::Array(
+            pairs
+                .iter()
+                .map(|(code, message)| {
+                    serde_json::json!({"properties":{
+                        "code":{"const":code},"message":{"const":message}
+                    }})
+                })
+                .collect(),
+        );
+    }
+    schema.to_string()
 }

@@ -358,3 +358,59 @@ fn inactive_resolution_rejects_operational_status_categories() {
                 && d.severity == jadpo_diagnostics::Severity::Error));
     }
 }
+
+#[test]
+fn operational_codes_bind_static_messages_and_keep_distinct_domain_refs() {
+    let source = include_str!("../../../../tests/validation/evidence/rm601-operational500503-wire-collision/fixture.jadpo");
+    let (routes, api, audit) = outputs(Path::new("operational-wire.jadpo"), &clean(source));
+    for (path, status, name) in [
+        ("/declared503", "503", "ReadRejected"),
+        ("/declared500", "500", "FaultRejected"),
+    ] {
+        let alternatives = schema(&api, path, "get", status)["oneOf"]
+            .as_array()
+            .unwrap();
+        assert_eq!(alternatives.len(), 2);
+        assert_eq!(
+            alternatives[0]["$ref"],
+            format!("#/components/schemas/{name}")
+        );
+        let error = &alternatives[1]["properties"]["error"];
+        assert_eq!(
+            error["properties"]["code"]["enum"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(error["oneOf"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            row(&routes, &format!("GET {path}"))["failures"][0]["name"],
+            name
+        );
+    }
+    let matching = source
+        .replace(
+            "Authored read refusal.",
+            "A temporary storage issue prevented the read.",
+        )
+        .replace("Authored fault refusal.", "An internal error occurred.");
+    let (_, same, _) = outputs(Path::new("operational-wire.jadpo"), &clean(&matching));
+    for (path, status, name) in [
+        ("/declared503", "503", "ReadRejected"),
+        ("/declared500", "500", "FaultRejected"),
+    ] {
+        assert_eq!(
+            schema(&same, path, "get", status)["oneOf"][0]["allOf"][0]["$ref"],
+            format!("#/components/schemas/{name}")
+        );
+        assert!(
+            schema(&same, path, "get", status)["oneOf"][0]["allOf"][1]["not"]["anyOf"].is_array()
+        );
+    }
+    assert!(audit["operational_failures"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|f| f["code"] == "internal_fault" && f["message"] == "An internal error occurred."));
+}
