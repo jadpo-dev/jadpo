@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-109",
+  "candidate": "4d7ae09765b3becc6878f183b6df8cfd7c2103a8",
+  "dependency": "e66f56476002f8718c5df8ba1144c1351754139d",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-7dd6bfae5592",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "changes_required",
+  "scoped_approval": false,
+  "findings": [
+    {
+      "priority": "P2",
+      "title": "Require original transaction, selected-row deletion scope and complete audit identity when validating JOB004 raw records",
+      "file": "tools/golden_checkpoint.py",
+      "line": 406,
+      "related_lines": [
+        395,
+        403,
+        406
+      ],
+      "description": "Full validate_checkpoint accepts four distinct mutations to fresh actual raw SQLite and PostgreSQL journals after rebinding only the mutated raw hash: missing BEGIN, BEGIN moved after DELETE/COMMIT, deletion id predicate removed to form a bulk retention DELETE, and required audit entity omitted. Ledger observations remain unchanged; source/compiler/generated/dependency/TLS/projection bindings remain intact. Thus current semantic validation accepts causal contradictions or weakened maintenance records even though direct un-rebound hash tampering is rejected.",
+      "impact": "The actual observed purge behaves correctly, but the acceptance harness does not establish POLICY-D30-M1 selection/final-delete same-transaction and narrow selected-row recheck/audit identity invariants for its accepted trace. This is a verifier finding, not evidence of a runtime purge fault.",
+      "required_correction": "Require an owning native BEGIN before bounded SELECT and identity-scoped DELETE, one corresponding COMMIT afterward with no inconsistent transaction order; bind actual DELETE identity/predicate to the generated selected-row maintenance shape and require event.entity equal generated capability.entity. Add actual raw-hash-rebound negative probes; retain complete frozen original JOB004 fixture and accepted native maintenance mapping.",
+      "evidence": [
+        "actual-rebound-challenges.json",
+        "actual-postgres-rebound-challenges.json",
+        "rebound-challenges.py",
+        "postgres-rebound-challenges.py"
+      ]
+    }
+  ],
+  "independent_execution": {
+    "fresh_checkpoint": {
+      "passed": 68,
+      "failed": 0,
+      "not_run": 20,
+      "overall_status": "not_run",
+      "backends": [
+        "sqlite",
+        "postgres"
+      ],
+      "scope": "Complete current supporting checkpoint execution needed to bind the new JOB004 evidence and inspect retained e66 partials; not final golden closure."
+    },
+    "checkpoint_integrity_tests": 41,
+    "fresh_compiler_sha256": "43ca79bd8cefe423277e123572a0d28c347e555ca9f5c3cfb379daba89976140",
+    "report_sha256": "519c4a903165d3f34075a4149864f43c9e2872a33cd9be82c684107ba72f3c75",
+    "direct_native_JOB004_cases": 2,
+    "rebound_challenges_each_adapter": 11
+  },
+  "functional_evidence": [
+    "Actual generated app.runLifecycleMaintenance invoked, not authored purge job and not direct SQL deletion by harness. Exact original29-day/31-day/active before fixture leads to only31-day row removed; young and active rows byte-exact retained.",
+    "Native SQLite BEGIN IMMEDIATE and PostgreSQL BEGIN precede deterministic deleted_at/id SELECT LIMIT500, identity-scoped final predicate DELETE and COMMIT. Actual maintenance_audit binds source revision, entity/clause, retention binding, fixed original attempt clock, selected/committed1, redacted original row token and bound500.",
+    "POLICY-D30-M1/accepted DATA007 mapping expressly admits trusted isolated native compiler maintenance driven by checked Todo.lifecycle.purge. No source-authored purge callable, policy expansion, scheduler/lease/UTC job execution or full JOB group qualification is introduced.",
+    "Source/generated/TLS/dependency/owner-projection provenance validation passes on unaltered actual checkpoint. Own raw mutations were always restored to original bytes; both raw file digests still match the original checkpoint report.",
+    "After raw-hash rebinding, foreign source revision, changed clause/metadata, wrong cutoff, changed retained identity, wrong committed count and absent COMMIT do refuse. The four reported gaps remain accepted on both adapters."
+  ],
+  "dependency_partial_review": {
+    "commit": "e66f564",
+    "scope": "CONFIG001/CONFIG002 and BOUNDARY001 retained causal probes, no supported-ID additions or acceptance promotion in that commit.",
+    "observed_counts": "CONFIG001/CONFIG002/BOUNDARY001 each remain not_run on both adapters; newJOB004 alone raises supporting checkpoint from66 to68 passed and leaves20 not_run.",
+    "native_controls": "Retained raw has native main child outputs/listener observation, actual separate-connection SQLite exclusive lock and stopped/restored isolated PG database plus native provider401 host outcome, separately explicit approved60/40 profiles. Exact diagnostics/provider-boundary request-id gaps remain honest partial dispositions.",
+    "binding": "Raw file hashes and source/generated tools include startup observer, original configuration/variant specification is validated; full generated maintenance metadata is separately bound to original raw maintenance fixture.",
+    "limit": "This checks retained-partial honesty and current source binding; it does not approve configuration/boundary product behavior. Healthy canonical native transport remains explicitly unresolved by these records."
+  },
+  "limits": [
+    "Frozen JOB004 is functionally observed; the verifier findings must be corrected and independently reviewed before scoped harness approval.",
+    "All44 original IDs/backend inventory retained; no required expectation weakened or superseded legacy spelling revived.",
+    "Initial simple mutations that remove redundant visibility SQL are only exploratory accepted records; no finding is raised for a redundant condition. Foreign capability metadata is rejected by full artifact binding.",
+    "Actual mock/native tests use disposable local databases and test providers; no production provider/deployment/publishing.",
+    "Task timer stayed in default planning through initial live execution, then switched to verification; recorder values are preserved, not retroactively reconstructed."
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-native-maintenance-harness-independent",
+  "created_at": "2026-10-06T08:08:10.486606+00:00"
+}

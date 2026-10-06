@@ -1,6 +1,6 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T09:04:54+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T09:18:11+01:00 · figures reflect the recorded roadmap.
 
 The supporting golden Todo harness now has independent coverage of 33 original cases on both databases. Native test setup fixes the four earlier PATCH failures; both delivery lanes continue toward full golden acceptance.
 
@@ -20,7 +20,7 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- Service authentication and native HTTP fixture creation pass independent review: 66 supporting entries pass, none fail and 22 remain unexecuted. Earlier combined-gate failures remain retained; current-source combined verification is pending. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
+- The fresh integrated source passes69/69 supported checks and all66 supporting entries for33 original golden cases on SQLite/PostgreSQL;22 entries remain unexecuted. Earlier failed attempts remain retained. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
 - All eighteen frozen native recovery traces now have scoped component evidence, including bounded scheduling and privileged replay with current-owner and durable no-effect checks. Whole-task integration gates remain open. [Operator review](../../tests/validation/rm307-independent-native-operator-review.json).
 - Separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan are approved. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06).
 
@@ -56,7 +56,7 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Continue two implementation lanes: native reminder/retention cases and relationship observations; configuration preflight, database transport and safe provider-fault correlation. Independently review the normalizer correction and JOB-004, then run a fresh combined gate.
+Continue two implementation lanes: native reminder cases and relationship observations; deployment readiness separation and safe provider-fault correlation. Review the retention-verifier correction; the newly integrated startup preflight needs its next combined gate. Canonical database transport awaits the pending contract decision.
 
 ## Input needed
 

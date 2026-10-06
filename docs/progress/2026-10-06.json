@@ -1131,24 +1131,24 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T09:04:54+01:00",
+  "captured_at": "2026-10-06T09:18:11+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "7a989e2a297356bb8bd7a791dd333445a8b6f5f2560493de56715b8207550c3e",
+    "docs/implementation-roadmap.md": "5ea680025ec9ce52ebb65424208f56f567c76636ac14de49adc687423b8e5d37",
     "docs/implementation-history.md": "3719a84aae5f217b59f3196b2fb757b3b3d632f24a3e2d3da00f0092545db4f6",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "1b63d7d4789d62c3d926bd8adee409bd68ca7037bba96ae19cd18ba3e0ed1d26",
+    "docs/work-plans/golden-delivery-planning.md": "c03567931c814e9dfc82b98037fe44ee4e98c805318bae2b7ee506a40119684e",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
     "summary": "The supporting golden Todo harness now has independent coverage of 33 original cases on both databases. Native test setup fixes the four earlier PATCH failures; both delivery lanes continue toward full golden acceptance.",
     "delivered": [
-      "Service authentication and native HTTP fixture creation pass independent review: 66 supporting entries pass, none fail and 22 remain unexecuted. Earlier combined-gate failures remain retained; current-source combined verification is pending. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).",
+      "The fresh integrated source passes69/69 supported checks and all66 supporting entries for33 original golden cases on SQLite/PostgreSQL;22 entries remain unexecuted. Earlier failed attempts remain retained. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).",
       "All eighteen frozen native recovery traces now have scoped component evidence, including bounded scheduling and privileged replay with current-owner and durable no-effect checks. Whole-task integration gates remain open. [Operator review](../../tests/validation/rm307-independent-native-operator-review.json).",
       "Separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan are approved. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06)."
     ],
-    "next": "Continue two implementation lanes: native reminder/retention cases and relationship observations; configuration preflight, database transport and safe provider-fault correlation. Independently review the normalizer correction and JOB-004, then run a fresh combined gate.",
+    "next": "Continue two implementation lanes: native reminder cases and relationship observations; deployment readiness separation and safe provider-fault correlation. Review the retention-verifier correction; the newly integrated startup preflight needs its next combined gate. Canonical database transport awaits the pending contract decision.",
     "input_needed": "Public push, PR and checked merge of fe966ef remain pending after automatic review rejected publication. A separate concrete PostgreSQL/SQLite database URI successor is pending because required golden DATABASE_URL conflicts with absent-URL SQLite selection. Both delivery lanes continue independent work."
   },
   "changes": {

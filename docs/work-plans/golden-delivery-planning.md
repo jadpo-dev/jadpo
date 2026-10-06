@@ -145,12 +145,34 @@ current native owner grant and matching durable proof of adapter no-effect.
 
 The [initial relationship normalizer review](../../tests/validation/rm109-independent-relationship-normalizer-review.json)
 retains a P2 finding: unreadable unknown inputs throw during classification.
-Its separate corrective leaf is under independent review before integration.
-Retention cleanup JOB-004 passes author execution on both adapters (34 IDs,
-68/0/20) and is under review; it does not yet replace the independently approved
-33-ID count. Configuration diagnostics, canonical database transport and safe
+Its [separate corrective review](../../tests/validation/rm109-independent-relationship-normalizer-correction-review.json)
+approves bounded total classification on both adapters; both product leaves are
+integrated. Retention cleanup JOB-004 runs correctly on both adapters (34 IDs,
+68/0/20), but its [initial verifier review](../../tests/validation/rm109-independent-native-maintenance-harness-review.json)
+finds missing transaction-order/identity/audit-entity checks. The verifier's
+separate correction is under review and does not yet replace the independently
+approved 33-ID count. Configuration diagnostics, canonical database transport and safe
 native provider-fault correlation remain implementation gaps. Both writers
 continue while these bounded reviews run.
+
+At `aecb7d9`, the fresh [combined gate](../../build/validation/20261006T090844-96336/report.json)
+passes all 69 supported checks, including the newly registered relationship suite
+on both adapters. The supporting original33-ID checkpoint is 66/0/22. Its
+[retained archive](../../build/validation/20261006T090844-96336/retained-evidence.json)
+hash-verifies156 safe log/raw/generated files; private TLS fixture bytes are
+excluded with digests retained. The initial unregistered-suite inventory attempt
+is preserved in [integration evidence](../../tests/validation/evidence/golden-loop-integration-inventory/attempt.json).
+Exact frozen native name [reconciliation](../../tests/validation/evidence/golden-loop-integration-inventory/native-trace-reconciliation.json)
+finds all eighteen names, with no extra IDs; it adds no new execution claim.
+The generated outer job audit still needs agreement with the checked native
+lowering facts before final qualification.
+
+The next source at `3d2df1f` integrates the [independently approved startup preflight](../../tests/validation/rm403-independent-native-preflight-review.json).
+Invalid actual native main runs fail before adapter access/listening and safe
+fully qualified diagnostics aggregate; healthy persistent lifecycle controls
+serve business HTTP on both adapters. Canonical healthy database transport and
+CONFIG-003 remain unresolved. This new source needs a fresh combined gate after
+its maintained runtime registration is integrated.
 
 ### Pending database binding decision — 2026-10-06
 

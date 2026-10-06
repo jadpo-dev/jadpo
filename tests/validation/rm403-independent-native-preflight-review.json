@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-403",
+  "candidate": "bf7aad86433b8ed2cb833712a9a98be712b68379",
+  "parent": "2ccf36d0d3420b3e7edae51fc33a811b294129f5",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-403-437082503fcc",
+  "intake_timer": "RM-109-bb8c45f45291",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "approve_scoped",
+  "blocking_findings": [],
+  "scope": "Safe aggregate declared configuration validation at actual native generated app main before persistence dependency evaluation and listener startup. No full RM403/CONFIG003/deployment-plane or canonical healthy transport closure; no future mutable transport correction approval.",
+  "independent_results": {
+    "fresh_locked_compiler_seconds": 23.52,
+    "fresh_canonical_artifacts": 33,
+    "unaltered_sqlite": {
+      "pass": 4,
+      "fail": 0,
+      "assertions": 37
+    },
+    "unaltered_postgres": {
+      "pass": 4,
+      "fail": 0,
+      "assertions": 37
+    },
+    "stronger_sqlite": {
+      "pass": 5,
+      "fail": 0,
+      "assertions": 71
+    },
+    "stronger_postgres": {
+      "pass": 5,
+      "fail": 0,
+      "assertions": 71
+    },
+    "import_initialize_config_time_and_golden_JWT_HTTP": {
+      "pass": 13,
+      "fail": 0,
+      "assertions": 131
+    },
+    "lifecycle_retention_regression_sqlite": {
+      "pass": 13,
+      "fail": 0,
+      "assertions": 97
+    }
+  },
+  "findings": [
+    "Pure emitted configuration-preflight.ts has no imports, provider/authentication/persistence dependency or database decoder. It reuses generated primitive/nominal/record validators, temporal duration validation and the aggregate loadConfiguration implementation; side-effect validation runs only when Bun.main is the sibling emitted app path.",
+    "Generated persistence imports preflight before its executable adapter setup. Invalid canonical app main exits1 before required persistence/unsupported adapter failure, creates no SQLite file and reaches neither instrumented Bun.serve nor Node.listen. Tests run with debug-stack flag1 and confirm no session/mail/credentialURL/issuer canary disclosure.",
+    "Original missing MAIL_API_KEY produces config_required with TodoConfiguration.mail_api_key. Original malformed DATABASE_URL/OIDC_ISSUER produces both qualified config_invalid declarations before failure, not first-error-only behavior.",
+    "Independent absent key and six simultaneous database/session/browser/issuer/mail/retention faults all aggregate in declaration order with exact safe code/declaration-only diagnostics. Loaded configuration values and diagnostics are frozen; raw values/causes are not stored.",
+    "Sole nonpositive retention continues to produce the exact safe legacy retention message for import/initialize compatibility. Multi-error failures use a generic safe configuration message; dependent retention validation skips a field already invalid.",
+    "Actual accepted persistent lifecycle fixture negative0d exits before listener/datastore file, followed by a positive30d native main that reaches runtime.ready and real business HTTP200 on SQLite and PostgreSQL. This is a grounded supported-driver/native listener positive control, not canonical healthy transport evidence.",
+    "Existing imported explicit initializeApplication, authored fixture isolation/restart and golden signed HTTP checks pass. Import mode intentionally does not eagerly run the native-main preflight; ordinary explicit initialization still executes the same typed aggregate loader.",
+    "New pure artifact increases canonical CLI output to33; generated source/code hashes are inventoried. Ordinary Url validation and other type/authority semantics remain unchanged in this slice."
+  ],
+  "preserved_negatives": "All18 source/evidence hashes match immutable author manifest. Retained original core retention-message assertion, source-revision-shape assertion and missing/lifecycle-directory fixture setup failures copied as author-* logs. No independent failures occurred in this scoped review.",
+  "limits": [
+    "Canonical healthy DatabaseUrl/transport collision remains explicitly unresolved; the healthy native controls use the separately accepted lifecycle fixture. No fake canonical positive is inferred from import-only JWT tests.",
+    "CONFIG003 deployment-only readiness/router reachability remains a distinct real implementation gap; preflight does not provide readiness-plane separation or bound synchronous/native startup work.",
+    "Native-main path detector is verified on this supported local Unix/Bun host, not a Windows/path portability campaign.",
+    "Aggregate loader accepts typed environment records; no new totality contract for arbitrary hostile environment proxies, universal interruption or host privilege restriction is inferred.",
+    "CONFIG001/002 harness case promotion and full final golden/current-source combined gate remain parent/harness-owned. No product source edits, deployment or publication occurred."
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-native-preflight-independent",
+  "restored_author_test_sha256": "d0c2c2d01d80a9c559beba498d2dd8ceab098d716dfa423061c56264d2523d32",
+  "source_evidence_hashes_verified": 18,
+  "created_at": "2026-10-06T08:15:40.842816+00:00"
+}
