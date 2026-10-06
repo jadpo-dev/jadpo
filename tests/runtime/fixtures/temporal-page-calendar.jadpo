@@ -1,0 +1,42 @@
+entity DayEvent {
+    id: Uuid identity
+    bucket: Text
+    occurs_at: Instant
+    calendar_date: CalendarDate
+}
+input SaveDayEvent { id: DayEvent.id bucket: DayEvent.bucket occurs_at: DayEvent.occurs_at calendar_date: DayEvent.calendar_date }
+input DayWindow { bucket: DayEvent.bucket start: DayEvent.occurs_at end: DayEvent.occurs_at after: DayCursor optional page_size: Int }
+value DayCursor { occurs_at: DayEvent.occurs_at id: DayEvent.id }
+output DayView { id: DayEvent.id bucket: DayEvent.bucket occurs_at: DayEvent.occurs_at calendar_date: DayEvent.calendar_date }
+output DayPage { items: List<DayView> next: DayCursor? }
+failure DayConflict { kind: Conflict code: "day_conflict" }
+action save_day(input: SaveDayEvent) -> DayEvent fails DayConflict {
+    return attempt create DayEvent { id: input.id bucket: input.bucket occurs_at: input.occurs_at calendar_date: input.calendar_date } conflict: DayConflict
+}
+action list_day(input: DayWindow) -> DayPage {
+    return attempt query page DayEvent -> DayPage {
+        where: bucket == input.bucket
+        and: occurs_at >= input.start
+        and: occurs_at < input.end
+        order_by: occurs_at asc, id asc
+        after: optional input.after
+        limit: input.page_size
+        project: DayView
+        cursor: DayCursor(occurs_at, id)
+    }
+}
+action list_day_reverse(input: DayWindow) -> DayPage {
+    return attempt query page DayEvent -> DayPage {
+        where: bucket == input.bucket
+        and: occurs_at < input.end
+        and: occurs_at >= input.start
+        order_by: occurs_at desc, id desc
+        after: optional input.after
+        limit: input.page_size
+        project: DayView
+        cursor: DayCursor(occurs_at, id)
+    }
+}
+route POST /day/create { auth: none input: SaveDayEvent output: DayEvent run: save_day(input) }
+route POST /day/page { auth: none input: DayWindow output: DayPage run: list_day(input) }
+route POST /day/reverse { auth: none input: DayWindow output: DayPage run: list_day_reverse(input) }

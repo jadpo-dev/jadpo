@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-601-4d64a5e5798e", "task_id": "RM-601", "actor": "scheduler-recovery-private-phase-planning", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T22:03:19.301017+00:00", "phase": "planning"}
+{"at": "2026-10-06T22:08:27.996691+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm601-implicit-delivery-emission-plan/private-phase-effect-follow-on-plan/plan.json"}

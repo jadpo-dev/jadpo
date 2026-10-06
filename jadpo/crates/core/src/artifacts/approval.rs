@@ -17,6 +17,7 @@ mod admission_candidates;
 mod protected_attempt;
 pub use protected_attempt::{derive_protected_attempt, validate_protected_attempt_export};
 mod field_contracts;
+mod implicit_delivery_emissions;
 
 /// Both sides are freshly analyzed source, never a self-asserted previous artifact.
 /// `expected_before` pins the exact baseline source digest obtained from a prior
@@ -77,9 +78,9 @@ pub fn derive_approval_subject_with_state_pin(
         "Compiler source inputs are recorded at build time; toolchain, executable and protected-build attestation are unavailable.",
     ];
     unknowns.push(if project.delivery_model().bindings().is_empty() {
-        "Job facts describe checked nonexecuting schedule entries and static may-call effects only; durable worker authority, delivery/revision bindings, profiles and runtime conformance are not established. Emission analysis remains unsupported."
+        "Job facts describe checked nonexecuting schedule entries and static may-call effects only; durable worker authority, profiles and runtime conformance are not established. The checked implicit delivery emission subset is absent; generic emission analysis remains unsupported."
     } else {
-        "Job facts include checked nonexecuting delivery bindings and private phase obligations, separate from ordinary may-call effects; live worker authority, transactions, execution profiles and runtime conformance are not established. Emission analysis remains unsupported."
+        "Job facts include checked nonexecuting delivery bindings and private phase obligations, separate from ordinary may-call effects; conditional private selection may-enroll effects and schedule-revision hook provenance are extracted. Live worker authority, successful transactions, execution profiles and runtime conformance are not established; generic emission analysis remains unsupported."
     });
     if before.is_none() {
         unknowns.push("No before source baseline supplied; decisions compare explicit absence with the after state.");
@@ -855,12 +856,10 @@ fn snapshot(path: &Path, project: &AnalyzedProject) -> Result<Value, String> {
         }
     }
     impact.insert("deployment", deployment);
-    for category in ["emissions"] {
-        impact.insert(
-            category,
-            json!({"status":"unsupported_analysis","facts":null}),
-        );
-    }
+    impact.insert(
+        "emissions",
+        implicit_delivery_emissions::derive(project, &mut facts, &mut paths),
+    );
     impact.insert("retries",json!({"status":"compiler_checked_contract_only","facts":audit(model.transaction_audit_json()),"runtime_conformance":"not_established"}));
     let actor_sources = actor_links::derive(project, &mut facts);
     impact.insert("actor_sources", actor_sources);

@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T22:29:54+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T23:11:24+01:00 · figures reflect the recorded roadmap.
 
-Accepted bounded retry implementation is complete on Bun with SQLite and PostgreSQL. Parallel golden delivery continues from the fresh98-check integrated checkpoint.
+Parallel golden delivery continues from the fresh102-check integrated page/implicit checkpoint.
 
 ## At a glance
 
@@ -11,18 +11,18 @@ Accepted bounded retry implementation is complete on Bun with SQLite and Postgre
 | Completed since task-ID tracking began | 22 |
 | Remaining open tasks | 81 |
 | Of those, conditional / not activated | 28 |
-| In progress | 9 |
+| In progress | 10 |
 | Marked ready for work | 4 |
-| Queued behind dependencies | 17 |
+| Queued behind dependencies | 16 |
 | Decision / blocked / external / review | 23 |
 
 Completed counts cover the reorganised roadmap, not all earlier development. Older capabilities are in the history; there is no reliable whole-project percentage.
 
 ## Delivered
 
-- [Bounded retry completion](../../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/closure.json) now includes native four-process contention, fresh authority, unknown-COMMIT refusal and truthful audit metadata; all17 frozen cases preserved.
-- [Current integrated gate](../../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/report.json) passes98 supported checks and all88 supporting golden HTTP entries with673 source pins.
-- [HOST fixes and ordinary native probe controls](../../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/report.json) now pass; wider temporal containment and hard native lifetimes remain separate.
+- [Current integrated gate](../../tests/validation/evidence/rm504601-page-implicit-reviewed-fusion/report.json) passes102 supported checks and all88 supporting HTTP entries with686 maintained source pins and74 actual compiler inputs.
+- Independently reviewed CalendarDate page containment and conditional private selection enrollment artifacts are selected; original evaluation order and explicit uncertainty are retained.
+- Six hostile matrix rows and recovery native phase tests have independent scoped approvals, ready for next integration.
 
 ## Since the previous report
 
@@ -58,7 +58,7 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Review corrected CalendarDate page containment and supported implicit delivery-emission artifacts; execute six named hostile cases from the independently assessed plan and continue native readiness lifetime work.
+Integrate reviewed hostile/recovery test leaves and run the fresh changed-source gate; continue private precision carrier, native owner close and conditional private invocation/completion extraction in parallel.
 
 ## Input needed
 

@@ -3,6 +3,7 @@ set -euo pipefail
 
 mode=${1:-}
 case "$mode" in
+  temporal-page-containment) exec bash "$(dirname "$0")/temporal-page-probe-postgres.sh" ;;
   authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate) ;;
   *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate' >&2; exit 2 ;;
 esac

@@ -1847,11 +1847,9 @@ fn checked_job_impact_binds_exact_nonexecuting_interval_and_absence() {
         job["effect_evidence"],
         "static_may_call_not_execution_or_authority"
     );
-    assert_eq!(
-        canonical["after"]["impact"]["emissions"]["status"],
-        "unsupported_analysis"
-    );
-    assert!(canonical["after"]["impact"]["emissions"]["facts"].is_null());
+    assert_eq!(canonical["after"]["impact"]["emissions"]["supported_subset"], "absent");
+    assert_eq!(canonical["after"]["impact"]["emissions"]["facts"], serde_json::json!({}));
+    assert_eq!(canonical["after"]["impact"]["emissions"]["generic_event_analysis"], "unsupported");
     assert_eq!(canonical["release_authority"], false);
     assert_eq!(
         canonical["evidence"]["runtime_validated"],

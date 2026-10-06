@@ -141,11 +141,24 @@ constructor, declared failure contract and static reachable external effects.
 Before/after changes become separate decisions even when graph topology does
 not change; rehashing a rendered export cannot hide omitted job/effect facts
 from comparison with the fresh compiler subject. Zero checked jobs is explicit
-absence, while emissions/deployment remain unsupported with null facts.
-Worker authority, durable delivery/revision/profile bindings, feasible job
-scenarios and runtime conformance remain explicitly unresolved. These facts
+absence. The reserved `impact.emissions` slot now has an explicit version 1
+contract for the checked `reminder_v1` subset: conditional job/private-selection
+may-enroll facts, exact source selection obligations, payload/dedup identity
+contracts and schedule-revision hook provenance. These private phase links are
+separate from ordinary call paths. Create/patch hooks establish or advance a
+schedule revision; they do not enroll delivery intent or send mail. Private
+selection enrollment does not invoke the provider. An empty checked subset is
+explicit absence within this subset; generic event emission analysis remains
+unsupported. Current row/credential truth, locked-result stability and native
+transaction success remain unqualified. Deployment reports its independently
+checked static native surface contract, with runtime readiness unproved.
+Worker authority, feasible job scenarios, profiles and runtime conformance
+remain explicitly unresolved. These facts
 do not grant execution or release authority. The v5 slot/canonicalization is
 unchanged, and build-time compiler-input provenance binds the extraction change.
+Both source states are freshly rederived under the current compiler; exact old
+state pins refuse after extraction changes. A historical unsupported artifact is
+not silently upgraded to supported facts or treated as a trusted baseline.
 The reserved `impact.actors` object also exposes sorted checked source role-binding
 and membership contracts, retaining its existing inventory/facts shape. Each
 `role_binding:Entity.field` and `membership:Entity` has an individual before/after
@@ -347,3 +360,5 @@ are reported individually rather than hidden in an average.
 The [independent source/native review](../tests/validation/evidence/rm601-independent-anonymous-admission-4a/review.json) qualifies only unchanged static GET/plain nonnullable Text/sole literal route candidates, with source-derived assumptions and native observations kept separate. Execution remains `not_proved`, global feasibility `not_analyzed`, and runtime/release authority absent. The [88-check fusion](../tests/validation/evidence/rm402504601-reviewed-fusion/report.json) preserves exact source/digest rederivation and the prior local attestation limits. Its 655 stable source pins and 72 compiler manifest pins qualify this epoch, not a protected build or issuer.
 
 The [finite witness-plan review](../tests/validation/evidence/rm601-independent-witness-plan-784/review.json) independently finds that an earlier parameter route can shadow the candidate: healthy native execution is 200→200, while unhealthy execution is 503→503. Any later conditional 401→literal 200 inference must first close selected-route dispatch in both snapshots and retain configuration, credential and resource assumptions. The existing candidate status supplies no such feasibility proof; broader RM-601 remains open.
+
+The [current102 gate](../tests/validation/evidence/rm504601-page-implicit-reviewed-fusion/report.json) selects the [independently reviewed selection extraction](../tests/validation/evidence/rm601-implicit-delivery-emission-plan/selection-emission-independent-review/review.json). The fresh export still omits conditional private dispatch and completion may-effects although checked binding phase contracts already retain them. The [assessed follow-on plan](../tests/validation/evidence/rm601-implicit-delivery-emission-plan/private-phase-effect-follow-on-plan/parent-assessment.json) projects actual phase-qualified edges separately from ordinary calls and feasible execution. General feasibility, live membership/authority and whole-artifact provenance remain open.
