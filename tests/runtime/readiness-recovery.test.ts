@@ -16,6 +16,10 @@ const generatedAuthApplication = join(
   "../../examples/first-party-authentication/build/target/app.ts",
 );
 const authReadinessHarness = join(import.meta.dir, "fixtures/readiness-auth-server.ts");
+// The controlled evaluators strip module imports. Supply the real emitted
+// helper in this imported/library context; native supervision is tested by the
+// separate actual startup-ownership suite.
+const { initialNativeStartupDeadline } = await import(pathToFileURL(join(dirname(generatedApplication), "startup-owner.ts")).href);
 
 const root = mkdtempSync(join(tmpdir(), "jadpo-readiness-"));
 const databaseDirectory = join(root, "recovered");
@@ -28,7 +32,7 @@ function reserveDeploymentPort(applicationPort: number): number {
 
 function controlledReadiness(initialReady = true) {
   const state = { ready: initialReady, fatal: false, needed: false, generation: 0,
-    checks: 0, prepares: 0, publications: 0, failures: 0, cancels: 0, timers: 0, now: 0 };
+    checks: 0, prepares: 0, publications: 0, failures: 0, cancels: 0, timers: 0, now: 0, deadlines: [] as number[] };
   const scheduled = new Map<number, { at: number; callback: () => void }>();
   let work: () => Promise<boolean> = () => Promise.resolve(true);
   let prepare = () => {};
@@ -40,8 +44,8 @@ function controlledReadiness(initialReady = true) {
       const id = ++state.timers; scheduled.set(id, { at: state.now + milliseconds, callback }); return id;
     },
     clear: timer => { scheduled.delete(timer as number); },
-    check: (_recovering, setCancel) => {
-      state.checks++; setCancel(() => { state.cancels++; cancel(); }); return work();
+    check: (_recovering, setCancel, deadlineAt) => {
+      state.deadlines.push(deadlineAt); state.checks++; setCancel(() => { state.cancels++; cancel(); }); return work();
     },
     prepare: recovering => { state.prepares++; prepare(); return recovering; },
     publish: () => { state.publications++; state.ready = true; state.needed = false; },
@@ -73,7 +77,7 @@ describe("compiler-private bounded readiness response", () => {
     expect(generated).toContain(source);
     expect(generated).toContain("async function initializePersistenceOnce(publish = true, setCancel?");
     expect(generated).toContain("if (publish) { persistenceReady = true;");
-    expect(generated).toContain("recovering ? initializePersistenceOnce(false, setCancel)");
+    expect(generated).toContain("recovering ? initializePersistenceOnce(false, setCancel, deadlineAt)");
     expect(generated).toContain("persistenceInvalidationGeneration++");
     expect(generated).toContain("export function refreshPersistenceReadiness(): Promise<boolean> { return readinessGate.refresh(); }");
     expect(generated).not.toContain("const timer = setTimeout(() => query.cancel()");
@@ -88,13 +92,13 @@ describe("compiler-private bounded readiness response", () => {
       h.work(() => native.promise);
       const callers = Array.from({ length: 32 }, () => h.gate.refresh());
       expect(callers.every(response => response === callers[0])).toBe(true);
-      expect(h.state.checks).toBe(1); expect(observers).toBe(1); expect(h.state.timers).toBe(1);
+      expect(h.state.checks).toBe(1); expect(observers).toBe(1); expect(h.state.timers).toBe(1); expect(h.state.deadlines).toEqual([1000]);
       h.advance(1000);
       expect(await Promise.all(callers)).toEqual(Array(32).fill(false));
       expect(h.state.ready).toBe(false); expect(h.state.failures).toBe(1); expect(h.state.cancels).toBe(1);
       h.advance(60000);
       expect(await Promise.all(Array.from({ length: 128 }, () => h.gate.refresh()))).toEqual(Array(128).fill(false));
-      expect(h.state.checks).toBe(1); expect(observers).toBe(1); expect(h.state.timers).toBe(1);
+      expect(h.state.checks).toBe(1); expect(observers).toBe(1); expect(h.state.timers).toBe(1); expect(h.state.deadlines).toEqual([1000]);
       native.resolve(true); await Promise.resolve();
       expect(h.state.publications).toBe(0); expect(h.state.prepares).toBe(0); expect(h.state.failures).toBe(1);
       h.work(() => Promise.resolve(true));
@@ -790,18 +794,19 @@ describe("actual emitted aggregate initialization cancellation", () => {
           .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(join(dirname(fixture), "persistence.ts")).href));
         const javascript = new Bun.Transpiler({ loader: "ts" }).transformSync(source) + '\nreturn {refresh: refreshPersistenceReadiness, state: () => ({ ready: persistenceReady, fatal: persistenceInitializationFatal, client: activePersistenceClient }), unavailable: () => { persistenceReady = false; persistenceProbeNeeded = true; }, unknownError: () => Object.assign(new OutcomeUnknownFault("schema.fixture"), {code: "57014"})};';
         const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
-        const emitted = await new AsyncFunction("SQL", "Database", "Bun", "performance", "setTimeout", "clearTimeout", "console", javascript)(
-          SQL, Database, { env: { DATABASE_URL: "postgres://fixture.invalid/never_opened" } }, { now: () => now },
+        const emitted = await new AsyncFunction("initialNativeStartupDeadline", "SQL", "Database", "Bun", "performance", "setTimeout", "clearTimeout", "console", javascript)(
+          initialNativeStartupDeadline, SQL, Database, { env: { DATABASE_URL: "postgres://fixture.invalid/never_opened" } }, { now: () => now },
           (callback: () => void) => { const id = ++sequence; timers.set(id, callback); return id; },
           (id: number) => timers.delete(id), { error() {} },
         );
         const originalClient = emitted.state().client;
         expect(emitted.state().ready).toBe(true);
-        recovering = true; emitted.unavailable();
+        const recoveryStartsAt = executed.length; recovering = true; emitted.unavailable();
         const responses = Array.from({ length: 32 }, () => emitted.refresh());
         expect(responses.every(value => value === responses[0])).toBe(true);
-        for (let i = 0; i < 100 && !settle; i++) await Promise.resolve();
+        for (let i = 0; i < 200 && !executed.slice(recoveryStartsAt).some(statement => statement.includes(chosen)); i++) await Promise.resolve();
         expect(typeof settle).toBe("function");
+        expect(executed.slice(recoveryStartsAt).some(statement => statement.includes(chosen))).toBe(true); // Actual native dispatch, not lazy query construction.
         const startsAtExpiry = starts;
         now = 1000; for (const callback of [...timers.values()]) callback();
         expect(await Promise.all(responses)).toEqual(Array(32).fill(false));
@@ -879,7 +884,7 @@ if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
       .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(join(dirname(generatedApplication), "persistence.ts")).href));
     const javascript = new Bun.Transpiler({loader:"ts"}).transformSync(source) + '\nreturn {connection: postgres, ready: persistenceReady, fatal: persistenceInitializationFatal};';
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-    const emitted = await new AsyncFunction("SQL", "Database", "Bun", javascript)(SQL,Database,{env:{DATABASE_URL:Bun.env.JADPO_READINESS_TEST_DATABASE_URL!}});
+    const emitted = await new AsyncFunction("initialNativeStartupDeadline", "SQL", "Database", "Bun", javascript)(initialNativeStartupDeadline,SQL,Database,{env:{DATABASE_URL:Bun.env.JADPO_READINESS_TEST_DATABASE_URL!}});
     try {
       expect(emitted.ready).toBe(true);expect(emitted.fatal).toBe(false);
       const connection=await emitted.connection.reserve();
@@ -933,7 +938,50 @@ if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
     } finally {if(child){child.kill("SIGKILL");await child.exited;}if(locker){await locker.unsafe("ROLLBACK").catch(()=>{});locker.release();}if(secondLocker){await secondLocker.unsafe("ROLLBACK").catch(()=>{});secondLocker.release();}await control.close();}
   },20_000);
 
-  test("actual generated PostgreSQL recovery retains a held native DDL lifetime after advisory cancellation", async () => {
+  async function nativeRecovery(driver: any = SQL) {
+    const source=readFileSync(join(dirname(generatedApplication),"persistence.ts"),"utf8")
+      .replace(/^import .+;\n/gm,"").replace(/\bexport /gu,"")
+      .replaceAll("import.meta.url",JSON.stringify(pathToFileURL(join(dirname(generatedApplication),"persistence.ts")).href));
+    const javascript=new Bun.Transpiler({loader:"ts"}).transformSync(source)+'\nreturn {connection:postgres,refresh:refreshPersistenceReadiness,unavailable:()=>{persistenceReady=false;persistenceProbeNeeded=true},state:()=>({ready:persistenceReady,fatal:persistenceInitializationFatal}),close:()=>postgres?.close()};';
+    const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+    return new AsyncFunction("initialNativeStartupDeadline","SQL","Database","Bun",javascript)(initialNativeStartupDeadline,driver,Database,{env:{DATABASE_URL:Bun.env.JADPO_READINESS_TEST_DATABASE_URL!}});
+  }
+  test("recovery server limits restore existing settings on the same actual PostgreSQL backend",async()=>{
+    // Pin one actual native backend for the setting-isolation control only.
+    function OneConnection(options:any){return new SQL({...options,max:1})}
+    const emitted=await nativeRecovery(OneConnection);let reserved:any=null;
+    try{
+      reserved=await emitted.connection.reserve();await reserved.unsafe("SET statement_timeout='25s'");await reserved.unsafe("SET lock_timeout='21s'");
+      const before=(await reserved.unsafe("SELECT pg_backend_pid() AS pid,current_setting('statement_timeout') AS statement_timeout,current_setting('lock_timeout') AS lock_timeout"))[0];reserved.release();reserved=null;
+      emitted.unavailable();expect(await emitted.refresh()).toBe(true);
+      reserved=await emitted.connection.reserve();const after=(await reserved.unsafe("SELECT pg_backend_pid() AS pid,current_setting('statement_timeout') AS statement_timeout,current_setting('lock_timeout') AS lock_timeout"))[0];
+      expect(after).toEqual(before);expect(after).toMatchObject({statement_timeout:"25s",lock_timeout:"21s"});
+      console.log(JSON.stringify({case:"actual_recovery_same_backend_settings",before,after}));
+    }finally{reserved?.release();await emitted.close()}
+  });
+  test("two native PostgreSQL recovery lock waits share the original readiness attempt deadline",async()=>{
+    const control=new SQL({url:Bun.env.JADPO_READINESS_TEST_DATABASE_URL!,prepare:false,max:3});
+    const emitted=await nativeRecovery();let first:any=null,second:any=null;
+    try{
+      await control.unsafe('DROP INDEX IF EXISTS "account_owner_email_idx"');await control.unsafe('DROP INDEX IF EXISTS "user_group_idx"');
+      first=await control.reserve();await first.unsafe("BEGIN");await first.unsafe('LOCK TABLE "account" IN ACCESS EXCLUSIVE MODE');
+      second=await control.reserve();await second.unsafe("BEGIN");await second.unsafe('LOCK TABLE "user" IN ACCESS EXCLUSIVE MODE');
+      const started=performance.now();emitted.unavailable();const response=emitted.refresh();let firstWait=false,secondWait=false,remaining=0;
+      do{
+        if(first&&performance.now()-started>=650){await first.unsafe("ROLLBACK");first.release();first=null}
+        const rows=await control.unsafe("SELECT query FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'");
+        firstWait ||= rows.some(row=>String(row.query).includes("account_owner_email_idx"));secondWait ||= rows.some(row=>String(row.query).includes("user_group_idx"));
+        remaining=rows.filter(row=>String(row.query).includes("account_owner_email_idx")||String(row.query).includes("user_group_idx")).length;
+        await Bun.sleep(5);
+      }while((performance.now()-started<1000||remaining)&&performance.now()-started<1400);
+      const elapsedMs=performance.now()-started;
+      expect(await response).toBe(false);expect(firstWait).toBe(true);expect(secondWait).toBe(true);expect(remaining).toBe(0);expect(elapsedMs).toBeLessThan(1400);
+      expect(await control.unsafe("SELECT oid FROM pg_class WHERE relname IN ('account_owner_email_idx','user_group_idx')")).toHaveLength(0);
+      expect(emitted.state()).toEqual({ready:false,fatal:false});
+      console.log(JSON.stringify({case:"actual_recovery_cumulative_budget",elapsedMs,firstReleasedAtMs:650,firstWait,secondWait,remaining,partialIndexCommitted:false,externalSecondLockStillHeld:true}));
+    }finally{for(const lock of [first,second])if(lock){await lock.unsafe("ROLLBACK").catch(()=>{});lock.release()}await emitted.close();await control.close()}
+  },5000);
+  test("actual generated PostgreSQL recovery server budget ends held DDL without releasing the external lock", async () => {
     const databaseUrl = Bun.env.JADPO_READINESS_TEST_DATABASE_URL!;
     const control = new SQL({ url: databaseUrl, prepare: false, max: 2 });
     let locker: any = null, emitted: any = null;
@@ -944,7 +992,7 @@ if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
       const javascript = new Bun.Transpiler({ loader: "ts" }).transformSync(source)
         + '\nreturn {refresh: refreshPersistenceReadiness, state: () => ({ready: persistenceReady, fatal: persistenceInitializationFatal, client: activePersistenceClient}), unavailable: () => {persistenceReady=false; persistenceProbeNeeded=true;}, close: () => postgres?.close()};';
       const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
-      emitted = await new AsyncFunction("SQL", "Database", "Bun", javascript)(SQL, Database, {env:{DATABASE_URL:databaseUrl}});
+      emitted = await new AsyncFunction("initialNativeStartupDeadline", "SQL", "Database", "Bun", javascript)(initialNativeStartupDeadline, SQL, Database, {env:{DATABASE_URL:databaseUrl}});
       expect(emitted.state().ready).toBe(true);
       const originalClient = emitted.state().client;
       await control.unsafe('DROP INDEX IF EXISTS "account_owner_email_idx"');
@@ -963,11 +1011,18 @@ if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
       expect(await Promise.all(responses)).toEqual(Array(32).fill(false));
       expect(performance.now()-started).toBeLessThan(1600);
       expect(emitted.state().ready).toBe(false); expect(emitted.state().client).toBe(originalClient);
-      // Bun's advisory cancel does not establish interruption of this held DDL.
-      // Keep the actual native slot, refuse replacement work, and fence late success.
+      // The caller deadline remains separate from actual native settlement.
+      // Server remaining-budget limits now stop the held DDL; the locker is
+      // deliberately retained until native disappearance and rollback prove it.
       expect(await Promise.all(Array.from({length:128},()=>emitted.refresh()))).toEqual(Array(128).fill(false));
-      const stillBlocked = await control.unsafe("SELECT query FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'");
-      expect(stillBlocked.filter(row=>String(row.query).includes('CREATE INDEX IF NOT EXISTS "account_owner_email_idx"'))).toHaveLength(1);
+      let remaining=1;
+      for(let i=0;i<100&&remaining;i++){
+        const rows=await control.unsafe("SELECT query FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'");
+        remaining=rows.filter(row=>String(row.query).includes('CREATE INDEX IF NOT EXISTS "account_owner_email_idx"')).length;
+        if(remaining)await Bun.sleep(10);
+      }
+      expect(remaining).toBe(0);
+      expect((await control.unsafe("SELECT oid FROM pg_class WHERE relname='account_owner_email_idx'"))).toHaveLength(0);
       expect(emitted.state().fatal).toBe(false);
       await locker.unsafe('ROLLBACK'); locker.release(); locker=null;
       await Bun.sleep(300);
@@ -980,4 +1035,42 @@ if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
       await emitted?.close(); await control.close();
     }
   }, 10000);
+  test("real recovery COMMIT acknowledgement hold preserves committed schema, native slot and late-publication refusal",async()=>{
+    const child=Bun.spawn([process.execPath,"--no-install","--env-file=/dev/null",join(import.meta.dir,"fixtures/recovery-owned-commit.ts")],{env:{PATH:Bun.env.PATH!,JADPO_READINESS_TEST_DATABASE_URL:Bun.env.JADPO_READINESS_TEST_DATABASE_URL!,JADPO_READINESS_APPLICATION:generatedApplication},stdout:"pipe",stderr:"pipe"});
+    const watchdog=setTimeout(()=>child.kill("SIGKILL"),8000);
+    try{
+    const [stdout,stderr,exit]=await Promise.all([new Response(child.stdout).text(),new Response(child.stderr).text(),child.exited]);
+    if(exit!==0)throw Error(`Native recovery COMMIT fixture failed: ${stdout}\n${stderr}`);
+    expect(exit).toBe(0);const proof=JSON.parse(stdout);expect(proof.before.committed).toBe(true);expect(proof.before.retainedSlot).toBe(true);expect(proof.before.clientUnchanged).toBe(true);expect(proof.after.freshRecovery).toBe(true);expect(proof.after.backendRemaining).toBe(0);console.log(stdout.trim());
+    }finally{clearTimeout(watchdog);if(child.exitCode===null)child.kill("SIGKILL");await child.exited}
+  },10000);
+
 }
+
+
+// Actual native main and PostgreSQL result transport; no replacement evaluator.
+describe("ordinary native PostgreSQL probe ownership", () => {
+  for (const mode of ["healthy", "hold", "keep-hold"]) {
+    const run = Bun.env.JADPO_READINESS_TEST_DATABASE_URL ? test : test.skip;
+    run(`actual native ordinary probe ${mode} preserves response and owner boundaries`, async () => {
+      const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null",
+        join(import.meta.dir, "fixtures/ordinary-owned-probe.ts"), mode], {
+        env: { PATH: Bun.env.PATH!, JADPO_READINESS_TEST_DATABASE_URL: Bun.env.JADPO_READINESS_TEST_DATABASE_URL!,
+          JADPO_READINESS_APPLICATION: generatedApplication }, stdout: "pipe", stderr: "pipe",
+      });
+      const watchdog = setTimeout(() => child.kill("SIGKILL"), 18000);
+      try {
+        const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+        if (exit !== 0) throw Error(`Native ordinary probe fixture failed: ${stdout}\n${stderr}`);
+        const proof = JSON.parse(stdout);
+        expect(proof.failure).toBeNull(); expect(proof.qualifiedNativeExecution).toBe(true);
+        expect(proof.watchdog).toBe(false); expect(proof.nativeExit).toBe(143);
+        expect(proof.backendRemaining).toBe(0); expect(proof.cleanupBeforeFixtureTeardown).toBe(true);
+        expect(proof.safeNativeOutput).toBe(true); expect(proof.protocolFailure).toBeNull();
+        expect(proof.downstreamClosed).toBe(proof.connections); expect(proof.upstreamClosed).toBe(proof.connections);
+        expect(proof.nativeProcesses).toHaveLength(2); expect(proof.formerPorts.every((p: any) => p.refused)).toBe(true);
+        console.log(stdout.trim());
+      } finally { clearTimeout(watchdog); if (child.exitCode === null) child.kill("SIGKILL"); await child.exited; }
+    }, 20000);
+  }
+});
