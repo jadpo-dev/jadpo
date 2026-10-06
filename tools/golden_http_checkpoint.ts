@@ -268,7 +268,7 @@ async function reminderProbe(case_: any) {
     clockNow = nativeDate.parse(at); const callStart = calls.length; const statements = beginSqlObservation(); let outcome: any;
     try { outcome = await host.runOnce(); } finally { endSqlObservation(); }
     const after = []; for (const fixture of fixtureRows) after.push(await todoSnapshot(fixture.row.id));
-    const intents = await execute('SELECT intent_id,source_entity_id,source_revision,state,payload FROM "__jadpo_deliveries_v1" ORDER BY intent_id');
+    const intents = await execute('SELECT intent_id,source_entity_id,CAST(source_revision AS TEXT) AS source_revision,state,payload FROM "__jadpo_deliveries_v1" ORDER BY intent_id');
     const receiptPresent = pg ? await execute('SELECT to_regclass($1) AS present', ["__jadpo_delivery_mail_receipts_v1"]) : await execute('SELECT name AS present FROM sqlite_master WHERE name = $1', ["__jadpo_delivery_mail_receipts_v1"]);
     const receipts = receiptPresent.some((row: any) => row.present) ? await execute('SELECT intent_id,accepted_at,observed_at FROM "__jadpo_delivery_mail_receipts_v1" ORDER BY intent_id') : [];
     const schedules = []; for (const fixture of fixtureRows) schedules.push(await scheduleSnapshot(fixture.row.id));
@@ -438,17 +438,18 @@ async function boundaryProbe(case_: any) {
   let outcome: any = null; let thrown: any = null; const statements = beginSqlObservation();
   const operationalEvents: any[] = []; const previousError = console.error;
   console.error = (...values: unknown[]) => { try { const event = JSON.parse(values.map(String).join(" ")); if (event.kind === "operational_log_event") operationalEvents.push(event); } catch {} previousError(...values); };
-  let restarted: any; let restartOutcome: any; let restartedStatements: any[] = []; let durableAfter: any; let durableAfterRestart: any;
+  let nativeOperationalEvents: any[] = []; let restarted: any; let restartOutcome: any; let restartedStatements: any[] = []; let durableAfter: any; let durableAfterRestart: any;
   async function durableSnapshot() {
     const intentId = providerCalls[0]?.body.idempotency_key;
-    const intents = await execute('SELECT intent_id,source_entity_id,source_revision,state,payload FROM "__jadpo_deliveries_v1" WHERE source_entity_id = $1 ORDER BY intent_id', [creation.body.id]);
+    const intents = await execute('SELECT intent_id,source_entity_id,CAST(source_revision AS TEXT) AS source_revision,state,payload FROM "__jadpo_deliveries_v1" WHERE source_entity_id = $1 ORDER BY intent_id', [creation.body.id]);
+    const schedules = await execute('SELECT source_entity,source_entity_id,CAST(schedule_revision AS TEXT) AS schedule_revision FROM "__jadpo_delivery_schedules_v1" WHERE source_entity_id=$1', [creation.body.id]);
     const claims = await execute('SELECT intent_id,invocations,possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]);
     const present = pg ? await execute('SELECT to_regclass($1) AS present', ["__jadpo_delivery_mail_receipts_v1"]) : await execute('SELECT name AS present FROM sqlite_master WHERE name=$1', ["__jadpo_delivery_mail_receipts_v1"]);
     const receipts = present.some((row: any) => row.present) ? await execute('SELECT intent_id,accepted_at,observed_at FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [intentId]) : [];
-    return { intents: intents.map((row: any) => ({ ...row, payload: JSON.parse(row.payload) })), claims: claims.map((row: any) => ({ ...row, invocations: Number(row.invocations), possible_dispatch: Number(row.possible_dispatch) })), receipts, todo: await todoSnapshot(creation.body.id) };
+    return { schedules, intents: intents.map((row: any) => ({ ...row, payload: JSON.parse(row.payload) })), claims: claims.map((row: any) => ({ ...row, invocations: Number(row.invocations), possible_dispatch: Number(row.possible_dispatch) })), receipts, todo: await todoSnapshot(creation.body.id) };
   }
   try {
-    outcome = await host.runOnce(); endSqlObservation(); durableAfter = await durableSnapshot();
+    outcome = await host.runOnce(); endSqlObservation(); nativeOperationalEvents = operationalEvents.splice(0); durableAfter = await durableSnapshot();
     await host.stop(); clockNow += 900_000; restarted = app.createDeliveryJobHost(reminderBinding, serviceKey.credential, profile, profile);
     restartedStatements = beginSqlObservation(); try { restartOutcome = await restarted.runOnce(); } finally { endSqlObservation(); }
     durableAfterRestart = await durableSnapshot();
@@ -456,7 +457,7 @@ async function boundaryProbe(case_: any) {
   catch (error: any) { thrown = { name: error.name, code: error.code ?? null, kind: error.kind ?? null }; }
   finally { endSqlObservation(); console.error = previousError; await host.stop(); await restarted?.stop(); adapter.setReferenceMailEndpointForTesting(null); provider.stop(true); if (previous === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previous; }
   const persisted = await todoSnapshot(creation.body.id);
-  variants.push({ variant_index: 1, fixture_variant: case_.fixtureVariants[1], nativeFixtureCreation: creation, serviceFixture, profiles: { activation: profile, delivery: profile }, providerCalls, nativeHostOutcome: outcome, nativeHostThrown: thrown, operationalEvents, statements, persisted, durableAfter, restart: { at: new Date(clockNow).toISOString(), outcome: restartOutcome, statements: restartedStatements, durable: durableAfterRestart } });
+  variants.push({ variant_index: 1, fixture_variant: case_.fixtureVariants[1], nativeFixtureCreation: creation, serviceFixture, profiles: { activation: profile, delivery: profile }, providerCalls, nativeHostOutcome: outcome, nativeHostThrown: thrown, operationalEvents: nativeOperationalEvents, statements, persisted, durableAfter, restart: { at: new Date(clockNow).toISOString(), outcome: restartOutcome, operationalEvents, statements: restartedStatements, durable: durableAfterRestart } });
   raw.push({ boundaryVariants: variants, selectedBackend: backend, sourceRevision, binding: reminderBinding, jobMetadata: JSON.parse(readFileSync(join(project, "build/audit/jobs.json"), "utf8")), specification: { fixtureVariants: case_.fixtureVariants, requestOrRun: case_.requestOrRun } });
 }
 async function userSnapshot() {
