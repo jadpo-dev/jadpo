@@ -5,7 +5,7 @@
   "cases": {
     "AUTH-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/application.jadpo",
@@ -15,7 +15,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
-        "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+        "remaining_work": "Retain observed supporting case/backend checkpoint entries with exact source/contract bindings; full successor acceptance integration and fresh final 44-ID gate remain.",
         "task_ids": [
           "RM-102",
           "RM-103",
@@ -26,7 +26,7 @@
     },
     "AUTH-002": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/application.jadpo",
@@ -36,7 +36,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
-        "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+        "remaining_work": "Observe browser-session GET /todos and signed principal user binding; no provider fields in output.",
         "task_ids": [
           "RM-102",
           "RM-103",
@@ -47,7 +47,7 @@
     },
     "AUTH-003": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/application.jadpo",
@@ -57,7 +57,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
-        "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+        "remaining_work": "Observe allowlisted JWT GET /todos with same typed user variant and no provider output.",
         "task_ids": [
           "RM-102",
           "RM-103",
@@ -68,7 +68,7 @@
     },
     "AUTH-004": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/application.jadpo",
@@ -78,7 +78,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
-        "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+        "remaining_work": "Present two valid conflicting browser/JWT identities, verify401 ambiguity and 0 physical queries before validation.",
         "task_ids": [
           "RM-102",
           "RM-103",
@@ -99,7 +99,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
-        "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+        "remaining_work": "Retain observed supporting case/backend checkpoint entries with exact source/contract bindings; full successor acceptance integration and fresh final 44-ID gate remain.",
         "task_ids": [
           "RM-102",
           "RM-103",
@@ -120,7 +120,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "User status and bounded application authority freshness declared.",
-        "remaining_work": "User disable action/route, fresh authority enforcement and lifecycle integration absent.",
+        "remaining_work": "Execute issued/disabled/request/expiry timeline with valid origin/CSRF; fresh DELETE 403 user_disabled,0writes.",
         "task_ids": [
           "RM-102",
           "RM-103",
@@ -159,7 +159,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "Closed user/service principal and browser, bearer and JWT strategies; active-user resolution.",
-        "remaining_work": "Protected target rejects selected principal/adapter shapes; GET /todos absent.",
+        "remaining_work": "Execute bounded signed bearer with unavailable cache; principal/credential authority query counters both0 while ordinary Todo data read remains separately recorded.",
         "task_ids": [
           "RM-102",
           "RM-103",
@@ -170,7 +170,7 @@
     },
     "AUTH-009": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/application.jadpo",
@@ -180,7 +180,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "Service and separate ServiceCredential entities, API-key validator, strategy-level exchange declaration and generated POST route with separate credential owner/service identity.",
-        "remaining_work": "Run AUTH-009 through the full golden application gate after RM-109/RM-110 and complete RM-104's independent runtime/security review.",
+        "remaining_work": "Execute reporting service key exchange; same-call distinct service principal binding and secret-free bounded token; instrument authority without treating credential proof as principal identity.",
         "task_ids": [
           "RM-102",
           "RM-104"
@@ -200,7 +200,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "User status and bounded application authority freshness declared.",
-        "remaining_work": "User disable action/route, fresh authority enforcement and lifecycle integration absent.",
+        "remaining_work": "Execute fresh self-disable via bounded bearer, exact1 principal authority query and separately recorded credential queries.",
         "task_ids": [
           "RM-102",
           "RM-103",
@@ -211,7 +211,7 @@
     },
     "AUTH-011": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/application.jadpo",
@@ -221,7 +221,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "Service and separate ServiceCredential entities, API-key validator, strategy-level exchange declaration and generated POST route with separate credential owner/service identity.",
-        "remaining_work": "Run AUTH-011 through the full golden application gate after RM-109/RM-110 and complete RM-104's independent runtime/security review.",
+        "remaining_work": "Execute still-valid key after service disablement,403 service_disabled before returning a credential.",
         "task_ids": [
           "RM-102",
           "RM-104"
@@ -231,13 +231,13 @@
     },
     "AUTH-012": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/routes/liveness.jadpo"
         ],
         "existing_declarations": "Explicit auth:none GET /health/live returning PublicHealth.healthy.",
-        "remaining_work": "Integrated target generation and public route inventory proof.",
+        "remaining_work": "Retain observed supporting case/backend checkpoint entries with exact source/contract bindings; full successor acceptance integration and fresh final 44-ID gate remain.",
         "task_ids": [
           "RM-102"
         ],
@@ -246,13 +246,13 @@
     },
     "PUBLIC-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/routes/liveness.jadpo"
         ],
         "existing_declarations": "Explicit auth:none GET /health/live returning PublicHealth.healthy.",
-        "remaining_work": "Integrated target generation and public route inventory proof.",
+        "remaining_work": "Retain observed supporting case/backend checkpoint entries with exact source/contract bindings; full successor acceptance integration and fresh final 44-ID gate remain.",
         "task_ids": [
           "RM-102"
         ],
@@ -261,7 +261,7 @@
     },
     "CREATE-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -287,7 +287,7 @@
           "examples/golden-todo-migration/routes/todos.jadpo"
         ],
         "existing_declarations": "POST /todos, Todo.create_todo, CreateTodo default none, generated UUID/timestamps, principal-derived owner, future due validation.",
-        "remaining_work": "Integrated execution; preserve HTTP 422 invalid_input for validation failures; malformed JSON remains HTTP 400 invalid_request.",
+        "remaining_work": "Retain observed supporting case/backend checkpoint entries with exact source/contract bindings; full successor acceptance integration and fresh final 44-ID gate remain.",
         "task_ids": [
           "RM-102",
           "RM-107"
@@ -297,7 +297,7 @@
     },
     "CREATE-003": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -315,7 +315,7 @@
     },
     "CREATE-004": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -323,7 +323,7 @@
           "examples/golden-todo-migration/routes/todos.jadpo"
         ],
         "existing_declarations": "POST /todos, Todo.create_todo, CreateTodo default none, generated UUID/timestamps, principal-derived owner, future due validation.",
-        "remaining_work": "Integrated execution; preserve HTTP 422 invalid_input for validation failures; malformed JSON remains HTTP 400 invalid_request.",
+        "remaining_work": "Retain observed supporting case/backend checkpoint entries with exact source/contract bindings; full successor acceptance integration and fresh final 44-ID gate remain.",
         "task_ids": [
           "RM-102",
           "RM-107"
@@ -333,7 +333,7 @@
     },
     "READ-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -350,14 +350,14 @@
     },
     "READ-002": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
           "examples/golden-todo-migration/routes/liveness.jadpo"
         ],
         "existing_declarations": "GET /todos/{todo_id}, Todo.get/by_id, owner policy, deleted-row concealment and TodoView projection.",
-        "remaining_work": "Integrated execution; preserve HTTP 422 invalid_value for malformed path values; malformed JSON remains HTTP 400 invalid_request.",
+        "remaining_work": "Retain observed supporting case/backend checkpoint entries with exact source/contract bindings; full successor acceptance integration and fresh final 44-ID gate remain.",
         "task_ids": [
           "RM-102",
           "RM-107"
@@ -374,7 +374,7 @@
           "examples/golden-todo-migration/routes/liveness.jadpo"
         ],
         "existing_declarations": "GET /todos/{todo_id}, Todo.get/by_id, owner policy, deleted-row concealment and TodoView projection.",
-        "remaining_work": "Integrated execution; preserve HTTP 422 invalid_value for malformed path values; malformed JSON remains HTTP 400 invalid_request.",
+        "remaining_work": "Retain observed supporting case/backend checkpoint entries with exact source/contract bindings; full successor acceptance integration and fresh final 44-ID gate remain.",
         "task_ids": [
           "RM-102",
           "RM-107"
@@ -384,14 +384,14 @@
     },
     "LIST-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/values/contracts.jadpo",
           "examples/golden-todo-migration/entities/todo.jadpo"
         ],
         "existing_declarations": "PageSize, TodoCursor, TodoPage and Todo authority declaration.",
-        "remaining_work": "Typed query binding, ListTodos input/default, optional predicates, keyset query and GET /todos absent; preserve HTTP 422 invalid_value for invalid query values while malformed JSON remains HTTP 400 invalid_request.",
+        "remaining_work": "Execute frozen equal-created-at/foreign/deleted rows; owner filtering before bounded desc(created_at,id) page,<=1data query,nextcursor.",
         "task_ids": [
           "RM-102",
           "RM-204",
@@ -402,14 +402,14 @@
     },
     "LIST-002": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/values/contracts.jadpo",
           "examples/golden-todo-migration/entities/todo.jadpo"
         ],
         "existing_declarations": "PageSize, TodoCursor, TodoPage and Todo authority declaration.",
-        "remaining_work": "Typed query binding, ListTodos input/default, optional predicates, keyset query and GET /todos absent; preserve HTTP 422 invalid_value for invalid query values while malformed JSON remains HTTP 400 invalid_request.",
+        "remaining_work": "Execute both cursor pages and repeated first page; five unique items and stable repetition.",
         "task_ids": [
           "RM-102",
           "RM-204",
@@ -420,14 +420,14 @@
     },
     "LIST-003": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/values/contracts.jadpo",
           "examples/golden-todo-migration/entities/todo.jadpo"
         ],
         "existing_declarations": "PageSize, TodoCursor, TodoPage and Todo authority declaration.",
-        "remaining_work": "Typed query binding, ListTodos input/default, optional predicates, keyset query and GET /todos absent; preserve HTTP 422 invalid_value for invalid query values while malformed JSON remains HTTP 400 invalid_request.",
+        "remaining_work": "Execute optional status/due_before filters; open owner rows only, no undated or late row.",
         "task_ids": [
           "RM-102",
           "RM-204",
@@ -445,7 +445,7 @@
           "examples/golden-todo-migration/entities/todo.jadpo"
         ],
         "existing_declarations": "PageSize, TodoCursor, TodoPage and Todo authority declaration.",
-        "remaining_work": "Typed query binding, ListTodos input/default, optional predicates, keyset query and GET /todos absent; preserve HTTP 422 invalid_value for invalid query values while malformed JSON remains HTTP 400 invalid_request.",
+        "remaining_work": "Execute each invalid page_size/cursor scenario;422 invalid_value before any application data query.",
         "task_ids": [
           "RM-102",
           "RM-204",
@@ -474,7 +474,7 @@
     },
     "REL-002": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/user.jadpo",
@@ -491,7 +491,7 @@
     },
     "REL-003": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/user.jadpo",
@@ -509,7 +509,7 @@
     },
     "REL-004": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/user.jadpo",
@@ -526,7 +526,7 @@
     },
     "PATCH-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -534,7 +534,7 @@
           "examples/golden-todo-migration/routes/todos.jadpo"
         ],
         "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
-        "remaining_work": "Integrated runtime/persistence assertions absent.",
+        "remaining_work": "Execute title-only patch and verify due_at unchanged with exact storedtitle.",
         "task_ids": [
           "RM-102",
           "RM-107"
@@ -544,7 +544,7 @@
     },
     "PATCH-002": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -552,7 +552,7 @@
           "examples/golden-todo-migration/routes/todos.jadpo"
         ],
         "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
-        "remaining_work": "Integrated runtime/persistence assertions absent.",
+        "remaining_work": "Execute explicitnull due_at clearing.",
         "task_ids": [
           "RM-102",
           "RM-107"
@@ -562,7 +562,7 @@
     },
     "PATCH-003": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -570,7 +570,7 @@
           "examples/golden-todo-migration/routes/todos.jadpo"
         ],
         "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
-        "remaining_work": "Integrated runtime/persistence assertions absent.",
+        "remaining_work": "Execute empty patch422 empty_patch and 0 writes.",
         "task_ids": [
           "RM-102",
           "RM-107"
@@ -580,7 +580,7 @@
     },
     "PATCH-004": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -588,7 +588,7 @@
           "examples/golden-todo-migration/routes/todos.jadpo"
         ],
         "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
-        "remaining_work": "Integrated runtime/persistence assertions absent.",
+        "remaining_work": "Execute foreign Todo patch concealed404 todo_not_found and 0 writes.",
         "task_ids": [
           "RM-102",
           "RM-107"
@@ -598,7 +598,7 @@
     },
     "PATCH-005": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -606,7 +606,7 @@
           "examples/golden-todo-migration/routes/todos.jadpo"
         ],
         "existing_declarations": "PATCH route, PatchTodo, Todo.patch_todo with empty-patch rejection, owner lookup, due validation and reminder reset.",
-        "remaining_work": "Integrated runtime/persistence assertions absent.",
+        "remaining_work": "Execute changed due_at schedule and verify prior reminder_sent_at cleared; preserve schedule-revision successor semantics.",
         "task_ids": [
           "RM-102",
           "RM-107"
@@ -616,7 +616,7 @@
     },
     "DELETE-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -624,7 +624,7 @@
           "examples/golden-todo-migration/routes/todos.jadpo"
         ],
         "existing_declarations": "Todo.deleted_at field and get concealment exist.",
-        "remaining_work": "Entity-owned lifecycle implementation and DELETE route missing.",
+        "remaining_work": "Inject frozen clock; DELETE204 retainedrow exactdeleted_at and follow-upGET404.",
         "task_ids": [
           "RM-102",
           "RM-205",
@@ -636,7 +636,7 @@
     },
     "DELETE-002": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/entities/todo.jadpo",
@@ -644,7 +644,7 @@
           "examples/golden-todo-migration/routes/todos.jadpo"
         ],
         "existing_declarations": "Todo.deleted_at field and get concealment exist.",
-        "remaining_work": "Entity-owned lifecycle implementation and DELETE route missing.",
+        "remaining_work": "Foreign DELETE404 concealedfailure with0writes.",
         "task_ids": [
           "RM-102",
           "RM-205",
@@ -666,7 +666,7 @@
           "examples/golden-todo-migration/entities/service_credential.jadpo"
         ],
         "existing_declarations": "User status and bounded application authority freshness declared.",
-        "remaining_work": "User disable action/route, fresh authority enforcement and lifecycle integration absent.",
+        "remaining_work": "Execute all four ordered observations at frozen instants: successfulself-disable/retainedchild; secondfresh403/0writes; refreshUserDisabled/0newcredentials; boundedexpiry401/0writes.",
         "task_ids": [
           "RM-102",
           "RM-103",
@@ -677,7 +677,7 @@
     },
     "JOB-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/values/contracts.jadpo",
@@ -701,7 +701,7 @@
     },
     "JOB-002": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/values/contracts.jadpo",
@@ -725,7 +725,7 @@
     },
     "JOB-003": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/values/contracts.jadpo",
@@ -749,14 +749,14 @@
     },
     "JOB-004": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/values/contracts.jadpo",
           "examples/golden-todo-migration/entities/todo.jadpo"
         ],
         "existing_declarations": "Todo deletion timestamp and SOFT_DELETE_RETENTION configuration exist.",
-        "remaining_work": "Purge lifecycle action, bounded query and schedule missing.",
+        "remaining_work": "Run accepted compiler-maintenance retention successor at frozenclock;29day row retained,31dayrow purged,activerow retained;<=500batch and audited actualdeletions.",
         "task_ids": [
           "RM-106",
           "RM-305",
@@ -769,7 +769,7 @@
     },
     "CONFIG-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/config.jadpo"
@@ -784,7 +784,7 @@
     },
     "CONFIG-002": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/config.jadpo"
@@ -799,13 +799,13 @@
     },
     "CONFIG-003": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/config.jadpo"
         ],
         "existing_declarations": "DATABASE_URL configuration and independent public liveness declared.",
-        "remaining_work": "Deployment-plane database readiness missing; RM-403 is included in selected scope and remains queued behind RM-303.",
+        "remaining_work": "Separate deployment readiness from applicationrouter; actual startedapplication DBoutage yields deployment 503/application readiness unreachable/liveness 200/no restart.",
         "task_ids": [
           "RM-103",
           "RM-403"
@@ -815,7 +815,7 @@
     },
     "BOUNDARY-001": {
       "status": "not_executed",
-      "gap": "Full golden application does not compile; individual feature tests are related evidence, not execution of this case.",
+      "gap": "Original frozen pressure source does not compile; full accepted-successor 44-case acceptance has not run. Related feature tests do not execute this case; source-bound supporting checkpoints are retained separately.",
       "mapping": {
         "source": [
           "examples/golden-todo-migration/values/contracts.jadpo",

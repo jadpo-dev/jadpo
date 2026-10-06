@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-109-d8de25b0ead2", "task_id": "RM-109", "actor": "boundary-review-audit", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T06:01:41.968660+00:00", "phase": "planning"}
+{"at": "2026-10-06T06:02:05.983463+00:00", "phase": "review", "note": "Read-only current44-obligation audit at ef83d48; accepted DATA007 successor, EMAIL revision and SERVICE001 intent UUID overlay preserved; pin inherited verified gpt-6.1-sol/high"}
+{"at": "2026-10-06T06:05:55.172858+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm109-independent-current-obligation-audit.json"}

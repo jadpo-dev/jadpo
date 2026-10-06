@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "review_id": "RM109-HTTP-EXPANSION-20261006",
+  "task": "RM-109",
+  "disposition": "scoped_approved",
+  "candidate_commit": "eb606f6ef3b74b75a787f8f63d0c48e0c4aaaf10",
+  "completed_at_utc": "2026-10-06T06:07:13.234380+00:00",
+  "reviewer": {
+    "actor": "independent-review-golden-http-loop",
+    "independent": true,
+    "did_not_implement_candidate": true,
+    "actual_model": "gpt-6.1-sol",
+    "actual_effort": "high",
+    "pin_evidence": "Parent supplied verified actual gpt-6.1-sol/high at fresh bounded batch entry; inherited consequential verifier review uses the same suitable settings.",
+    "timing": "RM-109-8b61cc65a1ba"
+  },
+  "scope": "Expand real migrated HTTP checkpoint from eight to thirteen original IDs by adding LIST-004 and PATCH-001/002/003/004 on SQLite and PostgreSQL. No compiler changes or full golden closure.",
+  "findings": [],
+  "source_sha256": {
+    "tools/golden_cases.py": "58fce66db37a93822e520f1c495433bd15c4e7f9658a4b4e8adebf061750f427",
+    "tools/golden_checkpoint.py": "069f5fdd54c47fa9f35bc471c558c1911aad88b6e7663196dc051d349870ae76",
+    "tools/golden_http_checkpoint.ts": "d5c4fd5aca798952ad7ce284d7ba359c72ecc2dbe7966c713651f770201365af",
+    "tools/golden_sql_observer.ts": "571ab98a669d189c357d62fb10a218f1443511963759253542bab370d3d0ac0c",
+    "tests/validation/test_golden_checkpoint.py": "46688ad28fc418c1d0bb9d12a116fa265a34b3847cc549a95b39d392c16672cb",
+    "examples/golden-todo/acceptance.json": "3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608",
+    "tests/validation/golden-obligations.json": "1bb72278815340e902238848d62547a252c63053019281c1d2a313cbf2db666b"
+  },
+  "independent_execution": {
+    "capture": "Own immutable git archive candidate; no cached compiler before Python contracts or fresh build.",
+    "python_command": "python3 -m unittest discover -s tests/validation -p test_*.py",
+    "python_tests_passed": 56,
+    "python_exit_code": 0,
+    "checkpoint_command": "python3 tools/golden_checkpoint.py --output /private/tmp/jadpo-review-http-expansion-checkpoint --jwt-dependencies /Users/richardwillars/Documents/Codex/LLM-coding/build/validation/jwt-dependencies",
+    "checkpoint_exit_code": 0,
+    "compiler_sha256": "479dc1129320d7ad8766ece2f1a2cfb099449bfd078b9c5fa4fd987b86057256",
+    "counts": {
+      "passed": 26,
+      "failed": 0,
+      "not_run": 62
+    },
+    "all_original_case_backend_entries": 88,
+    "status": "not_run",
+    "release_equivalent": false,
+    "supported_original_ids": [
+      "AUTH-001",
+      "AUTH-005",
+      "AUTH-012",
+      "PUBLIC-001",
+      "CREATE-002",
+      "CREATE-004",
+      "READ-002",
+      "READ-003",
+      "LIST-004",
+      "PATCH-001",
+      "PATCH-002",
+      "PATCH-003",
+      "PATCH-004"
+    ],
+    "all_source_and_compiler_pins_match_after_execution": true
+  },
+  "independent_integrity_challenges": {
+    "candidate": "eb606f6ef3b74b75a787f8f63d0c48e0c4aaaf10",
+    "challenges": [
+      {
+        "probe": "sqlite PATCH-003 storage change with zero traced writes",
+        "refused": true,
+        "reason": "Rejected patch storage changed despite zero traced writes"
+      },
+      {
+        "probe": "sqlite PATCH-004 storage change with zero traced writes",
+        "refused": true,
+        "reason": "Rejected patch storage changed despite zero traced writes"
+      },
+      {
+        "probe": "sqlite PATCH-001 fixture owner",
+        "refused": true,
+        "reason": "Changed patch fixture owner"
+      },
+      {
+        "probe": "sqlite PATCH-001 fixture id",
+        "refused": true,
+        "reason": "Missing or foreign patch fixture/persistence observation"
+      },
+      {
+        "probe": "sqlite PATCH-001 fixture date",
+        "refused": true,
+        "reason": "Missing originally due-dated patch fixture"
+      },
+      {
+        "probe": "sqlite PATCH-001 fixture order",
+        "refused": true,
+        "reason": "Reordered patch fixture/request/persistence observations"
+      },
+      {
+        "probe": "sqlite PATCH-001 fixture missing",
+        "refused": true,
+        "reason": "Missing or foreign patch fixture/persistence observation"
+      },
+      {
+        "probe": "sqlite PATCH-002 actual retained due date fails original expectation",
+        "refused_as_pass": true
+      },
+      {
+        "probe": "sqlite LIST-004 physical query fails zero-query expectation",
+        "refused_as_pass": true
+      },
+      {
+        "probe": "postgres PATCH-003 storage change with zero traced writes",
+        "refused": true,
+        "reason": "Rejected patch storage changed despite zero traced writes"
+      },
+      {
+        "probe": "postgres PATCH-004 storage change with zero traced writes",
+        "refused": true,
+        "reason": "Rejected patch storage changed despite zero traced writes"
+      },
+      {
+        "probe": "postgres PATCH-001 fixture owner",
+        "refused": true,
+        "reason": "Changed patch fixture owner"
+      },
+      {
+        "probe": "postgres PATCH-001 fixture id",
+        "refused": true,
+        "reason": "Missing or foreign patch fixture/persistence observation"
+      },
+      {
+        "probe": "postgres PATCH-001 fixture date",
+        "refused": true,
+        "reason": "Missing originally due-dated patch fixture"
+      },
+      {
+        "probe": "postgres PATCH-001 fixture order",
+        "refused": true,
+        "reason": "Reordered patch fixture/request/persistence observations"
+      },
+      {
+        "probe": "postgres PATCH-001 fixture missing",
+        "refused": true,
+        "reason": "Missing or foreign patch fixture/persistence observation"
+      },
+      {
+        "probe": "postgres PATCH-002 actual retained due date fails original expectation",
+        "refused_as_pass": true
+      },
+      {
+        "probe": "postgres LIST-004 physical query fails zero-query expectation",
+        "refused_as_pass": true
+      },
+      {
+        "probe": "tampered extra ledger field despite matching expectation fields",
+        "refused": true,
+        "reason": "Ledger observations differ from raw observations"
+      },
+      {
+        "probe": "adapter source drift",
+        "refused": true,
+        "reason": "Stale or foreign harness provenance/schema"
+      },
+      {
+        "probe": "raw observed bytes drift",
+        "refused": true,
+        "reason": "Changed raw observations"
+      }
+    ],
+    "all_original_bytes_restored": true,
+    "source_and_compiler_match": true
+  },
+  "reviewed_invariants": [
+    "The original frozen IDs, expectations and obligation map remain unchanged; thirteen IDs execute on both real adapters while sixty-two entries retain explicit not_run reasons.",
+    "PATCH requests are taken from the frozen case. Alice/Bob and t1/t2 aliases map to fixed UUID fixture identities without deriving response expectations.",
+    "Safe actual database snapshots precede and follow each PATCH. Fixtures retain original due dates and checked owner identities; observations require exact before/request/after ordering and target identity.",
+    "PATCH-001 derives title and unchanged due date from stored values; PATCH-002 requires the original dated fixture before observing persisted null. Only zero millisecond textual normalization changes date representation.",
+    "PATCH-003/004 require both zero physically observed write statements and an unchanged complete safe database snapshot. A row change behind zero-write instrumentation is rejected.",
+    "LIST-004 executes the original page_size=101 request; its zero-query assertion derives from the actual physical SQL observation window.",
+    "New fixture-owner/identity/date/order/missing-storage challenges reject. Incorrect stored due dates and extra physical SELECT statements fail the original expected observations.",
+    "Extra ledger fields, adapter source drift and raw byte tampering reject; all original bytes restored and the source/compiler-bound report validates.",
+    "Generated original/instrumented files and dependency content hashes remain retained; full frozen-source gate and unsupported scenarios remain separate."
+  ],
+  "evidence_manifest": "tests/validation/evidence/golden-loop-harness-expansion-independent/manifest.json",
+  "limits": [
+    "This is thirteen-ID migrated application evidence, not execution of the original frozen source.",
+    "No full RM-109 acceptance, all 44-case closure, worker prerequisite closure, audit agreement closure or release-equivalence claim.",
+    "Own focused Python/checkpoint/probes only; root owns broader integration and hosted gates.",
+    "Provenance hashes are local integrity evidence and do not attest against coordinated malicious replacement of all report/source/evidence bytes."
+  ],
+  "conclusion": "Approve the pinned thirteen-ID partial checkpoint expansion. Own fresh real execution retains 26 passed, 0 failed and 62 not_run; all 21 independent integrity challenges behave as required."
+}

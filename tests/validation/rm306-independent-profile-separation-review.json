@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "task_id": "RM-306",
+  "kind": "independent-scoped-profile-separation-review",
+  "reviewed_author": "7f381954c19edbd2d780304a3da2da0333d3f7a5",
+  "tested_snapshot": "e6909456745ed341d1c95412ff30d041290c34e0",
+  "actual_model": "gpt-6.1-sol",
+  "actual_effort": "high",
+  "pin_basis": "Parent verified inherited settings; consequential semantic review bounded to immutable profile split.",
+  "scope_approval": "approved: separate mandatory native activation and per-delivery profiles",
+  "checks": [
+    {
+      "kind": "fresh CLI build",
+      "result": "pass",
+      "seconds": 20.28
+    },
+    {
+      "kind": "canonical pinned jose cache verification",
+      "result": "pass"
+    },
+    {
+      "kind": "unmodified focused authored profile tests",
+      "sqlite": {
+        "passed": 3,
+        "failed": 0,
+        "assertions": 39
+      },
+      "postgres": {
+        "passed": 3,
+        "failed": 0,
+        "assertions": 39
+      }
+    },
+    {
+      "kind": "independent expanded malformed profile matrix + activation deadline test",
+      "sqlite": {
+        "passed": 4,
+        "failed": 0,
+        "assertions": 73
+      },
+      "postgres": {
+        "passed": 4,
+        "failed": 0,
+        "assertions": 73
+      },
+      "extra_refusals_per_adapter": 22
+    }
+  ],
+  "findings": [],
+  "verified_semantics": [
+    "Both profile arguments mandatory; neither uses the other as fallback. Exact own-key finite safe-integer validation precedes authentication/DB enrollment.",
+    "Activation 10000ms execution/5000ms lease independently persists from delivery 60000ms/40000ms.",
+    "Delivery ledger retains maxInvocations=3, lifetimeMs=3600000 and its own profile.",
+    "Shorter activation execution deadline clamps provider work; renewals preserve original page/deadline and unfinished work."
+  ],
+  "owner_decisions": {
+    "per_delivery": "Owner explicitly approved 60000ms/renewable 40000ms.",
+    "whole_500_scan": "Separate explicit owner approval of 60000ms/renewable 40000ms is recorded in current integration decision register. Equal approved values do not merge authorities.",
+    "historical_manifest": "Author manifest predates scan decision and remains unchanged."
+  },
+  "limitations": [
+    "Native generated orchestration component review, not a public activation/source API or full 18-case golden closure.",
+    "Unknown/native accessor hardening is outside scope.",
+    "Retained mock-provider timings are not production latency or a guarantee of 500 calls in 60 seconds.",
+    "Known clean-database owning-COMMIT negative test schema lookup/order failure from prior review remains uncorrected here. Focus deliberately includes existing schema-positive control; that control does not fix the retained failure."
+  ],
+  "prior_review_preserved": {
+    "path": "/private/tmp/jadpo-parallel-integration/tests/validation/rm307-independent-generated-recovery-review.json",
+    "sha256": "0672f2a8909eac44523782bb90991d39a2e5ed03082829a01d7b07372c8602c4"
+  },
+  "timer": "RM-306-8bf1850fdd71",
+  "evidence_directory": "/private/tmp/jadpo-parallel-integration/tests/validation/evidence/golden-loop-profile-separation-independent",
+  "source_hashes": {
+    "delivery_scheduler.rs": "7b6a20518cba3a53cb8521249bccf4e934bbfac7af14b0edb82eccb8ffb67681",
+    "delivery_invocation.rs": "69c46c233fa296475d53b59178c9ed07e313b0c923ea5ba1bd7e32c5c5e591b9",
+    "profile-author-test.ts": "c44df6916468fbe09d8584be7f6598cb618c5e42ead8cbf014fb106866d4fd21",
+    "atomic-author-test.ts": "a6da400cac1726d11ee55134863608f995d4ae3cb36921ab3c528e8cce1892f0"
+  },
+  "recorded_at": "2026-10-06T06:23:59.472589+00:00"
+}

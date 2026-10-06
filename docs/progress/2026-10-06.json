@@ -291,7 +291,7 @@
       "id": "RM-307",
       "epic": "E03",
       "description": "Implement scheduling and worker execution with bounded selection, retries, cancellation and replay; pass duplicate/crash/exhaustion tests with controlled clocks.",
-      "state": "queued",
+      "state": "in progress",
       "depends_on": "RM-306, RM-304",
       "estimate": "2\u20138h (N)",
       "hours": [
@@ -1131,25 +1131,25 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T04:27:24+01:00",
+  "captured_at": "2026-10-06T07:28:16+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "74713b02ba48a60fc062aaf2cc5953cf693a72a4444e06e5b974f6bc6797d603",
+    "docs/implementation-roadmap.md": "df8ba8a3e61be60304970fb584e03be56e4e3e115411aa9ee06c500defce5c59",
     "docs/implementation-history.md": "3719a84aae5f217b59f3196b2fb757b3b3d632f24a3e2d3da00f0092545db4f6",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "e161d8663d330fee352ca54790b019bd521b1e1aedbaf1d2123b418202c20b6c",
+    "docs/work-plans/golden-delivery-planning.md": "6dde1a0b1babfe4ff61746bf31da98251c22081d7bd2da9c59d07082d9c22fa1",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "The parallel golden delivery batch added reviewed activation renewal and real generated HTTP observations on both databases. All 67 supported checks pass; the full golden gate remains open.",
+    "summary": "The golden Todo harness now checks 18 original case IDs through real HTTP on both databases. Worker crash recovery and separate scan/delivery limits have scoped evidence; full golden completion remains open.",
     "delivered": [
-      "Singleton activation renews its durable live lease between delivery intents, with database time and strict duration decoding; generated crash/reclaim acceptance remains open. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).",
-      "Eight original golden HTTP IDs pass on SQLite and PostgreSQL (16 entries); 72 remain unexecuted. Real failures led to reviewed constant liveness and accepted 422 input corrections. [Independent reviews](../../tests/validation/rm109-independent-boundary-correction-review.json).",
-      "The integrated compiler/runtime and supporting HTTP checkpoint pass 67 registered checks. [Fresh report](../../build/validation/20261006T041625-33809/report.json)."
+      "The independently reviewed supporting harness records 36 passed and 52 unexecuted case/backend entries; a fresh combined verifier passed 67/67. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).",
+      "Separate generated workers exercise crash recovery, stale-claim fencing, uncertainty containment and 500-row continuation; complete checked worker conformance is still in progress. [Recovery review](../../tests/validation/rm307-independent-generated-recovery-review.json).",
+      "The owner approved separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06)."
     ],
-    "next": "Generate the separate-process crash/reclaim traces while expanding real golden case observations; then integrate the checked reminder worker using the approved 60s execution / renewable 40s lease profile.",
-    "input_needed": "None for the delivered bounded batch. The separate singleton activation profile must be selected before public activation; full golden prerequisites remain open."
+    "next": "Continue the parallel loop: pagination/relation/repeat-deletion acceptance cases, worker retry/cancellation, and checked public worker integration before complete golden acceptance.",
+    "input_needed": "No current blocking owner decision recorded. Both scan and individual-delivery limits are approved."
   },
   "changes": {
     "completed": [],

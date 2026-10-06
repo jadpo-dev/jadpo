@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "task_id": "RM-307",
+  "kind": "independent-fixed-atomic-source-recovery-correction-review",
+  "reviewed_author": "e6909456745ed341d1c95412ff30d041290c34e0",
+  "parent": "7f381954c19edbd2d780304a3da2da0333d3f7a5",
+  "prior_reviewed_author": "aaa1faa537165283b58f5ce9cca947200fd72b60",
+  "actual_model": "gpt-6.1-sol",
+  "actual_effort": "high",
+  "scope_approval": "approved: corrected atomic COMMIT-CRASH and OUTBOX-ROLLBACK at generated private orchestration boundaries; four previously approved recovery IDs remain passing",
+  "task_complete": false,
+  "full_18_case_public_conformance_closed": false,
+  "checks": [
+    {
+      "kind": "fresh CLI compile + canonical cached JWT dependency",
+      "evidence": "../golden-loop-profile-separation-independent/fresh-build.log and jwt-cache-verification.log",
+      "result": "pass"
+    },
+    {
+      "kind": "unaltered immutable author focused runtime tests",
+      "sqlite": {
+        "passed": 5,
+        "failed": 0,
+        "assertions": 70
+      },
+      "postgres": {
+        "passed": 5,
+        "failed": 0,
+        "assertions": 70
+      }
+    },
+    {
+      "kind": "independent provider before-effect committed-state assertions",
+      "sqlite": {
+        "passed": 5,
+        "failed": 0,
+        "assertions": 3094
+      },
+      "postgres": {
+        "passed": 5,
+        "failed": 0,
+        "assertions": 3094
+      }
+    },
+    {
+      "kind": "retained negative owning-COMMIT test selected FIRST on clean database, without a positive schema control",
+      "sqlite": {
+        "passed": 0,
+        "failed": 1,
+        "assertions": 3,
+        "exit_code": 1,
+        "fault": "no such table: __jadpo_deliveries_v1"
+      },
+      "postgres": {
+        "passed": 0,
+        "failed": 1,
+        "assertions": 3,
+        "exit_code": 1,
+        "fault": "relation __jadpo_deliveries_v1 does not exist"
+      },
+      "disposition": "Known harness assertion-order/schema-lookup limitation confirmed, not fixed by this commit; original red evidence remains retained."
+    }
+  ],
+  "corrected_finding": {
+    "previous": "Original aaa1faa crash trace created the source in the parent first, so it proved page recovery only.",
+    "now": "Source is absent before child. One generated policy-bound transaction performs create_Todo, revision hook, checked selector enrollment and staged page. Test marker is written only after owning COMMIT resolves; child is SIGKILLed before dispatch. Fresh worker recovers same ID/payload/version/source revision1 exactly once.",
+    "prior_report_path": "/private/tmp/jadpo-parallel-integration/tests/validation/rm307-independent-generated-recovery-review.json",
+    "prior_report_sha256": "0672f2a8909eac44523782bb90991d39a2e5ed03082829a01d7b07372c8602c4",
+    "original_review_rewritten": false
+  },
+  "atomic_rollback": "The same child transaction runs all source/revision/enrollment/page work before deliberate abort. Parent separate connection sees source absent, revision absent, zero intents and zero activation; fresh worker selects zero and sends zero.",
+  "provider_boundary_observations": {
+    "sqlite": {
+      "calls": 504,
+      "distinct_intent_ids": 504,
+      "maximum_page_size": 500,
+      "all_source_revisions": "1",
+      "all_possible_dispatch": 1
+    },
+    "postgres": {
+      "calls": 504,
+      "distinct_intent_ids": 504,
+      "maximum_page_size": 500,
+      "all_source_revisions": "1",
+      "all_possible_dispatch": 1
+    }
+  },
+  "frozen_case_mapping": [
+    {
+      "id": "ASYNC-OUTBOX-ROLLBACK",
+      "setup": "A source action mutates an authority row and enqueues one delivery in the same transaction.",
+      "fault": "The transaction aborts before commit.",
+      "expect": "Neither mutation, change revision nor deliverable intent is visible.",
+      "review_scope": "generated private orchestration component evidence"
+    },
+    {
+      "id": "ASYNC-COMMIT-CRASH",
+      "setup": "Mutation and outbox intent commit together.",
+      "fault": "The process crashes before publishing an in-memory wakeup.",
+      "expect": "Restart discovers exactly one durable intent with its original ID and version.",
+      "review_scope": "generated private orchestration component evidence"
+    },
+    {
+      "id": "ASYNC-LEASE-RECLAIM-FENCE",
+      "setup": "Worker A claims a pending intent with fencing generation n.",
+      "fault": "A's lease expires before any possible-effect checkpoint and worker B reclaims it.",
+      "expect": "B receives a greater generation; A cannot later acknowledge or checkpoint state.",
+      "review_scope": "generated private orchestration component evidence"
+    },
+    {
+      "id": "ASYNC-STALE-WORKER-AFTER-DISPATCH",
+      "setup": "Worker A commits possible dispatch before its lease expires.",
+      "fault": "Worker B attempts a reclaim while A's provider outcome is absent.",
+      "expect": "The intent is outcome_unknown and no second provider dispatch occurs.",
+      "review_scope": "generated private orchestration component evidence"
+    },
+    {
+      "id": "ASYNC-UNKNOWN-NO-REPLAY",
+      "setup": "A provider may have accepted an intent, but the acknowledgement is lost.",
+      "fault": "Worker restarts and a new interval scan runs.",
+      "expect": "The same intent remains inspectable and blocked; no automatic retry or resend occurs.",
+      "review_scope": "generated private orchestration component evidence"
+    },
+    {
+      "id": "ASYNC-BOUNDED-CONTINUATION",
+      "setup": "A scan has more than 500 eligible stable test rows.",
+      "fault": "The activation reaches its row bound and the process restarts.",
+      "expect": "A durable keyset continuation resumes without gaps or duplicate effects; each activation remains bounded.",
+      "review_scope": "generated private orchestration component evidence"
+    }
+  ],
+  "independent_assertions": [
+    "Separate provider-side DB connection sees committed possible_dispatch=1 and exact intent membership in durable page before each effect.",
+    "Source row exists and schedule revision equals immutable intent sourceRevision before every effect.",
+    "HTTP Idempotency-Key equals immutable payload key; pages never exceed500.",
+    "Actual separate child processes/SIGKILL, generation fence refusal, retained unknown with no resend, and fresh-worker 500+1 continuation remain directly exercised."
+  ],
+  "findings": [
+    {
+      "severity": "P2",
+      "classification": "retained harness limitation, previously reported",
+      "scope": "owning page COMMIT failure test when selected first on empty DB",
+      "details": "Rollback correctly removes lazy-created delivery schema; assertion then assumes it exists. Confirmed on both adapters. Upcoming writer fix is not in e690945."
+    }
+  ],
+  "limitations": [
+    "No product source changes in e690945 beyond its inherited separately reviewed profile split.",
+    "Complete checked fixture and production renderer are used; test-owned native policy/clock/profile seams remain. This is not public authored golden-worker evidence or all18 conformance.",
+    "General native host accessors, upcoming public API lowering and later retry/cancellation traces are outside this fixed review.",
+    "Local mock provider latency does not establish production throughput, exactly-once provider effects or500 dispatches within60 seconds.",
+    "Original aaa1faa evidence and prior review are preserved unchanged; its COMMIT case is still classified page-only support."
+  ],
+  "evidence_directory": "/private/tmp/jadpo-parallel-integration/tests/validation/evidence/golden-loop-atomic-correction-independent",
+  "source_test_sha256": "a6da400cac1726d11ee55134863608f995d4ae3cb36921ab3c528e8cce1892f0",
+  "timer": "RM-307-0484906745e4",
+  "recorded_at": "2026-10-06T06:26:52.388128+00:00"
+}

@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-307-0484906745e4", "task_id": "RM-307", "actor": "boundary-review-atomic", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T06:24:00.360124+00:00", "phase": "planning"}
+{"at": "2026-10-06T06:24:22.506781+00:00", "phase": "verification", "note": "Independent SQLite/PostgreSQL fixed atomic source transaction and crash/rollback checks."}
+{"at": "2026-10-06T06:26:51.918165+00:00", "phase": "review", "note": "Check exact frozen catalogue mapping, source/log hashes and preserve prior clean-database negative failure."}
+{"at": "2026-10-06T06:27:08.471453+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm307-independent-atomic-source-recovery-correction-review.json"}

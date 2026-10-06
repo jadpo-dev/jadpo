@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T04:27:24+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T07:28:16+01:00 · figures reflect the recorded roadmap.
 
-The parallel golden delivery batch added reviewed activation renewal and real generated HTTP observations on both databases. All 67 supported checks pass; the full golden gate remains open.
+The golden Todo harness now checks 18 original case IDs through real HTTP on both databases. Worker crash recovery and separate scan/delivery limits have scoped evidence; full golden completion remains open.
 
 ## At a glance
 
@@ -11,18 +11,18 @@ The parallel golden delivery batch added reviewed activation renewal and real ge
 | Completed since task-ID tracking began | 19 |
 | Remaining open tasks | 84 |
 | Of those, conditional / not activated | 28 |
-| In progress | 9 |
+| In progress | 10 |
 | Marked ready for work | 4 |
-| Queued behind dependencies | 20 |
+| Queued behind dependencies | 19 |
 | Decision / blocked / external / review | 23 |
 
 Completed counts cover the reorganised roadmap, not all earlier development. Older capabilities are in the history; there is no reliable whole-project percentage.
 
 ## Delivered
 
-- Singleton activation renews its durable live lease between delivery intents, with database time and strict duration decoding; generated crash/reclaim acceptance remains open. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
-- Eight original golden HTTP IDs pass on SQLite and PostgreSQL (16 entries); 72 remain unexecuted. Real failures led to reviewed constant liveness and accepted 422 input corrections. [Independent reviews](../../tests/validation/rm109-independent-boundary-correction-review.json).
-- The integrated compiler/runtime and supporting HTTP checkpoint pass 67 registered checks. [Fresh report](../../build/validation/20261006T041625-33809/report.json).
+- The independently reviewed supporting harness records 36 passed and 52 unexecuted case/backend entries; a fresh combined verifier passed 67/67. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
+- Separate generated workers exercise crash recovery, stale-claim fencing, uncertainty containment and 500-row continuation; complete checked worker conformance is still in progress. [Recovery review](../../tests/validation/rm307-independent-generated-recovery-review.json).
+- The owner approved separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06).
 
 ## Since the previous report
 
@@ -56,10 +56,10 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Generate the separate-process crash/reclaim traces while expanding real golden case observations; then integrate the checked reminder worker using the approved 60s execution / renewable 40s lease profile.
+Continue the parallel loop: pagination/relation/repeat-deletion acceptance cases, worker retry/cancellation, and checked public worker integration before complete golden acceptance.
 
 ## Input needed
 
-None for the delivered bounded batch. The separate singleton activation profile must be selected before public activation; full golden prerequisites remain open.
+No current blocking owner decision recorded. Both scan and individual-delivery limits are approved.
 
 [Roadmap](../implementation-roadmap.md) · [Completed evidence](../implementation-history.md) · [Estimate basis](../task-timing/README.md) · [Reporting rules](README.md)

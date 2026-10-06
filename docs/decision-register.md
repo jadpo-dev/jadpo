@@ -15,8 +15,13 @@ per-delivery claim lease** for the golden reminder worker (RM-108). This is a
 golden-only profile, not a universal job default or measured hard runtime bound. Renewal
 uses authoritative database time and the current claim generation, never
 extends the execution deadline, and cannot revive an expired or reclaimed claim.
-The singleton selection activation has a separate bounded page profile; these
-values do not authorise 500 sequential provider calls within one execution.
+In a separate explicit answer on 2026-10-06, the owner also selected a
+**60-second execution limit and renewable 40-second lease for the whole
+singleton reminder scan** (up to 500 items). Activation and per-delivery profiles
+remain separately validated and persisted; matching numbers do not alias their
+authority. Unfinished work stays durably staged for continuation. These bounds
+do not promise 500 sequential provider calls within 60 seconds. A 120-second scan
+with the same 40-second lease was considered and not selected.
 The existing three scheduled invocations within one hour, provider budget of
 three attempts within thirty seconds, and no automatic resend after uncertainty
 remain unchanged.

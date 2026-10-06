@@ -1,0 +1,388 @@
+{
+  "schema_version": 1,
+  "task_id": "RM-307",
+  "review_kind": "independent_generated_private_recovery_traces",
+  "recorded_at": "2026-10-06T06:17:31.901961+00:00",
+  "fixed_author_revision": "aaa1faa537165283b58f5ce9cca947200fd72b60",
+  "author_parent_revision": "ef83d48e92e771986dc43aca0c20249805add34b",
+  "integration_revision_at_assignment": "193fef222d779b233370759c98eac3c287d77965",
+  "capture": "git archive of immutable author revision; writer later changes not read into review",
+  "capture_archive_sha256": "dc42c1dc061466dee781f290099b3826399f3f77d0701ea569064b12f791fdce",
+  "model": {
+    "actual": "gpt-6.1-sol",
+    "reasoning": "high",
+    "actual_evidence": "Full-history inherited verified parent settings and task handoff; no override",
+    "batch_pin": "gpt-6.1-sol/high",
+    "reason": "Consequential transaction/effect recovery review; pin retained across build, both-adapter runs, adversarial probes and reporting."
+  },
+  "verdict": "approved_four_generated_private_traces_with_one_partial_catalogue_mapping",
+  "scope": "Fixed test/evidence-only author commit. Generated private scheduler/persistence/invocation boundaries, actual separate worker processes, disposable SQLite/PostgreSQL databases and loopback reference provider. Public authored worker remains disabled; no whole18/public/golden/release closure.",
+  "production_source_changed_by_author_commit": false,
+  "frozen_catalogue_changed_by_author_commit": false,
+  "frozen_catalogue_sha256": "348c1a963cc6724dae529082032f8dd0a07fe782fc520a51376d030ea21ccbca",
+  "approved_catalogue_ids": [
+    "ASYNC-LEASE-RECLAIM-FENCE",
+    "ASYNC-STALE-WORKER-AFTER-DISPATCH",
+    "ASYNC-UNKNOWN-NO-REPLAY",
+    "ASYNC-BOUNDED-CONTINUATION"
+  ],
+  "partially_supported_catalogue_ids": [
+    "ASYNC-COMMIT-CRASH"
+  ],
+  "case_assessments": [
+    {
+      "id": "ASYNC-COMMIT-CRASH",
+      "verdict": "supporting_page_intent_recovery_only",
+      "fully_matches_catalogue_setup": false,
+      "frozen": {
+        "id": "ASYNC-COMMIT-CRASH",
+        "area": "atomic-enqueue",
+        "setup": "Mutation and outbox intent commit together.",
+        "fault": "The process crashes before publishing an in-memory wakeup.",
+        "expect": "Restart discovers exactly one durable intent with its original ID and version."
+      },
+      "observed": "Child transaction ticks and claims activation, selects/enrolls durable intent, stages page, and returns from owning COMMIT before writing marker. Parent SIGKILLs waiting child; fresh process sends original payload once, preserves intent ID/version, and records succeeded state.",
+      "gap": "Fixture creates and commits source Todo earlier in parent. This test does not place a source mutation and durable intent in the same owning transaction as the frozen atomic-enqueue setup requires.",
+      "required_correction": "Separate immutable trace with actual generated source create/mutation plus checked enrollment/page inside the same owning transaction before acknowledged COMMIT and SIGKILL. Writer acknowledged and is preparing that correction; not reviewed here."
+    },
+    {
+      "id": "ASYNC-LEASE-RECLAIM-FENCE",
+      "verdict": "approved_generated_private_trace",
+      "fully_matches_catalogue_setup": true,
+      "frozen": {
+        "id": "ASYNC-LEASE-RECLAIM-FENCE",
+        "area": "claim-and-fencing",
+        "setup": "Worker A claims a pending intent with fencing generation n.",
+        "fault": "A's lease expires before any possible-effect checkpoint and worker B reclaims it.",
+        "expect": "B receives a greater generation; A cannot later acknowledge or checkpoint state."
+      },
+      "observed": "Process A holds generation1 before dispatch. Disposable DB lease is forced to canonical past UTC; fresh worker B completes one send with generation2/invocations2. A resumes and receives checkpoint:false, renewal:null, outcome:false; state remains succeeded and provider call count remains1."
+    },
+    {
+      "id": "ASYNC-STALE-WORKER-AFTER-DISPATCH",
+      "verdict": "approved_generated_private_trace",
+      "fully_matches_catalogue_setup": true,
+      "frozen": {
+        "id": "ASYNC-STALE-WORKER-AFTER-DISPATCH",
+        "area": "claim-and-fencing",
+        "setup": "Worker A commits possible dispatch before its lease expires.",
+        "fault": "Worker B attempts a reclaim while A's provider outcome is absent.",
+        "expect": "The intent is outcome_unknown and no second provider dispatch occurs."
+      },
+      "observed": "Process A holds actual generated adapter receipt after committed possible-dispatch and one provider acceptance. Lease expiry lets fresh B contain outcome_unknown without a second effect. A completion returns false; receipt table and sent mark remain empty; payload/ID persist."
+    },
+    {
+      "id": "ASYNC-UNKNOWN-NO-REPLAY",
+      "verdict": "approved_generated_private_trace",
+      "fully_matches_catalogue_setup": true,
+      "frozen": {
+        "id": "ASYNC-UNKNOWN-NO-REPLAY",
+        "area": "effect-certainty",
+        "setup": "A provider may have accepted an intent, but the acknowledgement is lost.",
+        "fault": "Worker restarts and a new interval scan runs.",
+        "expect": "The same intent remains inspectable and blocked; no automatic retry or resend occurs."
+      },
+      "observed": "After A cannot persist acknowledgement and B stores outcome_unknown, later interval and fresh process preserve same inspectable intent/payload/state. Total provider calls remains1; no implicit new intent, resend or sent mark."
+    },
+    {
+      "id": "ASYNC-BOUNDED-CONTINUATION",
+      "verdict": "approved_generated_private_trace",
+      "fully_matches_catalogue_setup": true,
+      "frozen": {
+        "id": "ASYNC-BOUNDED-CONTINUATION",
+        "area": "bounded-selection",
+        "setup": "A scan has more than 500 eligible stable test rows.",
+        "fault": "The activation reaches its row bound and the process restarts.",
+        "expect": "A durable keyset continuation resumes without gaps or duplicate effects; each activation remains bounded."
+      },
+      "observed": "501 stable Todos: fresh process1 sends bounded500 and commits non-null cursor/continuation with released activation; fresh process2 sends remaining1 and clears cursor.501 distinct durable intent keys/provider calls and501 sent rows establish no gaps/duplicate effects for this stable fixture."
+    }
+  ],
+  "findings": [
+    {
+      "id": "RM307-COMMIT-CRASH-ATOMIC-SOURCE-SETUP",
+      "priority": 2,
+      "kind": "evidence_scope_gap",
+      "blocks": "Claim that this immutable test fully executes the frozen ASYNC-COMMIT-CRASH atomic-enqueue setup",
+      "does_not_block": "Approval of actual page/intent crash recovery or four other private recovery traces",
+      "details": "Fixture creates and commits source Todo earlier in parent. This test does not place a source mutation and durable intent in the same owning transaction as the frozen atomic-enqueue setup requires.",
+      "location": "tests/runtime/delivery-hook-components.test.ts:734",
+      "resolution": "Writer acknowledged; separate immutable correction required."
+    },
+    {
+      "id": "RM307-PAGE-COMMIT-TEST-SCHEMA-ORDER",
+      "priority": 3,
+      "kind": "existing_test_setup_dependence",
+      "blocks": "Standalone selection of the pre-existing owning-page-COMMIT-failure test in a clean database without prior schema creation",
+      "details": "Deferred owning COMMIT rolls back lazy __jadpo_deliveries_v1 table creation. The assertion then directly SELECTs that missing table. This is correct rollback plus test schema-order dependence, not observed product regression. Failed independent logs retained for both adapters; existing committed-dispatch positive control initializes schema and both negative tests pass.",
+      "resolution": "Future fixture setup should explicitly initialize required private schema or accept no table as no intent; no product/source fix performed by reviewer."
+    }
+  ],
+  "checks": {
+    "fresh_cli_build": {
+      "command": "cargo build --manifest-path jadpo/Cargo.toml --locked -p jadpo-cli --target-dir /private/tmp/jadpo-recovery-independent/cargo-target",
+      "passed": true,
+      "cargo_duration_seconds": 15.49,
+      "binary_sha256": "349dad9eb9a091319da5ae70fad0d57d6a78e7370d68b223f9d994bbf715e9a7",
+      "log": "fresh-build.log"
+    },
+    "fresh_component_generation": {
+      "command": "cargo test --manifest-path jadpo/Cargo.toml -p jadpo-core --lib target::tests::delivery_schedule_hook_components_keep_full_execution_disabled -- --exact",
+      "passed_tests": 1,
+      "target_dir": "independent cargo-target",
+      "log": "component-generation.log",
+      "public_target_refusal_asserted": "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
+    },
+    "canonical_jwt_cache": {
+      "integrity_and80_installed_files_verified": true,
+      "version": "6.2.12",
+      "log": "jwt-cache-verification.log"
+    },
+    "unmodified_author_tests": [
+      {
+        "adapter": "sqlite",
+        "passed": 4,
+        "failed": 0,
+        "assertions": 53,
+        "log": "sqlite-author-focus.log"
+      },
+      {
+        "adapter": "postgres",
+        "passed": 4,
+        "failed": 0,
+        "assertions": 53,
+        "log": "postgres-author-focus.log"
+      }
+    ],
+    "independent_adversarial_final": [
+      {
+        "adapter": "sqlite",
+        "passed": 7,
+        "failed": 0,
+        "assertions": 2100,
+        "log": "sqlite-adversarial-final.log"
+      },
+      {
+        "adapter": "postgres",
+        "passed": 7,
+        "failed": 0,
+        "assertions": 2100,
+        "log": "postgres-adversarial-final.log"
+      }
+    ],
+    "retained_setup_failure": [
+      {
+        "adapter": "sqlite",
+        "passed": 5,
+        "failed": 1,
+        "assertions": 2079,
+        "reason": "Pre-existing page-COMMIT negative selected before lazy schema initialization",
+        "log": "sqlite-adversarial-focus.log"
+      },
+      {
+        "adapter": "postgres",
+        "passed": 5,
+        "failed": 1,
+        "assertions": 2079,
+        "reason": "Pre-existing page-COMMIT negative selected before lazy schema initialization",
+        "log": "postgres-adversarial-focus.log"
+      }
+    ],
+    "author_full_suite": {
+      "sqlite": {
+        "passed": 69,
+        "skipped": 1,
+        "assertions": 775
+      },
+      "postgres": {
+        "passed": 68,
+        "skipped": 1,
+        "assertions": 696
+      },
+      "provenance": "Author retained logs/source hashes independently checked; full suite not rerun because this commit changes four tests only and targeted independent/adversarial runs resolve the relevant boundaries."
+    }
+  },
+  "provider_commit_observations": {
+    "sqlite": {
+      "actual_provider_calls_observed": 506,
+      "recovery_trace_calls": 504,
+      "additional_positive_control_calls": 2,
+      "all_possible_dispatch_committed": true,
+      "all_durable_pages_contain_intent": true,
+      "all_pages_at_most500": true,
+      "all_body_header_keys_equal": true,
+      "generation_values": [
+        "1",
+        "2"
+      ],
+      "observations": "sqlite-provider-final-observations.json"
+    },
+    "postgres": {
+      "actual_provider_calls_observed": 506,
+      "recovery_trace_calls": 504,
+      "additional_positive_control_calls": 2,
+      "all_possible_dispatch_committed": true,
+      "all_durable_pages_contain_intent": true,
+      "all_pages_at_most500": true,
+      "all_body_header_keys_equal": true,
+      "generation_values": [
+        "1",
+        "2"
+      ],
+      "observations": "postgres-provider-final-observations.json"
+    }
+  },
+  "adversarial_method": "Reviewer changed only the temporary test helper, adding provider-side checks read through a separate database connection: possible_dispatch=1, current durable page contains request intent, page<=500, Idempotency-Key header equals body. No generated product modules were rewritten. Existing positive dispatch and deferred owning page/admission COMMIT-failure tests were selected as controls. Both negative owning failures forbid dispatcher grant/effect and retain no newly committed intent/claim.",
+  "generated_source_method": "Rust component renderer analyzes the complete migrated source plus reminder-delivery-v1 fixture and explicit ReminderIntentId successor substitution. It uses production app/auth/persistence/service renderers while derive_target still refuses the authored job. Direct component sink is private test orchestration, not public executable job support.",
+  "test_profile": {
+    "activation_execution_ms": 120000,
+    "activation_lease_ms": 90000,
+    "per_delivery_execution_ms": 120000,
+    "per_delivery_lease_ms": 90000,
+    "authority": "Explicit test-owned component inputs, not approved public defaults",
+    "golden_owner_approval": "60s execution / renewable40s per delivery only; separate scan-wide activation profile pending and next writer profile separation is outside this fixed revision"
+  },
+  "fault_injection": "Disposable claim/activation lease timestamps set to canonical past UTC to cause real database-clock reclaim. Actual owning COMMIT success/failure and separate process SIGKILL/resume/restart are observed; no90s wall-time lease soak or production scheduling latency claim.",
+  "limitations": [
+    "Four approved traces plus narrower page/intent recovery do not close the18-case catalogue.",
+    "Immediate loopback mock provider cannot size500-call production activation latency, deadlines or provider capacity.",
+    "No public full-target job activation, complete goldenTodo gate, publishing or production egress performed.",
+    "No review of upcoming profile/API separation or atomic source-plus-intent correction; each needs its own immutable review.",
+    "Independent review forecast1\u20134h was recorded at start; author whole RM-307 forecast2\u20138h remains unchanged."
+  ],
+  "timer_run": "RM-307-69e617fb0f9f",
+  "task_state": "partial; bounded review complete with explicit remaining catalogue/setup correction",
+  "source_sha256": {
+    "jadpo/Cargo.lock": "ae5d31716d20efa412c2616e3ac681b4cfd81b6fa9fdf3ad9d418c8597975d0d",
+    "jadpo/Cargo.toml": "942c04f3da0eb94620b358505af93bbbd00f34c483e40a218e0075954b5d1c79",
+    "jadpo/crates/cli/Cargo.toml": "224a9a7c391f1df093b85ca90141d1b9d9f690f3d9d133371f788d8f37fed439",
+    "jadpo/crates/cli/src/experimental_build.rs": "49d3379e3123fa3bc6a7b975d5e8cbee58ce26790ec03b14ba29ac2d4adaad84",
+    "jadpo/crates/cli/src/lsp.rs": "324488928a33d8ea9d6a19dfe26a49241221f86306881defb7490a7b4b9c7122",
+    "jadpo/crates/cli/src/main.rs": "dafb7cb42f2389382eb79abaf3f746324cb205ca95a22320becc5af9e359e06f",
+    "jadpo/crates/cli/src/terminal.rs": "6d462884fc857d8753add8462382f6cb68713adb7596c635721920318c7d217e",
+    "jadpo/crates/cli/tests/configuration_cli.rs": "b1089623342e55ad10954407a23e70238bf704fb39d09c54cca840814aa5169c",
+    "jadpo/crates/cli/tests/experimental_build_command.rs": "9e96d0a553fb07b002e2d6c43cf3d42dc07d9b18c3d1193dec0702f0cd6224ba",
+    "jadpo/crates/cli/tests/validation_test_command.rs": "80f57ffc3c4b868311a52bf50651812e42cd4df4c524fe02c539c59bfc119d0c",
+    "jadpo/crates/cli/tests/validation_tooling_protocol.rs": "5d15741bc08fdd0f001feab6a2dc5d718824aa962cf6ee614d8c92123a70b1c1",
+    "jadpo/crates/cli/tests/watch_protocol.rs": "edcd3f09375a6da4fbfadd5b0c83203e528f09942990c502e0c34f5e3d168ed6",
+    "jadpo/crates/core/Cargo.toml": "67855023496223af0a1319988fbd0e4cf359d8f8ebafa64c76584de4c5c698a9",
+    "jadpo/crates/core/build.rs": "d8bcd76d384e363c3d19d65afee19a77beffedb9f18cbd000973f4fc53c86e7d",
+    "jadpo/crates/core/src/artifacts/approval/actor_links.rs": "39a9198aa2059b93e83b5ac0f5f419ee5e672d068ede2c9d1e34765d28fc24c2",
+    "jadpo/crates/core/src/artifacts/approval/field_contracts.rs": "d005d7210e0a1635574a3b204231dc01afaa0195222e099dd99f98672ab6b850",
+    "jadpo/crates/core/src/artifacts/approval.rs": "6e7069f3a8cda966b8e83ba97deb159cb4520ba50847d02c811827504104d050",
+    "jadpo/crates/core/src/artifacts/artifact_provenance.rs": "3cc42e62d6077ce027042ab97b2fde6a973e668549ca494e285dfc1c354f09ed",
+    "jadpo/crates/core/src/artifacts.rs": "dc6ad96cad3cbd52d3bc00565f11cb9d2c3b5322e98de599448e485c88df6e1b",
+    "jadpo/crates/core/src/configuration.rs": "1f03fa656bb631f07b66c9c007494e42eade1742e782bcc2cbad02dc3bd1a237",
+    "jadpo/crates/core/src/delivery/graph.rs": "f3e512969e14f48d41b6fd95a795146387529ab608004861faf3224001aff379",
+    "jadpo/crates/core/src/delivery.rs": "89b4823891f2dd25db3e6c67c86605e02428b8d76a320a54400ef1dcf1af81ef",
+    "jadpo/crates/core/src/delivery_hooks/facts.rs": "0d0eed14546ae749bf85da6383b431009808a88cd73aa6a6767f360198fdae54",
+    "jadpo/crates/core/src/delivery_hooks.rs": "33dc31cad8bb7d22c5a5b56701e97da16a6f077b3b8ca6f79dc79b872e01206a",
+    "jadpo/crates/core/src/delivery_phases/model.rs": "568573d8f6be3badb51e45599f330c60cbf21785dd3a002382800a80a62cf3c3",
+    "jadpo/crates/core/src/delivery_phases.rs": "01fad5c603eef007187a15c6d3197925994ea4c4556f7516ca7aadf275c46b0c",
+    "jadpo/crates/core/src/entity_model.rs": "c5132636604a548fce5a8a6ec6b2ab1d581515c5dafea6216eac92c6ce542daa",
+    "jadpo/crates/core/src/formatter.rs": "bbbee991955a5784d42114ec88bdc3bc075ed561b9dd879823c70f223007fa22",
+    "jadpo/crates/core/src/index_advisor.rs": "08a5487f804625fcb114a79ddd531c265563abb819a7290e64eada9f309ad5a9",
+    "jadpo/crates/core/src/language_service.rs": "5f2b20f2031bb5f4a204dad6b26a57c663704d7a008e8ce59d7382638b4fa731",
+    "jadpo/crates/core/src/lib.rs": "b6058d4471f9a8538e184be840f72d2d2d36fdb14a8c7dc31759e7256377f57e",
+    "jadpo/crates/core/src/migration_identity.rs": "3d43e59a6521a39f7fc0cb17df4e3b86a94ed08ac0e7e2c37461a2bdc930703f",
+    "jadpo/crates/core/src/policy.rs": "a064d752ba4f40a6e8279f64a55fa2d61d5ee9a313aa3f25775d31419730d368",
+    "jadpo/crates/core/src/runtime/declared_credential_storage.ts": "be80da13c88aeb585c5038f98e39609419ee98c937e630793c8a7b31d9969d7f",
+    "jadpo/crates/core/src/runtime/delivery_claims.ts": "767b61acd07af987767ccf60b0d73a38c81c15bdfa85082a824a003c554936d8",
+    "jadpo/crates/core/src/runtime/delivery_outbox.ts": "913492f20277be6068bfdd88b7b5bd0beaa00cddc9c4ca698a12539e68e305c8",
+    "jadpo/crates/core/src/runtime/delivery_scheduler.ts": "13fa7a582503ef5668af39747d055026f7af8395a776e5edc8a323b57103a3e4",
+    "jadpo/crates/core/src/runtime/first_party_authentication.ts": "9d677b4a1a60684ce0a30612bf52ec454d5f989cf25f91e01a7645368012e8e6",
+    "jadpo/crates/core/src/runtime/jwt/bun.lock": "eed6f07e1305605b7e468fa95b776f35c94adaf2fc076011e7401dae907cd58a",
+    "jadpo/crates/core/src/runtime/jwt/dependency.json": "fef35a7f64c10c9a841f507949d28a4147f9358a93ceddbe6759e8e5f4fe3219",
+    "jadpo/crates/core/src/runtime/jwt/package.json": "e993a7bd553aa3481c9831bcffee039d05c098f517811597f3d476c8cc118c7b",
+    "jadpo/crates/core/src/runtime/jwt_authentication.ts": "f48965c72988759a83759ceb8c1040d187a76aff6caee2cb27f2af861d86fd1d",
+    "jadpo/crates/core/src/runtime/readiness_gate.ts": "45ac94b6192ee30f1ddf11ec16d4b7bd837013509acfba2cfb3754f1f520812d",
+    "jadpo/crates/core/src/runtime/service_adapter.ts": "efb3ba473ef9de103d43f23600979aea850b63c5b0e266f8028b20f116e532f9",
+    "jadpo/crates/core/src/scaffold.rs": "f3b3585c922d0003586c8978bddd4a5c7896e54cdd89da6224fdc6d633908720",
+    "jadpo/crates/core/src/target/delivery_authority.rs": "73fc5c2e46c3f41cbf1cddb63c1eba621abb8a09b9a954bca3fdd9d82408a76a",
+    "jadpo/crates/core/src/target/delivery_hooks.rs": "d88c07cd9582f0a44fd04d94d312756fed1ef195df555fcedb0ac3f875a5cc80",
+    "jadpo/crates/core/src/target/delivery_invocation.rs": "69c46c233fa296475d53b59178c9ed07e313b0c923ea5ba1bd7e32c5c5e591b9",
+    "jadpo/crates/core/src/target/delivery_scheduler.rs": "12d16aab4a7c1e756e89636c8e97208694a3149bc1442465484ad0537275ccbe",
+    "jadpo/crates/core/src/target/delivery_selection.rs": "7fb055197d2135fb36b7a01925b1821da5684e381b8e0922aecd455b7125edbc",
+    "jadpo/crates/core/src/target/first_party.rs": "5e3a8151defecdca4f40c454012ead698064f461095ee656d6f0dde24724d333",
+    "jadpo/crates/core/src/target/liveness.rs": "c7275e4a3f342d3926597b8bc93be08aa2f466ede8c7cbfb7d963f9573d84251",
+    "jadpo/crates/core/src/target.rs": "b5751c85f73594464d6acb5b1effb467aaee3337b9580a64577dd1f8b180b7e6",
+    "jadpo/crates/core/tests/auth_adapter_settings.rs": "72d8d6cf3f81211868724d8548605a129a076a4c8c91b529915f37f79e51a8de",
+    "jadpo/crates/core/tests/auth_credential_binding.rs": "ee3cc733a40ef85773be88a47e4e5a06859e9f0f7c47f2f88c7b2dcf1bd2d477",
+    "jadpo/crates/core/tests/auth_extension_review.rs": "2810861d0316d3f343ba8d324f6c6f0776f2455e3366734fc92d6685584a65e6",
+    "jadpo/crates/core/tests/formatter_grammar_conformance.rs": "f9a61d9e055720fe0091f9881cf2a425acfd875aeb5d8a71673f046a02d267aa",
+    "jadpo/crates/core/tests/identity_role_binding.rs": "030e4ac86ad063f3fed21c03c76bb8677ebdc55b4d13b9e15e1fd89f234f9373",
+    "jadpo/crates/core/tests/validation_approval_subject.rs": "87c40cbfbba65ef53c4cf7c62be0f7e69339d7ec72ced4872f0a54bb4b45ed43",
+    "jadpo/crates/core/tests/validation_artifact_provenance.rs": "ca0a7a2706621eaf7acd3798f021a3765fe088f8d2fe610c38409ea41c554107",
+    "jadpo/crates/core/tests/validation_auth_policy.rs": "5951086fa2118c41608996473b7cf11eeedaae8d26201eb77b9e0ca6f20125fa",
+    "jadpo/crates/core/tests/validation_config_time_contract.rs": "33a3f13e24dfa102c7329734bf415a6d3a812cab31780a6ff22c38247d790d7b",
+    "jadpo/crates/core/tests/validation_diagnostic_config.rs": "515e9089873ab67b1faa4bea3da986dcd8c68cdd5d70b6042c178d87b6222f73",
+    "jadpo/crates/core/tests/validation_diagnostic_policy.rs": "1af118ff59155638ebac8eab09c2d5b264f11383c710cfcad8106619cc15a1c8",
+    "jadpo/crates/core/tests/validation_failures.rs": "673c871119cb2645cd8980d6aded0f279780a16a18890adb2b72f54919a9e0fc",
+    "jadpo/crates/core/tests/validation_job_delivery_authority.rs": "f820f42cc9bf3eb4dfbfb1159b653eb6cd5e9a0ef7250bc16dfbf09683b321c7",
+    "jadpo/crates/core/tests/validation_job_delivery_binding.rs": "200a78913bab12427ce5cc62f2b66dd5345fca75ad93c6ba561e0868eef21d27",
+    "jadpo/crates/core/tests/validation_job_delivery_hooks.rs": "f138ae1445e0be13e9119a7680ef53b15630b08425fefa06981793bf53b62966",
+    "jadpo/crates/core/tests/validation_job_delivery_model.rs": "2111957be47fca23a6ae1108cfabb79510e7aadd2194182e57a832082d9bf6db",
+    "jadpo/crates/core/tests/validation_job_delivery_syntax.rs": "b3b21a0cc16832f40de76bbab265678f58ac6b41451b50d3b615d696da2d2077",
+    "jadpo/crates/core/tests/validation_jobs.rs": "dbcbffc36052a8cbcd6ec1c63ffdb1d570fadf83ec21700594c6f271a9496786",
+    "jadpo/crates/core/tests/validation_local_configuration.rs": "c1b98088c1cc6abb41f376771afe91504be199309a1786494b0b90a9dbcd4ef6",
+    "jadpo/crates/core/tests/validation_migrations_contract.rs": "3bc7c0a973d2d40ca58156474c591170bf743ae2ec6f1214b86a9c55806e2358",
+    "jadpo/crates/core/tests/validation_persistence_contract.rs": "01aa1a6d35124d96cdec64e2ca65af620c520c7d41fc553f625925d4d05d559b",
+    "jadpo/crates/core/tests/validation_project_role_spans.rs": "fe316e97d54a56ded379be2e2e829a52fc2cdd60169383e4213680584435dd55",
+    "jadpo/crates/core/tests/validation_syntax_modules.rs": "961cb960794e5fb91a596ca0570b99a0d2ad6942c8d303cc11735e83ef263a84",
+    "jadpo/crates/core/tests/validation_tooling_contract.rs": "e78e01d8f6caf7ae1f1b62b28277414ca27b900931843434c2ce9294eb26afdf",
+    "jadpo/crates/core/tests/validation_types_contract.rs": "c9cd9e91a29368c2fee575997fc0e177ce208e9e84b1fceb59ff3f07af91a055",
+    "jadpo/crates/diagnostics/Cargo.toml": "6823b0d028767c2f65f1d552afef17ce5044bc1447f3cbb9202f84181b8b70a7",
+    "jadpo/crates/diagnostics/build.rs": "40b41559eb997773ae0c752d38a3fa4ec047d1d1ee682f2995d2c6310d3b7ded",
+    "jadpo/crates/diagnostics/src/lib.rs": "687adba5ad36f2a3d64a6c4af5b98b4bca083a44c51add39e9a463963888bd1c",
+    "jadpo/crates/diagnostics/tests/validation_catalogue_discovery.rs": "830e28d96c20c05cb880f0d5e93298529324c180434f48fdd54f938c446a4770",
+    "jadpo/crates/semantic/Cargo.toml": "238ce3ec429caf6a0fee9a83a3f98bdf1a82018a11f3f0cad4f743df72789b0e",
+    "jadpo/crates/semantic/src/failurecheck.rs": "6a1518f5d4821dce402b5285398f5e4f2252c1aa36bb7a6767bb2108ce9d781b",
+    "jadpo/crates/semantic/src/lib.rs": "85daa640d69db66caf0f8a8ccb571daed3205f3b78d312b535e0aab4f1d71a30",
+    "jadpo/crates/semantic/src/typecheck/delivery_seal.rs": "6d7e0c7706dd27313ef259f9efe68b0e11b34b9567ea9566bdb3f61527174800",
+    "jadpo/crates/semantic/src/typecheck/delivery_selector.rs": "7291d5dd8b32765909c927d457d6fad8234b888fdd9d6d4e8f79630b8d5d0706",
+    "jadpo/crates/semantic/src/typecheck/delivery_types.rs": "d93ce7b711168e63f80006c93169672c19f393f72b945ae74eba2b32db771529",
+    "jadpo/crates/semantic/src/typecheck.rs": "b007fa04d5e3196a5766cdd568e917cdf4c725b639f789d2fb14933c5e7fbd3f",
+    "jadpo/crates/semantic/tests/validation_fuzz_semantic.rs": "64cdeb9a3f500577ca0e38c61fd54d4520633a9009f0096e4a75ab4528075b90",
+    "jadpo/crates/syntax/Cargo.toml": "c57237ed7267d925c07be535e277cd249266727329b056784a93abb07cf9dfb8",
+    "jadpo/crates/syntax/src/ast.rs": "876c99d298553beea1ffe9579a1119b624b6b961f8a6d7d5b39bea13d7c5a940",
+    "jadpo/crates/syntax/src/lib.rs": "ec0c1c06c3cfd224996bf324f0a1b2798b2b665047a54968f7f22160012fa47f",
+    "jadpo/crates/syntax/src/parser/delivery.rs": "fa4503305661409bb3982c0bbf1079117f2ced3757588855f2cf70dd0d36906f",
+    "jadpo/crates/syntax/src/parser.rs": "df1570d8b1cafda707792229f346f78c8bd79d574276aa628e57ea0586c43d86",
+    "jadpo/crates/syntax/tests/validation_fuzz_bounded.rs": "89787080ab160fa5c53daf9defb20bd5ba44f5c48f6983e04774119ad28303d3",
+    "jadpo/crates/syntax/tests/validation_syntax_boundaries.rs": "2210f06985a76b8a59627c5b22f1703688efebf3174f2632389e167f074328bc"
+  },
+  "author_test_sha256": "636c86cef52c716b78f8e7691da37358d0fbd7178c406af52a29b31644ef266d",
+  "reviewer_test_sha256": "f71a56d191c0f51123bae48f4cbaff31deffc4eb5574e0313cde138dff9b81f2",
+  "evidence_sha256": {
+    "author-test-original.ts": "636c86cef52c716b78f8e7691da37358d0fbd7178c406af52a29b31644ef266d",
+    "component-generation.log": "d9ccf44e7585695adcdd6272907f53060ed392bca2a5dcb117b7cc219dbe8945",
+    "fresh-build.log": "8f4291d2989a543769e546c78432b2bccd6f2394c6eb3c42d234b542e2f0fbd0",
+    "generated/app.ts": "441c901a411d0f0123312849d599463b3f7bbc4a2b5cdd1d35c2b6ba4c93f88e",
+    "generated/authentication.ts": "34185c239a8f18b21bdd21fc05ee9f00dbed6144b1cc4717678bad03ab688942",
+    "generated/binding.json": "05c346e947ae4a487114b7428f537006673c29438166cbffdf33f2d9f8452751",
+    "generated/first-party-authentication.ts": "9d677b4a1a60684ce0a30612bf52ec454d5f989cf25f91e01a7645368012e8e6",
+    "generated/jwt-authentication.ts": "f48965c72988759a83759ceb8c1040d187a76aff6caee2cb27f2af861d86fd1d",
+    "generated/ordinary-persistence.ts": "52319ed7a34b3b224787c854def48da93ca880aebd3e8c71fcb3bfdcb86ba627",
+    "generated/persistence.ts": "d6cdf727d0284512c9ff148dbce127f8d0e31b7fa8ce7c56e312fd96a4567823",
+    "generated/postgres.sql": "d4d4fd6ad410bc1a555b2e041f5643998219d79fbf5a5469d4e9c7f5625ef23b",
+    "generated/service-adapter.ts": "efb3ba473ef9de103d43f23600979aea850b63c5b0e266f8028b20f116e532f9",
+    "generated/sqlite.sql": "e737a73ffb6a482b14aa0ab1e4daf800f9cdb9c1ff77f62d2bd395e2e4c4e70d",
+    "independent-provider-probe.patch": "9f94075ce85602985afb7c4cdcbab84728496803a000df3646620a936d9adbfb",
+    "independent-provider-test.ts": "f71a56d191c0f51123bae48f4cbaff31deffc4eb5574e0313cde138dff9b81f2",
+    "jwt-cache-verification.log": "604cb6d88f7af809690f0cea0cab91ad5179ddc805634bfddf08ecc1fd7abf06",
+    "package-review.py": "431b698397be6ca97ec88fc641fdf99680deea4d9c7dcc922e6a177a01f211d2",
+    "postgres-adversarial-final.log": "ddc91b7a6e15baf77d2e0aa3df4faa0d7bc1368eca844ffe4beb1fec960cb6eb",
+    "postgres-adversarial-final.sh": "44cb7cdad802ea620f4d3a7a1d293f8d1ac63cbaabe0944ba258c164447e0ec0",
+    "postgres-adversarial-focus.log": "0faa0ce440656dc1ff2ace0f831f78e47a0cf4651bf7e507fe89dd04e9d4f8a3",
+    "postgres-adversarial-independent.sh": "8ffbf1cd873c69a34001939cb8e95de0f1b0a7b53be69235c0f89f91e3ab624a",
+    "postgres-author-focus.log": "48259f85abe2fb61cbf2ac4dfecadd0f91d57c15de0386cadb794042074c38ef",
+    "postgres-independent.sh": "f73aab4fa0050e507072817d6d7710ac11a3fa6e814d0e7293199b9e3850f12b",
+    "postgres-provider-final-observations.json": "f71bea898ed44bcb625a0420ec84d59ed4ea8b9aaa55698c2040bdd58fa5b4c9",
+    "postgres-provider-observations.json": "ab0cfe861d9a6a68613fcd588fc61c92c2d6813494fcbc8c09780e2ef85c5dd1",
+    "sqlite-adversarial-final.log": "0cf84997c47b4293becc7373f696df55c0dc86cad24c020ebf5cbbb188c934f0",
+    "sqlite-adversarial-focus.log": "639ee812fb3bab31042b684e6686b5935e5e5781ce60adddc757d44864c143e3",
+    "sqlite-author-focus.log": "50e048b8c32ca78ec0237808d3c0b47e80d1dbcf15815f8b5b2ac086e528a6a3",
+    "sqlite-provider-final-observations.json": "860bece94d80c7e5ea7a12b97053b3ad5acef1d3be8b97bf8828d44169a4d5b2",
+    "sqlite-provider-observations.json": "f3687a88a417d8dd3ffe41ae41b72d6edec3268bfaf905fdbf6b3373af46d089"
+  }
+}

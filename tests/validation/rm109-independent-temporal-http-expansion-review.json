@@ -1,0 +1,395 @@
+{
+  "schema_version": 1,
+  "review_id": "RM109-TEMPORAL-HTTP-EXPANSION-20261006",
+  "task": "RM-109",
+  "disposition": "scoped_approved",
+  "candidate_commit": "f3562d96dd57fcaf029b20db83eea6f9cd01dfcf",
+  "completed_at_utc": "2026-10-06T06:21:56.876308+00:00",
+  "reviewer": {
+    "actor": "independent-review-temporal-http-loop",
+    "independent": true,
+    "did_not_implement_candidate": true,
+    "actual_model": "gpt-6.1-sol",
+    "actual_effort": "high",
+    "pin_evidence": "Parent supplied verified actual gpt-6.1-sol/high bounded pin for consequential verifier review; inherited settings retained.",
+    "timing": "RM-109-e571660fd548"
+  },
+  "scope": "Expand the migrated real HTTP checkpoint from thirteen to eighteen original IDs by adding CREATE-001/003, READ-001, PATCH-005 and DELETE-001 on both adapters. This review covers fixed harness logic and own immutable observations; no scheduler/profile approval is inferred from compiler baseline.",
+  "findings": [],
+  "source_sha256": {
+    "tools/golden_cases.py": "58fce66db37a93822e520f1c495433bd15c4e7f9658a4b4e8adebf061750f427",
+    "tools/golden_checkpoint.py": "e162936330f7289435e5f5b734cbebda6cf12f5cc3db87c0a707889ae8aa7973",
+    "tools/golden_http_checkpoint.ts": "3f10a3ce52ba5172404e8b1a5734f9f4184c31c1e1b417ca63be2be4ae7dd42a",
+    "tools/golden_sql_observer.ts": "571ab98a669d189c357d62fb10a218f1443511963759253542bab370d3d0ac0c",
+    "tests/validation/test_golden_checkpoint.py": "c89f89848659679eb4b2c3c7990a986aa80172f103c40c54f5b9553492398358",
+    "examples/golden-todo/acceptance.json": "3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608",
+    "tests/validation/golden-obligations.json": "1bb72278815340e902238848d62547a252c63053019281c1d2a313cbf2db666b"
+  },
+  "independent_execution": {
+    "capture": "Own immutable f3562d9 archive; no cached compiler before contracts or fresh build.",
+    "python_command": "python3 -m unittest discover -s tests/validation -p test_*.py",
+    "python_tests_passed": 61,
+    "python_exit_code": 0,
+    "checkpoint_command": "python3 tools/golden_checkpoint.py --output /private/tmp/jadpo-review-temporal-expansion-checkpoint --jwt-dependencies /Users/richardwillars/Documents/Codex/LLM-coding/build/validation/jwt-dependencies",
+    "checkpoint_exit_code": 0,
+    "compiler_sha256": "6c7fae58e9b5a8133f863aef6ecaac8ebcc5186fb784c685769f8e7d4493e25a",
+    "case_backend_entries": 88,
+    "counts": {
+      "passed": 36,
+      "failed": 0,
+      "not_run": 52
+    },
+    "status": "not_run",
+    "release_equivalent": false,
+    "supported_ids": [
+      "AUTH-001",
+      "AUTH-005",
+      "AUTH-012",
+      "PUBLIC-001",
+      "CREATE-002",
+      "CREATE-004",
+      "READ-002",
+      "READ-003",
+      "LIST-004",
+      "PATCH-001",
+      "PATCH-002",
+      "PATCH-003",
+      "PATCH-004",
+      "CREATE-001",
+      "CREATE-003",
+      "READ-001",
+      "PATCH-005",
+      "DELETE-001"
+    ],
+    "all_source_compiler_and_generated_pins_match_after_execution": true
+  },
+  "independent_integrity_challenges": {
+    "candidate": "f3562d96dd57fcaf029b20db83eea6f9cd01dfcf",
+    "challenges": [
+      {
+        "probe": "generated application unchanged except actual validator export",
+        "passed": true
+      },
+      {
+        "probe": "sqlite CREATE-001 missing controlled clock",
+        "refused": true,
+        "reason": "Temporal case requires original controlled clock"
+      },
+      {
+        "probe": "sqlite CREATE-001 forged request clock",
+        "refused": true,
+        "reason": "Changed or missing controlled request clock"
+      },
+      {
+        "probe": "sqlite CREATE-003 missing controlled clock",
+        "refused": true,
+        "reason": "Temporal case requires original controlled clock"
+      },
+      {
+        "probe": "sqlite CREATE-003 forged request clock",
+        "refused": true,
+        "reason": "Changed or missing controlled request clock"
+      },
+      {
+        "probe": "sqlite PATCH-005 missing controlled clock",
+        "refused": true,
+        "reason": "Temporal case requires original controlled clock"
+      },
+      {
+        "probe": "sqlite PATCH-005 forged request clock",
+        "refused": true,
+        "reason": "Changed or missing controlled request clock"
+      },
+      {
+        "probe": "sqlite DELETE-001 missing controlled clock",
+        "refused": true,
+        "reason": "Temporal case requires original controlled clock"
+      },
+      {
+        "probe": "sqlite DELETE-001 forged request clock",
+        "refused": true,
+        "reason": "Changed or missing controlled request clock"
+      },
+      {
+        "probe": "sqlite CREATE-001 rejected generated validator",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "sqlite CREATE-001 forged schema claim",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "sqlite CREATE-001 validated body differs from response",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "sqlite READ-001 rejected generated validator",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "sqlite READ-001 forged schema claim",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "sqlite READ-001 validated body differs from response",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "sqlite PATCH-005 missing prior reminder",
+        "refused": true,
+        "reason": "Missing previously reminded patch fixture"
+      },
+      {
+        "probe": "sqlite PATCH-005 retained reminder evidence",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: storedReminderSentAt"
+        ]
+      },
+      {
+        "probe": "sqlite PATCH-005 wrong stored due date",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: storedDueAt"
+        ]
+      },
+      {
+        "probe": "sqlite DELETE-001 no retained storage row",
+        "refused": true,
+        "reason": "Missing retained soft-delete row"
+      },
+      {
+        "probe": "sqlite DELETE-001 no actual follow-up GET",
+        "refused": true,
+        "reason": "Missing request observation"
+      },
+      {
+        "probe": "sqlite DELETE-001 visible after deletion",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: subsequentGetStatus"
+        ]
+      },
+      {
+        "probe": "sqlite DELETE-001 fixture/request reordered",
+        "refused": true,
+        "reason": "Reordered delete fixture/request/persistence/follow-up"
+      },
+      {
+        "probe": "sqlite DELETE-001 wrong actual deletion instant",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: deletedAt"
+        ]
+      },
+      {
+        "probe": "sqlite LIST-004 physical-query budget",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: databaseQueries"
+        ]
+      },
+      {
+        "probe": "postgres CREATE-001 missing controlled clock",
+        "refused": true,
+        "reason": "Temporal case requires original controlled clock"
+      },
+      {
+        "probe": "postgres CREATE-001 forged request clock",
+        "refused": true,
+        "reason": "Changed or missing controlled request clock"
+      },
+      {
+        "probe": "postgres CREATE-003 missing controlled clock",
+        "refused": true,
+        "reason": "Temporal case requires original controlled clock"
+      },
+      {
+        "probe": "postgres CREATE-003 forged request clock",
+        "refused": true,
+        "reason": "Changed or missing controlled request clock"
+      },
+      {
+        "probe": "postgres PATCH-005 missing controlled clock",
+        "refused": true,
+        "reason": "Temporal case requires original controlled clock"
+      },
+      {
+        "probe": "postgres PATCH-005 forged request clock",
+        "refused": true,
+        "reason": "Changed or missing controlled request clock"
+      },
+      {
+        "probe": "postgres DELETE-001 missing controlled clock",
+        "refused": true,
+        "reason": "Temporal case requires original controlled clock"
+      },
+      {
+        "probe": "postgres DELETE-001 forged request clock",
+        "refused": true,
+        "reason": "Changed or missing controlled request clock"
+      },
+      {
+        "probe": "postgres CREATE-001 rejected generated validator",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "postgres CREATE-001 forged schema claim",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "postgres CREATE-001 validated body differs from response",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "postgres READ-001 rejected generated validator",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "postgres READ-001 forged schema claim",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "postgres READ-001 validated body differs from response",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: outputSchema"
+        ]
+      },
+      {
+        "probe": "postgres PATCH-005 missing prior reminder",
+        "refused": true,
+        "reason": "Missing previously reminded patch fixture"
+      },
+      {
+        "probe": "postgres PATCH-005 retained reminder evidence",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: storedReminderSentAt"
+        ]
+      },
+      {
+        "probe": "postgres PATCH-005 wrong stored due date",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: storedDueAt"
+        ]
+      },
+      {
+        "probe": "postgres DELETE-001 no retained storage row",
+        "refused": true,
+        "reason": "Missing retained soft-delete row"
+      },
+      {
+        "probe": "postgres DELETE-001 no actual follow-up GET",
+        "refused": true,
+        "reason": "Missing request observation"
+      },
+      {
+        "probe": "postgres DELETE-001 visible after deletion",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: subsequentGetStatus"
+        ]
+      },
+      {
+        "probe": "postgres DELETE-001 fixture/request reordered",
+        "refused": true,
+        "reason": "Reordered delete fixture/request/persistence/follow-up"
+      },
+      {
+        "probe": "postgres DELETE-001 wrong actual deletion instant",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: deletedAt"
+        ]
+      },
+      {
+        "probe": "postgres LIST-004 physical-query budget",
+        "refused_as_pass": true,
+        "failures": [
+          "Variant 0, step 0: Expectation mismatch: databaseQueries"
+        ]
+      },
+      {
+        "probe": "missing compiler preflight retains 88 pending entries and invokes no driver",
+        "passed": true
+      },
+      {
+        "probe": "extra observed ledger field",
+        "refused": true,
+        "reason": "Ledger observations differ from raw observations"
+      },
+      {
+        "probe": "retained original application drift",
+        "refused": true,
+        "reason": "Changed retained generated original artifacts"
+      },
+      {
+        "probe": "instrumented application drift",
+        "refused": true,
+        "reason": "Changed generated instrumented artifacts"
+      },
+      {
+        "probe": "adapter source drift",
+        "refused": true,
+        "reason": "Stale or foreign harness provenance/schema"
+      }
+    ],
+    "source_and_compiler_match": true,
+    "all_original_bytes_restored": true
+  },
+  "reviewed_invariants": [
+    "The candidate commit leaves production compiler and frozen acceptance/obligation bytes unchanged. Its compiler baseline includes separately reviewed scheduler/profile changes, outside this approval.",
+    "The isolated driver reads the original frozen clock before importing the actual generated app. Controlled Date constructor/now affect time reads; real HTTP, authentication, SQL, actions and validators execute. The completed-run finally restores Date; startup failures terminate the isolated subprocess without host state.",
+    "Temporal observations require the original clock and matching request clock records. Actual persisted create/delete instants corroborate generated operation time; altered clocks or omitted clock authority reject.",
+    "The generated app is retained byte-for-byte as original-app.ts. Its instrumented variant differs only by exporting its actual validate_TodoView function; own exact-byte comparison confirms this.",
+    "Output schema comes from generated route inventory and execution of the actual exported validator. Exact validated body must match the real response; rejected validation, mismatched bodies or forged schema claims cannot pass.",
+    "CREATE-001 compares actual persisted identity/owner to response identity. READ-001 requires an actual active owned fixture and observes absence of its original private fields.",
+    "PATCH-005 starts from an actual due-dated row with prior reminder evidence, then separately observes changed due date and cleared reminder marker. Missing prior reminder rejects; retained markers or wrong stored dates fail original expectations.",
+    "DELETE-001 executes actual DELETE followed by storage SELECT and actual GET. Before/request/retained-row/follow-up ordering and identity are required; removed storage/follow-up evidence rejects, and wrong deletion time or visible follow-up fails.",
+    "The full 88-entry inventory remains with 36 passed and 52 not_run. Physical query instrumentation remains authoritative for original zero-query cases; an injected SELECT fails the query budget.",
+    "Missing-compiler preflight calls no driver and keeps all 88 entries pending. Additional ledger fields, original/instrumented app drift and adapter source drift reject. All original bytes are restored and final report validation succeeds."
+  ],
+  "evidence_manifest": "tests/validation/evidence/golden-loop-temporal-harness-independent/manifest.json",
+  "limits": [
+    "This is eighteen-ID migrated application evidence, not execution of the original frozen source or all 44 cases.",
+    "No full RM-109 closure, whole scheduler/profile approval, worker prerequisite closure, route/OpenAPI/policy/query-audit closure or release-equivalence claim.",
+    "The parent has a later obligation-metadata epoch and combined gate. This report remains bound to the fixed author epoch; parent must rebind integration evidence freshly.",
+    "Local hashes establish report/source/artifact integrity and do not attest against malicious coordinated replacement of all evidence."
+  ],
+  "conclusion": "Approve the pinned eighteen-ID partial temporal checkpoint expansion. Own fresh real execution retains 36 passed, 0 failed and 52 not_run; all 52 independent checks and adversarial challenges behave as required."
+}
