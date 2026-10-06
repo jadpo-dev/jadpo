@@ -23,11 +23,13 @@ SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'PATCH-002', 'PATCH-003', 'PATCH-004', 'CREATE-001', 'CREATE-003',
              'READ-001', 'PATCH-005', 'DELETE-001', 'LIST-001', 'LIST-002',
              'LIST-003', 'REL-001', 'DELETE-002', 'AUTH-002', 'AUTH-006',
-             'AUTH-010', 'USER-001', 'AUTH-003', 'AUTH-004', 'AUTH-007', 'AUTH-008')
+             'AUTH-010', 'USER-001', 'AUTH-003', 'AUTH-004', 'AUTH-007', 'AUTH-008',
+             'AUTH-009', 'AUTH-011')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
-           't2': '00000000-0000-4000-8000-000000000022'}
+           't2': '00000000-0000-4000-8000-000000000022',
+           'reporting': '00000000-0000-4000-8000-000000000041'}
 
 
 def request_path(path: str) -> str:
@@ -61,6 +63,45 @@ def safe_run(command: list[str], **kwargs):
         # Never publish provider/credential text from process exceptions.
         raise RuntimeError(f'Checkpoint process failed ({Path(command[0]).name}, exit {result.returncode}); raw process output withheld')
     return result
+
+
+def prepare_owner_partial(output: Path, project: Path, environment: dict):
+    """Real refusal/review observations; does not satisfy REL-003 disposition."""
+    compiler = str(ROOT/'jadpo/target/debug/jadpo')
+    mutation = output/'owner-mutation-source'
+    shutil.copytree(project, mutation, ignore=shutil.ignore_patterns('build'))
+    path = mutation/'entities/todo.jadpo'
+    authored = path.read_text()
+    action = '''
+    action checkpoint_reassign_owner(todo_id: Todo.id, owner_id: User.id)
+        fails TodoNotFound, TodoMutationConflict -> Todo
+    {
+        return attempt update required Todo {
+            where: id == todo_id
+            set: { owner_id: Todo.owner_id(owner_id) }
+            missing: TodoNotFound { todo_id: todo_id }
+            conflict: TodoMutationConflict
+        }
+    }
+'''
+    path.write_text(authored.rstrip()[:-1]+action+'}\n')
+    checked = subprocess.run([compiler, 'check', str(mutation), '--diagnostic-format=json'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
+    diagnostic = json.loads(checked.stdout)
+    if checked.returncode == 0 or diagnostic.get('status') != 'failed':
+        raise ValueError('Ordinary owner transfer was not refused')
+    projection = output/'owner-policy-projection'
+    shutil.copytree(project, projection, ignore=shutil.ignore_patterns('build'))
+    owner = projection/'entities/todo.jadpo'
+    before = '        role: TodoRole.owner\n        immutable: true'
+    if owner.read_text().count(before) != 1:
+        raise ValueError('Owner policy partial projection source changed')
+    owner.write_text(owner.read_text().replace(before, before+'\n        policy { TodoRole.owner: [create, read] }'))
+    approval = json.loads(safe_run([compiler, 'approval', str(projection), '--before', str(project)], env=environment).stdout)
+    probe = {'scope': 'Partial owner-transfer refusal and separate owner-field policy review projection; exact transfer human-decision disposition is not emitted',
+             'semanticDisposition': None, 'mutationSource': hashes(mutation), 'mutationCheck': diagnostic,
+             'projectionSource': hashes(projection), 'projectionApproval': approval}
+    (output/'owner-partial-probe.json').write_text(json.dumps(probe, indent=2)+'\n')
+    return {name: hashes(output/name) for name in ('owner-mutation-source', 'owner-policy-projection')}
 
 
 @contextmanager
@@ -339,6 +380,46 @@ def observations(case: dict, raw: list, clock: str | None = None) -> list:
             step['code'] = code
         if case['id'] in ('AUTH-012', 'PUBLIC-001'):
             step['body'] = reply['body']
+        if case['id'] in ('AUTH-009', 'AUTH-011'):
+            captures = [item for item in raw if 'serviceFixture' in item]
+            if len(captures) != 1 or raw.index(captures[0]) >= raw.index(reply) or clock is None:
+                raise ValueError('Missing/reordered native service credential fixture')
+            fixture = captures[0]['serviceFixture']; issued = fixture.get('issuedService', {}); service = fixture.get('service', {}); credential = fixture.get('credential', {})
+            if not harness.same_json(fixture.get('specification'), {'fixture': case['fixture'], 'request': case['request'], 'clock': clock}) or instant(fixture.get('at')) != instant(clock):
+                raise ValueError('Changed original service fixture/request/clock')
+            if issued.get('id') != ALIASES['reporting'] or issued.get('owner_id') != ALIASES['alice'] or issued.get('name') != 'reporting' or issued.get('status') != 'active' or service.get('id') != issued['id'] or service.get('name') != issued['name'] or credential.get('service_id') != service['id'] or credential.get('status') != 'active' or credential.get('revoked_at') is not None or credential.get('privateMetadataRevoked') is not False or not isinstance(credential.get('expires_at'), str) or instant(credential['expires_at']) <= instant(clock):
+                raise ValueError('Invalid active-at-issuance otherwise-valid service credential fixture')
+            expected_principal = {'kind': 'service', 'subject': service['name'], 'authenticationStrength': 'primary', 'values': {'service_id': service['id']}}
+            issuance, control = fixture.get('issuance', {}), fixture.get('validityControl', {})
+            if type(issuance.get('credentialsIssued')) is not int or issuance['credentialsIssued'] != 1 or issuance.get('authorityPrincipals') != [expected_principal] or not any(row.get('operation') == 'INSERT' and 'service_credential' in row.get('sql', '') for row in issuance.get('statements', [])):
+                raise ValueError('Missing native service credential issuance positive control')
+            if control.get('completed') is not True or control.get('authorityPrincipals') != [expected_principal] or instant(control.get('at')) != instant(clock) or not any(row.get('operation') == 'SELECT' and 'FROM "service_credential"' in row.get('sql', '') for row in control.get('statements', [])):
+                raise ValueError('Missing actual cryptographically valid service-key control')
+            service_queries = [row for row in reply['statements'] if row['operation'] == 'SELECT' and 'FROM "service" WHERE "name"' in row['sql']]
+            credential_queries = [row for row in reply['statements'] if row['operation'] == 'SELECT' and 'FROM "service_credential"' in row['sql']]
+            metadata_queries = [row for row in reply['statements'] if row['operation'] == 'SELECT' and '"__jadpo_auth_service_credentials"' in row['sql']]
+            if len(service_queries) != 1 or len(credential_queries) != 1:
+                raise ValueError('Missing actual declared service credential/principal authority reads')
+            step.update(serviceAuthorityQueries=len(service_queries), credentialAuthorityQueries=len(credential_queries), credentialMetadataQueries=len(metadata_queries), credentialsIssued=reply.get('credentialsIssued'))
+            if case['id'] == 'AUTH-009':
+                if service['status'] != 'active' or reply.get('authorityPrincipals') != [expected_principal] or reply.get('credentialsIssued') != 1:
+                    raise ValueError('Missing actual native service exchange/issuance principal')
+                disclosure = reply.get('exchangeDisclosure', {})
+                token = disclosure.get('returnedCredential', {})
+                if type(disclosure.get('incomingSecretInResponse')) is not bool or disclosure.get('responseFields') != ['access_token', 'token_type', 'expires_at'] or not harness.same_json(token, (reply.get('body') or {}).get('access_token')) or set(token) != {'sha256', 'byteLength', 'representation'} or not isinstance(token.get('sha256'), str) or not re.fullmatch('[0-9a-f]{64}', token['sha256']) or type(token.get('byteLength')) is not int or token['byteLength'] <= 0 or token.get('representation') != 'jdx1':
+                    raise ValueError('Missing safe observed exchanged-credential response/disclosure')
+                step.update(principalKind=expected_principal['kind'], principalService=next((alias for alias in ('reporting',) if ALIASES[alias] == reply['authorityPrincipals'][0]['values'].get('service_id')), None), secretInOutput=disclosure['incomingSecretInResponse'])
+                revocations = [item for item in raw if 'serviceRevocation' in item]; revoked = [item for item in raw if 'serviceRevokedControl' in item]
+                if len(revocations) != 1 or len(revoked) != 1 or not raw.index(reply) < raw.index(revocations[0]) < raw.index(revoked[0]):
+                    raise ValueError('Missing/reordered actual service revocation control')
+                mutation = revocations[0]['serviceRevocation']; after = mutation.get('after', {})
+                if not harness.same_json(mutation.get('before'), credential) or not harness.same_json({key: value for key, value in after.items() if key != 'revoked_at'}, {key: value for key, value in credential.items() if key != 'revoked_at'}) or instant(after.get('revoked_at')) != instant(clock) or not any(row.get('operation') == 'UPDATE' for row in mutation.get('statements', [])):
+                    raise ValueError('Missing real declared credential revocation storage change')
+                rejection = revoked[0]['serviceRevokedControl']
+                if rejection.get('method') != 'POST' or rejection.get('path') != '/auth/exchange' or rejection.get('auth') != 'reporting-service-key' or rejection.get('requestJson') is not None or instant(rejection.get('at')) != instant(clock) or rejection.get('status') != 401 or (rejection.get('body') or {}).get('error', {}).get('code') != 'invalid_credentials' or rejection.get('authorityPrincipals') != [] or rejection.get('credentialsIssued') != 0 or not any(row.get('operation') == 'SELECT' and 'FROM "service_credential"' in row.get('sql', '') for row in rejection.get('statements', [])) or any(row.get('operation') == 'SELECT' and 'FROM "service" WHERE "name"' in row.get('sql', '') for row in rejection.get('statements', [])):
+                    raise ValueError('Revoked service key did not fail actual credential verification')
+            elif service.get('status') != 'disabled' or instant(service.get('disabled_at')) != instant(clock) or reply.get('authorityPrincipals') != [] or reply.get('credentialsIssued') != 0:
+                raise ValueError('Missing disabled-service native authority refusal')
         if case['id'] in ('AUTH-003', 'AUTH-004', 'AUTH-007'):
             if clock is None: raise ValueError('JWT case requires original controlled clock')
             fixture, token = jwt_fixture(case, raw, reply, clock)
@@ -569,6 +650,8 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
         raise ValueError('Changed actual pinned JWT dependency files')
     if {name: harness.digest(evidence/name) for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem')} != checkpoint['tls_fixture']:
         raise ValueError('Changed ephemeral local JWKS TLS fixture')
+    if {name: hashes(evidence/name) for name in ('owner-mutation-source', 'owner-policy-projection')} != checkpoint['owner_partial_sources'] or harness.digest(evidence/'owner-partial-probe.json') != checkpoint['owner_partial_probe_sha256']:
+        raise ValueError('Changed partial owner refusal/review evidence')
     outputs = []
     for backend in harness.BACKENDS:
         path = evidence/f'{backend}-raw.json'
@@ -620,8 +703,12 @@ def main():
         raise ValueError('Source changed during compiler build')
     project = output/'application'
     shutil.copytree(ROOT/'examples/golden-todo-migration', project, ignore=shutil.ignore_patterns('build'))
+    external = project/'tests/assurance/service-reference-mail-v0.1.json'
+    external.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT/'tests/assurance/service-reference-mail-v0.1.json', external)
     safe_run([str(ROOT/'jadpo/target/debug/jadpo'), 'build', str(project)], env=environment)
     generated = hashes(project/'build')
+    owner_partial_sources = prepare_owner_partial(output, project, environment)
     target = project/'build/target'
     original = (target/'persistence.ts').read_text()
     declaration = 'import { SQL } from "bun";'
@@ -632,7 +719,7 @@ def main():
     if original.count(storage_entry) != 1:
         raise ValueError('Generated native session storage observation boundary changed')
     (target/'persistence.ts').write_text('import { observeAuthenticationStorageRead } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';\n' + original.replace(declaration,
-        'import { SQL } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';').replace(storage_entry, storage_entry+'\n    observeAuthenticationStorageRead();'))
+        'import { SQL } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';').replace(storage_entry, storage_entry+'\n    observeAuthenticationStorageRead();') + '\nexport { persistenceSync, persistenceAsync };\n')
     authentication = (target/'first-party-authentication.ts').read_text()
     entry = 'async authenticate(request: Request, freshAuthority: boolean, operationNow: number, mutates = false): Promise<AuthPrincipal> {'
     if authentication.count(entry) != 1:
@@ -643,12 +730,15 @@ def main():
         'if (externallyVerified) return principal;': 'if (externallyVerified) { recordAuthenticatedPrincipal(principal); return principal; }',
         '      return principal;\n    },\n    async refresh(': '      recordAuthenticatedPrincipal(principal);\n      return principal;\n    },\n    async refresh(',
         '    return { credential, csrfToken, setCookie, expires };': '    recordCredentialIssued();\n    return { credential, csrfToken, setCookie, expires };',
+        '    return result.principal;': '    recordResolvedAuthorityPrincipal(result.principal);\n    return result.principal;',
+        '      return { credential, credentialId: id, serviceId: record.serviceId, expires };': '      recordCredentialIssued();\n      return { credential, credentialId: id, serviceId: record.serviceId, expires };',
+        '    return { credential: `${message}.${await sign(key, message)}`, expires, credentialId: record.id, serviceId: record.serviceId };': '    const credential = `${message}.${await sign(key, message)}`;\n    recordCredentialIssued();\n    return { credential, expires, credentialId: record.id, serviceId: record.serviceId };',
     }
     for before, after in replacements.items():
         if authentication.count(before) != 1:
             raise ValueError('Generated authentication observation boundary changed')
         authentication = authentication.replace(before, after)
-    (target/'first-party-authentication.ts').write_text('import { recordAuthenticationAttempt, recordAuthenticatedPrincipal, recordCredentialIssued } from ' +
+    (target/'first-party-authentication.ts').write_text('import { recordAuthenticationAttempt, recordAuthenticatedPrincipal, recordCredentialIssued, recordResolvedAuthorityPrincipal } from ' +
         json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';\n' + authentication)
     jwt = (target/'jwt-authentication.ts').read_text()
     jwt_return = '        return Object.freeze({ kind: "valid", subject: payload.sub, authenticationStrength: "jwt" });'
@@ -687,6 +777,8 @@ def main():
                             'raw_files': {f'{backend}-raw.json': harness.digest(output/f'{backend}-raw.json') for backend in harness.BACKENDS},
                             'dependency_files': dependency_binding,
                             'tls_fixture': tls_binding,
+                            'owner_partial_sources': owner_partial_sources,
+                            'owner_partial_probe_sha256': harness.digest(output/'owner-partial-probe.json'),
                             'remaining': 'Scoped supporting checkpoint; unobserved cases, complete accepted-successor parity and final exact-source require-golden evidence are not claimed'}
     if harness.provenance(ROOT) != binding:
         raise ValueError('Source/compiler changed during checkpoint')

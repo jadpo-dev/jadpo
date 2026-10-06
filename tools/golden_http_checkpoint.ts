@@ -6,9 +6,10 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications } from "./golden_sql_observer.ts";
+import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications, resolvedAuthorityPrincipals } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011"];
+const partial = ["REL-002", "REL-003", "REL-004"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
@@ -62,10 +63,12 @@ globalThis.fetch = ((input: any, init?: any) => {
   return nativeFetch(input, url.origin === jwksServer.url.origin ? { ...init, tls: { ca: fixtureCertificate } } : init);
 }) as typeof fetch;
 const app = await import(pathToFileURL(join(project, "build/target/app.ts")).href);
+const persistenceModule = await import(pathToFileURL(join(project, "build/target/persistence.ts")).href);
 const routes = JSON.parse(readFileSync(join(project, "build/inventory/routes.json"), "utf8")).routes;
 const queryPlans = JSON.parse(readFileSync(join(project, "build/persistence/entities.json"), "utf8")).query_plans.filter((plan: any) => plan.entity === "Todo" && plan.strategy === "indexed_keyset_page");
 const declaredFailures = JSON.parse(readFileSync(join(project, "build/audit/failures.json"), "utf8")).failures;
 const db = backend === "sqlite" ? new Database(Bun.env.SQLITE_PATH, { strict: true }) : undefined;
+db?.exec("PRAGMA foreign_keys = ON");
 const pg = backend === "postgres" ? new SQL({ url: Bun.env.DATABASE_URL!, prepare: false }) : undefined;
 async function execute(sql: string, values: unknown[] = []) {
   if (pg) return await pg.unsafe(sql, values);
@@ -81,6 +84,9 @@ const environment = {
   BROWSER_ORIGIN: "https://todo.test", OIDC_ISSUER: jwksServer.url.origin, OIDC_AUDIENCE: "todo",
   MAIL_API_KEY: Buffer.alloc(32, 72).toString("base64url"), MAIL_SENDER: "todo@example.test",
 };
+const reporting = "00000000-0000-4000-8000-000000000041";
+let serviceKey: any;
+let serviceIssuance: any;
 let session: any;
 let bearer: any;
 let issuanceObservation: any;
@@ -120,6 +126,70 @@ async function reset(case_?: any) {
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.handleRequest });
 const raw: any[] = [];
 const persistedInstant = (value: unknown) => value === null ? null : new Date(value as any).toISOString();
+const stringDigest = (value: string) => createHash("sha256").update(value).digest("hex");
+async function serviceSnapshot() {
+  const rows = await execute('SELECT id, owner_id, name, status, disabled_at FROM service WHERE id = $1', [reporting]);
+  if (rows.length !== 1) throw new Error("Missing service fixture");
+  return { ...rows[0], disabled_at: persistedInstant(rows[0].disabled_at) };
+}
+async function serviceCredentialSnapshot() {
+  const rows = await execute('SELECT id, service_id, status, expires_at, revoked_at FROM service_credential WHERE id = $1', [serviceKey.credentialId]);
+  if (rows.length !== 1) throw new Error("Missing declared service credential fixture");
+  const privateRows = await execute('SELECT revoked FROM "__jadpo_auth_service_credentials" WHERE id = $1', [serviceKey.credentialId]);
+  if (privateRows.length !== 1) throw new Error("Missing native service credential metadata");
+  return { ...rows[0], expires_at: persistedInstant(rows[0].expires_at), revoked_at: persistedInstant(rows[0].revoked_at), privateMetadataRevoked: privateRows[0].revoked === true || privateRows[0].revoked === 1 };
+}
+async function prepareServiceFixture(case_: any) {
+  await execute('INSERT INTO service (id, owner_id, name, status, created_at, disabled_at) VALUES ($1, $2, $3, $4, $5, NULL)', [reporting, alice, "reporting", "active", pg ? new Date(clockNow).toISOString() : clockNow]);
+  const statements = beginSqlObservation();
+  try { serviceKey = await app.authenticationHost().issueServiceCredential("api_bearer", "reporting", clockNow + 300_000, clockNow); }
+  finally { endSqlObservation(); }
+  secrets.push(serviceKey.credential);
+  serviceIssuance = { statements, credentialsIssued: issuedCredentialCount(), authorityPrincipals: resolvedAuthorityPrincipals() };
+  const issuedService = await serviceSnapshot();
+  const controlStatements = beginSqlObservation();
+  let validProof = false;
+  try { const proof = await app.authenticationHost().prepareDeliveryCredential("api_bearer", serviceKey.credential, clockNow); validProof = Object.isFrozen(proof) && Object.getPrototypeOf(proof) === null; }
+  finally { endSqlObservation(); }
+  const validityControl = { completed: validProof, statements: controlStatements, authorityPrincipals: resolvedAuthorityPrincipals(), at: new Date(clockNow).toISOString() };
+  if (case_.id === "AUTH-011") await execute('UPDATE service SET status = $1, disabled_at = $2 WHERE id = $3', ["disabled", pg ? new Date(clockNow).toISOString() : clockNow, reporting]);
+  raw.push({ serviceFixture: { issuedService, service: await serviceSnapshot(), credential: await serviceCredentialSnapshot(), issuance: serviceIssuance, validityControl, at: new Date(clockNow).toISOString(),
+    specification: { fixture: case_.fixture, request: case_.request, clock: contract.clock } } });
+}
+async function revokeServiceControl() {
+  const before = await serviceCredentialSnapshot();
+  const statements = beginSqlObservation();
+  try { await app.authenticationHost().revokeServiceCredential("api_bearer", serviceKey.credentialId, clockNow); }
+  finally { endSqlObservation(); }
+  raw.push({ serviceRevocation: { before, after: await serviceCredentialSnapshot(), statements } });
+  await send({ method: "POST", path: "/auth/exchange", auth: "reporting-service-key" }, "serviceRevokedControl");
+}
+async function relationshipOperation(case_: any) {
+  const missingUser = "00000000-0000-4000-8000-000000000099";
+  if (case_.id === "REL-004") {
+    await seedTodo(t1, alice);
+    await execute('UPDATE "user" SET status = $1, disabled_at = $2 WHERE id = $3', ["disabled", pg ? new Date(clockNow).toISOString() : clockNow, alice]);
+  }
+  const before = { users: await execute('SELECT id, status FROM "user" ORDER BY id'), todos: await execute('SELECT id, owner_id FROM todo ORDER BY id') };
+  const statements = beginSqlObservation();
+  let accepted = false; let fault: any = null;
+  try {
+    const executeOperation = () => case_.id === "REL-002" ? seedTodo(t1, missingUser) : execute('DELETE FROM "user" WHERE id = $1', [alice]);
+    await persistenceModule.persistenceAsync("checkpoint.relationship", executeOperation);
+    accepted = true;
+  } catch (error: any) {
+    let cause: any = error; const driverCodes: any[] = []; const seen = new Set();
+    while (cause && typeof cause === "object" && !seen.has(cause) && seen.size < 8) {
+      seen.add(cause); if (typeof cause.code === "string") driverCodes.push(cause.code);
+      if (typeof cause.errno === "number" || typeof cause.errno === "string" && /^[A-Z0-9_]{1,64}$/u.test(cause.errno)) driverCodes.push(String(cause.errno));
+      cause = cause.cause;
+    }
+    fault = { name: error.name, kind: error.kind, operation: error.operation, driverCodes };
+  } finally { endSqlObservation(); }
+  raw.push({ persistenceOperation: case_.operation, at: new Date(clockNow).toISOString(), accepted, fault, statements,
+    publicBoundaryObserved: false, before,
+    after: { users: await execute('SELECT id, status FROM "user" ORDER BY id'), todos: await execute('SELECT id, owner_id FROM todo ORDER BY id') } });
+}
 async function userSnapshot() {
   const rows = await execute('SELECT id, authentication_subject, status, disabled_at FROM "user" WHERE id = $1', [alice]);
   if (rows.length !== 1) throw new Error("Missing authentication user fixture");
@@ -208,6 +278,7 @@ async function send(request: any, retainKey?: string) {
   const auth = Array.isArray(request.auth) ? request.auth : [request.auth];
   if (auth.includes("alice-session")) Object.assign(headers, { cookie: session.setCookie.split(";", 1)[0], origin: environment.BROWSER_ORIGIN, "x-jadpo-csrf": session.csrfToken });
   for (const name of ["alice-jwt", "bob-jwt"]) if (auth.includes(name)) headers.authorization = `Bearer ${jwtCredentials[name]}`;
+  if (auth.includes("reporting-service-key")) headers.authorization = `Bearer ${serviceKey.credential}`;
   if (auth.includes("alice-bounded-bearer")) headers.authorization = `Bearer ${bearer.credential}`;
   if (auth.includes("invalid-jwt") || auth.includes("invalid-bearer")) headers.authorization = "Bearer INVALID_CHECKPOINT_CREDENTIAL";
   const path = request.path.replace("/todos/t2", `/todos/${t2}`).replace("/todos/t1", `/todos/${t1}`).replace("/users/alice/todos", `/users/${alice}/todos`).replace(/^\/users\/alice$/u, `/users/${alice}`);
@@ -216,21 +287,29 @@ async function send(request: any, retainKey?: string) {
   const statements = beginSqlObservation();
   let response: Response;
   let body: any;
+  let exchangeDisclosure: any;
   try {
     response = await fetch(new URL(path, server.url), { method: request.method, headers, ...(request.json === undefined ? {} : { body: JSON.stringify(request.json) }) });
     const text = await response.text();
     body = text.length ? JSON.parse(text) : null;
+    if (request.path === "/auth/exchange" && response.status === 200) {
+      if (typeof body?.access_token !== "string") throw new Error("Missing actual exchanged bearer");
+      exchangeDisclosure = { incomingSecretInResponse: text.includes(serviceKey.credential), responseFields: Object.keys(body), returnedCredential: { sha256: stringDigest(body.access_token), byteLength: Buffer.byteLength(body.access_token), representation: body.access_token.split(".", 1)[0] } };
+      secrets.push(body.access_token);
+      body = { ...body, access_token: { ...exchangeDisclosure.returnedCredential } };
+    }
   } finally { endSqlObservation(); }
   const authenticationAttempts = authenticationAttemptCount();
   const authorityQueries = authorityQueryAccounting(statements);
-  const captured = { method: request.method, path, requestedPath: request.requestedPath ?? request.path, auth: request.auth ?? null, requestJson: request.json ?? null, at: new Date(clockNow).toISOString(), status: response!.status, body, statements, authenticationAttempts, principals: authenticatedPrincipals(), credentialsIssued: issuedCredentialCount(), authorityQueries, faultConfiguration: authenticationFaultConfiguration(), storageReads: authenticationStorageReads(), jwtVerifications: observedJwtVerifications(), providerRequests: providerRequests.slice(providerStart) };
+  const captured = { method: request.method, path, requestedPath: request.requestedPath ?? request.path, auth: request.auth ?? null, requestJson: request.json ?? null, at: new Date(clockNow).toISOString(), status: response!.status, body, statements, authenticationAttempts, principals: authenticatedPrincipals(), credentialsIssued: issuedCredentialCount(), authorityQueries, faultConfiguration: authenticationFaultConfiguration(), storageReads: authenticationStorageReads(), jwtVerifications: observedJwtVerifications(), providerRequests: providerRequests.slice(providerStart), authorityPrincipals: resolvedAuthorityPrincipals(), ...(exchangeDisclosure ? { exchangeDisclosure } : {}) };
   if (secrets.some(secret => JSON.stringify(captured).includes(secret))) throw new Error("Unsafe raw observation refused");
   raw.push(retainKey ? { [retainKey]: captured } : captured);
   return { status: response!.status, code: body?.error?.code, body, databaseQueries: statements.length, authenticationAttempts, writes: statements.filter(row => ["INSERT", "UPDATE", "DELETE", "REPLACE"].includes(row.operation)).length };
 }
 const results: any[] = [];
+const partialEvidence: any[] = [];
 try {
-  for (const case_ of contract.cases.filter((case_: any) => supported.includes(case_.id))) {
+  for (const case_ of contract.cases.filter((case_: any) => supported.includes(case_.id) || partial.includes(case_.id))) {
     if ((case_.fixtureVariants && case_.id !== "REL-001") || (case_.followUps && case_.id !== "USER-001")) throw new Error("Unsupported scenario extension");
     if (case_.id === "REL-001") {
       const scenarios = [];
@@ -254,6 +333,17 @@ try {
     const start = raw.length;
     try {
     await reset(case_);
+    if (["AUTH-009", "AUTH-011"].includes(case_.id)) await prepareServiceFixture(case_);
+    if (["REL-002", "REL-004"].includes(case_.id)) {
+      await relationshipOperation(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_public_relationship_failure_mapping_missing" }); continue;
+    }
+    if (case_.id === "REL-003") {
+      await seedTodo(t1, alice); raw.push({ ownerTransferFixture: await todoSnapshot(t1), operation: case_.operation });
+      await send({ method: "POST", path: "/todos", auth: "alice-session", json: { title: "owner injection", owner_id: bob } });
+      await send({ method: "PATCH", path: "/todos/t1", auth: "alice-session", json: { owner_id: bob } });
+      raw.push({ ownerTransferPersistence: await todoSnapshot(t1), sourceProbeSha256: stringDigest(readFileSync(join(project, "../owner-partial-probe.json"), "utf8")) });
+      partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_exact_transfer_human_decision_missing" }); continue;
+    }
     if (["AUTH-003", "AUTH-004", "AUTH-007"].includes(case_.id)) {
       await captureJwtFixture(case_);
       if (case_.id === "AUTH-004") await send({ method: "GET", path: "/todos", auth: "bob-jwt" }, "jwtValidityControl");
@@ -307,6 +397,7 @@ try {
       for (const request of case_.requests) await send(request);
     } else {
       const reply = await send(case_.request);
+      if (case_.id === "AUTH-009") await revokeServiceControl();
       if (["CREATE-001", "READ-001", "AUTH-002", "AUTH-003", "AUTH-007"].includes(case_.id)) await validateOutput(case_.request, reply);
       if (case_.id === "AUTH-007") raw.push({ provisioningPersistence: await execute('SELECT id, authentication_subject, email, status FROM "user" ORDER BY id') });
       if (case_.id === "CREATE-004") {
@@ -326,10 +417,10 @@ try {
     } catch {
       // Keep later IDs executable and retain an opaque failure disposition;
       // exception/provider text and credentials never enter the raw ledger.
-      results.push({ id: case_.id, adapterFailure: true, raw: raw.slice(start) });
+      (partial.includes(case_.id) ? partialEvidence : results).push({ id: case_.id, adapterFailure: true, raw: raw.slice(start) });
     }
   }
-  writeFileSync(output, JSON.stringify({ backend, supported, results }, null, 2) + "\n", { flag: "wx" });
+  writeFileSync(output, JSON.stringify({ backend, supported, results, partialEvidence }, null, 2) + "\n", { flag: "wx" });
 } finally {
   server.stop(true); jwksServer.stop(true); globalThis.fetch = nativeFetch; setSessionStorageUnavailable(false); db?.close(); if (pg) await pg.close(); prototype.prepare = originalPrepare; prototype.exec = originalExec; globalThis.Date = nativeDate;
 }
