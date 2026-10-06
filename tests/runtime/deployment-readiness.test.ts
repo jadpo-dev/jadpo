@@ -22,6 +22,7 @@ const old = Object.fromEntries(["DATABASE_URL", "SQLITE_PATH"].map(key => [key, 
 const path = join(root, "application.sqlite");
 if (postgresUrl) Bun.env.DATABASE_URL = postgresUrl; else delete Bun.env.DATABASE_URL;
 Bun.env.SQLITE_PATH = path;
+const deploymentAudit = JSON.parse(readFileSync(join(project, "build/audit/deployment.json"), "utf8"));
 const app = await import(pathToFileURL(join(project, "build/target/app.ts")).href);
 const environment = { AUTH_SIGNING_KEY: Buffer.alloc(32, 7).toString("base64url"), AUTH_PREVIOUS_SIGNING_KEY: Buffer.alloc(32, 8).toString("base64url"), BROWSER_ORIGIN: "https://example.test" };
 await app.initializeApplication(environment);
@@ -60,6 +61,31 @@ test("direct, real Bun and real Node application listeners refuse every compiler
     const live = await request("/health/live", headers); expect(live.status).toBe(200); expect(await live.json()).toEqual({ status: "live" });
   }
 });
+test("fresh deployment audit binds expected native planes without claiming live configuration", async () => {
+  expect(deploymentAudit.status).toBe("compiler_supported_expected_native_contract");
+  expect(deploymentAudit.facts.listener.hostname).toBe(deploymentServer.hostname);
+  expect(deploymentAudit.facts.listener.factory).toBe("createDeploymentServer");
+  expect(deploymentAudit.facts.listener.separate_from_application_listener).toBe(true);
+  expect(deploymentAudit.facts.listener.port.required_api_argument).toBe(true);
+  expect(deploymentAudit.facts.listener.port.native_main_environment).toBe("JADPO_DEPLOYMENT_PORT");
+  expect(deploymentAudit.facts.listener.port.native_main_activation).toBe("only_when_explicitly_present");
+  expect(deploymentAudit.facts.listener.port.resolved_value).toBeNull();
+  expect(deploymentAudit.live_listener).toBeNull();
+  expect(deploymentAudit.current_readiness).toBeNull();
+  expect(deploymentAudit.worker_execution_profile).toBeNull();
+  expect(deploymentAudit.runtime_conformance).toBe("not_established");
+  expect(deploymentAudit.release_authority).toBe(false);
+  expect(deploymentAudit.facts.application_plane.reserved_readiness_path).toBe("/health/ready");
+  expect(deploymentAudit.facts.application_plane.deployment_aliases_automatically_mounted).toBe(false);
+  expect(deploymentAudit.facts.readiness.database_check).toBe("native_database_readiness");
+  for (const path of deploymentAudit.facts.readiness.paths) {
+    const response = await fetch(`http://127.0.0.1:${deploymentServer.port}${path}`, { method: deploymentAudit.facts.readiness.method });
+    expect(deploymentAudit.facts.readiness.response_statuses).toContain(response.status);
+    const body = await response.json();
+    expect(body.checks).toEqual({ database: "available" });
+    expect(body.advisories).toEqual(deploymentAudit.facts.readiness.service_advisories);
+  }
+});
 test("separate compiler-owned deployment listener reports bounded readiness but serves no business or authority routes", async () => {
   expect(deploymentServer.hostname).toBe("127.0.0.1"); expect(deploymentServer.port).not.toBe(bunServer.port); expect(deploymentServer.port).not.toBe(nodeAddress.port);
   for (const path of ["/health/ready", "/health"]) {
@@ -76,6 +102,11 @@ test("an explicitly authored ordinary health route retains its checked output wh
   writeFileSync(join(directory, "app.jadpo"), `output Health { ok: Bool } route GET /health { auth: none output: Health action: { return Health { ok: true } } }`);
   const build = Bun.spawnSync([compiler, "build", directory], { stdout: "pipe", stderr: "pipe" }); expect(build.exitCode).toBe(0);
   const instance = await import(pathToFileURL(join(directory, "build/target/app.ts")).href);
+  const noEntityAudit = JSON.parse(readFileSync(join(directory, "build/audit/deployment.json"), "utf8"));
+  expect(noEntityAudit.facts.readiness.database_check).toBe("not_applicable_no_persistent_entities");
+  const ready = await instance.handleDeploymentRequest(new Request("http://deployment.test/health/ready"));
+  expect(noEntityAudit.facts.readiness.response_statuses).toContain(ready.status);
+  expect((await ready.json()).checks).toEqual({});
   const response = await instance.handleRequest(new Request("http://authored.test/health", { headers: { authorization: "Bearer invalid" } })); expect(response.status).toBe(200); expect(await response.json()).toEqual({ ok: true });
   expect((await instance.handleRequest(new Request("http://authored.test/health/ready"))).status).toBe(404);
   expect(await (await instance.handleDeploymentRequest(new Request("http://deployment.test/health"))).json()).toEqual({ status: "ready", checks: {}, advisories: {} });
@@ -87,6 +118,11 @@ test("removing the default GET health alias preserves a supported authored POST 
   writeFileSync(join(directory, "app.jadpo"), `output Health { ok: Bool } route POST /health { auth: none output: Health action: { return Health { ok: true } } }`);
   const build = Bun.spawnSync([compiler, "build", directory], { stdout: "pipe", stderr: "pipe" }); expect(build.exitCode).toBe(0);
   const instance = await import(pathToFileURL(join(directory, "build/target/app.ts")).href);
+  const noEntityAudit = JSON.parse(readFileSync(join(directory, "build/audit/deployment.json"), "utf8"));
+  expect(noEntityAudit.facts.readiness.database_check).toBe("not_applicable_no_persistent_entities");
+  const ready = await instance.handleDeploymentRequest(new Request("http://deployment.test/health/ready"));
+  expect(noEntityAudit.facts.readiness.response_statuses).toContain(ready.status);
+  expect((await ready.json()).checks).toEqual({});
   const response = await instance.handleRequest(new Request("http://authored.test/health", { method: "POST" })); expect(response.status).toBe(200); expect(await response.json()).toEqual({ ok: true });
   expect((await instance.handleRequest(new Request("http://authored.test/health"))).status).toBe(404);
 });

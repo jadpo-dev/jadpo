@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-504-3f456cb7e7ec", "task_id": "RM-504", "actor": "golden-adapters-service-restart-review", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T17:14:32.917107+00:00", "phase": "planning"}
+{"at": "2026-10-06T17:17:52.730592+00:00", "phase": "review", "note": "Independent fresh generated modules, SQLite18/205 andPG18/201; source109/archive143/JWT82 rehashed; targeted native child store and fresh-revocation negatives underway"}
+{"at": "2026-10-06T17:18:55.039611+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm504-independent-service-restart/review.json"}

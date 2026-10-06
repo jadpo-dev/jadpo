@@ -3,6 +3,7 @@ import { afterAll, beforeEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { SQL } from "bun";
 import { connect } from "node:net";
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -210,59 +211,96 @@ test("generated HTTP exchange remains valid after starting a fresh target proces
   expect(exchanged.status).toBe(200);
   const body = await exchanged.json();
 
-  if (postgres) return;
   const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
   const port = portProbe.port;
   portProbe.stop(true);
   const childEnvironment: Record<string, string | undefined> = {
-    ...Bun.env,
-    SQLITE_PATH: join(root, "golden.sqlite"),
+    PATH: Bun.env.PATH,
+    ...(postgresUrl ? { DATABASE_URL: postgresUrl } : { SQLITE_PATH: join(root, "golden.sqlite") }),
     PORT: String(port),
     JADPO_APP_PATH: join(project, "build/target/app.ts"),
     JADPO_APP_CONFIG: JSON.stringify(environment),
   };
-  delete childEnvironment.DATABASE_URL;
   const childScript = [
     'import { pathToFileURL } from "node:url";',
     'const app = await import(pathToFileURL(Bun.env.JADPO_APP_PATH!).href);',
     'await app.initializeApplication(JSON.parse(Bun.env.JADPO_APP_CONFIG!));',
-    'Bun.serve({ hostname: "127.0.0.1", port: Number(Bun.env.PORT), fetch: app.handleRequest });',
+    // Test-owned observation invokes the real generated credential validator.
+    // The child cannot issue/provision credentials or replace its principal.
+    'Bun.serve({ hostname: "127.0.0.1", port: Number(Bun.env.PORT), async fetch(request) {',
+    '  if (new URL(request.url).pathname !== "/__fixture/service-principal") return app.handleRequest(request);',
+    '  try { return Response.json(await app.authenticationHost().authenticate(request, new URL(request.url).searchParams.get("fresh") === "1", Date.now())); }',
+    '  catch { return new Response(null, { status: 401 }); }',
+    '} });',
+    'console.log(JSON.stringify({kind:"service_restart_child",pid:process.pid,backend:Bun.env.DATABASE_URL?"postgres":"sqlite"}));',
   ].join("\n");
-  const child = Bun.spawn([process.execPath, "-e", childScript], {
-    cwd: project,
-    env: childEnvironment,
-    stdout: "pipe",
-    stderr: "pipe",
+  const generatedPins = Object.fromEntries(["app.ts", "persistence.ts", "authentication.ts", "first-party-authentication.ts", "startup-owner.ts"].map(name => [name, createHash("sha256").update(readFileSync(join(project, "build/target", name))).digest("hex")]));
+  const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childScript], {
+    cwd: project, env: childEnvironment, stdout: "pipe", stderr: "pipe",
   });
+  const childStdout = new Response(child.stdout).text();
   const childStderr = new Response(child.stderr).text();
+  const endpoint = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${port}${path}`, { ...init, signal: AbortSignal.timeout(1000) });
+  const principal = (credential: string, fresh = false) => endpoint(`/__fixture/service-principal?fresh=${fresh ? 1 : 0}`, { headers: { authorization: `Bearer ${credential}` } });
+  let freshBody: any;
   try {
     let health: Response | undefined;
-    const deadline = Date.now() + 2500;
-    while (Date.now() < deadline) {
-      try {
-        health = await fetch(`http://127.0.0.1:${port}/health/live`);
-        if (health.status === 200) break;
-      } catch { /* Wait briefly for the generated process to open its listener. */ }
+    const deadline = performance.now() + 2500;
+    while (performance.now() < deadline && child.exitCode === null) {
+      try { health = await endpoint("/health/live"); if (health.status === 200) break; }
+      catch { /* Wait briefly for the generated target fixture to bind. */ }
       await new Promise(resolve => setTimeout(resolve, 20));
     }
-    if (health?.status !== 200) {
-      child.kill("SIGTERM");
-      await child.exited;
-      throw new Error(`Fresh generated target did not start: ${await childStderr}`);
-    }
     expect(health?.status).toBe(200);
-    const protectedResponse = await fetch(`http://127.0.0.1:${port}/todos`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${body.access_token}`, "content-type": "application/json" },
+    // Both the original key and pre-restart signed envelope resolve the exact
+    // generated service principal in the new process using the shared store.
+    for (const credential of [key.credential, body.access_token]) {
+      for (const fresh of [false, true]) {
+        const response = await principal(credential, fresh);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual(expectedPrincipal);
+      }
+    }
+    const freshExchange = await endpoint("/auth/exchange", { method: "POST", headers: { authorization: `Bearer ${key.credential}` } });
+    expect(freshExchange.status).toBe(200);
+    freshBody = await freshExchange.json();
+    expect(Object.keys(freshBody).sort()).toEqual(["access_token", "expires_at", "token_type"]);
+    expect(freshBody.token_type).toBe("Bearer");
+    expect(freshBody.access_token).toMatch(/^jdx1\./u);
+    const protectedResponse = await endpoint("/todos", {
+      method: "POST", headers: { authorization: `Bearer ${body.access_token}`, "content-type": "application/json" },
       body: JSON.stringify({ title: "must stay service-separated" }),
     });
     expect(protectedResponse.status).toBe(403);
     expect((await protectedResponse.json()).error.code).toBe("not_permitted");
+
+    await db.all("UPDATE service_credential SET status = 'revoked' WHERE id = ?", key.credentialId);
+    expect((await principal(key.credential)).status).toBe(401);
+    for (const credential of [body.access_token, freshBody.access_token]) {
+      expect((await principal(credential, true)).status).toBe(401);
+      const bounded = await principal(credential);
+      expect(bounded.status).toBe(200);
+      expect(await bounded.json()).toEqual(expectedPrincipal);
+    }
+    const revokedExchange = await endpoint("/auth/exchange", { method: "POST", headers: { authorization: `Bearer ${key.credential}` } });
+    expect(revokedExchange.status).toBe(401);
+    expect((await revokedExchange.json()).error.code).toBe("invalid_credentials");
+    expect(child.exitCode).toBeNull();
   } finally {
     child.kill("SIGTERM");
-    await child.exited;
+    expect(await child.exited).toBe(143);
+    expect(() => process.kill(child.pid, 0)).toThrow();
+    await expect(endpoint("/health/live")).rejects.toThrow();
+    const stdout = await childStdout, stderr = await childStderr;
+    expect(JSON.parse(stdout.trim())).toEqual({ kind: "service_restart_child", pid: child.pid, backend: postgresUrl ? "postgres" : "sqlite" });
+    for (const secret of [key.credential, body.access_token, freshBody?.access_token, environment.SESSION_SIGNING_KEY, environment.MAIL_API_KEY, postgresUrl].filter(Boolean)) {
+      expect(stdout + stderr).not.toContain(secret!);
+    }
+    expect(stderr).not.toContain("SELECT");
   }
-});
+  for (const [name, digest] of Object.entries(generatedPins)) expect(createHash("sha256").update(readFileSync(join(project, "build/target", name))).digest("hex")).toBe(digest);
+  console.log(JSON.stringify({ kind: "native_service_credential_restart", backend: postgresUrl ? "postgres" : "sqlite", parentPid: process.pid, childPid: child.pid, exchangeStatus: 200, revokedExchangeStatus: 401, freshSignedRevokedStatus: 401, boundedSignedStatus: 200, protectedMutationStatus: 403, exit: 143, childExited: true, generatedPins }));
+}, 10000);
 
 test("generated exchange rejects missing, malformed, competing, user and disabled credentials before returning a token", async () => {
   const key = await issue();

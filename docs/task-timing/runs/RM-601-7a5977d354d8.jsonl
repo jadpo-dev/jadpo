@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-601-7a5977d354d8", "task_id": "RM-601", "actor": "startup_owner_review", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T17:38:02.259147+00:00", "phase": "planning"}
+{"at": "2026-10-06T17:39:35.968094+00:00", "phase": "blocked", "note": "Source preparation complete; awaiting immutable corrective leaf and exact final native test binary/CLI pins from author before consequential review."}
+{"at": "2026-10-06T17:40:05.145456+00:00", "phase": "verification", "note": "Preserved stable final native unit binary and CLI pins received; own106 test replay passed while immutable leaf still pending. No source acceptance yet."}
+{"at": "2026-10-06T17:43:11.999685+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm601-independent-deployment-lazy-correction-review.json"}

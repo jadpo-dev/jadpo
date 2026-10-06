@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T18:05:50+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T18:54:18+01:00 · figures reflect the recorded roadmap.
 
-Reviewed initial native startup now runs under an owned ten-second deadline; safe maintenance failures remain visible. The fresh combined supported gate passes 80/80 and supporting golden observations pass 88/88, while full golden acceptance remains open.
+Reviewed persistence, deployment and recovery changes now pass a fresh81-check combined gate. PostgreSQL policy and credential restart coverage are added; all88 supporting golden observations pass while full golden acceptance remains open.
 
 ## At a glance
 
@@ -20,9 +20,9 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- [Native startup and diagnostic integration](../../tests/validation/evidence/rm403504-integrated-startup-temporal/report.json) passed both database suites without weakening final readiness authority.
-- [Temporal provenance](../../tests/validation/rm504-independent-temporal-provenance-metadata-review.json) distinguishes exact compiler enum bytes from host Intl data; unreported rule versions remain explicit.
-- [Local durable approval consumption](../../tests/validation/evidence/rm603-independent-native-ledger-case-review/corrected-review.json) has scoped independent approval; results remain non-releasable.
+- [Combined reviewed fusion](../../tests/validation/evidence/rm403504601-reviewed-fusion/report.json) passes81/81 with stable source/compiler pins and retained original red.
+- [PostgreSQL policy parity](../../tests/validation/evidence/rm504-independent-policy-runtime-382/review.json) checks actual stored denial and membership revocation on both adapters.
+- [Same-store credential restart](../../tests/validation/evidence/rm504-independent-service-restart/review.json) now runs in actual fresh child processes on both databases.
 
 ## Since the previous report
 
@@ -58,7 +58,7 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Integrate reviewed persistence links, then qualify structured deployment facts, bounded recovery native work and missing PostgreSQL restart/policy/time cases.
+Continue concrete admission witnesses, protected native retry/deadlock qualification and typed temporal roundtrips; assess the missing generated half-open local-day predicate.
 
 ## Input needed
 

@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "task": "RM-601",
+  "reviewer": "startup_owner_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-601-796020a34d33",
+  "candidate_commit": "8cccaa13ea3bccc9ba4a13699d1339ade3b15a5b",
+  "approved": true,
+  "status": "bounded_static_deployment_surface_metadata_approved",
+  "task_closed": false,
+  "release_equivalent": false,
+  "scope": "Static expected native deployment audit/canonical facts only; no live host configuration, readiness, worker or release authority.",
+  "source_conclusions": [
+    "Complete derive_target refusal is checked before supported facts; exact code/rule diagnostic and facts:null are retained for unsupported native targets. Constructor predicates use actual persistent entity and declared configuration model.",
+    "Native readiness handler/factory names, GET aliases, loopback and explicit safe integer API port argument0..65535 match emitter. JADPO_DEPLOYMENT_PORT activates main only when explicitly present, with absent/empty/leading-zero/range handling matching native source.",
+    "Persistent entities use native database readiness200/503; output-only records use no database check200. Exception503 retained separately. Service names derive from the same snake_case external effects as emitter, unprobed and never qualified provider health.",
+    "Application reserved readiness path stays excluded before ordinary authored route dispatch; unrelated authored GET/POST health routes retain their outputs. This metadata imposes no new source prohibition or auth flow.",
+    "Supported facts retain null resolved port/live/current readiness/worker profile, runtime conformance not_established and release_authority false. Metadata remains byte-identical after actual native listeners start/stop.",
+    "Accessor adds no generation line; native emitted target14 file hashes match exact before/after compilers. Audit/deployment.json appears in generated audit provenance and canonical impact/fact closure; digests/decisions intentionally change."
+  ],
+  "independent_checks": {
+    "compiler_source_pins_rehashed": 69,
+    "author_safe_archive_members_rehashed": 125,
+    "native_sqlite": {
+      "passed": 5,
+      "assertions": 397
+    },
+    "native_postgres": {
+      "passed": 5,
+      "assertions": 397
+    },
+    "fresh_native_export": {
+      "checked_variants": 2,
+      "written_target_files": 14,
+      "byte_comparison_equal": true,
+      "native_port_field_refusals": [
+        {
+          "kind": "forged",
+          "all_copy_mutations": 5,
+          "native_exit": 1
+        },
+        {
+          "kind": "omitted",
+          "all_copy_mutations": 5,
+          "native_exit": 1
+        }
+      ],
+      "unchanged_native_export_accepted": true,
+      "unsupported_checked_build_exit": 1
+    },
+    "native_main_and_api_controls": {
+      "kind": "independent_native_deployment_activation",
+      "results": [
+        {
+          "name": "bun-absent",
+          "expectedListeners": 1,
+          "actualListenerBranches": [
+            "bun"
+          ],
+          "uniqueBoundPorts": 1,
+          "exit": 143,
+          "auditUnchanged": true,
+          "scope": "Actual original generated main branch; observer-only bound listener records, no startup-owner claim."
+        },
+        {
+          "name": "bun-explicit-zero",
+          "expectedListeners": 2,
+          "actualListenerBranches": [
+            "bun",
+            "bun"
+          ],
+          "uniqueBoundPorts": 2,
+          "exit": 143,
+          "auditUnchanged": true,
+          "scope": "Actual original generated main branch; observer-only bound listener records, no startup-owner claim."
+        },
+        {
+          "name": "node-absent",
+          "expectedListeners": 1,
+          "actualListenerBranches": [
+            "bun",
+            "node"
+          ],
+          "uniqueBoundPorts": 1,
+          "exit": 143,
+          "auditUnchanged": true,
+          "scope": "Actual original generated main branch; observer-only bound listener records, no startup-owner claim."
+        },
+        {
+          "name": "node-explicit-zero",
+          "expectedListeners": 2,
+          "actualListenerBranches": [
+            "bun",
+            "bun",
+            "node"
+          ],
+          "uniqueBoundPorts": 2,
+          "exit": 143,
+          "auditUnchanged": true,
+          "scope": "Actual original generated main branch; observer-only bound listener records, no startup-owner claim."
+        },
+        {
+          "name": "invalid-empty",
+          "expectedListeners": 0,
+          "actualListenerBranches": [],
+          "uniqueBoundPorts": 0,
+          "exit": 1,
+          "auditUnchanged": true,
+          "scope": "Actual original generated main branch; observer-only bound listener records, no startup-owner claim."
+        },
+        {
+          "name": "invalid-range",
+          "expectedListeners": 0,
+          "actualListenerBranches": [],
+          "uniqueBoundPorts": 0,
+          "exit": 1,
+          "auditUnchanged": true,
+          "scope": "Actual original generated main branch; observer-only bound listener records, no startup-owner claim."
+        },
+        {
+          "name": "invalid-leading-zero",
+          "expectedListeners": 0,
+          "actualListenerBranches": [],
+          "uniqueBoundPorts": 0,
+          "exit": 1,
+          "auditUnchanged": true,
+          "scope": "Actual original generated main branch; observer-only bound listener records, no startup-owner claim."
+        },
+        {
+          "name": "config-preflight-missing",
+          "expectedListeners": 0,
+          "actualListenerBranches": [],
+          "uniqueBoundPorts": 0,
+          "exit": 1,
+          "auditUnchanged": true,
+          "scope": "Actual original generated main branch; observer-only bound listener records, no startup-owner claim."
+        }
+      ],
+      "invalidExplicitApiPortsRefused": 5,
+      "explicitApiZeroAccepted": true
+    },
+    "additional_rehashed_unknown_authority_refusals": [
+      {
+        "field": "release_authority",
+        "deployment_metadata_copies_mutated": 3,
+        "canonical_digest_rehashed": true,
+        "native_exit": 1
+      },
+      {
+        "field": "live_listener",
+        "deployment_metadata_copies_mutated": 3,
+        "canonical_digest_rehashed": true,
+        "native_exit": 1
+      },
+      {
+        "field": "current_readiness",
+        "deployment_metadata_copies_mutated": 3,
+        "canonical_digest_rehashed": true,
+        "native_exit": 1
+      }
+    ]
+  },
+  "cli_pins": {
+    "before": {
+      "path": "/private/tmp/jadpo-deployment-review-8ccc/before-jadpo",
+      "sha256": "cd5a26ed34e739f299e7101e3b9131746d065b173d3613f4dfc011495e69e89b"
+    },
+    "after": {
+      "path": "/private/tmp/jadpo-deployment-review-8ccc/after-jadpo",
+      "sha256": "61bbfa95cba2d545e536b6f39317d2019d15a4bc3444bb6ad0b5839009ffd992"
+    }
+  },
+  "core_rlib": {
+    "path": "/private/tmp/jadpo-golden-http-loop/jadpo/target/debug/deps/libjadpo_core-84b72fae3717edd5.rlib",
+    "sha256": "473c0889ddd465374bb78547762085ab8668aa6169a29c1c0b211aa0330d7d19",
+    "scope": "Rehashed exact preserved author fresh core; own native renderer validator linked with rustc in own capture. No new Cargo tree or independent core rebuild."
+  },
+  "author_focused_source_contracts": {
+    "deployment_cases": 8,
+    "total_focused_core_cases": 108,
+    "scope": "Source reviewed/author evidence read, not independently recompiled8 Rust tests; native and negative export replays independently executed."
+  },
+  "findings": [],
+  "limits": [
+    "Metadata leaf native main source epoch predates root current startup supervision fusion. Select only accessor45-line target delta plus reviewed artifact/test changes, preserving root startup/hourly/temporal/native main bodies. Own native activation controls qualify exact original8ccc emitter, not current combined main ownership.",
+    "Bun1.2.20/macOS and PostgreSQL16.3. node:http branch under Bun only; no actual Node engine/platform qualification.",
+    "No current deployment port, running listener, readiness, provider health, worker execution or release permission inferred from successful compiler generation. Native observation is a separate evidence scope, not encoded as metadata authority.",
+    "Original independent observer counted native Bun transport plus node:http wrapper as two listeners for one port. Raw red/script/PID-port traces retained; corrected unique actual port count establishes1 app or2 app+deployment ports.",
+    "Additional coherent unknown/authority forgeries mutate3 supported metadata copies and rehash canonical digest; native expected-export validator refuses. These are local source-renderer integrity checks, not external attestation against replacing expected source and evidence together.",
+    "Author original checked grammar/config/nonlocal liveness/status refusals remain retained; full artifact closure/admission counterexamples, RM601/RM603/golden completion and fresh current-root supported gate remain separate."
+  ],
+  "author_report": "tests/validation/evidence/rm601-deployment-surface-metadata/report.json",
+  "evidence_inventory": "tests/validation/evidence/rm601-independent-deployment-surface-8ccc/inventory.json",
+  "timing": {
+    "outcome": "partial",
+    "active_minutes": 6.74,
+    "verification_minutes": 5.42,
+    "scope": "Independent bounded deployment metadata review complete; RM601 task closure not claimed."
+  }
+}

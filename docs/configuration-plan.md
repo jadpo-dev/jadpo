@@ -463,6 +463,10 @@ Integration preserves the approved hourly maintenance scheduler between private 
 
 These reviews qualify initial native main-entry ownership on the observed Bun/macOS host, including the node:http listener branch under Bun. They do not qualify the Node engine, post-startup native request/recovery hard lifetimes, synchronous SQLite calls in the serving process, parent death or other platforms. Mail remains advisory/unprobed. Whole CONFIG-P5/RM-403 and final golden acceptance remain open.
 
+### RM-403 PostgreSQL recovery server budget — 2026-10-06
+
+The [independent recovery review](../tests/validation/evidence/rm403-independent-recovery-budget-d6/review.json) qualifies the original one-second readiness-attempt deadline through the same-pool schema/authentication transaction, remaining transaction-local PostgreSQL statement/lock limits and schema advisory guard. Two actual lock waits share that budget and leave no partial index; existing backend settings restore after successful recovery. Cancellation is idempotent. A held COMMIT acknowledgment returns unavailable to callers while retaining the native slot and prior client until real settlement; it cannot publish late readiness or start replacement work. Pool acquisition, setup/COMMIT transport, ordinary probes and synchronous SQLite hard lifetimes remain unqualified.
+
 ## 7. Required evidence
 
 | Area | Required positive and adversarial evidence |

@@ -200,6 +200,10 @@ origins: aliases, whole-value/call boundaries, path feasibility and runtime
 conformance remain unresolved. This is an additive source-contract slice, not
 complete field-flow/taint analysis or approval authority.
 
+The [reviewed persistence operand links](../tests/validation/evidence/rm601-independent-persistence-6c/review.json) bind explicit create initializers and ordinary point-query RHS names to checked lexical declarations. Entity predicate fields remain separate. Many/page/include, missing/conflict, update/delete, mutable-value and pattern scopes retain their explicit unresolved boundaries; these links do not prove value origins or execution.
+
+The [static deployment surface review](../tests/validation/rm601-independent-deployment-surface-metadata-review.json) qualifies expected native handler, readiness, explicit port and advisory contracts in `audit/deployment.json` and canonical deployment facts. Live listener, current readiness and worker profile remain unknown, and release authority stays false. The [lazy construction correction](../tests/validation/rm601-independent-deployment-lazy-correction-review.json) preserves incomplete route-only metadata observations while deriving native facts for complete checked snapshots and requested deployment audits.
+
 `provenance.generated_artifacts` binds fresh expected generator bytes: sorted
 path/producer/byte-length/SHA-256 descriptors for metadata/audits and supported
 target outputs, including emitted SQL, authentication and dependency files.

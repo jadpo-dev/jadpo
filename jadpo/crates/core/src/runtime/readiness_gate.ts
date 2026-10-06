@@ -5,7 +5,7 @@ type ReadinessGateOptions<Candidate> = {
   fatal(): boolean;
   needsProbe(): boolean;
   invalidation(): number;
-  check(recovering: boolean, setCancel: (cancel: () => void) => void): Promise<boolean>;
+  check(recovering: boolean, setCancel: (cancel: () => void) => void, deadlineAt: number): Promise<boolean>;
   prepare(recovering: boolean): Candidate;
   publish(candidate: Candidate): void;
   unavailable(): void;
@@ -89,7 +89,7 @@ export function createReadinessGate<Candidate>(options: ReadinessGateOptions<Can
       };
       try {
         // One handled observer per aggregate native attempt, regardless of callers.
-        void options.check(recovering, cancel => { attempt.cancel = cancel; })
+        void options.check(recovering, cancel => { attempt.cancel = cancel; }, attempt.deadlineAt)
           .then(healthy => finish(healthy), () => finish(false));
       } catch { finish(false); }
       return response;

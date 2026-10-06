@@ -1,0 +1,42 @@
+{
+  "task": "RM-601",
+  "scope": "Independent lazy deployment metadata construction correction review",
+  "status": "approved_scoped_corrective_leaf",
+  "reviewer": "startup_owner_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-601-7a5977d354d8",
+  "product_commit": "77111c9308a594923acd581ea5b05fbca3546993",
+  "author_report_sha256": "a41b6cf4bddadc9f2d8d782824ddd0c45fd135a3949f5f70c261773d560689cf",
+  "assessment": "Three-file correction removes eager native target lowering from ArtifactModel construction, preserves routes-only unresolved observation behavior, and invokes the unchanged deployment accessor at complete checked snapshot/full artifact generation. Artifact/scaffold assertions include the existing deployment artifact. No runtime target code change.",
+  "independent_checks": {
+    "stable_final_native_lib_tests": 106,
+    "failures": 0,
+    "unchanged_incomplete_typed_observation_control": "passed with unresolved facts, not lowered or upgraded",
+    "actual_native_supported_variants": 2,
+    "equal_native_target_provenance_files_across_both_compilers": 12,
+    "composition": "6 TypeScript,4 SQL schema and2 persistence entity outputs across four builds",
+    "supported_deployment_audit_and_canonical_decision_facts_equal": true,
+    "checked_unsupported_source": "check0 approval0 build1 both compiler epochs; rejected facts null, runtime not established and release false unchanged",
+    "immutable_compiler_source_pins_rehashed": 69,
+    "safe_author_archive_members_rehashed": 89,
+    "author428_core_results": "rehash/source scoped reported execution, not own428 rerun"
+  },
+  "native_tool_pins": {
+    "cli_path": "/private/tmp/jadpo-deployment-lazy-review/jadpo",
+    "cli_sha256": "56e33539f0ada917a53b2c5c6e7befcce76813e07ee4a2aefb0ffb36471b92d5",
+    "unit_binary_path": "/private/tmp/jadpo-deployment-lazy-review/core-lib-tests",
+    "unit_binary_sha256": "b0d5e22f5dcf0f513c4331146d8a6a9296019c3c2fb6c28faee52258df96e990",
+    "execution": "Reused exact preserved freshly author-built native binaries after source/provenance rehash; no independent rebuild or second Cargo tree claimed."
+  },
+  "original_reds": "Original root fusion red exact copy/hash retained; deliberately incomplete typed-observation test source unchanged from8ccc. No test weakened.",
+  "integration": "Select only artifacts.rs/approval.rs/scaffold.rs three-file delta into current fused root; leave target.rs/current startup/temporal source untouched. Parent full combined gate remains necessary.",
+  "limits": [
+    "Review qualifies bounded regression correction, not whole RM601/golden/approval closure.",
+    "Supported native comparisons and preserved tools belong exact isolated8ccc+771 source epoch; no current root fused native byte equivalence inferred.",
+    "Static supported deployment facts retain live listener/current readiness/worker profile unknown and release authority false."
+  ],
+  "raw_evidence": "tests/validation/evidence/rm601-independent-deployment-lazy-771",
+  "safe_own_archive_sha256": "d24ac5bacf4a7fdde0aadb220714b09fdde01a460f348831f83197602c83ec8d",
+  "safe_own_archive_members": 96
+}

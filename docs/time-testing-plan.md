@@ -1121,3 +1121,5 @@ acceptance, arithmetic, formatting or the accepted TIME decisions. Identical
 pinned timezone-rule evidence remains outside this checkpoint.
 
 The [scoped implementation evidence](../tests/validation/evidence/rm504-temporal-provenance-distinction/report.json) records the actual engine reports, source/enum/compiler pins, metadata-only emitted-byte comparison and independent-review status.
+
+The [independent PostgreSQL policy review](../tests/validation/evidence/rm504-independent-policy-runtime-382/review.json) qualifies nine imported generated policy cases on both adapters, with stored denial/revocation checks and equal observations. The [credential restart review](../tests/validation/evidence/rm504-independent-service-restart/review.json) qualifies actual same-store child validation on both adapters. These finite database gaps are resolved in their maintained fixtures; authentication/main-entry scope, local-day database predicates and broader typed temporal evidence remain separate.
