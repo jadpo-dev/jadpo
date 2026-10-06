@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-504-a9d8ce4ce350", "task_id": "RM-504", "actor": "golden-adapters-precision-execution", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 1.5], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T21:42:55.866808+00:00", "phase": "planning"}
+{"at": "2026-10-06T21:45:50.884433+00:00", "phase": "verification", "note": "First nativePG initdb failed disk exhaustion before any case; preserve setup red and inspect only owned completed cache."}
+{"at": "2026-10-06T21:50:55.723190+00:00", "phase": "review", "note": "Final20/269 nativePG;73 actualcompiled archivepins and1466 safe members/20 finalbindings verified; no product orIntl rule claims."}
+{"at": "2026-10-06T21:51:25.356469+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm504-after-ready-stored-corruption/residual-precision-plan/native-probe/report.json"}
