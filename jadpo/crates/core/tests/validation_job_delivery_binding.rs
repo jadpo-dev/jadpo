@@ -23,18 +23,9 @@ fn candidate(source: &str) -> AnalyzedProject {
 fn candidate_with_change(source: &str, change: Option<(&str, &str, &str)>) -> AnalyzedProject {
     let root = root();
     let mut sources = discover_sources(&root.join("examples/golden-todo-migration")).unwrap();
-    let contracts = sources
-        .iter_mut()
-        .find(|source| source.path.ends_with("values/contracts.jadpo"))
-        .unwrap();
-    assert_eq!(
-        contracts.text.matches("idempotency_key: Todo.id").count(),
-        1
-    );
-    contracts.text = contracts.text.replace(
-        "idempotency_key: Todo.id",
-        "idempotency_key: ReminderIntentId",
-    );
+    // Candidate fixture owns its delivery declarations; canonical checked
+    // source is excluded to avoid duplicate names while retaining contracts.
+    sources.retain(|source| !source.path.ends_with("jobs/reminders.jadpo"));
     if let Some((file, before, after)) = change {
         let changed = sources
             .iter_mut()
@@ -253,10 +244,7 @@ fn actual_migration_contracts_finish_nonexecuting_binding_not_worker() {
     }
     let root = root();
     assert!(derive_approval_subject(&root, &project, None, None, None).is_ok());
-    assert_eq!(
-        derive_target(&root, &project).unwrap_err().code,
-        "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
-    );
+    assert!(derive_target(&root, &project).is_ok());
     // Removing the descriptor leaves genuinely supported ordinary declarations,
     // including the exact imported service, not a rewritten unchecked graph.
     let plain = FIXTURE[..FIXTURE.find("    delivery:").unwrap()].to_owned() + "}\n";

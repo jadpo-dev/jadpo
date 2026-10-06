@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-306-169e112368ff", "task_id": "RM-306", "actor": "golden-worker-loop", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T06:40:17.867008+00:00", "phase": "planning"}
+{"at": "2026-10-06T06:44:01.661972+00:00", "phase": "verification", "note": "Exact checked source sealing, renamed binding and untouched full-target adapter runtime qualification"}
+{"at": "2026-10-06T06:50:53.133132+00:00", "phase": "review", "note": "Complete core suite and both adapter suites passed; preserving original fixture assumption negatives and qualifying final canonical artifact hashes"}
+{"at": "2026-10-06T06:52:12.759269+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm306-checked-golden-job/manifest.json"}

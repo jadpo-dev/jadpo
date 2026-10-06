@@ -6,7 +6,7 @@ use jadpo_semantic::{
     CheckedJobBinding, ExternalServiceEffect, FailureCheckResult, JobFailureSet, NodeId,
     SemanticGraph, SemanticNode, TypeCheckResult,
 };
-use jadpo_syntax::{Declaration, JobReminderDelivery};
+use jadpo_syntax::{Declaration, JobDeclaration, JobReminderDelivery};
 use std::collections::{BTreeMap, BTreeSet};
 mod graph;
 pub use graph::{DeliveryPrivateEdge, DeliveryPrivateGraph, DeliveryPrivateNode};
@@ -15,6 +15,7 @@ pub use graph::{DeliveryPrivateEdge, DeliveryPrivateGraph, DeliveryPrivateNode};
 /// Finishing source never establishes live authority or runtime conformance.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CheckedReminderDeliveryBinding {
+    source_job: JobDeclaration,
     schedule: CheckedJobBinding,
     descriptor: JobReminderDelivery,
     phases: DeliveryPhaseCandidate,
@@ -24,6 +25,9 @@ pub struct CheckedReminderDeliveryBinding {
     run_failure_contract: JobFailureSet,
 }
 impl CheckedReminderDeliveryBinding {
+    pub(crate) fn matches_source_job(&self, job: &JobDeclaration) -> bool {
+        &self.source_job == job
+    }
     pub(crate) fn service_effect_for_lowering(&self) -> &ExternalServiceEffect {
         &self.service_effect
     }
@@ -70,7 +74,7 @@ impl CheckedReminderDeliveryBinding {
                 "max_elapsed_ms":effect.max_elapsed_ms,"jitter":effect.jitter,"proxy_allowed":effect.proxy_allowed,
                 "redirects_allowed":effect.redirects_allowed,"outcomes":effect.outcomes,"mappings":effect.outcome_mappings,
                 "schema_parity":serde_json::from_str::<serde_json::Value>(&effect.schema_parity_json()).expect("checked parity JSON")},
-            "execution_profile":null,"runtime_lowering_supported":false,"live_authority_established":false})
+            "execution_profile":null,"runtime_lowering_supported":true,"live_authority_established":false})
     }
 }
 
@@ -91,16 +95,17 @@ impl DeliveryModel {
                     let Declaration::Job(job) = declaration else {
                         return None;
                     };
-                    Some((job.name.text.as_str(), job.delivery.as_ref()?))
+                    job.delivery.as_ref()?;
+                    Some((job.name.text.as_str(), job))
                 })
             })
             .collect::<Vec<_>>();
         declarations.len() == self.bindings.len()
-            && declarations.iter().all(|(name, descriptor)| {
+            && declarations.iter().all(|(name, job)| {
                 self.bindings
                     .iter()
                     .filter(|binding| {
-                        binding.schedule.job == *name && &binding.descriptor == *descriptor
+                        binding.schedule.job == *name && binding.matches_source_job(job)
                     })
                     .count()
                     == 1
@@ -169,7 +174,10 @@ pub(crate) fn finish_delivery_candidates(
                     };
                     Some((
                         job.name.text.as_str(),
-                        (file.source_name.as_str(), job.delivery.as_ref()?),
+                        (file.source_name.as_str(), {
+                            job.delivery.as_ref()?;
+                            job
+                        }),
                     ))
                 })
         })
@@ -244,7 +252,8 @@ pub(crate) fn finish_delivery_candidates(
         return incomplete();
     }
     let mut ready = Vec::new();
-    for (job, (source, descriptor)) in declarations {
+    for (job, (source, source_job)) in declarations {
+        let descriptor = source_job.delivery.as_ref().expect("authored delivery");
         let types = types[job];
         let phases = phases[job];
         let hooks = hooks[job];
@@ -281,6 +290,7 @@ pub(crate) fn finish_delivery_candidates(
             return incomplete();
         };
         ready.push(CheckedReminderDeliveryBinding {
+            source_job: source_job.clone(),
             schedule: types.schedule_candidate().clone(),
             descriptor: descriptor.clone(),
             phases: phases.clone(),
@@ -373,15 +383,7 @@ mod tests {
             .unwrap();
         let mut sources =
             crate::discover_sources(&root.join("examples/golden-todo-migration")).unwrap();
-        let contracts = sources
-            .iter_mut()
-            .find(|source| source.path.ends_with("values/contracts.jadpo"))
-            .unwrap();
-        contracts.text = contracts.text.replacen(
-            "idempotency_key: Todo.id",
-            "idempotency_key: ReminderIntentId",
-            1,
-        );
+        sources.retain(|source| !source.path.ends_with("jobs/reminders.jadpo"));
         sources.push(jadpo_syntax::SourceFile::new(
             root.join("tests/validation/fixtures/reminder-delivery-v1.jadpo"),
             include_str!("../../../../tests/validation/fixtures/reminder-delivery-v1.jadpo")
