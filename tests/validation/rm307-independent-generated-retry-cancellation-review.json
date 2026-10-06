@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "task_id": "RM-307",
+  "kind": "independent-fixed-generated-retry-cancellation-version-review",
+  "reviewed_author": "c75f109fa820f25f9238c34408a38e059d1c371d",
+  "parent": "e6909456745ed341d1c95412ff30d041290c34e0",
+  "actual_model": "gpt-6.1-sol",
+  "actual_effort": "high",
+  "scope_approval": "approved: five new frozen IDs at actual generated private runtime boundaries plus clean isolated owning-COMMIT observation correction",
+  "task_complete": false,
+  "public_worker_conformance_closed": false,
+  "full_18_conformance_closed": false,
+  "checks": [
+    {
+      "kind": "fresh CLI build",
+      "result": "pass",
+      "seconds": 16.78
+    },
+    {
+      "kind": "canonical pinned JWT dependency cache",
+      "result": "pass"
+    },
+    {
+      "kind": "unaltered authored COMMIT failure selected FIRST on independent clean database",
+      "sqlite": {
+        "passed": 1,
+        "failed": 0,
+        "assertions": 6
+      },
+      "postgres": {
+        "passed": 1,
+        "failed": 0,
+        "assertions": 6
+      },
+      "preceding_positive_control": false
+    },
+    {
+      "kind": "unaltered author focus",
+      "sqlite": {
+        "passed": 4,
+        "failed": 0,
+        "assertions": 81
+      },
+      "postgres": {
+        "passed": 4,
+        "failed": 0,
+        "assertions": 81
+      }
+    },
+    {
+      "kind": "independent provider/ledger/no-resend/unknown-version poison strengthening",
+      "sqlite": {
+        "passed": 4,
+        "failed": 0,
+        "assertions": 191
+      },
+      "postgres": {
+        "passed": 4,
+        "failed": 0,
+        "assertions": 191
+      }
+    }
+  ],
+  "new_frozen_ids": [
+    "ASYNC-RETRY-KNOWN-NO-EFFECT",
+    "ASYNC-RETRY-EXHAUSTION",
+    "ASYNC-CANCEL-PENDING",
+    "ASYNC-CANCEL-AFTER-DISPATCH",
+    "ASYNC-UNSUPPORTED-PAYLOAD-VERSION"
+  ],
+  "exact_catalogue_mapping": [
+    {
+      "id": "ASYNC-CANCEL-PENDING",
+      "area": "cancellation",
+      "setup": "An intent is pending or waiting for a known-no-effect retry.",
+      "fault": "A trusted cancellation request commits before claim or dispatch.",
+      "expect": "The intent becomes cancelled and no effect is invoked."
+    },
+    {
+      "id": "ASYNC-CANCEL-AFTER-DISPATCH",
+      "area": "cancellation",
+      "setup": "Possible dispatch is committed and an external operation is in flight.",
+      "fault": "Cancellation is requested before a receipt is available.",
+      "expect": "Cancellation is recorded as requested; success, known failure or outcome_unknown is preserved rather than asserting rollback."
+    },
+    {
+      "id": "ASYNC-RETRY-KNOWN-NO-EFFECT",
+      "area": "retry",
+      "setup": "An adapter proves a listed transient failure occurred before any effect.",
+      "fault": "The attempt fails within its bounded budget.",
+      "expect": "Only the same intent ID and immutable payload may retry after bounded jitter, while consuming one cumulative finite intent budget."
+    },
+    {
+      "id": "ASYNC-RETRY-EXHAUSTION",
+      "area": "dead-letter",
+      "setup": "All bounded attempts fail with proven no-effect outcomes.",
+      "fault": "The retry count or elapsed budget is exhausted.",
+      "expect": "One terminal failed/dead-letter record contains safe failure class and attempt evidence; later scheduled activations cannot reset the exhausted budget."
+    },
+    {
+      "id": "ASYNC-UNSUPPORTED-PAYLOAD-VERSION",
+      "area": "versioning",
+      "setup": "A worker encounters an intent whose payload version has no registered handler.",
+      "fault": "The worker is deployed with an older schema.",
+      "expect": "The intent is held with a safe diagnostic and is not decoded under a different version."
+    }
+  ],
+  "cumulative_scoped_private_ids": {
+    "count": 11,
+    "of": 18,
+    "basis": "Five in this fixed review plus six in prior immutable reviews; not a single new independent 11-case/full18/public execution claim."
+  },
+  "source_categories": {
+    "production_code_changed": false,
+    "frozen_catalogue_changed": false,
+    "service_fixture_changed": false,
+    "runtime_test_and_helper_changed": true,
+    "author_manifest_logs_and_timing_changed": true
+  },
+  "verified_semantics": [
+    "Listed adapter-origin 429 rate_limited known-no-effect results retry the same immutable intent/payload across fresh processes. Each scheduled invocation invokes at most3 provider attempts;3 cumulative invocations give9 attempts before one safe budget_exhausted dead letter.",
+    "Service operation max_attempts3/max_elapsed30s remains distinct from scheduled maxInvocations3/lifetime1h; production and authored fixture unchanged. Immutable claim ledger/profile verified independently.",
+    "Persisted future retry_not_before blocks another fresh scheduled worker without consuming an invocation; injected past boundary permits retry with same ID. Original lifetime deadline is retained across generations.",
+    "Later scheduled worker cannot reset exhausted budget or send a tenth attempt. Payload/version and one durable intent remain.",
+    "Trusted pending cancellation leaves cancelled and zero provider calls, including a later interval/fresh worker.",
+    "Cancellation during actual provider I/O records requested while running, retains eventual checked success and does not resend at later interval/fresh worker.",
+    "Unregistered version refuses safe delivery.identity_conflict, holds original durable pending record, leaves no activation/provider/business write. Poisoned wrong-shape payload with canary also refuses same version identity fault before typed payload decoding, without canary in error.",
+    "Fixed metadata helper explicitly accepts absent lazy schema or existing empty enrollment; unexpected metadata/query errors propagate. Clean first negative trigger proves no dispatch, followed only afterward by a positive dispatch control."
+  ],
+  "provider_boundary_observations": {
+    "sqlite": {
+      "provider_calls": 10,
+      "retry_calls": 9,
+      "inflight_cancellation_calls": 1,
+      "distinct_intent_ids": 2,
+      "retry_generations": [
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3
+      ],
+      "limits_immutable": true
+    },
+    "postgres": {
+      "provider_calls": 10,
+      "retry_calls": 9,
+      "inflight_cancellation_calls": 1,
+      "distinct_intent_ids": 2,
+      "retry_generations": [
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3
+      ],
+      "limits_immutable": true
+    }
+  },
+  "prior_negative_evidence": {
+    "preserved_prior_review_hashes": {
+      "rm307-independent-generated-recovery-review.json": "0672f2a8909eac44523782bb90991d39a2e5ed03082829a01d7b07372c8602c4",
+      "rm307-independent-atomic-source-recovery-correction-review.json": "efb09fad05590fe4f4d0e82047426397735014a1decc017f32767f22838d232f"
+    },
+    "retained_author_initial_failures": [
+      "sqlite-isolated-commit-before.log",
+      "sqlite-focused.log",
+      "postgres-focused.log"
+    ],
+    "disposition": "Prior missing-table and key-order comparison failures retained, not rewritten. Metadata observation fix changes test correctness; structural exact-field equality handles JSON key order without weakening immutable typed payload values."
+  },
+  "findings": [],
+  "limitations": [
+    "Actual generated private host components/real adapter paths with explicit fixture principal, trusted native cancellation and separate approved60/40 profiles; no public operator authorization/source-worker activation approval.",
+    "Retry times are moved with explicit fixture DB updates; no claim to executing a real hour-long soak or production latency.",
+    "30-second service budget is unchanged configured/source evidence; this fast local mock run does not measure worst-case full30-second elapsed behavior.",
+    "Version mismatch is held via safe identity_conflict, with original record inspectable; no claimed public unsupported-version management UI or registered replay path.",
+    "No wholeRM307/full18/public/golden closure; replay and remaining cases require future implementation/review.",
+    "No broad repeat of author full75/74 suite: retained hash-verified logs are author evidence, not independent broad execution."
+  ],
+  "source_test_sha256": "826f06af48d33c612048c2b9a0a8f6816ce385fe1a7eca559b020fd7b2813e14",
+  "evidence_directory": "/private/tmp/jadpo-parallel-integration/tests/validation/evidence/golden-loop-retry-cancellation-independent",
+  "timer": "RM-307-ffaafaed9f21",
+  "recorded_at": "2026-10-06T06:31:34.624283+00:00"
+}

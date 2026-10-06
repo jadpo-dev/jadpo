@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-306",
+  "review": "immutable canonical checked job source and consequential public target lowering",
+  "reviewer": "boundary_review",
+  "reviewedCommit": "f29d9e3009d6a88a9a0452014112aee6c1e2b8f5",
+  "parentCommit": "30d127d0cad4da7f83326b11f2fd9ab406fd0ff3",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "pinJustification": "Same verified bounded pin retained for consequential compiler/authentication/transaction authority review.",
+  "originalEstimateHours": [
+    2,
+    8
+  ],
+  "timer": "RM-306-a1ed807fe0e7",
+  "outcome": "approved_with_scoped_runtime_evidence",
+  "taskComplete": false,
+  "findings": [],
+  "checks": [
+    {
+      "check": "fresh locked CLI compilation",
+      "passed": true,
+      "seconds": 16.22,
+      "log": "fresh-build.log"
+    },
+    {
+      "check": "actual canonical CLI build",
+      "artifacts": 32,
+      "passed": true,
+      "log": "canonical-cli-build.log"
+    },
+    {
+      "check": "authored exact sealed job coverage/refusal/rename guard",
+      "testsPassed": 1,
+      "failed": 0,
+      "log": "author-exact-seal-guard.log"
+    },
+    {
+      "check": "independent stale nested/schedule edits, mixed ordinary, checked alternate names",
+      "testsPassed": 1,
+      "staleEditCases": 8,
+      "failed": 0,
+      "log": "independent-sealed-ast.log"
+    },
+    {
+      "check": "unaltered actual derive_target runtime",
+      "backend": "SQLite",
+      "testsPassed": 26,
+      "assertions": 271,
+      "failed": 0,
+      "log": "sqlite-focused-author.log"
+    },
+    {
+      "check": "unaltered actual derive_target runtime",
+      "backend": "PostgreSQL",
+      "testsPassed": 13,
+      "assertions": 195,
+      "failed": 0,
+      "log": "postgres-focused-author.log"
+    },
+    {
+      "check": "untouched fresh CLI target runtime with independent authority/provider/database assertions",
+      "backend": "SQLite",
+      "testsPassed": 26,
+      "assertions": 3369,
+      "failed": 0,
+      "log": "sqlite-cli-adversarial.log"
+    },
+    {
+      "check": "untouched fresh CLI target runtime with independent authority/provider/database assertions",
+      "backend": "PostgreSQL",
+      "testsPassed": 26,
+      "assertions": 3369,
+      "failed": 0,
+      "log": "postgres-cli-adversarial.log"
+    }
+  ],
+  "evidenceRoot": "tests/validation/evidence/golden-loop-checked-golden-job-independent",
+  "immutableInventoryVerification": "immutable-source-and-author-evidence-verification.json",
+  "canonicalArtifactHashes": "canonical-cli-artifact-hashes.json",
+  "observed": [
+    "Canonical reminder descriptor body is byte-for-byte the previously accepted reminder-delivery-v1 fixture body; only introductory comments differ. ReminderMessage key now uses the existing nominal ReminderIntentId UUID. Approved UserWithTodos email restriction is preserved.",
+    "Core atomic finish retains an opaque full JobDeclaration clone. Coverage and target admission require exactly one complete matching AST; authored guards refuse removed run/concurrency/retry/descriptor/name, removed or duplicate jobs. Independent stale-binding probes additionally refuse interval, run argument, selection limit, role, payload version, recipient, completion field and operation mutations. Fresh checked alternate job/callee names lower; mixed ordinary jobs refuse.",
+    "Lowering admission is public derive_target and fresh CLI build over actual canonical sources. Executed app, persistence, authentication, native auth, JWT, adapter and both schemas are untouched actual CLI artifacts copied into disposable test directories; binding metadata and ordinary non-job control remain actual derive_target fixtures. No manual generated module rewrite is used.",
+    "Private 11-ID recovery approvals remain historical private scope. Current both-adapter execution newly qualifies exactly those eleven IDs against this actual public compiler boundary. Source/model lowering availability is not automatic credential provisioning or timer startup.",
+    "Authority SQL now consumes explicit checked strategy identity. Current live revoked/expired key, disabled/renamed/reassigned service, deleted/duplicate/observer membership, verifier/metadata tamper, unpublished issuer, reconfiguration/expiry across awaited native work and forged/foreign proof negatives pass. Ordinary service principal cannot query owner User email via either single-row or ordered generated query; narrow reminder authority still succeeds.",
+    "Host tests prove explicit valid raw service credential with both required captured profiles, no arbitrary callback/default, MAIL API secret/key revocation refusal before enrollment/provider, overlap coalescing, captured profile immutability and stop receipt wait. Generated constructor uses exact finished binding and checked strategy; native run captures wall time and reauthenticates each run. Source retains UTC timer cap and recheck; preceding native-host review remains the detailed timer/deadline qualification.",
+    "Provider-bound assertions observe original stored payload/version, committed page containing that exact intent, durable possible-dispatch checkpoint and immutable scheduled 3-invocation/1-hour ledger before actual loopback HTTP. Existing separate-process crash/reclaim/stale receipt/unknown-no-replay/501-row continuation/retry exhaustion/cancellation/version-hold assertions remain active.",
+    "Checked binding static facts accurately report lowering supported true, checked_nonexecuting_binding, execution profile null and live authority false. Existing outer generic job audit and static hook evidence retain nonexecuting/unproved labels; this review does not treat those static records as live-execution proof."
+  ],
+  "publicBoundaryQualifiedIds": [
+    "ASYNC-COMMIT-CRASH",
+    "ASYNC-OUTBOX-ROLLBACK",
+    "ASYNC-LEASE-RECLAIM-FENCE",
+    "ASYNC-STALE-WORKER-AFTER-DISPATCH",
+    "ASYNC-UNKNOWN-NO-REPLAY",
+    "ASYNC-BOUNDED-CONTINUATION",
+    "ASYNC-RETRY-KNOWN-NO-EFFECT",
+    "ASYNC-RETRY-EXHAUSTION",
+    "ASYNC-CANCEL-PENDING",
+    "ASYNC-CANCEL-AFTER-DISPATCH",
+    "ASYNC-UNSUPPORTED-PAYLOAD-VERSION"
+  ],
+  "idBindingEvidence": "executed-11-id-bindings.json",
+  "frozenIdsTotal": 18,
+  "scopeLimits": [
+    "Approval covers this immutable checked lowering/canonical-source slice and observed explicit trusted native host behavior, not whole RM-306, RM-307, 18-case closure, 44-case golden application completion or production deployment.",
+    "No automatic worker creation/startup, production credential bootstrap, real mail latency or end-to-end public HTTP source mutation campaign is evidenced here. Provider is disposable loopback reference implementation; native source mutations in recovery traces are actual generated persistence calls with test-owned policy/fixture setup.",
+    "Existing cooperative transaction/native SQLite/platform limitations remain. No universal hard timeout, native preemption or production uncertain-effect immunity is inferred.",
+    "Completion-representation variant/full 370-core/full runtime author runs are preserved and hash-verified author evidence, not relabeled as this review independently executed. Independent execution here is the documented focused current canonical default two-adapter slice.",
+    "Other frozen IDs and current harness chronology/remaining acceptance gates belong to separate implementation/review lanes; no shared product or owner-plan edits."
+  ],
+  "retainedFailures": [
+    {
+      "logs": [
+        "sqlite-first-archive-marker-missing.log",
+        "postgres-first-archive-marker-missing.log"
+      ],
+      "classification": "Reviewer archive environment setup failure before runtime execution: git archive omits .git root marker required by repository-confined pinned service import resolution. Verified contract bytes present, added empty local .git directory marker, no source or contract changes; subsequent fresh canonical build/runtime passed."
+    },
+    {
+      "log": "independent-sealed-ast-first-reviewer-typo.log",
+      "source": "independent-sealed-ast-first-reviewer-typo.rs",
+      "classification": "Reviewer probe initially expected nonexistent every: 15m syntax. Corrected replacement to real every 15m, retained first failure, corrected independent guard passes."
+    },
+    {
+      "classification": "All original author manifest source/log hashes verified including first static coverage/helper/metadata negatives and first representation runner variant-clearing control; original records remain unchanged."
+    }
+  ],
+  "writeScope": "Only parent /private/tmp/jadpo-parallel-integration report/raw evidence/timer; reviewer archive instrumentation restored immutable runtime source after execution.",
+  "timing": {
+    "outcome": "partial",
+    "activeMinutes": 11.24,
+    "verificationMinutes": 9.98,
+    "timerClosed": true
+  }
+}

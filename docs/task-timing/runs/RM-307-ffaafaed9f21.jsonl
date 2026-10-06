@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-307-ffaafaed9f21", "task_id": "RM-307", "actor": "boundary-review-retry-cancel", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T06:27:38.644330+00:00", "phase": "planning"}
+{"at": "2026-10-06T06:28:33.832349+00:00", "phase": "verification", "note": "Fresh isolated compile; clean COMMIT test first and both-adapter new frozen-case focus."}
+{"at": "2026-10-06T06:31:34.186684+00:00", "phase": "review", "note": "Validate immutable author hashes, exact five-case catalogue binding, separate retry budgets and preserved earlier red records."}
+{"at": "2026-10-06T06:31:47.425366+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm307-independent-generated-retry-cancellation-review.json"}

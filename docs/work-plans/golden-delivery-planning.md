@@ -51,7 +51,7 @@ Root timing `RM-306-92f9d42837f4`; original forecast2–8h is preserved. Existin
 loop; matching values remain independent validated profiles. Public activation
 still requires checked lowering, runtime evidence and scoped independent review.
 
-The current integrated checkpoint at `1c0a656` passes the fresh
+The earlier integrated checkpoint at `1c0a656` passes the fresh
 [67/67 supported gate](../../build/validation/20261006T071946-99735/report.json).
 The [retained raw/generated archive](../../build/validation/20261006T071946-99735/retained-evidence.json)
 contains 47 hash-verified files. The supporting HTTP harness now executes
@@ -68,6 +68,48 @@ are scoped component evidence; six exact private recovery IDs are approved,
 while public checked worker integration and complete 18-trace
 conformance remain open. The next harness window covers pagination, relation
 variants and repeat deletion while worker retry/cancellation work continues.
+
+The next local checkpoint combines the pagination/relationship window and
+[retry/cancellation review](../../tests/validation/rm307-independent-generated-retry-cancellation-review.json).
+At `f19dc67`, its fresh [67/67 supported gate](../../build/validation/20261006T073422-49836/report.json)
+passes; 23 original case IDs produce 46 passed, 0 failed and 42 not-run entries.
+The [initial pagination review](../../tests/validation/rm109-independent-pagination-http-expansion-review.json)
+retains its DELETE-002 journal-ordering finding and original red probe. The
+isolated correction at `8082444` then passes 68 protocol tests and a fresh real
+two-adapter checkpoint with the same 46/0/42 counts. The coordinator, who did not
+implement that correction, [rechecked all ten wrong three-event permutations and six duplicate-event probes](../../tests/validation/rm109-independent-delete-ordering-correction-review.json);
+all refuse. Earlier broad review and correction scope remain separate. Eleven
+exact private recovery IDs now have scoped independent approvals; public checked
+worker integration and all 18 traces remain required.
+
+The [read-only prerequisite audit](../../tests/validation/rm402-rm403-independent-next-prerequisite-audit.json)
+grounds the next authenticated retry and readiness-plane windows. It preserves
+accepted cooperative transaction outcomes, required native/startup bounds and
+external platform limits separately. The prior public checkpoint remains fixed
+at `fe966ef` on `codex/golden-loop-integration`, pending explicitly requested
+publication approval after automatic review rejected the push. Local delivery
+continues on `codex/golden-loop-next`; that publishing question does not block
+independent implementation.
+
+At `e84e9bb`, the current local window adds independently reviewed
+[checked canonical reminder lowering](../../tests/validation/rm306-independent-checked-golden-job-review.json),
+[authentication timeline cases](../../tests/validation/rm109-independent-auth-timeline-review.json)
+and [JWT/cache cases](../../tests/validation/rm109-independent-jwt-cache-review.json).
+The supporting harness now covers 31 original IDs on both adapters (62 passed,
+0 failed, 26 not run). These are scoped independent executions; the combined
+[verification attempt](../../build/validation/20261006T080856-42598/report.json)
+stopped at a temporary HTTP/JWT fixture that omitted the newly pinned mail
+contract. Its original failure is retained. Fix the fixture and obtain a fresh
+combined gate before treating this window as integrated verification.
+Public checked lowering newly qualifies eleven existing recovery IDs; the
+race/scheduling and privileged replay windows remain open. The
+[native operator grounding audit](../../tests/validation/rm307-independent-native-operator-grounding-audit.json)
+requires current-owner grant invalidation and matching durable adapter no-effect
+evidence rather than bare `retry_wait`; it approves no future implementation.
+The next eligible harness slice is AUTH-009/011. REL-003 retains native owner-transfer refusal as partial evidence; an unrelated field-policy approval subject cannot prove the exact transfer requires a human decision. REL-002/004 remain
+unexecuted acceptance entries until the generated public `relationship_conflict`
+mapping is implemented and reviewed; private FK failures alone cannot supply
+their missing public semantics. Original acceptance observations are unchanged.
 
 The frozen pre-DATA-007 source remains comparative pressure evidence; its legacy
 spellings are explicitly superseded in its README. Full technical acceptance
@@ -713,7 +755,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-105 | Short; checked keyset-page lowering and both-adapter plan evidence | RM-101, RM-204, RM-102; accepted URL-encoded JSON cursor and supported-database pagination | planned | complete |
 | RM-107 | Short; bounded route implemented and both database adapters exercised | RM-101/RM-102 complete; owner resolved email output while preserving policy | planned | done |
 | RM-108 | Decision-dependent composition; scoped owner choices accepted | RM-105–107 and RM-304 complete; RM-307 unfinished. Owner accepted 3 scheduled invocations / 1 hour, narrow reminder-service authority and exact self-disable repair. Owner approved golden-only 60s execution / renewable 40s lease on 2026-10-06; checked worker and recovery gates remain. Fresh full gate passes 61/61; self-disable correction independently approved. Checked bindings/admission/completion remain | planned | in_progress |
-| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol and real eighteen-ID migrated HTTP checkpoint independently reviewed; 36 supporting entries pass and 52 remain not_run. Full accepted-successor execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
+| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol and real twenty-three-ID migrated HTTP checkpoint and ordering correction reviewed; 46 supporting entries pass and 42 remain not_run. Full accepted-successor execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
 | RM-110 | Short; integration evidence, not another feature | RM-109, RM-504, RM-505, RM-603 | planned | queued |
 | RM-204 | Decision; public query/header decoding contract | Compiler/runtime/OpenAPI/formatter agreement and independent runtime/security review recorded in history | planned | complete |
 | RM-205 | Decision; separate lifecycle from authorisation | [Frozen entity-owned contract and 27 cases](../lifecycle-plan.md); independent correction review approved R1–R3 | planned | complete |
@@ -3498,6 +3540,24 @@ missing, stale, duplicate or foreign evidence. Compare route, OpenAPI, policy,
 query audit and runtime outcomes, preserving query budgets and credential lookup
 accounting. Register suites/builds in the manifest; prove a deliberately failing
 case makes the golden gate fail. Luna Extra High integration, Sol High verifier review.
+
+The eventual job adapter must apply the separately reviewed
+[SERVICE-001 JOB-001 acceptance successor](../../tests/assurance/service-acceptance-successor-v0.1.json)
+explicitly: the persisted reminder intent UUID is the body/header idempotency
+key, with the current schedule revision and receipt observation time retained.
+Verify its pinned base-acceptance digest, the single replacement and the exact
+43 unchanged IDs; bind the successor bytes and reviewed authority in provenance.
+Preserve all 44 original IDs and original acceptance bytes, and distinguish
+original pressure-source results from accepted-successor execution. The
+contract-only successor itself supplies no runtime pass. A missing, altered or
+foreign successor, an omitted case/variant/follow-up, or a fabricated old
+`todo.id` observation must fail the final gate.
+
+CONFIG-003 requires an actual deployment readiness boundary, application-router
+inaccessibility and independent liveness under a real required-database outage.
+The current application readiness aliases do not satisfy that case. Complete
+the owning RM-403 separation and required local/native qualification before
+claiming its golden result; external cloud promotion remains a separate gate.
 
 **RM-110 — M.** Revalidate prerequisite evidence, execute
 `python3 tools/verify.py --require-golden` on the final exact source and preserve

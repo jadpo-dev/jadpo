@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "task_id": "RM-306",
+  "kind": "independent-immutable-trusted-native-delivery-job-host-review",
+  "reviewed_author": "30d127d0cad4da7f83326b11f2fd9ab406fd0ff3",
+  "parent": "c75f109fa820f25f9238c34408a38e059d1c371d",
+  "actual_model": "gpt-6.1-sol",
+  "actual_effort": "high",
+  "scope_approval": "approved: closed trusted-native createDeliveryJobHost foundation on exact finished binding only",
+  "blocking_findings": [],
+  "task_complete": false,
+  "public_checked_job_activation_approved": false,
+  "golden_activation_approved": false,
+  "full_18_conformance_closed": false,
+  "public_job_target": "Still rejects JADPO_TARGET_JOB_NOT_IMPLEMENTED; focused runtime generation runs production Rust component test delivery_schedule_hook_components_keep_full_execution_disabled, which asserts that gate remains closed. Upcoming canonical/public lowering not in this review.",
+  "checks": [
+    {
+      "kind": "fresh isolated CLI compile",
+      "result": "pass",
+      "seconds": 18.3
+    },
+    {
+      "kind": "canonical pinned JWT cache verification",
+      "result": "pass"
+    },
+    {
+      "kind": "unaltered author host runtime focus",
+      "sqlite": {
+        "passed": 3,
+        "failed": 0,
+        "assertions": 40
+      },
+      "postgres": {
+        "passed": 3,
+        "failed": 0,
+        "assertions": 40
+      }
+    },
+    {
+      "kind": "independent actual provider/DB profile/reauth/UTC/stop/deadline/cross-process overlap focus",
+      "sqlite": {
+        "passed": 6,
+        "failed": 0,
+        "assertions": 134
+      },
+      "postgres": {
+        "passed": 6,
+        "failed": 0,
+        "assertions": 134
+      }
+    },
+    {
+      "kind": "retained initial reviewer instrumentation run",
+      "sqlite": {
+        "passed": 4,
+        "failed": 1,
+        "assertions": 101
+      },
+      "disposition": "Reviewer-only callback string matching did not capture Bun-transpiled timer function; expected timer array length1 was0. Replaced with expected host-delay capture seam100/1/900000ms. Original log and initial probe retained, no product edit."
+    }
+  ],
+  "opaque_strategy_review": {
+    "refs": [
+      "delivery_phases.rs:208\u2013239 checked selected strategy/validator",
+      "delivery_phases.rs:490 direct strategy_name.text clone",
+      "delivery_phases/model.rs:10,101,319 private owned strategy and finished lowering accessor",
+      "target/delivery_scheduler.rs:createDeliveryJobHost exact finished binding switch"
+    ],
+    "assessment": "New private strategy field is paired with independently checked direct service-key validator/resolution and retained in the finished opaque model. Host emits selected api_bearer directly; no parsing of semantic validator identities or caller-selected strategy. No arbitrary job name, callback, synthetic principal or credential bootstrap is accepted."
+  },
+  "verified_semantics": [
+    "Exact finished binding determines strategy and positive safe-integer native interval. Raw service credential is mandatory nonempty string and remains lexical; provider MAIL_API_KEY cannot substitute for checked service key.",
+    "Both profile arguments are mandatory exact-own-key finite safe integers. Values are copied once into separate frozen objects before use. Caller mutation after creation does not change activation10s/5s versus delivery60s/40s ledgers.",
+    "Every new run captures its own actual wall-clock operation time and authenticates the raw key through published checked host; no caller timestamp or callback enters activation. After first successful run, credential revocation prevents subsequent enrollment/provider work.",
+    "Same-instance overlap returns identical running promise; actual separate-process host during held provider I/O sees durable singleton ownership and returns idle without second dispatch.",
+    "Stop prevents new work, clears scheduled timeout and awaits the running activation\u2019s checked result. A valid in-flight success receipt is retained instead of claiming rollback; an unknown result does not imply external work stopped.",
+    "Fixed UTC next-boundary computation and controlled100ms then1ms early recheck prevent early invocation. Due-boundary revoked key records only fixed invalid_credentials and binding, without raw service credential/provider secret. A cleared timer callback after stop cannot dispatch or reschedule.",
+    "Provider observes committed immutable page membership and possible_dispatch1, original payload/key and separately captured immutable3inv/1h delivery budget before HTTP. Provider Authorization reaches only existing declared MAIL secret sink.",
+    "A real500ms activation lease deadline during750ms mock-provider I/O results in partial/outcome_unknown, no sent stamp and no resend through a restarted native host."
+  ],
+  "provider_boundary_observations": {
+    "sqlite": {
+      "calls": 5,
+      "distinct_intent_ids": 5,
+      "possible_dispatch_before_each_effect": 1,
+      "captured_activation_leases_ms": [
+        500,
+        5000,
+        40000
+      ],
+      "delivery_execution_ms": 60000,
+      "delivery_lease_ms": 40000
+    },
+    "postgres": {
+      "calls": 5,
+      "distinct_intent_ids": 5,
+      "possible_dispatch_before_each_effect": 1,
+      "captured_activation_leases_ms": [
+        500,
+        5000,
+        40000
+      ],
+      "delivery_execution_ms": 60000,
+      "delivery_lease_ms": 40000
+    }
+  },
+  "secret_boundary": [
+    "Returned host is frozen with only runOnce/start/stop; raw credential is not an own property or JSON value.",
+    "Invalid raw-key canary produces generic invalid_credentials without canary in error.",
+    "Scheduled revoked-key error log contains safe fixed code, no credential or MAIL_API_KEY.",
+    "No raw provider request Authorization or service credential is written in observation JSON."
+  ],
+  "original_author_negatives_preserved": [
+    "Initial parsed strategy identity failure logs retained unchanged; corrected by actual opaque checked strategy field.",
+    "Initial revoke API fixture passed raw key instead of credentialId; original second logs retained and corrected fixture inspected."
+  ],
+  "limitations": [
+    "Private/native foundation only; public job source, startup provisioning, canonical reminder lowering, application automatic activation and full golden/18-case conformance remain separate.",
+    "The timer UTC/recheck/stop probe controls host Date.now and timer delivery; actual authentication/DB/HTTP execute normally. It is deterministic scheduler evidence, not real15-minute downtime/timezone or wall-clock soak evidence.",
+    "Native long interval delay cap and safe interval checks are structurally verified on generated bytes; actual >2^31ms timer rescheduling is not executed here.",
+    "Stop awaits current running work; inherited noninterruptible native DB phases/synchronousSQLite can overrun. No universal hard stop/whole-request completion bound is claimed.",
+    "No new review of hostile native JavaScript accessor callbacks beyond exact profile-key/value rejection; authored callbacks and synthetic authority are excluded.",
+    "Local mock-provider latency is not production throughput/exactly-once or500 calls in60seconds evidence.",
+    "Author whole78/77 suite logs are hash-verified retained evidence, not independent broad repeated execution.",
+    "Stopping cannot undo or prove cancellation of an external possible effect; classified outcome_unknown may settle while provider work remains possible."
+  ],
+  "evidence_directory": "/private/tmp/jadpo-parallel-integration/tests/validation/evidence/golden-loop-trusted-job-host-independent",
+  "source_test_sha256": "d585e98e661cb2a8227d769c66d799ec2845dbf33376638a871421b4a8538b29",
+  "source_archive_sha256": "d27990ebdd3d4a5ab29a9b7201c14b241bf4c2f03a8a40d7cb3d20e0a5f950d2",
+  "prior_review_hashes": {
+    "rm306-independent-profile-separation-review.json": "8eeae6fa9c329b5c4ba0946367afb56bee864071870ce546e4b6cf3a3d45c2be",
+    "rm307-independent-generated-recovery-review.json": "0672f2a8909eac44523782bb90991d39a2e5ed03082829a01d7b07372c8602c4",
+    "rm307-independent-atomic-source-recovery-correction-review.json": "efb09fad05590fe4f4d0e82047426397735014a1decc017f32767f22838d232f",
+    "rm307-independent-generated-retry-cancellation-review.json": "ee0339a4614abf51f4da3993794dd1531e175dc9ceb6b844f82787f0ac06f9d8"
+  },
+  "timer": "RM-306-901248882162",
+  "recorded_at": "2026-10-06T06:50:31.403154+00:00"
+}

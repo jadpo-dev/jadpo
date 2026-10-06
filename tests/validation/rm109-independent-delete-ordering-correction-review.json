@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "review_id": "RM109-DELETE002-ORDERING-CORRECTION-20261006",
+  "candidate_commit": "1ff9b0c759e2ed92999b051f31a7cbd3781d923c",
+  "integration_commit": "80824447f9556ddc69c33f844bbffa4cd177f02b",
+  "disposition": "scoped_approved",
+  "reviewer": {
+    "actor": "01a10f20-b464-7543-925c-171de6c52598",
+    "role": "integration coordinator; independent of correction author",
+    "did_not_implement_candidate": true,
+    "actual_model": "gpt-6.1-sol",
+    "actual_effort": "high",
+    "timer": "RM-109-b89c421c855c"
+  },
+  "scope": "Two-line DELETE-002 chronology correction and its regression; prior broader review preserved unchanged. No compiler/native-host/public-worker approval inferred.",
+  "original_finding": {
+    "report": "tests/validation/rm109-independent-pagination-http-expansion-review.json",
+    "sha256": "6bf6d1ede14f8544fd252f2e7da263d6a92ebdc79d766f945e2a60b6de87033c",
+    "red": "tests/validation/evidence/golden-loop-pagination-harness-independent/reordered-delete-red.json",
+    "red_sha256": "71e28a9c0ca5f2558ae56027d881dc3211abffd3a43a91f72a73a1ab28e6561d"
+  },
+  "execution": {
+    "contract_command": "python3 -m unittest discover -s tests/validation -p 'test_*.py'",
+    "contract_tests_passed": 68,
+    "contract_exit_code": 0,
+    "checkpoint_command": "python3 tools/golden_checkpoint.py --output build/validation/rm109-delete-ordering-independent-correction",
+    "checkpoint_exit_code": 0,
+    "counts": {
+      "passed": 46,
+      "failed": 0,
+      "not_run": 42
+    },
+    "source_bound_report_validation": "passed",
+    "all_wrong_three_event_permutations_refused": 10,
+    "duplicate_event_probes_refused": 6,
+    "setup_correction": {
+      "initial_call": "validate_checkpoint(report, root)",
+      "error": "TypeError: validate_checkpoint() missing required dependencies argument",
+      "scope": "Review script setup error before observation probes; corrected to full report/evidence/dependency/root signature. No product or evidence bytes changed."
+    }
+  },
+  "source_sha256": {
+    "tools/golden_checkpoint.py": "0ecd4f22b79db01190e6dd12c4f88f9250b5ecd9a672d334bd5cdc67a8efcc72",
+    "tests/validation/test_golden_checkpoint.py": "2e05a62420915312d702ca18d75fb9c1e85921bd57923490e07b3f5099761672"
+  },
+  "findings": [],
+  "resolved_finding": "Fixture position must precede the actual request, which must precede retained storage. Both real journals reject all five wrong permutations and duplicate-event cardinalities. Original correct journals remain valid.",
+  "evidence_manifest": "tests/validation/evidence/golden-loop-delete-ordering-independent-correction/manifest.json",
+  "limits": [
+    "Only this narrow correction independently assessed by coordinator; earlier83 integrity checks and full23-ID candidate analysis remain in separate initial review.",
+    "Earlier full67/67 gate is bound to f19dc67; current correction has fresh68 contracts and real46/0/42 checkpoint. A later compiler/runtime change requires a fresh combined full gate.",
+    "Full44-case golden and checked public-worker prerequisites remain open; no task closure."
+  ],
+  "completed_at_utc": "2026-10-06T06:45:00.974966+00:00"
+}

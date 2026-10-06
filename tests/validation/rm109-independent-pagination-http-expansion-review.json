@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "review_id": "RM109-PAGINATION-HTTP-EXPANSION-INITIAL-20261006",
+  "task": "RM-109",
+  "disposition": "changes_required",
+  "candidate_commit": "23c13971ac4a5cf49e927aa4d528d5ce33edb65a",
+  "reviewer": {
+    "actor": "independent-review-pagination-http-loop",
+    "independent": true,
+    "actual_model": "gpt-6.1-sol",
+    "actual_effort": "high",
+    "timing": "RM-109-5bdf2d69e7d2"
+  },
+  "scope": "Twenty-three original IDs observed against the migrated application on SQLite and PostgreSQL. Compiler baseline and whole RM-109 closure are excluded.",
+  "findings": [
+    {
+      "priority": 2,
+      "file": "tools/golden_checkpoint.py",
+      "case": "DELETE-002",
+      "problem": "Added retained-storage verification accepts a reversed fixture/request/persistence journal. The decoder finds events by type but does not enforce chronology.",
+      "reproduction": "Both independently captured real backend journals reversed then rederived remain passed with no failures.",
+      "required_correction": "Require fixture index < actual request index < retained persistence index, as the earlier DELETE-001 and PATCH cases do; retain regression and fresh evidence."
+    }
+  ],
+  "independent_execution": {
+    "no_compiler_contracts_passed": 67,
+    "counts": {
+      "passed": 46,
+      "failed": 0,
+      "not_run": 42
+    },
+    "supported_ids": [
+      "AUTH-001",
+      "AUTH-005",
+      "AUTH-012",
+      "PUBLIC-001",
+      "CREATE-002",
+      "CREATE-004",
+      "READ-002",
+      "READ-003",
+      "LIST-004",
+      "PATCH-001",
+      "PATCH-002",
+      "PATCH-003",
+      "PATCH-004",
+      "CREATE-001",
+      "CREATE-003",
+      "READ-001",
+      "PATCH-005",
+      "DELETE-001",
+      "LIST-001",
+      "LIST-002",
+      "LIST-003",
+      "REL-001",
+      "DELETE-002"
+    ],
+    "compiler_sha256": "d008bd005ddb402210e6dfeec5d60792fa6a6d4b4c5079b0854fae60c41e39dd",
+    "integrity_challenges_passed": 83,
+    "preexecution_binding_faults_refused": [
+      "Changed generated instrumented artifacts",
+      "Changed actual pinned JWT dependency files"
+    ],
+    "both_fault_injections_ran_real_sqlite_and_postgres": true,
+    "no_fault_pass_report_written": true
+  },
+  "source_sha256": {
+    "tools/golden_checkpoint.py": "861365ba51eaae067d06039c96a33a915124b826f8aca85997750e73ada5301f",
+    "tools/golden_http_checkpoint.ts": "476fe3f72cadcb6e19f53587a72e8469a64320607659da7d2f655443e5106140",
+    "tools/golden_sql_observer.ts": "47d811f9df6281d5f241153ead00dd7e0c1bd398c9f04a7ce3ac6aae6f5f4273",
+    "tests/validation/test_golden_checkpoint.py": "0eab3ccb9a36debce8554aa9b9ccefde37176a781c8f08232a5aaf86ae4a7a73",
+    "examples/golden-todo/acceptance.json": "3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608",
+    "tests/validation/golden-obligations.json": "1bb72278815340e902238848d62547a252c63053019281c1d2a313cbf2db666b"
+  },
+  "evidence_manifest": "tests/validation/evidence/golden-loop-pagination-harness-independent/manifest.json",
+  "limits": [
+    "Partial supporting observation of migrated application; original frozen source is not executing.",
+    "No full golden prerequisite, scheduler/compiler acceptance or release-equivalence approval.",
+    "LIST-002 original contract has no query-budget assertion; no later-page budget claim is inferred.",
+    "Local hashes establish local integrity, not protection against coordinated replacement of all sources and evidence."
+  ],
+  "completed_at_utc": "2026-10-06T06:40:22.152808+00:00"
+}

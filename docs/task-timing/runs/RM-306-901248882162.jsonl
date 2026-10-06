@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-306-901248882162", "task_id": "RM-306", "actor": "boundary-trusted-job-host", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T06:41:14.428437+00:00", "phase": "planning"}
+{"at": "2026-10-06T06:43:00.942284+00:00", "phase": "verification", "note": "Fresh isolated compiler and actual SQLite/PostgreSQL trusted host focus; then proportional captured-profile, reauth, timer/stop probes."}
+{"at": "2026-10-06T06:50:30.854095+00:00", "phase": "review", "note": "Validate immutable checked strategy/model lowering, lifecycle/secret scope and preserved original/independent negative evidence; package scoped host approval."}
+{"at": "2026-10-06T06:51:24.189476+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-trusted-job-host-review.json"}

@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-307-1775054ef388", "task_id": "RM-307", "actor": "boundary-native-operator-grounding", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T07:10:15.736105+00:00", "phase": "planning"}
+{"at": "2026-10-06T07:13:19.084795+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm307-independent-native-operator-grounding-audit.json"}

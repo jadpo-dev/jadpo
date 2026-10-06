@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-307",
+  "review": "bounded read-only native operator proposal grounding",
+  "reviewedCommit": "f29d9e3009d6a88a9a0452014112aee6c1e2b8f5",
+  "capture": "/private/tmp/jadpo-checked-golden-job-independent",
+  "actor": "boundary-native-operator-grounding",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "originalEstimateHours": [
+    1,
+    4
+  ],
+  "timer": "RM-307-1775054ef388",
+  "taskComplete": false,
+  "outcome": "grounded_for_implementation_with_required_independent_review",
+  "implementationApproved": false,
+  "futureMutableCodeReviewed": false,
+  "newOwnerChoices": [],
+  "contractGrounding": [
+    {
+      "references": [
+        "docs/async-plan.md:137",
+        "docs/async-plan.md:140",
+        "tests/assurance/async-contract-v0.1-candidate.json:126"
+      ],
+      "assessment": "Explicit privileged operator replay is required to preserve exact immutable intent identity/version/order and remaining cumulative budget. The case does not require a positive production unknown-outcome lookup or resolution transition. A durable adapter-proven known-no-effect retry_wait replay within the already-declared retry policy provides a bounded supported positive path, while unresolved unknown must refuse."
+    },
+    {
+      "references": [
+        "docs/service-plan.md:159",
+        "docs/service-plan.md:164"
+      ],
+      "assessment": "Pinned provider exposes only POST. Production lookup or unknown same-key replay remains unsupported without a separately pinned reviewed successor. No status lookup, fabricated receipt or unknown reset may be introduced by this proposal."
+    },
+    {
+      "references": [
+        "jadpo/crates/core/src/runtime/first_party_authentication.ts:273",
+        "jadpo/crates/core/src/runtime/first_party_authentication.ts:323"
+      ],
+      "assessment": "Native host already owns privileged service credential issue/revoke, explicitly excluded from authored routes/callables. A separate opaque native operator grant at that existing host trust boundary needs no new application role/grammar/callback or worker authority elevation."
+    }
+  ],
+  "currentNativeOwnerLifecycle": [
+    {
+      "references": [
+        "jadpo/crates/core/src/runtime/first_party_authentication.ts:22",
+        "jadpo/crates/core/src/runtime/first_party_authentication.ts:27"
+      ],
+      "observed": "Worker credential hosts/proofs are distinct private WeakMaps; proof reads require exact selected host/storage/owner identity and active owner. Same-storage independently created issuer is not selected current application owner. Forged/copied/serialized objects and service principal shapes cannot create provenance."
+    },
+    {
+      "references": [
+        "jadpo/crates/core/src/runtime/first_party_authentication.ts:291",
+        "jadpo/crates/core/src/runtime/first_party_authentication.ts:308"
+      ],
+      "observed": "Proof prepare checks owner before and after awaited crypto/authority. Invalidation flips owner inactive and only withdraws authority. New operator map must preserve separate type/provenance from worker map while sharing current owner invalidation."
+    },
+    {
+      "references": [
+        "actual-f29-generated-host-owner-excerpt.json:1895",
+        "actual-f29-generated-host-owner-excerpt.json:1956",
+        "actual-f29-generated-host-owner-excerpt.json:1959"
+      ],
+      "observed": "Generated initialization clears/invalidate old host before configuration load, including failure. Generation check prevents delayed older initializer publishing over newer successful or failed initialization. Current-host accessor throws when unpublished; read bridge selects private current host, no issuer setter."
+    },
+    {
+      "references": [
+        "jadpo/crates/core/src/runtime/first_party_authentication.ts:273",
+        "jadpo/crates/core/src/runtime/first_party_authentication.ts:323"
+      ],
+      "observed": "Existing trusted issue/revoke administrative methods themselves do not check deliveryProofOwner.active. Do not assume their presence already establishes stale-host-safe grant minting; new operator mint/read must explicitly check current active owner and exact storage/published selection, including awaited races."
+    }
+  ],
+  "replayEligibilityGrounding": [
+    {
+      "references": [
+        "jadpo/crates/core/src/runtime/delivery_claims.ts:106",
+        "jadpo/crates/core/src/runtime/delivery_claims.ts:139"
+      ],
+      "observed": "Adapter-bound completion records __jadpo_delivery_attempts_v1 with exact intent/generation/claim/invocation, provider-attempt count, safe listed failure class, observation and retry_not_before under current live fenced claim. service_unavailable may produce retry_wait; recipient_rejected is terminal and must not qualify."
+    },
+    {
+      "references": [
+        "jadpo/crates/core/src/runtime/delivery_claims.ts:260"
+      ],
+      "observed": "Charged allocation that returns after execution/lease deadline may become retry_wait without adapter outcome. Therefore retry_wait alone is insufficient for privileged known-no-effect-only replay. Require exact current durable attempt evidence and possible_dispatch0; missing/mismatched/wrong-class evidence refuses."
+    },
+    {
+      "references": [
+        "jadpo/crates/core/src/runtime/delivery_claims.ts:204",
+        "jadpo/crates/core/src/runtime/delivery_claims.ts:222",
+        "jadpo/crates/core/src/runtime/delivery_claims.ts:238"
+      ],
+      "observed": "Existing claim admits ordinary worker pending/running/retry_wait, checks immutable profiles/3invocation1h budget, earlier same-key work, elapsed backoff and atomic fence/time eligibility. Proposed operator path must add narrow eligibility to this existing admission pipeline and not directly reset state/count/deadlines or mint dispatch token from a bare read."
+    },
+    {
+      "references": [
+        "jadpo/crates/core/src/target/delivery_invocation.rs:207",
+        "jadpo/crates/core/src/target/delivery_invocation.rs:228",
+        "jadpo/crates/core/src/target/delivery_invocation.rs:235"
+      ],
+      "observed": "Existing admission requires selected job/source operation/entity/order/version, validated immutable payload with exact idempotency key, current visible open due unsent source/active owner/current revision/current recipient, fresh service membership/credential under owning transaction and durable dispatch checkpoint before invocation WeakMap token. Preserve this path and source lock ordering for replay."
+    }
+  ],
+  "sealerReachability": {
+    "references": [
+      "jadpo/crates/semantic/src/typecheck/delivery_seal.rs:1",
+      "jadpo/crates/semantic/src/typecheck/delivery_seal.rs:102",
+      "jadpo/crates/core/src/target/delivery_invocation.rs:13",
+      "jadpo/crates/core/src/target/delivery_invocation.rs:67"
+    ],
+    "assessment": "Authored delivery nominal intent/request/receipt values and containment are sealed by graph identity, not display name. Only exact selected request idempotency-key field exception is allowed. Runtime invocation/outcome capabilities originate in private WeakMaps after owning transaction; exported native helpers are not authored declarations. New grant/factory must remain native-only, private WeakMap based and absent from authored callable/route/policy graph; no worker credential/proof object is operator provenance."
+  },
+  "requiredImmutableImplementationNegatives": [
+    "Worker raw key, worker proof, MAIL_API_KEY, service-shaped object, {}, copied/serialized grant, prototype-derived grant, foreign-storage grant and independently created unpublished same-storage issuer cannot authorize as the selected current operator grant.",
+    "Old host cannot mint fresh grant after successful reinit, failed config load or key rotation; old issued grant and prebuilt operator factory are withdrawn. Delayed initializer cannot revive grant owner. Reinit during awaited worker verify/metadata/claim work must refuse before the accepted dispatch cut; preserve post-cut uncertainty semantics.",
+    "Factory refuses unknown binding, missing/malformed/extra-field/callback profiles, missing/invalid separately provisioned worker key, incompatible persisted profiles and user callback/bootstrap parameters. Both approved profiles remain explicit captured finite values; scheduled3invocation1h and service3attempt30s remain separate.",
+    "Positive replay requires actual adapter no-effect durable latest attempt. Missing attempt table/row, wrong generation/claim/invocation, wrong or unlisted class, bare late-allocation retry_wait, possible_dispatch1, pending/running/unknown/succeeded/failed/cancelled, unsupported version, missing/foreign intent and future backoff refuse without provider dispatch or budget reset.",
+    "Owner/user source soft-delete, owner disable, closed Todo, due clear/change, advanced source revision, already-sent source, recipient change, foreign job/source operation/entity/order/idempotency key, poisoned version/payload, earlier same-key unknown and exhausted count/lifetime retain unchanged admission refusal/cancellation rules. No payload editing, replacement UUID, re-enrollment or ordering reset.",
+    "Current worker key/role/membership revoked/expired/deleted/observer/duplicate/reassigned or configuration withdrawn before replay admission refuses. Grant authorization alone never supplies worker crypto/SQL dispatch authority.",
+    "Concurrent operator replay versus automatic scheduler/replay/cancellation/source mutation is qualified with real both-adapter locking/fences and one effect per admitted generation. The pending separate transaction-race candidate remains independently unreviewed here.",
+    "Fresh positive path preserves original ID/version/payload/ordering/first claim/lifetime/profile, consumes exactly remaining cumulative invocation budget after elapsed backoff, dispatches through unchanged adapter and checked completion, and records safe evidence. Failures/logs never expose worker/mail credentials or payload/email."
+  ],
+  "requiredFollowupEvidence": "Immutable author commit, both-adapter focused positive/refusal and awaited owner/race probes, exact catalogue ASYNC-REPLAY-RESOLVED-INTENT binding, provider/database checkpoint evidence and independent auth/policy review before activation. Existing no-blind-replay negative cases remain. This audit executes no case and approves no future code.",
+  "scopeLimits": [
+    "Read-only fixed f29 source/accepted frozen contracts; no production/test source edits, no mutable race candidate assessment, no broad gate or provider campaign.",
+    "Within proposed same native administrative trust boundary no genuinely new owner decision identified. Expanding to public/authored API, production unknown lookup/resolution, new role, altered budgets or bootstrap would be a separate scope/decision.",
+    "RM-307/golden/18-case closure remains open; proposal grounding does not itself count ASYNC-REPLAY-RESOLVED-INTENT execution or implementation acceptance."
+  ],
+  "evidenceRoot": "tests/validation/evidence/golden-loop-operator-grounding-audit",
+  "writeScope": "Parent /private/tmp/jadpo-parallel-integration report/evidence/timer only",
+  "timing": {
+    "outcome": "partial",
+    "activeMinutes": 3.06,
+    "timerClosed": true,
+    "caseExecution": false
+  }
+}

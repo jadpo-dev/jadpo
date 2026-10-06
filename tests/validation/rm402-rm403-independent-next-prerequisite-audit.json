@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "kind": "bounded-read-only-next-prerequisite-audit",
+  "reviewed_revision": "bf9f303447b90053ef1567211a74e5f87faa3ba1",
+  "actual_model": "gpt-6.1-sol",
+  "actual_effort": "high",
+  "pin_reason": "Bounded consequential transaction/authentication and synchronous health-bound assessment; inherited actual settings verified by parent.",
+  "completion_claim": false,
+  "source_or_contract_edits": false,
+  "execution_or_new_conformance_evidence": false,
+  "RM402": {
+    "timer": "RM-402-4d4c124015f5",
+    "accepted_contract": "Explicit route/operation monotonic cooperative budget, no universal default and no guaranteed hard HTTP latency. Preserve acknowledged COMMIT success, uncertain COMMIT OutcomeUnknown and no blind replay.",
+    "existing_scoped_evidence": "Reviewed PG transactional statement_timeout refresh and safe deadline mapping, actual contention/deadlock/rollback/clock/revision cases, native SQLite LOCKED and deterministic jitter caps; synchronous SQLite and in-flight native calls remain cooperative.",
+    "exact_gaps": [
+      {
+        "gate": "Authenticated/policy-bearing safe default retry eligibility",
+        "source": [
+          "target.rs:12265 callable.policy.is_none()",
+          "target.rs:8825\u20138828 allowOperationRetries(..., route.public)",
+          "target.rs:3938 replayable and no_commit listed cause required"
+        ],
+        "detail": "Two independent conservative gates exclude ordinary authenticated golden actions. Host replayable=true probes do not establish compiler-wide eligibility. Future/current service graph needs explicit negative rejection rather than obsolete unknown-callee-only fixture."
+      },
+      {
+        "gate": "Whole-request/native bounds outside transactional statement SQL",
+        "source": [
+          "target.rs:3462 persistenceAsyncWithSignal awaits active query then checks",
+          "target.rs:3845 postgres.begin surrounds acquisition/BEGIN/COMMIT",
+          "target.rs:3860 statement_timeout reset before Bun implicit COMMIT",
+          "target.rs:3890 synchronous SQLite BEGIN",
+          "transaction-retry-plan.md:334"
+        ],
+        "detail": "Pool acquisition, BEGIN, nontransactional reads, direct control/log paths and COMMIT lack proven hard completion bounds; sync SQLite cannot be preempted by an event-loop timer. Per-statement timeout is narrower than a whole-request proof."
+      },
+      {
+        "gate": "Integrated one logical revision/outbox per safe retry",
+        "detail": "Generic retry/contiguous change revision tests and independent job atomic traces exist separately; current compiler-bound supported source actions still need combined rollback/retry, fresh auth/time and one committed delivery identity evidence."
+      }
+    ],
+    "smallest_windows": [
+      {
+        "order": 1,
+        "name": "Qualify one supported authenticated DB-only golden mutation graph",
+        "implementation": "Use checked effect information to qualify a bounded supported route/action graph; explicitly re-read applicable credential/authority, invoke/row policy and lifecycle checks on every fresh outer attempt. Retain external dispatch, opaque/recursive/unproved calls as nonreplayable and one shared budget.",
+        "observables": [
+          "Generated eligibility and exclusion artifact assertions, not host override alone.",
+          "Real two-adapter contention drives one acknowledged mutation/revision and one outbox intent; rollback leaves none.",
+          "Concurrent authority revoke/status or due/lifecycle boundary changes alter the next attempt safely; operation ID/input identity fixed and TIME-D05 snapshot refreshed.",
+          "Actual checked provider call/opaque/recursive negative graphs cannot become eligible."
+        ],
+        "required_review": "Independent compiler effect/authority transaction review on immutable source and generated runtime evidence."
+      },
+      {
+        "order": 2,
+        "name": "Bound PostgreSQL uncovered asynchronous phases on declared-deadline routes",
+        "implementation": "Inventory pool/BEGIN/control/log/nontransactional/COMMIT phases and qualify cancellation/connection ownership or safe isolation using available runtime primitives. Do not race away an unresolved commit and call it rollback.",
+        "observables": [
+          "Saturated pool and blocked BEGIN, slow nontransactional/auth/log calls and COMMIT acknowledgment loss from separate processes.",
+          "Monotonic declared deadline prevents new work; bounded response/cleanup measured only for the phases actually controlled.",
+          "Acknowledged COMMIT remains authoritative; possible COMMIT remains unknown with zero replay; late completions cannot restore client handles."
+        ],
+        "required_review": "Independent phase/outcome classification and host-bound evidence review."
+      },
+      {
+        "order": 3,
+        "name": "Qualify synchronous SQLite execution isolation before hard-bound claims",
+        "implementation": "Bound a specific supported sync database path through safe worker/process ownership or supported native interruption; retain transactional identity/fence and cleanup evidence. A Promise timeout on the same blocked event loop is insufficient.",
+        "observables": [
+          "External process observes real sync stall and response behavior independently.",
+          "Kill/interruption before and after possible COMMIT preserves no_commit versus unknown and no duplicate replay.",
+          "No leaked DB lock/client or late side effect is misclassified as rolled back."
+        ],
+        "required_review": "Independent runtime/adapter boundary review; this audit supplies no interruption evidence."
+      }
+    ],
+    "owner_dependencies": {
+      "new_semantic_choice_required_now": false,
+      "reason": "Safe default proof and explicitly declared cooperative route deadlines are already settled. Driver/host qualification and supported source subset are implementation decisions. Keep hard-latency gaps explicit; a future claim requiring stronger universal semantics would need a separate owner decision, not an invented default."
+    },
+    "stale_records": [
+      "roadmap-assessment RM402 row says wrappers do not prove outcome phases despite accepted implementation/correction reviews.",
+      "transaction-retry-v0.1 nonrepeatable_effect implementation_limit says provider-dispatch callables do not exist; checked service syntax now exists and requires updated actual effect-negative evidence. Historical original expectation remains frozen."
+    ],
+    "limits": [
+      "Read-only source/evidence assessment, no compiler build, live probe or new case execution.",
+      "No task/golden/public conformance closure and no change to accepted contracts or shared plans."
+    ],
+    "additional_required_evidence": [
+      "Frozen TX acceptance still requires native/adapted two-process classification, shared nested budget, fresh clocks/authority, contiguous committed revisions and one outbox intent per committed logical operation. Existing individual scoped tests cannot substitute for combined generated supported source coverage.",
+      "Deterministic jitter fractions/caps do not establish required jitter distribution/progressive clock consumption; retain that missing observable.",
+      "Native 40001 phase probe is supporting driver evidence; structured-injection multi-revision history is not a native generated serialization/revision/outbox trace."
+    ],
+    "acceptance_classification": {
+      "settled_cooperative_semantics": {
+        "refs": [
+          "transaction-retry-plan.md:183\u2013201",
+          "transaction-retry-v0.1.json:deadline_during_statement/cancellation_during_statement/deadline_and_cancellation_during_commit"
+        ],
+        "meaning": "These frozen cases explicitly permit active work to finish, then require rollback before commit/no next operation or retry. Real supported-driver phase/outcome evidence can close those exact cases without asserting preemption. Preserve acknowledged commit success and uncertain commit unknown."
+      },
+      "unsupported_driver_capability": {
+        "meaning": "A proved unsupported cancel/interruption result must remain an explicit limitation, not claimed hard-bound evidence. It can document current supported behavior; it does not by itself close an actually required finite native resource/phase bound or the broader task record."
+      },
+      "true_remaining_acceptance": {
+        "refs": [
+          "transaction-retry-plan.md:236\u2013274",
+          "transaction-retry-plan.md:334\u2013340",
+          "implementation-roadmap.md:231"
+        ],
+        "meaning": "Compiler-proven safe defaults for supported policy/auth graphs; real integrated contention/rollback/revision/outbox evidence; full listed observable coverage remain required. Pool/BEGIN/nontransactional/control/log/COMMIT hard-bound coverage remains explicitly open where task records claim it."
+      },
+      "host_architecture_needed_for_stronger_claim": {
+        "meaning": "Guaranteed response/native lifetime during blocked sync SQLite or noninterruptible native/COMMIT phase cannot be obtained with same-loop timers. Supported isolation/cancellation/connection ownership and independent possible-commit classification are needed before a stronger bound can be approved. No universal route timeout is inferred and this audit does not erase recorded hard-bound gaps."
+      }
+    }
+  },
+  "RM403": {
+    "timer": "RM-403-b4c8e0461da2",
+    "accepted_contract": [
+      "CONFIG-D10: local dependency-free liveness, bounded secret-safe readiness false during required dependency outage.",
+      "CONFIG-P5: distinct compiler-owned contracts, finite probe/concurrency/backoff semantics, same-process recovery and no application access to deployment-plane details.",
+      "CONFIG-003: deployment ready503 during DB outage; readyOnApplicationRouter=false, local live200 and restartRequested=false. Mail separately owner-approved advisory/unprobed."
+    ],
+    "exact_required_gap": {
+      "refs": [
+        "examples/golden-todo/acceptance.json:502\u2013506",
+        "examples/golden-todo/expected-audit.md:72\u201374",
+        "target.rs:8650/8653",
+        "target.rs:8657\u20138679",
+        "developer-tooling.md:350\u2013356"
+      ],
+      "detail": "Application handleRequest directly serves /health/ready; default /health alias also invokes the readiness controller and reveals ready state. Existing dev health probing depends on that alias. Removing only one path leaves application-plane exposure and tooling mismatch."
+    },
+    "existing_scoped_evidence": {
+      "refs": [
+        "configuration-plan.md:339\u2013368",
+        "rm403-independent-response-bound-implementation-review.json"
+      ],
+      "accepted": "One shared one-second asynchronous caller response, retained native single-flight slot, bounded backoff and strict late publication/invalidation/fatal fences; controlled/emitted-module and live DB outage/same-credential recovery evidence are independently reviewed. Constant authored liveness was separately independently reviewed.",
+      "not_claimed": "Synchronous SQLite/event-loop preemption, finite native lifetime/cleanup, top-level startup/whole initialization latency or platform promotion."
+    },
+    "smallest_windows": [
+      {
+        "order": 1,
+        "name": "Deployment-only health handler and all-alias/tooling separation",
+        "implementation": "Add compiler-owned deployment-plane host boundary, remove readiness handlers/aliases from application router and migrate local dev probe to that boundary. Preserve constant early application liveness and generic required-dependency 503 gating. Do not create another application credential scheme or expose endpoints/driver text.",
+        "required_observables": [
+          "Direct application handleRequest and actual Bun/Node createApplicationServer listeners expose no readiness status/details via /health/ready or legacy /health alias, under no credential, user slot, service slot and invalid credentials.",
+          "Deployment boundary returns safe stable DB IDs/states503 during real outage and200 after recovery; live remains200 and no liveness-triggered restart.",
+          "Accepted app route inventory/OpenAPI/auth/policy audit contains no deployment readiness endpoint; checked deployment contract/metadata agrees separately.",
+          "Mail never probed and cannot change ready result; canaries do not enter response/log/status IDs.",
+          "Invalid/missing configuration and fatal incompatible schema still stop serving before application listener binding. Local dev last-ready revision behavior remains."
+        ],
+        "required_review": "Immutable independent public/deployment/auth boundary review and exact CONFIG-003 two-adapter observations."
+      },
+      {
+        "order": 2,
+        "name": "Finite native/synchronous probe and startup qualification",
+        "refs": [
+          "target.rs:6134 top-level await initializePersistenceOnce",
+          "target.rs:6146 awaiting PG query with advisory cancellation",
+          "target.rs:6147 synchronous SQLite PRAGMA",
+          "runtime/readiness_gate.ts:fail retains native slot until actual settlement"
+        ],
+        "implementation": "Qualify supported native cancellation/cleanup or safe worker/process execution ownership for the missing phases; give startup aggregate work explicit finite qualification in the bounded implementation plan. Preserve fatal classification, invalid-config no-listener behavior and stale-publication fence. Same-loop Promise races cannot interrupt synchronous DB work.",
+        "required_observables": [
+          "Separate process observes real synchronous stall, probe response and bounded aggregate native attempts/cleanup.",
+          "Native timeout/rejection/late success cannot publish ready/client or create overlapping recovery attempts.",
+          "Initial connection/schema/auth-store setup stalls are observed externally, with no false-ready or invalid-schema/config-serving outcome.",
+          "Actual required DB outage/recovery preserves local liveness and no restart loop under tested finite platform/runtime conditions."
+        ],
+        "required_review": "Independent runtime/driver interruption and startup publication evidence; existing synthetic response tests do not close this window."
+      }
+    ],
+    "acceptance_classification": {
+      "implementation_required_now": "Deployment-only ready routing and legacy alias/dev probe migration are already explicit frozen CONFIG-003 requirements; no new semantic decision.",
+      "accepted_narrow_async_response": "Reviewed response controller may be retained without repeating its whole broad gate; advancing event loop is an explicit precondition, not full bounded native check conformance.",
+      "genuine_open_native_startup_gate": "CONFIG-P5 probe timeouts and remaining whole initialization/native/sync evidence are still open. Explicit unsupported classification preserves limitations but does not establish bounded native cleanup/startup. New safe runtime ownership/interruption architecture may be necessary.",
+      "external_platform": "Actual cloud promotion/failed revision rollback and prior revision health belong RM404/X-PLATFORM. A selected platform/disposable environment is genuinely owner-dependent if that external task is entered; do not block current local technical separation on it."
+    },
+    "owner_dependencies": {
+      "new_semantic_question_required_now": false,
+      "reason": "Local plane separation, safe IDs, advisory mail and existing response budgets are settled. Ordinary handler/tooling/runtime qualification choices can proceed. Cloud-specific hooks, hosted secret changes or new source kinds remain outside this local window and require their owning authorization."
+    },
+    "stale_records": [
+      "roadmap-assessment RM403 row describes default health as not live readiness, despite current reviewed live recovery/controller evidence.",
+      "configuration-plan opening status/native checkpoint text must be reconciled carefully: current async response approval is narrower than complete CONFIG-P5/platform/golden acceptance."
+    ],
+    "limits": [
+      "Read-only bounded prerequisite assessment; no new case execution, compiler build or host campaign.",
+      "No production/test source or contract changes; parent owns shared plan updates.",
+      "No RM403/RM402/golden completion claim and no new cloud/platform semantics."
+    ]
+  },
+  "recorded_at": "2026-10-06T06:37:16.705741+00:00"
+}

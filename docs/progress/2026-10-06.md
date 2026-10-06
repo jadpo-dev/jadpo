@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T07:28:16+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T08:17:40+01:00 · figures reflect the recorded roadmap.
 
-The golden Todo harness now checks 18 original case IDs through real HTTP on both databases. Worker crash recovery and separate scan/delivery limits have scoped evidence; full golden completion remains open.
+The supporting golden Todo harness independently covers 31 original case IDs on both databases. Checked canonical reminder lowering and eleven recovery IDs have scoped reviews; the latest combined gate exposed a test-fixture import gap, and full golden completion remains open.
 
 ## At a glance
 
@@ -20,8 +20,8 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- The independently reviewed supporting harness records 36 passed and 52 unexecuted case/backend entries; a fresh combined verifier passed 67/67. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
-- Separate generated workers exercise crash recovery, stale-claim fencing, uncertainty containment and 500-row continuation; complete checked worker conformance is still in progress. [Recovery review](../../tests/validation/rm307-independent-generated-recovery-review.json).
+- Scoped harness reviews record 62 passed, zero failed and 26 unexecuted case/backend entries, including real HTTPS/JWT verification and cache failure controls. The latest exact-source combined attempt stopped at a temporary fixture missing the pinned mail import; its original failure is retained. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
+- The canonical reminder source now builds through the checked public compiler boundary. Eleven recovery IDs execute against untouched generated CLI artifacts on both databases; scheduling/race and privileged replay conformance remain open. [Checked lowering review](../../tests/validation/rm306-independent-checked-golden-job-review.json).
 - The owner approved separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06).
 
 ## Since the previous report
@@ -56,10 +56,10 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Continue the parallel loop: pagination/relation/repeat-deletion acceptance cases, worker retry/cancellation, and checked public worker integration before complete golden acceptance.
+Continue two implementation lanes: service-authentication cases and configuration/boundary controls; race/scheduling recovery and native privileged replay. Implement missing public relationship failure mapping; retain owner-transfer refusal as partial until exact policy-decision evidence exists, then qualify authenticated retry and deployment readiness.
 
 ## Input needed
 
-No current blocking owner decision recorded. Both scan and individual-delivery limits are approved.
+Public push, PR and checked merge of fe966ef to richardwillars/jadpo await explicit approval after automatic review rejected publication. Local delivery continues; both execution/lease decisions are approved.
 
 [Roadmap](../implementation-roadmap.md) · [Completed evidence](../implementation-history.md) · [Estimate basis](../task-timing/README.md) · [Reporting rules](README.md)
