@@ -318,3 +318,9 @@ The protocol fails if identity mechanics are secure but reviewers cannot
 reliably understand the decision. A target of at least 80% correct frozen
 behaviour/policy/effect/lifecycle answers applies; critical misunderstandings
 are reported individually rather than hidden in an average.
+
+### Reviewed anonymous admission candidate and current integration — 2026-10-06
+
+The [independent source/native review](../tests/validation/evidence/rm601-independent-anonymous-admission-4a/review.json) qualifies only unchanged static GET/plain nonnullable Text/sole literal route candidates, with source-derived assumptions and native observations kept separate. Execution remains `not_proved`, global feasibility `not_analyzed`, and runtime/release authority absent. The [88-check fusion](../tests/validation/evidence/rm402504601-reviewed-fusion/report.json) preserves exact source/digest rederivation and the prior local attestation limits. Its 655 stable source pins and 72 compiler manifest pins qualify this epoch, not a protected build or issuer.
+
+The [finite witness-plan review](../tests/validation/evidence/rm601-independent-witness-plan-784/review.json) independently finds that an earlier parameter route can shadow the candidate: healthy native execution is 200→200, while unhealthy execution is 503→503. Any later conditional 401→literal 200 inference must first close selected-route dispatch in both snapshots and retain configuration, credential and resource assumptions. The existing candidate status supplies no such feasibility proof; broader RM-601 remains open.

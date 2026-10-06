@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-402-4c93b5795b7d", "task_id": "RM-402", "actor": "scheduler-public-retry-leaf-plan", "actor_kind": "agent", "category": "slice", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T18:25:56.709120+00:00", "phase": "planning"}
+{"at": "2026-10-06T18:28:47.666359+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm402-protected-retry-admission-plan/actual-public-admission-leaf-plan.json"}

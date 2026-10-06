@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "task": "RM-504",
+  "slice": "Initial generated temporal schema kind and Instant precision gate",
+  "state": "planned_reviewed_execution_ready",
+  "execution_state": "not_started",
+  "author": "startup_owner_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-504-1f5d29eeeb86",
+  "planning_forecast_hours": [
+    0.25,
+    0.75
+  ],
+  "implementation_forecast_hours": [
+    0.5,
+    2.0
+  ],
+  "estimate_basis": "Bounded compiler emitter plus both-adapter native schema controls; analogous to preceding Duration decoder and native temporal slice. Reassess if catalog validation cannot fit existing initialization ownership.",
+  "source_leaf": "50277289028d451f0ce61869563822e899273f09",
+  "evidence_leaf": "6216b21a126fb8caad155875b74e15112b2d06b7",
+  "source_pins": {
+    "jadpo/crates/core/src/target.rs": "11b289f2a8a9b1e6e5b81866a231f60f6bb9b723d43c12ce029312abb232205b",
+    "jadpo/crates/core/src/runtime/initialization_control.ts": "a931b6337b7b6f57f67b022861e904b5fa5d9e219903523e7f34caddc9e85a37",
+    "tests/runtime/temporal-roundtrip.test.ts": "98c575f86114dffaefcf5d51b3bda87cf0c70d10db750522ab9bd1940de3054f",
+    "tests/runtime/fixtures/temporal-roundtrip.jadpo": "3bffbb05734aac4404a44f7509996093ab12b13c35647a03df3c1407a2e18cab",
+    "tests/validation/evidence/rm504-temporal-roundtrip/report.json": "ad101c6896a812b05ad7ac1cb3d8936564e2864a85678f490bafc896ca123555"
+  },
+  "requirements": [
+    {
+      "path": "docs/time-testing-plan.md",
+      "lines": [
+        58,
+        81,
+        82,
+        677,
+        684
+      ],
+      "contract": "TIME-D01/D24/D25: millisecond Instant, declared database kind/precision and typed decoding; incompatible legacy schema requires reviewed mapping."
+    },
+    {
+      "path": "jadpo/crates/core/src/target.rs",
+      "lines": [
+        3760,
+        3783,
+        3787,
+        3819,
+        3825,
+        3826,
+        6460,
+        7369
+      ],
+      "observation": "CREATE TABLE IF NOT EXISTS does not check existing native column kind; initializeSchema is already owned by initial startup/recovery transaction and budget."
+    },
+    {
+      "path": "tests/validation/evidence/rm504-temporal-roundtrip/report.json",
+      "observation": "Actual preexisting Duration TEXT accepts canonical numeric/wire values; TIMESTAMPTZ(6) loses submilliseconds through driver Date. Both gaps independently reproduced by root."
+    }
+  ],
+  "scope": [
+    "Generate compiler-private expected catalog descriptors only for persisted fields whose representation root is Instant or Duration, including nominal refinements and nullable fields. Keep emitted storage representation and application/wire APIs unchanged.",
+    "After generated entity DDL/index initialization, before publish readiness, validate expected table/column physical type and Instant declared precision. Missing/wrong type, zoneless/unbounded/higher-precision Instant, or unexpected column nullability are contained schema failures.",
+    "PostgreSQL catalog lookup uses the transaction connection through initialization.execute and existing deadline. Resolve relation using the same quoted generated table name/search_path as CRUD; compare physical int8 and timestamptz identities, Instant typmod exactly3 and nullable flag. No separate pool, unbounded timer or new deadline.",
+    "SQLite reads PRAGMA table_info for the same generated relation and checks INTEGER-affinity physical declaration for Instant/Duration plus expected nullability. The fresh generated BIGINT declaration passes; preexisting TEXT/REAL/BLOB fails. Existing per-row decoders retain range/value checks. SQLite numeric coercion/storage drift after initialization stays residual.",
+    "Throw existing contained PersistenceFault rather than exposing catalog rows, SQL text, database identifiers or raw error data. Fatal initial schema contradiction prevents bind/ready; availability failure retains established live/notready/recovery classification.",
+    "No check emitted for projects without stored Instant/Duration fields; private delivery journal TEXT metadata is excluded. No new public syntax, legacy coercion, time algorithm, zone/default/provider/auth policy or runtime version claim."
+  ],
+  "native_checks": [
+    "Keep existing actual generated bothDB temporal4/47 and host9/49 green; fresh compilation/schema/journals match canonical semantics.",
+    "Before generated import, create actual same named tables with Duration TEXT/REAL, Instant TEXT/zone-less or PostgreSQL timestamptz6/unbounded, and wrong temporal nullability; assert fatal initializer and safe route refusal without trusted typed output. Positive PostgreSQL BIGINT/TIMESTAMPTZ(3) and SQLite BIGINT/INTEGER-affinity/nullable declarations pass.",
+    "Use fresh owned processes per drift case, disposable explicit local PostgreSQL and SQLite stores, real catalog inspection only to establish fixtures and physical observations; actual generated initializer/handler owns admission. Preserve original diagnostic and initial failing controls.",
+    "At least one actual generated main per backend with incompatible existing schema proves process termination, no app/deployment listener or ready publication, safe bounded fault, and owning socket/backend cleanup. Preserve existing startup owner suites and original10s bound; an actual held catalog query must remain under the same owner budget.",
+    "Maintain both adapters in registered finite suite/runner, clear ambient selectors, and exercise refusal before allocation for nonlocal PG URLs. Existing runner modes remain unchanged.",
+    "Build fresh exact native CLI/core source pins in owned cache, compare intended emitted private gate delta vs approved baseline, record safe immutable source/receipt archives and submit for different-author review. Root integrates only leaf delta and runs fused supported gate."
+  ],
+  "residual_limits": [
+    "This is an initial/recovery schema gate, not a per-query concurrent-DDL or after-ready physical drift guarantee. Full TIME-D25 remains open for those cases.",
+    "Stored out-of-range/corrupt values, higher-precision values introduced after readiness, all projections/joins/aggregates, CalendarDate/Time/Zone/Locale physical mappings, generated defaults/triggers and migration contracts are separate slices.",
+    "Accepted Time authority model versus current JSONB resolved-object representation requires its own scoped assessment; this gate does not silently revise that mapping.",
+    "Half-open local-day predicates remain blocked on separately reviewed parser/checker/public query prerequisite; no handwritten SQL/hostfilter substitutes.",
+    "Runtime Intl rule version remains genuinely unreported and bytes unattested; enum IANA2026c scope unchanged.",
+    "Imported initializer/handler cases do not qualify authentication. Only explicit native-main controls qualify their startup/listener boundaries. Whole RM-504 and broader RM402/RM403 limits remain open."
+  ],
+  "review_points": [
+    "Check INTEGER-affinity acceptance is a physical SQLite kind check with explicit limited scope, not proof of every stored row or required CHECK ownership.",
+    "Check PostgreSQL relation resolution is identical to generated CRUD and typmod is enforced before driver Date truncation.",
+    "Check temporal nullable descriptor construction uses existing checked reference_is_nullable and representation_root_for.",
+    "Check added catalog phase retains original native startup and recovery transaction budget/cancellation/cleanup, fatal-versus-availability semantics and no readiness publication before validation."
+  ],
+  "stop_conditions": [
+    "Need a new public language or migration mapping decision.",
+    "Catalog access escapes existing initialization owner or changes readiness/transaction semantics.",
+    "Plan expands into all temporal types, schema defaults/triggers, concurrent DDL or whole-TIME-D25 closure."
+  ],
+  "original_plan_sha256": "c56cfca39a685cb7ccba6e1458aff58fc71e06207350dcb6823790aac72b72af",
+  "original_planning_state": "planned_pending_different_author_plan_review",
+  "assessment": {
+    "reviewer": "root different author",
+    "approved": true,
+    "rationale": "Accepted TIME-D01/D24/D25 specifies stored physical kind and millisecond precision. Native502 diagnostic proves current legacy-kind/precision gaps. Bounded initialization/recovery catalog gate can use existing owner transaction/execute/deadline without public language or mapping changes.",
+    "conditions": [
+      "Same CRUD relation/search_path with pg_catalog built-in type identities; no cross-schema ambiguity.",
+      "SQLite INTEGER-affinity is declared physical type evidence only, not stored row/CHECK/corruption authority.",
+      "Same init transaction/budget and fatal-versus-availability classification; incompatible schema prevents actual main listeners/ready with cleanup.",
+      "After-ready concurrent DDL, wider types, Time representation mapping and complete TIME-D25 remain open.",
+      "Root integrates exact leaf only after different-author product review and full combined gate."
+    ]
+  }
+}

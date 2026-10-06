@@ -1,0 +1,190 @@
+{
+  "task": "RM-504",
+  "residual": "PG-TIME-DAY-PREDICATES",
+  "status": "bounded_attempt_partial_prerequisite_preserved",
+  "whole_task_closed": false,
+  "implementation": "No production/compiler grammar changes; rejected fixture only in evidence. No generated database parity claimed.",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-504-0dc66bfd4e5b",
+  "forecast_hours": [
+    0.5,
+    2
+  ],
+  "compiler": {
+    "path": "/private/tmp/jadpo-rm504-day-predicates-compiler",
+    "sha256": "50ed3212be43fb0ec94993ff313eca963ca59a13dcb5e11b547208a19035ba20",
+    "source_baseline_commit": "189c4c34e23f8a483b972d4f6b82041f24c8b241",
+    "fresh_build": true,
+    "cache": "Reused own policy Cargo target tree; no second broad tree",
+    "source_inventory": "used-source-inputs.json"
+  },
+  "accepted_reading": {
+    "docs/time-testing-plan.md": [
+      262,
+      274,
+      959,
+      988
+    ],
+    "docs/persistence-v0.1.md": [
+      217,
+      218
+    ],
+    "docs/syntax.md": [
+      936,
+      944,
+      948
+    ],
+    "docs/grammar-v0.1.md": [
+      663,
+      669
+    ]
+  },
+  "observations": [
+    "Accepted TIME plan requires named half-open typed database predicate, while current supported query-many contract explicitly permits one equality and leaves compound predicates pending.",
+    "A genuine syntax parse gives Query.field=bucket and Query.value=And(And(input.bucket,GreaterEqual(occurs_at,input.start)),Less(occurs_at,input.end)); greater/less are generic expression operators in RHS, not checked query predicate clauses.",
+    "After replacing unsupported many-result comma ordering with valid stable id asc, fresh native check reports exactly two type.unknown_value errors for unbound occurs_at. Frontend rejection prevents target/native DB execution.",
+    "Existing query-page enum/parser/checker permits Equal,OptionalEqual,OptionalLessEqual and duplicate field predicates are rejected; it cannot express start-inclusive/end-exclusive same-field range."
+  ],
+  "classification": "Missing supported checked range grammar/predicate model, not merely omitted native lowering of an already checked query; broader query surface needs assessed design/implementation. This is an inference grounded in exact contracts, native AST and native checker refusal.",
+  "source_anchors": {
+    "jadpo/crates/syntax/src/parser.rs": [
+      3246,
+      3251,
+      3678,
+      3691,
+      3704
+    ],
+    "jadpo/crates/syntax/src/ast.rs": [
+      1063
+    ],
+    "jadpo/crates/semantic/src/typecheck.rs": [
+      3133,
+      3144,
+      5453,
+      5464,
+      5487
+    ],
+    "jadpo/crates/core/src/target.rs": [
+      4593,
+      4635,
+      10075
+    ]
+  },
+  "native_ast_probe": {
+    "source": "ast-probe.rs",
+    "output": "actual-rejected-query-ast.txt",
+    "binary_sha256": "f44c969efcc97a54874167e22b4b29f36cf7d43915ddbccb21139fdae9e32b3c",
+    "syntax_rlib_sha256": "440196115ce7912db2e75229b8b77feb29d5feacc5ee2fbf3fb5f43dd0899c17",
+    "native_checker_output": "stable-order-range-refusal.json"
+  },
+  "native_database_tests_run": 0,
+  "substitutes_used": {
+    "handwritten_sql": false,
+    "host_filter": false,
+    "synthetic_results": false
+  },
+  "original_failures": [
+    "original-unregistered-mode-red.log",
+    "initial-fixture-check.log",
+    "original-rejected-many-range.log",
+    "stable-order-range-refusal.json"
+  ],
+  "source_pins": [
+    {
+      "path": "docs/time-testing-plan.md",
+      "sha256": "6e4ba0dd81a2b121e4849cf3bc697ce25ad5c81112630f62566ce238f54df4f9"
+    },
+    {
+      "path": "docs/persistence-v0.1.md",
+      "sha256": "f10cd7d768233f00013c2233dd4b8f78c5e6cb338872523a99c73d321862beca"
+    },
+    {
+      "path": "docs/syntax.md",
+      "sha256": "cbedffbd8db0b587cdd3aac3c2893efd7c48e4a2fceb692c971a0b814ef4a7cb"
+    },
+    {
+      "path": "docs/grammar-v0.1.md",
+      "sha256": "e1bbcc98105a6f96484da7ca1f5fd81a251256d580906c5a2903dcf5aa34c686"
+    },
+    {
+      "path": "jadpo/crates/syntax/src/ast.rs",
+      "sha256": "876c99d298553beea1ffe9579a1119b624b6b961f8a6d7d5b39bea13d7c5a940"
+    },
+    {
+      "path": "jadpo/crates/syntax/src/parser.rs",
+      "sha256": "df1570d8b1cafda707792229f346f78c8bd79d574276aa628e57ea0586c43d86"
+    },
+    {
+      "path": "jadpo/crates/semantic/src/typecheck.rs",
+      "sha256": "b007fa04d5e3196a5766cdd568e917cdf4c725b639f789d2fb14933c5e7fbd3f"
+    },
+    {
+      "path": "jadpo/crates/core/src/target.rs",
+      "sha256": "0c36a9382e86f45b258d106503f70034dfa509c05c3ca43702812f32446a6082"
+    }
+  ],
+  "next_authorized_slice": "Bounded typed temporal roundtrip parity on supported generated CRUD/query calls, separately planned/timed; day-predicate prerequisite remains queued. Intl rule report remains genuine unreported/null; no host-rule attestation inferred.",
+  "evidence_leaf": "dd9f392d232401a7dcd48853d52b419b0b92b632",
+  "raw_evidence": "tests/validation/evidence/rm504-temporal-day-predicate-prerequisite-dd9",
+  "timing": {
+    "outcome": "partial",
+    "active_minutes": 6.12,
+    "verification_minutes": 0,
+    "limitation": "Source/AST checks and compiler executions included implementation interval; no backdated phase allocation"
+  },
+  "proposed_query_page_slice": {
+    "planning_state": "planned_independently_reviewed_with_selected_refinements",
+    "execution_state": "author_authorized_tests_first_in_isolated_writer",
+    "author": "root",
+    "timer": "META-GOLDEN-INTEGRATION-5231884da596",
+    "model": "gpt-6.1-sol",
+    "reasoning": "high",
+    "forecast_hours": [
+      0.5,
+      2
+    ],
+    "basis": "Bounded additive checked query-page predicate surface for accepted TIME262/273 local-day database requirement; widened compiler/parser/typing/SQL cross-adapter slice analogy. Reassess if static page shape cannot preserve existing guarantees.",
+    "accepted_requirement": "docs/time-testing-plan.md262\u2013274 and959\u2013960; generated Instant>=start andInstant<end using23/24/25h actual local-day bounds",
+    "proposal": [
+      "Extend existing query page predicate model with required >= and < for nonnullable stored Instant representation roots only; retain existing equal/optional equal/optional <= semantics. Do not add compound query-many, dynamic SQL or hostfilter.",
+      "For one field, permit exactly one >= lower and one < upper pair in either authored order; reject duplicate lower/upper, mixed equality/optional predicate on same field, nullable/none bound or field, Text/Time/presentation fields, mismatched nominal types and unknown fields. Require same typed field nominal context with existing compatibility rules; no implicit Text/CalendarDate conversion.",
+      "Use existing where/and: clauses and page/cursor/projection shape. Bound operands use existing checked expressions, evaluated once per query operation; two required Instant parameters follow existing typed adapter encoding and PostgreSQL casts. Existing ordering, unique cursor, page-size bounds and plus-one, policy scope and first/continuation SQL guarantees remain.",
+      "Keep generated index scope based on equality/visibility keys plus existing order; new range predicates cannot become equality scope facts or implicitly weaken policy. All predicate facts/operators enter checked persistence/canonical metadata and source/digest validation; do not omit them from approval subject or formatter.",
+      "Actual generated stored create plus actual generated page handler receives bounds from compiler-owned temporal.day_bounds for London23/24/25h. Include before-start/start/end-minus1ms/end/after-end, otherbucket, equal-time cursor continuation; prove start included/end excluded and no DATE(timestamp) or hostfiltered result substitution. This proves generated temporal runtime plus typed query boundary; source-level day_bounds callable exposure remains separately honest."
+    ],
+    "source_pins": {
+      "jadpo/crates/syntax/src/ast.rs": "876c99d298553beea1ffe9579a1119b624b6b961f8a6d7d5b39bea13d7c5a940",
+      "jadpo/crates/syntax/src/parser.rs": "df1570d8b1cafda707792229f346f78c8bd79d574276aa628e57ea0586c43d86",
+      "jadpo/crates/semantic/src/typecheck.rs": "b007fa04d5e3196a5766cdd568e917cdf4c725b639f789d2fb14933c5e7fbd3f",
+      "jadpo/crates/core/src/target.rs": "4651d1c4d776b472b70485bfd156339cf36174f2fb38e655ea96e361957ef78e",
+      "docs/time-testing-plan.md": "181f8c6b5a2a51b2929a911d13d43bdce466367f8e5b34c61dcb61719580bbe7",
+      "docs/persistence-v0.1.md": "f10cd7d768233f00013c2233dd4b8f78c5e6cb338872523a99c73d321862beca",
+      "docs/grammar-v0.1.md": "e1bbcc98105a6f96484da7ca1f5fd81a251256d580906c5a2903dcf5aa34c686",
+      "docs/syntax.md": "cbedffbd8db0b587cdd3aac3c2893efd7c48e4a2fceb692c971a0b814ef4a7cb"
+    },
+    "required_review": [
+      "Assess whether required Instant-only comparisons and controlled duplicate-field pair are minimal accepted language extension; separate query-many legacy exclusion preserved.",
+      "Check nominal type, optional/nullability, human-text authority and policy/index/metadata boundaries; enumerate every AST/render/formatter/canonical consumer before edits.",
+      "Check finite range does not claim all optional range/generalorderedtype support, queryplanner performance or full TIME-D25."
+    ],
+    "verification": [
+      "Tests-first parser/checker positive and negative fixtures; unchanged existing query-page diagnostics/formatter/canonical facts protected.",
+      "Native SQLite/PostgreSQL actual generated operations and exact boundary/cursor/data tests; actual journal/catalog provenance, same canonical results.",
+      "Fresh exact compiler source manifest and reviewed current-root leaf; independent public-language/product review and combined supported gate."
+    ],
+    "stop_conditions": [
+      "New migration/public policy choice outside accepted half-openTIME requirement",
+      "Need to widen query-many/generic types or weaken typed authority",
+      "Cannot derive canonical/index/failure facts with existing model"
+    ],
+    "whole_task_closed": false,
+    "requirement_read_sha256": "f81ea55f6acb763bdfaa2a1818f7e35ef73ef8b05fec372fa5babef883ad27b4",
+    "original_planning_state": "planned_pending_independent_language_review",
+    "independent_plan_review": "tests/validation/evidence/rm504-independent-querypage-plan/review.json",
+    "independent_plan_review_commit": "a045f431c09d837c7fe9301ab6f39e7ad079e489",
+    "selected_operand_refinement": "Initial required >=/< operands restricted to checked direct required input fields only; no calls/general expressions/local/current_principal/optional/nullable/secret/presentation values. Target field nominal require_compatible, stored nonnullable Instant root; no sibling-nominal root-only equivalence.",
+    "author_next": "golden_adapters",
+    "deferred_generic_expression_support": "Known first-mirrored-Query.value consumers include semantic principal-name guards, include-policy, nestedindex and LSP; repair and independently verify every omitted consumer before any generic bound-expression widening."
+  }
+}

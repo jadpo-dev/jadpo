@@ -59,6 +59,7 @@
     "tests/compile/pass/lifecycle/170_lifecycle_initial_values.jadpo"
   ],
   "runtime_suites": [
+    "tests/runtime/approval-admission-candidate.test.ts",
     "tests/runtime/authentication-selector.test.ts",
     "tests/runtime/configuration-preflight.test.ts",
     "tests/runtime/delivery-completion-representation.test.ts",
@@ -85,6 +86,8 @@
     "tests/runtime/outcome-sequencing.test.ts",
     "tests/runtime/persistence-seed.test.ts",
     "tests/runtime/policy-runtime.test.ts",
+    "tests/runtime/protected-lifecycle-credentials.test.ts",
+    "tests/runtime/protected-retry-controls.test.ts",
     "tests/runtime/readiness-recovery.test.ts",
     "tests/runtime/relationship-conflicts.test.ts",
     "tests/runtime/route-inputs.test.ts",
@@ -92,6 +95,7 @@
     "tests/runtime/service-authentication.test.ts",
     "tests/runtime/service-fakes.test.ts",
     "tests/runtime/startup-ownership.test.ts",
+    "tests/runtime/temporal-roundtrip.test.ts",
     "tests/runtime/temporal.test.ts",
     "tests/runtime/validation-artifact-contracts.test.ts",
     "tests/runtime/validation-artifact-nullability.test.ts",
@@ -134,6 +138,9 @@
     "configuration-preflight",
     "deployment-readiness",
     "lifecycle-maintenance",
-    "startup-ownership"
+    "startup-ownership",
+    "protected-retry",
+    "temporal-roundtrip",
+    "protected-lifecycle-credentials"
   ]
 }

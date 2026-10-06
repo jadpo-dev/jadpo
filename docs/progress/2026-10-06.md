@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T18:54:18+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T19:47:43+01:00 · figures reflect the recorded roadmap.
 
-Reviewed persistence, deployment and recovery changes now pass a fresh81-check combined gate. PostgreSQL policy and credential restart coverage are added; all88 supporting golden observations pass while full golden acceptance remains open.
+The reviewed golden integration now passes all 88 supported checks and all 88 migrated HTTP entries. This closes bounded verification slices, while full task and frozen technical acceptance gates remain open.
 
 ## At a glance
 
@@ -20,9 +20,10 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- [Combined reviewed fusion](../../tests/validation/evidence/rm403504601-reviewed-fusion/report.json) passes81/81 with stable source/compiler pins and retained original red.
-- [PostgreSQL policy parity](../../tests/validation/evidence/rm504-independent-policy-runtime-382/review.json) checks actual stored denial and membership revocation on both adapters.
-- [Same-store credential restart](../../tests/validation/evidence/rm504-independent-service-restart/review.json) now runs in actual fresh child processes on both databases.
+- Integrated independently reviewed anonymous literal-route candidates, inert selected-user eligibility, native deadlock/revocation/service controls and corrected lifecycle intent retention.
+- Integrated native PostgreSQL Duration decoding and both-adapter typed temporal roundtrips; preserved original driver/schema failures and exact source epochs.
+- Archived the88-check supported gate with655 unchanged source/tooling pins and72 actual compiler manifest pins; local results remain non-releasable.
+- Independently reviewed the next initial/recovery temporal schema gate and conditional retry admission plan. Found actual route shadowing that prevents the proposed finite feasibility plan from executing unchanged.
 
 ## Since the previous report
 
@@ -58,7 +59,7 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Continue concrete admission witnesses, protected native retry/deadlock qualification and typed temporal roundtrips; assess the missing generated half-open local-day predicate.
+Continue parallel batches: integrate the reviewed initial temporal schema gate; qualify actual emitted protected retry admission; implement the reviewed bounded typed local-day query predicates. Then finish the remaining full-task and exact-source golden acceptance audits.
 
 ## Input needed
 

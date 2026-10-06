@@ -1461,6 +1461,11 @@ function decodeDatabaseCalendarDate(value: unknown, path: string): CalendarDate 
 
 function decodeDatabaseDuration(value: unknown, path: string): Duration {
   if (typeof value === "number" && Number.isSafeInteger(value)) return durationFromMilliseconds(value);
+  if (typeof value === "string" && /^(?:0|-?[1-9]\d*)$/u.test(value)) {
+    const milliseconds = Number(value);
+    if (Number.isSafeInteger(milliseconds)) return durationFromMilliseconds(milliseconds);
+    return invalid(path, "portable Duration range");
+  }
   return validateDuration(value, path);
 }
 
@@ -1852,24 +1857,62 @@ export const temporal = Object.freeze({
         let Some(run) = route.run.as_ref() else {
             return false;
         };
-        if !run
-            .arguments
-            .iter()
-            .all(|a| matches!(a, Expression::Name(_) | Expression::Literal(_)))
+        // Authored callable named arguments are currently diagnosed by typing;
+        // do not infer a checked parameter mapping from their spelling.
+        if !run.named_arguments.is_empty()
             || !run
-                .named_arguments
+                .arguments
                 .iter()
-                .all(|a| matches!(a.value, Expression::Name(_) | Expression::Literal(_)))
+                .all(|a| matches!(a, Expression::Name(_) | Expression::Literal(_)))
         {
             return false;
         }
         let Some(name) = resolved_callable_name(&run.callee.path, &self.callables) else {
             return false;
         };
+        let Some(callable) = self.callables.get(&name) else {
+            return false;
+        };
+        let Some(principal) = self.principal else {
+            return false;
+        };
+        // This private qualification covers the selected signed/JWT user
+        // forms. Mixed service validators remain ordinary authentication; a
+        // service principal cannot stand in for the checked user argument.
+        let mut user_validator = false;
+        for validator in self
+            .authentication_strategies
+            .iter()
+            .flat_map(|s| &s.validators)
+        {
+            if validator.principal.text == "user" {
+                user_validator = true;
+                if !matches!(validator.mode.text.as_str(), "signed" | "jwt") {
+                    return false;
+                }
+            }
+        }
+        if !user_validator {
+            return false;
+        }
+        let user_type = format!("{}.user", principal.name.text);
+        let is_user_argument = |argument: &Expression| {
+            matches!(argument,
+            Expression::Name(name) if name.path.len() == 2
+                && name.path[0].text == "current_principal" && name.path[1].text == "user")
+        };
+        let positional_user = run.arguments.iter().enumerate().any(|(index, argument)| {
+            is_user_argument(argument)
+                && callable
+                    .parameters
+                    .get(index)
+                    .is_some_and(|parameter| type_name(&parameter.parameter_type) == user_type)
+        });
+        if !positional_user {
+            return false;
+        }
         let type_names = self.types.keys().cloned().collect::<BTreeSet<_>>();
-        self.callables
-            .get(&name)
-            .is_some_and(|c| c.kind == jadpo_syntax::CallableKind::Action)
+        callable.kind == jadpo_syntax::CallableKind::Action
             && self.callable_is_mutative(&name)
             && callable_repeatability_with_creation(
                 &name,
@@ -1879,7 +1922,6 @@ export const temporal = Object.freeze({
                 false,
             )
     }
-
     fn block_may_suspend(&self, block: &Block) -> bool {
         block_may_suspend(
             block,
@@ -13200,6 +13242,7 @@ mod tests {
             .collect::<std::collections::BTreeMap<_, _>>();
         assert_eq!(candidates["PATCH /todos/{todo_id}"], true);
         assert_eq!(candidates["DELETE /todos/{todo_id}"], true);
+        assert_eq!(candidates["DELETE /users/{user_id}"], true);
         assert_eq!(candidates["POST /todos"], false);
         assert_eq!(candidates["GET /todos"], false);
         let outputs = derive_target(&path, &project).unwrap();
@@ -13235,7 +13278,8 @@ mod tests {
                 source.text = source
                     .text
                     .replace("patch_todo", "revise_entry")
-                    .replace("delete_todo", "remove_entry");
+                    .replace("delete_todo", "remove_entry")
+                    .replace("Principal", "Identity");
                 source
             })
             .collect();
@@ -13284,8 +13328,147 @@ mod tests {
                 range: route.range,
             });
         assert!(!generator.authenticated_route_retry_candidate(&invocation_argument));
+        // Structural defensive inspection only: these altered argument ASTs
+        // are not claimed as checked executable applications.
+        let mut no_user_argument = route.clone();
+        no_user_argument.run.as_mut().unwrap().arguments[2] =
+            route.run.as_ref().unwrap().arguments[0].clone();
+        assert!(!generator.authenticated_route_retry_candidate(&no_user_argument));
+        let mut wrong_parameter = route.clone();
+        wrong_parameter.run.as_mut().unwrap().arguments.swap(0, 2);
+        assert!(!generator.authenticated_route_retry_candidate(&wrong_parameter));
+        let mut service_argument = route.clone();
+        let jadpo_syntax::Expression::Name(principal_argument) =
+            &mut service_argument.run.as_mut().unwrap().arguments[2] else { panic!() };
+        principal_argument.path[1].text = "service".into();
+        assert!(!generator.authenticated_route_retry_candidate(&service_argument));
     }
 
+    #[test]
+    fn private_user_retry_candidates_refuse_unqualified_validator_inventories_and_named_calls() {
+        use jadpo_syntax::*;
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap();
+        let path = root.join("examples/golden-todo-migration");
+        let checked = |project: &crate::AnalyzedProject| {
+            let errors = project
+                .syntax
+                .diagnostics()
+                .chain(project.semantics.diagnostics.iter())
+                .chain(project.typing.diagnostics.iter())
+                .chain(project.failures.diagnostics.iter())
+                .chain(project.entity_model.diagnostics.iter())
+                .chain(project.policy.diagnostics.iter())
+                .filter(|d| d.severity == jadpo_diagnostics::Severity::Error)
+                .collect::<Vec<_>>();
+            assert!(errors.is_empty(), "{errors:?}");
+        };
+        let opaque_sources = crate::discover_sources(&path)
+            .unwrap()
+            .into_iter()
+            .map(|mut source| {
+                source.text = source.text.replace(
+                    "signed_user {\n            mode: signed",
+                    "signed_user {\n            mode: opaque",
+                );
+                source
+            })
+            .collect();
+        let opaque = crate::analyze_sources(opaque_sources).unwrap();
+        checked(&opaque);
+        let opaque_generator = super::TargetGenerator::new(&path, &opaque).unwrap();
+        assert!(opaque_generator.first_party_supported());
+        let mut protected = 0;
+        for route in opaque
+            .syntax
+            .sources
+            .iter()
+            .flat_map(|s| &s.file.declarations)
+            .filter_map(|d| match d {
+                Declaration::Route(route)
+                    if matches!(route.method, HttpMethod::Patch | HttpMethod::Delete) =>
+                {
+                    Some(route)
+                }
+                _ => None,
+            })
+        {
+            protected += 1;
+            assert!(!opaque_generator.authenticated_route_retry_candidate(route));
+        }
+        assert_eq!(protected, 3);
+        // Remove whole fixture declarations/blocks, then check fresh source;
+        // this is not an AST that fabricates checked delivery authority.
+        fn remove_block(text: &mut String, marker: &str) {
+            let start = text.find(marker).expect("fixture block exists");
+            let brace = text[start..].find('{').unwrap() + start;
+            let mut depth = 0;
+            for (offset, ch) in text[brace..].char_indices() {
+                match ch {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
+                }
+                if depth == 0 {
+                    text.replace_range(start..brace + offset + 1, "");
+                    return;
+                }
+            }
+            panic!("unterminated fixture block");
+        }
+        let service_sources = crate::discover_sources(&path)
+            .unwrap()
+            .into_iter()
+            .map(|mut source| {
+                if source.text.contains("authentication browser_session {") {
+                    remove_block(&mut source.text, "authentication browser_session {");
+                    remove_block(&mut source.text, "signed_user {");
+                    remove_block(&mut source.text, "jwt_user {");
+                    remove_block(&mut source.text, "resolution user {");
+                }
+                source
+            })
+            .collect();
+        let service = crate::analyze_sources(service_sources).unwrap();
+        checked(&service);
+        let service_generator = super::TargetGenerator::new(&path, &service).unwrap();
+        assert!(service_generator.first_party_supported());
+        for route in service
+            .syntax
+            .sources
+            .iter()
+            .flat_map(|s| &s.file.declarations)
+            .filter_map(|d| match d {
+                Declaration::Route(route)
+                    if matches!(route.method, HttpMethod::Patch | HttpMethod::Delete) =>
+                {
+                    Some(route)
+                }
+                _ => None,
+            })
+        {
+            assert!(!service_generator.authenticated_route_retry_candidate(route));
+        }
+        for project in [&opaque, &service] {
+            let outputs = derive_target(&path, project).unwrap();
+            let app = &outputs.iter().find(|output| output.relative_path == "target/app.ts").unwrap().contents;
+            assert!(!app.contains("const __authenticatedRetryCandidate = true;"));
+            assert!(!app.contains("allowOperationRetries(__operation, true)"));
+        }
+        let named_sources = crate::discover_sources(&path).unwrap().into_iter().map(|mut source| {
+            source.text = source.text.replace("Todo.patch_todo(path.todo_id, input, current_principal.user)", "Todo.patch_todo(todo_id: path.todo_id, input: input, principal: current_principal.user)"); source
+        }).collect();
+        let named = crate::analyze_sources(named_sources).unwrap();
+        assert!(named
+            .typing
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "TYPE_NAMED_ARGUMENT_UNSUPPORTED"));
+        // The existing frontend diagnosis is retained; no executable named-call
+        // eligibility or new language support is inferred from this input.
+    }
     #[test]
     fn private_no_create_repeatability_preserves_policy_opaque_uuid_and_recursive_exclusions() {
         use jadpo_syntax::*;

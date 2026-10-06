@@ -1113,24 +1113,25 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T18:54:18+01:00",
+  "captured_at": "2026-10-06T19:47:43+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "dee7acc522717dd7e2b7a9e9acf33a66fba1bd391d715369316b82aa32e04ec9",
+    "docs/implementation-roadmap.md": "872403854f1c6988a1b0bec9d50266d76f5f3203bcfcdac2c302c09d7d8bb3d9",
     "docs/implementation-history.md": "1782b2ee75b236b7a2e5d62a28beacd4fbeb6407e32aae71ea098a18e09f19d9",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "15dafb27304efeddca632e6194cf07a46b020fe70b1266464d43558934bc92a3",
+    "docs/work-plans/golden-delivery-planning.md": "5bac87159b6e3bd3ef9b176999e97b5bb330a23923e6084115d00c71a4748185",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "Reviewed persistence, deployment and recovery changes now pass a fresh81-check combined gate. PostgreSQL policy and credential restart coverage are added; all88 supporting golden observations pass while full golden acceptance remains open.",
+    "summary": "The reviewed golden integration now passes all 88 supported checks and all 88 migrated HTTP entries. This closes bounded verification slices, while full task and frozen technical acceptance gates remain open.",
     "delivered": [
-      "[Combined reviewed fusion](../../tests/validation/evidence/rm403504601-reviewed-fusion/report.json) passes81/81 with stable source/compiler pins and retained original red.",
-      "[PostgreSQL policy parity](../../tests/validation/evidence/rm504-independent-policy-runtime-382/review.json) checks actual stored denial and membership revocation on both adapters.",
-      "[Same-store credential restart](../../tests/validation/evidence/rm504-independent-service-restart/review.json) now runs in actual fresh child processes on both databases."
+      "Integrated independently reviewed anonymous literal-route candidates, inert selected-user eligibility, native deadlock/revocation/service controls and corrected lifecycle intent retention.",
+      "Integrated native PostgreSQL Duration decoding and both-adapter typed temporal roundtrips; preserved original driver/schema failures and exact source epochs.",
+      "Archived the88-check supported gate with655 unchanged source/tooling pins and72 actual compiler manifest pins; local results remain non-releasable.",
+      "Independently reviewed the next initial/recovery temporal schema gate and conditional retry admission plan. Found actual route shadowing that prevents the proposed finite feasibility plan from executing unchanged."
     ],
-    "next": "Continue concrete admission witnesses, protected native retry/deadlock qualification and typed temporal roundtrips; assess the missing generated half-open local-day predicate.",
+    "next": "Continue parallel batches: integrate the reviewed initial temporal schema gate; qualify actual emitted protected retry admission; implement the reviewed bounded typed local-day query predicates. Then finish the remaining full-task and exact-source golden acceptance audits.",
     "input_needed": "The previously asked required database-binding successor and publication checkpoint decisions remain unanswered; independent local delivery continues. See [the concrete database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06)."
   },
   "changes": {

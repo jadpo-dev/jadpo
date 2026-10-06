@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-402-0a52069c5f0c", "task_id": "RM-402", "actor": "scheduler-guarded-deadlock-controls", "actor_kind": "agent", "category": "slice", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T17:41:50.854791+00:00", "phase": "planning"}
+{"at": "2026-10-06T17:45:46.970105+00:00", "phase": "implementation", "note": "Tests-only emitted protected HTTP deadlock and service-principal controls; public admission stays closed."}
+{"at": "2026-10-06T17:51:19.864888+00:00", "phase": "verification", "note": "Qualify final maintained native controls and additive verifier registration; archive exact generated fixture source."}
+{"at": "2026-10-06T17:52:54.879362+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm402-protected-retry-controls/report.json"}

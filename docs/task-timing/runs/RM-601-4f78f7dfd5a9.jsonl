@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-601-4f78f7dfd5a9", "task_id": "RM-601", "actor": "golden-adapters-acceptance-audit", "actor_kind": "agent", "category": "research", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T17:56:07.048326+00:00", "phase": "planning"}
+{"at": "2026-10-06T17:58:04.011891+00:00", "phase": "verification", "note": "Read-only exact current category/copy/digest audit; no product source changes, model pin retained."}
+{"at": "2026-10-06T17:58:28.374753+00:00", "phase": "review", "note": "Map exact observed facts to preserved acceptance and parent current source; no independent closure."}
+{"at": "2026-10-06T17:59:26.160559+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm601-checked-job-approval-facts-audit/current-supported-category-audit.json"}

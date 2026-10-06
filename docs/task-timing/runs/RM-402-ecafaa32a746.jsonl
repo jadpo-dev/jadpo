@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-402-ecafaa32a746", "task_id": "RM-402", "actor": "scheduler-lifecycle-intent-baseline", "actor_kind": "agent", "category": "fix", "estimate_hours": [0.1, 0.5], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T18:20:03.474470+00:00", "phase": "planning"}
+{"at": "2026-10-06T18:24:20.042075+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm402-lifecycle-intent-baseline-correction/report.json"}

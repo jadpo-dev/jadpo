@@ -13,6 +13,7 @@ const SCHEMA: u32 = 5;
 const CANONICALIZATION: &str = "jadpo.approval-subject.v5";
 
 mod actor_links;
+mod admission_candidates;
 mod protected_attempt;
 pub use protected_attempt::{derive_protected_attempt, validate_protected_attempt_export};
 mod field_contracts;
@@ -89,6 +90,7 @@ pub fn derive_approval_subject_with_state_pin(
     unknowns.push(
         "May-effect scenarios describe compiler-checked call-graph reachability, not feasible inputs or executed behavior.",
     );
+    unknowns.push("Closed anonymous literal-route candidates require healthy supported application startup/readiness; they contain no runtime observations or feasible-execution proof.");
     let scenarios = effect_scenarios(before.as_ref(), &after);
     let canonical = json!({
         "schema_version": SCHEMA, "kind": "approval_subject",
@@ -862,6 +864,8 @@ fn snapshot(path: &Path, project: &AnalyzedProject) -> Result<Value, String> {
     impact.insert("retries",json!({"status":"compiler_checked_contract_only","facts":audit(model.transaction_audit_json()),"runtime_conformance":"not_established"}));
     let actor_sources = actor_links::derive(project, &mut facts);
     impact.insert("actor_sources", actor_sources);
+    let candidates = admission_candidates::derive(path, project, &impact["deployment"]);
+    impact.insert("anonymous_admission_candidates", candidates);
     impact.insert(
         "field_source_contracts",
         field_contracts::derive(project, &mut facts),
@@ -1044,7 +1048,8 @@ fn effect_scenarios(before: Option<&Value>, after: &Value) -> Vec<Value> {
                 "before":before_sources,"after":after_sources,
                 "actor_access":{"before_route_auth":before_auth,"after_route_auth":after_auth},
                 "actor_policy":{"before":before_policy,"after":after_policy},
-                "counterexample":{"status":"not_generated","facts":null}
+                "counterexample":admission_candidates::compare(before, after, route)
+                    .unwrap_or_else(||json!({"status":"not_generated","facts":null}))
             }));
         }
         for effect_id in effects {

@@ -359,3 +359,9 @@ authority-lock elapsed-budget control is PostgreSQL-only. A checked worker cance
 stale prior intent before claim. All 105 core tests pass; original reviewer setup
 errors remain retained. Native HTTP disconnect/unknown COMMIT and whole accepted
 RM-402 gates remain open; this does not activate public authenticated retry.
+
+### Current guarded user retry evidence — 2026-10-06
+
+The [88-check integration](../tests/validation/evidence/rm402504601-reviewed-fusion/report.json) includes independently reviewed genuine PostgreSQL 40P01 deadlock and native credential-wait revocation controls, both service forms denied on user-only mutations, and signed/RSA-JWT self-disable lifecycle controls. The [corrected lifecycle review](../tests/validation/evidence/rm402-independent-lifecycle-retry-4de/review.json) passes SQLite 5/78 and PostgreSQL 5/93; deleting the native intent before baseline now refuses all five cases on both adapters. Original empty-baseline and cached-activity observer failures remain in their evidence packets.
+
+The [static user guard review](../tests/validation/evidence/rm402-independent-inert-static-057/review.json) requires a checked positional user argument and selected signed/JWT user validators, retaining full transitive effect exclusions. It grants no public replay in this epoch. The [reviewed next admission plan](../tests/validation/evidence/rm402-protected-retry-admission-plan/actual-public-admission-parent-assessment.json) selects only runtime user authority with the compiler-private captured fresh-authority callback, and requires actual emitted HTTP proofs, unknown-COMMIT controls and separate security review before fusion. Accepted per-route deadlines remain cooperative; whole RM-402 is open.
