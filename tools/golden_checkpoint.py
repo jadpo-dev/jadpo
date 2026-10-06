@@ -392,7 +392,7 @@ def maintenance_observations(case: dict, raw: list):
     if len(capabilities) != 1:
         raise ValueError('Missing generated maintenance authority metadata')
     capability = capabilities[0]
-    if event.get('sourceRevision') != fixture.get('sourceRevision') or not isinstance(fixture.get('sourceRevision'), str) or event.get('kind') != 'maintenance_audit' or event.get('eventName') != capability.get('audit_event') or event.get('clause') != capability.get('clause') or event.get('operation') != capability.get('effect') or event.get('retentionBinding') != capability.get('retention_binding') or capability.get('source_callable') is not False or event.get('outcome') != 'committed' or event.get('selectedCount') != 1 or event.get('committedCount') != len(before) - len(after) or instant(event.get('attemptNow')) != instant(case['run']['at']):
+    if event.get('sourceRevision') != fixture.get('sourceRevision') or not isinstance(fixture.get('sourceRevision'), str) or event.get('entity') != 'Todo' or capability.get('entity') != 'Todo' or event.get('kind') != 'maintenance_audit' or event.get('eventName') != capability.get('audit_event') or event.get('clause') != capability.get('clause') or event.get('operation') != capability.get('effect') or event.get('retentionBinding') != capability.get('retention_binding') or capability.get('source_callable') is not False or event.get('outcome') != 'committed' or event.get('selectedCount') != 1 or event.get('committedCount') != len(before) - len(after) or instant(event.get('attemptNow')) != instant(case['run']['at']):
         raise ValueError('Missing native committed maintenance authority/clause/count/clock binding')
     expected_token = hashlib.sha256(('Todo:'+ALIASES['t2']).encode()).hexdigest()[:16]
     if event.get('rowIdentityTokens') != [expected_token]:
@@ -402,6 +402,13 @@ def maintenance_observations(case: dict, raw: list):
     deleted = [row for row in statements if row.get('operation') == 'DELETE' and 'FROM "todo"' in row.get('sql', '')]
     if len(selected) != 1 or len(deleted) != 1 or not re.search(r'ORDER BY "deleted_at" ASC, "id" ASC LIMIT (\d+)', selected[0]['sql']):
         raise ValueError('Missing actual bounded native retention selection/delete')
+    begins = [index for index, row in enumerate(statements) if row.get('operation') == 'BEGIN']
+    commits = [index for index, row in enumerate(statements) if row.get('operation') == 'COMMIT']
+    selected_index, deleted_index = statements.index(selected[0]), statements.index(deleted[0])
+    if len(begins) != 1 or len(commits) != 1 or not begins[0] < selected_index < deleted_index < commits[0] or any(row.get('operation') == 'ROLLBACK' for row in statements):
+        raise ValueError('Native retention BEGIN/select/delete/COMMIT order is missing or changed')
+    if not re.search(r'^DELETE FROM "todo" WHERE "id" = [?$]2 AND \(', deleted[0]['sql']) or deleted[0].get('maintenanceRowIdentity') != ALIASES['t2']:
+        raise ValueError('Native retention DELETE lost its selected-row identity predicate/bind')
     limit = int(re.search(r'LIMIT (\d+)', selected[0]['sql'])[1])
     if limit != event.get('bound') or limit != capability.get('batch_limit') or any(instant(row.get('maintenanceCutoff')) != '2025-12-16T12:00:00Z' or '"deleted_at" IS NOT NULL' not in row['sql'] or '"deleted_at" <=' not in row['sql'] for row in selected+deleted) or not statements.index(selected[0]) < statements.index(deleted[0]) or not any(row.get('operation') == 'COMMIT' for row in statements[statements.index(deleted[0])+1:]):
         raise ValueError('Native retention predicate/cutoff/transaction/batch disagrees with audit')

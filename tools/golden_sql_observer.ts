@@ -2,7 +2,7 @@
 // here; the exact original and instrumented files are retained and hashed.
 import { SQL as NativeSQL } from "bun";
 
-export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string };
+export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string; maintenanceRowIdentity?: string };
 let active: StatementObservation[] | undefined;
 let authenticationAttempts = 0;
 let principals: unknown[] = [];
@@ -51,7 +51,8 @@ export function recordStatement(sql: string, parameters: unknown[] = []) {
       const date = new Date(value); if (Number.isFinite(date.getTime())) maintenanceCutoff = date.toISOString();
     }
   }
-  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters, ...(maintenanceCutoff ? { maintenanceCutoff } : {}) });
+  const maintenanceRowIdentity = /^DELETE FROM "todo" WHERE "id" = [?$]2 AND \(/u.test(safe) && typeof parameters[1] === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(parameters[1]) ? parameters[1] : undefined;
+  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters, ...(maintenanceCutoff ? { maintenanceCutoff } : {}), ...(maintenanceRowIdentity ? { maintenanceRowIdentity } : {}) });
 }
 function observeConnection(connection: any): any {
   return new Proxy(connection, {
