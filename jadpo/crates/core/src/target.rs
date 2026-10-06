@@ -13069,8 +13069,10 @@ route GET /todos { auth: none query: ListTodos output: ListTodos action: { retur
             .contents;
         assert!(app.contains("values: { service_id: id }"));
         assert!(!app.contains("verifier: authorityRow[\"verifier\"]"));
-        assert_eq!(app.matches("const routePath").count(), 8);
-        for route_id in 0..8 {
+        // Constant authored liveness is emitted before auth/readiness, leaving
+        // seven ordinary routes with distinct path bindings.
+        assert_eq!(app.matches("const routePath").count(), 7);
+        for route_id in 0..7 {
             assert!(app.contains(&format!("const routePath{route_id} =")));
         }
         for replacement in [
