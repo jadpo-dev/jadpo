@@ -19,6 +19,7 @@ mod delivery_scheduler;
 mod delivery_selection;
 mod first_party;
 mod liveness;
+mod point_instant;
 
 const JWT_PACKAGE: &str = include_str!("runtime/jwt/package.json");
 const JWT_LOCK: &str = include_str!("runtime/jwt/bun.lock");
@@ -1070,6 +1071,11 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
             // Finished delivery bindings need a read-only app -> persistence
             // cycle for current issuer provenance. Keep both names as live
             // imports, never sample the uninitialized persistence export.
+            let point_import = if self.point_instant_entities().is_empty() {
+                ""
+            } else {
+                ", decodePointInstant"
+            };
             let delivery_import = if self.project.delivery_model().bindings().is_empty() {
                 ""
             } else {
@@ -1078,7 +1084,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
             line(
                 &mut output,
                 &format!(
-                    "import {{ persistence as rootPersistence, PersistenceFault, PolicyFault, normalizePersistenceFailure, isPersistenceReady as databaseIsReady, isPersistenceInitializationFatal as persistenceInitializationFatal, refreshPersistenceReadiness as refreshDatabaseReadiness{isolated_test_import}{lifecycle_import}{delivery_import} }} from \"./persistence.ts\";"
+                    "import {{ persistence as rootPersistence, PersistenceFault, PolicyFault, normalizePersistenceFailure, isPersistenceReady as databaseIsReady, isPersistenceInitializationFatal as persistenceInitializationFatal, refreshPersistenceReadiness as refreshDatabaseReadiness{isolated_test_import}{lifecycle_import}{delivery_import}{point_import} }} from \"./persistence.ts\";"
                 ),
             );
             if self.project.delivery_model().bindings().is_empty() {
@@ -4019,6 +4025,9 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         self.first_party_storage(&mut output);
         self.persistence_policy_runtime(&mut output);
+        if !self.point_instant_entities().is_empty() {
+            output.push_str(include_str!("runtime/point_instant_storage.ts"));
+        }
         output.push_str(include_str!("runtime/delivery_claims.ts"));
         output.push_str(include_str!("runtime/delivery_scheduler.ts"));
         line(&mut output, "function createPersistenceClient(postgres: SQL | null, sqlite: Database | null, transactional = false, transactionState: { nextSavepoint: number; active: boolean; poisoned?: boolean } = { nextSavepoint: 0, active: false }, policy: PolicyRequest = emptyPolicyRequest, operationTime: string | null = null, signal: AbortSignal | null = null, deadlineAt: number | null = null, requestDeadlineAt: number | null = deadlineAt) {");
@@ -4613,11 +4622,27 @@ export const temporal = Object.freeze({
                     self.select_optional_sql(name, entity, field_name, SqlDialect::Postgres);
                 let sqlite_sql =
                     self.select_optional_sql(name, entity, field_name, SqlDialect::Sqlite);
+                let point_enabled = self.point_instant_entities().contains(name);
+                let descriptors = self.point_instant_descriptors(entity);
+                let point_argument = if point_enabled {
+                    ", pointContext = false"
+                } else {
+                    ""
+                };
+                let postgres_argument = if point_enabled {
+                    format!(
+                        "pointContext ? {} : {}",
+                        ts_string(&self.point_instant_projection_sql(&postgres_sql, &descriptors)),
+                        ts_string(&postgres_sql)
+                    )
+                } else {
+                    ts_string(&postgres_sql)
+                };
                 let value_kind = ts_string(&self.representation_root_for(&field.field_type));
                 line(
                     &mut output,
                     &format!(
-                        "  async query_optional_{name}_by_{field_name}(value: unknown): Promise<unknown | null> {{"
+                        "  async query_optional_{name}_by_{field_name}(value: unknown{point_argument}): Promise<unknown | null> {{"
                     ),
                 );
                 line(
@@ -4626,10 +4651,26 @@ export const temporal = Object.freeze({
                         "    const rows = await policyReadRows({}, {}, {}, {}, [persistenceValue(value, {value_kind}, true)], [persistenceValue(value, {value_kind}, false)]);",
                         ts_string(&format!("query.{name}.{field_name}")),
                         ts_string(name),
-                        ts_string(&postgres_sql),
+                        postgres_argument,
                         ts_string(&sqlite_sql)
                     ),
                 );
+                if point_enabled {
+                    let descriptor_literal = descriptors
+                        .iter()
+                        .map(|(field, value, kind, nullable)| {
+                            format!(
+                                "[{}, {}, {}, {}]",
+                                ts_string(field),
+                                ts_string(value),
+                                ts_string(kind),
+                                nullable
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    line(&mut output, &format!("    if (pointContext) capturePointInstants(rows, {}, postgres !== null, [{descriptor_literal}]);", ts_string(name)));
+                }
                 line(
                     &mut output,
                     &format!(
@@ -4646,12 +4687,15 @@ export const temporal = Object.freeze({
                 line(
                     &mut output,
                     &format!(
-                        "  async query_required_{name}_by_{field_name}(value: unknown): Promise<unknown | null> {{"
+                        "  async query_required_{name}_by_{field_name}(value: unknown{point_argument}): Promise<unknown | null> {{"
                     ),
                 );
                 line(
                     &mut output,
-                    &format!("    return this.query_optional_{name}_by_{field_name}(value);"),
+                    &format!(
+                        "    return this.query_optional_{name}_by_{field_name}(value{});",
+                        if point_enabled { ", pointContext" } else { "" }
+                    ),
                 );
                 line(&mut output, "  },");
                 for order in &entity.fields {
@@ -7960,7 +8004,9 @@ export const temporal = Object.freeze({
         );
         line(output, "}");
         line(output, "");
-        if configuration_only { return; }
+        if configuration_only {
+            return;
+        }
         line(
             output,
             "function json(status: number, body: unknown, requestId: string): Response {",
@@ -8358,11 +8404,17 @@ export const temporal = Object.freeze({
         }
 
         for (name, declaration) in &self.records {
+            let point_enabled = database_decoders && self.point_instant_entities().contains(name);
+            let point_parameter = if point_enabled {
+                ", pointContext = false"
+            } else {
+                ""
+            };
             if declaration.is_persistent_entity() && database_decoders {
                 line(
                     output,
                     &format!(
-                        "function decodeDatabase_{name}(value: unknown, path: string): unknown {{"
+                        "function decodeDatabase_{name}(value: unknown, path: string{point_parameter}): unknown {{"
                     ),
                 );
                 line(output, "  try {");
@@ -8371,7 +8423,16 @@ export const temporal = Object.freeze({
                 for field in &declaration.fields {
                     let raw = format!("object[{}]", ts_string(&field.name.text));
                     let path = format!("`${{path}}.{}`", field.name.text);
-                    let decoded = self.database_decode_expression(&field.field_type, &raw, &path);
+                    let legacy = self.database_decode_expression(&field.field_type, &raw, &path);
+                    let decoded = if point_enabled
+                        && self.representation_root_for(&field.field_type) == "Instant"
+                    {
+                        let sqlite_decode =
+                            self.database_decode_expression(&field.field_type, "raw", "fieldPath");
+                        format!("pointContext ? decodePointInstant(object, {}, {}, {}, {path}, (raw, fieldPath) => {sqlite_decode}) : {legacy}", ts_string(name), ts_string(&field.name.text), self.reference_is_nullable(&field.field_type))
+                    } else {
+                        legacy
+                    };
                     line(output, &format!("      {}: {decoded},", field.name.text));
                 }
                 line(output, "    };");
@@ -8393,10 +8454,10 @@ export const temporal = Object.freeze({
             }
             line(
                 output,
-                &format!("function validate_{name}(value: unknown, path: string): {name} {{"),
+                &format!("function validate_{name}(value: unknown, path: string{point_parameter}): {name} {{"),
             );
             if declaration.is_persistent_entity() && database_decoders {
-                line(output, &format!("  const object = expectObject(path.startsWith(\"database.\") ? decodeDatabase_{name}(value, path) : value, path);"));
+                line(output, &format!("  const object = expectObject(path.startsWith(\"database.\") ? decodeDatabase_{name}(value, path{}) : value, path);", if point_enabled { ", pointContext" } else { "" }));
             } else {
                 line(output, "  const object = expectObject(value, path);");
             }
@@ -9013,7 +9074,11 @@ export const temporal = Object.freeze({
         line(output, "    const url = new URL(request.url);");
         line(output, "    requestPath = url.pathname;");
 
-        let liveness = self.project.syntax.sources.iter()
+        let liveness = self
+            .project
+            .syntax
+            .sources
+            .iter()
             .flat_map(|source| &source.file.declarations)
             .find_map(|declaration| match declaration {
                 Declaration::Route(route) if Self::is_liveness_route(route) => {
@@ -9627,7 +9692,9 @@ export const temporal = Object.freeze({
             line(output, "    acknowledgeNativeStartupPublication();");
         }
         line(output, "  } catch (error) {");
-        if self.configuration.is_some() { line(output, "    reportConfigurationDiagnostics(error);"); }
+        if self.configuration.is_some() {
+            line(output, "    reportConfigurationDiagnostics(error);");
+        }
         line(output, "    reportRuntimeFault(");
         line(output, "      \"RUNTIME_STARTUP_FAILED\",");
         line(output, "      \"runtime:start\",");
@@ -10111,10 +10178,12 @@ export const temporal = Object.freeze({
                 } else {
                     match query.cardinality {
                     jadpo_syntax::QueryCardinality::Optional => format!(
-                        "((value: unknown) => value === null ? null : validate_{name}(value, {}))(await persistence.query_optional_{name}_by_{}({}))",
+                        "((value: unknown) => value === null ? null : validate_{name}(value, {}{}))(await persistence.query_optional_{name}_by_{}({}{}))",
                         ts_string(&format!("database.{name}")),
+                        if self.point_instant_entities().contains(&name) { ", true" } else { "" },
                         query.field.text,
-                        self.expression(&query.value)
+                        self.expression(&query.value),
+                        if self.point_instant_entities().contains(&name) { ", true" } else { "" }
                     ),
                     jadpo_syntax::QueryCardinality::Required => {
                         let missing = query
@@ -10122,11 +10191,13 @@ export const temporal = Object.freeze({
                             .as_ref()
                             .expect("required queries have a missing failure binding");
                         format!(
-                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}); return validate_{name}(value, {}); }})(await persistence.query_required_{name}_by_{}({}))",
+                            "((value: unknown) => {{ if (value === null) throw new DomainFailure({}); return validate_{name}(value, {}{}); }})(await persistence.query_required_{name}_by_{}({}{}))",
                             self.domain_failure_arguments(missing),
                             ts_string(&format!("database.{name}")),
+                        if self.point_instant_entities().contains(&name) { ", true" } else { "" },
                             query.field.text,
-                            self.expression(&query.value)
+                            self.expression(&query.value),
+                        if self.point_instant_entities().contains(&name) { ", true" } else { "" }
                         )
                     }
                     jadpo_syntax::QueryCardinality::Many => {
@@ -10690,7 +10761,9 @@ export const temporal = Object.freeze({
             // decisions already resolved by the type checker.
             let source = &self.project.semantics.node(name)?.source;
             return crate::artifacts::operational_failures::checked_patch_fields(
-                self.project, source, patch.range,
+                self.project,
+                source,
+                patch.range,
             );
         }
         None
@@ -13310,16 +13383,32 @@ mod tests {
             .contents;
         let permission = "__operation = allowOperationRetries(__operation, __authenticatedRetryCandidate && authenticated.kind === \"user\" && __operation.refreshAuthority !== null);";
         assert_eq!(app.matches(permission).count(), 3);
-        for (method, route) in [("PATCH", "/todos/{todo_id}"), ("DELETE", "/todos/{todo_id}"), ("DELETE", "/users/{user_id}")] {
+        for (method, route) in [
+            ("PATCH", "/todos/{todo_id}"),
+            ("DELETE", "/todos/{todo_id}"),
+            ("DELETE", "/users/{user_id}"),
+        ] {
             let marker = format!("semanticOperationId = \"route:{method}:{route}\";");
-            let emitted = app.split(&marker).nth(1).unwrap().split("semanticOperationId =").next().unwrap();
+            let emitted = app
+                .split(&marker)
+                .nth(1)
+                .unwrap()
+                .split("semanticOperationId =")
+                .next()
+                .unwrap();
             assert!(emitted.contains(permission));
             assert!(emitted.contains("const __authenticatedRetryCandidate = true;"));
             assert!(emitted.contains("const refreshAuthority = createRetryAuthority(authentication, credentialRequest, authenticated, true);"));
         }
         for marker in ["route:POST:/todos", "route:GET:/todos"] {
             let marker = format!("semanticOperationId = \"{marker}\";");
-            let emitted = app.split(&marker).nth(1).unwrap().split("semanticOperationId =").next().unwrap();
+            let emitted = app
+                .split(&marker)
+                .nth(1)
+                .unwrap()
+                .split("semanticOperationId =")
+                .next()
+                .unwrap();
             assert!(emitted.contains("__operation = allowOperationRetries(__operation, false);"));
             assert!(!emitted.contains(permission));
         }
@@ -13383,7 +13472,11 @@ mod tests {
             assert!(renamed_generator.authenticated_route_retry_candidate(route));
         }
         let renamed_outputs = derive_target(&path, &renamed).unwrap();
-        let renamed_app = &renamed_outputs.iter().find(|output| output.relative_path == "target/app.ts").unwrap().contents;
+        let renamed_app = &renamed_outputs
+            .iter()
+            .find(|output| output.relative_path == "target/app.ts")
+            .unwrap()
+            .contents;
         assert_eq!(renamed_app.matches(permission).count(), 3);
         assert!(!renamed_app.contains("allowOperationRetries(__operation, true)"));
         let mut public = route.clone();
@@ -13413,7 +13506,10 @@ mod tests {
         assert!(!generator.authenticated_route_retry_candidate(&wrong_parameter));
         let mut service_argument = route.clone();
         let jadpo_syntax::Expression::Name(principal_argument) =
-            &mut service_argument.run.as_mut().unwrap().arguments[2] else { panic!() };
+            &mut service_argument.run.as_mut().unwrap().arguments[2]
+        else {
+            panic!()
+        };
         principal_argument.path[1].text = "service".into();
         assert!(!generator.authenticated_route_retry_candidate(&service_argument));
     }
@@ -13527,9 +13623,15 @@ mod tests {
         }
         for project in [&opaque, &service] {
             let outputs = derive_target(&path, project).unwrap();
-            let app = &outputs.iter().find(|output| output.relative_path == "target/app.ts").unwrap().contents;
+            let app = &outputs
+                .iter()
+                .find(|output| output.relative_path == "target/app.ts")
+                .unwrap()
+                .contents;
             assert!(!app.contains("const __authenticatedRetryCandidate = true;"));
-            assert!(!app.contains("authenticated.kind === \"user\" && __operation.refreshAuthority !== null"));
+            assert!(!app.contains(
+                "authenticated.kind === \"user\" && __operation.refreshAuthority !== null"
+            ));
             assert!(!app.contains("allowOperationRetries(__operation, true)"));
         }
         let named_sources = crate::discover_sources(&path).unwrap().into_iter().map(|mut source| {
