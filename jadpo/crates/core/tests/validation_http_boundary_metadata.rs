@@ -278,3 +278,83 @@ fn identical_native_envelopes_share_one_wire_schema_but_keep_both_conditions() {
             .any(|f| f["code"] == fact["code"] && f["condition"] == fact["condition"]));
     }
 }
+
+const RELATIONSHIP_COLLISION: &str = r#"
+entity Parent {id:Uuid identity}
+entity Child {id:Uuid identity parent_id:Parent.id references Parent.id on_delete restrict note:Text unique}
+input NewChild {id:Child.id parent_id:Parent.id note:Child.note}
+output Result {ok:Bool}
+failure MutationRejected {kind:Conflict code:"relationship_conflict" message:"The operation conflicts with a relationship."}
+action create_child(input:NewChild) ->Child fails MutationRejected {return attempt create Child {id:input.id parent_id:Child.parent_id(input.parent_id) note:input.note} conflict:MutationRejected}
+route POST /child {auth:none input:NewChild output:Child run:create_child(input)}
+route GET /declared {auth:none output:Result action:fails MutationRejected {reject MutationRejected}}
+"#;
+#[test]
+fn relationship_native_wire_is_excluded_from_colliding_domain_reference() {
+    let (routes, api, audit) = outputs(
+        Path::new("relationship-wire.jadpo"),
+        &clean(RELATIONSHIP_COLLISION),
+    );
+    assert_eq!(
+        row(&routes, "POST /child")["failures"][0]["name"],
+        "MutationRejected"
+    );
+    assert!(row(&routes, "POST /child")["operational_failures"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|f| f["code"] == "relationship_conflict"));
+    let choices = schema(&api, "/child", "post", "409")["oneOf"]
+        .as_array()
+        .unwrap();
+    assert_eq!(choices.len(), 2);
+    assert_eq!(
+        choices[0]["allOf"][0]["$ref"],
+        "#/components/schemas/MutationRejected"
+    );
+    assert_eq!(
+        choices[0]["allOf"][1]["not"]["anyOf"][0]["properties"]["error"]["properties"]["code"]
+            ["enum"][0],
+        "relationship_conflict"
+    );
+    assert_eq!(
+        schema(&api, "/declared", "get", "409")["$ref"],
+        "#/components/schemas/MutationRejected"
+    );
+    assert!(audit["operational_failures"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|f| f["code"] == "relationship_conflict"));
+    // A different static public message is disjoint; preserve its exact reference.
+    let (_, different, _) = outputs(
+        Path::new("relationship-wire.jadpo"),
+        &clean(&RELATIONSHIP_COLLISION.replace(
+            "The operation conflicts with a relationship.",
+            "Authored relationship conflict.",
+        )),
+    );
+    assert_eq!(
+        schema(&different, "/child", "post", "409")["oneOf"][0]["$ref"],
+        "#/components/schemas/MutationRejected"
+    );
+}
+
+#[test]
+fn inactive_resolution_rejects_operational_status_categories() {
+    let auth = include_str!("../../../../tests/compile/pass/164_mixed_service_exchange.jadpo");
+    for kind in ["Conflict", "Unavailable"] {
+        let source = auth.replace(
+            "kind: NotPermitted code: \"user_disabled\"",
+            &format!("kind: {kind} code: \"relationship_conflict\""),
+        );
+        let project =
+            analyze_sources(vec![SourceFile::new("inactive-wire.jadpo".into(), source)]).unwrap();
+        assert!(project
+            .typing
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "TYPE_AUTH_INACTIVE_FAILURE_KIND"
+                && d.severity == jadpo_diagnostics::Severity::Error));
+    }
+}

@@ -1176,11 +1176,29 @@ impl<'project> ArtifactModel<'project> {
                         .iter()
                         .find(|contract| contract.name == *name)
                     {
-                        let overlap = native
+                        let mut overlap = native
                             .iter()
                             .filter(|failure| failure.code == contract.code)
                             .map(|failure| failure.schema())
                             .collect::<Vec<_>>();
+                        // An ordinary declared conflict and the normalized FK
+                        // boundary may have the same closed public envelope.
+                        // Keep custom messages/details on their own reference.
+                        if status == 409
+                            && relationships.may_fail
+                            && contract.code == "relationship_conflict"
+                            && contract.public_fields.is_empty()
+                            && contract.message.as_deref().map_or(true, |message| {
+                                message == "The operation conflicts with a relationship."
+                            })
+                        {
+                            overlap.push(
+                                serde_json::from_str::<serde_json::Value>(
+                                    &bun_operational_schema_json(409),
+                                )
+                                .unwrap(),
+                            );
+                        }
                         if !overlap.is_empty() {
                             *reference = serde_json::json!({"allOf":[serde_json::from_str::<serde_json::Value>(reference).unwrap(),{"not":{"anyOf":overlap}}]}).to_string();
                         }
