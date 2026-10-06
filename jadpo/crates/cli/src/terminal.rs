@@ -233,7 +233,7 @@ pub fn render_help(style: RenderStyle) -> String {
     };
 
     format!(
-        "{product}\n{}\n  {}\n\n{}\n  {:11} Create a deterministic project scaffold\n  {:11} Validate syntax and semantics\n  {:11} Emit the checked semantic manifest\n  {:11} Write deterministic derived artifacts\n  {:11} Inspect before/after behavioral review JSON\n  {:11} Generate the checked Bun target\n  {:11} Build and run authored tests\n  {:11} Format authored .jadpo files\n\n{}\n  {:11} Rebuild after authored-input changes\n  {:11} Rebuild, run Bun, and restart when ready\n  {:11} Enrich a secret-safe runtime event locally\n  {:11} Run the compiler-backed language server\n\n{}\n  {}\n  {}\n\n{}\n  {}\n  {}\n  {}\n  {}\n\n{}\n  {:30} Rich terminal, stable plain text, or diagnostic JSON\n  {:30} Automatic, forced, or disabled ANSI colour\n  {:30} Disable colour using the shared convention\n  {:30} Use ASCII decoration in rich output\n\n{}\n  jadpo build --target native|wasm\n  Build the bounded shared-Rust fixture from a repository checkout (no Bun).\n  Ordinary project builds still default to Bun; --target rust aliases native.\n\n{}\n  Diagnostic JSON is available for check, watch, and dev. Other machine-oriented\n  commands emit JSON directly. Pipes default to ANSI-free plain text.\n",
+        "{product}\n{}\n  {}\n\n{}\n  {:11} Create a deterministic project scaffold\n  {:11} Validate syntax and semantics\n  {:11} Emit the checked semantic manifest\n  {:11} Write deterministic derived artifacts\n  {:11} Inspect before/after behavioral review JSON\n  {:17} Inspect an exact compiler-refused protected change\n  {:11} Generate the checked Bun target\n  {:11} Build and run authored tests\n  {:11} Format authored .jadpo files\n\n{}\n  {:11} Rebuild after authored-input changes\n  {:11} Rebuild, run Bun, and restart when ready\n  {:11} Enrich a secret-safe runtime event locally\n  {:11} Run the compiler-backed language server\n\n{}\n  {}\n  {}\n\n{}\n  {}\n  {}\n  {}\n  {}\n\n{}\n  {:30} Rich terminal, stable plain text, or diagnostic JSON\n  {:30} Automatic, forced, or disabled ANSI colour\n  {:30} Disable colour using the shared convention\n  {:30} Use ASCII decoration in rich output\n\n{}\n  jadpo build --target native|wasm\n  Build the bounded shared-Rust fixture from a repository checkout (no Bun).\n  Ordinary project builds still default to Bun; --target rust aliases native.\n\n{}\n  Diagnostic JSON is available for check, watch, and dev. Other machine-oriented\n  commands emit JSON directly. Pipes default to ANSI-free plain text.\n",
         heading("USAGE"),
         command("jadpo <command> <project> [options]"),
         heading("CORE COMMANDS"),
@@ -242,6 +242,7 @@ pub fn render_help(style: RenderStyle) -> String {
         command("inspect"),
         command("artifacts"),
         command("approval"),
+        command("protected-attempt"),
         command("build"),
         command("test"),
         command("fmt"),

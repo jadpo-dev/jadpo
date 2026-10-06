@@ -13,6 +13,8 @@ const SCHEMA: u32 = 5;
 const CANONICALIZATION: &str = "jadpo.approval-subject.v5";
 
 mod actor_links;
+mod protected_attempt;
+pub use protected_attempt::{derive_protected_attempt, validate_protected_attempt_export};
 mod field_contracts;
 
 /// Both sides are freshly analyzed source, never a self-asserted previous artifact.

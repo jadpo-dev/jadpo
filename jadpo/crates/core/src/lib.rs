@@ -30,7 +30,8 @@ mod target;
 
 pub use artifacts::{
     approval_text, derive_approval_subject, derive_approval_subject_with_state_pin,
-    derive_artifacts, validate_approval_export, write_artifacts, GeneratedArtifact,
+    derive_artifacts, derive_protected_attempt, validate_approval_export,
+    validate_protected_attempt_export, write_artifacts, GeneratedArtifact,
 };
 pub use configuration::{
     check_local_configuration, configuration_fields, local_configuration_environment,

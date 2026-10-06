@@ -15,7 +15,7 @@ mod approval;
 mod artifact_provenance;
 pub use approval::{
     approval_text, derive_approval_subject, derive_approval_subject_with_state_pin,
-    validate_approval_export,
+    derive_protected_attempt, validate_approval_export, validate_protected_attempt_export,
 };
 
 static OUTPUT_REVISION: AtomicU64 = AtomicU64::new(0);

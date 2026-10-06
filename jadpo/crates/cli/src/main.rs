@@ -156,6 +156,11 @@ fn run(arguments: Vec<String>) -> Result<(), Diagnostic> {
         return experimental_build::run(&arguments[1..]);
     }
 
+    if command == "protected-attempt" {
+        println!("{}", protected_attempt_export(&arguments[1..])?);
+        return Ok(());
+    }
+
     if command == "approval" {
         println!("{}", approval_export(&arguments[1..])?);
         return Ok(());
@@ -2147,6 +2152,64 @@ fn require_valid_frontend(project: &AnalyzedProject) -> Result<(), Diagnostic> {
     Ok(())
 }
 
+fn protected_attempt_export(arguments: &[String]) -> Result<String, Diagnostic> {
+    let invalid = || {
+        Diagnostic::error("CLI_PRESENTATION_ARGUMENTS").with_note(
+        "expected: jadpo protected-attempt <attempt-project> --before <checked-baseline> --request <closed-request.json> [--expected-before <sha256:digest>] [--expected-before-state <sha256:digest>] [--validate-export <artifact.json>]")
+    };
+    let path = arguments
+        .first()
+        .filter(|s| !s.starts_with('-'))
+        .ok_or_else(invalid)?;
+    let mut options = std::collections::BTreeMap::new();
+    let mut index = 1;
+    while index < arguments.len() {
+        let flag = arguments[index].as_str();
+        if !matches!(
+            flag,
+            "--before"
+                | "--request"
+                | "--expected-before"
+                | "--expected-before-state"
+                | "--validate-export"
+        ) || options.contains_key(flag)
+        {
+            return Err(invalid());
+        }
+        let value = arguments
+            .get(index + 1)
+            .filter(|s| !s.starts_with('-'))
+            .ok_or_else(invalid)?;
+        options.insert(flag, value.as_str());
+        index += 2;
+    }
+    let before_path = Path::new(*options.get("--before").ok_or_else(invalid)?);
+    let request_path = options.get("--request").ok_or_else(invalid)?;
+    let baseline = analyze_project(before_path)?;
+    require_valid_frontend(&baseline)?;
+    validate_schema_identities(before_path, &baseline)?;
+    let attempt = analyze_project(Path::new(path))?;
+    let request = fs::read_to_string(request_path)
+        .map_err(|_| invalid().with_note("request file must be readable UTF-8"))?;
+    let subject = jadpo_core::derive_protected_attempt(
+        Path::new(path),
+        &attempt,
+        before_path,
+        &baseline,
+        &request,
+        options.get("--expected-before").copied(),
+        options.get("--expected-before-state").copied(),
+    )
+    .map_err(|message| invalid().with_note(message))?;
+    if let Some(export_path) = options.get("--validate-export") {
+        let exported = fs::read_to_string(export_path)
+            .map_err(|_| invalid().with_note("export file must be readable UTF-8"))?;
+        jadpo_core::validate_protected_attempt_export(&subject, &exported)
+            .map_err(|message| invalid().with_note(message))?;
+    }
+    Ok(subject)
+}
+
 fn approval_export(arguments: &[String]) -> Result<String, Diagnostic> {
     let invalid = || {
         Diagnostic::error("CLI_PRESENTATION_ARGUMENTS").with_note(
@@ -2598,6 +2661,67 @@ mod tests {
             assert!(!diagnostic.message.contains("value"), "{code}");
         }
     }
+    #[test]
+    fn protected_attempt_cli_requires_fresh_baseline_closed_request_and_exact_export() {
+        let root = std::env::temp_dir().join(format!(
+            "jadpo-protected-attempt-cli-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("before")).unwrap();
+        fs::create_dir_all(root.join("attempt")).unwrap();
+        let baseline = format!("{}\nfailure Missing {{ kind: NotFound code: \"missing\" }}\nfailure Conflicted {{ kind: Conflict code: \"conflicted\" }}\n",
+            fs::read_to_string(repository_root().join("tests/compile/pass/132_scoped_role_policy.jadpo")).unwrap());
+        let attempt = format!("{baseline}\naction move_owner(row_id: Company.id, next_owner: User.id) fails Missing, Conflicted -> Company {{ return attempt update required Company {{ where: id == row_id set: {{ owner_id: Company.owner_id(next_owner) }} missing: Missing conflict: Conflicted }} }}");
+        fs::write(root.join("before/app.jadpo"), &baseline).unwrap();
+        fs::write(root.join("attempt/app.jadpo"), &attempt).unwrap();
+        let request = serde_json::json!({"entity":"Company","field":"owner_id","callable":"move_owner",
+            "row":{"parameter":"row_id","nominal_type":"Company.id","alias":"t1"},
+            "from":{"nominal_type":"User.id","alias":"alice"},
+            "to":{"parameter":"next_owner","nominal_type":"User.id","alias":"bob"}});
+        fs::write(root.join("request.json"), request.to_string()).unwrap();
+        let args = vec![
+            root.join("attempt").to_string_lossy().into_owned(),
+            "--before".into(),
+            root.join("before").to_string_lossy().into_owned(),
+            "--request".into(),
+            root.join("request.json").to_string_lossy().into_owned(),
+        ];
+        let raw = super::protected_attempt_export(&args).unwrap();
+        let subject: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            subject["canonical"]["disposition"],
+            "requires_human_decision"
+        );
+        assert!(!super::check_project(&root.join("attempt")).passed);
+        fs::write(root.join("export.json"), &raw).unwrap();
+        let mut validated = args.clone();
+        validated.extend([
+            "--validate-export".into(),
+            root.join("export.json").to_string_lossy().into_owned(),
+        ]);
+        assert_eq!(super::protected_attempt_export(&validated).unwrap(), raw);
+        fs::write(root.join("export.json"), "{}").unwrap();
+        assert!(super::protected_attempt_export(&validated).is_err());
+        for extra in [
+            vec!["--expected-before".into(), "sha256:foreign".into()],
+            vec!["--expected-before-state".into(), "sha256:foreign".into()],
+            vec!["--request".into(), "duplicate".into()],
+            vec!["--text".into()],
+        ] {
+            let mut invalid = args.clone();
+            invalid.extend(extra);
+            assert!(super::protected_attempt_export(&invalid).is_err());
+        }
+        assert!(super::protected_attempt_export(&args[..3]).is_err());
+        fs::write(
+            root.join("before/app.jadpo"),
+            "function bad() -> Text { return 1 }",
+        )
+        .unwrap();
+        assert!(super::protected_attempt_export(&args).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn approval_cli_compares_pinned_source_and_preserves_text_facts() {
         let root = std::env::temp_dir().join(format!("jadpo-approval-cli-{}", std::process::id()));
