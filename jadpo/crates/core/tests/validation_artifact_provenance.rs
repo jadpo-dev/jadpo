@@ -87,8 +87,10 @@ fn approval_pins_every_actual_generated_output_except_explicit_self_exclusions()
     assert_eq!(pins(&expected)["written_file_conformance"], "not_checked");
     assert_eq!(
         expected["canonical"]["after"]["impact"]["deployment"]["status"],
-        "unsupported_analysis"
+        "compiler_supported_expected_native_contract"
     );
+    assert_eq!(expected["canonical"]["after"]["impact"]["deployment"]["runtime_conformance"], "not_established");
+    assert!(expected["canonical"]["after"]["impact"]["deployment"]["live_listener"].is_null());
     assert!(
         expected["canonical"]["after"]["provenance"]["compiler"]["binary_attestation"].is_null()
     );

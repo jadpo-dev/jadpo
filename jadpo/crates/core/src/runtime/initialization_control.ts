@@ -8,9 +8,10 @@ function createInitializationControl(setCancel?: (cancel: () => void) => void) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let expired = false;
   const reason = new Error("persistence initialization cancelled");
-  const expire = () => { expired = true; cancelled = true; try { current?.cancel(); } catch {} };
+  const expire = () => { expired = true; if (cancelled) return; cancelled = true; try { current?.cancel(); } catch {} };
   const check = () => { if (deadlineAt !== null && performance.now() >= deadlineAt) expire(); if (cancelled) throw reason; };
   setCancel?.(() => {
+    if (cancelled) return;
     cancelled = true;
     current?.cancel();
   });

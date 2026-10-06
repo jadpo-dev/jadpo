@@ -62,6 +62,10 @@ fn derive_non_approval_artifacts(
         artifact("openapi/openapi.json", model.openapi_json()),
         artifact("diagnostics/catalogue.json", catalogue_manifest_json()),
         artifact("diagnostics/reference.md", catalogue_reference_markdown()),
+        artifact(
+            "audit/deployment.json",
+            crate::target::deployment_surface_metadata(project_path, project).to_string(),
+        ),
     ];
     if project.syntax.sources.iter().any(|s| {
         s.file
@@ -2031,6 +2035,7 @@ mod tests {
                 "openapi/openapi.json",
                 "diagnostics/catalogue.json",
                 "diagnostics/reference.md",
+                "audit/deployment.json",
             ]
         );
         assert!(artifact(&artifacts, "inventory/routes.json").contains("\"auth\":\"none\""));
