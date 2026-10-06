@@ -80,6 +80,7 @@
     "tests/runtime/persistence-seed.test.ts",
     "tests/runtime/policy-runtime.test.ts",
     "tests/runtime/readiness-recovery.test.ts",
+    "tests/runtime/relationship-conflicts.test.ts",
     "tests/runtime/route-inputs.test.ts",
     "tests/runtime/service-adapter.test.ts",
     "tests/runtime/service-authentication.test.ts",
@@ -120,6 +121,7 @@
     "jwt-authentication",
     "readiness",
     "entity-dossier",
-    "lifecycle"
+    "lifecycle",
+    "relationship-conflicts"
   ]
 }

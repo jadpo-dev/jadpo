@@ -3,8 +3,8 @@ set -euo pipefail
 
 mode=${1:-}
 case "$mode" in
-  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|entity-dossier|lifecycle|delivery-hook-components|delivery-completion-representation) ;;
-  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|entity-dossier|lifecycle|delivery-hook-components|delivery-completion-representation' >&2; exit 2 ;;
+  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|entity-dossier|lifecycle|delivery-hook-components|delivery-completion-representation|relationship-conflicts) ;;
+  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|entity-dossier|lifecycle|delivery-hook-components|delivery-completion-representation|relationship-conflicts' >&2; exit 2 ;;
 esac
 for executable in initdb pg_ctl createdb postgres bun; do
   command -v "$executable" >/dev/null || { echo "Required executable: $executable" >&2; exit 1; }
@@ -62,6 +62,9 @@ elif [[ "$mode" == entity-dossier ]]; then
 elif [[ "$mode" == lifecycle ]]; then
   JADPO_LIFECYCLE_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test tests/runtime/entity-lifecycle.test.ts
+elif [[ "$mode" == relationship-conflicts ]]; then
+  JADPO_LIFECYCLE_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
+    bun --no-install --env-file=/dev/null test tests/runtime/relationship-conflicts.test.ts
 elif [[ "$mode" == readiness ]]; then
   # These fixture applications have incompatible User layouts. Keep their
   # schemas separate inside the same disposable test cluster.
