@@ -84,6 +84,24 @@ preserves constant authored health before auth/readiness, rejects dependent
 reserved liveness, and keeps malformed JSON400 and unexpected faults500.
 Frozen expected values and sources were preserved.
 
+
+The first hosted PR check exposed a clean-checkout ordering bug in synthetic
+protocol tests: they depended on an already built compiler while
+`verification-contract` precedes `compiler-build`. The production validator
+correctly refused synthetic passing labels without compiler provenance.
+[Original hosted failure](../../tests/validation/evidence/rm109-ci-clean-checkout-failure/manifest.json)
+and independent reproduction are retained. A test-only isolated digest fixture
+fixes the ordering assumption; an explicit missing-compiler rejection remains.
+All 53 Python verification-contract tests pass, including 28 golden protocol
+checks, with independent clean-checkout correction review at
+[the scoped report](../../tests/validation/rm109-independent-ci-ordering-correction-review.json).
+Product/harness/validator bytes are unchanged by this correction, so the local
+67-check product gate and earlier scoped product approvals retain their bounds.
+[PR #3 checks](https://github.com/richardwillars/jadpo/pull/3/checks)
+supply required hosted validation before merge. Correction timing:
+writer `RM-109-96c4b61f6a67`, reviewer `RM-109-84b3cae13d0b`,
+coordinator `RM-109-2d62aca26d57`, all partial.
+
 Failed initial HTTP observations remain in
 [the before-correction evidence](../../tests/validation/evidence/rm109-http-checkpoint-before/manifest.json).
 Two earlier combined gates are retained unchanged:

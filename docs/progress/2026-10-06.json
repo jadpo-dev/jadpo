@@ -1131,13 +1131,13 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T04:22:59+01:00",
+  "captured_at": "2026-10-06T04:27:24+01:00",
   "sources": {
     "docs/implementation-roadmap.md": "74713b02ba48a60fc062aaf2cc5953cf693a72a4444e06e5b974f6bc6797d603",
     "docs/implementation-history.md": "3719a84aae5f217b59f3196b2fb757b3b3d632f24a3e2d3da00f0092545db4f6",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "ebebf0145acfb371418c3e7759c0ece4760b629651cef15c905adcb89f9390df",
+    "docs/work-plans/golden-delivery-planning.md": "e161d8663d330fee352ca54790b019bd521b1e1aedbaf1d2123b418202c20b6c",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
