@@ -15,27 +15,78 @@ struct Scan {
 }
 impl Links {
     pub(super) fn derive(declaration: &Declaration, owner: &Value) -> Self {
-        let Declaration::Callable(callable) = declaration else {
-            return Self::default();
-        };
-        let parameters = callable
-            .parameters
-            .iter()
-            .enumerate()
-            .map(|(index, parameter)| {
-                (
-                    parameter.name.text.clone(),
-                    json!({"kind":"parameter","name":parameter.name.text,
-                "address":["parameter",index.to_string()],"owner":owner}),
-                )
-            })
-            .collect();
         let mut scan = Scan {
             owner: owner.clone(),
-            scopes: vec![parameters],
+            scopes: vec![BTreeMap::new()],
             links: Self::default(),
         };
-        scan.block(&callable.body, &["body".into()]);
+        match declaration {
+            Declaration::Callable(callable) => {
+                for (index, parameter) in callable.parameters.iter().enumerate() {
+                    scan.scopes[0].insert(
+                        parameter.name.text.clone(),
+                        json!({
+                        "kind":"parameter","name":parameter.name.text,
+                        "address":["parameter",index.to_string()],"owner":owner}),
+                    );
+                }
+                scan.block(&callable.body, &["body".into()]);
+            }
+            Declaration::Route(route) => {
+                // These are precisely the authored route wrappers inserted by
+                // the checker, not runtime principal/clock/base-environment data.
+                for name in ["input", "query"] {
+                    let present = if name == "input" {
+                        route.input.is_some()
+                    } else {
+                        route.query.is_some()
+                    };
+                    if present {
+                        scan.route_transport(name, BTreeMap::new());
+                    }
+                }
+                for (name, fields) in [
+                    (
+                        "path",
+                        route
+                            .path_fields
+                            .iter()
+                            .map(|field| field.name.text.as_str())
+                            .collect::<Vec<_>>(),
+                    ),
+                    (
+                        "headers",
+                        route
+                            .headers
+                            .iter()
+                            .map(|field| field.name.text.as_str())
+                            .collect::<Vec<_>>(),
+                    ),
+                ] {
+                    if !fields.is_empty() {
+                        let members = fields
+                            .into_iter()
+                            .map(|field| {
+                                (
+                                    field.to_owned(),
+                                    json!({
+                            "kind":"authored_route_transport_field","name":field,"owner":owner,
+                            "address":["route",name,"field",field]}),
+                                )
+                            })
+                            .collect();
+                        scan.route_transport(name, members);
+                    }
+                }
+                if let Some(run) = &route.run {
+                    scan.expr(&Expression::Invocation(run.clone()));
+                }
+                if let Some(action) = &route.inline_action {
+                    scan.block(&action.body, &["body".into()]);
+                }
+            }
+            _ => return Self::default(),
+        }
         scan.links
     }
     pub(super) fn expression(&self, name: &NameExpression) -> Value {
@@ -45,6 +96,14 @@ impl Links {
     }
 }
 impl Scan {
+    fn route_transport(&mut self, name: &str, members: BTreeMap<String, Value>) {
+        self.scopes[0].insert(
+            name.to_owned(),
+            json!({
+            "kind":"authored_route_transport","name":name,"owner":self.owner,
+            "address":["route",name],"members":members}),
+        );
+    }
     fn block(&mut self, block: &Block, address: &[String]) {
         self.scopes.push(BTreeMap::new());
         for (index, statement) in block.statements.iter().enumerate() {
@@ -104,6 +163,16 @@ impl Scan {
                     .unwrap_or_default();
                 let declaration = self.scopes.iter().rev().find_map(|scope| scope.get(root));
                 let link = match declaration {
+                    Some(declaration) if declaration["kind"] == "authored_route_transport" => {
+                        json!({
+                        "status":"linked_route_transport_source_use",
+                        "evidence":"checked_authored_route_declaration_not_runtime_value",
+                        "declaration":declaration,"access_path":name.path.iter().skip(1).map(|name|name.text.as_str()).collect::<Vec<_>>(),
+                        "member_declaration":name.path.get(1).and_then(|field|declaration["members"].get(&field.text)),
+                        "value_origin":"not_resolved","alias_value_expansion":"not_performed",
+                        "branch_execution":"not_proved","caller_identity":"not_established",
+                        "identity":"owner_and_build_local_structural_address_not_insertion_stable"})
+                    }
                     Some(declaration) if declaration["kind"] != "mutable_local" => json!({
                         "status":"linked_immutable_source_use","evidence":"checked_lexical_declaration_not_value_origin",
                         "declaration":declaration,"access_path":name.path.iter().skip(1).map(|name|name.text.as_str()).collect::<Vec<_>>(),

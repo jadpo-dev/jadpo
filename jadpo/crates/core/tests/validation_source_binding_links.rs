@@ -166,7 +166,7 @@ fn call_return_alias_links_local_declaration_without_resolving_call_result() {
 }
 
 #[test]
-fn pattern_shadowing_and_route_implicit_names_do_not_fall_through_to_parameters() {
+fn pattern_shadowing_stays_unresolved_and_authored_route_input_is_distinct() {
     let s = subject(SOURCE, None);
     let pattern = names(&s, "match_value", "value");
     assert_eq!(pattern.len(), 3);
@@ -187,8 +187,16 @@ fn pattern_shadowing_and_route_implicit_names_do_not_fall_through_to_parameters(
     assert!(!route_names.is_empty());
     for row in route_names {
         assert_eq!(
-            row["contract"]["source_binding_use"]["reason"],
-            "expression_scope_not_analyzed"
+            row["contract"]["source_binding_use"]["status"],
+            "linked_route_transport_source_use"
+        );
+        assert_eq!(
+            row["contract"]["source_binding_use"]["declaration"]["address"],
+            json!(["route", "input"])
+        );
+        assert_eq!(
+            row["contract"]["source_binding_use"]["caller_identity"],
+            "not_established"
         );
     }
 }
