@@ -32,8 +32,20 @@ function createDeliverySchedulePrimitives(
       "last_tick" TEXT, "pending_for" TEXT, "continuation_for" TEXT, "cursor" TEXT,
       "generation" BIGINT NOT NULL CHECK ("generation" >= 0), "activation_id" TEXT,
       "scheduled_for" TEXT, "operation_time" TEXT, "lease_until" TEXT, "execution_deadline" TEXT,
-      "page" TEXT
+      "page" TEXT, "lease_ms" BIGINT CHECK ("lease_ms" > 0)
     )`);
+    // Earlier private storage did not retain renewal duration. Add it without
+    // deriving authority from timestamps or a caller's replacement profile.
+    // A legacy active row remains usable under its old fence, but cannot renew
+    // until expiry/reclaim installs an explicit checked duration.
+    const columns = await execute("delivery.activation.schema", isPostgres
+      ? 'SELECT attname AS name FROM pg_attribute WHERE attrelid=\'"__jadpo_delivery_activations_v1"\'::regclass AND attnum>0 AND NOT attisdropped'
+      : 'PRAGMA table_info("__jadpo_delivery_activations_v1")');
+    if (isPostgres) {
+      if (!columns.some(column => column.name === "lease_ms")) await execute("delivery.activation.schema", 'ALTER TABLE "__jadpo_delivery_activations_v1" ADD COLUMN IF NOT EXISTS "lease_ms" BIGINT CHECK ("lease_ms" > 0)');
+    } else {
+      if (!columns.some(column => column.name === "lease_ms")) await execute("delivery.activation.schema", 'ALTER TABLE "__jadpo_delivery_activations_v1" ADD COLUMN "lease_ms" BIGINT CHECK ("lease_ms" > 0)');
+    }
   };
   const lock = async (binding: string): Promise<any> => {
     const rows = await execute("delivery.activation.lock", 'UPDATE "__jadpo_delivery_activations_v1" SET "generation" = "generation" WHERE "binding" = $1 RETURNING *, CAST("generation" AS TEXT) AS "generation"', [binding]);
@@ -43,10 +55,11 @@ function createDeliverySchedulePrimitives(
     // now. Decode under the same row lock before any live/reclaim/write choice;
     // a caught decoder fault rolls the enclosing native savepoint back.
     if (typeof row.generation !== "string" || !/^(0|[1-9][0-9]{0,18})$/u.test(row.generation) || BigInt(row.generation) > 9223372036854775807n || !Number.isSafeInteger(Number(row.interval_ms)) || Number(row.interval_ms) <= 0) return fault("delivery.activation_state");
+    if (row.lease_ms !== null && (!Number.isSafeInteger(Number(row.lease_ms)) || Number(row.lease_ms) <= 0)) return fault("delivery.activation_state");
     for (const field of ["last_tick", "pending_for", "continuation_for", "scheduled_for", "operation_time", "lease_until", "execution_deadline"]) if (row[field] !== null) instant(row[field]);
     if ((row.cursor === null) !== (row.continuation_for === null)) return fault("delivery.activation_state");
     if (row.activation_id === null) {
-      if ([row.scheduled_for, row.operation_time, row.lease_until, row.execution_deadline, row.page].some(value => value !== null)) return fault("delivery.activation_state");
+      if ([row.scheduled_for, row.operation_time, row.lease_until, row.execution_deadline, row.page, row.lease_ms].some(value => value !== null)) return fault("delivery.activation_state");
     } else {
       if (typeof row.activation_id !== "string" || row.activation_id.length === 0 || row.generation === "0" || [row.scheduled_for, row.operation_time, row.lease_until, row.execution_deadline].some(value => value === null) || row.lease_until > row.execution_deadline) return fault("delivery.activation_state");
     }
@@ -103,8 +116,34 @@ function createDeliverySchedulePrimitives(
         if (BigInt(row.generation) >= 9223372036854775807n) return fault("delivery.activation_generation");
         const activationId = crypto.randomUUID(), generation = String(BigInt(row.generation) + 1n);
         const executionDeadline = add(at, profile.executionMs), leaseUntil = add(at, profile.leaseMs);
-        await execute("delivery.activation.claim", 'UPDATE "__jadpo_delivery_activations_v1" SET generation=$1, activation_id=$2, scheduled_for=$3, operation_time=$4, lease_until=$5, execution_deadline=$6, pending_for=CASE WHEN $7=1 OR continuation_for IS NOT NULL THEN pending_for ELSE NULL END WHERE binding=$8', [generation, activationId, scheduledFor, operationTime, leaseUntil, executionDeadline, resumed ? 1 : 0, binding]);
+        await execute("delivery.activation.claim", 'UPDATE "__jadpo_delivery_activations_v1" SET generation=$1, activation_id=$2, scheduled_for=$3, operation_time=$4, lease_until=$5, execution_deadline=$6, lease_ms=$7, pending_for=CASE WHEN $8=1 OR continuation_for IS NOT NULL THEN pending_for ELSE NULL END WHERE binding=$9', [generation, activationId, scheduledFor, operationTime, leaseUntil, executionDeadline, profile.leaseMs, resumed ? 1 : 0, binding]);
         return Object.freeze({ binding, activationId, generation, scheduledFor, operationTime, leaseUntil, executionDeadline, page: readPage(row.page), cursor: row.cursor === null ? null : JSON.parse(row.cursor) });
+      });
+    },
+    async renew_delivery_activation(handle: DeliveryActivation): Promise<DeliveryActivation | null> {
+      requireTransaction();
+      return atomic(async () => {
+        await ensure();
+        const row = await current(handle); if (row === null || row.lease_ms === null) return null;
+        add(await now(), Number(row.lease_ms));
+        const renewalNow = '(SELECT now FROM activation_clock)';
+        const proposed = isPostgres
+          ? `to_char((CAST(${renewalNow} AS TIMESTAMPTZ) + lease_ms * INTERVAL '1 millisecond') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
+          : `strftime('%Y-%m-%dT%H:%M:%fZ', ${renewalNow}, '+' || (lease_ms / 1000.0) || ' seconds')`;
+        const renewed = await execute("delivery.activation.renew", `WITH activation_clock AS MATERIALIZED (SELECT ${clock} AS now)
+          UPDATE "__jadpo_delivery_activations_v1" SET lease_until=${isPostgres ? "GREATEST" : "MAX"}(lease_until, ${isPostgres ? "LEAST" : "MIN"}(${proposed}, execution_deadline))
+          WHERE binding=$1 AND activation_id=$2 AND generation=$3 AND lease_ms IS NOT NULL
+            AND lease_until > ${renewalNow} AND execution_deadline > ${renewalNow}
+          RETURNING *, CAST(generation AS TEXT) AS generation`, [handle.binding, handle.activationId, handle.generation]);
+        if (renewed.length === 0) return null;
+        if (renewed.length !== 1) return fault("delivery.activation_state");
+        const value = renewed[0], after = await now();
+        instant(value.lease_until);
+        // Driver/lock delay never revives expired authority. The durable lease
+        // write may survive, but immutable page, generation and deadline do not
+        // change and this caller gets no dispatch/finish authority.
+        if (value.lease_until <= after || value.execution_deadline <= after) return null;
+        return Object.freeze({ binding: handle.binding, activationId: value.activation_id, generation: value.generation, scheduledFor: value.scheduled_for, operationTime: value.operation_time, leaseUntil: value.lease_until, executionDeadline: value.execution_deadline, page: readPage(value.page), cursor: value.cursor === null ? null : JSON.parse(value.cursor) });
       });
     },
     async stage_delivery_activation_page(handle: DeliveryActivation, intentIds: readonly string[], after: unknown): Promise<boolean> {
@@ -129,7 +168,7 @@ function createDeliverySchedulePrimitives(
         const page = readPage(row.page); if (page === null) return fault("delivery.activation_page_missing");
         const continuation = page.after !== null;
         const changed = await execute("delivery.activation.finish", `WITH activation_clock AS MATERIALIZED (SELECT ${clock} AS now)
-          UPDATE "__jadpo_delivery_activations_v1" SET activation_id=NULL, operation_time=NULL, lease_until=NULL, execution_deadline=NULL, page=NULL, cursor=$1, continuation_for=$2, scheduled_for=NULL
+          UPDATE "__jadpo_delivery_activations_v1" SET activation_id=NULL, operation_time=NULL, lease_until=NULL, execution_deadline=NULL, lease_ms=NULL, page=NULL, cursor=$1, continuation_for=$2, scheduled_for=NULL
           WHERE binding=$3 AND activation_id=$4 AND generation=$5 AND lease_until > (SELECT now FROM activation_clock) AND execution_deadline > (SELECT now FROM activation_clock)
           RETURNING binding`, [continuation ? JSON.stringify(page.after) : null, continuation ? row.scheduled_for : null, handle.binding, handle.activationId, handle.generation]);
         return changed.length === 1;

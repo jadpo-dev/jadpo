@@ -64,14 +64,23 @@ impl TargetGenerator<'_> {
             "    const clocks = await tx.delivery_activation_clock();",
         );
         line(output, "    readCurrentDeliveryCredentialProof(proof);");
-        line(output, "    return Object.freeze({ handle, page, remainingMs: Math.min(Date.parse(handle.leaseUntil), Date.parse(handle.executionDeadline)) - Date.parse(clocks) });");
+        line(output, "    return Object.freeze({ handle, page, remainingMs: Math.min(Date.parse(handle.leaseUntil), Date.parse(handle.executionDeadline)) - Date.parse(clocks), executionRemainingMs: Date.parse(handle.executionDeadline) - Date.parse(clocks) });");
         line(output, "  });");
         // Owning COMMIT acknowledgement precedes every invocation/HTTP call.
         // A slow commit is charged in full against the database-time remainder.
         line(output, "  if (staged === null) return Object.freeze({ status: \"idle\", selected: 0, attempted: 0, continued: false });");
-        line(output, "  const deadlineAt = started + staged.remainingMs;");
+        line(output, "  let handle = staged.handle, deadlineAt = started + staged.remainingMs;");
+        line(output, "  const executionDeadlineAt = started + staged.executionRemainingMs;");
         line(output, "  let attempted = 0;");
         line(output, "  for (const intentId of staged.page.intentIds) {");
+        line(output, "    if (performance.now() >= deadlineAt) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true });");
+        // Renew only the same still-live activation, outside provider I/O. The
+        // acknowledged renewal transaction precedes each intent admission; the
+        // provider stays bounded by this lease and the immutable execution cap.
+        line(output, "    const renewalStarted = performance.now();");
+        line(output, "    const renewed = await rootPersistence.transaction(async (tx: any) => { readCurrentDeliveryCredentialProof(proof); const next = await tx.renew_delivery_activation(handle); if (next === null) return null; const now = await tx.delivery_activation_clock(); readCurrentDeliveryCredentialProof(proof); return { handle: next, remainingMs: Math.min(Date.parse(next.leaseUntil), Date.parse(next.executionDeadline)) - Date.parse(now) }; });");
+        line(output, "    if (renewed === null) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true });");
+        line(output, "    handle = renewed.handle; deadlineAt = Math.min(executionDeadlineAt, renewalStarted + renewed.remainingMs);");
         line(output, "    if (performance.now() >= deadlineAt) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true });");
         line(output, "    const token = await prepareDeliveryInvocation(binding, proof, intentId, operationTime, profile);");
         line(output, "    if (token !== null) {");
@@ -90,7 +99,7 @@ impl TargetGenerator<'_> {
         line(output, "    }");
         line(output, "    attempted++;");
         line(output, "  }");
-        line(output, "  const finished = await rootPersistence.transaction((tx: any) => tx.finish_delivery_activation(staged.handle));");
+        line(output, "  const finished = await rootPersistence.transaction((tx: any) => tx.finish_delivery_activation(handle));");
         line(output, "  return Object.freeze({ status: finished ? \"finished\" : \"partial\", selected: staged.page.intentIds.length, attempted, continued: !finished || staged.page.after !== null });");
         line(output, "}");
     }
