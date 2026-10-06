@@ -541,7 +541,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
     return { ...f, value };
   }
-  async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+  async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void | Response>) {
     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
       const body = await request.json();
@@ -549,7 +549,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       const activation = (await activationRows())[0];
       const claim = (await rows('SELECT possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
       calls.push({ body, page: JSON.parse(activation.page), possibleDispatch: Number(claim.possible_dispatch) });
-      if (onCall) await onCall();
+      if (onCall) { const response = await onCall(); if (response instanceof Response) return response; }
       return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
     } });
     const endpoint = `http://127.0.0.1:${server.port}`;
@@ -557,8 +557,20 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     try { await work(calls, endpoint); }
     finally { setReferenceMailEndpointForTesting(null); server.stop(true); if (previous === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previous; }
   }
-  function worker(f: Awaited<ReturnType<typeof fixture>>, endpoint: string, body: string) {
-    const code = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});adapter.setReferenceMailEndpointForTesting(${JSON.stringify(endpoint)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const binding=${JSON.stringify(bindingIdentity)},profile=${JSON.stringify(profile)},at=${JSON.stringify(scanTime)};${body}`;
+  async function enrollmentRowsIfPresent(id: string) {
+    // Native schema is lazy and participates in the owning transaction. A
+    // rolled-back first enrollment may leave no table at all; both absence and
+    // an existing table with zero rows prove no durable enrollment. Unexpected
+    // metadata/query errors still fail, rather than being swallowed as empty.
+    const metadata = sql
+      ? await rows("SELECT to_regclass('\"__jadpo_deliveries_v1\"') AS relation")
+      : await rows("SELECT name FROM sqlite_master WHERE type='table' AND name='__jadpo_deliveries_v1'");
+    const present = sql ? metadata[0].relation !== null : metadata.length !== 0;
+    return present ? intentRows(id) : [];
+  }
+  const goldenProfiles = { activation: { executionMs: 60_000, leaseMs: 40_000 }, delivery: { executionMs: 60_000, leaseMs: 40_000 } };
+  function worker(f: Awaited<ReturnType<typeof fixture>>, endpoint: string, body: string, profiles = { activation: profile, delivery: profile }) {
+    const code = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});adapter.setReferenceMailEndpointForTesting(${JSON.stringify(endpoint)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const binding=${JSON.stringify(bindingIdentity)},profile=${JSON.stringify(profiles.activation)},deliveryProfile=${JSON.stringify(profiles.delivery)},at=${JSON.stringify(scanTime)};${body}`;
     const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", code], { env: { ...Bun.env, NODE_ENV: "test", DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
     const done = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
     return { child, done };
@@ -574,7 +586,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     }
     throw new Error("generated worker did not reach the durable checkpoint");
   }
-  const runWorker = (f: Awaited<ReturnType<typeof fixture>>, endpoint: string) => result(worker(f, endpoint, 'console.log(JSON.stringify(await app.runDeliveryScheduleActivation(binding,proof,profile,profile,at)));process.exit(0);'));
+  const runWorker = (f: Awaited<ReturnType<typeof fixture>>, endpoint: string, profiles = { activation: profile, delivery: profile }) => result(worker(f, endpoint, 'console.log(JSON.stringify(await app.runDeliveryScheduleActivation(binding,proof,profile,deliveryProfile,at)));process.exit(0);', profiles));
   test("generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick", async () => {
     const f = await fixture();
     await provider(async calls => {
@@ -597,7 +609,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, invalid, profile, scanTime)).rejects.toBeDefined();
         await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, profile, invalid, scanTime)).rejects.toBeDefined();
       }
-      expect(calls).toHaveLength(0); expect(await activationRows()).toEqual([]); expect(await intentRows(f.value.id)).toEqual([]);
+      expect(calls).toHaveLength(0); expect(await activationRows()).toEqual([]); expect(await enrollmentRowsIfPresent(f.value.id)).toEqual([]);
     });
     await expect(persistence.delivery_activation_clock()).rejects.toMatchObject({ operation: "delivery.transaction_required" });
   });
@@ -628,7 +640,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     try {
       await provider(async calls => {
         await expect(activate(f.proof)).rejects.toBeDefined();
-        expect(calls).toHaveLength(0); expect(await activationRows()).toEqual([]); expect(await intentRows(f.value.id)).toEqual([]);
+        expect(calls).toHaveLength(0); expect(await activationRows()).toEqual([]); expect(await enrollmentRowsIfPresent(f.value.id)).toEqual([]);
       });
     } finally {
       await rows(sql ? 'DROP TRIGGER rm306_activation_commit_fault ON "__jadpo_delivery_activations_v1"' : 'DROP TRIGGER rm306_activation_commit_fault');
@@ -832,6 +844,71 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       const sent = await rows('SELECT COUNT(*) AS n FROM todo WHERE reminder_sent_at IS NOT NULL'); expect(Number(sent[0].n)).toBe(501);
     });
   }, 90_000);
+  test("ASYNC-RETRY-KNOWN-NO-EFFECT and ASYNC-RETRY-EXHAUSTION: adapter refusals consume the same immutable3-invocation intent across fresh workers", async () => {
+    const f = await fixture(), intent = (await scan(f.proof)).intents[0];
+    let ticks = 0;
+    const nextTick = () => persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, new Date(Date.parse(scanTime) + ++ticks * 900_000).toISOString()));
+    await provider(async (calls, endpoint) => {
+      let lifetime: string | undefined;
+      for (let invocation = 1; invocation <= 3; invocation++) {
+        expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("finished");
+        expect(calls).toHaveLength(invocation * 3); for (const call of calls) expect(call.body).toEqual(intent.payload);
+        const ledger = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intent.intentId]))[0];
+        expect(Number(ledger.invocations)).toBe(invocation); expect(Number(ledger.generation)).toBe(invocation);
+        if (lifetime === undefined) lifetime = ledger.lifetime_deadline; else expect(ledger.lifetime_deadline).toBe(lifetime);
+        const attempts = await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [intent.intentId]);
+        expect(attempts).toHaveLength(invocation); expect(attempts.every((attempt: any) => Number(attempt.provider_attempts) === 3 && attempt.failure_class === "service_unavailable")).toBe(true);
+        expect((await persistence.read_delivery_intent(intent.intentId)).state).toBe(invocation === 3 ? "failed" : "retry_wait");
+        if (invocation < 3) {
+          const delay = Date.parse(attempts.at(-1)!.retry_not_before) - Date.parse(attempts.at(-1)!.observed_at);
+          expect(delay >= 0 && delay < Math.min(30_000, 1000 * 2 ** invocation)).toBe(true);
+          if (invocation === 1) {
+            await rows('UPDATE "__jadpo_delivery_attempts_v1" SET retry_not_before=$1 WHERE intent_id=$2 AND generation=$3', [new Date(Date.now() + 60_000).toISOString(), intent.intentId, invocation]);
+            await nextTick(); expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("finished"); expect(calls).toHaveLength(3);
+            expect(Number((await rows('SELECT invocations FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intent.intentId]))[0].invocations)).toBe(1);
+          }
+          await rows('UPDATE "__jadpo_delivery_attempts_v1" SET retry_not_before=$1 WHERE intent_id=$2 AND generation=$3', ["2000-01-01T00:00:00.000Z", intent.intentId, invocation]);
+          await nextTick();
+        }
+      }
+      const dead = await rows('SELECT * FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [intent.intentId]);
+      expect(dead).toHaveLength(1); expect(dead[0].failure_class).toBe("budget_exhausted"); expect(Number(dead[0].invocations)).toBe(3); expect(Number(dead[0].provider_attempts)).toBe(9);
+      await nextTick(); expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("finished"); expect(calls).toHaveLength(9);
+      expect(await intentRows(f.value.id)).toHaveLength(1); expect((await persistence.read_delivery_intent(intent.intentId)).payload).toEqual(intent.payload);
+    }, async () => Response.json({ code: "rate_limited" }, { status: 429 }));
+  }, 30_000);
+  test("ASYNC-CANCEL-PENDING: trusted cancellation before generated worker admission produces no provider effect", async () => {
+    const f = await fixture(), intent = (await scan(f.proof)).intents[0];
+    expect(await persistence.transaction((tx: any) => tx.cancel_delivery_intent(intent.intentId))).toBe("cancelled");
+    await provider(async (calls, endpoint) => {
+      expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("finished"); expect(calls).toHaveLength(0);
+      expect((await persistence.read_delivery_intent(intent.intentId)).state).toBe("cancelled"); expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+    });
+  });
+  test("ASYNC-CANCEL-AFTER-DISPATCH: cancellation during actual provider I/O remains requested and preserves the eventual checked success", async () => {
+    const f = await fixture(), intent = (await scan(f.proof)).intents[0];
+    await provider(async (calls, endpoint) => {
+      expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("finished"); expect(calls).toHaveLength(1);
+      expect((await persistence.read_delivery_intent(intent.intentId)).state).toBe("succeeded"); expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+      expect(await rows('SELECT * FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [intent.intentId])).toHaveLength(1);
+    }, async () => {
+      expect(await persistence.transaction((tx: any) => tx.cancel_delivery_intent(intent.intentId))).toBe("requested");
+      expect((await persistence.read_delivery_intent(intent.intentId)).state).toBe("running");
+    });
+  });
+  test("ASYNC-UNSUPPORTED-PAYLOAD-VERSION: fresh generated worker refuses an unregistered durable version without decoding or dispatching it", async () => {
+    const f = await fixture(), intent = (await scan(f.proof)).intents[0];
+    // Represents a durable record from a deployment whose handler version this
+    // worker does not have. Authored code has no permission to change this row.
+    await rows('UPDATE "__jadpo_deliveries_v1" SET payload_version=$1 WHERE intent_id=$2', ["reminder.v999", intent.intentId]);
+    const before = await persistence.read_delivery_intent(intent.intentId);
+    await provider(async (calls, endpoint) => {
+      const refused = worker(f, endpoint, 'try{await app.runDeliveryScheduleActivation(binding,proof,profile,deliveryProfile,at);throw Error("unsupported version executed");}catch(error){if(error.operation!=="delivery.identity_conflict")throw error;console.log(JSON.stringify({refused:error.operation}));}process.exit(0);', goldenProfiles);
+      expect(await result(refused)).toEqual({ refused: "delivery.identity_conflict" }); expect(calls).toHaveLength(0);
+      expect(await persistence.read_delivery_intent(intent.intentId)).toEqual(before); expect(before.state).toBe("pending"); expect(before.payloadVersion).toBe("reminder.v999");
+      expect(await activationRows()).toEqual([]); expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+    });
+  });
 });
 
 describe(`committed admission and adapter-origin outcome components (${sql ? "postgres" : "sqlite"})`, () => {
