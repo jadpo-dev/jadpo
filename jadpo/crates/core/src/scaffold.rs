@@ -120,7 +120,7 @@ mod tests {
         assert!(analyzed.semantics.diagnostics.is_empty());
         assert!(analyzed.typing.diagnostics.is_empty());
         assert!(analyzed.failures.diagnostics.is_empty());
-        assert_eq!(derive_artifacts(&project, &analyzed).len(), 15);
+        assert_eq!(derive_artifacts(&project, &analyzed).len(), 16);
         let application = files
             .iter()
             .find(|file| file.relative_path == "app.jadpo")
