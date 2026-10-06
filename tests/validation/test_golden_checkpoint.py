@@ -382,6 +382,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
         raw = self.raw('DELETE-002'); raw[0]['fixture']['deleted_at'] = None
         with self.assertRaises(ValueError): checkpoint.observations(self.cases['DELETE-002'], raw, self.clock)
 
+    def test_repeated_delete_rejects_reordered_fixture_request_and_persistence(self):
+        original = self.raw('DELETE-002')
+        for order in ((2, 1, 0), (1, 0, 2), (0, 2, 1)):
+            with self.subTest(order=order):
+                raw = [deepcopy(original[index]) for index in order]
+                with self.assertRaisesRegex(ValueError, 'Reordered repeated-delete'):
+                    checkpoint.observations(self.cases['DELETE-002'], raw, self.clock)
+
     def test_cursor_duplicate_fails_case_even_when_frozen_summary_fields_match(self):
         outputs = self.outputs()
         raw = next(item for item in outputs[0]['results'] if item['id'] == 'LIST-002')['raw']

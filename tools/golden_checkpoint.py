@@ -243,6 +243,8 @@ def observations(case: dict, raw: list, clock: str | None = None) -> list:
             retained = [item['persistence'] for item in raw if 'persistence' in item]
             if len(fixtures) != 1 or len(retained) != 1 or fixtures[0].get('id') != ALIASES['t1'] or fixtures[0].get('owner_id') != ALIASES['alice'] or fixtures[0].get('deleted_at') is None:
                 raise ValueError('Missing originally deleted todo fixture')
+            if not raw.index(next(item for item in raw if 'fixture' in item)) < raw.index(reply) < raw.index(next(item for item in raw if 'persistence' in item)):
+                raise ValueError('Reordered repeated-delete fixture/request/persistence observations')
             if not harness.same_json(fixtures[0], retained[0]):
                 step['checkpoint_failures'] = ['Repeated delete changed retained storage']
         if case['id'] in ('LIST-001', 'LIST-002', 'LIST-003', 'REL-001'):

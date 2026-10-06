@@ -1,0 +1,26 @@
+{
+  "scope": "DELETE-002 chronological decoder correction; retained immutable real raw; original report and raw files untouched",
+  "source_base": "23c13971ac4a5cf49e927aa4d528d5ce33edb65a",
+  "checks": [
+    {
+      "backend": "sqlite",
+      "raw_sha256": "9a7103d3dfea3d77ecb903ac859f09cd0addc2836cf7ffc52cbbcd3631bce5cf",
+      "retained_actual_pass": true,
+      "reversed_raw_rejected": true,
+      "request_before_fixture_rejected": true,
+      "persistence_before_request_rejected": true
+    },
+    {
+      "backend": "postgres",
+      "raw_sha256": "208a862b4e8ba4a0984b1fb41a392b1671409f0ea4eec03d015c9616962c6499",
+      "retained_actual_pass": true,
+      "reversed_raw_rejected": true,
+      "request_before_fixture_rejected": true,
+      "persistence_before_request_rejected": true
+    }
+  ],
+  "focused_tests": {
+    "command": "python3 -m unittest discover -s tests/validation -p 'test_golden*.py'",
+    "passed": 43
+  }
+}
