@@ -999,11 +999,16 @@
     "negative_fixture_count": 25,
     "execution": "not_run_pending_compiler_produced_exact_artifact",
     "actual_baseline_check": "passes on current frontend, no separate experimental frontend is required",
-    "old_partial_attempt": "Current ordinary owner source attempt (return-attempt and var-attempt variants) yields only delivery-binding-incomplete diagnostic; no exact protected-field diagnostic. Not qualified; runtime owner has reproduction and must derive exact diagnosed target.",
+    "old_partial_attempt": "Current ordinary CLI prints only the incomplete-delivery diagnostic for return-attempt and var-attempt; compiler owner subsequently verified complete actual typing stream contains genuine TYPE_FIELD_UPDATE_FORBIDDEN at precise var-attempt span. Existing CLI stream selection masks later typing stream. Exact new compiler artifact must consume complete actual analysis; old printed partial remains unqualified.",
     "checked_vs_rejected": "Baseline checked and supplied attempt rejected/undiagnosed protected subject stay distinct; t1/fromAlice/toBob are unverified supplied intent, no database execution.",
     "current_frontend_grounding": {
       "path": "tests/validation/evidence/golden-loop-rel003-preparation/current-frontend-grounding.json",
       "sha256": "69c66afcc89cf51f06ec0c6d4b52fad9056114060a9fe69f849fb2f45b088cc7"
+    },
+    "proposed_command_pending_fixed_pin": {
+      "command": "jadpo protected-attempt <attempt-project> --before <checked-baseline> --request <closed-json-file> [--expected-before <source-digest>] [--expected-before-state <state-digest>] [--validate-export <json-file>]",
+      "schema": "protected_change_attempt/v1; jadpo.protected-change-attempt.v1; subject_digest over canonical; closed v1 request entity/field/callable and unverified row/from/to aliases/nominal parameters.",
+      "implementation_status": "Owner proposed schema; no emitted implementation artifact or collector registration yet."
     }
   },
   "binding_and_agreement_distinction": {
@@ -1459,5 +1464,72 @@
         "Positive actual orphan insert/restricted delete and negative reads/unique/check/trigger/unknown controls must agree across HTTP, route inventory/OpenAPI and audit. Runtime writer owns product implementation after boundary leaf; tooling lane can validate exact generated agreement then."
       ]
     }
-  ]
+  ],
+  "runtime_timezone_jwt_provenance": {
+    "scope": "Bounded current local version/bytes and declaration provenance qualification only; no complete RM504, identical rule bytes/cross-host formatting or new PostgreSQL time semantics qualification.",
+    "timer": "RM-504-415e1abaf498",
+    "receipt": "tests/validation/evidence/golden-loop-runtime-provenance/local-runtime-jwt-provenance.json",
+    "receipt_sha256": "fc8f7e84e7b4694b47a0623ae17ee72224a2b3e50175c9a1cd39cf5b94d9ad09",
+    "controls": "tests/validation/evidence/golden-loop-runtime-provenance/actual-integrity-controls.json",
+    "controls_sha256": "13f750c1cae1bbaa961c86f1c7ff2234b49c9604b1025d80cfa7be901898c49f",
+    "actual_controls_accepted": 1,
+    "actual_negative_refusals": 13,
+    "command": [
+      "python3",
+      "tools/golden_runtime_provenance.py",
+      "--checkpoint",
+      "build/validation/rm109-boundary-current-root-final-balanced",
+      "--jwt-dependencies",
+      "/Users/richardwillars/Documents/Codex/LLM-coding/build/validation/jwt-dependencies",
+      "--bun",
+      "/Users/richardwillars/.bun/bin/bun",
+      "--output",
+      "build/validation/rm504-local-provenance.json"
+    ],
+    "actual_observations": {
+      "bun": "1.2.20",
+      "executable_sha256": "ced62d46acb0ca76435103e679e417731bdd0e2da6cd89137f6464dd718c97c4",
+      "engine_reported_icu": "74.2",
+      "native_linked_library_icu_release": [
+        78,
+        1,
+        0,
+        0
+      ],
+      "native_timezone_data_version": "2026c",
+      "native_timezone_probe_status": 0,
+      "compiler_zone_enumeration": "IANA 2026c",
+      "compiler_zone_count": 419,
+      "jose": "6.2.12",
+      "installed_jose_file_digests": 80,
+      "package_and_lock_source_emission_cache_equal": true
+    },
+    "accepted_criteria_references": [
+      "docs/time-testing-plan.md:69 TIME-D12 compiler pinned closed enum",
+      "docs/time-testing-plan.md:73 TIME-D16 compiler/runtime record used timezone/locale data versions",
+      "docs/time-testing-plan.md:969 required evidence8 identical formatting for same declared data versions across supported targets",
+      "docs/time-testing-plan.md:1108 separates runtime ICU/engine provenance from identical pinned timezone-rule evidence",
+      "docs/work-plans/golden-delivery-planning.md:3419 RM504 records exact runtime/JWT/timezone provenance where claimed"
+    ],
+    "official_native_api_references": {
+      "timezone_data_api": "https://unicode-org.github.io/icu-docs/apidoc/dev/icu4c/ucal_8h.html",
+      "release_version_api": "https://unicode-org.github.io/icu-docs/apidoc/dev/icu4c/uversion_8h.html"
+    },
+    "distinctions": [
+      "Generated runtimeIcu uses process.versions.icu and faithfully records engine-reported74.2; direct linked library API observes78.1. Neither field overwrites the other.",
+      "Compiler419-zone enumeration is identifiers, not ICU timezone rules. Native library independently reports2026c; no inference solely from matching source filename.",
+      "Actual source/generated/cache package+lock bytes and80 JOSE files match prior reviewed manifest. Existing npm publisher/attestation record remains historical, not newly rerun.",
+      "Current probe pins exact Bun executable bytes, own collector/instrumentation and preserved source/compiler/generated report. It does not retroactively establish same binary bytes during earlier backend runs.",
+      "macOS linked library has no standalone file; OSbuild26A434 and native versionAPI observations do not pin full timezone/locale-rule bytes or guarantee identical cross-host formatting.",
+      "Native generated module import initializes isolated :memory: SQLite once (observeddriver1); no business handler/worker runs. First unrestricted probe caused only a new local.sqlite artifact; post-check refused, file moved outside retained generated tree and original artifact hash inventory restored.",
+      "No underlying CLDR/resource byte version is established by emitted localeData label; complete declared locale/target equality remains separate."
+    ],
+    "initial_probe_failure": {
+      "reason": "Generated application import began native readiness initialization and created local.sqlite; post-artifact-integrity guard correctly refused.",
+      "retained_disposable_path": "build/validation/rm504-probe-created-local.sqlite",
+      "sha256": "b2c10457031319cd20cce71f4d13ed480a140271e16d6b8c092c1a34763c6826",
+      "published_database_bytes": false,
+      "correction": "Selected isolated in-memory adapter before native import and retained actual observed driver initialization; no artifact drift allowed."
+    }
+  }
 }
