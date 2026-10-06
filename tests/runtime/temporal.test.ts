@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import {createHash} from "node:crypto";
+import {readFileSync} from "node:fs";
 
 import {
   temporal,
@@ -213,7 +215,23 @@ describe("compiler-owned temporal runtime", () => {
 
   test("reports the generated temporal data provenance", () => {
     expect(temporalProvenance.tzdb).toBe("IANA 2026c");
-    expect(temporalProvenance.zoneEnumCount).toBeGreaterThan(300);
+    expect(temporalProvenance.tzdbScope).toBe("compiler_zone_enumeration_only");
+    expect(temporalProvenance.zoneEnumVersion).toBe(temporalProvenance.tzdb);
+    expect(temporalProvenance.zoneEnumSource).toBe("jadpo/data/iana-zones-2026c.txt");
+    const zoneBytes = readFileSync(
+      new URL("../../jadpo/data/iana-zones-2026c.txt", import.meta.url),
+    );
+    expect(temporalProvenance.zoneEnumByteDigest).toBe("sha256:" + createHash("sha256").update(zoneBytes).digest("hex"));
+    expect(temporalProvenance.zoneEnumCount).toBe(new Set(zoneBytes.toString().trim().split("\n")).size);
+    expect(temporalProvenance.runtimeRuleProvider).toBe("ECMAScript Intl.DateTimeFormat");
+    expect(temporalProvenance.runtimeRuleDataVersionSource).toBe("process.versions.tz");
+    const reported =
+      typeof process.versions.tz === "string" && process.versions.tz.trim()
+        ? process.versions.tz
+        : "unreported";
+    expect(temporalProvenance.runtimeRuleDataVersion).toBe(reported);
+    expect(temporalProvenance.runtimeRuleDataByteDigest).toBeNull();
+    expect(Object.isFrozen(temporalProvenance)).toBe(true);
     expect(temporalProvenance.defaultLocale).toBe("en-GB");
     expect(temporalProvenance.runtimeIcu).not.toBe("unreported");
     expect(temporalProvenance.runtimeEngine).toMatch(/^Bun /);
