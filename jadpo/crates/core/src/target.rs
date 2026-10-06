@@ -8,6 +8,7 @@ use jadpo_syntax::{
     PersistenceModifier, PrincipalDeclaration, RecordDeclaration, ReferenceDeleteAction,
     RouteSuccess, Statement, TestDeclaration, TypeDeclaration, TypeReference,
 };
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -1177,6 +1178,29 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
         line(output, "for (const zone of jadpoZones) { try { new Intl.DateTimeFormat(\"en\", { timeZone: zone }); } catch { throw new Error(`Unsupported generated Zone ${zone}`); } }");
         line(output, "export const temporalProvenance = Object.freeze({");
         line(output, "  tzdb: \"IANA 2026c\",");
+        line(output, "  tzdbScope: \"compiler_zone_enumeration_only\",");
+        line(output, "  zoneEnumVersion: \"IANA 2026c\",");
+        line(output, "  zoneEnumSource: \"jadpo/data/iana-zones-2026c.txt\",");
+        line(
+            output,
+            &format!(
+                "  zoneEnumByteDigest: {},",
+                ts_string(&format!(
+                    "sha256:{:x}",
+                    Sha256::digest(include_bytes!("../../../data/iana-zones-2026c.txt"))
+                ))
+            ),
+        );
+        line(
+            output,
+            "  runtimeRuleProvider: \"ECMAScript Intl.DateTimeFormat\",",
+        );
+        line(output, "  runtimeRuleDataVersion: typeof process.versions.tz === \"string\" && process.versions.tz.trim() ? process.versions.tz : \"unreported\",");
+        line(
+            output,
+            "  runtimeRuleDataVersionSource: \"process.versions.tz\",",
+        );
+        line(output, "  runtimeRuleDataByteDigest: null,");
         line(output, "  zoneEnumCount: jadpoZones.size,");
         line(output, &format!("  defaultLocale: {default_locale},"));
         line(
