@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-207 / RM-109 BOUNDARY-001 native provider variant",
+  "candidate": "701786581c9ee60ce655d3b5aef0cc98d6584d14",
+  "reviewer": "root",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timing_run": "RM-109-5099427d7aaf",
+  "disposition": "approve_scoped_native_job_operational_failure_envelope",
+  "findings": [],
+  "independent_execution": {
+    "fresh_compiler_sha256": "4502006b26306480b66218b9db15e42138f52c6dd62b8878ce55ddbe136268e0",
+    "canonical_build_artifacts": 33,
+    "native_emission_control": {
+      "pass": 1,
+      "fail": 0
+    },
+    "sqlite": {
+      "pass": 4,
+      "fail": 0,
+      "assertions": 148,
+      "scope": "Four strengthened actual provider authentication reply controls"
+    },
+    "postgres": {
+      "pass": 95,
+      "skip": 1,
+      "fail": 0,
+      "assertions": 1299,
+      "scope": "Complete owning native suite plus two strengthened reply controls"
+    }
+  },
+  "evidence_directory": "tests/validation/evidence/golden-loop-job-safe-boundary-independent",
+  "verified_artifact_members": 44,
+  "correctness": [
+    "Only exact existing ServiceAdapterFault misconfigured/outcome_unknown classifications gain static safe envelopes; no 401 blanket classification or no-effect proof. Typed exact authentication reply remains internal_fault; extra-field, HTML and null replies remain outcome_unknown.",
+    "Actual generated operation-context UUID correlates public error.request_id with safe native operational event. Exact public keys/code/static message/frozen array and envelopes verified; secret/body/header/stack/SQL sentinels absent.",
+    "Real native page commit and possible_dispatch1 precede one provider call on both databases; durable unknown retains exact payload, one invocation, no receipt/sent marker and no resend through fresh host and later interval.",
+    "Public faults are recorded in closed lexical native outcome WeakMap, read before completion deletes the receipt; no new authored callbacks, authority or default execution profile. Failures bounded by selected native page and preserved through partial returns."
+  ],
+  "retained_negatives": [
+    "Reviewer native-output retention first failed because the required test-owned directory did not exist. Original failure retained; directory created and unchanged control passes.",
+    "Author missing-module, malformed-fixture and lazy receipt schema setup failures remain in its pinned manifest. No product finding inferred from them."
+  ],
+  "limits": [
+    "Approves immutable native job-host fault containment only. Full source-bound BOUNDARY-001 harness execution, whole RM-207/RM-109/RM-403 and final golden acceptance remain open.",
+    "SQLite focused strengthened controls and PostgreSQL complete owning suite are distinct evidence; the PostgreSQL-only/SQLite-only skips remain explicit.",
+    "Fresh compiler/native emission and loopback provider/disposable storage are local qualification; no production provider or deployment.",
+    "Root review timer includes separately recorded verification phase; an earlier recorder-start delay is retained honestly in its phase note."
+  ]
+}

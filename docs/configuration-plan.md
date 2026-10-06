@@ -368,6 +368,32 @@ Mail remains advisory/unprobed and startup configuration/schema validation still
 precedes listener binding. These limits and the remaining golden P6/platform
 gates are not closed by the response-controller slice.
 
+**Native separation and aggregate cancellation continuation, 2026-10-06:**
+The [independent deployment-readiness review](../tests/validation/rm403-independent-deployment-readiness-review.json)
+approves explicit compiler-native loopback deployment listeners, application
+readiness-alias refusal, preserved authored health/liveness, and actual SQLite
+and PostgreSQL outage/recovery. The listener starts only with an explicit native
+port; no authored route gains deployment details. Exact CONFIG-003 collector
+verification remains separate from this mechanism review.
+
+The [independent aggregate-recovery review](../tests/validation/rm403-independent-recovery-cancellation-review.json)
+approves the compiler-private cancellation latch across PostgreSQL schema, index
+and authentication-storage stages. The existing one-second readiness response
+expiry cancels the current query on a best-effort basis, refuses later
+statements and late publication, and retains one native owner until actual
+settlement. Genuine late schema errors remain fatal. Independent SQLite21/944,
+PostgreSQL25/4971 and12 additional emitted-module controls pass. Actual held
+PostgreSQL DDL remains blocked after advisory cancellation and128 requests;
+actual lock release cannot publish that late candidate, and a fresh eligible
+recovery succeeds. The original failed hard-settlement expectation is retained.
+
+This advances recovery correctness without establishing an initial startup,
+synchronous SQLite or hard native lifetime bound.
+[Actual native lifetime grounding](../tests/validation/evidence/rm403-native-lifetime-grounding/manifest.json)
+shows PostgreSQL startup schema work blocked beyond three seconds despite its
+connection timeout. The pending required database-binding successor, remaining
+native/platform gates and final golden acceptance stay open.
+
 ## 7. Required evidence
 
 | Area | Required positive and adversarial evidence |

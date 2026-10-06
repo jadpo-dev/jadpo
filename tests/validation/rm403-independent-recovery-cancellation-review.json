@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-403",
+  "candidate": "e6c83ccfb87f6689f4ad702706b441a49bb43e3c",
+  "parent": "ea8d748",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-403-eec8e7494184",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "approve_scoped_aggregate_recovery_advisory_cancellation",
+  "scoped_approval": true,
+  "findings": [],
+  "scope": "Compiler-private aggregate recovery query cancellation/fencing only. Actual native and emitted-module controls; cancellation does not establish native settlement, initial startup or synchronous SQLite interruption. No whole RM403/final golden completion.",
+  "independent_execution": {
+    "fresh_locked_cli_seconds": 15.53,
+    "compiler_sha256": "1bfac5a24de1b6945563927f520cdb3144ee9e47844557e88a3b92d7c6a56e4d",
+    "fresh_builds": [
+      "persistence-seed",
+      "first-party-authentication",
+      "golden-todo-migration"
+    ],
+    "runtime": {
+      "sqlite": {
+        "pass": 21,
+        "fail": 0,
+        "assertions": 944,
+        "log": "sqlite-original.log",
+        "sha256": "da8097109cc9e28d28c9ae2cdb181d5ab933260927cb58aef59d1f43d9678994"
+      },
+      "postgres": {
+        "pass": 25,
+        "fail": 0,
+        "assertions": 4971,
+        "log": "postgres-original.log",
+        "sha256": "e54622eda68dcbd9bceb17314d2b74ce5fae8d3b826fcdc483f07a73c7b90b90"
+      },
+      "reviewer_emitted_stage_controls": {
+        "pass": 12,
+        "fail": 0,
+        "assertions": 147,
+        "log": "reviewer-aggregate-stages.log",
+        "sha256": "e96a6cda115985cc4ad920d0005d1f92384862b735e1b903c2e7f99e6365eca5"
+      }
+    },
+    "actual_emitted_full_module_author_groups": 10,
+    "additional_emitted_module_groups": 12,
+    "native_database_control": "Actual emitted complete persistence module with real Bun SQL and PostgreSQL exclusive table lock/indexDDL observation; response settles false, exactly1nativeheldquery remains after128refresh requests, late release cannot replace client/publishready, subsequent fresh attempt recovers.",
+    "author_source_evidence_hash_bindings_verified": 18,
+    "actual_generated_source_inventory": [
+      {
+        "path": "examples/persistence-seed/build/target/app.ts",
+        "sha256": "c4b3a1791ef2fe547a64764fad931e195b962ed4426711d473ae0fc00e69d719",
+        "matches_author": true
+      },
+      {
+        "path": "examples/persistence-seed/build/target/persistence.ts",
+        "sha256": "428271330833e66fe9e53c731ed03919f1dbf391b1b30f86d27d514f0d79da35",
+        "matches_author": true
+      },
+      {
+        "path": "examples/first-party-authentication/build/target/app.ts",
+        "sha256": "31aadaee44828d4cf50b5f1cc60b9923684692e63eab44f1c26ee66c8680e35f",
+        "matches_author": true
+      },
+      {
+        "path": "examples/first-party-authentication/build/target/authentication.ts",
+        "sha256": "0a214b564b56aa50e25507032cbf8033e78107b59aa69b9de1c0406557a1a4dd",
+        "matches_author": true
+      },
+      {
+        "path": "examples/first-party-authentication/build/target/configuration-preflight.ts",
+        "sha256": "e069bf16be6a4f6fb01c67836e891eddb0650bf407fbec5f580cf55c466f4522",
+        "matches_author": true
+      },
+      {
+        "path": "examples/first-party-authentication/build/target/first-party-authentication.ts",
+        "sha256": "e84b2a77485c043883b2d334acbb252c73321f8814ae816f85fbdf31372770d8",
+        "matches_author": true
+      },
+      {
+        "path": "examples/first-party-authentication/build/target/persistence.ts",
+        "sha256": "0bdffa99619518a15db52f801d8f87fbdb4bb28438c1ab35252afb54507bb30d",
+        "matches_author": true
+      }
+    ],
+    "author_runtime_test_unchanged": true
+  },
+  "correctness_evidence": [
+    "Recovery passes the readiness cancellation registrar into one aggregate initialization control. Every PostgreSQL entity/change-log/index and private authentication schema/validation statement runs through the current native query handle; the cancellation latch is set before best-effort cancel.",
+    "Readiness retains its single native slot until actual aggregate settlement. Expiry resolves the shared32callers false and cancels only current handle;128/256later callers start no overlapping schema work. Control checks the latch before each new execute and after awaited success, preventing subsequent statements and client/publication after cancellation.",
+    "Initial startup still calls initializePersistenceOnce without deadline/registrar; cancellation adds no default startup bound. SQLite continues synchronous schema work, unchanged. This explicitly scoped recovery operation does not pretend to bound uninterruptible native or synchronous operations.",
+    "Late native57014 after cancellation is recoverable and permits fresh recovery only after native settlement; early57014 without the readiness latch staysfatal. Own entityCREATE/auth sessionVALIDATE/serviceVALIDATE stage controls observe both dispositions.",
+    "Late genuine42P01 schema failure and OutcomeUnknownFault carrying57014 remainfatal; throwing nativecancel cannot prevent responsefalse or permit latepublication. Original client identity remains until an independently eligible later recovery publishes a fresh client.",
+    "Actual held PostgreSQL indexDDL remains visible as oneblockednativequery after best-effortcancel, as the retained original counterexample predicts. No automatic replacement is started; actualrelease follows owningROLLBACK, late success is fenced and a fresh probe recovers.",
+    "Emitted helper is compiler-private and introduces no authored callback/configuration/authority/credential API. Existing readiness controller invalidation/fatal/deadline fences and safe status paths remain unchanged."
+  ],
+  "preserved_negatives": [
+    "Author sqlite-first used top-level inspection return before TypeScript transpilation; original failed log retained and corrected evaluator runs the unchanged complete emitted module.",
+    "Author postgres-first expected held nativeDDL to settle after advisory cancel and failed. This is retained real driver evidence against hard interruption, not reclassified as a pass; final/native independent control asserts retained native ownership and fenced late completion.",
+    "Author core-first successful103-test control remains retained; the separate initial cargo fmt workspace-target failure is reported in the original author manifest and was not treated as verification. No independent runtime failures occurred."
+  ],
+  "limits": [
+    "Approves exact immutable aggregate recovery cancellation/fencing code only; no native hard settlement, initial startup/whole initialization deadline, synchronous SQLite/event-loop blocking guarantee or Windows/cloud platform campaign.",
+    "The12additional full emitted module controls use deterministic injected native SQL handles/clock, distinct from actual PostgreSQL heldDDL and both-adapter live recovery evidence. Module import stripping/inspection return is explicit test seam, never authored runtime access.",
+    "Schema setup is idempotent native initialization, with earlier successful schema statements potentially committed before cancellation; this change prevents continuation/publication and does not promise rollback of all aggregateDDL.",
+    "Canonical healthy main DatabaseUrl transport collision, current complete CONFIG003 source-bound golden collector, RM403 remaining native/platform bounds and full combined final golden gate remain separate open work.",
+    "No product/shared plan/status edits, production provider/deployment/publishing, private key or database bytes retained."
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-recovery-cancellation-independent",
+  "created_at": "2026-10-06T08:58:21.904068+00:00"
+}

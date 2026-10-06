@@ -214,6 +214,58 @@ records native executions inside a review phase without inventing phase splits.
 The loop continues through configuration cases, safe provider-fault correlation
 and remaining authenticated retry, startup/native lifetime and provenance gates.
 
+At `21b01c5`, the fresh [combined supported gate](../../build/validation/20261006T095957-38023/report.json)
+passes **73/73** checks, including both preflight and deployment-readiness suites,
+all PostgreSQL modes and the39-ID supporting checkpoint **78/0/10**.
+Its [safe archive](../../build/validation/20261006T095957-38023/retained-evidence.json)
+verifies161 retained log/raw/generated members; private fixture inputs remain
+digest-only. The selective native fixture copy correction is integrated and
+its standalone completion-representation control passes91 checks/1217 assertions,
+with three explicit PostgreSQL-only skips in that SQLite run. This replaces
+the two integration reds for current supported-source verification and preserves
+their original reports.
+
+The [aggregate recovery cancellation review](../../tests/validation/rm403-independent-recovery-cancellation-review.json)
+approves native single ownership, bounded caller response and late-publication
+fencing across schema/authentication stages, with actual held PostgreSQL DDL and
+both-adapter controls. It retains the demonstrated advisory cancellation limit;
+initial startup, synchronous SQLite and hard native lifetime remain open.
+A fresh CONFIG-001–003 collector executes84/0/4, but its independent review
+requires stricter causal raw-request/query chronology and closed nondisclosure
+event verification before increasing the independently approved count.
+The tools lane is correcting those verifier findings. Actual provider-fault
+reporting is under independent review; authenticated retry advances as a guarded
+compiler-private hook slice with eligibility flags unchanged until review.
+
+The [native provider-fault boundary review](../../tests/validation/rm109-independent-native-job-safe-boundary-review.json)
+approves `7017865`: actual generated request IDs correlate static safe public
+job failures with operational events, while uncertain durable delivery remains
+unknown and cannot automatically resend. Independent typed, extra-field, HTML
+and null authentication replies pass four SQLite controls/148 assertions and
+the strengthened full PostgreSQL suite95/1299 (one explicit SQLite-only skip).
+Actual canonical and native emissions are retained; a reviewer output-directory
+setup failure is preserved separately. The product is integrated after the73-check
+gate epoch; exact source-bound BOUNDARY-001 collection and a fresh combined gate
+remain next, so it adds no approved case count yet.
+
+The [original CONFIG harness review](../../tests/validation/rm109-independent-config-native-harness-review.json)
+retains two verifier findings: contradictory SQL/principal/request chronology
+for CONFIG-003 and secret-bearing extra/foreign preflight events accepted for
+CONFIG-001/002 after coherent raw-hash rebinding. Its fresh actual84/0/4 remains
+a sound collector run, while46 admitted counterexamples prevent harness approval.
+Separate correction `ea32f31` now rejects188 negative replays with ten unchanged
+controls and passes92 fixture tests; independent corrective review is running.
+No original evidence is rewritten and the approved count remains39.
+
+The [structural native lifetime review](../../tests/validation/rm403-independent-native-lifetime-structural-options-review.json)
+grounds isolation/termination acknowledgement and database-owned deadlines,
+preserving fatal schema validation before application binding. Ten seconds for
+aggregate startup is a concrete proposed internal policy; one-second readiness
+response remains unchanged. The accepted contract does not explicitly reserve
+that routine numeric implementation choice to the human, so lack of a selected
+number does not create an additional owner gate. Implementation and real
+healthy/held-phase evidence still need review; no hard native bound is claimed.
+
 ### Pending database binding decision — 2026-10-06
 
 Healthy native golden startup has an existing contract collision: the golden

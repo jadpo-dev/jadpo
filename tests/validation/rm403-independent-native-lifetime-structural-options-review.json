@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-403",
+  "candidate": "df90557fb659ea8bf9e631fa13a68c057e770c87",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-403-9b45cc5b3dd2",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "grounded_structural_direction_with_scope_clarifications",
+  "implementation_approval": false,
+  "whole_task_approval": false,
+  "scope": "Bounded read-only grounding review of immutable structural-options artifact and actual emitting source. No new implementation, chosen profile/budget, source changes, full compiler/runtime campaign or independent measurement of original author probes.",
+  "checks": {
+    "source_bindings_verified": 4,
+    "retained_original_probe_bindings_verified": 4,
+    "artifact_and_contract_binding_evidence": "tests/validation/evidence/rm403-native-lifetime-grounding/independent-structural-options-source-bindings.json",
+    "binding_sha256": "4b37f688a7128680188548af0e3eca990cfe295568981039872bfa225397edda"
+  },
+  "accepted_vs_missing": [
+    {
+      "classification": "accepted_async_response_scope",
+      "references": [
+        "docs/configuration-plan.md:341",
+        "docs/configuration-plan.md:363",
+        "jadpo/crates/core/src/runtime/readiness_gate.ts:54"
+      ],
+      "finding": "Shared one-second asynchronous response deadline assumes progressing event loop. Current native slot remains held until aggregate native settlement. Cancellation request is advisory; late publication/fatal/invalidation safeguards remain accepted. This does not choose or prove whole-startup/native cleanup latency."
+    },
+    {
+      "classification": "genuine_open_native_requirement",
+      "references": [
+        "docs/configuration-plan.md:75",
+        "docs/configuration-plan.md:210",
+        "docs/implementation-roadmap.md:232",
+        "jadpo/crates/core/src/target.rs:6182",
+        "jadpo/crates/core/src/target.rs:3585",
+        "jadpo/crates/core/src/target.rs:6195"
+      ],
+      "finding": "Typed preflight precedes adapter/listen. Actual aggregate top-level initialization still precedes listeners; SQLite constructor/exec/PRAGMA remain synchronous. Finite supported native/probe qualification is genuinely open; source-side two-second connection timeout is not aggregate startup/DDL bound."
+    },
+    {
+      "classification": "retained_original_counterexample_not_new_measurement",
+      "references": [
+        "tests/validation/evidence/rm403-native-lifetime-grounding/native-probe-first.log",
+        "tests/validation/evidence/rm403-recovery-cancellation/postgres-first.log"
+      ],
+      "finding": "Original three-second held PostgreSQL schema index lock delays both listeners until release. Retained native cancellation red shows request does not promptly settle heldDDL. SHA-bound original logs are preserved; current audit neither reruns nor promotes these observations to universal lifetime evidence."
+    }
+  ],
+  "option_assessment": {
+    "isolated_owned_native_lifetime": "Grounded structural direction: closed compiler-owned protocol, source/storage owner fences, explicit monotonic shared budget and actual termination acknowledgement can address synchronous work outside parent event loop. It is not yet an implemented supported primitive or proven hard bound. Full SQLite ownership/RPC touches transactions/auth/session/replay; startup-only isolation does not qualify arbitrary main-loop synchronous queries.",
+    "postgres_scoped_native_budget_first": "Eligible narrow implementation window after explicit internal finite-budget selection: reserve one initializer connection/transaction; apply remaining aggregate budget with transaction-local server statement/lock limits, never fresh per-statement reset; prove pool/BEGIN/setup/COMMIT/rollback and native cleanup as separate phases. Initial listener/import split remains necessary for responsive control plane. Keep connection acquisition timeout distinct and prevent leaked pooled session settings.",
+    "response_race_or_unacknowledged_replacement": "Correctly rejected. Another caller Promise.race or clearing active on advisory cancellation does not interrupt sync/native work and may permit overlap."
+  },
+  "scope_clarifications": [
+    {
+      "topic": "fatal validation before listener binding",
+      "references": [
+        "docs/configuration-plan.md:155",
+        "docs/configuration-plan.md:203",
+        "docs/configuration-plan.md:246"
+      ],
+      "required": "Do not implement parent liveness availability by silently binding public application listeners before fatal initial schema validation completes. Preserve invalid config/fatal schema refusal before application serving. Define any independent startup-only control plane explicitly; it cannot expose business traffic or claim a validated application. The original CONFIG003 started-application seam does not demand public HTTP availability before startup completes."
+    },
+    {
+      "topic": "budget owner dependency",
+      "references": [
+        "docs/configuration-plan.md:210",
+        "docs/configuration-plan.md:365",
+        "docs/implementation-roadmap.md:232",
+        "docs/implementation-roadmap.md:195"
+      ],
+      "required": "The whole-startup/native budget is genuinely unselected, but inspected accepted CONFIG scope does not explicitly reserve its numeric internal choice to the human. The artifact missing_owner_selection is a design assumption, not an additional accepted gate. Explicit supported-host policy selection and immutable review are required before implementation claim; routine local engineering need not introduce a new owner question. A universal published resource default or platform-specific lifecycle change belongs its separate RM218/RM404 authorization."
+    }
+  ],
+  "recommended_next_window": {
+    "budget_proposal_only": {
+      "aggregate_startup_native_initialization_seconds": 10,
+      "one_second_readiness_response_unchanged": true,
+      "selected_or_approved": false,
+      "reason": "Concrete finite initial proposal with headroom beyond existing two-second connection phase for combined schema/index/auth stages. No cold-start performance distribution has been measured here; compare actual healthy adapters before adopting as policy. Golden activation/delivery60/40 and service retries are unrelated and unchanged.",
+      "boundary": "One monotonic budget from owned startup attempt entry across child setup, adapter acquisition, schema/index/auth and publication eligibility; no fresh per-statement reset. Actual server rollback/termination acknowledgement needs its own demonstrably finite controlled bound within reviewed lifecycle; a timer or kill request alone cannot establish it."
+    },
+    "smallest_routine_slice": "Prepare closed PostgreSQL aggregate initialization transaction/lifecycle with explicit supported internal budget and independent parent/control-plane ownership. Retain raw preflight-before-driver and fatal startup stop. Implement and measure one adapter first; leave SQLite/full RM403 open rather than manufacture whole-architecture completion.",
+    "required_observables": [
+      "Healthy cold starts and actual Bun/Node startup/public listener controls; invalid typed config and incompatible actual schema never gain application access.",
+      "Separate-process saturated acquisition/blocked BEGIN/held DDL and control-plane startup blackhole. Show server remaining budget, actual rollback/query absence and reserved connection disposal, preserving original cancellation red.",
+      "Child/probe termination request followed by actual exit acknowledgement, no surviving SQLite lock/native owner or replacement overlap; no inferred cancellation success.",
+      "Retained source/storage authority/publication fences across expiry, reinit and genuine late schema faults; same process post-startup real outage/live/readiness recovery.",
+      "No credentials in child arguments/URLs/log/IPC diagnostics; only closed generated protocol and necessary native config transport, no authored callbacks/provider/operator bootstrap."
+    ],
+    "required_review": "Independent immutable native ownership/transaction/source protocol and both-adapter causal evidence for each covered phase; proportionate focused checks rather than broad repeated gate."
+  },
+  "owner_decisions": {
+    "new_semantic_question_required_by_inspected_contract": false,
+    "implementation_policy_still_needs_explicit_selection": true,
+    "no_inferred_selection": true,
+    "external_platform_or_universal_defaults": "Only if the scope enters new externally visible default/lifecycle/platform policy, prepare the concrete owning decision. This bounded technical grounding supplies no such authorization."
+  },
+  "limits": [
+    "No product source, shared plan, progress or accepted semantic contract edits.",
+    "No new compiler build or runtime case execution; original retained author probes remain author evidence.",
+    "No hard latency, source profile, whole RM403/RM109 or final golden closure.",
+    "No publishing, production provider/deployment or private fixture copies."
+  ],
+  "created_at": "2026-10-06T09:12:38.042515+00:00"
+}

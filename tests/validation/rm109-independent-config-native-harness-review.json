@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-109",
+  "candidate": "9b7c7e9d3ed5b5f1af446f62c32501fe653828cf",
+  "parent": "e1a65607a60f42000b68fbe0902ddadfa703f917",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-bddc0632ea79",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "changes_required",
+  "scoped_approval": false,
+  "scope": "Immutable tools-only CONFIG001-003 native golden collector and full raw validator. No runtime implementation, canonical healthy main transport, native hard-bound, scheduler, whole RM109/RM403 or final golden approval.",
+  "findings": [
+    {
+      "id": "CONFIG-HARNESS-CAUSAL-TRACE",
+      "priority": "P2",
+      "file": "tools/golden_checkpoint.py",
+      "line": 613,
+      "title": "Require the retained SQL, authority and chronology to establish CONFIG003 causality",
+      "observation": "Full validator accepts both adapters after coherently updating raw SHA while preserving passing ledger: outage triggeringRequest can be unrelated POST /auth/exchange with no statements/principal, or a session-storage dependency fault with no persistence query; healthy/recovery Todo SELECT can be replaced by SELECT1, actual physical deployment probe replaced by SELECT1 FROM foreign_fixture, authenticated principal changed to Bob, or causal request clocks reversed relative to outage/recovery. All eleven strengthened CONFIG003 mutations are accepted on each backend.",
+      "cause": "readiness_observations requires only nonempty phase and business statement lists, status>=500 on an otherwise unchecked outage triggeringRequest, metadata auth label/authenticationAttempt count on controls, and ordered phase clocks. It does not bind retained request SQL/principal/clock to the actual healthy/outage/recovery dependency sequence.",
+      "required_correction": "Validate actual backend-specific native probe/recovery shapes and generated Todo business query/normalized Alice authority; bind outage request operation, principal, physical persistence query and absence of unrelated injected auth fault, and monotonic positions relative to captured phase clocks. Keep exact original CONFIG003 expectations and explicit generated native host seam. No canonical main startup prerequisite is added.",
+      "evidence": "actual-strengthened-rebound-challenges.json"
+    },
+    {
+      "id": "CONFIG-HARNESS-NONDISCLOSURE-TRACE",
+      "priority": "P2",
+      "file": "tools/golden_checkpoint.py",
+      "line": 568,
+      "title": "Refuse secret-bearing extra startup events despite a false disclosure flag",
+      "observation": "All12 strengthened mutations on CONFIG001/002 across both adapters pass full validator when raw jsonEvents contain the exact collector fixture MAIL secret in an extra operational failure field, an extra startup observer field, or an unrecognized additional event, with credentialTextDisclosed retained false. Mutated raw SHA is consistently rebound; ledger remains unchanged. No secret mutation bytes are retained in integration evidence.",
+      "cause": "Only configuration_diagnostic keys are closed. The operational event check covers classification/sourceRevision/attributes but permits extra fields; the observer check covers counters/exit only, and unrelated events are ignored. Frozen nondisclosure therefore follows the asserted boolean despite contradictory retained event content.",
+      "required_correction": "Require an exact safe startup event inventory and allowed public fields for native operational event and observer, including existing source, counters and qualified diagnostic validation. Refuse unknown/duplicate/extra secret or debug fields; preserve healthy-control red and original environment overrides.",
+      "evidence": "actual-preflight-disclosure-challenges.json"
+    }
+  ],
+  "independent_execution": {
+    "immutable_archive": "/private/tmp/jadpo-config-native-harness-independent",
+    "fresh_compiler_sha256": "973cf901e6af79385722fd34e1776236176b6b5849211e5610979a4e1088652d",
+    "fresh_checkpoint": {
+      "passed": 84,
+      "failed": 0,
+      "not_run": 4,
+      "overall_status": "not_run",
+      "backends": [
+        "sqlite",
+        "postgres"
+      ],
+      "report_sha256": "24b78ef8cb624c233e50f7f7fb3c1b9598029c0f92d23165f14f1d13092b3eb0",
+      "CONFIG_scoped_backend_cases": 6,
+      "remaining_not_run": [
+        [
+          "sqlite",
+          "REL-003"
+        ],
+        [
+          "sqlite",
+          "BOUNDARY-001"
+        ],
+        [
+          "postgres",
+          "REL-003"
+        ],
+        [
+          "postgres",
+          "BOUNDARY-001"
+        ]
+      ]
+    },
+    "checkpoint_protocol_tests": {
+      "focused": 47,
+      "all_golden_protocols": 65,
+      "failed": 0
+    },
+    "full_validate_checkpoint_raw_hash_rebound_probes": {
+      "cases": 198,
+      "accepted_unchanged_controls": 10,
+      "refused_mutations": 142,
+      "accepted_negative_mutations": 46,
+      "ledger_unchanged": true,
+      "all_raw_mutations_restored": true,
+      "restored_raw_hashes": {
+        "sqlite-raw.json": "9f611050c9e3cde246495db54388f0916ab5dc0d77cf1affe59577b580ee90d7",
+        "postgres-raw.json": "f51af521ac8cca88872434423303afe5e65c2a1ef05645764e5e6335c8fc0b06"
+      },
+      "breakdown": {
+        "first_strengthened_matrix": {
+          "cases": 182,
+          "accepted": 40,
+          "refused": 142
+        },
+        "exact_fixture_secret_matrix": {
+          "cases": 16,
+          "accepted": 16,
+          "refused": 0
+        }
+      },
+      "ancillary_note": "Four negative outputBytes mutations are also accepted. This output-count issue is recorded but not promoted to a separate case-semantic finding."
+    }
+  },
+  "actual_native_behavior": [
+    "Original missing MAIL_API_KEY override is omission, not empty-string substitution. Exact malformed OIDC_ISSUER not a url and DATABASE_URL postgres://user:password@ are applied unchanged. Native structured config_required/config_invalid qualified declarations and zero driver/listener starts/attempts are retained. Native emission order is preserved; presentation uses original frozen environment order via emitted configuration binding metadata.",
+    "CONFIG003 actual started generated host owns real distinct loopback application/deployment listeners, unchanged native deployment handler and native process.exit observer. Healthy deployment200, actual SQLite separate-connection BEGIN EXCLUSIVE or PostgreSQL stop, outage deployment503, application readiness aliases404 and liveness200, then recovery200 occur with captured physical probes and authenticated HTTP GET/todos200 before/after. Business requests use the existing checked application HTTP listener; readiness application alias probes use the additional listener over the same generated host. No unsupported claim that all HTTP requests share one listener port.",
+    "Original44 acceptance file byte identity retained. Supported42 IDs yield84 backend passes. Accepted JOB001 UUID successor is explicit; original43 unaffected. No compiler/runtime/product delta from exact e1a alignment in this tools-only leaf."
+  ],
+  "author_evidence": {
+    "safe_evidence_sha256": "18b0efda97ef11cb5eef85a27d1f43d3b97cfd867bea59bc61c3436512362c5f",
+    "author_report_sha256": "22e5b1f501d08247fd464435a2eb15310ae32e39429481e707d70368e8c05f89",
+    "reported_rebound_refusals_verified": 116,
+    "interpretation": "Author116 recorded refusals are preserved and supported by own earlier-style mutations; additional independent contradiction probes reveal gaps beyond author matrix. Author90 contract count remains author reported, not relabeled as independent count."
+  },
+  "preserved_negatives": {
+    "author": "Original preflight/readiness first attempt cache/backoff/PG override errors, then82/0/6 before CFG3 registration, remain retained in immutable author report/evidence. No earlier raw mechanism check relabeled as original case execution.",
+    "reviewer": "Default sandbox fresh collector failed with protected Bun exit1 before raw collection; underlying cause unobserved. Host-approved disposable listener/DB rerun completed84/0/4. No product defect inferred from the failed environment. ps inventory was denied and was not required for verification."
+  },
+  "evidence_directory": "tests/validation/evidence/golden-loop-config-native-harness-independent",
+  "artifact_retention": {
+    "safe_files": 105,
+    "inventory_sha256": "21c5b88ab1fb4b5e0389d9f2239d8bb4ff7520108966eeb704969e2f4d8e9776",
+    "excluded_private_fixture_or_database_bytes": 2,
+    "notice": "digest-only-exclusions.json",
+    "complete_disposable_checkpoint": "/private/tmp/jadpo-config-native-harness-independent/complete-host-checkpoint",
+    "limitation": "Full validation replay needs digest-excluded ephemeral TLS private key/disposable SQLite bytes or regeneration; original report/inventory/raw hashes retained unchanged. No private PEM or database bytes copied to integration."
+  },
+  "limits": [
+    "Actual native three-case outcomes observed, but validator correction and independent review are required before these candidate case promotions are approved.",
+    "Frozen CONFIG negative cases have no extra canonical healthy startup precondition; CFG3 fixture requires started generated application and real DB outage. Existing scoped eligibility assessments remain unchanged.",
+    "Canonical healthy main transport contradiction, native/cooperative/hard settlement limits, final source agreement and require-golden remain open. Four unexecuted current case/backend records persist; no whole golden/task closure.",
+    "Disposable local native backend fixtures and mock services only; no production secret, provider, deployment or publication."
+  ],
+  "created_at": "2026-10-06T09:09:04.898110+00:00"
+}
