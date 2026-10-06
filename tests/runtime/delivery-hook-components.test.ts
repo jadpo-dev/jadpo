@@ -683,6 +683,77 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       }, async () => malformed ? Response.json({code:"authentication",private_detail:providerCanary+stackCanary},{status:401}) : Response.json({code:"authentication"},{status:401,headers:{"x-private-provider-canary":providerCanary+stackCanary}}));
     } finally {console.error=previousError;await host.stop();await restarted?.stop();}
   });
+  async function inspectRetryApplication() {
+    const sourcePath = join(root,"app.ts");
+    let source = readFileSync(sourcePath,"utf8");
+    const names: string[] = [], values: unknown[] = [];
+    for (const match of source.matchAll(/^import \{([^}]+)\} from "([^"]+)";\n/gm)) {
+      const imported = await import(pathToFileURL(join(root,match[2])).href);
+      for (const binding of match[1].split(",")) {
+        const [original, alias] = binding.trim().split(/\s+as\s+/u);
+        names.push(alias ?? original); values.push(imported[original]);
+      }
+    }
+    source=source.replace(/^import \{[^}]+\} from "[^"]+";\n/gm,"")
+      .replace(/\bexport /gu,"").replaceAll("import.meta.url",JSON.stringify(pathToFileURL(sourcePath).href)).replaceAll("import.meta.main","false");
+    const javascript = new Bun.Transpiler({loader:"ts"}).transformSync(source)
+      + '\nreturn {initializeApplication, authenticationHost, createRetryAuthority, materializePrincipal, captureOperation, patch: Todo__patch_todo};';
+    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+    return await new AsyncFunction(...names,javascript)(...values);
+  }
+  for (const mode of ["fresh", "inactive", "revoked", "reinitialized", "late_owner", "cancelled", "elapsed", "deleted"] as const) test(`RM402 native retry authority hook ${mode} leaves public replay guards closed`,async()=>{
+    const f=await fixture(), inspected=await inspectRetryApplication();
+    await inspected.initializeApplication(authEnvironment);
+    const host=inspected.authenticationHost(), now=Date.now();
+    const issued=await host.issue("browser_session",owner,now+3_600_000,now);
+    const request=new Request("https://todo.example.invalid/todos/"+f.value.id,{method:"PATCH",headers:{cookie:`todo_session=${issued.credential}`,origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken}});
+    const principal=await host.authenticate(request,true,now,true);
+    const materialized=inspected.materializePrincipal(principal);
+    const checked=inspected.createRetryAuthority(host,request,principal,true);
+    // The private source-bound factory owns a snapshot, not mutable caller headers.
+    request.headers.set("cookie","todo_session=invalid");
+    let lock: Database | null=null, guardCalls=0, statements=0;
+    const suffix=crypto.randomUUID().replaceAll("-","");
+    const sequence="retry_hook_"+suffix, fn="retry_hook_fn_"+suffix, trigger="retry_hook_trigger_"+suffix;
+    if(sql) {
+      await rows(`CREATE SEQUENCE "${sequence}"`);
+      await rows(`CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF nextval('"${sequence}"')=1 THEN RAISE EXCEPTION USING ERRCODE='40001', MESSAGE='fixture abort'; END IF; RETURN NEW; END $$`);
+      await rows(`CREATE TRIGGER "${trigger}" BEFORE UPDATE OF title ON todo FOR EACH ROW EXECUTE FUNCTION "${fn}"()`);
+    } else {lock=new Database(sqlitePath);lock.exec("BEGIN EXCLUSIVE");}
+    const abort = new AbortController();
+    const context={...inspected.captureOperation(null,principal,undefined,true,abort.signal),refreshAuthority:async(at:string)=>{
+      guardCalls++;if(lock){lock.exec("ROLLBACK");lock.close();lock=null;}
+      if(mode === "inactive") await rows('UPDATE "user" SET status=$1 WHERE id=$2',["disabled",owner]);
+      if(mode === "revoked") await host.revoke("browser_session",issued.credential,Date.now());
+      if(mode === "reinitialized") await inspected.initializeApplication(authEnvironment);
+      if(mode === "late_owner") { const pending=checked(at); pending.catch(()=>{}); await inspected.initializeApplication(authEnvironment); return pending; }
+      if(mode === "cancelled") abort.abort();
+      if(mode === "elapsed") await Bun.sleep(1_050);
+      if(mode === "deleted") await rows('UPDATE todo SET deleted_at=$1 WHERE id=$2',[dbInstant(Date.now()),f.value.id]);
+      return checked(at);
+    }};
+    try {
+      const work=inspected.patch(f.value.id,{title:"fresh retry title"},materialized,context,persistence);
+      if(mode === "fresh") expect((await work).title).toBe("fresh retry title");
+      else if(mode === "inactive") await expect(work).rejects.toMatchObject({code:"principal_inactive"});
+      else if(mode === "revoked") await expect(work).rejects.toMatchObject({code:"invalid_credentials"});
+      else if(mode === "reinitialized" || mode === "late_owner") await expect(work).rejects.toMatchObject({code:"authentication_misconfigured"});
+      else if(mode === "cancelled" || mode === "elapsed") await expect(work).rejects.toMatchObject({operation:"transaction.retry_authority",transaction:{outcome:"no_commit",retryableCause:null}});
+      else await expect(work).rejects.toBeDefined();
+      expect(guardCalls).toBe(1);
+      if(sql) statements=Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value);
+      expect((await stored(f.value.id))[0].title).toBe(mode === "fresh" ? "fresh retry title" : f.value.title);
+      if(sql) expect(statements).toBe(mode === "fresh" ? 2 : 1);
+      const emitted=readFileSync(join(root,"app.ts"),"utf8");
+      expect(emitted).toContain("__operation = allowOperationRetries(__operation, false);");
+      expect(emitted).toContain("replayable: false && __operation.retryAllowed");
+      expect(readFileSync(join(repository,"jadpo/crates/core/src/target.rs"),"utf8")).toContain("callable.policy.is_none()");
+    } finally {
+      if(lock){lock.exec("ROLLBACK");lock.close();}
+      if(sql){await rows(`DROP TRIGGER IF EXISTS "${trigger}" ON todo`);await rows(`DROP FUNCTION IF EXISTS "${fn}"()`);await rows(`DROP SEQUENCE IF EXISTS "${sequence}"`);}
+      await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
+    }
+  });
   test("trusted closed job host uses a real service credential and captured wall clock; start and stop remain bounded native controls", async () => {
     const f = await fixture();
     const overdue = new Date(Date.now() - 60_000).toISOString();

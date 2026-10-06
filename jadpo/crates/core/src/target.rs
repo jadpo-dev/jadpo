@@ -1203,7 +1203,7 @@ type PolicyPrincipal = Readonly<{ kind: "user" | "service"; subject: string; aut
 type TestServiceOutcome = Readonly<{ kind: "accepted"; value: Readonly<Record<string, unknown>> }> | Readonly<{ kind: "declared"; name: string }>;
 type TestServiceFake = { readonly outcomes: readonly TestServiceOutcome[]; readonly cursor: { index: number }; elapsedMs: number };
 type TestServiceFakes = Readonly<Record<string, TestServiceFake>>;
-type OperationContext = Readonly<{ now: Instant; monotonicStartedAt: number; deadlineAt: number | null; serviceAttemptBudget: { attemptsUsed: number }; principal: PolicyPrincipal | null; operationId: string; retryAllowed: boolean; signal: AbortSignal | null; testServiceFakes: TestServiceFakes | null; refreshNow: () => Instant }>;
+type OperationContext = Readonly<{ now: Instant; monotonicStartedAt: number; deadlineAt: number | null; serviceAttemptBudget: { attemptsUsed: number }; principal: PolicyPrincipal | null; operationId: string; retryAllowed: boolean; signal: AbortSignal | null; testServiceFakes: TestServiceFakes | null; refreshNow: () => Instant; refreshAuthority: ((at: Instant) => Promise<PolicyPrincipal>) | null }>;
 
 class RequestDeadlineFault extends Error {
   readonly code = "JADPO_REQUEST_DEADLINE";
@@ -1213,7 +1213,7 @@ class RequestDeadlineFault extends Error {
 function captureOperation(fixedNow: Instant | null = null, principal: PolicyPrincipal | null = null, refreshNow?: () => Instant, retryAllowed = false, signal: AbortSignal | null = null, testServiceFakes: TestServiceFakes | null = null): OperationContext {
   const timeSource = refreshNow ?? (fixedNow === null ? () => validateInstant(new Date().toISOString(), "clock.now") : () => fixedNow);
   const now = timeSource();
-  return Object.freeze({ now, monotonicStartedAt: performance.now(), deadlineAt: null, serviceAttemptBudget: { attemptsUsed: 0 }, principal, operationId: crypto.randomUUID(), retryAllowed, signal, testServiceFakes, refreshNow: timeSource });
+  return Object.freeze({ now, monotonicStartedAt: performance.now(), deadlineAt: null, serviceAttemptBudget: { attemptsUsed: 0 }, principal, operationId: crypto.randomUUID(), retryAllowed, signal, testServiceFakes, refreshNow: timeSource, refreshAuthority: null });
 }
 
 function withOperationDeadline(operation: OperationContext, durationMs: number): OperationContext {
@@ -3697,7 +3697,7 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         line(&mut output, "type PolicyPrincipal = Readonly<{ kind: \"user\" | \"service\"; subject: string; values: Readonly<Record<string, unknown>> }>; ");
         line(&mut output, "type PolicyRequest = Readonly<{ principal: PolicyPrincipal | null; operation: string }>; ");
-        line(&mut output, "type TransactionRetryOptions = Readonly<{ replayable: boolean; operationId: string; operation: string; startedAt: number; deadlineAt?: number | null; signal: AbortSignal | null; refreshOperationTime?: () => string }>;");
+        line(&mut output, "type TransactionRetryOptions = Readonly<{ replayable: boolean; operationId: string; operation: string; startedAt: number; deadlineAt?: number | null; signal: AbortSignal | null; refreshOperationTime?: () => string; refreshPolicyPrincipal?: (at: string | null) => Promise<PolicyPrincipal | null> }>; ");
         line(&mut output, "function recordTransactionAttempt(options: TransactionRetryOptions, attempt: number, evidence: TransactionEvidence, elapsedMs: number, selectedDelayMs: number | null, retryScheduled: boolean, cancelled: boolean): void {");
         line(&mut output, "  console.error(JSON.stringify({ schemaVersion: 1, kind: \"operational_log_event\", eventName: \"transaction.attempt\", operationId: options.operationId, operation: options.operation, attempt, database: evidence.database, phase: evidence.phase, outcome: evidence.outcome, retryableCause: evidence.retryableCause, rollbackProven: evidence.rollbackProven, commitAcknowledged: evidence.commitAcknowledged, elapsedMs: Math.max(0, Math.round(elapsedMs)), selectedDelayMs: selectedDelayMs === null ? null : Math.round(selectedDelayMs), retryScheduled, cancelled }));");
         line(&mut output, "}");
@@ -3875,7 +3875,7 @@ export const temporal = Object.freeze({
         line(&mut output, "        throw error;");
         line(&mut output, "      }");
         line(&mut output, "    }");
-        line(&mut output, "    const executeAttempt = async (attemptOperationTime: string | null, retryIndex: number): Promise<T> => {");
+        line(&mut output, "    const executeAttempt = async (attemptOperationTime: string | null, retryIndex: number, attemptPolicy: PolicyRequest = policy): Promise<T> => {");
         line(
             &mut output,
             "    const attemptSignal = retryOptions?.signal ?? signal;",
@@ -3900,7 +3900,7 @@ export const temporal = Object.freeze({
         line(&mut output, "          if (attemptDeadlineAt !== null) { const remaining = attemptDeadlineAt - performance.now(); if (remaining <= 0) throw persistenceDeadlineFault(\"transaction.statement\", requestDeadlineAt); await persistenceAsyncWithSignal(\"transaction.timeout.setup\", () => tx.unsafe(\"SELECT set_config('statement_timeout', $1, true)\", [String(Math.min(Math.ceil(remaining), 2147483647))]), attemptSignal, attemptDeadlineAt, requestDeadlineAt); }");
         line(
             &mut output,
-            "          const result = await work(createPersistenceClient(tx as SQL, null, true, attemptState, policy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); attemptState.active = false; const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit; if (attemptDeadlineAt !== null) await persistenceAsyncWithSignal(\"transaction.timeout.reset\", () => tx.unsafe(\"SET LOCAL statement_timeout = 0\"), attemptSignal, attemptDeadlineAt, requestDeadlineAt); const afterResetLimit = checkAttemptLimit(\"transaction.statement\"); if (afterResetLimit !== null) throw afterResetLimit; callbackState = \"returned\"; return result;",
+            "          const result = await work(createPersistenceClient(tx as SQL, null, true, attemptState, attemptPolicy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); attemptState.active = false; const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit; if (attemptDeadlineAt !== null) await persistenceAsyncWithSignal(\"transaction.timeout.reset\", () => tx.unsafe(\"SET LOCAL statement_timeout = 0\"), attemptSignal, attemptDeadlineAt, requestDeadlineAt); const afterResetLimit = checkAttemptLimit(\"transaction.statement\"); if (afterResetLimit !== null) throw afterResetLimit; callbackState = \"returned\"; return result;",
         );
         line(
             &mut output,
@@ -3945,7 +3945,7 @@ export const temporal = Object.freeze({
         line(&mut output, "      try {");
         line(
             &mut output,
-            "        try { result = await work(createPersistenceClient(null, sqlite, true, attemptState, policy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); } finally { attemptState.active = false; } const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit;",
+            "        try { result = await work(createPersistenceClient(null, sqlite, true, attemptState, attemptPolicy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); } finally { attemptState.active = false; } const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit;",
         );
         line(&mut output, "      } catch (error) {");
         line(&mut output, "        try { sqlite!.exec(\"ROLLBACK\"); }");
@@ -3964,6 +3964,11 @@ export const temporal = Object.freeze({
         line(&mut output, "    let attempt = 0;");
         line(&mut output, "    while (true) {");
         line(&mut output, "      const attemptOperationTime = attempt === 0 ? operationTime : retryOptions.refreshOperationTime?.() ?? operationTime;");
+        line(&mut output, "      let attemptPolicy = policy;");
+        line(&mut output, "      if (attempt > 0 && retryOptions.refreshPolicyPrincipal !== undefined) {");
+        line(&mut output, "        const authorityDeadline = Math.min(retryOptions.startedAt + 1000, retryOptions.deadlineAt ?? Infinity); const checkAuthorityLimit = () => { if (retryOptions.signal?.aborted || performance.now() >= authorityDeadline) { const cause = retryOptions.signal?.aborted ? new Error(\"operation cancelled\") : persistenceDeadlineFault(\"transaction.retry_authority\", requestDeadlineAt); throw transactionFault(\"transaction.retry_authority\", cause, { phase: \"begin\", database: postgres !== null ? \"postgres\" : \"sqlite\", outcome: \"no_commit\", retryableCause: null, rollbackProven: false, commitAcknowledged: false }); } };");
+        line(&mut output, "        checkAuthorityLimit(); const freshPrincipal = await retryOptions.refreshPolicyPrincipal(attemptOperationTime); checkAuthorityLimit(); attemptPolicy = Object.freeze({ ...policy, principal: freshPrincipal });");
+        line(&mut output, "      }");
         line(
             &mut output,
             "      const attemptStartedAt = performance.now();",
@@ -3971,7 +3976,7 @@ export const temporal = Object.freeze({
         line(&mut output, "      try {");
         line(
             &mut output,
-            "        const result = await executeAttempt(attemptOperationTime, attempt);",
+            "        const result = await executeAttempt(attemptOperationTime, attempt, attemptPolicy);",
         );
         line(&mut output, "        recordTransactionAttempt(retryOptions, attempt + 1, { phase: \"commit\", database: postgres !== null ? \"postgres\" : \"sqlite\", outcome: \"committed\", retryableCause: null, rollbackProven: false, commitAcknowledged: true }, performance.now() - attemptStartedAt, null, false, retryOptions.signal?.aborted === true);");
         line(&mut output, "        return result;");
@@ -8349,7 +8354,7 @@ export const temporal = Object.freeze({
                     line(output, &format!("    if (!(await authorizeInvoke({operation_id}, __operation.principal, persistence))) throw new AuthorizationFault();"));
                 }
                 self.block(output, &declaration.body, 4);
-                line(output, &format!("  }}, {{ replayable: {} && __operation.retryAllowed, operationId: __operation.operationId, operation: {}, startedAt: __operation.monotonicStartedAt, deadlineAt: __operation.deadlineAt, signal: __operation.signal, refreshOperationTime: () => {{ __operation = refreshOperation(__operation); return __operation.now; }} }});", replayable, operation_id));
+                line(output, &format!("  }}, {{ replayable: {} && __operation.retryAllowed, operationId: __operation.operationId, operation: {}, startedAt: __operation.monotonicStartedAt, deadlineAt: __operation.deadlineAt, signal: __operation.signal, refreshOperationTime: () => {{ __operation = refreshOperation(__operation); return __operation.now; }}, refreshPolicyPrincipal: __operation.refreshAuthority === null ? undefined : async at => {{ const principal = await __operation.refreshAuthority!(validateInstant(at, \"retry.operationTime\")); __operation = Object.freeze({{ ...__operation, principal }}); return principal; }} }});", replayable, operation_id));
             } else {
                 if needs_persistence {
                     if self.project.policy.active {
@@ -8670,6 +8675,13 @@ export const temporal = Object.freeze({
 
     fn http_handler(&self, output: &mut String) {
         let readiness_advisories = self.readiness_advisories();
+        if self.first_party_supported() {
+            line(output, "// Compiler-private retry authority: one captured credential inventory and authentication owner.");
+            line(output, "function createRetryAuthority(authentication: NonNullable<typeof firstPartyAuthentication>, request: Request, authenticated: PolicyPrincipal, mutates: boolean): (at: Instant) => Promise<PolicyPrincipal> {");
+            line(output, "  const credentialRequest = new Request(request.url, { method: request.method, headers: new Headers(request.headers), signal: request.signal }); const materialized = JSON.stringify(materializePrincipal(authenticated));");
+            line(output, "  return async at => { if (firstPartyAuthentication !== authentication) throw new AuthenticationFault(\"authentication_misconfigured\", 503); const fresh = await authentication.authenticate(credentialRequest, true, Date.parse(at), mutates); if (firstPartyAuthentication !== authentication) throw new AuthenticationFault(\"authentication_misconfigured\", 503); if (fresh.kind !== authenticated.kind || fresh.subject !== authenticated.subject || fresh.authenticationStrength !== authenticated.authenticationStrength || JSON.stringify(materializePrincipal(fresh)) !== materialized) throw new AuthenticationFault(\"invalid_credentials\", 401); return fresh; };");
+            line(output, "}");
+        }
         line(output, "// Native deployment plane; this entry is unreachable from authored routes and application listeners.");
         line(output, "export async function handleDeploymentRequest(request: Request): Promise<Response> {");
         line(output, "  const requestId = `req_${crypto.randomUUID()}`; try { const url = new URL(request.url); if (request.method !== \"GET\" || (url.pathname !== \"/health/ready\" && url.pathname !== \"/health\")) return json(404, errorEnvelope(\"not_found\", \"Not found.\", requestId), requestId);");
@@ -8837,9 +8849,12 @@ export const temporal = Object.freeze({
                                 &mut BTreeSet::new(),
                             )
                         });
-                    line(output, &format!("      const authenticated = await firstPartyAuthentication.authenticate(request, {}, Date.parse(__operation.now), {mutates});", route.fresh_authority));
-                    line(output, "      __operation = Object.freeze({ ...__operation, principal: authenticated });");
-                    line(output, "      const current_principal = materializePrincipal(__operation.principal);");
+                    line(output, "      const authentication = firstPartyAuthentication;");
+                    line(output, "      const credentialRequest = new Request(request.url, { method: request.method, headers: new Headers(request.headers), signal: request.signal });");
+                    line(output, &format!("      const authenticated = await authentication.authenticate(credentialRequest, {}, Date.parse(__operation.now), {mutates});", route.fresh_authority));
+                    line(output, "      const current_principal = materializePrincipal(authenticated);");
+                    line(output, &format!("      const refreshAuthority = createRetryAuthority(authentication, credentialRequest, authenticated, {mutates});"));
+                    line(output, "      __operation = Object.freeze({ ...__operation, principal: authenticated, refreshAuthority });");
                 }
                 // Queries cannot mutate or call actions. The repeatability walk
                 // additionally excludes opaque calls and unknown effects. Set
@@ -13038,7 +13053,7 @@ route GET /todos { auth: none query: ListTodos output: ListTodos action: { retur
             .unwrap()
             .contents;
         assert!(
-            app.find("firstPartyAuthentication.authenticate(request")
+            app.find("authentication.authenticate(credentialRequest")
                 .unwrap()
                 < app.find("await request.json()").unwrap()
         );
