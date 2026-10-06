@@ -16,6 +16,7 @@ databasePrototype.exec = function (statement: string, ...values: unknown[]) {
 const application = await import(pathToFileURL(applicationPath).href);
 await application.initializeApplication(Bun.env);
 
+application.createDeploymentServer(Number(Bun.env.JADPO_DEPLOYMENT_PORT));
 Bun.serve({
   hostname: "127.0.0.1",
   port: Number(Bun.env.PORT ?? "0"),

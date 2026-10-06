@@ -8663,6 +8663,17 @@ export const temporal = Object.freeze({
 
     fn http_handler(&self, output: &mut String) {
         let readiness_advisories = self.readiness_advisories();
+        line(output, "// Native deployment plane; this entry is unreachable from authored routes and application listeners.");
+        line(output, "export async function handleDeploymentRequest(request: Request): Promise<Response> {");
+        line(output, "  const requestId = `req_${crypto.randomUUID()}`; try { const url = new URL(request.url); if (request.method !== \"GET\" || (url.pathname !== \"/health/ready\" && url.pathname !== \"/health\")) return json(404, errorEnvelope(\"not_found\", \"Not found.\", requestId), requestId);");
+        if self.has_entities() {
+            line(output, &format!("    const ready = await refreshDatabaseReadiness(); return json(ready ? 200 : 503, {{ status: ready ? \"ready\" : \"not_ready\", checks: {{ database: ready ? \"available\" : \"unavailable\" }}, advisories: {readiness_advisories} }}, requestId);"));
+        } else {
+            line(output, &format!("    return json(200, {{ status: \"ready\", checks: {{}}, advisories: {readiness_advisories} }}, requestId);"));
+        }
+        line(output, "  } catch { return json(503, errorEnvelope(\"dependency_unavailable\", \"A required dependency is unavailable.\", requestId), requestId); }");
+        line(output, "}");
+        line(output, "export function createDeploymentServer(port: number) { if (!Number.isSafeInteger(port) || port < 0 || port > 65535) throw new Error(\"Invalid deployment listener port.\"); return Bun.serve({ hostname: \"127.0.0.1\", port, fetch: handleDeploymentRequest }); }");
         line(
             output,
             "export async function handleRequest(request: Request): Promise<Response> {",
@@ -8696,34 +8707,12 @@ export const temporal = Object.freeze({
             })
             .unwrap_or_else(|| "{ status: \"live\" }".to_owned());
         line(output, &format!("    if (request.method === \"GET\" && url.pathname === \"/health/live\") return json(200, {liveness}, requestId);"));
-        if self.has_entities() {
-            line(output, &format!("    if (request.method === \"GET\" && url.pathname === \"/health/ready\") {{ const ready = await refreshDatabaseReadiness(); return json(ready ? 200 : 503, {{ status: ready ? \"ready\" : \"not_ready\", checks: {{ database: ready ? \"available\" : \"unavailable\" }}, advisories: {readiness_advisories} }}, requestId); }}"));
-            line(output, "    if (!databaseIsReady()) return json(503, errorEnvelope(\"dependency_unavailable\", \"A required dependency is unavailable.\", requestId), requestId);");
-        } else {
-            line(output, &format!("    if (request.method === \"GET\" && url.pathname === \"/health/ready\") return json(200, {{ status: \"ready\", checks: {{}}, advisories: {readiness_advisories} }}, requestId);"));
-        }
-
+        line(output, "    if (url.pathname === \"/health/ready\") return json(404, errorEnvelope(\"not_found\", \"Not found.\", requestId), requestId);");
         if !self.has_authored_health_route() {
-            line(
-                output,
-                "    if (request.method === \"GET\" && url.pathname === \"/health\") {",
-            );
-            if self.has_entities() {
-                line(
-                    output,
-                    "      const ready = await refreshDatabaseReadiness();",
-                );
-                line(
-                    output,
-                    "      return json(ready ? 200 : 503, { ready }, requestId);",
-                );
-            } else {
-                line(
-                    output,
-                    "      return json(200, { ready: true }, requestId);",
-                );
-            }
-            line(output, "    }");
+            line(output, "    if (request.method === \"GET\" && url.pathname === \"/health\") return json(404, errorEnvelope(\"not_found\", \"Not found.\", requestId), requestId);");
+        }
+        if self.has_entities() {
+            line(output, "    if (!databaseIsReady()) return json(503, errorEnvelope(\"dependency_unavailable\", \"A required dependency is unavailable.\", requestId), requestId);");
         }
 
         if self.has_service_credential_exchange() {
@@ -9230,6 +9219,7 @@ export const temporal = Object.freeze({
         line(output, "if (import.meta.main) {");
         line(output, "  const port = Number(Bun.env.PORT ?? \"3000\");");
         line(output, "  try {");
+        line(output, "    const deploymentBinding = Bun.env.JADPO_DEPLOYMENT_PORT; const deploymentPort = deploymentBinding === undefined ? null : (/^(?:0|[1-9][0-9]*)$/u.test(deploymentBinding) ? Number(deploymentBinding) : NaN); if (deploymentPort !== null && (!Number.isSafeInteger(deploymentPort) || deploymentPort < 0 || deploymentPort > 65535)) throw new Error(\"Invalid deployment listener port.\");");
         if self.configuration.is_some() {
             line(output, "    configuration = loadConfiguration(Bun.env);");
         }
@@ -9247,6 +9237,7 @@ export const temporal = Object.freeze({
         } else {
             line(output, "    Bun.serve({ port, fetch: handleRequest });");
         }
+        line(output, "    if (deploymentPort !== null) createDeploymentServer(deploymentPort);");
         line(output, "    console.log(JSON.stringify({");
         line(output, "      schemaVersion: 1,");
         line(output, "      kind: \"operational_log_event\",");

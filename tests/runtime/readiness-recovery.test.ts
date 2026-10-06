@@ -20,6 +20,12 @@ const authReadinessHarness = join(import.meta.dir, "fixtures/readiness-auth-serv
 const root = mkdtempSync(join(tmpdir(), "jadpo-readiness-"));
 const databaseDirectory = join(root, "recovered");
 
+
+function reserveDeploymentPort(applicationPort: number): number {
+  for (let attempt = 0; attempt < 3; attempt++) { const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() }); const port = server.port; server.stop(true); if (port !== applicationPort) return port; }
+  throw Error("Could not reserve a separate deployment port");
+}
+
 function controlledReadiness(initialReady = true) {
   const state = { ready: initialReady, fatal: false, needed: false, generation: 0,
     checks: 0, prepares: 0, publications: 0, failures: 0, cancels: 0, timers: 0, now: 0 };
@@ -274,7 +280,7 @@ describe("generated runtime readiness", () => {
     try {
       const application = await import(pathToFileURL(generatedAuthApplication).href);
       await application.initializeApplication(Bun.env);
-      const readyRequest = () => application.handleRequest(new Request("http://jadpo.test/health/ready"));
+      const readyRequest = () => application.handleDeploymentRequest(new Request("http://jadpo.test/health/ready"));
       const unavailable = await readyRequest();
       expect(unavailable.status).toBe(503);
       expect(await unavailable.json()).toMatchObject({ status: "not_ready", checks: { database: "unavailable" } });
@@ -356,6 +362,7 @@ describe("generated runtime readiness", () => {
     const portReservation = Bun.serve({ port: 0, fetch: () => new Response() });
     const port = portReservation.port;
     portReservation.stop(true);
+    const deploymentPort = reserveDeploymentPort(port);
 
     const childDatabaseDirectory = join(databaseDirectory, initialLock ? "locked-process" : "process");
     let blocker: Database | null = null;
@@ -364,7 +371,7 @@ describe("generated runtime readiness", () => {
       blocker = new Database(join(childDatabaseDirectory, "app.sqlite"), { create: true, strict: true });
       blocker.exec("BEGIN EXCLUSIVE");
     }
-    const childEnvironment = { ...Bun.env, PORT: String(port), SQLITE_PATH: join(childDatabaseDirectory, "app.sqlite"), JADPO_DEBUG_TARGET_STACKS: "0" };
+    const childEnvironment = { ...Bun.env, PORT: String(port), JADPO_DEPLOYMENT_PORT: String(deploymentPort), SQLITE_PATH: join(childDatabaseDirectory, "app.sqlite"), JADPO_DEBUG_TARGET_STACKS: "0" };
     delete childEnvironment.DATABASE_URL;
     const child = Bun.spawn([process.execPath, "--no-install", generatedApplication], {
       env: childEnvironment,
@@ -379,7 +386,7 @@ describe("generated runtime readiness", () => {
       while (performance.now() < deadline) {
         try {
           live = await fetch(`http://127.0.0.1:${port}/health/live`);
-          unavailable = await fetch(`http://127.0.0.1:${port}/health/ready`);
+          unavailable = await fetch(`http://127.0.0.1:${deploymentPort}/health/ready`);
           if (live.status === 200 && unavailable.status === 503) break;
         } catch {}
         await Bun.sleep(25);
@@ -397,7 +404,7 @@ describe("generated runtime readiness", () => {
       let recovered: Response | undefined;
       const recoveryDeadline = performance.now() + 8000;
       while (performance.now() < recoveryDeadline) {
-        recovered = await fetch(`http://127.0.0.1:${port}/health/ready`);
+        recovered = await fetch(`http://127.0.0.1:${deploymentPort}/health/ready`);
         if (recovered.status === 200) break;
         await Bun.sleep(25);
       }
@@ -421,6 +428,7 @@ describe("generated runtime readiness", () => {
     const portReservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
     const port = portReservation.port;
     portReservation.stop(true);
+    const deploymentPort = reserveDeploymentPort(port);
 
     const authDirectory = join(root, "first-party-auth-process");
     const databasePath = join(authDirectory, "app.sqlite");
@@ -431,7 +439,7 @@ describe("generated runtime readiness", () => {
       AUTH_PREVIOUS_SIGNING_KEY: Buffer.alloc(32, 8).toString("base64url"),
       BROWSER_ORIGIN: "https://example.test",
       JADPO_DEBUG_TARGET_STACKS: "0",
-      PORT: String(port),
+      PORT: String(port), JADPO_DEPLOYMENT_PORT: String(deploymentPort),
       SQLITE_PATH: databasePath,
     };
     delete childEnvironment.DATABASE_URL;
@@ -448,7 +456,7 @@ describe("generated runtime readiness", () => {
       while (performance.now() < startupDeadline) {
         try {
           live = await fetch(`http://127.0.0.1:${port}/health/live`);
-          unavailable = await fetch(`http://127.0.0.1:${port}/health/ready`);
+          unavailable = await fetch(`http://127.0.0.1:${deploymentPort}/health/ready`);
           if (live.status === 200 && unavailable.status === 503) break;
         } catch {}
         await Bun.sleep(25);
@@ -467,7 +475,7 @@ describe("generated runtime readiness", () => {
       let recoveredBatch: Response[] = [];
       while (performance.now() < recoveryDeadline) {
         const batch = await Promise.all(Array.from({ length: 32 }, () => fetch(
-          `http://127.0.0.1:${port}/health/ready`,
+          `http://127.0.0.1:${deploymentPort}/health/ready`,
           { signal: AbortSignal.timeout(8000) },
         )));
         if (batch.every(response => response.status === 200)) {
@@ -517,15 +525,16 @@ describe("generated runtime readiness", () => {
       const portReservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
       const port = portReservation.port;
       portReservation.stop(true);
+      const deploymentPort = reserveDeploymentPort(port);
       const signingKey = Buffer.alloc(32, 7).toString("base64url");
       const previousSigningKey = Buffer.alloc(32, 8).toString("base64url");
       const child = Bun.spawn([process.execPath, "--no-install", authReadinessHarness, generatedAuthApplication], {
         env: { ...Bun.env, DATABASE_URL: databaseUrl, AUTH_SIGNING_KEY: signingKey,
           AUTH_PREVIOUS_SIGNING_KEY: previousSigningKey, BROWSER_ORIGIN: "https://example.test",
-          PORT: String(port), SQLITE_PATH: join(root, "postgres-auth-unused.sqlite"), JADPO_DEBUG_TARGET_STACKS: "0" },
+          PORT: String(port), JADPO_DEPLOYMENT_PORT: String(deploymentPort), SQLITE_PATH: join(root, "postgres-auth-unused.sqlite"), JADPO_DEBUG_TARGET_STACKS: "0" },
         stdout: "pipe", stderr: "pipe",
       });
-      const request = (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${port}${path}`,
+      const request = (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${path === "/health/ready" ? deploymentPort : port}${path}`,
         { ...init, signal: AbortSignal.timeout(8000) });
       let renamed = false, credential = "";
       try {
@@ -609,15 +618,16 @@ describe("generated runtime readiness", () => {
       const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
       const port = reservation.port;
       reservation.stop(true);
+      const deploymentPort = reserveDeploymentPort(port);
       const signingKey = Buffer.alloc(32, 17).toString("base64url");
       const previousSigningKey = Buffer.alloc(32, 18).toString("base64url");
       const child = Bun.spawn([process.execPath, "--no-install", authReadinessHarness, generatedAuthApplication], {
         env: { ...Bun.env, DATABASE_URL: databaseUrl, AUTH_SIGNING_KEY: signingKey,
           AUTH_PREVIOUS_SIGNING_KEY: previousSigningKey, BROWSER_ORIGIN: "https://example.test",
-          PORT: String(port), SQLITE_PATH: join(root, "postgres-recovery-unused.sqlite"), JADPO_DEBUG_TARGET_STACKS: "0" },
+          PORT: String(port), JADPO_DEPLOYMENT_PORT: String(deploymentPort), SQLITE_PATH: join(root, "postgres-recovery-unused.sqlite"), JADPO_DEBUG_TARGET_STACKS: "0" },
         stdout: "pipe", stderr: "pipe",
       });
-      const request = (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${port}${path}`,
+      const request = (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${path === "/health/ready" ? deploymentPort : port}${path}`,
         { ...init, signal: AbortSignal.timeout(8000) });
       let connectionsDisabled = false, credential = "";
       const assertSafe = (body: string) => {
@@ -716,10 +726,11 @@ describe("generated runtime readiness", () => {
       const portReservation = Bun.serve({ port: 0, fetch: () => new Response() });
       const port = portReservation.port;
       portReservation.stop(true);
+      const deploymentPort = reserveDeploymentPort(port);
       const childEnvironment = {
         ...Bun.env,
         DATABASE_URL: Bun.env.JADPO_READINESS_TEST_DATABASE_URL!,
-        PORT: String(port),
+        PORT: String(port), JADPO_DEPLOYMENT_PORT: String(deploymentPort),
         SQLITE_PATH: join(root, "postgres-unused.sqlite"),
         JADPO_DEBUG_TARGET_STACKS: "0",
       };
@@ -733,7 +744,7 @@ describe("generated runtime readiness", () => {
         let ready: Response | undefined;
         while (performance.now() < deadline) {
           try {
-            ready = await fetch(`http://127.0.0.1:${port}/health/ready`);
+            ready = await fetch(`http://127.0.0.1:${deploymentPort}/health/ready`);
             if (ready.status === 200) break;
           } catch {}
           await Bun.sleep(25);

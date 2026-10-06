@@ -36,7 +36,7 @@ test("authored constant liveness survives unavailable persistence and ambient in
   expect(openapi.paths["/health/live"].get.responses["200"].content["application/json"].schema.$ref)
     .toBe("#/components/schemas/PublicHealth");
   expect(openapi.components.schemas.HealthStatus.enum).toEqual(["healthy"]);
-  const readiness = await app.handleRequest(new Request("http://localhost/health/ready"));
+  const readiness = await app.handleDeploymentRequest(new Request("http://localhost/health/ready"));
   expect(readiness.status).toBe(503);
   expect((await readiness.json()).checks.database).toBe("unavailable");
   for (const headers of [{}, { authorization: "Bearer definitely-invalid", cookie: "session=also-invalid" }]) {

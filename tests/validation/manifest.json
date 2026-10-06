@@ -60,8 +60,10 @@
   ],
   "runtime_suites": [
     "tests/runtime/authentication-selector.test.ts",
+    "tests/runtime/configuration-preflight.test.ts",
     "tests/runtime/delivery-completion-representation.test.ts",
     "tests/runtime/delivery-hook-components.test.ts",
+    "tests/runtime/deployment-readiness.test.ts",
     "tests/runtime/entity-dossier.test.ts",
     "tests/runtime/entity-lifecycle.test.ts",
     "tests/runtime/field-contracts.test.ts",
@@ -80,6 +82,7 @@
     "tests/runtime/persistence-seed.test.ts",
     "tests/runtime/policy-runtime.test.ts",
     "tests/runtime/readiness-recovery.test.ts",
+    "tests/runtime/relationship-conflicts.test.ts",
     "tests/runtime/route-inputs.test.ts",
     "tests/runtime/service-adapter.test.ts",
     "tests/runtime/service-authentication.test.ts",
@@ -120,6 +123,9 @@
     "jwt-authentication",
     "readiness",
     "entity-dossier",
-    "lifecycle"
+    "lifecycle",
+    "relationship-conflicts",
+    "configuration-preflight",
+    "deployment-readiness"
   ]
 }

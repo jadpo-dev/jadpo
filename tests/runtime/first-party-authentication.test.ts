@@ -92,7 +92,7 @@ describe("generated first-party authentication", () => {
   test("authentication precedes input decoding and public health ignores credentials", async () => {
     const response = await app.handleRequest(request("/identity", {}, "{broken"));
     expect(response.status).toBe(401); expect((await response.json()).error.code).toBe("authentication_required");
-    expect((await app.handleRequest(request("/health", { cookie: "__Host-jadpo_session=invalid", authorization: "garbage" }))).status).toBe(200);
+    expect((await app.handleRequest(request("/health/live", { cookie: "__Host-jadpo_session=invalid", authorization: "garbage" }))).status).toBe(200);
   });
   test("duplicates, conflicting slots and invalid beside valid all reject", async () => {
     const valid = await issue();
