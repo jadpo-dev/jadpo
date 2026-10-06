@@ -3569,10 +3569,12 @@ export const temporal = Object.freeze({
         );
         line(&mut output, "let persistenceStartupFaultReported = false;");
         line(&mut output, "let persistenceInitializationFatal = false;");
+        output.push_str(include_str!("runtime/initialization_control.ts"));
         line(
             &mut output,
-            "async function initializePersistenceOnce(publish = true): Promise<boolean> {",
+            "async function initializePersistenceOnce(publish = true, setCancel?: (cancel: () => void) => void): Promise<boolean> {",
         );
+        line(&mut output, "const initialization = createInitializationControl(setCancel);");
         line(&mut output, "try {");
         line(
             &mut output,
@@ -3587,7 +3589,7 @@ export const temporal = Object.freeze({
             "  if (sqlite !== null) persistenceSync(\"database.foreign_keys\", () => sqlite!.exec(\"PRAGMA foreign_keys = ON\"));",
         );
         if self.has_derived_representations() {
-            line(&mut output, "  if (postgres !== null) await persistenceAsync(\"schema.change_log\", () => postgres!`CREATE TABLE IF NOT EXISTS \"__jadpo_changes\" (\"change_id\" TEXT PRIMARY KEY, \"entity\" TEXT NOT NULL, \"entity_id\" TEXT NOT NULL, \"revision\" BIGINT NOT NULL, \"operation\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"created_at\" TIMESTAMPTZ NOT NULL, UNIQUE (\"entity\", \"entity_id\", \"revision\"))`);");
+            line(&mut output, "  if (postgres !== null) await persistenceAsync(\"schema.change_log\", () => initialization.execute(postgres!`CREATE TABLE IF NOT EXISTS \"__jadpo_changes\" (\"change_id\" TEXT PRIMARY KEY, \"entity\" TEXT NOT NULL, \"entity_id\" TEXT NOT NULL, \"revision\" BIGINT NOT NULL, \"operation\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"created_at\" TIMESTAMPTZ NOT NULL, UNIQUE (\"entity\", \"entity_id\", \"revision\"))`));");
             line(&mut output, "  else persistenceSync(\"schema.change_log\", () => sqlite!.exec('CREATE TABLE IF NOT EXISTS \"__jadpo_changes\" (\"change_id\" TEXT PRIMARY KEY, \"entity\" TEXT NOT NULL, \"entity_id\" TEXT NOT NULL, \"revision\" INTEGER NOT NULL, \"operation\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"created_at\" TEXT NOT NULL, UNIQUE (\"entity\", \"entity_id\", \"revision\"))'));");
         }
         for (name, entity) in self.schema_entities() {
@@ -3597,7 +3599,7 @@ export const temporal = Object.freeze({
             line(
                 &mut output,
                 &format!(
-                    "  if (postgres !== null) await persistenceAsync(\"schema.{name}\", () => postgres!`CREATE TABLE IF NOT EXISTS {table} ({postgres_columns})`);"
+                    "  if (postgres !== null) await persistenceAsync(\"schema.{name}\", () => initialization.execute(postgres!`CREATE TABLE IF NOT EXISTS {table} ({postgres_columns})`));"
                 ),
             );
             line(
@@ -3613,7 +3615,7 @@ export const temporal = Object.freeze({
                 line(
                     &mut output,
                     &format!(
-                        "  if (postgres !== null) await persistenceAsync(\"schema.{name}.index\", () => postgres!`{statement}`);"
+                        "  if (postgres !== null) await persistenceAsync(\"schema.{name}.index\", () => initialization.execute(postgres!`{statement}`));"
                     ),
                 );
                 line(
@@ -3626,11 +3628,12 @@ export const temporal = Object.freeze({
             }
         }
         if self.first_party_supported() {
-            line(&mut output, "  await initializeAuthenticationStorage();");
+            line(&mut output, "  await initializeAuthenticationStorage(initialization);");
         }
         line(&mut output, "  if (publish) { persistenceReady = true; persistenceProbeNeeded = false; persistenceDependencyUnavailableReported = false; persistenceStartupFaultReported = false; persistenceInitializationFatal = false; } return true;");
         line(&mut output, "} catch (error) {");
         line(&mut output, "  persistenceReady = false;");
+        line(&mut output, "  if (initialization.cancelled && (error === initialization.reason || (error instanceof PersistenceFault && error.cause === initialization.reason) || (!(error instanceof PersistenceFault && error.kind === \"unknown\") && persistenceErrorCodes(error).includes(\"57014\")))) return false;");
         line(&mut output, "  const initializationContended = persistenceErrorCodes(error).some(code => code === \"SQLITE_BUSY\" || code.startsWith(\"SQLITE_BUSY_\") || code === \"SQLITE_LOCKED\" || code.startsWith(\"SQLITE_LOCKED_\"));");
         line(&mut output, "  if (isPersistenceAvailabilityFailure(error) || initializationContended) { if (!persistenceDependencyUnavailableReported) { reportPersistenceDependencyUnavailable(error); persistenceDependencyUnavailableReported = true; } }");
         line(&mut output, "  else { persistenceInitializationFatal = true; if (!persistenceStartupFaultReported) { reportPersistenceStartupFault(error); persistenceStartupFaultReported = true; } }");
@@ -6194,7 +6197,7 @@ export const temporal = Object.freeze({
         line(&mut output, "}");
         line(&mut output, "const readinessGate = createReadinessGate({");
         line(&mut output, "  ready: () => persistenceReady, fatal: () => persistenceInitializationFatal, needsProbe: () => persistenceProbeNeeded, invalidation: () => persistenceInvalidationGeneration,");
-        line(&mut output, "  check: async (recovering, setCancel) => recovering ? initializePersistenceOnce(false) : (await probePersistence(setCancel), true),");
+        line(&mut output, "  check: async (recovering, setCancel) => recovering ? initializePersistenceOnce(false, setCancel) : (await probePersistence(setCancel), true),");
         line(&mut output, "  prepare: (recovering) => recovering ? createPersistenceClient(postgres, sqlite) : null,");
         line(&mut output, "  publish: (candidate) => { if (candidate !== null) activePersistenceClient = candidate; persistenceReady = true; persistenceProbeNeeded = false; persistenceDependencyUnavailableReported = false; persistenceStartupFaultReported = false; },");
         line(
