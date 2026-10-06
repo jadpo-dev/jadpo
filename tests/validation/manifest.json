@@ -112,7 +112,8 @@
     "tests/runtime/validation-config-time.test.ts",
     "tests/runtime/validation-fixtures-migrations.test.ts",
     "tests/runtime/validation-persistence.test.ts",
-    "tests/runtime/validation-unicode-length.test.ts"
+    "tests/runtime/validation-unicode-length.test.ts",
+    "tests/runtime/recovery-native-phase.test.ts"
   ],
   "postgres_suites": {
     "tests/runtime/persistence-postgres.test.ts": "persistence",
@@ -155,6 +156,7 @@
     "temporal-day-page",
     "finite-witness",
     "temporal-stored-corruption",
-    "temporal-page-containment"
+    "temporal-page-containment",
+    "recovery-native-phase"
   ]
 }

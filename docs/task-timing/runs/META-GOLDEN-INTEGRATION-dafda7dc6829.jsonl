@@ -1,0 +1,12 @@
+{"schema_version": 1, "run_id": "META-GOLDEN-INTEGRATION-dafda7dc6829", "task_id": "META-GOLDEN-INTEGRATION", "actor": "root-hostile-recovery-fusion", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T22:11:56.721324+00:00", "phase": "planning"}
+{"at": "2026-10-06T22:12:29.836336+00:00", "phase": "verification", "note": "Approved505 exact two-test patch and403 dedicated native recovery leaves selected; required override sanitization added; run fresh104 gate."}
+{"at": "2026-10-06T22:17:18.422495+00:00", "phase": "paused", "note": "Fresh104 gate continues; root switches to independent reserved-owner primitive review."}
+{"at": "2026-10-06T22:20:14.385573+00:00", "phase": "verification", "note": "Scoped owner primitive independent replay6/255 approved; resume fresh104 integration record."}
+{"at": "2026-10-06T22:35:00.135617+00:00", "phase": "paused", "note": "Unchanged688-source full104 rerun continues; root independently reviews sidecar privacy experiment and retained strict representation blockers."}
+{"at": "2026-10-06T22:44:05.033244+00:00", "phase": "verification", "note": null}
+{"at": "2026-10-06T22:49:24.839296+00:00", "phase": "paused", "note": "Fresh104 gate continues; independent RM207 deadline candidate review."}
+{"at": "2026-10-06T22:53:52.669403+00:00", "phase": "verification", "note": null}
+{"at": "2026-10-06T22:57:22.890359+00:00", "phase": "paused", "note": "Fresh104 gate continues; root independent guarded-epoch54 native review."}
+{"at": "2026-10-06T23:00:27.036168+00:00", "phase": "verification", "note": null}
+{"at": "2026-10-06T23:08:53.520688+00:00", "phase": "implementation", "note": "Fresh104/104 and88supportingHTTP passed; record RM505 full finite acceptance closure/current owning docs."}
+{"at": "2026-10-06T23:09:58.879941+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403505-hostile-recovery-reviewed-fusion/report.json"}

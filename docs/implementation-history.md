@@ -35,6 +35,33 @@ or independent assurance gates are complete.
 | WASM-EXP1 and bounded follow-ups | Compilation-route, value/row transport and local host experiments; no default-target promotion | [Experiment results](wasm-experiment-results.md), [guest scans](wasm-guest-scans-results.md) |
 | Native/shared Rust and capability monitors | Bounded conformance, independent authority and single-pass monitor prototypes, with explicit trust/performance limits | [Shared Rust](shared-rust-conformance-results.md), [capability host](capability-host-results.md), [monitor](capability-monitor-results.md) |
 
+## 2026-10-07 — RM-505 cross-feature hostile conformance
+
+**Completed task:** RM-505
+
+All six named hostile obligations are complete within the accepted finite scope.
+The [acceptance audit](../tests/validation/evidence/rm505-cross-feature-hostile-plan/parent-acceptance-audit.json)
+reconciles fresh authority revocation, foreign/service concealment, lifecycle and
+post-admission authority, duplicate/crashed worker fencing, unknown effects with
+no replay, and secret boundaries. The [different-author native review](../tests/validation/evidence/rm505-cross-feature-hostile-plan/independent-native-review/review.json)
+qualifies both adapters, actual PostgreSQL deadlock worker cleanup, immutable
+payload/current-fence behavior and eight causal omission controls. Original44
+obligations and the recorded SERVICE successor remain unchanged.
+
+The [fresh104/104 source gate](../tests/validation/evidence/rm403505-hostile-recovery-reviewed-fusion/report.json)
+selects the exact reviewed two-test delta and separately reviewed native recovery
+fixtures. All88 supporting HTTP entries pass;688 maintained pins,74 actual
+compiler inputs and192 safe raw members are preserved. Earlier unqualified
+startup-handoff and native53100 disk failures remain archived, with unchanged
+source and expectations before the successful fresh rerun.
+
+This is finite conformance, not universal egress/side-channel safety, spontaneous
+SSI, provider exactly-once, automatic native preemption or production activation.
+Formal golden/release and protected binding gates remain separate. Original1–4h
+estimate is retained; integration timer `META-GOLDEN-INTEGRATION-dafda7dc6829`
+links separately measured author/reviewer partial runs without recasting them as
+whole-task timing completions.
+
 ## 2026-10-06 — RM-402 bounded retry implementation and native conformance
 
 **Completed task:** RM-402

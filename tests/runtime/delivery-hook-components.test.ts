@@ -1948,11 +1948,20 @@ describe(`committed admission and adapter-origin outcome components (${sql ? "po
   });
   test("owner disable and source deletion after committed admission do not create an extra completion authority cut", async () => {
     const f = await enrolled(), grant = await prepare(f.proof, f.intent.intentId);
+    const original = await persistence.read_delivery_intent(f.intent.intentId);
     await rows('UPDATE "user" SET status=$1 WHERE id=$2', ["disabled", owner]); await rows('UPDATE todo SET deleted_at=$1 WHERE id=$2', [dbInstant(Date.now()), f.value.id]);
-    try { await provider("accepted", async calls => { const receipt = await app.dispatchDeliveryInvocation(grant); expect(await app.completeDeliveryInvocation(receipt)).toBe(true); expect(calls).toHaveLength(1); }); }
+    expect((await rows('SELECT status FROM "user" WHERE id=$1',[owner]))[0].status).toBe("disabled");
+    expect((await rows('SELECT deleted_at FROM todo WHERE id=$1',[f.value.id]))[0].deleted_at).not.toBeNull();
+    let observedPayload: unknown;
+    try { await provider("accepted", async calls => { const receipt = await app.dispatchDeliveryInvocation(grant); observedPayload = calls[0].body; expect(calls[0].body).toEqual(original.payload); expect(await app.completeDeliveryInvocation(receipt)).toBe(true); expect(calls).toHaveLength(1); }); }
     finally { await rows('UPDATE "user" SET status=$1 WHERE id=$2', ["active", owner]); }
+    const completed = await persistence.read_delivery_intent(f.intent.intentId);
+    expect(completed).toMatchObject({ intentId: original.intentId, sourceRevision: original.sourceRevision, orderingKey: original.orderingKey, payloadVersion: original.payloadVersion, payload: original.payload, state: "succeeded" });
+    const receipts = await rows('SELECT * FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [f.intent.intentId]);
+    expect(receipts).toHaveLength(1);
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
     expect(new Date((await stamps(f.value.id))[0].updated_at).toISOString()).not.toBe(instant);
+    console.log(JSON.stringify({ kind: "rm505_hostile_receipt", case: "HOSTILE-03", adapter: sql ? "postgres" : "sqlite", surface: "private_checked_native_delivery_component", phase: "post_committed_admission", providerCalls: 1, original, completed, observedPayload, receipts, source: await rows('SELECT * FROM todo WHERE id=$1',[f.value.id]), scheduleRevision: await revision(f.value.id), ownerRestoredInFinally: true }));
   });
   if (representationVariant) test("renamed generated field and actual derived change record complete atomically, including a caught change-log failure", async () => {
     const f = await enrolled(), grant = await prepare(f.proof, f.intent.intentId), before = await stamps(f.value.id);

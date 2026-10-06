@@ -1,9 +1,10 @@
 import { afterAll, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { Database } from "bun:sqlite";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { createConnection } from "node:net";
 import { pathToFileURL } from "node:url";
 import { copyGoldenFixture } from "./golden-fixture";
 
@@ -92,7 +93,7 @@ test("both service validator forms refuse all three protected user mutations bef
   await rows('INSERT INTO service (id,owner_id,name,status,created_at,disabled_at) VALUES ($1,$2,$3,$4,$5,$6)', [service, f.owner, name, "active", instant(at), null]);
   const key = await app.authenticationHost().issueServiceCredential("api_bearer", name, at + 3_600_000, at);
   const token = await app.authenticationHost().exchangeServiceCredential("api_bearer", key.credential, at);
-  const before = await snapshot([f.todo.id, f.todo.id]);
+  const before = await hostileSnapshot([f.todo.id, f.todo.id]);
   for (const credential of [key.credential, token.credential]) {
     const principal = await app.authenticationHost().authenticate(new Request("https://todo.test/todos", { headers: { authorization: `Bearer ${credential}` } }), true, Date.now());
     expect(principal).toMatchObject({ kind: "service", values: { service_id: service } });
@@ -101,9 +102,147 @@ test("both service validator forms refuse all three protected user mutations bef
       const response = await app.handleRequest(new Request(`https://todo.test${route}`, { method, headers: { authorization: `Bearer ${credential}`, "content-type": "application/json" }, ...(method === "PATCH" ? { body: JSON.stringify({ title: "forbidden service edit" }) } : {}) }));
       expect(response.status).toBe(403);
       expect(captured).toHaveLength(0);
-      expect(await snapshot([f.todo.id, f.todo.id])).toBe(before);
+      expect(await hostileSnapshot([f.todo.id, f.todo.id])).toEqual(before);
     }
   }
+  hostileReceipt({ case: "HOSTILE-02", serviceValidatorForms: ["signed direct service key", "signed exchanged service token"], protectedStatuses: [403,403,403], transactionAttempts: 0, before, after: await hostileSnapshot([f.todo.id,f.todo.id]), providerEffects: "not_observed; unchanged handlers have no provider call" });
+});
+
+// RM505: these additions invoke untouched generated handlers directly. They do
+// not claim a production main entry point or private scheduler activation.
+async function hostileSnapshot(ids: string[]) {
+  const catalog = sql
+    ? await rows("SELECT tablename AS name FROM pg_catalog.pg_tables WHERE schemaname=current_schema()")
+    : await rows("SELECT name FROM sqlite_master WHERE type='table'");
+  const names = catalog.map(row => String(row.name)).filter(name => name.startsWith("__jadpo_delivery") || name === "__jadpo_deliveries_v1" || name === "__jadpo_changes").sort();
+  const privateRows: Record<string, unknown> = {};
+  for (const name of names) privateRows[name] = await rows(`SELECT * FROM "${name}" ORDER BY 1,2`);
+  return {
+    sources: await rows('SELECT * FROM todo WHERE id IN ($1,$2) ORDER BY id', ids),
+    owners: await rows('SELECT * FROM "user" WHERE id IN (SELECT owner_id FROM todo WHERE id IN ($1,$2)) ORDER BY id', ids),
+    privateRows,
+    history: names.includes("__jadpo_changes") ? "present" : "absent_in_canonical_checked_schema",
+  };
+}
+function hostileReceipt(value: Record<string, unknown>) {
+  console.log(JSON.stringify({ kind: "rm505_hostile_receipt", adapter: sql ? "postgres" : "sqlite", surface: "direct_unchanged_generated_handler", ...value }));
+}
+
+test("RM505 foreign and missing rows conceal equally while every private delivery table remains unchanged", async () => {
+  const f = await source("RM505 concealed owner"), g = await source("RM505 foreign owner");
+  const ids = [f.todo.id, g.todo.id], missing = crypto.randomUUID(), before = await hostileSnapshot(ids);
+  const responses: unknown[] = [];
+  for (const method of ["GET", "PATCH", "DELETE"]) {
+    const bodies: any[] = [];
+    for (const id of [g.todo.id, missing]) {
+      const response = await app.handleRequest(new Request(`https://todo.test/todos/${id}`, {
+        method, headers: f.headers, ...(method === "PATCH" ? { body: JSON.stringify({ title: "unauthorized cross-owner mutation" }) } : {}),
+      }));
+      expect(response.status).toBe(404);
+      const body = await response.json();
+      expect(body.error.code).toBe("todo_not_found");
+      expect(body.error.message).toBeDefined();
+      bodies.push({ code: body.error.code, message: body.error.message });
+      expect(await hostileSnapshot(ids)).toEqual(before);
+      responses.push({ method, missing: id === missing, status: response.status, code: body.error.code });
+    }
+    expect(bodies[0]).toEqual(bodies[1]);
+  }
+  expect(before.history).toBe("absent_in_canonical_checked_schema");
+  hostileReceipt({ case: "HOSTILE-02", responses, before, after: await hostileSnapshot(ids), providerEffects: "not_observed; authored handlers contain no provider invocation" });
+});
+
+test("RM505 concurrent patch and soft-delete conserve immutable outbox and the winning schedule revision", async () => {
+  const f = await source("RM505 race baseline"), before = await hostileSnapshot([f.todo.id, f.todo.id]);
+  const due = new Date(Date.now() + 7_200_000).toISOString();
+  const [deleted, patched] = await Promise.all([
+    app.handleRequest(new Request(`https://todo.test/todos/${f.todo.id}`, { method: "DELETE", headers: f.headers })),
+    app.handleRequest(new Request(`https://todo.test/todos/${f.todo.id}`, { method: "PATCH", headers: f.headers, body: JSON.stringify({ title: "RM505 committed patch", due_at: due }) })),
+  ]);
+  expect(deleted.status).toBe(204);
+  expect([200, 404]).toContain(patched.status);
+  const after = await hostileSnapshot([f.todo.id, f.todo.id]);
+  const row = after.sources[0];
+  expect(row.deleted_at).not.toBeNull(); expect(row.owner_id).toBe(f.owner);
+  expect(row.title).toBe(patched.status === 200 ? "RM505 committed patch" : f.todo.title);
+  const revision = (await rows('SELECT schedule_revision FROM "__jadpo_delivery_schedules_v1" WHERE source_entity_id=$1', [f.todo.id]))[0];
+  expect(Number(revision.schedule_revision)).toBe(patched.status === 200 ? 2 : 1);
+  expect(await rows('SELECT * FROM "__jadpo_deliveries_v1" WHERE intent_id=$1', [f.enrolled.intentId])).toEqual(f.originalIntent);
+  for (const [name, data] of Object.entries(before.privateRows)) if (name !== "__jadpo_delivery_schedules_v1") expect(after.privateRows[name]).toEqual(data);
+  const hidden = await app.handleRequest(new Request(`https://todo.test/todos/${f.todo.id}`, { headers: f.headers }));
+  expect(hidden.status).toBe(404);
+  hostileReceipt({ case: "HOSTILE-03", statuses: [deleted.status, patched.status, hidden.status], scheduleRevision: Number(revision.schedule_revision), before, after, providerEffects: "not_observed; no worker activation in this handler test" });
+});
+
+test("RM505 native trigger canary fault conserves source and outbox with the declared safe response", async () => {
+  const f = await source("RM505 fault baseline"), before = await hostileSnapshot([f.todo.id, f.todo.id]);
+  const suffix = crypto.randomUUID().replaceAll("-", ""), fn = `rm505_secret_fault_${suffix}`;
+  const rawSecrets = [configuration.SESSION_SIGNING_KEY, configuration.MAIL_API_KEY, f.issued.credential];
+  const message = `private SQL fault ${rawSecrets.join(" ")} https://private.invalid/credential`;
+  const lines: string[] = [], previousError = console.error;
+  if (sql) {
+    await rows(`CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION USING MESSAGE='${message}'; END $$`);
+    await rows(`CREATE TRIGGER "${fn}" BEFORE UPDATE OF title ON todo FOR EACH ROW EXECUTE FUNCTION "${fn}"()`);
+  } else await rows(`CREATE TRIGGER "${fn}" BEFORE UPDATE OF title ON todo BEGIN SELECT RAISE(ABORT,'${message}'); END`);
+  let responseBody: unknown, safeEvents: any[] = [];
+  try {
+    console.error = (...args: unknown[]) => { lines.push(args.map(String).join(" ")); };
+    const response = await app.handleRequest(new Request(`https://todo.test/todos/${f.todo.id}`, { method: "PATCH", headers: f.headers, body: JSON.stringify({ title: "RM505 must roll back" }) }));
+    expect(response.status).toBe(sql ? 503 : 409);
+    const body = await response.json(); responseBody = body;
+    expect(body.error.code).toBe(sql ? "transaction_unavailable" : "todo_mutation_conflict");
+    expect(body.error.request_id).toBe(response.headers.get("x-request-id"));
+    expect(body.error.request_id).toMatch(/^req_/);
+    safeEvents = lines.map(line => JSON.parse(line));
+    const failed = safeEvents.filter(event => event.eventName === "operation.failed");
+    // This normalized constraint/rolled-back driver response has no operation.failed
+    // event. Its transaction attempt identity is deliberately distinct from req_.
+    expect(failed).toHaveLength(0);
+    expect(safeEvents.filter(event => event.eventName === "transaction.attempt")).toHaveLength(sql ? 1 : 0);
+    expect(await hostileSnapshot([f.todo.id, f.todo.id])).toEqual(before);
+    const artifacts = readdirSync(join(project, "build/audit")).filter(name => name.endsWith(".json")).map(name => readFileSync(join(project, "build/audit", name), "utf8"));
+    const observed = JSON.stringify([body, lines, artifacts]);
+    for (const secret of rawSecrets) expect(observed).not.toContain(secret);
+    for (const unsafe of ["private SQL fault", "private.invalid", "CREATE TRIGGER", "RAISE", "stack"]) expect(observed).not.toContain(unsafe);
+  } finally {
+    console.error = previousError;
+    await rows(sql ? `DROP TRIGGER "${fn}" ON todo` : `DROP TRIGGER "${fn}"`);
+    if (sql) await rows(`DROP FUNCTION "${fn}"()`);
+  }
+  const restored = await app.handleRequest(new Request(`https://todo.test/todos/${f.todo.id}`, { method: "PATCH", headers: f.headers, body: JSON.stringify({ title: "RM505 restored writer" }) }));
+  expect(restored.status).toBe(200);
+  hostileReceipt({ case: "HOSTILE-06", injection: "native trigger error after actual protected admission; no provider call", response: responseBody, safeEvents, sourceAndPrivateStateConserved: true, restoredStatus: restored.status, secretChannels: ["public envelope", "transaction attempt audit", "actual native compiler audit outputs"], failureEvent: "absent by normalized branch; request ID is envelope/header only", egressClaim: false });
+});
+
+
+test("RM505 corrupt stored principal-visible enum keeps credentials out of matching data-fault envelope and event", async () => {
+  const f = await source("RM505 stored decode baseline");
+  const rawSecrets = [configuration.SESSION_SIGNING_KEY, configuration.MAIL_API_KEY, f.issued.credential];
+  await rows('UPDATE todo SET status=$1 WHERE id=$2', [f.issued.credential, f.todo.id]);
+  const before = await hostileSnapshot([f.todo.id, f.todo.id]), lines: string[] = [], previousError = console.error;
+  let responseBody: unknown, safeEvents: any[] = [];
+  try {
+    console.error = (...args: unknown[]) => { lines.push(args.map(String).join(" ")); };
+    const response = await app.handleRequest(new Request(`https://todo.test/todos/${f.todo.id}`, { headers: f.headers }));
+    expect(response.status).toBe(500);
+    const body = await response.json(); responseBody = body;
+    expect(body.error.code).toBe("internal_fault");
+    expect(body.error.request_id).toBe(response.headers.get("x-request-id"));
+    expect(body.error.request_id).toMatch(/^req_/);
+    safeEvents = lines.map(line => JSON.parse(line));
+    const failed = safeEvents.filter(event => event.eventName === "operation.failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ classification: "RUNTIME_UNHANDLED_FAULT", requestId: body.error.request_id, attributes: {} });
+    expect(await hostileSnapshot([f.todo.id, f.todo.id])).toEqual(before);
+    for (const secret of rawSecrets) expect(JSON.stringify([body, lines])).not.toContain(secret);
+    expect(JSON.stringify([body, lines])).not.toContain("database.Todo");
+  } finally {
+    console.error = previousError;
+    await rows('UPDATE todo SET status=$1 WHERE id=$2', ["open", f.todo.id]);
+  }
+  const restored = await app.handleRequest(new Request(`https://todo.test/todos/${f.todo.id}`, { headers: f.headers }));
+  expect(restored.status).toBe(200);
+  hostileReceipt({ case: "HOSTILE-06", injection: "native stored TEXT enum corruption; actual generated read/decoder, no driver/classification substitution", response: responseBody, safeEvents, sourceAndPrivateStateConservedAfterFixtureMutation: true, restoredStatus: restored.status, secretChannels: ["public envelope", "operational event matched to request ID"], egressClaim: false });
 });
 
 async function worker(onEvent: (event: any, worker: any) => void) {
@@ -199,7 +338,24 @@ for (const revoke of [false, true]) test.skipIf(!sql)(`actual guarded HTTP Postg
     console.log(JSON.stringify({ control: revoke ? "deadlock-revocation" : "deadlock-fresh", modifiedAdmissionBit: false, emittedConditionalAdmission: true, nativeFreshCredentialLockWait: waiter, statuses: responses.map(value => value.status), attempts: workers.map(value => value.events) }));
   } finally {
     release(); await heldWork?.catch(() => {}); await mutation?.catch(() => {});
-    for (const w of workers) { w.child.stdin.end(); const exited = await Promise.race([w.child.exited, Bun.sleep(1_000).then(() => null)]); if (exited === null) { w.child.kill(); await w.child.exited; } await w.errors; await w.output; }
+    const cleanup: any[] = [];
+    for (const w of workers) {
+      w.child.stdin.end();
+      const exited = await Promise.race([w.child.exited, Bun.sleep(1_000).then(() => null)]);
+      if (exited === null) { w.child.kill(); await w.child.exited; }
+      await w.errors; await w.output;
+      let pidAbsent = false; try { process.kill(w.child.pid, 0); } catch (error: any) { pidAbsent = error.code === "ESRCH"; }
+      const portClosed = await new Promise<boolean>(resolve => {
+        const socket = createConnection({ host: "127.0.0.1", port: w.port });
+        socket.setTimeout(250);
+        socket.once("connect", () => { socket.destroy(); resolve(false); });
+        socket.once("error", (error: any) => { socket.destroy(); resolve(error.code === "ECONNREFUSED"); });
+        socket.once("timeout", () => { socket.destroy(); resolve(false); });
+      });
+      cleanup.push({ pid: w.child.pid, port: w.port, exitCode: exited, forcedKill: exited === null, pidAbsent, portClosed });
+    }
+    console.log(JSON.stringify({ kind: "rm505_native_worker_cleanup", adapter: "postgres", control: revoke ? "deadlock-revocation" : "deadlock-fresh", cleanup }));
+    for (const result of cleanup) expect(result).toMatchObject({ exitCode: 0, forcedKill: false, pidAbsent: true, portClosed: true });
     await sql!.unsafe(`DROP TRIGGER IF EXISTS "${fn}" ON todo`); await sql!.unsafe(`DROP FUNCTION IF EXISTS "${fn}"()`);
   }
 }, 15_000);
