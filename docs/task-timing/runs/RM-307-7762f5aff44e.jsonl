@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-307-7762f5aff44e", "task_id": "RM-307", "actor": "boundary-native-operator", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T07:36:22.136878+00:00", "phase": "planning"}
+{"at": "2026-10-06T07:37:10.868933+00:00", "phase": "verification", "note": "Fresh immutable operator compiler/generated runtime and grant/evidence/source/FIFO adversarial qualification."}
+{"at": "2026-10-06T07:46:07.945133+00:00", "phase": "review", "note": null}
+{"at": "2026-10-06T07:47:58.066580+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm307-independent-native-operator-review.json"}

@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-109",
+  "reviewer": "boundary_review",
+  "review_kind": "independent immutable consequential relationship normalizer review",
+  "candidate": "365223ac39b491bcc946ce76c5d76115ca146efa",
+  "parent": "35baa497d15922046719c7e05abe643c460e8b8c",
+  "capture": "/private/tmp/jadpo-relationship-normalizer-independent",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "pin_basis": "Previously verified inherited pin retained for bounded error-boundary/transaction review",
+  "timer": "RM-109-ef1818fef1e7",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "changes_required",
+  "scoped_approval": false,
+  "findings": [
+    {
+      "priority": "P2",
+      "title": "Return null when the new unknown-input normalizer cannot inspect its argument",
+      "file": "jadpo/crates/core/src/target.rs",
+      "line": 3472,
+      "lines": [
+        3472,
+        3473,
+        3474,
+        3475
+      ],
+      "description": "normalizePersistenceFailure(error: unknown) reads instanceof, kind, transaction, code, errno, message, cause and String(value) without an inspection guard. Unreadable inputs throw instead of returning null. Both independently generated adapters reproduce eight distinct exceptions: code accessor, cause accessor, message accessor, nested cause accessor, get proxy, prototype proxy, revoked proxy and failing code conversion.",
+      "impact": "The native helper is a new exported API accepting unknown; callers cannot use its documented fail-closed normalization reliably. The new HTTP catch invokes it directly, so an inspection exception can interrupt fallback error handling (source inference, not an independently injected HTTP unreadable-driver result). No malicious native-host privilege or new security boundary is inferred.",
+      "required_correction": "Keep bounded/cyclic/unknown-COMMIT checks and exact native FK signatures, but contain all inspection/classification including initial instanceof in a try/catch that returns null when inspection fails. Add executable unreadable-input negatives. Review the fixed immutable correction; current365223a is not approved.",
+      "evidence": [
+        "sqlite-strengthened.log",
+        "postgres-strengthened-corrected.log",
+        "strengthened-runtime-corrected.test.ts"
+      ]
+    }
+  ],
+  "independent_results": {
+    "fresh_locked_cli": {
+      "exit": 0,
+      "build_seconds": 16.22
+    },
+    "fresh_canonical_cli": {
+      "exit": 0,
+      "artifact_count": 32
+    },
+    "unaltered_sqlite": {
+      "pass": 3,
+      "fail": 0,
+      "assertions": 29
+    },
+    "unaltered_postgres": {
+      "pass": 3,
+      "fail": 0,
+      "assertions": 27
+    },
+    "strengthened_sqlite": {
+      "pass": 4,
+      "fail": 1,
+      "assertions": 51
+    },
+    "strengthened_postgres_corrected": {
+      "pass": 4,
+      "fail": 1,
+      "assertions": 49
+    },
+    "unreadable_input_probe": {
+      "cases": 8,
+      "all_eight_throw_on_both_adapters": true
+    },
+    "scope": "Actual generated schema and untouched emitted application/persistence modules over the accepted lifecycle source, with the author single generic declared create-conflict pressure transform. Reviewer modifies only disposable test assertions/probes, not generated modules or product source."
+  },
+  "evidenced_behavior": [
+    "Real orphan generated create fails before a source row persists: SQLite native errno787; PostgreSQL actual Bun leaf code ERR_POSTGRES_SERVER_ERROR and errno23503. Shared exported normalizer returns exact standard safe relationship_conflict409.",
+    "Actual HTTP generic create-conflict route yields relationship_conflict409 before generic TodoConflict. Independently checked exact error-envelope shape, req_UUID request identity matching x-request-id header, cache-control no-store and absence of backend detail/constraint/stack/cause strings.",
+    "Actual native restricted owner DELETE refuses with retained disabled owner and retained child byte-exact. SQLite RESTRICT reports trigger errno1811 and exact FOREIGN KEY constraint failed signature. No authored hardDeleteUser action, route or widened authority is added.",
+    "Actual unrelated custom-trigger1811 on SQLite and23514 on PostgreSQL, actual unique and CHECK failures do not normalize as relationship conflicts. Existing HTTP generic todo_conflict remains for unrelated custom trigger.",
+    "Actual FK exception wrapped with unknown COMMIT or OutcomeUnknownFault is not normalized. Additional cyclic and deeper-than-eight chains, wrapped unknown and primitive/unrecognized inputs all return null.",
+    "Only product delta is generated persistence helper, shared import/HTTP catch and the guard on both named and generic declared constraint translation. Source review confirms both named and generic guards skip recognized relationships and preserve unrelated declared mapping; named mapping was inspected, not separately exercised in a new named fixture.",
+    "Canonical CLI derivation succeeds with unchanged canonical relationships and authority; generated SQL/reflection/module artifacts are separately hashed. This is provenance and build evidence, not all golden runtime acceptance."
+  ],
+  "preserved_negatives": {
+    "author": "All12 immutable source/evidence hashes match author manifest; copied original SQLite nested-cause assertion and PostgreSQL runner-root setup reds remain available as author-* logs.",
+    "reviewer": "First strengthened PostgreSQL probe wrongly asserted leaf.code23503; actual Bun code is ERR_POSTGRES_SERVER_ERROR while errno is23503. First PG run3pass/2fail26assertions is retained. Corrected real errno assertion allows HTTP checks to execute; only the product unreadable-input finding remains. SQLite4pass/1fail51 and corrected PG4pass/1fail49 are deliberately retained red and never relabelled passing."
+  },
+  "limits": [
+    "Native administrative DELETE and current accepted fixture route are observed. No golden authored hard-delete authority is introduced or claimed.",
+    "Normalizer does not resolve uncertain COMMIT, change transaction replay admission, or prove universal native error inspection safety beyond reviewed APIs.",
+    "Full author core103 and transaction84-suite counts are preserved author evidence only; focused independent current-boundary checks do not close REL cases across the forthcoming harness or the entire44-case golden catalogue.",
+    "No product code fixes, deployment, provider calls, broad verification campaign or future mutable commit approvals occurred."
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-relationship-normalizer-independent",
+  "restored_author_test_sha256": "fcae83441a6e56aaeae098138da547aadaad8db4fd4ed8e0f0919b0f766fcec6",
+  "created_at": "2026-10-06T07:54:26.037993+00:00"
+}

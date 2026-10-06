@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-307",
+  "review": "immutable native schema admission, closed stage rollback retry and six generated scheduling/order traces",
+  "reviewedCommit": "e428ee765badec89faa3b1ffae13ab8d09f4d631",
+  "parentCommit": "6d0dce7541568cd2dd9cb19edfa38a225b016dd9",
+  "actor": "boundary-ordering-scheduling",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "originalEstimateHours": [
+    2,
+    8
+  ],
+  "timer": "RM-307-a4bc550dbeb6",
+  "outcome": "approved_scoped_candidate",
+  "taskComplete": false,
+  "findings": [],
+  "checks": [
+    {
+      "check": "fresh locked CLI build",
+      "passed": true,
+      "seconds": 16.42,
+      "log": "fresh-build.log"
+    },
+    {
+      "check": "actual canonical CLI build",
+      "passed": true,
+      "artifacts": 32,
+      "log": "canonical-cli-build.log"
+    },
+    {
+      "check": "unaltered authored six traces",
+      "backend": "SQLite",
+      "passed": 6,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 113,
+      "log": "sqlite-focused-author.log"
+    },
+    {
+      "check": "unaltered authored six traces plus actual guard/forgery/release",
+      "backend": "PostgreSQL",
+      "passed": 7,
+      "failed": 0,
+      "assertions": 131,
+      "log": "postgres-focused-author.log"
+    },
+    {
+      "check": "independent absent native schema concurrent bootstrap/enrollment and forged evidence plus provider strengthened six IDs",
+      "backend": "SQLite",
+      "passed": 8,
+      "skipped": 2,
+      "failed": 0,
+      "assertions": 181,
+      "log": "sqlite-adversarial.log"
+    },
+    {
+      "check": "independent concurrent absent native schema/forgery/provider six IDs plus real branded callback retry modes",
+      "backend": "PostgreSQL",
+      "passed": 10,
+      "failed": 0,
+      "assertions": 251,
+      "log": "postgres-adversarial.log"
+    },
+    {
+      "check": "stronger causal callback rollback after proven actual claim write; success/revoked/reinit/deadline four modes",
+      "backend": "PostgreSQL",
+      "passed": 1,
+      "failed": 0,
+      "assertions": 52,
+      "log": "postgres-retry-mode-evidence.log"
+    },
+    {
+      "check": "actual stage COMMIT applied then acknowledgement lost: no retry or provider",
+      "backend": "SQLite",
+      "passed": 1,
+      "failed": 0,
+      "assertions": 9,
+      "log": "sqlite-stage-commit-loss.log"
+    },
+    {
+      "check": "focused current ordinary transaction limits/constraint/deadline/commit uncertainty regression",
+      "backend": "SQLite",
+      "passed": 5,
+      "failed": 0,
+      "assertions": 24,
+      "log": "sqlite-transaction-focused.log"
+    },
+    {
+      "check": "focused current ordinary transaction limits/constraint/deadline and real post-COMMIT transport uncertainty regression",
+      "backend": "PostgreSQL",
+      "passed": 5,
+      "failed": 0,
+      "assertions": 42,
+      "log": "postgres-transaction-focused.log"
+    }
+  ],
+  "evidenceRoot": "tests/validation/evidence/golden-loop-ordering-scheduling-independent",
+  "sourceInventoryEvidence": "immutable-author-source-and-evidence-verification.json",
+  "canonicalArtifactHashes": "canonical-cli-artifact-hashes.json",
+  "executedFrozenIds": [
+    "ASYNC-DUPLICATE-ENQUEUE",
+    "ASYNC-PER-KEY-ORDER",
+    "ASYNC-KEY-RELEASE-AFTER-KNOWN-TERMINAL",
+    "ASYNC-COALESCE-DOWNTIME",
+    "ASYNC-COALESCE-OVERLAP",
+    "ASYNC-UTC-INTERVAL"
+  ],
+  "frozenIdsTotal": 18,
+  "idBindingEvidence": "executed-six-id-bindings.json",
+  "conclusions": [
+    {
+      "area": "native DDL transaction guard",
+      "references": [
+        "jadpo/crates/core/src/runtime/delivery_outbox.ts:41",
+        "jadpo/crates/core/src/runtime/delivery_outbox.ts:53"
+      ],
+      "observed": "Existing native CREATE table skips DDL when real metadata says present. First-create/migration uses immediate pg_try_advisory_xact_lock in an owning transaction, not a session or blocking lock. Inspected native DDL entry paths require an active owning transaction. Real held guard refuses boundedly, rolls back, leaves source/enrollment/page unchanged; guard reacquires after successful COMMIT while that worker remains alive. Independent concurrently booted processes start with intent/key relations observed absent and converge on one identical durable intent/payload with zero provider effects on both adapters."
+    },
+    {
+      "area": "private cause/proven rollback",
+      "references": [
+        "jadpo/crates/core/src/target.rs:3323",
+        "jadpo/crates/core/src/target.rs:3902"
+      ],
+      "observed": "Only actual guard refusal is branded in lexical WeakSet, inspected through bounded cycle-safe cause traversal; public code, constructed PersistenceFault and caller-provided transaction evidence cannot establish the new cause. Proven PostgreSQL callback rollback is required before native cause qualifies. Structured/code/evidence forgeries and unknown callback stop at one attempt. Existing generic retry budget stays three total attempts/one second and no unknown COMMIT replay."
+    },
+    {
+      "area": "closed stage fresh authority/deadline",
+      "references": [
+        "jadpo/crates/core/src/target/delivery_scheduler.rs:42",
+        "jadpo/crates/core/src/target/delivery_scheduler.rs:76"
+      ],
+      "observed": "Only compiler-owned stage callback is explicitly replayable: ticks/claim/selection/page/authority remain inside the owning transaction before any provider capability. Shared activation execution deadline is retained. Independent native PostgreSQL trigger/sequence proves actual claim write before first key-table refusal; after acknowledged rollback, external observer sees no activation/enrollment/provider. Same operation attempt2 succeeds after release; revoked current key produces an empty zero-effect finished stage; configuration reinit withdraws old proof; expiry while paused in real retry backoff records no second attempt. Provider checks observe committed page, original stored version/payload and durable possible-dispatch checkpoint."
+    },
+    {
+      "area": "unknown owning COMMIT",
+      "observed": "Independent actual SQLite stage COMMIT is applied then its acknowledgement throws a public-code-shaped error. Exactly one BEGIN/COMMIT and one unknown commit attempt are observed, persisted original intent/page remain, and no HTTP provider dispatch occurs. No retry is granted by a fake schema-busy code. Current generic native SQLite and actual PostgreSQL post-COMMIT transport/acknowledgement-loss regressions likewise retain uncertainty/no replay."
+    },
+    {
+      "area": "ordinary retry admission unchanged",
+      "observed": "Candidate diff changes native schema refusal recognition and exact closed staging options, not compiler route/authenticated action replay admission. Focused current ordinary transaction budgets/constraint refusals/shared deadlines/actual commit uncertainty pass. No broad authenticated mutation replay, new callback or source-level retry grant is added."
+    },
+    {
+      "area": "six exact frozen traces",
+      "observed": "Duplicate fresh-process enrollment preserves one original ID/version/payload. Adapter-proven unknown earlier K blocks newer K while independent J completes; success/cancellation/listed no-effect terminal failure release K without rewriting history. Missed ticks coalesce latest UTC occurrence; in-flight overlap retains one latest follow-up and unchanged active page/fence. Real Europe/London child offsets cross DST while scheduled UTC occurrences remain exactly900000ms apart and operation snapshot remains captured invocation time."
+    }
+  ],
+  "retainedFailuresAndLimits": [
+    {
+      "classification": "Author original red preserved and hash-verified",
+      "details": "Initial PostgreSQL pg_type catalogue collision, initial unbranded public-code cause discarded by conservative taxonomy, fixture BIGINT/422 outcome corrections retained. Original SQLite concurrent bootstrap readiness timeout had no captured stderr and cause remains unestablished."
+    },
+    {
+      "classification": "Reviewer first SQLite expectation corrected with original retained",
+      "logs": [
+        "sqlite-adversarial-first-reviewer-expectation.log"
+      ],
+      "details": "Unknown-kind exception deliberately thrown inside callback can carry actual proven SQLite database rollback/no_commit evidence. Probe incorrectly required unknown database outcome; invariant is one attempt and no provider. Genuine stage COMMIT uncertainty is separately observed and remains unknown."
+    },
+    {
+      "classification": "Reviewer first revoked result expectation corrected with original retained",
+      "logs": [
+        "postgres-adversarial-first-reviewer-expectation.log"
+      ],
+      "details": "Revoked selection returns finished empty stage selected0/attempted0, not idle. Current protocol safely makes no provider call/enrollment; retained original stricter status assertion was a reviewer mistake."
+    },
+    {
+      "classification": "Bootstrap/startup boundary limitation",
+      "details": "One independent simultaneous two-process bootstrap with captured stderr succeeds on each adapter. This does not explain earlier SQLite timeout or establish universal cold-start/preemption/pool-acquisition/BEGIN/COMMIT hard bounds. Author six-ID duplicate fixture sequences bootstrap only and overlaps actual enqueue. Existing supported cooperative/native SQLite/platform limits and separate RM402/RM403 gates remain."
+    },
+    {
+      "classification": "Evidence scope",
+      "details": "Independent runtime modules/schemas are untouched actual current derive_target output over canonical checked source; reviewer only strengthens test fixture/timer/native fault seams. Additional sequence/trigger runs in disposable PostgreSQL and proves actual rollback causality, not manufactured driver success/failure. No real production provider latency or credentials."
+    }
+  ],
+  "closureLimits": [
+    "Approval is exact immutable consequential schema/staging/six-ID candidate only; whole RM307/RM306/golden/18-case closure is not granted.",
+    "Eleven prior recovery IDs retain their earlier fixed-commit reviews; this review newly executes only the six specified IDs on current source, not a relabeling of those earlier eleven as independently rerun here. Operator implementation and mutable future code are excluded.",
+    "Full author core103/runtime84/transaction84 evidence is hash-verified author evidence; independent checks are the explicit focused rows above. No broad campaign repeated merely to add counts.",
+    "No deployment, publication, production mail, product/docs/shared-plan edits; all report/raw/timer writes only parent integration path."
+  ],
+  "writeScope": "/private/tmp/jadpo-parallel-integration tests/validation report/evidence and own timer only; immutable capture runtime restored after reviewer instrumentation.",
+  "timing": {
+    "outcome": "partial",
+    "activeMinutes": 14.51,
+    "timerClosed": true,
+    "phaseRecordingLimit": "Recorder retained initial planning phase during the earlier analytical/runtime review; final packaging transitioned to review. Verification subphase was not separately recorded, and no time is retroactively inferred."
+  }
+}

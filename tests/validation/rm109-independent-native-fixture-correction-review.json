@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "task": "RM-109",
+  "candidate_commit": "c79b1385caa6c3bbbf1641a2dabd64c63ea00560",
+  "reviewer": {
+    "actor": "root-integration-coordinator",
+    "independent_of_candidate_author": true,
+    "did_not_implement_candidate": true,
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "timer": "RM-109-564aafb4f676"
+  },
+  "disposition": "scoped_approved",
+  "scope": "Current canonical checked reminder source fixture correction for PATCH002/005, with actual native creation and full33-ID supporting run; other native runtime corrections retain separate approvals.",
+  "findings": [],
+  "independent_execution": {
+    "clean_contract_tests_without_compiler": 82,
+    "fresh_immutable_source_compiler_and_canonical_artifacts": true,
+    "case_backend_counts": {
+      "passed": 66,
+      "failed": 0,
+      "not_run": 22
+    },
+    "original_case_ids_supported": 33,
+    "actual_native_patch_executions": 4,
+    "negative_actual_raw_challenges": 580,
+    "all_119_wrong_five_event_permutations_per_case_backend_refused": true,
+    "original_checkpoint_final_validation": true
+  },
+  "observed": [
+    "Actual HTTP POST at original fixture instant authenticates Alice, validates untouched generated TodoView and creates a real UUID plus schedule revision1 within one owning BEGIN/source INSERT/schedule INSERT/COMMIT. Exact ID returned by native output is bound to the original logical t1 alias.",
+    "Explicit fixture-only prior-reminder field setup for PATCH005 changes only reminder_sent_at; authoritative row identity and native checked schedule revision remain unchanged. No fixture operation inserts or modifies private schedule records. It is test state preparation, not proof of an actual prior successful provider delivery.",
+    "Fresh native credential issuance at original request instant follows historical creation. Original unchanged PATCH request returns200; actual stored due/reminder fields satisfy frozen expectations and native schedule advances exactly1to2 on both adapters.",
+    "Independent 580 wrong-order/duplicate/missing/foreign identity/principal/clock/transaction/enrollment/credential/setup probes against actual raw observations refuse or fail. Original report revalidates unchanged.",
+    "Original combined58/4/26 failure at68c405e remains preserved. Expired historical-session and unobservedPGsetup first author probes remain separate setup corrections, not discarded."
+  ],
+  "evidence_manifest": "tests/validation/evidence/golden-loop-native-fixture-independent/manifest.json",
+  "source_causal_proofs": "tests/validation/evidence/golden-loop-native-fixture-independent/native-source-proofs.json",
+  "original_integration_red": "build/validation/20261006T082006-69388/retained-evidence.json",
+  "limits": [
+    "Scoped functional fixture/harness correction against its exact reviewed source epoch; later integrated operator/race/normalizer/compiler changes need a fresh combined gate.",
+    "22 case/backend entries remain not_run; original acceptance and pressure source remain immutable, release_equivalent=false and status=not_run.",
+    "No RM109/108/306/307 whole-task closure or production publication; fixture reminder marker is explicitly direct test setup and does not establish durable successful provider delivery."
+  ]
+}

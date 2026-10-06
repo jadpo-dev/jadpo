@@ -111,6 +111,74 @@ unexecuted acceptance entries until the generated public `relationship_conflict`
 mapping is implemented and reviewed; private FK failures alone cannot supply
 their missing public semantics. Original acceptance observations are unchanged.
 
+The six temporary golden suites now use the reviewed exact-contract copy helper
+at `68c405e`. Its fresh [combined gate](../../build/validation/20261006T082006-69388/report.json)
+passes the preceding 66 supported checks but fails the final supporting harness:
+58 passed, four failed and 26 not-run case/backend entries. PATCH-002/005 fail on
+both adapters because direct-SQL fixture creation bypassed the newly checked
+source-transaction schedule enrollment. The native missing-revision guard is
+intentional; no legacy/import bootstrap authority is inferred. Correct normal
+fixtures through actual current generated creation, retain the four original
+failed observations and rerun the exact combined source. The
+[retained attempt](../../build/validation/20261006T082006-69388/retained-evidence.json)
+hash-verifies 121 safe log/raw/generated members; ephemeral private TLS material
+is excluded with its digest retained. The earlier 62/0/26 scoped reviews remain
+pinned to their original source epoch and do not override this integration red.
+
+At `d305ec6`, AUTH-009/011 and the current native fixture correction have
+[service-authentication review](../../tests/validation/rm109-independent-service-auth-review.json)
+and [independent fixture review](../../tests/validation/rm109-independent-native-fixture-correction-review.json).
+Fresh supporting checkpoints execute 33 original IDs on both adapters: 66 passed,
+zero failed and 22 not run. Real HTTP creation enrolls each PATCH fixture in the
+same source transaction; no private schedule bootstrap or weaker native guard
+is introduced. The four earlier integrated failures remain retained. The
+fixture-only prior reminder marker is setup, not evidence of provider delivery.
+The combined gate for this integrated source remains pending.
+
+The [six-trace ordering/scheduling review](../../tests/validation/rm307-independent-ordering-scheduling-review.json)
+and [native operator review](../../tests/validation/rm307-independent-native-operator-review.json)
+now qualify the remaining frozen native traces across scoped reviews, including
+`ASYNC-REPLAY-RESOLVED-INTENT`. All eighteen names are covered across their pinned
+component executions; RM-306/307 still require current-source combined verification
+and evidence reconciliation before whole-task closure. Replay requires both the
+current native owner grant and matching durable proof of adapter no-effect.
+
+The [initial relationship normalizer review](../../tests/validation/rm109-independent-relationship-normalizer-review.json)
+retains a P2 finding: unreadable unknown inputs throw during classification.
+Its separate corrective leaf is under independent review before integration.
+Retention cleanup JOB-004 passes author execution on both adapters (34 IDs,
+68/0/20) and is under review; it does not yet replace the independently approved
+33-ID count. Configuration diagnostics, canonical database transport and safe
+native provider-fault correlation remain implementation gaps. Both writers
+continue while these bounded reviews run.
+
+### Pending database binding decision — 2026-10-06
+
+Healthy native golden startup has an existing contract collision: the golden
+secret `database_url` binding is required by CONFIG-D04, while the documented
+SQLite adapter is selected only when `DATABASE_URL` is absent. Its current
+`DatabaseUrl = Url` nominal also inherits HTTP(S)-only URL validation, excluding
+real PostgreSQL connection URLs. Missing, empty or fake HTTP URLs cannot be used
+as successful controls.
+
+Proposed narrow successor: keep the secret binding required and its name stable;
+represent `DatabaseUrl` as a constrained datastore text nominal, without changing
+ordinary `Url`. Allow native PostgreSQL URLs and an explicit SQLite URI containing
+an absolute local database path. Validate the selected scheme and required parts
+before opening the adapter; refuse unknown schemes, SQLite remote authorities,
+relative paths and unsupported SQLite parameters. Existing applications with no
+required database binding retain absent-`DATABASE_URL` selection and `SQLITE_PATH`
+fallback. This explicitly extends the documented native binding to select SQLite
+when supplied a valid SQLite URI; it adds no optional-secret syntax, source default,
+new configuration source or deployment platform integration.
+
+Alternative: define checked optional-secret configuration so an absent database
+binding can select SQLite. That introduces additional language semantics and
+requires its own bounded plan. Neither option is accepted yet. Configuration
+preflight and independent readiness/retry work continue while this decision is
+pending. Update the owning configuration/persistence contracts and preserve the
+original golden source separately if the owner accepts a successor.
+
 The frozen pre-DATA-007 source remains comparative pressure evidence; its legacy
 spellings are explicitly superseded in its README. Full technical acceptance
 must execute all original44 case IDs against the complete accepted checked

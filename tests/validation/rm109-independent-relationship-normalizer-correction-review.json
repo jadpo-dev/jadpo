@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-109",
+  "candidate": "2ccf36d0d3420b3e7edae51fc33a811b294129f5",
+  "parent": "365223ac39b491bcc946ce76c5d76115ca146efa",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-69c3a86a047e",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "approve_scoped_correction",
+  "blocking_findings": [],
+  "original_review": {
+    "path": "tests/validation/rm109-independent-relationship-normalizer-review.json",
+    "sha256": "e7776d9b31c061a756515b8aef6a19c21865449e9e7c0fa359ccbc3c88c00132",
+    "disposition_retained": "changes_required"
+  },
+  "fixed_finding": "The try/catch starts before initial instanceof/classifyPersistenceError and encloses all bounded traversal, transaction/cause/property reads, code conversion and final normalizer construction. Any failed inspection returns null. Eight original immutable independent counterexamples now return null without exceptions on both adapters.",
+  "independent_results": {
+    "fresh_locked_cli_seconds": 16.69,
+    "canonical_cli_artifacts": 32,
+    "sqlite": {
+      "pass": 5,
+      "fail": 0,
+      "assertions": 51
+    },
+    "postgres": {
+      "pass": 5,
+      "fail": 0,
+      "assertions": 49
+    },
+    "unreadable_cases": 8,
+    "native_sqlite_FK_errno": 787,
+    "native_sqlite_restrict_errno": 1811,
+    "native_postgres_FK_errno": "23503"
+  },
+  "coverage": [
+    "Exact original reviewer probe source replayed on new fresh compiler output, including actual HTTP409 relationship_conflict with exact safe envelope/header/request_id and no backend detail/stacks",
+    "Real orphan insert has no persisted source row; real disabled-parent restricted DELETE retains parent and child exactly",
+    "Actual unrelated unique/check/custom-trigger constraint errors retain generic domain behavior",
+    "Actual native FK wrapped in uncertain COMMIT, OutcomeUnknown, cycle/deeper-than-eight chains refuse normalization",
+    "Canonical actual CLI target derives32 artifacts; fixed product helper is emitted unchanged from generator, not patched generated output"
+  ],
+  "scope": "Approves only immutable two-line totality correction and retained native/shared HTTP FK behavior. No authored hardDeleteUser/widened authority, golden44-case closure, wholeRM109 completion, future mutable code or deployment approval.",
+  "limits": [
+    "Bound is eight synchronous cause frames. Catch returns null on thrown inspection; it does not introduce native preemption for user code that never returns. No new host threat model is inferred.",
+    "Named declared mapping is unchanged from original inspected helper guard; no new named-fixture execution is claimed.",
+    "Original red report and evidence remain unchanged. Author regression counts are retained evidence, not independent executions."
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-normalizer-correction-independent",
+  "restored_author_test_sha256": "93dc33bcc67d6dbc489a0eaf3eec00c5b6eb9369b2ed246ec0f409e6d7957cee",
+  "source_evidence_hashes_verified": 8,
+  "created_at": "2026-10-06T08:02:27.706129+00:00"
+}

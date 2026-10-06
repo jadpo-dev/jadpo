@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-109-ef1818fef1e7", "task_id": "RM-109", "actor": "boundary-relationship-normalizer", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T07:49:13.574948+00:00", "phase": "planning"}
+{"at": "2026-10-06T07:49:41.244918+00:00", "phase": "verification", "note": null}
+{"at": "2026-10-06T07:53:26.441495+00:00", "phase": "review", "note": null}
+{"at": "2026-10-06T07:54:26.101317+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm109-independent-relationship-normalizer-review.json"}

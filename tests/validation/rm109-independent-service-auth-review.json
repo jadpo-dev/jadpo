@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "task": "RM-109",
+  "candidate_commit": "a87d6ef025c3b43561df9037971817fb7817c1ce",
+  "reviewer": {
+    "actor": "root-integration-coordinator",
+    "independent_of_candidate_author": true,
+    "did_not_implement_candidate": true,
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "timer": "RM-109-564aafb4f676"
+  },
+  "disposition": "scoped_approved",
+  "scope": "Immutable AUTH009/011 supporting harness expansion on its earlier product source epoch; no current canonical hook fixture approval or whole golden completion.",
+  "findings": [],
+  "independent_execution": {
+    "fresh_archive_without_compiler_before_contracts": true,
+    "contract_tests_passed": 81,
+    "case_backend_counts": {
+      "passed": 66,
+      "failed": 0,
+      "not_run": 22
+    },
+    "original_case_ids_supported": 33,
+    "actual_raw_and_binding_challenges": 127,
+    "actual_corrupted_signature_native_HTTP_counterexamples": 4,
+    "original_report_still_valid_and_bytes_restored": true
+  },
+  "observed": [
+    "Real native service credential issuance creates declared credential; separate successful native cryptographic validity control precedes each exchange. Active reporting exchanges through real HTTP and actual current credential/service authority reads, returns distinct native service principal and issues one native bearer.",
+    "Incoming service key is absent from the actual JSON response; only hash/length/representation of the actual returned bearer are retained. Native declared revocation changes actual credential storage and subsequent actual exchange rejects401 with no service-principal resolution or issuance.",
+    "Disabled reporting service is issued while active, verified with actual native crypto, then disabled in authoritative storage. Real exchange returns403 service_disabled, with zero native principal outputs and credential issuance.",
+    "Independently corrupted only the transmitted disposable key signature: both cases on both adapters return actual401 invalid_credentials, zero service-principal queries/outputs/issuance; positive original-key control still succeeds. Generated native bytes remain unchanged.",
+    "Native authentication instrumentation exactly reconstructs seven observer additions/extraction of the existing awaited signature return; crypto, authoritative lookup and refusal branches remain intact. All127 altered actual observations/bindings refuse or fail, and original full report revalidates after restoration.",
+    "REL002/003/004 remain not_run; actual FK and exact transfer refusal/local separate policy projection are partial evidence only. No harness-generated relationship_conflict or human-decision disposition supplies a false pass."
+  ],
+  "evidence_manifest": "tests/validation/evidence/golden-loop-service-auth-independent/manifest.json",
+  "limits": [
+    "Current canonical checked reminder source was integrated separately and exposed PATCH002/005 raw-SQL fixture failures; this earlier-epoch66/0/22 review does not override them. c79b138 correction requires separate independent execution.",
+    "Local hashes/validators establish scoped integrity and reproducible native observations, not protected release attestation or security against coordinated replacement of all inputs/results.",
+    "No RM109/108/306/307 task closure, source freeze mutation, public deployment or final require-golden success."
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-307",
+  "reviewer": "boundary_review",
+  "review_kind": "independent consequential immutable native operator/auth/policy review",
+  "candidate": "35baa497d15922046719c7e05abe643c460e8b8c",
+  "parent": "e428ee765badec89faa3b1ffae13ab8d09f4d631",
+  "capture": "/private/tmp/jadpo-native-operator-independent",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "pin_basis": "Parent verified actual inherited settings; fixed consequential auth/policy and durable replay review.",
+  "timer": "RM-307-7762f5aff44e",
+  "original_estimate_hours": [
+    2,
+    8
+  ],
+  "disposition": "approve_scoped",
+  "blocking_findings": [],
+  "approval_scope": "Native grant/operator capability emitted by actual full target derivation over the checked canonical golden source, plus ASYNC-REPLAY-RESOLVED-INTENT at that generated public application boundary. Does not close RM-307, RM-306, all 18 IDs, broader combined gates or authorize activation/deployment/publication.",
+  "frozen_binding": {
+    "catalogue": "tests/assurance/async-contract-v0.1-candidate.json",
+    "id": "ASYNC-REPLAY-RESOLVED-INTENT",
+    "setup": "Authorized native operator uses the exact original intent with actual adapter-proven known-no-effect durable latest evidence.",
+    "assertions": [
+      "Original ID, payload version, payload and ordering key retained; full durable intent equals original except succeeded state",
+      "Original cumulative invocation budget consumed 1 to 2; first claim, lifetime deadline and all immutable limits unchanged",
+      "Unresolved outcome_unknown, exhausted budget, future backoff, wrong latest generation/claim/invocation and absent durable attempt refuse without changing state",
+      "No activation, tick, page, new intent, count reset or provider lookup is allocated by explicit replay"
+    ],
+    "alias_correction": "ASYNC-PRIVILEGED-REPLAY was a transient parent guessed label and does not exist in this frozen catalogue; it is not added or renamed."
+  },
+  "independent_execution": {
+    "fresh_locked_cli_build": {
+      "exit": 0,
+      "elapsed_seconds": 16.5
+    },
+    "fresh_canonical_cli_build": {
+      "exit": 0,
+      "artifacts": 32
+    },
+    "unaltered_sqlite": {
+      "pass": 6,
+      "skip": 1,
+      "fail": 0,
+      "assertions": 158
+    },
+    "unaltered_postgres": {
+      "pass": 7,
+      "fail": 0,
+      "assertions": 169
+    },
+    "strengthened_sqlite": {
+      "pass": 8,
+      "skip": 1,
+      "fail": 0,
+      "assertions": 265
+    },
+    "strengthened_postgres": {
+      "pass": 9,
+      "fail": 0,
+      "assertions": 276
+    },
+    "authored_native_helper_bypass": {
+      "cases": 3,
+      "check_exit_each": 1,
+      "build_exit_each": 1,
+      "diagnostic": "semantic.unknown_callee",
+      "names": [
+        "issueDeliveryOperatorGrant",
+        "createDeliveryReplayOperator",
+        "claim_delivery_resolved_replay"
+      ]
+    },
+    "dependency": "Pinned jose6.2.12 cached tar byteverified using repository installer; own generated module dependency link only."
+  },
+  "auth_and_capability_findings": [
+    "Operator grants occupy a separate private WeakMap, not the worker-proof map; current consumer requires exact configured storage and selected published host owner plus active flag. Worker proof/key, provider MAIL secret, shaped/copied/serialized/prototype objects and unpublished/foreign issuer grants cannot authorize the factory.",
+    "Issue/revoke controls remain in the existing privileged native authenticationHost boundary. Its administrative caller already owns provisioning authority; no human identity, authored job method, role, route, credential bootstrap or arbitrary callback is introduced.",
+    "Successful/failed configuration reinit and signing key rotation withdraw old minting hosts, grants and prebuilt factories. Owner checks occur before/after awaited crypto, at owning admission/COMMIT publication and before provider dispatch; actual PG source lock plus reinit produces rollback and no replay provider cut.",
+    "Factory requires exact checked finished binding, separately provisioned raw worker credential and explicit finite delivery profile. It takes exactly four arguments, captures ordinary value descriptors without executing profile getters and copies immutable numeric profile values; the profile cannot supply authority.",
+    "Fresh worker crypto/storage credential validation and SQL sender membership/source admission run on each replay. Independently mutated live membership, recipient and source revision refuse before another provider call. Unsupported retained intent version faults delivery.binding_intent with unchanged claim state.",
+    "Native helper names fail actual authored source compilation and target build. Existing sealer and private invocation/receipt WeakMaps preserve the checked binding and owning COMMIT publication path; ordinary exported worker preparation still supplies null operator grant."
+  ],
+  "durable_and_causal_findings": [
+    "Eligibility locks the original intent ordering key through owning transaction and requires retry_wait, possible_dispatch0, positive canonical latest generation, same claim/invocation, only service_unavailable with1..3 provider attempts, coherent durable times, elapsed backoff and original exact profile/budget.",
+    "Latest durable attempt is ordered by fully qualified physical generation (the earlier PostgreSQL ambiguous-projection red is preserved). Missing tables/evidence refuse without synthesizing evidence; no older matching attempt fallback.",
+    "Actual adapter429 causes3 provider attempts and durable known-no-effect receipt. A fresh process mints a native operator grant, separately reauthenticates the worker, replays the original intent and receives one actual checked202 result after committed possible_dispatch checkpoint.",
+    "Independent captured-profile mutation to zero leaves persisted60s/40s and3invocations/1h intact. Additional provider-attempt4/unlisted failure/profile/max/lifetime/generation0/invalid observation mutations refuse byte-for-byte.",
+    "A later intent with its own real adapter429 proof is blocked by earlier unknown same-key history. This particular independent ordering probe introduces a disposable durable-state fault changing previously terminal older history to unknown; it is not evidence of a real provider uncertainty event for that older history.",
+    "Held provider concurrency with separate operator process, ordinary worker and cancellation yields exactly one admitted generation2 and one successful eventual receipt. Revoking the native operator grant after actual dispatch does not discard that validated outcome or cause another send."
+  ],
+  "profile_scope": "Explicit single-intent replay requires a delivery profile only because it allocates no scheduled activation. Scheduled worker host retains independent mandatory activation and delivery profiles. Fixtures use separately approved60s/40s each; service adapter3attempts/30s and scheduled3invocations/1h remain distinct.",
+  "preserved_negatives": {
+    "author": "All7 source and16 evidence manifest hashes verified, including earlier full-row fixture/projection failure, PG ambiguous generation and missing-auth-build/fixed-CLI-path setup failures. Their bytes are copied as author-* evidence; no failure is relabelled passing.",
+    "reviewer": "First strengthened run SQLite7pass/1skip/1fail259assertions and PG8pass/1fail270assertions tried nonexistent attempts_v1.payload_version. Both correctly failed in fixture SQL before replay; no product finding was inferred. Exact schema showed version resides on the immutable intent. Corrected actual intent-version probe refuses before provider and passes both adapters. Initial and corrected complete fixture sources and logs retained."
+  },
+  "limitations": [
+    "Trusted native administrative caller authorization remains an explicit deployment assumption, matching existing native issue/revoke authority; this does not implement operator UI or new human authentication.",
+    "No production mail or unknown-outcome provider lookup tested or added. Provider and databases are disposable local real transports/drivers; controlled mock outcomes do not establish production latency.",
+    "After provider cut uncertainty is preserved; an owner withdrawal after owning COMMIT can conservatively leave possible_dispatch without publishing a usable token. No blind replay or universal clock/native/COMMIT interruption immunity is claimed.",
+    "Runtime focused suites use untouched modules generated by full derive_target. Fresh CLI also builds the canonical project. This is focused current-boundary qualification, not repetition of all prior cases or independent approval of author full-suite counts.",
+    "Whole-request/native bootstrap/timeout limits and CONFIG003 readiness-plane architecture remain owned by RM402/RM403. Later mutable REL normalizer or harness commits are outside this immutable candidate."
+  ],
+  "source_references": [
+    "jadpo/crates/core/src/runtime/first_party_authentication.ts:27",
+    "jadpo/crates/core/src/runtime/first_party_authentication.ts:320",
+    "jadpo/crates/core/src/runtime/delivery_claims.ts:204",
+    "jadpo/crates/core/src/target/delivery_scheduler.rs:137",
+    "jadpo/crates/core/src/target/delivery_invocation.rs:28",
+    "jadpo/crates/core/src/target/delivery_invocation.rs:168"
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-native-operator-independent",
+  "original_fixture_restored_sha256": "1092435caf5c5a47e65ad6fdbafcecca7ebaeda839652b79390b7ba6d6eed338",
+  "created_at": "2026-10-06T07:47:58.009198+00:00"
+}

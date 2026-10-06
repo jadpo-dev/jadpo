@@ -1131,25 +1131,25 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T08:17:40+01:00",
+  "captured_at": "2026-10-06T09:04:54+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "e278c565bc2324bb92db44a71fc71bc76649b6396590b4c21c496b8e001d531d",
+    "docs/implementation-roadmap.md": "7a989e2a297356bb8bd7a791dd333445a8b6f5f2560493de56715b8207550c3e",
     "docs/implementation-history.md": "3719a84aae5f217b59f3196b2fb757b3b3d632f24a3e2d3da00f0092545db4f6",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "9836e2defd8f79bd98a79ce3122c3bf5dd1a8a30e76841afa9660d1ec518f321",
+    "docs/work-plans/golden-delivery-planning.md": "1b63d7d4789d62c3d926bd8adee409bd68ca7037bba96ae19cd18ba3e0ed1d26",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "The supporting golden Todo harness independently covers 31 original case IDs on both databases. Checked canonical reminder lowering and eleven recovery IDs have scoped reviews; the latest combined gate exposed a test-fixture import gap, and full golden completion remains open.",
+    "summary": "The supporting golden Todo harness now has independent coverage of 33 original cases on both databases. Native test setup fixes the four earlier PATCH failures; both delivery lanes continue toward full golden acceptance.",
     "delivered": [
-      "Scoped harness reviews record 62 passed, zero failed and 26 unexecuted case/backend entries, including real HTTPS/JWT verification and cache failure controls. The latest exact-source combined attempt stopped at a temporary fixture missing the pinned mail import; its original failure is retained. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).",
-      "The canonical reminder source now builds through the checked public compiler boundary. Eleven recovery IDs execute against untouched generated CLI artifacts on both databases; scheduling/race and privileged replay conformance remain open. [Checked lowering review](../../tests/validation/rm306-independent-checked-golden-job-review.json).",
-      "The owner approved separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06)."
+      "Service authentication and native HTTP fixture creation pass independent review: 66 supporting entries pass, none fail and 22 remain unexecuted. Earlier combined-gate failures remain retained; current-source combined verification is pending. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).",
+      "All eighteen frozen native recovery traces now have scoped component evidence, including bounded scheduling and privileged replay with current-owner and durable no-effect checks. Whole-task integration gates remain open. [Operator review](../../tests/validation/rm307-independent-native-operator-review.json).",
+      "Separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan are approved. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06)."
     ],
-    "next": "Continue two implementation lanes: service-authentication cases and configuration/boundary controls; race/scheduling recovery and native privileged replay. Implement missing public relationship failure mapping; retain owner-transfer refusal as partial until exact policy-decision evidence exists, then qualify authenticated retry and deployment readiness.",
-    "input_needed": "Public push, PR and checked merge of fe966ef to richardwillars/jadpo await explicit approval after automatic review rejected publication. Local delivery continues; both execution/lease decisions are approved."
+    "next": "Continue two implementation lanes: native reminder/retention cases and relationship observations; configuration preflight, database transport and safe provider-fault correlation. Independently review the normalizer correction and JOB-004, then run a fresh combined gate.",
+    "input_needed": "Public push, PR and checked merge of fe966ef remain pending after automatic review rejected publication. A separate concrete PostgreSQL/SQLite database URI successor is pending because required golden DATABASE_URL conflicts with absent-URL SQLite selection. Both delivery lanes continue independent work."
   },
   "changes": {
     "completed": [],
