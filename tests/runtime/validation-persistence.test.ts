@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { nativeContentionSnapshot, runNativeContentionWave } from "./fixtures/transaction-contention-worker";
+import { permits } from "./fixtures/http-boundary-schema.ts";
 
 // Only the dedicated verifier-owned disposable database may select PostgreSQL.
 // Ambient application connection strings are never consumed by this suite.
@@ -136,7 +137,7 @@ if (build.exitCode !== 0) throw new Error(`Persistence contract failed to build:
 if (Bun.env.JADPO_CONTENTION_CAPTURE) cpSync(join(root, "build"), join(Bun.env.JADPO_CONTENTION_CAPTURE, "pristine-build"), { recursive: true });
 const persistencePath = join(root, "build/target/persistence.ts");
 const nativeContentionPristinePersistence = readFileSync(persistencePath, "utf8");
-writeFileSync(persistencePath, readFileSync(persistencePath, "utf8") + "\nexport const __controlQueryProbeClient = createPersistenceClient;\n");
+writeFileSync(persistencePath, readFileSync(persistencePath, "utf8") + "\nexport const __controlQueryProbeClient = createPersistenceClient;\nexport function __nativeReadProbePostgres() { return postgres; }\n");
 const app = await import(pathToFileURL(join(root, "build/target/app.ts")).href);
 const persistenceModule = await import(pathToFileURL(join(root, "build/target/persistence.ts")).href);
 const sql = postgresUrl ? new SQL(postgresUrl, { prepare: false }) : null;
@@ -2286,6 +2287,38 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
   test("policy-free inline reads retain the deadline and cannot start another read after expiry", async () => {
     const value = entry("inline-read-deadline");
     await insert(value);
+    const healthy = await request("/inline-deadline", { id: value.id });
+    expect(healthy.status).toBe(200); expect(await healthy.json()).toEqual(value);
+    const deadlineResponse = async (response: Response) => {
+      expect(response.status).toBe(504);
+      expect(response.headers.get("retry-after")).toBeNull();
+      const requestId = response.headers.get("x-request-id"); expect(requestId).toMatch(/^req_/);
+      const body = await response.json();
+      expect(body).toEqual({ error: { code: "deadline_exceeded", message: "The operation exceeded its declared deadline.", request_id: requestId } });
+      expect(JSON.stringify(body)).not.toContain(value.label);
+      const inventory = JSON.parse(readFileSync(join(root, "build/inventory/routes.json"), "utf8"));
+      const expected = { code: "deadline_exceeded", semantic_http_default: 504, http_status: 504,
+        message: body.error.message, condition: "declared_route_deadline_fault_escaped", automatic_retry: false };
+      for (const path of ["/inline-deadline", "/entries-deadline"])
+        expect(inventory.routes.find((route: any) => route.path === path).operational_failures.filter((failure: any) => failure.code === "deadline_exceeded")).toEqual([expected]);
+      expect(inventory.routes.find((route: any) => route.path === "/entries").operational_failures.some((failure: any) => failure.code === "deadline_exceeded")).toBe(false);
+      const audit = JSON.parse(readFileSync(join(root, "build/audit/failures.json"), "utf8"));
+      expect(audit.operational_failures.filter((failure: any) => failure.code === "deadline_exceeded")).toEqual([expected]);
+      const api = JSON.parse(readFileSync(join(root, "build/openapi/openapi.json"), "utf8"));
+      const schema = api.paths["/inline-deadline"].post.responses["504"].content["application/json"].schema;
+      expect(schema.additionalProperties).toBe(false); expect(schema.required).toEqual(["error"]);
+      expect(schema.properties.error.additionalProperties).toBe(false);
+      expect(schema.properties.error.required).toEqual(["code", "message", "request_id"]);
+      expect(schema.properties.error.properties.code.enum).toEqual(["deadline_exceeded"]);
+      expect(schema.properties.error.oneOf[0].properties.message.const).toBe(body.error.message);
+      expect(api.paths["/entries"].post.responses["504"]).toBeUndefined();
+      expect(permits(schema, body, api.components.schemas)).toBe(true);
+      expect(permits(schema, { ...body, cause: "PRIVATE_DEADLINE_CAUSE" }, api.components.schemas)).toBe(false);
+      for (const error of [{ ...body.error, cause: "PRIVATE_DEADLINE_CAUSE" },
+        { ...body.error, message: "PRIVATE_DEADLINE_CAUSE" }, { ...body.error, code: "outcome_unknown" },
+        { ...body.error, request_id: 42 }, { code: body.error.code, message: body.error.message }])
+        expect(permits(schema, { error }, api.components.schemas)).toBe(false);
+    };
     if (postgresUrl) {
       let release!: () => void;
       let acquired!: () => void;
@@ -2294,11 +2327,18 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
       const blocker = sql!.begin(async tx => { await tx.unsafe('LOCK TABLE "entry" IN ACCESS EXCLUSIVE MODE'); acquired(); await released; });
       await locked;
       const timer = setTimeout(release, 300);
+      const nativePostgres = persistenceModule.__nativeReadProbePostgres();
+      const originalUnsafe = nativePostgres.unsafe;
+      let reads = 0;
+      nativePostgres.unsafe = function (statement: string, ...args: any[]) {
+        if (statement.startsWith("SELECT") && statement.includes('FROM "entry"')) reads++;
+        return originalUnsafe.call(nativePostgres, statement, ...args);
+      };
       try {
         const response = await request("/inline-deadline", { id: value.id });
-        expect(response.status).toBe(504);
-        expect((await response.json()).error.code).toBe("deadline_exceeded");
-      } finally { clearTimeout(timer); release(); await blocker; }
+        expect(reads).toBe(1);
+        await deadlineResponse(response);
+      } finally { nativePostgres.unsafe = originalUnsafe; clearTimeout(timer); release(); await blocker; }
     } else {
       const prototype: any = Database.prototype;
       const originalPrepare = prototype.prepare;
@@ -2317,11 +2357,11 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
       };
       try {
         const response = await request("/inline-deadline", { id: value.id });
-        expect(response.status).toBe(504);
-        expect((await response.json()).error.code).toBe("deadline_exceeded");
+        await deadlineResponse(response);
         expect(reads).toBe(1);
       } finally { prototype.prepare = originalPrepare; }
     }
+    expect(await stored(value.id)).toEqual([value]);
   });
 
   test("route deadline expiry during retry backoff returns 504 with no second attempt", async () => {
@@ -2954,7 +2994,7 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
       // The global built-in registry includes native relationship conflict;
       // this read/Entry-only route has no checked foreign-key mutation edge.
       expect(route.operational_failures.some((failure: any) => failure.code === "relationship_conflict")).toBe(false);
-      expect(audit.operational_failures).toEqual([...route.operational_failures, {
+      expect(audit.operational_failures.filter((failure: any) => failure.code !== "deadline_exceeded")).toEqual([...route.operational_failures, {
         code: "relationship_conflict", http_status: 409,
         message: "The operation conflicts with a relationship.",
         automatic_retry: false, condition: "checked_reachable_native_foreign_key_constraint",
@@ -3032,7 +3072,7 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
       // The global built-in registry includes native relationship conflict;
       // this read/Entry-only route has no checked foreign-key mutation edge.
       expect(route.operational_failures.some((failure: any) => failure.code === "relationship_conflict")).toBe(false);
-      expect(audit.operational_failures).toEqual([...route.operational_failures, {
+      expect(audit.operational_failures.filter((failure: any) => failure.code !== "deadline_exceeded")).toEqual([...route.operational_failures, {
         code: "relationship_conflict", http_status: 409,
         message: "The operation conflicts with a relationship.",
         automatic_retry: false, condition: "checked_reachable_native_foreign_key_constraint",

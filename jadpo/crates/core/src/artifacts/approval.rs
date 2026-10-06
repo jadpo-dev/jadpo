@@ -18,6 +18,7 @@ mod protected_attempt;
 pub use protected_attempt::{derive_protected_attempt, validate_protected_attempt_export};
 mod field_contracts;
 mod implicit_delivery_emissions;
+mod implicit_delivery_phase_effects;
 
 /// Both sides are freshly analyzed source, never a self-asserted previous artifact.
 /// `expected_before` pins the exact baseline source digest obtained from a prior
@@ -80,7 +81,7 @@ pub fn derive_approval_subject_with_state_pin(
     unknowns.push(if project.delivery_model().bindings().is_empty() {
         "Job facts describe checked nonexecuting schedule entries and static may-call effects only; durable worker authority, profiles and runtime conformance are not established. The checked implicit delivery emission subset is absent; generic emission analysis remains unsupported."
     } else {
-        "Job facts include checked nonexecuting delivery bindings and private phase obligations, separate from ordinary may-call effects; conditional private selection may-enroll effects and schedule-revision hook provenance are extracted. Live worker authority, successful transactions, execution profiles and runtime conformance are not established; generic emission analysis remains unsupported."
+        "Job facts include checked nonexecuting delivery bindings and private phase obligations, separate from ordinary may-call effects; conditional private selection may-enroll effects, dispatch/completion may-effects and schedule-revision hook provenance are extracted. Live worker authority, successful transactions, execution profiles and runtime conformance are not established; generic emission analysis remains unsupported."
     });
     if before.is_none() {
         unknowns.push("No before source baseline supplied; decisions compare explicit absence with the after state.");
@@ -89,10 +90,11 @@ pub fn derive_approval_subject_with_state_pin(
         unknowns.push("No human request/intent supplied.");
     }
     unknowns.push(
-        "May-effect scenarios describe compiler-checked call-graph reachability, not feasible inputs or executed behavior.",
+        "Ordinary may-effect scenarios describe compiler-checked call-graph reachability; private delivery scenarios compare conditional phase contracts separately. Neither establishes feasible inputs or executed behavior.",
     );
     unknowns.push("Closed anonymous literal-route candidates require healthy supported application startup/readiness; they contain no runtime observations or feasible-execution proof.");
-    let scenarios = effect_scenarios(before.as_ref(), &after);
+    let mut scenarios = effect_scenarios(before.as_ref(), &after);
+    scenarios.extend(implicit_delivery_phase_effects::scenarios(before.as_ref(), &after));
     let canonical = json!({
         "schema_version": SCHEMA, "kind": "approval_subject",
         "compiler_version": env!("CARGO_PKG_VERSION"),
@@ -860,6 +862,17 @@ fn snapshot(path: &Path, project: &AnalyzedProject) -> Result<Value, String> {
         "emissions",
         implicit_delivery_emissions::derive(project, &mut facts, &mut paths),
     );
+    let private_effects = implicit_delivery_phase_effects::derive(project, &mut facts, &mut paths);
+    impact.get_mut("jobs").expect("checked job impact")["private_phase_facts"] = json!(private_effects);
+    impact.get_mut("external_effects").expect("checked external impact")["private_phase_facts"] =
+        implicit_delivery_phase_effects::projection(&private_effects, "dispatch");
+    impact.get_mut("writes").expect("checked write impact")["private_phase_facts"] =
+        implicit_delivery_phase_effects::projection(&private_effects, "completion");
+    for category in ["jobs", "external_effects", "writes"] {
+        let value = impact.get_mut(category).expect("checked private effect projection");
+        value["private_phase_contract_version"] = json!(1);
+        value["private_phase_supported_subset"] = json!(if private_effects.is_empty() { "absent" } else { "present" });
+    }
     impact.insert("retries",json!({"status":"compiler_checked_contract_only","facts":audit(model.transaction_audit_json()),"runtime_conformance":"not_established"}));
     let actor_sources = actor_links::derive(project, &mut facts);
     impact.insert("actor_sources", actor_sources);

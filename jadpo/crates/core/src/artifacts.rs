@@ -736,7 +736,7 @@ impl<'project> ArtifactModel<'project> {
                             failure.http_status
                         )
                     })),
-                    bun_operational_failures_json(relationships.may_fail),
+                    bun_operational_failures_json(relationships.may_fail, route.deadline_ms.is_some()),
                     relationships.json(),
                     boundary.failures_json(),
                     boundary.json()
@@ -793,7 +793,7 @@ impl<'project> ArtifactModel<'project> {
         });
         format!(
             "{{\"schema_version\":2,\"policy\":{{\"closed_public_payloads\":true,\"internal_context_disclosed\":false}},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{},\"http_boundary\":{}}}",
-            json_array(contracts), bun_operational_failures_json(true), self.http_boundaries.audit()
+            json_array(contracts), bun_operational_failures_json(true, self.routes.iter().any(|route| route.deadline_ms.is_some())), self.http_boundaries.audit()
         )
     }
 
@@ -1140,9 +1140,6 @@ impl<'project> ArtifactModel<'project> {
                     json_string(success_description)
                 ));
             }
-            if route.deadline_ms.is_some() {
-                responses.push("\"504\":{\"description\":\"The route operation exceeded its declared deadline\"}".to_owned());
-            }
             let boundary = self.http_boundaries.route(&route.key);
             let mut failure_groups = BTreeMap::<u16, Vec<&str>>::new();
             for failure in &boundary.failures {
@@ -1162,7 +1159,13 @@ impl<'project> ArtifactModel<'project> {
             if self.has_persistence_entities() {
                 failure_groups.entry(503).or_default();
             }
+            if route.deadline_ms.is_some() {
+                failure_groups.entry(504).or_default();
+            }
             for (status, names) in failure_groups {
+                let operational_wire = status == 500
+                    || status == 503 && self.has_persistence_entities()
+                    || status == 504 && route.deadline_ms.is_some();
                 let mut references = names
                     .iter()
                     .map(|name| {
@@ -1211,8 +1214,7 @@ impl<'project> ArtifactModel<'project> {
                                 .unwrap(),
                             );
                         }
-                        if matches!(status, 500 | 503)
-                            && (status == 500 || self.has_persistence_entities())
+                        if operational_wire
                             && contract.public_fields.is_empty()
                             && operational_wire_pairs(status)
                                 .iter()
@@ -1244,10 +1246,7 @@ impl<'project> ArtifactModel<'project> {
                     let schema = failure.schema().to_string();
                     native_schemas.insert(schema.clone()).then_some(schema)
                 }));
-                if status == 409 && relationships.may_fail
-                    || status == 500
-                    || status == 503 && self.has_persistence_entities()
-                {
+                if status == 409 && relationships.may_fail || operational_wire {
                     references.push(bun_operational_schema_json(status));
                 }
                 let failure_schema = if references.len() == 1 {
@@ -1262,6 +1261,7 @@ impl<'project> ArtifactModel<'project> {
                         409 if relationships.may_fail => "Bun relationship constraint conflict or declared failure".to_owned(),
                         500 => "Bun operational failure or declared failure; uncertain effects are not automatically retried".to_owned(),
                         503 if self.has_persistence_entities() => "Bun storage unavailable or declared failure".to_owned(),
+                        504 if route.deadline_ms.is_some() => "The route operation exceeded its declared deadline or a declared failure occurred".to_owned(),
                         _ if !native.is_empty() => "Native HTTP boundary failure or declared failure".to_owned(),
                         _ => names.join(" or "),
                     }),
@@ -2200,9 +2200,104 @@ mod tests {
 
         let openapi = artifact(&artifacts, "openapi/openapi.json");
         assert!(openapi.contains("\"x-jadpo-deadline-ms\":1500"));
-        assert!(openapi.contains(
-            "\"504\":{\"description\":\"The route operation exceeded its declared deadline\"}"
-        ));
+        let api: serde_json::Value = serde_json::from_str(openapi).unwrap();
+        assert!(api["paths"]["/deadline"]["get"]["responses"]["504"]["content"].is_object());
+    }
+
+    #[test]
+    fn declared_deadline_wire_catalog_and_grouping_match_the_runtime() {
+        let source = r#"
+failure DeclaredTimeout { kind: TimedOut code: "declared_timeout" }
+failure MatchingTimeout { kind: TimedOut code: "deadline_exceeded" }
+route GET /deadline { auth: none deadline: 200ms action: {} }
+route GET /plain { auth: none action: {} }
+route GET /declared { auth: none deadline: 200ms action: fails DeclaredTimeout { reject DeclaredTimeout } }
+route GET /matching { auth: none deadline: 200ms action: fails MatchingTimeout { reject MatchingTimeout } }
+"#;
+        let path = Path::new("deadline-wire.jadpo");
+        let project = analyze_sources(vec![jadpo_syntax::SourceFile::new(
+            path.into(),
+            source.into(),
+        )])
+        .unwrap();
+        assert!(project
+            .syntax
+            .diagnostics()
+            .chain(project.semantics.diagnostics.iter())
+            .chain(project.typing.diagnostics.iter())
+            .chain(project.failures.diagnostics.iter())
+            .next()
+            .is_none());
+        let artifacts = derive_artifacts(path, &project);
+        let routes: serde_json::Value =
+            serde_json::from_str(artifact(&artifacts, "inventory/routes.json")).unwrap();
+        let expected = serde_json::json!({"code":"deadline_exceeded","semantic_http_default":504,"http_status":504,
+            "message":"The operation exceeded its declared deadline.","condition":"declared_route_deadline_fault_escaped","automatic_retry":false});
+        for route in routes["routes"].as_array().unwrap() {
+            let entries = route["operational_failures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|entry| entry["code"] == "deadline_exceeded")
+                .collect::<Vec<_>>();
+            if route["path"] == "/plain" {
+                assert!(entries.is_empty());
+            } else {
+                assert_eq!(entries, vec![&expected]);
+                assert_eq!(route["deadline_ms"], 200);
+            }
+        }
+        let audit: serde_json::Value =
+            serde_json::from_str(artifact(&artifacts, "audit/failures.json")).unwrap();
+        assert_eq!(
+            audit["operational_failures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["code"] == "deadline_exceeded"),
+            Some(&expected)
+        );
+        let openapi = artifact(&artifacts, "openapi/openapi.json");
+        // One status key per deadline route, even with a declared504 failure.
+        assert_eq!(openapi.matches("\"504\":").count(), 3);
+        let api: serde_json::Value = serde_json::from_str(openapi).unwrap();
+        assert!(api["paths"]["/plain"]["get"]["responses"]
+            .get("504")
+            .is_none());
+        let schema = &api["paths"]["/deadline"]["get"]["responses"]["504"]["content"]
+            ["application/json"]["schema"];
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["required"], serde_json::json!(["error"]));
+        let error = &schema["properties"]["error"];
+        assert_eq!(error["additionalProperties"], false);
+        assert_eq!(
+            error["required"],
+            serde_json::json!(["code", "message", "request_id"])
+        );
+        assert_eq!(
+            error["properties"]["code"]["enum"],
+            serde_json::json!(["deadline_exceeded"])
+        );
+        assert_eq!(
+            error["oneOf"][0]["properties"]["message"]["const"],
+            "The operation exceeded its declared deadline."
+        );
+        let declared = &api["paths"]["/declared"]["get"]["responses"]["504"]["content"]
+            ["application/json"]["schema"]["oneOf"];
+        assert!(declared
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["$ref"] == "#/components/schemas/DeclaredTimeout"));
+        // Exclude the colliding native wire alternative from a same-code domain
+        // reference so its closed body is accepted once, rather than twice.
+        let matching = &api["paths"]["/matching"]["get"]["responses"]["504"]["content"]
+            ["application/json"]["schema"]["oneOf"];
+        assert!(matching
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["allOf"].is_array()));
     }
 
     #[test]
@@ -2376,17 +2471,20 @@ route POST /todos {
     }
 }
 
-fn bun_operational_failures_json(relationships: bool) -> String {
+fn bun_operational_failures_json(relationships: bool, declared_deadline: bool) -> String {
     let base = r#"[{"code":"internal_fault","http_status":500,"message":"An internal error occurred.","condition":"contained_runtime_defect"},{"code":"transaction_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the operation.","condition":"retryable_no_commit_not_retried_or_exhausted","automatic_retry":false},{"code":"read_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the read.","condition":"checked_query_only_operation_with_listed_structured_driver_cause","automatic_retry":false},{"code":"outcome_unknown","semantic_http_default":null,"http_status":500,"message":"The operation may have completed.","condition":"effect_may_have_occurred","automatic_retry":false}]"#;
+    let mut entries = base[..base.len() - 1].to_owned();
     if relationships {
-        format!(
-            "{},{}]",
-            &base[..base.len() - 1],
-            operational_failures::RELATIONSHIP_FAILURE
-        )
-    } else {
-        base.to_owned()
+        entries.push(',');
+        entries.push_str(operational_failures::RELATIONSHIP_FAILURE);
     }
+    if declared_deadline {
+        // A checked declared budget can produce this safe wire outcome. This
+        // catalog entry is neither a native lifetime guarantee nor replay proof.
+        entries.push_str(r#",{"code":"deadline_exceeded","semantic_http_default":504,"http_status":504,"message":"The operation exceeded its declared deadline.","condition":"declared_route_deadline_fault_escaped","automatic_retry":false}"#);
+    }
+    entries.push(']');
+    entries
 }
 
 fn operational_wire_pairs(status: u16) -> Vec<(&'static str, &'static str)> {
@@ -2394,6 +2492,10 @@ fn operational_wire_pairs(status: u16) -> Vec<(&'static str, &'static str)> {
         409 => vec![(
             "relationship_conflict",
             "The operation conflicts with a relationship.",
+        )],
+        504 => vec![(
+            "deadline_exceeded",
+            "The operation exceeded its declared deadline.",
         )],
         503 => vec![
             (

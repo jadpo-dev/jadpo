@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-07
 
-Updated 2026-10-07T00:10:59+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-07T00:40:00+01:00 · figures reflect the recorded roadmap.
 
-Parallel golden delivery continues after RM-505 hostile conformance completed on the fresh104-check gate. Twenty-one of29 selected tasks are complete; eight remain open.
+Parallel golden delivery continues. Twenty-one of29 selected tasks are complete; eight remain open. Current104-check source gate includes reviewed deadline and private delivery effect metadata.
 
 ## At a glance
 
@@ -20,9 +20,9 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- [Six named hostile obligations](../../tests/validation/evidence/rm505-cross-feature-hostile-plan/parent-acceptance-audit.json) now have both-adapter native evidence, separate review and a fresh unchanged-expectation integration gate.
-- [Current integration](../../tests/validation/evidence/rm403505-hostile-recovery-reviewed-fusion/report.json) passes104 supported checks and all88 supporting HTTP entries with688 source pins/74 compiler inputs; native recovery phase controls are maintained.
-- [Guarded point timestamp experiment](../../tests/validation/evidence/rm504-after-ready-stored-corruption/residual-precision-plan/guarded-epoch-probe/independent-review/review.json) independently qualifies54 finite cases, including three previously failing valid dates; production point implementation is now assessed and executing.
+- [Current artifact integration](../../tests/validation/evidence/rm207601-reviewed-artifact-fusion/report.json) passes104 supported checks and all88 supporting HTTP entries with690 maintained source pins/75 actual compiler inputs; exactly5 reviewed source leaves selected.
+- [Receipt ACK/restart review](../../tests/validation/evidence/rm207-operational-boundary-close-grounding/receipt-reconciliation-plan/reconcile01-native/independent-review/review.json) independently passes7cases each database andall8 intentional causal failures; committed final receipt survives lost completion acknowledgement without resending. Genuine receipt before unfinished completion remains zero-proof unknown.
+- [Completed hostile conformance](../../tests/validation/evidence/rm505-cross-feature-hostile-plan/parent-acceptance-audit.json) retains all6 accepted rows, separate native review and prior full gate; RM505 completion marker unchanged.
 
 ## Since the previous report
 
@@ -58,10 +58,10 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Integrate reviewed private phase/deadline artifact leaves, qualify the bounded point product candidate, and continue receipt reconciliation/native cleanup grounding in parallel.
+Finish point product precision/alias portability review, qualify next bounded many-query RHS artifact links, integrate reviewed receipt tests and assess exact trusted receipt durability/reconciliation design. Backend ACK native evidence remains tests-only pending independent review.
 
 ## Input needed
 
-The previously asked database-binding successor and publication decisions remain unanswered; independent local delivery continues. See [the database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06).
+Previously asked database-binding successor and publication decisions remain unanswered; independent local delivery continues. See [database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06).
 
 [Roadmap](../implementation-roadmap.md) · [Completed evidence](../implementation-history.md) · [Estimate basis](../task-timing/README.md) · [Reporting rules](README.md)
