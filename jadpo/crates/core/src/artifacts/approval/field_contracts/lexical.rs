@@ -219,9 +219,27 @@ impl Scan {
             }
             Expression::Grouped(value) => self.expr(&value.value),
             Expression::OutcomeMatch(value) => self.expr(&value.subject),
-            Expression::Create(_)
-            | Expression::Query(_)
-            | Expression::Update(_)
+            Expression::Create(value) => {
+                // Explicit field values use the existing lexical environment.
+                // Conflict/rejection scopes are deliberately not traversed.
+                for field in &value.fields {
+                    self.expr(&field.value);
+                }
+            }
+            Expression::Query(value) => {
+                // The predicate field is an entity field Name, not a lexical
+                // expression. Only ordinary point-query RHS values are linked.
+                if matches!(
+                    value.cardinality,
+                    QueryCardinality::Optional | QueryCardinality::Required
+                ) && value.page.is_none()
+                    && value.includes.is_empty()
+                    && value.pagination.is_none()
+                {
+                    self.expr(&value.value);
+                }
+            }
+            Expression::Update(_)
             | Expression::Delete(_)
             | Expression::Literal(_)
             | Expression::Missing(_) => {}

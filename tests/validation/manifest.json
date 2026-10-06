@@ -80,6 +80,7 @@
     "tests/runtime/jwt-integration.test.ts",
     "tests/runtime/lifecycle-maintenance-scheduling.test.ts",
     "tests/runtime/liveness-contract.test.ts",
+    "tests/runtime/local-approval-ledger.test.ts",
     "tests/runtime/local-approval-verifier.test.ts",
     "tests/runtime/outcome-sequencing.test.ts",
     "tests/runtime/persistence-seed.test.ts",
@@ -90,6 +91,7 @@
     "tests/runtime/service-adapter.test.ts",
     "tests/runtime/service-authentication.test.ts",
     "tests/runtime/service-fakes.test.ts",
+    "tests/runtime/startup-ownership.test.ts",
     "tests/runtime/temporal.test.ts",
     "tests/runtime/validation-artifact-contracts.test.ts",
     "tests/runtime/validation-artifact-nullability.test.ts",
@@ -130,6 +132,7 @@
     "relationship-conflicts",
     "configuration-preflight",
     "deployment-readiness",
-    "lifecycle-maintenance"
+    "lifecycle-maintenance",
+    "startup-ownership"
   ]
 }

@@ -202,7 +202,7 @@ fn pattern_shadowing_stays_unresolved_and_authored_route_input_is_distinct() {
 }
 
 #[test]
-fn field_access_links_parameter_root_but_persistence_predicate_scope_stays_unresolved() {
+fn field_access_and_ordinary_query_rhs_link_roots_without_database_origins() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
@@ -215,8 +215,12 @@ fn field_access_links_parameter_root_but_persistence_predicate_scope_stays_unres
     assert!(!rows.is_empty());
     for row in rows {
         assert_eq!(
-            row["contract"]["source_binding_use"]["reason"],
-            "expression_scope_not_analyzed"
+            row["contract"]["source_binding_use"]["declaration"]["address"],
+            json!(["parameter", "0"])
+        );
+        assert_eq!(
+            row["contract"]["source_binding_use"]["value_origin"],
+            "not_resolved"
         );
     }
     let title = contracts(&s, "PrivateNote.summary")
