@@ -60,8 +60,8 @@ async function accepts(path: string, body: unknown) {
 }
 async function rejects(path: string, body: unknown) {
   const response = await post(path, body);
-  expect(response.status, `${path}: ${JSON.stringify(body)}`).toBe(400);
-  expect((await response.json()).error.code).toBe("invalid_request");
+  expect(response.status, `${path}: ${JSON.stringify(body)}`).toBe(422);
+  expect((await response.json()).error.code).toBe("invalid_input");
 }
 
 test("one supplementary character satisfies the same one-scalar boundary as ASCII", async () => {

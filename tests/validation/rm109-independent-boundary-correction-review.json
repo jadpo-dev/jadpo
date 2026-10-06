@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "task_id": "RM-109",
+  "review_kind": "independent_public_boundary_correction",
+  "reviewer": "boundary-review",
+  "recorded_at": "2026-10-06T03:21:13.538943+00:00",
+  "scope": {
+    "baseline": "aea1b1595990b9e888a6b030f133a9bd6d9a8cf3",
+    "fixed_product_revision": "d071557c530b9298aa4784a0c7447ecd226d8eb0",
+    "final_test_only_revision": "26eb1432e7548884e7fa305903e1781083fe447c",
+    "isolated_capture": "git archive d071557",
+    "capture_directory": "/private/tmp/jadpo-boundary-independent",
+    "files_reviewed_sha256": {
+      "docs/configuration-plan.md": "dd45083dcaac43b19222e44a180a72f9387ffcbb5e020b44a3c78da2a55c9a63",
+      "docs/runtime-target-v0.1.md": "8fc0929e33b3ea15c6a92091f2caf6f7ac772d0483e47423869449ec63641bf5",
+      "jadpo/crates/core/src/target.rs": "b5751c85f73594464d6acb5b1effb467aaee3337b9580a64577dd1f8b180b7e6",
+      "jadpo/crates/core/src/target/liveness.rs": "c7275e4a3f342d3926597b8bc93be08aa2f466ede8c7cbfb7d963f9573d84251",
+      "jadpo/crates/diagnostics/src/lib.rs": "687adba5ad36f2a3d64a6c4af5b98b4bca083a44c51add39e9a463963888bd1c",
+      "tests/runtime/field-contracts.test.ts": "56d473494379422104f13ddcc4377dbd5a8f3666a3f444cc88b76826178359a0",
+      "tests/runtime/generated-identity.test.ts": "a256bb43e4c9cd8a6b4c6c2bbf6365f8e00a025622dd4432dccd2d78b8ec1007",
+      "tests/runtime/jadpo-seed.test.ts": "559a881f267095d9faa4adce0b020fbe81b9fc0352df8152474d2d4e103bce5c",
+      "tests/runtime/liveness-contract.test.ts": "cbd0db6c1bda8254fabf815d4a7f408182fbb6377415b2cbcc0e82b8f247c561",
+      "tests/runtime/persistence-postgres.test.ts": "ad3bc0b29517fbed0cf45565e6c27f9ae8e85f7052284159193cfdcc69860b44",
+      "tests/runtime/validation-artifact-contracts.test.ts": "fe9fa1463c6baf2e314646d069bc6f74bc50c443ad8b74d1c04255fc9ecf9595",
+      "tests/runtime/validation-config-time.test.ts": "a0aa01e82316fceb0ed0d8c465fc95fbb81b441fb8b5b7e68b3f830362dc7ad6",
+      "tests/runtime/validation-persistence.test.ts": "2fcb3f2ef2480c1280fb0d3aed7f9580881092b35bc89bdee8eb3f1d6b1107c8",
+      "tests/runtime/validation-unicode-length.test.ts": "653f0ccae199bab88229e0927a4c6ef7202172ccf3c2b96244c3b5a6d96964f1",
+      "tests/validation/README.md": "7f5cd8b1b4d90e29bd344c19e6278950164dfed795e38057757a3d407e0d1d6c",
+      "tests/validation/manifest.json": "1701647ce73a774e8ccfd440be54ebb2a71ede720da37a08e7b282949e7e4c6d",
+      "tools/verify.py": "66a19adf8b285835078cbbf6bd27df1203bd58d3dcaab070edb697cea465744b"
+    },
+    "test_only_follow_up": "tests/runtime/entity-lifecycle.test.ts | 4 ++--\n tests/runtime/persistence-seed.test.ts | 4 ++--\n 2 files changed, 4 insertions(+), 4 deletions(-)",
+    "approval_boundary": "Authored constant liveness lowering, human-owned diagnostic, accepted GF-032 body/path HTTP error boundaries, affected assertions/specification, verifier registration/open-gate preservation. Not full golden harness, worker, PostgreSQL query accounting, release, or task closure."
+  },
+  "model": {
+    "actual": "gpt-6.1-sol",
+    "reasoning": "high",
+    "actual_evidence": "Full-history inherited parent settings; parent verified actual metadata and provided it in task handoff. No model override.",
+    "batch_pin": "gpt-6.1-sol/high",
+    "selection_basis": "Consequential public language/authority review; same bounded pin through build, adversarial probes and evidence packaging."
+  },
+  "contract_authority": [
+    "docs/configuration-plan.md CONFIG-D10/CONFIG-P5",
+    "docs/work-plans/golden-delivery-planning.md owner-selected GF-032 preservation",
+    "docs/runtime-target-v0.1.md Runtime boundaries",
+    "examples/golden-todo/acceptance.json CREATE-002/READ-003/PUBLIC-001/AUTH-012"
+  ],
+  "frozen_contract_sha256": {
+    "examples/golden-todo/acceptance.json": "3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608",
+    "tests/validation/golden-obligations.json": "1bb72278815340e902238848d62547a252c63053019281c1d2a313cbf2db666b"
+  },
+  "frozen_contract_changed": false,
+  "verdict": "approved_scoped_correction",
+  "blocking_findings": [],
+  "verification": {
+    "fresh_isolated_build": "evidence/parallel-boundary-independent/fresh-build-binding.json",
+    "rust_liveness": {
+      "command": "cargo test --manifest-path jadpo/Cargo.toml -p jadpo-core --target-dir /private/tmp/jadpo-boundary-independent/cargo-target authored_liveness -- --nocapture",
+      "passed_tests": 2,
+      "log": "rust-liveness.log"
+    },
+    "liveness_runtime": {
+      "passed_tests": 1,
+      "assertions": 10,
+      "log": "liveness-isolated.log"
+    },
+    "field_runtime": {
+      "passed_tests": 11,
+      "assertions": 137,
+      "log": "fields-isolated.log"
+    },
+    "query_header_runtime": {
+      "passed_tests": 6,
+      "assertions": 37,
+      "log": "query-header-regression.log"
+    },
+    "independent_runtime": {
+      "passed_observations": 24,
+      "safe_operational_logs": 8,
+      "evidence": "adversarial-observations.json"
+    },
+    "independent_compiler": {
+      "negative_cases": 9,
+      "human_owned_liveness_negatives": 8,
+      "earlier_secret_flow_rejection": 1,
+      "constant_repair_build_passed": true,
+      "evidence": "compiler-boundary-observations.json"
+    },
+    "generic_fallback": "fallback-local-clock-observations.json",
+    "artifact_consistency": {
+      "source_revision": "src_2c78570a2841d2f7",
+      "emitted_early_route_matches_app_meta_source_revision": true,
+      "public_inventory_output": "PublicHealth",
+      "openapi_output": "#/components/schemas/PublicHealth",
+      "observed_output": {
+        "status": "healthy"
+      },
+      "before_readiness_auth": true,
+      "duplicate_ordinary_liveness_branch": false
+    },
+    "full_supported_verifier": "Parent independently runs the broad supported gate; not duplicated or claimed by this review."
+  },
+  "adversarial_checks": [
+    "Auth-enabled migrated golden application: invalid bearer plus cookie liveness200 healthy with0 auth attempts and0 physical SQLite statements; a protected-route401 control records1 auth attempt, validating the instrumentation.",
+    "Unavailable SQLite path: readiness503 unavailable, liveness200 healthy with0 auth attempts/queries. A throwing Request.json function is not read on liveness.",
+    "Malformed actual JSON400 invalid_request; six decoded body-shape/refinement violations422 invalid_input; invalid UUID path422 invalid_value.",
+    "Unexpected decoder Error/TypeError, validator Error/SyntaxError, injected path/output/liveness-output SyntaxError faults all500 internal_fault; synthetic canaries absent from every response and8 operational logs.",
+    "Real Node adapter required raw-header metadata; unchanged query/header syntax400 and declared value422 passes through actual localhost listener. Existing duplicate/missing-header regression cases pass.",
+    "Eight valid compiler source probes reject protected, callable, extra-statement, clock, configuration, query, header and run-authored liveness with located human-owned diagnostic. Secret configuration output is rejected earlier by secret-flow typing. Constant repair builds.",
+    "Plausible moves below readiness/auth, replacement by generic status, dropped output validation, broad body400 catches, SyntaxError catches outside parsing, and path400 classification are caught by outage/auth counters, exact body/artifact checks, validator fault injection and declared input/path observations.",
+    "Frozen acceptance and obligation map bytes unchanged; final test-only follow-up reconciles four stale400 expectations with accepted422 semantics, preserving write/ownership checks. Query/header contract remains unchanged. --require-golden still rejects the open frozen-source acceptance gate."
+  ],
+  "retained_limits": [
+    "Common HTTP setup still uses local Date/performance/crypto/URL APIs before the early route. A patched Date constructor rejects the handler promise before its try. This is recorded as a retained local-host limitation; CONFIG-D10 does not require clock-fault immunity, and authored clocks/config/effects are rejected.",
+    "Query counter evidence here covers SQLite; no independent PostgreSQL query-count proof is claimed.",
+    "Generated instrumentation and injected faults are review probes only. No product source was edited, and no full44-ID/two-backend golden pass, release equivalence or RM-109 completion is claimed."
+  ],
+  "probe_setup_notes": [
+    "Initial JWT download was blocked by DNS in the sandbox; retained failure log. Copied existing compiler-pinned jose6.2.12 tarball and ran canonical installer with byte/integrity verification in the independent capture; cached install passed.",
+    "Independent probe development corrected raw-header handling to the real adapter, used approved localhost execution after sandbox port failure, corrected the emitted path marker, and instrumented the generated authentication entry because the host object is immutable. Expected400/422/500 assertions were preserved.",
+    "An initial combined focused Bun run passed12/147; required individual-process liveness1/10 and fields11/137 runs are the primary evidence."
+  ],
+  "task_timing_run": "RM-109-dc5c85b71b24",
+  "task_state": "partial; scoped review completed, full golden/runtime prerequisites remain open",
+  "evidence_sha256": {
+    "adversarial-observations.json": "c28a9f219b39f885e6146a42e8bcc8f7e9a6c0eb73f40ee4250450b7538db700",
+    "adversarial-probes.log": "7a711016f374e57c8280f837af331fd1bfe71a5d7dd1c37158958d38f817cf0e",
+    "boundary-build.log": "ab4fe3964baf43d1bc39a8c352798eb5593d3f066f7a1b74ea003fd53d139fb1",
+    "call-diagnostic.log": "dd9b5892dd5ec0e3b68e6e4bd02185fc49a9a955dba9df60ece5b5c720cb429f",
+    "clock-diagnostic.log": "e1ae6e66527aa92ff617d174f20e57d6eb82affa6e7eca7fae9814cb9016b29a",
+    "compiler-boundary-observations.json": "05f23fe8b325c6f404b8b6a957b6316f20358e0de2d85b40701b7bb7708fcc58",
+    "compiler-probes.log": "fd5a6b25118e6b4cfbaa2c00fd245675d7665dde03b9a2e8c5ab5fd77b884e81",
+    "config-diagnostic.log": "cad43d8d7f72b942dcb2745a06cd08daf64a8a7ff1344eb76d89f3da1c387452",
+    "extra-statement-diagnostic.log": "ccd8f9e97eceb4d75ef410f5347515b6500a383c04fecbdb23158b14299bac0b",
+    "fallback-clock-probes.log": "61499173727f45ef5a162bdd4285170e14cd4064e424a8824014e354a6a09c1f",
+    "fallback-local-clock-observations.json": "9d6819530cf6f1a2f768f3e1ecbede0d8d2a83c5741f67550cd6e7918557e687",
+    "fields-isolated.log": "b29c84cf92a2f3606503d46ad59bd6d3e236277f5100e0166aba99b808fe3a4b",
+    "fixtures/boundary/app.jadpo": "9add71c8df3d671675b5e01f542b67c1dd21667b2eb6293fe9394b50d95df9db",
+    "fixtures/diagnostics/call/app.jadpo": "1cbbeb6771a7e68860f94247ee7464518deabe627a5a0dc7bd36b08b7692e584",
+    "fixtures/diagnostics/clock/app.jadpo": "90578a74fa068d3c1417f025e9eaa64941806e7531c6c773751e741622cc25ca",
+    "fixtures/diagnostics/config/app.jadpo": "54fd5cf934c04c6058d2406aaf09afc7a8818cc1d8c2c43e13611a083022d08d",
+    "fixtures/diagnostics/extra-statement/app.jadpo": "3135e6ee05052f40252e6e2f1190246d22954dfac897da506a84eadbdf17f6e8",
+    "fixtures/diagnostics/header/app.jadpo": "a0cd6b21a67ec5ab8e09d74f0253c20a5cc3474fdd080a6932fbfe71920503f6",
+    "fixtures/diagnostics/protected/app.jadpo": "d99b8e879763ae6f29aee9e6c667128f4c1d7375321142912b94d1404e65b57b",
+    "fixtures/diagnostics/query/app.jadpo": "a8a64ff228ae11a8632d2e600c8b9f4855d3abd92171fc3bb8898e4be433e054",
+    "fixtures/diagnostics/repaired/app.jadpo": "b52ce042879f372a8385b1eb3a7b31cf8a4a9a07f6ba85a3e5a4d857a2133a4f",
+    "fixtures/diagnostics/run/app.jadpo": "99855cc8e4e8c08303fd5d7f8d79453423f164c75698a25fb2678e88e14a01d7",
+    "fixtures/diagnostics/secret/app.jadpo": "14122b5c6a567a30e62d5d19c8326727fbdd490672e61141c70dd5cde53a6e3d",
+    "fixtures/fallback/app.jadpo": "36361bc47c27b80106a3a470a8b8e824c584445dbbd920910d9b648bbd8b3e98",
+    "fixtures/golden/application.jadpo": "9e1d07040020bb5616fc5211634b59fd54d4baba98a13b8f98cdc0d2183189e7",
+    "fixtures/golden/authentication.jadpo": "e465fcb2790b84185d54aafdf72f82fe946eb55b1422b788ebdf64751ed42bfc",
+    "fixtures/golden/config.jadpo": "cc2e8ca4e7cda4e6fb0c753f1fffa9a0a198c00b077a158f76c281f73700583e",
+    "fixtures/golden/entities/service.jadpo": "8f4fdee19fcf877a4c99734661c6b61c87dd4ed71de5d31bcf90701325d0640e",
+    "fixtures/golden/entities/service_credential.jadpo": "435112a3840ada2b9d4f777138ba80e422370cc0138e7bf0e168a955da9f5fb0",
+    "fixtures/golden/entities/todo.jadpo": "96d8c27183af23af4ed22f1ae2b3153f82bdadd44dae25d797f6cd1cdb000411",
+    "fixtures/golden/entities/user.jadpo": "3822d3b5bb4a15bd5dbbbde07a181bb812de16f4302735d43ab1e365d7e04cef",
+    "fixtures/golden/routes/liveness.jadpo": "5abeef0f4bca237f7d9f44a94bc310dbfa687a8838c2f7d2b350542012cd4e45",
+    "fixtures/golden/routes/todos.jadpo": "b4f4bf423c2e1d80c22a291f664f95a6d3788c8e33ca4264df334aa6362b6744",
+    "fixtures/golden/values/contracts.jadpo": "01a6a694420182ae4a40d8fa32a22b894148b6d855f3fb518978e8e1cda3399a",
+    "fixtures/golden/values/domain.jadpo": "4131020e9d536627fad893d7e3f0eac92d40b286e9397e95f2d0f14a103aabf1",
+    "fixtures/outage/application.jadpo": "9e1d07040020bb5616fc5211634b59fd54d4baba98a13b8f98cdc0d2183189e7",
+    "fixtures/outage/authentication.jadpo": "e465fcb2790b84185d54aafdf72f82fe946eb55b1422b788ebdf64751ed42bfc",
+    "fixtures/outage/config.jadpo": "cc2e8ca4e7cda4e6fb0c753f1fffa9a0a198c00b077a158f76c281f73700583e",
+    "fixtures/outage/entities/service.jadpo": "8f4fdee19fcf877a4c99734661c6b61c87dd4ed71de5d31bcf90701325d0640e",
+    "fixtures/outage/entities/service_credential.jadpo": "435112a3840ada2b9d4f777138ba80e422370cc0138e7bf0e168a955da9f5fb0",
+    "fixtures/outage/entities/todo.jadpo": "96d8c27183af23af4ed22f1ae2b3153f82bdadd44dae25d797f6cd1cdb000411",
+    "fixtures/outage/entities/user.jadpo": "3822d3b5bb4a15bd5dbbbde07a181bb812de16f4302735d43ab1e365d7e04cef",
+    "fixtures/outage/routes/liveness.jadpo": "5abeef0f4bca237f7d9f44a94bc310dbfa687a8838c2f7d2b350542012cd4e45",
+    "fixtures/outage/routes/todos.jadpo": "b4f4bf423c2e1d80c22a291f664f95a6d3788c8e33ca4264df334aa6362b6744",
+    "fixtures/outage/values/contracts.jadpo": "01a6a694420182ae4a40d8fa32a22b894148b6d855f3fb518978e8e1cda3399a",
+    "fixtures/outage/values/domain.jadpo": "4131020e9d536627fad893d7e3f0eac92d40b286e9397e95f2d0f14a103aabf1",
+    "focused-runtime-combined.log": "b8322de7d45eafe68c8bea25be7386506e8b62e612a30cc3fd4547bc1ea63037",
+    "fresh-build-binding.json": "db17ba07ffc9f94c4bf38cbc6dee7e243c84b591961417b1413a0f5ebc242a09",
+    "generated/app.meta.json": "69232e1a1ed301fd7e627942b4e424d64960e3c8661c3bb4cdb8a3b2553558a2",
+    "generated/inventory/routes.json": "f4babaa60f163aa5ef86d6292ae129653ace515113cd103cc1f677375943e5a4",
+    "generated/openapi/openapi.json": "3994aa0c7c43b134435ef750174357f84697b48f1ae66ce29ba353182b429ca8",
+    "generated/target/app.ts": "e932ef70c5567e15929854cbeea7dc2faa585357bba490064e627cfbeb83cabe",
+    "golden-build.log": "fbfd623b5b780c8391b9773d84437a17976c4d71329aceabbe010745185bd8bc",
+    "header-diagnostic.log": "30e6d848c1e2fbccc0b261c048cf68a064740044ffef75b60913a89a2328caa8",
+    "jwt-install-cached.log": "eb74fa6ccd1e2a67389d50a6de7efc9327b544615e56597550c794245ce48838",
+    "jwt-install.log": "81af0bc4092120330b2eb1e68440c3d91ba3b86d697c768d4944e9420fd5d9a2",
+    "liveness-isolated.log": "91321f411c60a6c43bd4f07581923bc31c440001572727f68aa2378184425743",
+    "original-first-party-authentication.ts": "9d677b4a1a60684ce0a30612bf52ec454d5f989cf25f91e01a7645368012e8e6",
+    "probe-boundaries.ts": "9ed21ff85826758dde54262b60b0914bf954c04e9e58d38d0b0909ea7afdad5b",
+    "probe-compiler.py": "b6c56dc2e3754033e5e1707df928e4140355c49b4e43d77893252f58d781f171",
+    "probe-fallback-clock.ts": "95cbd30dcbe3129edb3a607d7d83273a701292840182bbdfd18ba6822ed7e4c4",
+    "protected-diagnostic.log": "76a9ec01ca69e14fc9f8885d10250c1de7e84bbe933b23807245900177382db3",
+    "query-diagnostic.log": "a26f5df472fd57d7c58460ca84c36b17776d4f193e0dc26dd8e3430cf2980f40",
+    "query-header-regression.log": "ca2697552229db240e07deee4903a0f56ea65a6b5452402dfc6a28250d3fbf69",
+    "run-diagnostic.log": "a2154a0c39a877f45a1862106d6816bc2c465ecbbec5acb011725a3b8985ee3a",
+    "rust-liveness.log": "37385a187ccbf50435e5d9aefd431a195819d729f555010f396d6c9d2d92590d",
+    "secret-diagnostic.log": "1af26dec656470766c6f0974a4782902b3ece3e42897e4fe22865f84cb2e96f4",
+    "test-only-follow-up-diff.patch": "912961e13f44f30676141eb208b3477119269a4702d09c89bfc6446fddd81e10"
+  }
+}

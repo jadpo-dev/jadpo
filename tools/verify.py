@@ -161,6 +161,24 @@ def main():
                 step('postgres-' + mode, ['bash', 'tests/runtime/postgres.sh', mode])
             else:
                 report['steps'].append({'name': 'postgres-' + mode, 'status': 'skipped', 'reason': 'Explicit quick profile'})
+        # Supporting migrated HTTP evidence remains separate from the frozen source gate.
+        checkpoint_summary = None
+        if args.profile == 'full':
+            checkpoint_directory = output / 'golden-http-checkpoint'
+            step('golden-http-checkpoint', [sys.executable, 'tools/golden_checkpoint.py',
+                                          '--output', str(checkpoint_directory)])
+            checkpoint_report = json.loads((checkpoint_directory / 'golden-checkpoint.json').read_text())
+            checkpoint_summary = {
+                'report': 'golden-http-checkpoint/golden-checkpoint.json',
+                'scope': checkpoint_report['checkpoint']['scope'],
+                'status': checkpoint_report['status'],
+                'release_equivalent': False,
+                'counts': {status: sum(entry['status'] == status for entry in checkpoint_report['results'])
+                           for status in ('passed', 'failed', 'not_run')},
+            }
+        else:
+            report['steps'].append({'name': 'golden-http-checkpoint', 'status': 'skipped',
+                                    'reason': 'Explicit quick profile omits this two-backend checkpoint'})
         # A design contract's non-compilation is recorded as a blocker, never a passed test.
         result = subprocess.run([str(COMPILER), 'check', 'examples/golden-todo', '--diagnostic-format=json'],
                                 cwd=ROOT, env=environment, capture_output=True, text=True, timeout=60)
@@ -170,6 +188,8 @@ def main():
                             'diagnostic_count': len(diagnostic_report['diagnostics']),
                             'behavioural_evidence': 'not_run', 'obligations': obligations['cases']}
         report['golden']['case_protocol'] = collect_golden_case_report(output, environment)
+        if checkpoint_summary is not None:
+            report['golden']['http_checkpoint'] = checkpoint_summary
         if args.require_golden:
             raise RuntimeError('Golden behavioural acceptance is not executable yet; see golden-diagnostics.json and the obligation map')
         report['status'] = 'supported_checks_passed_with_open_gates'

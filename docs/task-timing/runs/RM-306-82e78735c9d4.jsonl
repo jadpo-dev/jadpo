@@ -1,0 +1,6 @@
+{"schema_version": 1, "run_id": "RM-306-82e78735c9d4", "task_id": "RM-306", "actor": "01a10f20-b464-7543-925c-171de6c52598", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T02:55:15.981068+00:00", "phase": "planning"}
+{"at": "2026-10-06T02:55:48.881692+00:00", "phase": "implementation", "note": "Short plan: isolated scheduler recovery and real harness adapter checkpoint; owner approved golden-only60s/40s profile; actual batch pin verified from current chat metadata."}
+{"at": "2026-10-06T02:56:23.874116+00:00", "phase": "review", "note": "Reviewing profile decision scope and supported verifier integration while isolated writers proceed."}
+{"at": "2026-10-06T02:57:20.938456+00:00", "phase": "paused", "note": "Waiting for isolated implementation commits; profile decision and entry/link review recorded."}
+{"at": "2026-10-06T02:59:28.313743+00:00", "phase": "paused", "note": "Integration waits while root switches timer to golden liveness correction exposed by real adapter."}
+{"at": "2026-10-06T03:22:46.363774+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/work-plans/golden-delivery-planning.md"}

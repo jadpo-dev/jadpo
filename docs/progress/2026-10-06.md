@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T00:32:13+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T04:27:24+01:00 · figures reflect the recorded roadmap.
 
-Established the public Git workflow and completed the first parallel native-scheduler/harness-preparation checkpoint. No whole roadmap task closed.
+The parallel golden delivery batch added reviewed activation renewal and real generated HTTP observations on both databases. All 67 supported checks pass; the full golden gate remains open.
 
 ## At a glance
 
@@ -20,9 +20,9 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- Partial RM-306: generated native scheduler assembly, cursor correction and independent SQLite/PostgreSQL review; combined supported gate 65/65.
-- Partial RM-109: source-bound 44-ID/two-backend protocol and reviewed supporting verifier inventory; all 88 entries remain not_run.
-- Refreshed immediate delivery queue and isolated writer ownership without changing stable IDs, scopes or estimates.
+- Singleton activation renews its durable live lease between delivery intents, with database time and strict duration decoding; generated crash/reclaim acceptance remains open. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
+- Eight original golden HTTP IDs pass on SQLite and PostgreSQL (16 entries); 72 remain unexecuted. Real failures led to reviewed constant liveness and accepted 422 input corrections. [Independent reviews](../../tests/validation/rm109-independent-boundary-correction-review.json).
+- The integrated compiler/runtime and supporting HTTP checkpoint pass 67 registered checks. [Fresh report](../../build/validation/20261006T041625-33809/report.json).
 
 ## Since the previous report
 
@@ -30,7 +30,7 @@ Compared with 2026-10-05: 0 newly recorded complete; 0 added or reopened; 0 remo
 
 ## Planning and implementation
 
-- **82** open tasks have an explicitly recorded plan; **1** is recorded as needing planning and **1** as needing input for their plan.
+- **83** open tasks have an explicitly recorded plan; **1** is recorded as needing planning and **0** as needing input for their plan.
 - **0** still need their planning status assessed. Existing design documents may already cover some of them.
 - **56** non-conditional tasks remain to deliver; **28** more are conditional. This includes coding, decisions, testing and external work—not just implementation.
 - A saved plan does not make a task execution-ready; its dependencies still apply.
@@ -56,10 +56,10 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Continue bounded scheduler recovery and the 18 contract traces, and prepare real golden application adapters; retain required transaction, readiness and final acceptance gates.
+Generate the separate-process crash/reclaim traces while expanding real golden case observations; then integrate the checked reminder worker using the approved 60s execution / renewable 40s lease profile.
 
 ## Input needed
 
-Pending golden-only worker profile: recommended 60-second execution deadline and 40-second renewable claim lease. Alternative leaves the profile unset and worker execution disabled. No answer assumed.
+None for the delivered bounded batch. The separate singleton activation profile must be selected before public activation; full golden prerequisites remain open.
 
 [Roadmap](../implementation-roadmap.md) · [Completed evidence](../implementation-history.md) · [Estimate basis](../task-timing/README.md) · [Reporting rules](README.md)

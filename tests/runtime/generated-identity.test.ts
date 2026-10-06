@@ -58,7 +58,7 @@ describe("compiler-generated entity identities", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: firstTodo.id, title: "forged" }),
     }));
-    expect(forged.status).toBe(400);
+    expect(forged.status).toBe(422);
 
     const database = new Database(databasePath, { readonly: true, strict: true });
     try {

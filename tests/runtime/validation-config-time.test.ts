@@ -184,17 +184,17 @@ test("the generated request boundary normalizes offsets and millisecond arithmet
 test("invalid date precision and offsets are rejected before authored arithmetic", async () => {
   for (const instant of ["2025-02-29T12:00:00Z", "2026-04-31T12:00:00Z", "2026-01-01T24:00:00Z", "2026-01-01T12:00:00", "2026-01-01T12:00:00.0001Z", "2026-01-01T12:00:00-00:00"]) {
     const result = await boundary(instant);
-    expect(result.status).toBe(400);
-    expect(result.body.error.code).toBe("invalid_request");
+    expect(result.status).toBe(422);
+    expect(result.body.error.code).toBe("invalid_input");
     expect(result.body.error).not.toHaveProperty("stack");
   }
 });
 test("every accepted offset instant remains valid when its canonical output is decoded again", async () => {
-  for (const [instant, status] of [["0001-01-01T00:00:00+01:00", 400], ["0001-01-01T00:00:00Z", 200], ["9999-12-31T23:59:59-01:00", 400], ["9999-12-31T23:59:59Z", 200]] as const) {
+  for (const [instant, status] of [["0001-01-01T00:00:00+01:00", 422], ["0001-01-01T00:00:00Z", 200], ["9999-12-31T23:59:59-01:00", 422], ["9999-12-31T23:59:59Z", 200]] as const) {
     const first = await boundary(instant);
     expect(first.status).toBe(status);
-    if (status === 400) {
-      expect(first.body.error.code).toBe("invalid_request");
+    if (status === 422) {
+      expect(first.body.error.code).toBe("invalid_input");
     } else {
       expect(first.status).toBe(200);
       const second = await boundary(first.body.normalized);

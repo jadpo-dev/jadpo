@@ -192,3 +192,16 @@ bindings, demonstrate route/OpenAPI/policy/query-audit agreement, and integrate
 with a fresh compiler build and `--require-golden`. RM-108/RM-402/RM-403 closure
 and required independent review remain prerequisites for full RM-109 completion.
 No adapter or final golden-pass import path is enabled by this preparation.
+
+
+The reviewed migrated HTTP checkpoint command is
+`python3 tools/golden_checkpoint.py --output <new-evidence-directory>`. It builds
+a fresh compiler, generates the migrated application, and observes eight original
+IDs through real loopback HTTP on SQLite and disposable PostgreSQL. Generated
+original/instrumented artifacts, the pinned JWT dependency, safe raw responses
+and SQL/authentication observations are bound to the report. All 88 entries
+remain present; unsupported cases stay `not_run`. A selected case mismatch fails
+the command, while a passing eight-ID checkpoint remains partial golden evidence.
+The full supported verifier runs this command after its runtime suites and
+retains its separate report; the explicit quick profile skips the two-backend
+checkpoint. The frozen-source `--require-golden` gate remains independent.

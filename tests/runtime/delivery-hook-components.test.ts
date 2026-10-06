@@ -528,7 +528,8 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
 });
 
 describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`, () => {
-  // Explicit native test profile; the owner-facing golden profile is unset.
+  // Explicit native activation test profile; per-delivery golden approval does
+  // not choose a 500-call activation profile.
   const profile = Object.freeze({ executionMs: 120_000, leaseMs: 90_000 });
   const activate = (proof: unknown, at = scanTime) => app.runDeliveryScheduleActivation(bindingIdentity, proof, profile, at);
   const activationRows = () => rows('SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [bindingIdentity]);
@@ -614,6 +615,65 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       } finally { release(); }
       expect((await first).status).toBe("finished"); expect(calls).toHaveLength(1);
     }, async () => { entered(); await held; });
+  });
+  test("generated between-intent renewal outlives the initial lease without changing the immutable activation page or execution cap", async () => {
+    const f = await fixture();
+    for (let i = 0; i < 3; i++) await client.create_Todo(todo());
+    const short = { executionMs: 5_000, leaseMs: 1_500 };
+    let initial: any;
+    await provider(async calls => {
+      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, short, scanTime);
+      expect(result).toEqual({ status: "finished", selected: 4, attempted: 4, continued: false });
+      expect(calls).toHaveLength(4);
+      expect(new Set(calls.map(call => call.body.idempotency_key)).size).toBe(4);
+      expect((await activationRows())[0].activation_id).toBeNull();
+    }, async () => {
+      const row = (await activationRows())[0];
+      if (initial === undefined) initial = row;
+      else {
+        expect(row.activation_id).toBe(initial.activation_id); expect(row.generation).toBe(initial.generation);
+        expect(row.execution_deadline).toBe(initial.execution_deadline); expect(row.page).toBe(initial.page);
+        expect(row.lease_until >= initial.lease_until).toBe(true);
+      }
+      await Bun.sleep(500);
+    });
+    expect(Date.now() >= Date.parse(initial.lease_until)).toBe(true);
+  });
+  test("generated renewals cannot reset the activation execution deadline or discard its unfinished work", async () => {
+    const f = await fixture(); for (let i = 0; i < 5; i++) await client.create_Todo(todo());
+    let initial: any;
+    await provider(async calls => {
+      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, { executionMs: 1_500, leaseMs: 1_000 }, scanTime);
+      expect(result.status).toBe("partial"); expect(result.selected).toBe(6); expect(result.attempted < 6).toBe(true);
+      expect(calls.length < 6).toBe(true);
+      const row = (await activationRows())[0];
+      expect(row.activation_id).toBe(initial.activation_id); expect(row.execution_deadline).toBe(initial.execution_deadline);
+      expect(row.page).toBe(initial.page); expect(row.cursor).toBeNull();
+      expect(row.lease_until <= row.execution_deadline).toBe(true);
+    }, async () => {
+      const row = (await activationRows())[0];
+      if (initial === undefined) initial = row;
+      else expect(row.execution_deadline).toBe(initial.execution_deadline);
+      await Bun.sleep(400);
+    });
+  });
+  test("expired activation refuses renewal before another admission and restart retains the original page", async () => {
+    const f = await fixture(), other = todo(); await client.create_Todo(other);
+    let originalPage: string;
+    await provider(async calls => {
+      expect(await activate(f.proof)).toEqual({ status: "partial", selected: 2, attempted: 1, continued: true });
+      expect(calls).toHaveLength(1);
+      expect((await activationRows())[0].page).toBe(originalPage!);
+      expect(Number((await activationRows())[0].generation)).toBe(1);
+    }, async () => {
+      originalPage = (await activationRows())[0].page;
+      await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", bindingIdentity]);
+    });
+    await provider(async calls => {
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 2, attempted: 2, continued: false });
+      expect(calls).toHaveLength(1); expect(JSON.stringify(calls[0].page)).toBe(originalPage!);
+      expect(Number((await activationRows())[0].generation)).toBe(2);
+    });
   });
   async function staged(f: Awaited<ReturnType<typeof fixture>>) {
     return persistence.withOperationTime(scanTime).transaction(async (tx: any) => {
@@ -878,6 +938,7 @@ describe(`native durable singleton activation storage (${sql ? "postgres" : "sql
   const claim = (binding: string, at: string) => persistence.transaction((tx: any) => tx.claim_delivery_activation(binding, at, profile));
   const stage = (handle: any, ids: string[], after: unknown = null) => persistence.transaction((tx: any) => tx.stage_delivery_activation_page(handle, ids, after));
   const finish = (handle: any) => persistence.transaction((tx: any) => tx.finish_delivery_activation(handle));
+  const renew = (handle: any) => persistence.transaction((tx: any) => tx.renew_delivery_activation(handle));
   const state = async (binding: string) => (await rows('SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [binding]))[0];
   test("UTC interval floor coalesces downtime into one occurrence and activation time remains distinct", async () => {
     const binding = crypto.randomUUID();
@@ -927,6 +988,109 @@ describe(`native durable singleton activation storage (${sql ? "postgres" : "sql
     expect(await stage(first, [])).toBe(false); expect(await finish(first)).toBe(false);
     expect(await finish(recovered)).toBe(true);
   });
+  test("renewal preserves exact page/cursor/fence/profile/deadline, ignores forged handle deadlines and rolls back with its transaction", async () => {
+    const binding = crypto.randomUUID(); await tick(binding, instant); const handle = await claim(binding, instant);
+    await stage(handle, [crypto.randomUUID()], { dueAt: dueA, id: crypto.randomUUID() });
+    await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', [new Date(Date.now() + 10_000).toISOString(), binding]);
+    const before = await state(binding);
+    await expect(persistence.transaction(async (tx: any) => { expect(await tx.renew_delivery_activation(handle)).not.toBeNull(); throw new Error("renew rollback"); })).rejects.toThrow("renew rollback");
+    expect(await state(binding)).toEqual(before);
+    const renewed = await renew({ ...handle, leaseUntil: "bad", executionDeadline: "9999-12-31T23:59:59.999Z", leaseMs: 999_999 });
+    expect(renewed.leaseUntil > before.lease_until).toBe(true);
+    expect(renewed.executionDeadline).toBe(handle.executionDeadline);
+    const after = await state(binding);
+    expect({ ...after, lease_until: before.lease_until }).toEqual(before);
+    await rows('UPDATE "__jadpo_delivery_activations_v1" SET execution_deadline=$1, lease_until=$1 WHERE binding=$2', [new Date(Date.now() + 20_000).toISOString(), binding]);
+    const capped = await renew(handle); expect(capped.leaseUntil).toBe(capped.executionDeadline);
+    await expect(persistence.renew_delivery_activation(handle)).rejects.toMatchObject({ operation: "delivery.transaction_required" });
+  });
+  test("expired/stale/wrong-generation renewal never changes the replacement activation or its immutable work", async () => {
+    const binding = crypto.randomUUID(); await tick(binding, instant); const first = await claim(binding, instant);
+    await stage(first, [crypto.randomUUID()]);
+    await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", binding]);
+    const expired = await state(binding); expect(await renew(first)).toBeNull(); expect(await state(binding)).toEqual(expired);
+    const replacement = await claim(binding, scanTime), before = await state(binding);
+    expect(replacement.generation).toBe("2"); expect(replacement.page).toEqual(first.page ?? JSON.parse(expired.page));
+    for (const wrong of [first, { ...replacement, activationId: crypto.randomUUID() }, { ...replacement, generation: "9007199254740993" }]) {
+      expect(await renew(wrong)).toBeNull(); expect(await state(binding)).toEqual(before);
+    }
+    await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1,execution_deadline=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", binding]);
+    const exhausted = await state(binding); expect(await renew(replacement)).toBeNull(); expect(await state(binding)).toEqual(exhausted);
+  });
+  test("unmodified native renewal SQL refuses delayed statement/ack authority and preserves an ahead-of-clock old lease", async () => {
+    // The factory body is the exact compiler runtime template, evaluated with
+    // real adapter SQL and fault injection around the renewal driver promise.
+    // Generated scheduler integration above uses untouched generated modules.
+    const source = readFileSync(join(repository, "jadpo/crates/core/src/runtime/delivery_scheduler.ts"), "utf8");
+    const compiled = new Bun.Transpiler({ loader: "ts" }).transformSync(source);
+    class HarnessFault extends Error { constructor(public operation: string) { super(operation); } }
+    const factory = new Function("PersistenceFault", `${compiled}\nreturn createDeliverySchedulePrimitives;`)(HarnessFault);
+    const memory = sql === null ? new Database(":memory:") : null;
+    let mode: "before" | "after" | null = null;
+    const transact = async (work: (native: any, execute: any) => Promise<any>) => {
+      const run = async (connection: any) => {
+        const execute = async (operation: string, statement: string, values: any[] = []) => {
+          if (operation === "delivery.activation.renew" && mode === "before") await Bun.sleep(150);
+          const result = sql ? await connection.unsafe(statement, values) : memory!.prepare(statement).all(...values);
+          if (operation === "delivery.activation.renew" && mode === "after") await Bun.sleep(150);
+          return result;
+        };
+        const native = factory(execute, () => {}, sql !== null, (nested: any) => nested());
+        return work(native, execute);
+      };
+      if (sql) return sql.begin(run);
+      memory!.exec("BEGIN IMMEDIATE");
+      try { const result = await run(memory); memory!.exec("COMMIT"); return result; }
+      catch (error) { memory!.exec("ROLLBACK"); throw error; }
+    };
+    try {
+      for (const delayed of ["before", "after"] as const) {
+        const binding = crypto.randomUUID(), duration = { executionMs: 1_000, leaseMs: 80 };
+        const first = await transact(async native => { await native.tick_delivery_schedule(binding, interval, instant); const handle = await native.claim_delivery_activation(binding, instant, duration); await native.stage_delivery_activation_page(handle, [binding], null); return handle; });
+        const before = await transact((_native, execute) => execute("read", 'SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [binding]));
+        mode = delayed;
+        expect(await transact(native => native.renew_delivery_activation(first))).toBeNull();
+        mode = null;
+        const after = await transact((_native, execute) => execute("read", 'SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [binding]));
+        if (delayed === "before") expect(after).toEqual(before);
+        else expect({ ...after[0], lease_until: before[0].lease_until }).toEqual(before[0]);
+        expect(await transact(native => native.finish_delivery_activation(first))).toBe(false);
+        const replacement = await transact(native => native.claim_delivery_activation(binding, scanTime, duration));
+        expect(replacement.generation).toBe("2"); expect(replacement.page.intentIds).toEqual([binding]);
+        expect(await transact(native => native.renew_delivery_activation(first))).toBeNull();
+      }
+      const binding = crypto.randomUUID();
+      const first = await transact(async (native, execute) => {
+        await native.tick_delivery_schedule(binding, interval, instant);
+        const handle = await native.claim_delivery_activation(binding, instant, profile);
+        await execute("clock-regression-fixture", 'UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', [handle.executionDeadline, binding]);
+        return handle;
+      });
+      const before = await transact((_native, execute) => execute("read", 'SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [binding]));
+      expect((await transact(native => native.renew_delivery_activation(first))).leaseUntil).toBe(first.executionDeadline);
+      expect(await transact((_native, execute) => execute("read", 'SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [binding]))).toEqual(before);
+    } finally { memory?.close(); }
+  });
+  test.skipIf(sql === null)("PostgreSQL renewal row-lock wait past the old lease returns no authority and cannot change the durable work", async () => {
+    const binding = crypto.randomUUID(); await tick(binding, instant);
+    const short = { executionMs: 5_000, leaseMs: 250 };
+    const first = await persistence.transaction((tx: any) => tx.claim_delivery_activation(binding, instant, short));
+    await stage(first, [crypto.randomUUID()]); const before = await state(binding);
+    let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), observed = new Promise<void>(resolve => { entered = resolve; });
+    const blocker = sql!.begin(async tx => {
+      await tx.unsafe('UPDATE "__jadpo_delivery_activations_v1" SET generation=generation WHERE binding=$1', [binding]);
+      entered(); await held;
+    });
+    await observed;
+    const pending = renew(first);
+    try { await Bun.sleep(350); }
+    finally { release(); await blocker; }
+    expect(await pending).toBeNull(); expect(await state(binding)).toEqual(before);
+    const replacement = await claim(binding, scanTime);
+    expect(replacement.generation).toBe("2"); expect(replacement.page).toEqual(JSON.parse(before.page));
+    expect(await renew(first)).toBeNull();
+  });
   test("tick/claim/page rollback retain durable state and configuration mismatch refuses", async () => {
     const binding = crypto.randomUUID();
     await expect(persistence.transaction(async (tx: any) => { await tx.tick_delivery_schedule(binding, interval, instant); throw new Error("tick rollback"); })).rejects.toThrow("tick rollback");
@@ -947,6 +1111,7 @@ describe(`native durable singleton activation storage (${sql ? "postgres" : "sql
       { operation_time: "0000-01-01T00:00:00.000Z" },
       { lease_until: "2099-01-01T00:00:00.000Z", execution_deadline: "2098-01-01T00:00:00.000Z" },
       { activation_id: null }, { continuation_for: instant, cursor: null },
+      { lease_ms: "9007199254740992" },
     ];
     for (const corrupt of cases) {
       const binding = crypto.randomUUID(); await tick(binding, instant); const handle = await claim(binding, instant);
@@ -954,8 +1119,24 @@ describe(`native durable singleton activation storage (${sql ? "postgres" : "sql
       const entries = Object.entries(corrupt), assignments = entries.map(([field], i) => `"${field}"=$${i + 1}`).join(",");
       await rows(`UPDATE "__jadpo_delivery_activations_v1" SET ${assignments} WHERE binding=$${entries.length + 1}`, [...entries.map(([, value]) => value), binding]);
       const before = await state(binding);
-      for (const method of [() => claim(binding, scanTime), () => stage(handle, [crypto.randomUUID()]), () => finish(handle)]) {
+      for (const method of [() => claim(binding, scanTime), () => stage(handle, [crypto.randomUUID()]), () => finish(handle), () => renew(handle)]) {
         await expect(method()).rejects.toBeDefined(); expect(await state(binding)).toEqual(before);
+      }
+    }
+  });
+  test.skipIf(sql !== null)("SQLite TEXT/REAL duration corruption refuses claim, page, finish and renewal before native SQL interprets it", async () => {
+    for (const field of ["lease_ms", "interval_ms"]) {
+      for (const corrupt of ["0x10", "0b10", "NaN", "duration", 1.5]) {
+        const binding = crypto.randomUUID(); await tick(binding, instant); const handle = await claim(binding, instant);
+        await stage(handle, [crypto.randomUUID()]);
+        await rows(`UPDATE "__jadpo_delivery_activations_v1" SET ${field}=$1 WHERE binding=$2`, [corrupt, binding]);
+        const type = (await rows(`SELECT typeof(${field}) AS storage_type FROM "__jadpo_delivery_activations_v1" WHERE binding=$1`, [binding]))[0].storage_type;
+        expect(type).toBe(typeof corrupt === "string" ? "text" : "real");
+        const before = await state(binding);
+        for (const operation of [() => claim(binding, scanTime), () => stage(handle, []), () => finish(handle), () => renew(handle)]) {
+          await expect(operation()).rejects.toMatchObject({ operation: "delivery.activation_state" });
+          expect(await state(binding)).toEqual(before);
+        }
       }
     }
   });
@@ -967,6 +1148,20 @@ describe(`native durable singleton activation storage (${sql ? "postgres" : "sql
       expect(await finish(handle)).toBe(true);
       expect((await state(binding)).activation_id).toBeNull();
     }
+  });
+  test("legacy schema migration preserves live authority without inventing a renewal duration; expired reclaim installs the explicit profile", async () => {
+    const binding = crypto.randomUUID(); await tick(binding, instant); const first = await claim(binding, instant);
+    await stage(first, [crypto.randomUUID()]); const before = await state(binding);
+    await rows('ALTER TABLE "__jadpo_delivery_activations_v1" DROP COLUMN lease_ms');
+    await tick(binding, instant);
+    expect(await state(binding)).toEqual({ ...before, lease_ms: null });
+    expect(await renew(first)).toBeNull(); expect(await claim(binding, scanTime)).toBeNull();
+    expect(await state(binding)).toEqual({ ...before, lease_ms: null });
+    await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", binding]);
+    const replacement = await claim(binding, scanTime);
+    expect(Number((await state(binding)).lease_ms)).toBe(profile.leaseMs);
+    expect(replacement.page).toEqual(JSON.parse(before.page)); expect(await renew(first)).toBeNull();
+    expect(await renew(replacement)).not.toBeNull();
   });
 });
 

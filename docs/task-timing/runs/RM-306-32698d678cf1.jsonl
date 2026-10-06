@@ -1,0 +1,9 @@
+{"schema_version": 1, "run_id": "RM-306-32698d678cf1", "task_id": "RM-306", "actor": "independent-review-parallel", "actor_kind": "agent", "category": "subsystem", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T02:56:40.791798+00:00", "phase": "planning"}
+{"at": "2026-10-06T02:57:07.067211+00:00", "phase": "paused", "note": "Design review sent; waiting for fixed scheduler source pin, no implementation edited"}
+{"at": "2026-10-06T03:05:20.552767+00:00", "phase": "review", "note": "Fixed scheduler candidate023eaa4 received, isolated scheduler source capture; independent review begins"}
+{"at": "2026-10-06T03:05:42.887147+00:00", "phase": "verification", "note": "Run independent SQLite generated renewal suite and focused native corruption/authority probes"}
+{"at": "2026-10-06T03:07:41.567542+00:00", "phase": "paused", "note": "Original fixed candidate review saved changes_required ACT-RENEW-DURATION-DECODE-01; focused generated suite20/335SQLite and21/340PG passed, waiting correction pin"}
+{"at": "2026-10-06T03:10:15.709483+00:00", "phase": "review", "note": "Strict correctioncc3a7cd integrated at e8bade6 received; immutable final capture review"}
+{"at": "2026-10-06T03:11:24.610611+00:00", "phase": "paused", "note": "Correction own native red now refused; generated correction suites running; missing supplied dependency path repaired from verified existing project cache"}
+{"at": "2026-10-06T03:13:07.195199+00:00", "phase": "review", "note": "Own correction SQLite12/315 andPG21/340 pass; prepare separate scoped approval preserving original decoder red"}
+{"at": "2026-10-06T03:13:07.948883+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-activation-renewal-correction-review.json"}

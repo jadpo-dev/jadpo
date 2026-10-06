@@ -8,6 +8,24 @@ item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
 
+### Golden reminder execution and lease profile — 2026-10-06
+
+The owner approved a **60-second execution limit and a renewable 40-second
+per-delivery claim lease** for the golden reminder worker (RM-108). This is a
+golden-only profile, not a universal job default or measured hard runtime bound. Renewal
+uses authoritative database time and the current claim generation, never
+extends the execution deadline, and cannot revive an expired or reclaimed claim.
+The singleton selection activation has a separate bounded page profile; these
+values do not authorise 500 sequential provider calls within one execution.
+The existing three scheduled invocations within one hour, provider budget of
+three attempts within thirty seconds, and no automatic resend after uncertainty
+remain unchanged.
+
+This resolves the profile choice in the [owning delivery plan](work-plans/golden-delivery-planning.md#checkpoint).
+Checked worker lowering, scheduler/recovery evidence on both adapters and
+required independent reviews still govern activation. The frozen ASYNC-001
+contract and golden acceptance source are preserved.
+
 ### Completion projection after origin revocation — 2026-10-05
 
 The owner selected continuing narrowly scoped, compiler-controlled completion-view

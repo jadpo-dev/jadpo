@@ -809,9 +809,9 @@ describe("generated SQLite persistence path", () => {
       email: "not-an-email",
     });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({
-      error: { code: "invalid_request" },
+      error: { code: "invalid_input" },
     });
     expect(rows()).toEqual([]);
   });

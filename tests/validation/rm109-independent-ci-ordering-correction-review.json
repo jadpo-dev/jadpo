@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "review_id": "RM109-CI-COMPILER-ORDERING-CORRECTION-20261006",
+  "task": "RM-109",
+  "disposition": "scoped_approved",
+  "candidate_commit": "2422da4",
+  "author_commit": "8245ecd57381b903005e681424444828f5635352",
+  "completed_at_utc": "2026-10-06T03:27:05.954068+00:00",
+  "reviewer": {
+    "actor": "independent-review-parallel-ci",
+    "independent": true,
+    "did_not_implement_correction": true,
+    "actual_model": "gpt-6.1-sol",
+    "actual_reasoning_effort": "high",
+    "timing": "RM-109-84b3cae13d0b",
+    "pin_evidence": "Retained verified parent/inherited Sol High pin for consequential verifier correction review."
+  },
+  "scope": "Fix synthetic checkpoint integrity tests to run before compiler-build in hosted verification-contract. No production harness or application changes, and no full task closure.",
+  "original_failure": {
+    "pr_head": "6fdae45",
+    "hosted_run": "37408802038",
+    "own_clean_capture": "git archive 6fdae45, no jadpo/target",
+    "tests_run": 52,
+    "errors": 3,
+    "cause": "Three synthetic tests accidentally derived passing observations from real repository compiler provenance; clean checkout has no compiler and production validation correctly rejected those labels.",
+    "log": "tests/validation/evidence/parallel-harness-ci-independent/original-no-compiler.log"
+  },
+  "reviewed_correction": [
+    "Each synthetic test receives an isolated temporary root with copied frozen contract, obligation map and bound adapter sources.",
+    "A clearly marked non-executable compiler digest fixture exists only inside that temporary test root; it is never executed or used as application evidence.",
+    "Synthetic run/validate calls explicitly use the temporary root. Cleanup is registered before setup, and no real repository compiler is created or renamed by the corrected tests.",
+    "A new regression removes the fixture compiler and verifies production refusal of passing checkpoint labels.",
+    "Production harness and verifier gates are unchanged. Hosted verification-contract remains before compiler-build."
+  ],
+  "independent_checks": {
+    "command": "python3 -m unittest discover -s tests/validation -p test_*.py",
+    "capture": "6fdae45 source archive plus exact corrected test bytes from8245ecd",
+    "compiler_and_target_absent_before_and_after": true,
+    "tests_passed": 53,
+    "exit_code": 0,
+    "missing_compiler_probe": {
+      "source_capture": "6fdae45 plus exact8245ecd corrected test file",
+      "target_directory_absent_after_tests": true,
+      "compiler_sha256": null,
+      "drivers_called": 0,
+      "pending_entries": 88,
+      "forged_matching_pass_rejected": true,
+      "reason": "Passing label lacks complete matching observations",
+      "production_source_unchanged": true
+    },
+    "production_source_hashes_match_integration_after_checks": true
+  },
+  "source_sha256": {
+    "tests/validation/test_golden_checkpoint.py": "548fcf91867117d2828286fd98e81c2f0abf5cc2654c186e623ed4425d159c00",
+    "tools/golden_cases.py": "58fce66db37a93822e520f1c495433bd15c4e7f9658a4b4e8adebf061750f427",
+    "tools/golden_checkpoint.py": "4bfe6083f39b52b4757cdda8edfdf57a56421748eaf4f66277328b63e4ceb584",
+    "tools/golden_http_checkpoint.ts": "97d929a4ca872c6ece4e1e946bda8f57c52f7678b0c8be8bd6fa1f75821d61a8",
+    "tools/golden_sql_observer.ts": "571ab98a669d189c357d62fb10a218f1443511963759253542bab370d3d0ac0c"
+  },
+  "evidence_sha256": {
+    "tests/validation/evidence/parallel-harness-ci-independent/corrected-no-compiler.log": "1e8748b1b6c640eb3f1db05b482749a9413fc17947515ff54ac61c264308cebc",
+    "tests/validation/evidence/parallel-harness-ci-independent/original-no-compiler.log": "e1dfacd04bb40b7229a8244eeb6547477b55a0fe75bad3f97e2e7bf6b8070b9b",
+    "tests/validation/evidence/parallel-harness-ci-independent/missing-compiler-probe.json": "20f7271fe296b22f3837be74ab52e3b95fb118bd51b15ad5551ba2830191ea84"
+  },
+  "findings": [],
+  "limits": [
+    "Local review does not establish a passing rerun of hosted run37408802038; root must push and await fresh hosted verification.",
+    "Synthetic protocol checks are not real golden case execution, compiler-build evidence or release equivalence.",
+    "No missing-compiler guard, raw observation checks, frozen contract or full golden acceptance was weakened."
+  ],
+  "conclusion": "Approve the test-only ordering correction. The clean no-compiler verification-contract passes53/53, while missing compiler provenance still blocks forged passing labels."
+}
