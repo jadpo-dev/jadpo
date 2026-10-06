@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-601-36be1c8e6482", "task_id": "RM-601", "actor": "golden-adapters-checked-job-approval-facts", "actor_kind": "agent", "category": "research", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T15:29:19.240720+00:00", "phase": "planning"}
+{"at": "2026-10-06T15:37:03.710797+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm601-checked-job-approval-facts-audit/report.json"}
