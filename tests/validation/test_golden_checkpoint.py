@@ -1,5 +1,6 @@
 """Synthetic counterexamples for checkpoint integrity, not application passes."""
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -24,6 +25,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         # cannot establish real application behaviour. Production validation
         # still rejects passing observations when a compiler binding is absent.
         for name in (harness.ACCEPTANCE, harness.OBLIGATIONS, 'tools/golden_cases.py',
+                     'tests/assurance/service-reference-mail-v0.1.json',
                      'tools/golden_checkpoint.py', 'tools/golden_http_checkpoint.ts',
                      'tools/golden_sql_observer.ts'):
             destination = self.root/name
@@ -36,9 +38,13 @@ class CheckpointIntegrityTests(unittest.TestCase):
         self.clock = contract['clock']
         self.cases = {case['id']: case for case in contract['cases']}
         self.query_plans = [{'entity': 'Todo', 'strategy': 'indexed_keyset_page', 'fetch_limit': 'page_size_plus_one'}]
+        self.tls_text = 'synthetic local TLS fixture; never used'
+        self.tls_digest = hashlib.sha256(self.tls_text.encode()).hexdigest()
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id in ('AUTH-003', 'AUTH-004', 'AUTH-007'): return self.jwt_raw(case_id)
+        if case_id == 'AUTH-008': return self.cache_raw()
         if case_id == 'USER-001':
             return self.user_timeline_raw()
         if case_id == 'REL-001':
@@ -102,10 +108,45 @@ class CheckpointIntegrityTests(unittest.TestCase):
         case = self.cases[case_id]
         expires = case.get('timeline', {}).get('credentialExpiresAt', '2026-01-15T12:05:00Z')
         return {'user': {'id': checkpoint.ALIASES['alice'], 'authentication_subject': 'alice', 'status': 'active', 'disabled_at': None},
-                'sessionRecord': {'strategy': 'api_bearer' if case_id == 'AUTH-010' else 'browser_session', 'subject': 'alice', 'userId': checkpoint.ALIASES['alice'], 'expires': expires, 'revoked': False},
+                'sessionRecord': {'strategy': 'api_bearer' if case_id in ('AUTH-010', 'AUTH-008') else 'browser_session', 'subject': 'alice', 'userId': checkpoint.ALIASES['alice'], 'expires': expires, 'revoked': False},
                 'issuedAt': case.get('timeline', {}).get('issuedAt', self.clock), 'credentialExpiresAt': expires,
-                'issuanceObservation': {'operation': 'compiler-owned authentication issuance', 'strategy': 'api_bearer' if case_id == 'AUTH-010' else 'browser_session', 'credentialsIssued': 1, 'statements': [{'operation': 'INSERT', 'sql': 'INSERT INTO "__jadpo_auth_sessions" VALUES (?)'}]},
+                'issuanceObservation': {'operation': 'compiler-owned authentication issuance', 'strategy': 'api_bearer' if case_id in ('AUTH-010', 'AUTH-008') else 'browser_session', 'credentialsIssued': 1, 'statements': [{'operation': 'INSERT', 'sql': 'INSERT INTO "__jadpo_auth_sessions" VALUES (?)'}]},
                 'specification': {'fixture': case['fixture'], 'timeline': case.get('timeline')}}
+
+    def jwt_raw(self, case_id):
+        case = self.cases[case_id]; subject = 'bob' if case_id == 'AUTH-004' else 'alice'; issuer = 'https://127.0.0.1:44321'
+        key = {'kty': 'RSA', 'kid': 'synthetic-rsa', 'alg': 'RS256', 'use': 'sig', 'n': 'synthetic', 'e': 'AQAB'}
+        claims = {'iss': issuer, 'aud': 'synthetic-todo', 'sub': subject, 'iat': 1768478400, 'exp': 1768478520}
+        if case_id == 'AUTH-007': claims['email'] = 'attacker@example.test'
+        credential = {'name': subject+'-jwt', 'header': {'alg': 'RS256', 'kid': key['kid'], 'typ': 'JWT'}, 'claims': claims, 'publicJwk': key}
+        users = [{'id': checkpoint.ALIASES[name], 'authentication_subject': name, 'email': name+'@example.test', 'status': 'active'} for name in ('alice', 'bob')]
+        fixture = {'credentials': [credential], 'users': users, 'issuer': issuer, 'audience': claims['aud'], 'certificateSha256': self.tls_digest,
+                   'specification': {'fixture': case['fixture'], 'request': case['request'], 'clock': self.clock}}
+        principal = self.principal(); principal.update(subject=subject, values={'user_id': checkpoint.ALIASES[subject]})
+        request = {'method': 'GET', 'path': '/todos', 'auth': 'bob-jwt'} if case_id == 'AUTH-004' else case['request']
+        reply = {'method': request['method'], 'path': checkpoint.request_path(request['path']), 'auth': request['auth'], 'requestJson': None, 'at': self.clock,
+                 'status': 200, 'body': {'user_id': checkpoint.ALIASES['alice'], 'todos': []} if case_id == 'AUTH-007' else {'items': [], 'next': None},
+                 'statements': [self.authority_statements()[1]], 'authenticationAttempts': 1, 'credentialsIssued': 0, 'principals': [principal], 'authorityQueries': {'principal': [0], 'credential': []},
+                 'storageReads': [], 'jwtVerifications': [{'strategy': 'api_bearer', 'subject': subject, 'issuer': issuer, 'audience': claims['aud'], 'issuedAt': claims['iat'], 'expires': claims['exp']}],
+                 'providerRequests': [{'method': 'GET', 'path': '/.well-known/openid-configuration', 'authorizationPresent': False, 'status': 200, 'body': {'issuer': issuer, 'jwks_uri': issuer+'/jwks'}}, {'method': 'GET', 'path': '/jwks', 'authorizationPresent': False, 'status': 200, 'body': {'keys': [key]}}]}
+        raw = [{'jwtFixture': fixture}]
+        if case_id == 'AUTH-004':
+            raw.append({'jwtValidityControl': reply})
+            conflict = deepcopy(reply); conflict.update(auth=case['request']['auth'], status=401, body={'error': {'code': 'ambiguous_credentials'}}, statements=[], principals=[], jwtVerifications=[], providerRequests=[])
+            raw.append(conflict)
+        else:
+            raw.append(reply)
+            schema = 'UserWithTodos' if case_id == 'AUTH-007' else 'TodoPage'
+            raw.append({'outputValidation': {'route': 'GET /users/{user_id}/todos' if case_id == 'AUTH-007' else 'GET /todos', 'schema': schema, 'validator': 'validate_'+schema, 'accepted': True, 'validatedBody': deepcopy(reply['body'])}})
+            if case_id == 'AUTH-007': raw.append({'provisioningPersistence': deepcopy(users)})
+        return raw
+
+    def cache_raw(self):
+        case = self.cases['AUTH-008']
+        control = {'method': 'DELETE', 'path': checkpoint.request_path('/users/alice'), 'auth': 'alice-bounded-bearer', 'requestJson': None, 'at': self.clock, 'status': 503, 'body': {'error': {'code': 'authentication_unavailable'}},
+                   'statements': [], 'authenticationAttempts': 1, 'principals': [], 'credentialsIssued': 0, 'storageReads': [{'operation': 'session.get', 'outcome': 'faulted'}], 'faultConfiguration': {'sessionStorageUnavailable': True}}
+        reply = deepcopy(control); reply.update(method='GET', path=case['request']['path'], status=200, body={'items': [], 'next': None}, principals=[self.principal()], storageReads=[], authorityQueries={'principal': [], 'credential': []})
+        return [{'authenticationFixture': self.authentication_fixture('AUTH-008')}, {'cacheFaultControl': control}, reply]
 
     def user_timeline_raw(self):
         case = self.cases['USER-001']; fixture = self.authentication_fixture('USER-001')
@@ -237,7 +278,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
             target = evidence/'application/build/target'; target.mkdir(parents=True)
             dependencies = evidence/'dependencies'; jose = dependencies/'node_modules/jose'; jose.mkdir(parents=True)
             (jose/'package.json').write_text('synthetic dependency')
-            for generated, retained in (('persistence.ts', 'original-persistence.ts'), ('first-party-authentication.ts', 'original-authentication.ts'), ('app.ts', 'original-app.ts')):
+            for generated, retained in (('persistence.ts', 'original-persistence.ts'), ('first-party-authentication.ts', 'original-authentication.ts'), ('jwt-authentication.ts', 'original-jwt-authentication.ts'), ('app.ts', 'original-app.ts')):
                 (target/generated).write_text('synthetic instrumented')
                 (evidence/retained).write_text('synthetic original')
             plan_path = evidence/'application/build/persistence/entities.json'; plan_path.parent.mkdir()
@@ -251,12 +292,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
             original['target/persistence.ts'] = harness.digest(evidence/'original-persistence.ts')
             original['target/first-party-authentication.ts'] = harness.digest(evidence/'original-authentication.ts')
             original['target/app.ts'] = harness.digest(evidence/'original-app.ts')
+            original['target/jwt-authentication.ts'] = harness.digest(evidence/'original-jwt-authentication.ts')
+            for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem'): (evidence/name).write_text(self.tls_text)
             report['checkpoint'] = {'supported_ids': list(checkpoint.SUPPORTED), 'generated_original': original,
                                     'generated_instrumented': checkpoint.hashes(evidence/'application/build'),
                                     'raw_files': {f'{backend}-raw.json': harness.digest(evidence/f'{backend}-raw.json') for backend in harness.BACKENDS},
-                                    'dependency_files': checkpoint.hashes(jose)}
+                                    'dependency_files': checkpoint.hashes(jose), 'tls_fixture': {name: harness.digest(evidence/name) for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem')}}
             checkpoint.validate_checkpoint(report, evidence, dependencies, self.root)
-            for path in (target/'persistence.ts', evidence/'original-authentication.ts', evidence/'sqlite-raw.json', jose/'package.json'):
+            for path in (target/'persistence.ts', evidence/'original-authentication.ts', evidence/'original-jwt-authentication.ts', evidence/'jwks-fixture-cert.pem', evidence/'sqlite-raw.json', jose/'package.json'):
                 previous = path.read_bytes(); path.write_bytes(previous+b'\n')
                 with self.subTest(path=path.name), self.assertRaises(ValueError): checkpoint.validate_checkpoint(report, evidence, dependencies, self.root)
                 path.write_bytes(previous)
@@ -276,6 +319,15 @@ class CheckpointIntegrityTests(unittest.TestCase):
             changed['checkpoint']['raw_files']['sqlite-raw.json'] = harness.digest(raw_path)
             checkpoint.apply_checkpoint(changed, changed_outputs, self.root)
             with self.assertRaisesRegex(ValueError, 'refresh failure mapping'):
+                checkpoint.validate_checkpoint(changed, evidence, dependencies, self.root)
+            raw_path.write_bytes(original_raw)
+            changed_outputs = deepcopy(outputs)
+            jwt = next(item for item in changed_outputs[0]['results'] if item['id'] == 'AUTH-003')['raw']
+            jwt[0]['jwtFixture']['certificateSha256'] = 'unbound-local-trust'
+            changed = deepcopy(report); raw_path.write_text(json.dumps(changed_outputs[0]))
+            changed['checkpoint']['raw_files']['sqlite-raw.json'] = harness.digest(raw_path)
+            checkpoint.apply_checkpoint(changed, changed_outputs, self.root)
+            with self.assertRaisesRegex(ValueError, 'JWT issuer trust'):
                 checkpoint.validate_checkpoint(changed, evidence, dependencies, self.root)
             raw_path.write_bytes(original_raw)
             changed = deepcopy(report)
@@ -514,6 +566,54 @@ class CheckpointIntegrityTests(unittest.TestCase):
             elif mutation == 'authority': raw[5].update(statements=[], authorityQueries={'principal': [], 'credential': []})
             else: raw[2]['principals'] = []
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['USER-001'], raw, self.clock)
+
+    def test_jwt_principal_requires_actual_native_verification_and_real_provider_journal(self):
+        self.assertFalse(harness.assess(self.cases['AUTH-003'], checkpoint.observations(self.cases['AUTH-003'], self.raw('AUTH-003'), self.clock)))
+        for mutation in ('verified', 'provider', 'key', 'subject', 'issuer', 'specification', 'order'):
+            raw = self.raw('AUTH-003')
+            if mutation == 'verified': raw[1]['jwtVerifications'] = []
+            elif mutation == 'provider': raw[1]['providerRequests'].reverse()
+            elif mutation == 'key': raw[0]['jwtFixture']['credentials'][0]['publicJwk']['d'] = 'private-key'
+            elif mutation == 'subject': raw[1]['principals'][0]['values']['user_id'] = checkpoint.ALIASES['bob']
+            elif mutation == 'issuer': raw[0]['jwtFixture']['issuer'] = 'http://127.0.0.1:44321'
+            elif mutation == 'specification': raw[0]['jwtFixture']['specification']['clock'] = '2030-01-01T00:00:00Z'
+            else: raw[0], raw[1] = raw[1], raw[0]
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-003'], raw, self.clock)
+
+    def test_conflicting_credentials_require_real_valid_bob_control_and_no_primary_validation(self):
+        self.assertFalse(harness.assess(self.cases['AUTH-004'], checkpoint.observations(self.cases['AUTH-004'], self.raw('AUTH-004'), self.clock)))
+        for mutation in ('missing', 'status', 'subject', 'primary', 'order'):
+            raw = self.raw('AUTH-004')
+            if mutation == 'missing': raw.pop(1)
+            elif mutation == 'status': raw[1]['jwtValidityControl']['status'] = 401
+            elif mutation == 'subject': raw[1]['jwtValidityControl']['jwtVerifications'][0]['subject'] = 'alice'
+            elif mutation == 'primary': raw[2]['jwtVerifications'] = deepcopy(raw[1]['jwtValidityControl']['jwtVerifications'])
+            else: raw[1], raw[2] = raw[2], raw[1]
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-004'], raw, self.clock)
+
+    def test_provisioning_email_separation_uses_database_post_state_and_actual_output(self):
+        raw = self.raw('AUTH-007')
+        self.assertFalse(harness.assess(self.cases['AUTH-007'], checkpoint.observations(self.cases['AUTH-007'], raw, self.clock)))
+        raw[-1]['provisioningPersistence'][0]['email'] = 'attacker@example.test'
+        self.assertTrue(checkpoint.observations(self.cases['AUTH-007'], raw, self.clock)[0]['steps'][0]['providerEmailUsed'])
+        raw = self.raw('AUTH-007'); raw[1]['body']['email'] = 'attacker@example.test'
+        step = checkpoint.observations(self.cases['AUTH-007'], raw, self.clock)[0]['steps'][0]
+        self.assertEqual(step['privateFieldsAbsent'], [])
+        self.assertTrue(step['providerEmailUsed'])
+        raw = self.raw('AUTH-007'); raw[0]['jwtFixture']['credentials'][0]['claims'].pop('email')
+        with self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-007'], raw, self.clock)
+
+    def test_bounded_bearer_requires_active_real_cache_fault_and_uncalled_primary_boundary(self):
+        self.assertFalse(harness.assess(self.cases['AUTH-008'], checkpoint.observations(self.cases['AUTH-008'], self.raw('AUTH-008'), self.clock)))
+        for mutation in ('control', 'fault', 'primary', 'authority', 'status', 'order'):
+            raw = self.raw('AUTH-008')
+            if mutation == 'control': raw.pop(1)
+            elif mutation == 'fault': raw[1]['cacheFaultControl']['faultConfiguration']['sessionStorageUnavailable'] = False
+            elif mutation == 'primary': raw[2]['storageReads'] = [{'operation': 'session.get', 'outcome': 'delegated'}]
+            elif mutation == 'authority': raw[1]['cacheFaultControl']['statements'] = self.authority_statements()
+            elif mutation == 'status': raw[1]['cacheFaultControl']['status'] = 200
+            else: raw[1], raw[2] = raw[2], raw[1]
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-008'], raw, self.clock)
 
     def test_cursor_duplicate_fails_case_even_when_frozen_summary_fields_match(self):
         outputs = self.outputs()

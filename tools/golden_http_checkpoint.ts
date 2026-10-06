@@ -2,12 +2,13 @@
 // Receives the full frozen contract; never reads expected values to emit results.
 import { Database } from "bun:sqlite";
 import { SQL } from "bun";
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount } from "./golden_sql_observer.ts";
+import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
@@ -37,6 +38,29 @@ prototype.prepare = function(sql: string, ...options: unknown[]) {
 };
 if (backend === "sqlite") { Bun.env.SQLITE_PATH = join(project, "checkpoint.sqlite"); delete Bun.env.DATABASE_URL; }
 else { if (!Bun.env.DATABASE_URL) throw new Error("Missing isolated PostgreSQL URL"); delete Bun.env.SQLITE_PATH; }
+const nativeFetch = globalThis.fetch;
+const { SignJWT, generateKeyPair, exportJWK, decodeJwt, decodeProtectedHeader } = await import(pathToFileURL(join(project, "build/target/node_modules/jose/dist/webapi/index.js")).href);
+const jwtKeys = await generateKeyPair("RS256", { modulusLength: 2048, extractable: true });
+const publicJwk = { ...await exportJWK(jwtKeys.publicKey), kid: "checkpoint-rsa", alg: "RS256", use: "sig" };
+const fixtureCertificate = readFileSync(join(project, "../jwks-fixture-cert.pem"));
+const certificateSha256 = createHash("sha256").update(fixtureCertificate).digest("hex");
+const providerRequests: any[] = [];
+const jwksServer = Bun.serve({ hostname: "127.0.0.1", port: 0,
+  tls: { cert: fixtureCertificate, key: readFileSync(join(project, "../jwks-fixture-key.pem")) },
+  fetch(request) {
+    const path = new URL(request.url).pathname;
+    const body = path === "/.well-known/openid-configuration" ? { issuer: jwksServer.url.origin, jwks_uri: new URL("/jwks", jwksServer.url).href } : path === "/jwks" ? { keys: [publicJwk] } : null;
+    providerRequests.push({ method: request.method, path, authorizationPresent: request.headers.has("authorization"), status: body ? 200 : 404, body });
+    return Response.json(body, { status: body ? 200 : 404 });
+  },
+});
+// Trust only this ephemeral fixture CA for its exact local issuer origin.
+// The compiler's verifier still performs real discovery/JWKS HTTP fetches,
+// JOSE signature/claim verification and native authority resolution.
+globalThis.fetch = ((input: any, init?: any) => {
+  const url = new URL(input instanceof Request ? input.url : String(input));
+  return nativeFetch(input, url.origin === jwksServer.url.origin ? { ...init, tls: { ca: fixtureCertificate } } : init);
+}) as typeof fetch;
 const app = await import(pathToFileURL(join(project, "build/target/app.ts")).href);
 const routes = JSON.parse(readFileSync(join(project, "build/inventory/routes.json"), "utf8")).routes;
 const queryPlans = JSON.parse(readFileSync(join(project, "build/persistence/entities.json"), "utf8")).query_plans.filter((plan: any) => plan.entity === "Todo" && plan.strategy === "indexed_keyset_page");
@@ -54,14 +78,18 @@ const t2 = "00000000-0000-4000-8000-000000000022";
 const t1 = "00000000-0000-4000-8000-000000000021";
 const environment = {
   DATABASE_URL: "https://db.test/golden", SESSION_SIGNING_KEY: Buffer.alloc(32, 71).toString("base64url"),
-  BROWSER_ORIGIN: "https://todo.test", OIDC_ISSUER: "https://issuer.test", OIDC_AUDIENCE: "todo",
+  BROWSER_ORIGIN: "https://todo.test", OIDC_ISSUER: jwksServer.url.origin, OIDC_AUDIENCE: "todo",
   MAIL_API_KEY: Buffer.alloc(32, 72).toString("base64url"), MAIL_SENDER: "todo@example.test",
 };
 let session: any;
 let bearer: any;
 let issuanceObservation: any;
+let jwtCredentials: Record<string, string> = {};
+let jwtFixtures: Record<string, any> = {};
 let secrets: string[] = Object.values(environment).filter(value => value === environment.SESSION_SIGNING_KEY || value === environment.MAIL_API_KEY);
 async function reset(case_?: any) {
+  setSessionStorageUnavailable(false);
+  providerRequests.length = 0;
   clockNow = nativeDate.parse(case_?.timeline?.issuedAt ?? contract.clock);
   await app.initializeApplication(environment);
   for (const table of ["service_credential", "__jadpo_auth_service_credentials", "service", "todo", "__jadpo_auth_sessions", "user"]) await execute(`DELETE FROM "${table}"`);
@@ -71,7 +99,7 @@ async function reset(case_?: any) {
   try { session = await app.authenticationHost().issue("browser_session", "alice", case_?.timeline ? nativeDate.parse(case_.timeline.credentialExpiresAt) : now + 300_000, now); }
   finally { endSqlObservation(); }
   issuanceObservation = { operation: "compiler-owned authentication issuance", strategy: "browser_session", statements, credentialsIssued: issuedCredentialCount() };
-  if (case_?.id === "AUTH-010") {
+  if (["AUTH-010", "AUTH-008"].includes(case_?.id)) {
     const statements = beginSqlObservation();
     try { bearer = await app.authenticationHost().issue("api_bearer", "alice", now + 300_000, now); }
     finally { endSqlObservation(); }
@@ -79,6 +107,15 @@ async function reset(case_?: any) {
     secrets.push(bearer.credential, bearer.csrfToken);
   }
   secrets = [...secrets, session.credential, session.csrfToken];
+  jwtCredentials = {}; jwtFixtures = {};
+  if (["AUTH-003", "AUTH-004", "AUTH-007"].includes(case_?.id)) {
+    const name = case_.id === "AUTH-004" ? "bob-jwt" : "alice-jwt";
+    const seconds = Math.floor(clockNow / 1000);
+    jwtCredentials[name] = await new SignJWT({ iss: environment.OIDC_ISSUER, aud: environment.OIDC_AUDIENCE, sub: name === "bob-jwt" ? "bob" : "alice", iat: seconds, exp: seconds + 120, ...(case_.id === "AUTH-007" ? { email: "attacker@example.test" } : {}) })
+      .setProtectedHeader({ alg: "RS256", kid: publicJwk.kid, typ: "JWT" }).sign(jwtKeys.privateKey);
+    secrets.push(jwtCredentials[name]);
+    jwtFixtures[name] = { name, header: decodeProtectedHeader(jwtCredentials[name]), claims: decodeJwt(jwtCredentials[name]), publicJwk };
+  }
 }
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.handleRequest });
 const raw: any[] = [];
@@ -98,10 +135,15 @@ async function sessionSnapshot(strategy = "browser_session") {
     expires: new Date(data.expires).toISOString(), revoked: record.revoked === true || record.revoked === 1 || data.revoked };
 }
 async function captureAuthenticationFixture(case_: any) {
-  const credential = case_.id === "AUTH-010" ? bearer : session;
-  raw.push({ authenticationFixture: { user: await userSnapshot(), sessionRecord: await sessionSnapshot(case_.id === "AUTH-010" ? "api_bearer" : "browser_session"),
+  const credential = ["AUTH-010", "AUTH-008"].includes(case_.id) ? bearer : session;
+  raw.push({ authenticationFixture: { user: await userSnapshot(), sessionRecord: await sessionSnapshot(["AUTH-010", "AUTH-008"].includes(case_.id) ? "api_bearer" : "browser_session"),
     issuedAt: new Date(clockNow).toISOString(), credentialExpiresAt: new Date(credential.expires).toISOString(),
     issuanceObservation, specification: { fixture: case_.fixture, timeline: case_.timeline ?? null } } });
+}
+async function captureJwtFixture(case_: any) {
+  const users = await execute('SELECT id, authentication_subject, email, status FROM "user" ORDER BY id');
+  raw.push({ jwtFixture: { credentials: Object.values(jwtFixtures), users, issuer: jwksServer.url.origin, audience: environment.OIDC_AUDIENCE, certificateSha256,
+    specification: { fixture: case_.fixture, request: case_.request, clock: contract.clock } } });
 }
 function authorityQueryAccounting(statements: any[]) {
   return { principal: statements.flatMap((row, index) => row.operation === "SELECT" && /FROM "user" WHERE "authentication_subject"/u.test(row.sql) ? [index] : []),
@@ -161,14 +203,16 @@ async function validateOutput(request: any, reply: any) {
   try { raw.push({ outputValidation: { route: route.route, schema: route.output, validator, accepted: true, validatedBody: app[validator](reply.body, "checkpoint.response") } }); }
   catch { raw.push({ outputValidation: { route: route.route, schema: route.output, validator, accepted: false } }); }
 }
-async function send(request: any) {
+async function send(request: any, retainKey?: string) {
   const headers: Record<string, string> = {};
   const auth = Array.isArray(request.auth) ? request.auth : [request.auth];
   if (auth.includes("alice-session")) Object.assign(headers, { cookie: session.setCookie.split(";", 1)[0], origin: environment.BROWSER_ORIGIN, "x-jadpo-csrf": session.csrfToken });
+  for (const name of ["alice-jwt", "bob-jwt"]) if (auth.includes(name)) headers.authorization = `Bearer ${jwtCredentials[name]}`;
   if (auth.includes("alice-bounded-bearer")) headers.authorization = `Bearer ${bearer.credential}`;
   if (auth.includes("invalid-jwt") || auth.includes("invalid-bearer")) headers.authorization = "Bearer INVALID_CHECKPOINT_CREDENTIAL";
   const path = request.path.replace("/todos/t2", `/todos/${t2}`).replace("/todos/t1", `/todos/${t1}`).replace("/users/alice/todos", `/users/${alice}/todos`).replace(/^\/users\/alice$/u, `/users/${alice}`);
   if (request.json !== undefined) headers["content-type"] = "application/json";
+  const providerStart = providerRequests.length;
   const statements = beginSqlObservation();
   let response: Response;
   let body: any;
@@ -179,9 +223,9 @@ async function send(request: any) {
   } finally { endSqlObservation(); }
   const authenticationAttempts = authenticationAttemptCount();
   const authorityQueries = authorityQueryAccounting(statements);
-  const captured = { method: request.method, path, requestedPath: request.requestedPath ?? request.path, auth: request.auth ?? null, requestJson: request.json ?? null, at: new Date(clockNow).toISOString(), status: response!.status, body, statements, authenticationAttempts, principals: authenticatedPrincipals(), credentialsIssued: issuedCredentialCount(), authorityQueries };
+  const captured = { method: request.method, path, requestedPath: request.requestedPath ?? request.path, auth: request.auth ?? null, requestJson: request.json ?? null, at: new Date(clockNow).toISOString(), status: response!.status, body, statements, authenticationAttempts, principals: authenticatedPrincipals(), credentialsIssued: issuedCredentialCount(), authorityQueries, faultConfiguration: authenticationFaultConfiguration(), storageReads: authenticationStorageReads(), jwtVerifications: observedJwtVerifications(), providerRequests: providerRequests.slice(providerStart) };
   if (secrets.some(secret => JSON.stringify(captured).includes(secret))) throw new Error("Unsafe raw observation refused");
-  raw.push(captured);
+  raw.push(retainKey ? { [retainKey]: captured } : captured);
   return { status: response!.status, code: body?.error?.code, body, databaseQueries: statements.length, authenticationAttempts, writes: statements.filter(row => ["INSERT", "UPDATE", "DELETE", "REPLACE"].includes(row.operation)).length };
 }
 const results: any[] = [];
@@ -210,7 +254,15 @@ try {
     const start = raw.length;
     try {
     await reset(case_);
-    if (["AUTH-002", "AUTH-006", "AUTH-010", "USER-001"].includes(case_.id)) await captureAuthenticationFixture(case_);
+    if (["AUTH-003", "AUTH-004", "AUTH-007"].includes(case_.id)) {
+      await captureJwtFixture(case_);
+      if (case_.id === "AUTH-004") await send({ method: "GET", path: "/todos", auth: "bob-jwt" }, "jwtValidityControl");
+    }
+    if (["AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-008"].includes(case_.id)) await captureAuthenticationFixture(case_);
+    if (case_.id === "AUTH-008") {
+      setSessionStorageUnavailable(true);
+      await send({ method: "DELETE", path: "/users/alice", auth: "alice-bounded-bearer" }, "cacheFaultControl");
+    }
     if (case_.id === "USER-001") { await userTimeline(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
     if (case_.id === "AUTH-006") {
       clockNow = nativeDate.parse(case_.timeline.disabledAt);
@@ -255,7 +307,8 @@ try {
       for (const request of case_.requests) await send(request);
     } else {
       const reply = await send(case_.request);
-      if (["CREATE-001", "READ-001", "AUTH-002"].includes(case_.id)) await validateOutput(case_.request, reply);
+      if (["CREATE-001", "READ-001", "AUTH-002", "AUTH-003", "AUTH-007"].includes(case_.id)) await validateOutput(case_.request, reply);
+      if (case_.id === "AUTH-007") raw.push({ provisioningPersistence: await execute('SELECT id, authentication_subject, email, status FROM "user" ORDER BY id') });
       if (case_.id === "CREATE-004") {
         const rows = await execute('SELECT due_at FROM todo WHERE id = $1', [reply.body.id]);
         if (rows.length !== 1) throw new Error("Missing persisted create observation");
@@ -278,5 +331,5 @@ try {
   }
   writeFileSync(output, JSON.stringify({ backend, supported, results }, null, 2) + "\n", { flag: "wx" });
 } finally {
-  server.stop(true); db?.close(); if (pg) await pg.close(); prototype.prepare = originalPrepare; prototype.exec = originalExec; globalThis.Date = nativeDate;
+  server.stop(true); jwksServer.stop(true); globalThis.fetch = nativeFetch; setSessionStorageUnavailable(false); db?.close(); if (pg) await pg.close(); prototype.prepare = originalPrepare; prototype.exec = originalExec; globalThis.Date = nativeDate;
 }

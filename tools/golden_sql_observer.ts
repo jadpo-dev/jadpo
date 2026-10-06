@@ -7,6 +7,18 @@ let active: StatementObservation[] | undefined;
 let authenticationAttempts = 0;
 let principals: unknown[] = [];
 let credentialsIssued = 0;
+let sessionStorageUnavailable = false;
+let storageReads: { operation: string; outcome: string }[] = [];
+let jwtVerifications: unknown[] = [];
+export function setSessionStorageUnavailable(value: boolean) { sessionStorageUnavailable = value; }
+export function authenticationFaultConfiguration() { return { sessionStorageUnavailable }; }
+export function authenticationStorageReads() { return storageReads; }
+export function observeAuthenticationStorageRead() {
+  if (active) storageReads.push({ operation: "session.get", outcome: sessionStorageUnavailable ? "faulted" : "delegated" });
+  if (sessionStorageUnavailable) throw new Error("Checkpoint session dependency unavailable");
+}
+export function recordJwtVerification(value: unknown) { if (active) jwtVerifications.push(value); }
+export function observedJwtVerifications() { return jwtVerifications; }
 export function recordAuthenticationAttempt() { if (active) authenticationAttempts++; }
 export function authenticationAttemptCount() { return authenticationAttempts; }
 // Observe the actual normalized principal returned by the native boundary.
@@ -18,7 +30,7 @@ export function recordAuthenticatedPrincipal(principal: any) {
 export function authenticatedPrincipals() { return principals; }
 export function recordCredentialIssued() { if (active) credentialsIssued++; }
 export function issuedCredentialCount() { return credentialsIssued; }
-export function beginSqlObservation() { active = []; authenticationAttempts = 0; principals = []; credentialsIssued = 0; return active; }
+export function beginSqlObservation() { active = []; authenticationAttempts = 0; principals = []; credentialsIssued = 0; storageReads = []; jwtVerifications = []; return active; }
 export function endSqlObservation() { active = undefined; }
 export function recordStatement(sql: string, parameters: unknown[] = []) {
   if (!active) return;
