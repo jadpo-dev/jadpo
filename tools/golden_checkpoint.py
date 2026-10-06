@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Supporting eight-ID HTTP checkpoint; does not activate the final golden gate."""
+"""Supporting migrated HTTP checkpoint; does not activate the final golden gate."""
 from __future__ import annotations
 
 import argparse
@@ -17,7 +17,28 @@ import golden_cases as harness
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
-             'CREATE-004', 'READ-002', 'READ-003')
+             'CREATE-004', 'READ-002', 'READ-003', 'LIST-004', 'PATCH-001',
+             'PATCH-002', 'PATCH-003', 'PATCH-004')
+ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
+           'bob': '00000000-0000-4000-8000-000000000002',
+           't1': '00000000-0000-4000-8000-000000000021',
+           't2': '00000000-0000-4000-8000-000000000022'}
+
+
+def request_path(path: str) -> str:
+    for alias, value in ALIASES.items():
+        path = path.replace('/todos/'+alias, '/todos/'+value)
+    return path
+
+
+def instant(value):
+    # Portable SQL drivers represent the same Instant as epoch milliseconds or
+    # Date strings. Normalize zero fractional seconds without inventing dates.
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError('Missing portable persistence Instant')
+    return value.replace('.000Z', 'Z')
 
 
 def hashes(directory: Path, exclude=()) -> dict:
@@ -75,7 +96,7 @@ def observations(case: dict, raw: list) -> list:
     if len(replies) != len(expected_requests):
         raise ValueError('Missing request observation')
     for request, reply in zip(expected_requests, replies):
-        path = request['path'].replace('/todos/t2', '/todos/00000000-0000-4000-8000-000000000022')
+        path = request_path(request['path'])
         if request['method'] != reply['method'] or path != reply['path']:
             raise ValueError('Foreign request observation')
         if not harness.same_json(request.get('auth'), reply.get('auth')) or not harness.same_json(request.get('json'), reply.get('requestJson')):
@@ -104,6 +125,24 @@ def observations(case: dict, raw: list) -> list:
                 raise ValueError('Missing persisted observation')
             step['storedDueAt'] = persisted[0]['storedDueAt']
             step['outputDueAt'] = reply['body']['due_at']
+        if case['id'].startswith('PATCH-'):
+            before = [item['fixture'] for item in raw if 'fixture' in item]
+            after = [item['persistence'] for item in raw if 'persistence' in item]
+            todo_id = ALIASES['t2' if case['id'] == 'PATCH-004' else 't1']
+            if len(before) != 1 or len(after) != 1 or before[0].get('id') != todo_id or after[0].get('id') != todo_id:
+                raise ValueError('Missing or foreign patch fixture/persistence observation')
+            if before[0].get('owner_id') != ALIASES['bob' if case['id'] == 'PATCH-004' else 'alice']:
+                raise ValueError('Changed patch fixture owner')
+            if case['id'] in ('PATCH-001', 'PATCH-002'):
+                if instant(before[0].get('due_at')) != '2026-02-01T00:00:00Z':
+                    raise ValueError('Missing originally due-dated patch fixture')
+                step['storedDueAt'] = instant(after[0]['due_at'])
+            if case['id'] == 'PATCH-001':
+                step['storedTitle'] = after[0]['title']
+            if not raw.index(next(item for item in raw if 'fixture' in item)) < raw.index(reply) < raw.index(next(item for item in raw if 'persistence' in item)):
+                raise ValueError('Reordered patch fixture/request/persistence observations')
+            if case['id'] in ('PATCH-003', 'PATCH-004') and step['writes'] == 0 and not harness.same_json(before[0], after[0]):
+                raise ValueError('Rejected patch storage changed despite zero traced writes')
     return [{'variant_index': 0, 'steps': [step]}]
 
 
@@ -122,7 +161,7 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
     for entry in report['results']:
         key = (entry['backend'], entry['id'])
         if key not in observed:
-            entry['reason'] = 'Unsupported by the reviewed eight-ID migrated HTTP checkpoint; full application/gate prerequisites remain'
+            entry['reason'] = 'Unsupported by the migrated HTTP checkpoint; full application/gate prerequisites remain'
             continue
         entry.pop('reason', None)
         if observed[key] is None:
@@ -221,7 +260,7 @@ def main():
         outputs.append(json.loads(raw_path.read_text()))
     report = harness.run_cases(ROOT)
     apply_checkpoint(report, outputs, ROOT)
-    report['checkpoint'] = {'scope': 'Eight-ID migrated application checkpoint; original frozen source is not executing',
+    report['checkpoint'] = {'scope': 'Migrated application checkpoint; original frozen source is not executing',
                             'supported_ids': list(SUPPORTED), 'fresh_build_command': ['cargo', 'build', '--locked', '-p', 'jadpo-cli'],
                             'generated_original': generated, 'generated_instrumented': hashes(project/'build', ('node_modules',)),
                             'raw_files': {f'{backend}-raw.json': harness.digest(output/f'{backend}-raw.json') for backend in harness.BACKENDS},
