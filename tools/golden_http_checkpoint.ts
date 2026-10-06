@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications, resolvedAuthorityPrincipals } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004", "JOB-001", "JOB-002", "JOB-003", "REL-002", "REL-004", "CONFIG-001", "CONFIG-002", "CONFIG-003"];
-const partial = ["REL-003", "BOUNDARY-001"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004", "JOB-001", "JOB-002", "JOB-003", "REL-002", "REL-004", "CONFIG-001", "CONFIG-002", "CONFIG-003", "BOUNDARY-001"];
+const partial = ["REL-003"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
@@ -383,27 +383,34 @@ async function readinessProbe(case_: any) {
 }
 async function boundaryProbe(case_: any) {
   const variants = [];
-  await send({ method: "GET", path: "/todos", auth: "alice-session" }, "boundaryHealthyControl");
-  const healthy = raw.pop().boundaryHealthyControl;
+  const sourceRevision = JSON.parse(readFileSync(join(project, "build/app.meta.json"), "utf8")).source_revision;
+  async function observedRequest(label: string) {
+    const operationalEvents: any[] = []; const previous = console.error;
+    console.error = (...values: unknown[]) => { try { const event = JSON.parse(values.map(String).join(" ")); if (event.kind === "operational_log_event") operationalEvents.push(event); } catch {} previous(...values); };
+    try { await send({ method: "GET", path: "/todos", auth: "alice-session" }, label); const request = raw.pop()[label]; return { ...request, operationalEvents }; }
+    finally { console.error = previous; }
+  }
+  const healthy = await observedRequest("boundaryHealthyControl");
   let outage: any;
   if (pg) {
     const data = Bun.env.GOLDEN_POSTGRES_DATA;
     if (!data) throw new Error("Missing isolated database process provenance");
     const stopped = Bun.spawn(["pg_ctl", "-D", data, "-m", "immediate", "-w", "stop"], { stdout: "pipe", stderr: "pipe" });
     const stoppedCode = await stopped.exited;
-    try { await send({ method: "GET", path: "/todos", auth: "alice-session" }, "databaseOutage"); outage = raw.pop().databaseOutage; }
+    try { outage = await observedRequest("databaseOutage"); }
     finally {
       const restarted = Bun.spawn(["pg_ctl", "-D", data, "-l", join(data, "../restored-server.log"), "-o", `-h 127.0.0.1 -p ${Bun.env.GOLDEN_POSTGRES_PORT} -k ${Bun.env.GOLDEN_POSTGRES_SOCKET}`, "-w", "start"], { stdout: "pipe", stderr: "pipe" });
       if (await restarted.exited !== 0) throw new Error("Isolated database restoration failed");
     }
     variants.push({ variant_index: 0, fixture_variant: case_.fixtureVariants[0], healthyControl: healthy, outage: { mode: "actual isolated PostgreSQL server stopped", stoppedCode, response: outage } });
   } else {
-    db!.exec("BEGIN EXCLUSIVE");
-    try { await send({ method: "GET", path: "/todos", auth: "alice-session" }, "databaseOutage"); outage = raw.pop().databaseOutage; }
-    finally { db!.exec("ROLLBACK"); }
-    variants.push({ variant_index: 0, fixture_variant: case_.fixtureVariants[0], healthyControl: healthy, outage: { mode: "actual separate-connection SQLite exclusive lock", response: outage } });
+    const acquire = beginSqlObservation(); try { db!.exec("BEGIN EXCLUSIVE"); } finally { endSqlObservation(); }
+    try { outage = await observedRequest("databaseOutage"); }
+    finally { const release = beginSqlObservation(); try { db!.exec("ROLLBACK"); } finally { endSqlObservation(); outage.lockReleaseStatements = release; } }
+    variants.push({ variant_index: 0, fixture_variant: case_.fixtureVariants[0], healthyControl: healthy, outage: { mode: "actual separate-connection SQLite exclusive lock", lockAcquireStatements: acquire, lockReleaseStatements: outage.lockReleaseStatements, response: outage } });
   }
   await app.initializeApplication(environment);
+  await clearReminderFixture();
   clockNow = nativeDate.now(); // BOUNDARY has no pinned run clock; native worker authority uses database wall time.
   const createClock = clockNow;
   clockNow = createClock - 2 * 86_400_000;
@@ -419,21 +426,38 @@ async function boundaryProbe(case_: any) {
   const adapter = await import(pathToFileURL(join(project, "build/target/service-adapter.ts")).href);
   const previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
   const providerCalls: any[] = [];
+  const providerResponse = { code: "authentication" }; const providerCanary = "CHECKPOINT_PRIVATE_PROVIDER_AUTH_HEADER_STACK";
   const provider = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const body = await request.json();
-    providerCalls.push({ method: request.method, path: new URL(request.url).pathname, body, idempotencyKey: request.headers.get("Idempotency-Key"), authorizationPresent: request.headers.has("Authorization"), responseStatus: 401 });
-    return Response.json({ code: "authentication", private_provider_body: "CHECKPOINT_PRIVATE_PROVIDER_BODY" }, { status: 401 });
+    providerCalls.push({ method: request.method, path: new URL(request.url).pathname, body, idempotencyKey: request.headers.get("Idempotency-Key"), authorizationPresent: request.headers.has("Authorization"), responseStatus: 401, responseBody: providerResponse, responseHeaders: { "x-private-provider-canary": providerCanary } });
+    return Response.json(providerResponse, { status: 401, headers: { "x-private-provider-canary": providerCanary } });
   } });
   adapter.setReferenceMailEndpointForTesting(provider.url.origin);
   const profile = { executionMs: 60_000, leaseMs: 40_000 };
   const host = app.createDeliveryJobHost("job.overdue_reminders.delivery.reminder_v1", serviceKey.credential, profile, profile);
   let outcome: any = null; let thrown: any = null; const statements = beginSqlObservation();
-  try { outcome = await host.runOnce(); }
+  const operationalEvents: any[] = []; const previousError = console.error;
+  console.error = (...values: unknown[]) => { try { const event = JSON.parse(values.map(String).join(" ")); if (event.kind === "operational_log_event") operationalEvents.push(event); } catch {} previousError(...values); };
+  let restarted: any; let restartOutcome: any; let restartedStatements: any[] = []; let durableAfter: any; let durableAfterRestart: any;
+  async function durableSnapshot() {
+    const intentId = providerCalls[0]?.body.idempotency_key;
+    const intents = await execute('SELECT intent_id,source_entity_id,source_revision,state,payload FROM "__jadpo_deliveries_v1" WHERE source_entity_id = $1 ORDER BY intent_id', [creation.body.id]);
+    const claims = await execute('SELECT intent_id,invocations,possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]);
+    const present = pg ? await execute('SELECT to_regclass($1) AS present', ["__jadpo_delivery_mail_receipts_v1"]) : await execute('SELECT name AS present FROM sqlite_master WHERE name=$1', ["__jadpo_delivery_mail_receipts_v1"]);
+    const receipts = present.some((row: any) => row.present) ? await execute('SELECT intent_id,accepted_at,observed_at FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [intentId]) : [];
+    return { intents: intents.map((row: any) => ({ ...row, payload: JSON.parse(row.payload) })), claims: claims.map((row: any) => ({ ...row, invocations: Number(row.invocations), possible_dispatch: Number(row.possible_dispatch) })), receipts, todo: await todoSnapshot(creation.body.id) };
+  }
+  try {
+    outcome = await host.runOnce(); endSqlObservation(); durableAfter = await durableSnapshot();
+    await host.stop(); clockNow += 900_000; restarted = app.createDeliveryJobHost(reminderBinding, serviceKey.credential, profile, profile);
+    restartedStatements = beginSqlObservation(); try { restartOutcome = await restarted.runOnce(); } finally { endSqlObservation(); }
+    durableAfterRestart = await durableSnapshot();
+  }
   catch (error: any) { thrown = { name: error.name, code: error.code ?? null, kind: error.kind ?? null }; }
-  finally { endSqlObservation(); await host.stop(); adapter.setReferenceMailEndpointForTesting(null); provider.stop(true); if (previous === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previous; }
+  finally { endSqlObservation(); console.error = previousError; await host.stop(); await restarted?.stop(); adapter.setReferenceMailEndpointForTesting(null); provider.stop(true); if (previous === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previous; }
   const persisted = await todoSnapshot(creation.body.id);
-  variants.push({ variant_index: 1, fixture_variant: case_.fixtureVariants[1], nativeFixtureCreation: creation, serviceFixture, profiles: { activation: profile, delivery: profile }, providerCalls, nativeHostOutcome: outcome, nativeHostThrown: thrown, statements, persisted });
-  raw.push({ boundaryVariants: variants, specification: { fixtureVariants: case_.fixtureVariants, requestOrRun: case_.requestOrRun } });
+  variants.push({ variant_index: 1, fixture_variant: case_.fixtureVariants[1], nativeFixtureCreation: creation, serviceFixture, profiles: { activation: profile, delivery: profile }, providerCalls, nativeHostOutcome: outcome, nativeHostThrown: thrown, operationalEvents, statements, persisted, durableAfter, restart: { at: new Date(clockNow).toISOString(), outcome: restartOutcome, statements: restartedStatements, durable: durableAfterRestart } });
+  raw.push({ boundaryVariants: variants, selectedBackend: backend, sourceRevision, binding: reminderBinding, jobMetadata: JSON.parse(readFileSync(join(project, "build/audit/jobs.json"), "utf8")), specification: { fixtureVariants: case_.fixtureVariants, requestOrRun: case_.requestOrRun } });
 }
 async function userSnapshot() {
   const rows = await execute('SELECT id, authentication_subject, status, disabled_at FROM "user" WHERE id = $1', [alice]);
@@ -609,7 +633,7 @@ try {
     if (case_.id === "JOB-004") { await maintenanceProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
     if (["CONFIG-001", "CONFIG-002"].includes(case_.id)) { await startupProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
     if (case_.id === "CONFIG-003") { await readinessProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
-    if (case_.id === "BOUNDARY-001") { await boundaryProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_native_provider_boundary_request_id_missing" }); continue; }
+    if (case_.id === "BOUNDARY-001") { await boundaryProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
     if (["AUTH-009", "AUTH-011"].includes(case_.id)) await prepareServiceFixture(case_);
     if (["REL-002", "REL-004"].includes(case_.id)) {
       await relationshipOperation(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue;
