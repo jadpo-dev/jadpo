@@ -99,7 +99,6 @@ impl DeliveryAuthorityCandidate {
 /// This carries no mutable candidate, live authority or ordinary policy grant.
 pub(crate) struct DeliveryAuthorityLowering<'a> {
     pub(crate) strategy: &'a str,
-    pub(crate) validator: &'a str,
     pub(crate) credential_identity: &'a str,
     pub(crate) credential_principal: &'a str,
     pub(crate) verifier: &'a str,
@@ -317,7 +316,6 @@ impl DeliveryPhaseCandidate {
         let a = &self.authority;
         DeliveryAuthorityLowering {
             strategy: &a.strategy,
-            validator: &a.validator,
             credential_identity: &a.credential_identity,
             credential_principal: &a.credential_principal,
             verifier: &a.verifier,

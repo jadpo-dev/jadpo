@@ -23,15 +23,9 @@ fn root() -> PathBuf {
 fn analyze(fixture: &str, changes: &[(&str, &str, &str)]) -> AnalyzedProject {
     let root = root();
     let mut sources = discover_sources(&root.join("examples/golden-todo-migration")).unwrap();
-    let contracts = sources
-        .iter_mut()
-        .find(|s| s.path.ends_with("values/contracts.jadpo"))
-        .unwrap();
-    contracts.text = contracts.text.replacen(
-        "idempotency_key: Todo.id",
-        "idempotency_key: ReminderIntentId",
-        1,
-    );
+    // Candidate fixture owns its delivery declarations; canonical checked
+    // source is excluded to avoid duplicate names while retaining contracts.
+    sources.retain(|source| !source.path.ends_with("jobs/reminders.jadpo"));
     for (file, before, after) in changes {
         let source = sources.iter_mut().find(|s| s.path.ends_with(file)).unwrap();
         assert!(source.text.contains(before), "missing {before} in {file}");
@@ -66,10 +60,14 @@ fn checked(project: &AnalyzedProject) {
         .iter()
         .all(|job| job.job != "overdue_reminders"));
     assert!(derive_approval_subject(&root(), project, None, None, None).is_ok());
-    assert_eq!(
-        derive_target(&root(), project).unwrap_err().code,
-        "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
-    );
+    if project.typing.jobs.is_empty() {
+        assert!(derive_target(&root(), project).is_ok());
+    } else {
+        assert_eq!(
+            derive_target(&root(), project).unwrap_err().code,
+            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
+        );
+    }
 }
 fn expected_graph() -> Value {
     // Independent closed expectation: do not obtain it from the phase model.
@@ -258,7 +256,7 @@ fn complete_binding_publishes_exact_private_graph_without_ordinary_authority() {
     let facts = binding.source_facts();
     assert_eq!(facts["status"], "checked_nonexecuting_binding");
     assert_eq!(facts["execution_profile"], Value::Null);
-    assert_eq!(facts["runtime_lowering_supported"], false);
+    assert_eq!(facts["runtime_lowering_supported"], true);
     assert_eq!(
         facts["run_failure_contract"],
         json!({"job":"overdue_reminders","callee":"reminder_tick","failures":[],"may_suspend":false})

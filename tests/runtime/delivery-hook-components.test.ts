@@ -6,10 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-// Component evidence only: the production renderer consumes the complete
-// checked fixture and opaque binding, while public full-target lowering still
-// refuses its job. No generated code is rewritten; invocation components use a
-// disposable loopback reference provider, never a real mail account or scheduler.
+// Generated runtime evidence: every execution module/schema is untouched output
+// of full target derivation over the canonical checked golden source and binding.
+// Trusted native host provisioning is explicit; tests use only disposable local
+// databases and a loopback reference provider, never a real mail account.
 const postgresUrl = Bun.env.JADPO_DELIVERY_HOOK_DATABASE_URL;
 if (postgresUrl) {
   const url = new URL(postgresUrl);
@@ -19,7 +19,7 @@ delete Bun.env.DATABASE_URL;
 delete Bun.env.SQLITE_PATH;
 const root = mkdtempSync(join(tmpdir(), "jadpo-delivery-hook-components-"));
 const repository = new URL("../../", import.meta.url).pathname;
-const compiler = Bun.spawn(["cargo", "test", "--manifest-path", join(repository, "jadpo/Cargo.toml"), "-p", "jadpo-core", "--lib", "target::tests::delivery_schedule_hook_components_keep_full_execution_disabled", "--", "--exact"], {
+const compiler = Bun.spawn(["cargo", "test", "--manifest-path", join(repository, "jadpo/Cargo.toml"), "-p", "jadpo-core", "--lib", "target::tests::checked_delivery_target_exports_inert_trusted_job_host", "--", "--exact"], {
   cwd: repository, env: { ...Bun.env, CARGO_INCREMENTAL: "0", JADPO_DELIVERY_HOOK_COMPONENT_OUTPUT: root }, stdout: "pipe", stderr: "pipe",
 });
 const [compileOut, compileErr, compileExit] = await Promise.all([new Response(compiler.stdout).text(), new Response(compiler.stderr).text(), compiler.exited]);
@@ -1427,7 +1427,7 @@ describe(`opaque-binding generated schedule hook component (${sql ? "postgres" :
   });
   test("complete checked binding remains nonexecuting and unrelated entities have no schedule hook", async () => {
     const binding = JSON.parse(readFileSync(join(root, "binding.json"), "utf8"));
-    expect(binding.runtime_lowering_supported).toBe(false);
+    expect(binding.runtime_lowering_supported).toBe(true);
     expect(binding.execution_profile).toBeNull();
     expect(binding.live_authority_established).toBe(false);
     expect(await client.transaction((tx: any) => tx.read_delivery_schedule_revision("User", owner))).toBeNull();

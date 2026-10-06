@@ -31,8 +31,7 @@ impl TargetGenerator<'_> {
                 format!("{alias}.{}", sql_identifier(&snake_case(parts(identity).1)))
             };
             let table = |identity: &str| sql_identifier(&snake_case(parts(identity).0));
-            // Resolver identity is authentication.<strategy>.validator.<name>.api_key.
-            let strategy = a.validator.split('.').nth(1).expect("finished validator");
+            let strategy = a.strategy;
             let mut sql = format!(
                 "SELECT k.\"data\" AS metadata, {} AS credential_expires FROM {} c JOIN {} s ON {} = {} JOIN {} m ON {} = {} JOIN \"__jadpo_auth_service_credentials\" k ON k.\"id\" = {} WHERE {} = $1 AND {} = $2 AND {} = $3 AND {} = $4 AND {} = $5 AND {} IS NULL AND {} > {{now}} AND {} = $6 AND {} = $7",
                 column("c", a.expires), table(a.credential_identity), table(a.service_identity),

@@ -269,6 +269,13 @@ struct TargetGenerator<'project> {
 
 impl<'project> TargetGenerator<'project> {
     fn new(project_path: &Path, project: &'project AnalyzedProject) -> Result<Self, Diagnostic> {
+        if !project
+            .delivery_model()
+            .covers_authored_delivery(&project.syntax)
+        {
+            return Err(Diagnostic::error("JADPO_TARGET_JOB_NOT_IMPLEMENTED")
+                .with_fact(DiagnosticFact::Name("delivery binding coverage".to_owned())));
+        }
         let mut types = BTreeMap::new();
         let mut enums = BTreeMap::new();
         let mut records = BTreeMap::new();
@@ -353,6 +360,19 @@ impl<'project> TargetGenerator<'project> {
                         authentication_strategies.push(declaration);
                     }
                     Declaration::Job(job) => {
+                        // Only the atomic core finish may supply a lowering
+                        // binding. Ordinary and incomplete jobs retain refusal;
+                        // matching a name alone never enables execution.
+                        if project
+                            .delivery_model()
+                            .bindings()
+                            .iter()
+                            .filter(|binding| binding.matches_source_job(job))
+                            .count()
+                            == 1
+                        {
+                            continue;
+                        }
                         let mut diagnostic = Diagnostic::error("JADPO_TARGET_JOB_NOT_IMPLEMENTED")
                             .with_fact(DiagnosticFact::Name(job.name.text.clone()));
                         diagnostic.primary = Some(SourceSpan {
@@ -12637,29 +12657,14 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn delivery_schedule_hook_components_keep_full_execution_disabled() {
-        use super::{SqlDialect, TargetGenerator};
-        use jadpo_syntax::{Declaration, SourceFile};
+    fn checked_delivery_target_exports_inert_trusted_job_host() {
+        use jadpo_syntax::SourceFile;
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(3)
             .unwrap();
         let mut sources =
             crate::discover_sources(&root.join("examples/golden-todo-migration")).unwrap();
-        let contracts = sources
-            .iter_mut()
-            .find(|source| source.path.ends_with("values/contracts.jadpo"))
-            .unwrap();
-        contracts.text = contracts.text.replacen(
-            "idempotency_key: Todo.id",
-            "idempotency_key: ReminderIntentId",
-            1,
-        );
-        sources.push(SourceFile::new(
-            root.join("tests/validation/fixtures/reminder-delivery-v1.jadpo"),
-            include_str!("../../../../tests/validation/fixtures/reminder-delivery-v1.jadpo")
-                .to_owned(),
-        ));
         if std::env::var("JADPO_DELIVERY_HOOK_COMPONENT_VARIANT").as_deref()
             == Ok("completion-representation")
         {
@@ -12690,63 +12695,22 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(project.delivery_model().bindings().len(), 1);
-        assert_eq!(
-            derive_target(root, &project).unwrap_err().code,
-            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
-        );
-        // Inspect the actual production persistence renderer on the complete
-        // checked source. Do not remove declarations, clear errors, alter hooks,
-        // or turn this component sink into a publicly executable job target.
-        let mut generator = TargetGenerator {
-            project: &project,
-            types: Default::default(),
-            enums: Default::default(),
-            records: Default::default(),
-            failures: Default::default(),
-            callables: Default::default(),
-            fixtures: Default::default(),
-            tests: vec![],
-            configuration: None,
-            application: None,
-            locales: None,
-            principal: None,
-            authentication_strategies: vec![],
-            source_revision: crate::checked_source_revision(root, &project),
+        let artifacts = derive_target(root, &project).expect("exact finished delivery lowers");
+        let artifact = |name| {
+            &artifacts
+                .iter()
+                .find(|artifact| artifact.relative_path == name)
+                .unwrap()
+                .contents
         };
-        for source in &project.syntax.sources {
-            for declaration in &source.file.declarations {
-                match declaration {
-                    Declaration::Type(value) => {
-                        generator.types.insert(value.name.text.clone(), value);
-                    }
-                    Declaration::Enum(value) => {
-                        generator.enums.insert(value.name.text.clone(), value);
-                    }
-                    Declaration::Record(value) => {
-                        generator.records.insert(value.name.text.clone(), value);
-                    }
-                    Declaration::Callable(value) => {
-                        generator.callables.insert(value.name.text.clone(), value);
-                    }
-                    Declaration::Failure(value) => {
-                        generator.failures.insert(value.name.text.clone(), value);
-                    }
-                    Declaration::Fixture(value) => {
-                        generator.fixtures.insert(value.name.text.clone(), value);
-                    }
-                    Declaration::Test(value) => generator.tests.push(value),
-                    Declaration::Config(value) => generator.configuration = Some(value),
-                    Declaration::Application(value) => generator.application = Some(value),
-                    Declaration::Locales(value) => generator.locales = Some(value),
-                    Declaration::Principal(value) => generator.principal = Some(value),
-                    Declaration::AuthenticationStrategy(value) => {
-                        generator.authentication_strategies.push(value)
-                    }
-                    _ => {}
-                }
-            }
-        }
-        let persistence = generator.persistence_target();
+        let persistence = artifact("target/persistence.ts");
+        let app = artifact("target/app.ts");
+        assert!(app.contains("export function createDeliveryJobHost("));
+        assert!(app.contains("authenticationHost().prepareDeliveryCredential(strategy, credential"));
+        assert!(
+            !app.contains("createDeliveryJobHost(\""),
+            "no automatically provisioned worker"
+        );
         assert_eq!(
             persistence
                 .matches("await client.establish_delivery_schedule_revision(\"Todo\"")
@@ -12761,50 +12725,28 @@ mod tests {
         );
         assert!(persistence.contains("if (changed !== null && hasOwn(patchValue, \"due_at\"))"));
         assert!(persistence.contains("async update_required_Todo_by_id_patch_title_and_status_and_due_at_set_reminder_sent_at"));
-        assert_eq!(
-            derive_target(root, &project).unwrap_err().code,
-            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
-        );
         if let Some(sink) = std::env::var_os("JADPO_DELIVERY_HOOK_COMPONENT_OUTPUT") {
             let sink = std::path::PathBuf::from(sink);
             assert!(
                 sink.is_absolute() && sink.is_dir(),
                 "test-owned component directory required"
             );
-            fs::write(sink.join("persistence.ts"), persistence).unwrap();
-            // Unmodified actual app/auth renderers for native credential handoff
-            // components. This still does not bypass public job derivation.
-            fs::write(sink.join("app.ts"), generator.generate()).unwrap();
-            fs::write(
-                sink.join("authentication.ts"),
-                generator.authentication_target(),
-            )
-            .unwrap();
-            fs::write(
-                sink.join("first-party-authentication.ts"),
-                include_str!("runtime/first_party_authentication.ts"),
-            )
-            .unwrap();
-            fs::write(
-                sink.join("jwt-authentication.ts"),
-                include_str!("runtime/jwt_authentication.ts"),
-            )
-            .unwrap();
-            fs::write(
-                sink.join("service-adapter.ts"),
-                include_str!("runtime/service_adapter.ts"),
-            )
-            .unwrap();
-            fs::write(
-                sink.join("postgres.sql"),
-                generator.schema_sql(SqlDialect::Postgres),
-            )
-            .unwrap();
-            fs::write(
-                sink.join("sqlite.sql"),
-                generator.schema_sql(SqlDialect::Sqlite),
-            )
-            .unwrap();
+            // Every execution module/schema is untouched full-target output.
+            for (name, path) in [
+                ("persistence.ts", "target/persistence.ts"),
+                ("app.ts", "target/app.ts"),
+                ("authentication.ts", "target/authentication.ts"),
+                (
+                    "first-party-authentication.ts",
+                    "target/first-party-authentication.ts",
+                ),
+                ("jwt-authentication.ts", "target/jwt-authentication.ts"),
+                ("service-adapter.ts", "target/service-adapter.ts"),
+                ("postgres.sql", "sql/postgres/schema.sql"),
+                ("sqlite.sql", "sql/sqlite/schema.sql"),
+            ] {
+                fs::write(sink.join(name), artifact(path)).unwrap();
+            }
             fs::write(
                 sink.join("binding.json"),
                 serde_json::to_vec_pretty(&project.delivery_model().bindings()[0].source_facts())
@@ -12860,6 +12802,105 @@ failure AlarmEmpty { kind: InvalidValue code: "alarm_empty" }
             )
             .unwrap();
         }
+    }
+
+    #[test]
+    fn delivery_target_requires_exact_sealed_job_and_accepts_checked_renaming() {
+        use jadpo_syntax::Declaration;
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap();
+        let sources =
+            crate::discover_sources(&root.join("examples/golden-todo-migration")).unwrap();
+        let project = crate::analyze_sources(sources.clone()).unwrap();
+        assert_eq!(project.delivery_model().bindings().len(), 1);
+        assert!(derive_target(root, &project).is_ok());
+        // Retaining an opaque binding while changing its source cannot turn
+        // unsupported syntax into a target by copying only the job name.
+        for mutation in 0..5 {
+            let mut changed = project.clone();
+            let job = changed
+                .syntax
+                .sources
+                .iter_mut()
+                .flat_map(|source| &mut source.file.declarations)
+                .find_map(|declaration| match declaration {
+                    Declaration::Job(job) => Some(job),
+                    _ => None,
+                })
+                .unwrap();
+            match mutation {
+                0 => job.run = None,
+                1 => job.concurrency = None,
+                2 => job.retry = None,
+                3 => job.delivery = None,
+                _ => job.name.text = "unsealed_copy".to_owned(),
+            }
+            assert_eq!(
+                derive_target(root, &changed).unwrap_err().code,
+                "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
+            );
+        }
+        let mut missing = project.clone();
+        for source in &mut missing.syntax.sources {
+            source
+                .file
+                .declarations
+                .retain(|declaration| !matches!(declaration, Declaration::Job(_)));
+        }
+        assert_eq!(
+            derive_target(root, &missing).unwrap_err().code,
+            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
+        );
+        let mut duplicated = project.clone();
+        let source = duplicated
+            .syntax
+            .sources
+            .iter_mut()
+            .find(|source| {
+                source
+                    .file
+                    .declarations
+                    .iter()
+                    .any(|declaration| matches!(declaration, Declaration::Job(_)))
+            })
+            .unwrap();
+        let job = source
+            .file
+            .declarations
+            .iter()
+            .find(|declaration| matches!(declaration, Declaration::Job(_)))
+            .unwrap()
+            .clone();
+        source.file.declarations.push(job);
+        assert_eq!(
+            derive_target(root, &duplicated).unwrap_err().code,
+            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
+        );
+        let mut renamed = sources;
+        let job = renamed
+            .iter_mut()
+            .find(|source| source.path.ends_with("jobs/reminders.jadpo"))
+            .unwrap();
+        job.text = job
+            .text
+            .replace("overdue_reminders", "renamed_reminders")
+            .replace("reminder_tick", "renamed_tick");
+        let renamed = crate::analyze_sources(renamed).unwrap();
+        assert_eq!(renamed.delivery_model().bindings().len(), 1);
+        assert_eq!(
+            renamed.delivery_model().bindings()[0].schedule().job,
+            "renamed_reminders"
+        );
+        let artifacts =
+            derive_target(root, &renamed).expect("checked identity rather than hardcoded job name");
+        assert!(artifacts
+            .iter()
+            .find(|artifact| artifact.relative_path == "target/app.ts")
+            .unwrap()
+            .contents
+            .contains("job.renamed_reminders.delivery.reminder_v1"));
     }
 
     #[test]

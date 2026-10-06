@@ -1,0 +1,137 @@
+// Checked reminder worker declarations. Trusted native host provisioning supplies
+// a service credential and two explicit runtime profiles before any activation.
+type ReminderIntentId = Uuid {}
+type ReminderRunAt = Instant {}
+
+enum ReminderRole {
+    sender
+    // Negative runtime authority control; no operation grants this role.
+    observer
+}
+
+entity ReminderServiceMembership {
+    id: Uuid
+    service_id: Service.id
+    role: ReminderRole
+    identity: id
+    persistence {
+        store: primary
+        role: authority
+        references service_id: Service.id as: service on_delete: restrict
+    }
+    membership {
+        scope: application
+        member: service_id
+        role: role
+    }
+}
+
+failure ReminderRecipientRejected {
+    kind: InvalidValue
+    code: "reminder_recipient_rejected"
+    message: "The reminder recipient was rejected."
+}
+
+failure ReminderTemporarilyUnavailable {
+    kind: Unavailable
+    code: "reminder_temporarily_unavailable"
+    message: "The reminder provider is temporarily unavailable."
+}
+
+service ReminderMail {
+    import {
+        file: "tests/assurance/service-reference-mail-v0.1.json"
+        version: "0.1.0"
+        sha256: "c6a8b26a4b7ec82414df2e6608cb5eb6ca65f1767f7047bfbfedfc8f9441f83d"
+    }
+    credential {
+        scheme: bearer
+        header: "Authorization"
+        secret: config.mail_api_key
+    }
+    base_url: "https://mail.example.invalid"
+    egress: mail.example.invalid:443
+    proxy: prohibited
+    redirects: prohibited
+    timeout: 5s
+    retry: exponential(max_attempts: 3, max_elapsed: 30s, jitter: full)
+
+    operation send_overdue_reminder
+    POST /v1/messages
+    idempotency_key: ReminderIntentId
+    input ReminderMessage
+    output ReminderReceipt
+    request_key: input.idempotency_key equals header "Idempotency-Key"
+    receipt_key: response header "Idempotency-Key" equals request_key
+    maps provider.invalid_recipient -> ReminderRecipientRejected
+    maps provider.rate_limited -> ReminderTemporarilyUnavailable
+    maps provider.authentication -> fault Misconfigured
+    maps provider.idempotency_conflict -> fault Misconfigured
+    maps transport.pre_dispatch_refusal -> fault Unavailable
+    maps transport.pre_dispatch_timeout -> fault Unavailable
+    maps transport.possible_dispatch_timeout -> fault OutcomeUnknown
+    maps transport.possible_dispatch_loss -> fault OutcomeUnknown
+    maps transport.invalid_acknowledgement -> fault OutcomeUnknown
+    maps transport.unexpected_response -> fault OutcomeUnknown
+}
+
+// Ordinary invocation of the empty run action has its own narrow invoke rule.
+// This rule does not grant worker activation or any entity/provider effect.
+action reminder_tick(at: ReminderRunAt) -> Unit {
+    policy {
+        ReminderRole.sender: [invoke]
+    }
+}
+
+job overdue_reminders every 15m {
+    concurrency: singleton
+    run: reminder_tick(ReminderRunAt(clock.now))
+    retry: next_schedule
+    delivery: reminder_v1 {
+        selection: {
+            name: reminder_candidates
+            entity: Todo
+            identity: Todo.id
+            due: Todo.due_at
+            before: operation_time
+            open: Todo.status(TodoStatus.open)
+            visible: Todo
+            unsent: Todo.reminder_sent_at
+            required_owner: Todo.owner
+            owner_visible: User
+            order_by: Todo.due_at asc, Todo.id asc
+            limit: 500
+            continuation: due_identity
+        }
+        hooks: {
+            create: Todo.create_todo
+            patch: Todo.patch_todo
+            supplied: PatchTodo.due_at
+        }
+        service: {
+            operation: ReminderMail.send_overdue_reminder
+            intent: ReminderIntentId
+            input: ReminderMessage
+            output: ReminderReceipt
+            payload_version: "reminder.v1"
+            payload: {
+                idempotency_key: generated_intent
+                from: config.mail_sender
+                to: Todo.owner.email
+                todo_title: Todo.title
+                due_at: Todo.due_at
+            }
+        }
+        authority: {
+            validator: api_bearer.service_key
+            membership: ReminderServiceMembership
+            role: ReminderRole.sender
+            permit: reminder_only
+        }
+        completion: {
+            name: reminder_sent
+            field: Todo.reminder_sent_at
+            time: compiler_receipt_observation
+        }
+    }
+}

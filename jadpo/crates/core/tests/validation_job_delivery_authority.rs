@@ -15,15 +15,9 @@ fn root() -> PathBuf {
 fn analyze(fixture: &str, change: Option<(&str, &str, &str)>) -> AnalyzedProject {
     let root = root();
     let mut sources = discover_sources(&root.join("examples/golden-todo-migration")).unwrap();
-    let contracts = sources
-        .iter_mut()
-        .find(|source| source.path.ends_with("values/contracts.jadpo"))
-        .unwrap();
-    contracts.text = contracts.text.replacen(
-        "idempotency_key: Todo.id",
-        "idempotency_key: ReminderIntentId",
-        1,
-    );
+    // Candidate fixture owns its delivery declarations; canonical checked
+    // source is excluded to avoid duplicate names while retaining contracts.
+    sources.retain(|source| !source.path.ends_with("jobs/reminders.jadpo"));
     if let Some((file, before, after)) = change {
         let source = sources
             .iter_mut()

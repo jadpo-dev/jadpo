@@ -67,7 +67,7 @@ output PublicHealth {
 }
 
 value ReminderMessage {
-    idempotency_key: Todo.id
+    idempotency_key: ReminderIntentId
     from: Email
     to: User.email
     todo_title: Todo.title
