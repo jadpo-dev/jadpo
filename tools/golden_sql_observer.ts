@@ -1,6 +1,10 @@
 // Checkpoint-only observation adapter. The generated SQL import is redirected
 // here; the exact original and instrumented files are retained and hashed.
 import { SQL as NativeSQL } from "bun";
+import { Database as NativeDatabase } from "bun:sqlite";
+let driverInitializations = 0;
+export function driverInitializationCount() { return driverInitializations; }
+export const Database: typeof NativeDatabase = new Proxy(NativeDatabase, { construct(target, arguments_) { driverInitializations++; return Reflect.construct(target, arguments_); } });
 
 export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string; maintenanceRowIdentity?: string; reminderRowIdentity?: string; relationshipRowIdentity?: string; relationshipOwnerIdentity?: string };
 let active: StatementObservation[] | undefined;
@@ -99,5 +103,5 @@ function observeConnection(connection: any): any {
   });
 }
 export const SQL: typeof NativeSQL = new Proxy(NativeSQL, {
-  construct(target, arguments_) { return observeConnection(Reflect.construct(target, arguments_)); },
+  construct(target, arguments_) { driverInitializations++; return observeConnection(Reflect.construct(target, arguments_)); },
 });
