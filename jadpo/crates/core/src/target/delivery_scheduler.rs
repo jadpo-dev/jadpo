@@ -133,5 +133,20 @@ impl TargetGenerator<'_> {
         line(output, "  const schedule = (continued: boolean) => { if (stopped) return; const now = Date.now(); const dueAt = continued ? now : (Math.floor(now / intervalMs) + 1) * intervalMs; timer = setTimeout(async () => { timer = null; if (stopped) return; if (Date.now() < dueAt) { schedule(false); return; } try { const outcome = await runOnce(); schedule(outcome.status === \"finished\" && outcome.continued); } catch (error) { console.error(JSON.stringify({ schemaVersion: 1, kind: \"operational_log_event\", eventName: \"delivery.activation_failed\", binding, code: error instanceof AuthenticationFault ? error.code : \"job_fault\" })); schedule(false); } }, Math.min(2_147_483_647, Math.max(0, dueAt - now))); };");
         line(output, "  return Object.freeze({ runOnce, async start() { if (started || stopped) invalid(\"delivery.host\", \"one start before stop\"); started = true; try { const outcome = await runOnce(); schedule(outcome.status === \"finished\" && outcome.continued); return outcome; } catch (error) { started = false; throw error; } }, async stop() { stopped = true; if (timer !== null) clearTimeout(timer); timer = null; if (running !== null) await running; } });");
         line(output, "}");
+        // Privileged native administrative seam, separate from the scheduled
+        // worker host. No activation/page/tick is invented by explicit replay.
+        line(output, "export function createDeliveryReplayOperator(binding: string, grant: unknown, credential: string, profile: Readonly<{ executionMs: number; leaseMs: number }>) {");
+        line(output, "  if (arguments.length !== 4) invalid(\"delivery.operator\", \"one checked binding, native grant, worker credential and explicit delivery profile\"); readCurrentDeliveryOperatorGrant(grant);");
+        line(output, "  let strategy: string; switch (binding) {");
+        for binding in self.project.delivery_model().bindings() {
+            line(output, &format!("    case {}: strategy = {}; break;", ts_string(binding.binding_identity()), ts_string(binding.authority_for_lowering().strategy)));
+        }
+        line(output, "    default: throw new AuthenticationFault(\"authority_invariant\", 500);");
+        line(output, "  }");
+        line(output, "  if (typeof credential !== \"string\" || credential.length === 0) throw new AuthenticationFault(\"invalid_credentials\", 401);");
+        line(output, "  if (profile === null || typeof profile !== \"object\" || Object.getPrototypeOf(profile) !== Object.prototype || Reflect.ownKeys(profile).sort().join(\",\") !== \"executionMs,leaseMs\") invalid(\"delivery.profile\", \"an explicit finite delivery profile\");");
+        line(output, "  const execution = Object.getOwnPropertyDescriptor(profile, \"executionMs\"), lease = Object.getOwnPropertyDescriptor(profile, \"leaseMs\"); if (execution === undefined || lease === undefined || !(\"value\" in execution) || !(\"value\" in lease)) invalid(\"delivery.profile\", \"ordinary profile values\"); profile = Object.freeze({ executionMs: execution.value, leaseMs: lease.value }); if (!Number.isSafeInteger(profile.executionMs) || !Number.isSafeInteger(profile.leaseMs) || profile.leaseMs <= 0 || profile.executionMs < profile.leaseMs) invalid(\"delivery.profile\", \"an explicit finite delivery profile\");");
+        line(output, "  return Object.freeze({ async replay(intentId: string) { readCurrentDeliveryOperatorGrant(grant); if (typeof intentId !== \"string\" || intentId.length === 0) invalid(\"delivery.intentId\", \"an original intent identity\"); const at = captureOperation(null, null, undefined, false).now; const proof = await authenticationHost().prepareDeliveryCredential(strategy, credential, Date.parse(at)); readCurrentDeliveryOperatorGrant(grant); const token = await prepareDeliveryInvocationInternal(binding, proof, intentId, at, profile, grant); if (token === null) return false; const receipt = await dispatchDeliveryInvocation(token); return completeDeliveryInvocation(receipt); } });");
+        line(output, "}");
     }
 }

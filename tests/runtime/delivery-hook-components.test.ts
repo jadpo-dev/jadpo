@@ -1018,6 +1018,133 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     });
   });
 
+  const replayIntentRows = (id: string) => rows('SELECT * FROM "__jadpo_deliveries_v1" WHERE source_entity_id=$1', [id]);
+  async function resolvedReplayFixture(f: Awaited<ReturnType<typeof fixture>>, endpoint: string) {
+    await patch(f.value.id, { due_at: new Date(Date.now() - 60_000).toISOString() });
+    const first = worker(f, endpoint, 'Math.random=()=>0;console.log(JSON.stringify(await app.runDeliveryScheduleActivation(binding,proof,profile,deliveryProfile,at)));process.exit(0);', goldenProfiles);
+    expect((await result(first)).status).toBe("finished");
+    const intent = (await replayIntentRows(f.value.id))[0]; expect(intent.state).toBe("retry_wait");
+    const attempts = await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1', [intent.intent_id]);
+    expect(attempts).toHaveLength(1); expect(attempts[0].failure_class).toBe("service_unavailable"); expect(Number(attempts[0].provider_attempts)).toBe(3);
+    return intent;
+  }
+  const replayChild = (f: Awaited<ReturnType<typeof fixture>>, endpoint: string, intentId: string) => worker(f, endpoint, `const grant=app.authenticationHost().issueDeliveryOperatorGrant();const operator=app.createDeliveryReplayOperator(binding,grant,process.env.COMPONENT_WORKER_KEY,deliveryProfile);console.log(JSON.stringify({replayed:await operator.replay(${JSON.stringify(intentId)})}));process.exit(0);`, goldenProfiles);
+  test("ASYNC-REPLAY-RESOLVED-INTENT: explicit native operator in a fresh process replays an actual adapter-proven no-effect intent with original identity and remaining budget", async () => {
+    const f = await fixture();
+    await provider(async (calls, endpoint) => {
+      const original = await resolvedReplayFixture(f, endpoint); expect(calls).toHaveLength(3);
+      const ledger = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intent_id]))[0], activation = await activationRows();
+      expect(await result(replayChild(f, endpoint, original.intent_id))).toEqual({ replayed: true }); expect(calls).toHaveLength(4);
+      const current = (await replayIntentRows(f.value.id))[0], claim = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intent_id]))[0];
+      expect(current).toEqual({ ...original, state: "succeeded" }); expect(calls[3].body).toEqual(JSON.parse(original.payload)); expect(calls[3].possibleDispatch).toBe(1);
+      expect(Number(claim.invocations)).toBe(2); expect(Number(claim.generation)).toBe(2); expect(claim.first_claim_at).toBe(ledger.first_claim_at); expect(claim.lifetime_deadline).toBe(ledger.lifetime_deadline);
+      for (const key of ["max_invocations", "lifetime_ms", "execution_ms", "lease_ms"]) expect(claim[key]).toBe(ledger[key]);
+      expect(await activationRows()).toEqual(activation); expect(await replayIntentRows(f.value.id)).toHaveLength(1); expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+      expect(await result(replayChild(f, endpoint, original.intent_id))).toEqual({ replayed: false }); expect(calls).toHaveLength(4);
+    }, async () => { if ((await replayIntentRows(f.value.id))[0].state !== "running") throw Error("dispatch lacked live durable intent"); const ledger = (await rows('SELECT invocations FROM "__jadpo_delivery_claims_v1" WHERE intent_id=(SELECT intent_id FROM "__jadpo_deliveries_v1" WHERE source_entity_id=$1)', [f.value.id]))[0]; if (Number(ledger.invocations) === 1) return Response.json({ code: "rate_limited" }, { status: 429 }); });
+  }, 30_000);
+  test("native operator grant cannot be supplied by worker proof/key, shapes, copied grants or an unpublished foreign issuer; no profile/callback defaults", async () => {
+    const f = await fixture(), grant = f.host.issueDeliveryOperatorGrant(), foreign = await unpublishedHost();
+    const foreignStorage = await createFirstPartyAuthentication([{ name: "api_bearer", principal: "service", mode: "api_key", cookie: null, audience: "todo-service-key", origin: null, secret: authEnvironment.SESSION_SIGNING_KEY, maximumDelayMs: 300_000 }], { ...authenticationStorage }, async () => ({ kind: "missing" }), undefined, () => {});
+    for (const value of [f.proof, f.issued.credential, authEnvironment.MAIL_API_KEY, {}, { ...grant }, JSON.parse(JSON.stringify(grant)), Object.create(grant), foreign.issueDeliveryOperatorGrant(), foreignStorage.issueDeliveryOperatorGrant(), { kind: "service", values: { service_id: f.serviceId } }]) {
+      expect(() => app.createDeliveryReplayOperator(bindingIdentity, value, f.issued.credential, goldenProfiles.delivery)).toThrow();
+    }
+    expect(() => app.createDeliveryReplayOperator("foreign-binding", grant, f.issued.credential, goldenProfiles.delivery)).toThrow();
+    for (const value of [undefined, null, {}, { ...goldenProfiles.delivery, extra: true }, { executionMs: 1, leaseMs: 2 }, { executionMs: Infinity, leaseMs: 1 }, Object.assign(() => {}, goldenProfiles.delivery), Object.create(goldenProfiles.delivery), { get executionMs() { throw Error("getter ran"); }, leaseMs: 1 }]) expect(() => app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, value)).toThrow();
+    expect(() => app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, goldenProfiles.delivery, () => {})).toThrow();
+    f.host.revokeDeliveryOperatorGrant(grant); expect(() => app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, goldenProfiles.delivery)).toThrow();
+    expect(await activationRows()).toEqual([]); expect(await enrollmentRowsIfPresent(f.value.id)).toEqual([]);
+  });
+  test("native operator refuses missing or mismatched durable no-effect proof, pending/running/unknown/terminal states, possible effects, exhausted budget and future backoff byte-for-byte", async () => {
+    const f = await fixture();
+    await provider(async (calls, endpoint) => {
+      const original = await resolvedReplayFixture(f, endpoint), id = original.intent_id;
+      const grant = f.host.issueDeliveryOperatorGrant(), operator = app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, goldenProfiles.delivery);
+      const snapshot = async () => ({ intent: await replayIntentRows(f.value.id), ledger: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [id]), attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1', [id]), activation: await activationRows(), source: await stored(f.value.id) });
+      const base = await snapshot(), ledger = base.ledger[0], attempt = base.attempts[0];
+      const corruptions: Array<[string, string, unknown]> = [
+        ...["pending", "running", "outcome_unknown", "succeeded", "failed", "cancelled"].map(state => ["__jadpo_deliveries_v1", "state", state] as [string,string,unknown]),
+        ["__jadpo_delivery_claims_v1", "possible_dispatch", 1], ["__jadpo_delivery_claims_v1", "invocations", 3], ["__jadpo_delivery_claims_v1", "lifetime_deadline", "2000-01-01T00:00:00.000Z"], ["__jadpo_delivery_claims_v1", "lifetime_deadline", "zz-malformed-future"],
+        ["__jadpo_delivery_attempts_v1", "claim_id", crypto.randomUUID()], ["__jadpo_delivery_attempts_v1", "generation", 99], ["__jadpo_delivery_attempts_v1", "invocation", 2], ["__jadpo_delivery_attempts_v1", "failure_class", "recipient_rejected"], ["__jadpo_delivery_attempts_v1", "provider_attempts", 0], ["__jadpo_delivery_attempts_v1", "retry_not_before", new Date(Date.now()+60_000).toISOString()],
+      ];
+      for (const [table, field, value] of corruptions) {
+        const saved = table === "__jadpo_deliveries_v1" ? original[field] : table === "__jadpo_delivery_claims_v1" ? ledger[field] : attempt[field];
+        await rows(`UPDATE "${table}" SET "${field}"=$1 WHERE intent_id=$2`, [value,id]); const before = await snapshot();
+        expect(await operator.replay(id)).toBe(false); expect(await snapshot()).toEqual(before); expect(calls).toHaveLength(3);
+        await rows(`UPDATE "${table}" SET "${field}"=$1 WHERE intent_id=$2`, [saved,id]);
+      }
+      await rows('DELETE FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1', [id]); const missing = await snapshot();
+      expect(await operator.replay(id)).toBe(false); expect(await snapshot()).toEqual(missing); expect(calls).toHaveLength(3);
+      expect(await operator.replay(crypto.randomUUID())).toBe(false); expect(calls).toHaveLength(3);
+    }, async () => Response.json({ code: "rate_limited" }, { status: 429 }));
+  }, 30_000);
+  test("native operator host/grants/factories are withdrawn by reinitialization, failed configuration, key rotation and awaited worker credential verification", async () => {
+    for (const environment of [authEnvironment, { ...authEnvironment, SESSION_SIGNING_KEY: "bad" }, { ...authEnvironment, SESSION_SIGNING_KEY: Buffer.alloc(32, 82).toString("base64url") }]) {
+      const f = await fixture(), grant = f.host.issueDeliveryOperatorGrant(), operator = app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, goldenProfiles.delivery);
+      await app.initializeApplication(environment).catch(() => {});
+      expect(() => f.host.issueDeliveryOperatorGrant()).toThrow(); expect(() => app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, goldenProfiles.delivery)).toThrow(); await expect(operator.replay(crypto.randomUUID())).rejects.toMatchObject({ code: "invalid_credentials" });
+      expect(await enrollmentRowsIfPresent(f.value.id)).toEqual([]);
+    }
+    const f = await fixture(), grant = f.host.issueDeliveryOperatorGrant(), operator = app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, goldenProfiles.delivery);
+    const original = crypto.subtle.verify; let enter!:()=>void, release!:()=>void, held=false;
+    const entered = new Promise<void>(resolve=>{enter=resolve;}), resume=new Promise<void>(resolve=>{release=resolve;});
+    crypto.subtle.verify = async function(...args:any[]) { if (!held) { held=true; enter(); await resume; } return Reflect.apply(original,this,args); } as any;
+    const replay = operator.replay(crypto.randomUUID());
+    try { await entered; await app.initializeApplication(authEnvironment); release(); await expect(replay).rejects.toMatchObject({ code:"invalid_credentials" }); }
+    finally { release(); crypto.subtle.verify=original; await replay.catch(()=>{}); }
+    expect(await enrollmentRowsIfPresent(f.value.id)).toEqual([]);
+  }, 30_000);
+
+  test("native operator grant supplies no worker authority and missing durable attempt table refuses without constructing evidence", async () => {
+    const f = await fixture();
+    await provider(async (calls, endpoint) => {
+      const original = await resolvedReplayFixture(f, endpoint), id = original.intent_id, grant = f.host.issueDeliveryOperatorGrant();
+      const before = await replayIntentRows(f.value.id), ledger = await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [id]);
+      const wrong = app.createDeliveryReplayOperator(bindingIdentity, grant, authEnvironment.MAIL_API_KEY, goldenProfiles.delivery);
+      await expect(wrong.replay(id)).rejects.toMatchObject({ code: "invalid_credentials" }); expect(calls).toHaveLength(3);
+      const operator = app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, goldenProfiles.delivery);
+      await rows('ALTER TABLE "__jadpo_delivery_attempts_v1" RENAME TO "__jadpo_delivery_attempts_operator_probe"');
+      try { expect(await operator.replay(id)).toBe(false); expect(await replayIntentRows(f.value.id)).toEqual(before); expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [id])).toEqual(ledger); expect(calls).toHaveLength(3); }
+      finally { await rows('ALTER TABLE "__jadpo_delivery_attempts_operator_probe" RENAME TO "__jadpo_delivery_attempts_v1"'); }
+      await f.host.revokeServiceCredential("api_bearer", f.issued.credentialId, Date.now());
+      await expect(operator.replay(id)).rejects.toMatchObject({ code: "invalid_credentials" }); expect(await replayIntentRows(f.value.id)).toEqual(before); expect(calls).toHaveLength(3);
+    }, async () => Response.json({ code:"rate_limited" }, { status:429 }));
+  }, 30_000);
+  test("native operator replay versus separate worker/operator and cooperative cancellation retains one admitted generation and exact eventual receipt", async () => {
+    const f = await fixture(); let enter!:()=>void, release!:()=>void;
+    const entered = new Promise<void>(resolve=>{enter=resolve;}), resume=new Promise<void>(resolve=>{release=resolve;}); let count=0;
+    await provider(async (calls, endpoint) => {
+      const original=await resolvedReplayFixture(f,endpoint), id=original.intent_id, grant=f.host.issueDeliveryOperatorGrant();
+      const operator=app.createDeliveryReplayOperator(bindingIdentity,grant,f.issued.credential,goldenProfiles.delivery), playing=operator.replay(id);
+      try {
+        await entered; expect(calls).toHaveLength(4); expect(calls[3].possibleDispatch).toBe(1);
+        expect(await result(replayChild(f,endpoint,id))).toEqual({replayed:false}); expect(calls).toHaveLength(4);
+        expect(await app.prepareDeliveryInvocation(bindingIdentity,f.proof,id,scanTime,goldenProfiles.delivery)).toBeNull();
+        expect(await persistence.transaction((tx:any)=>tx.cancel_delivery_intent(id))).toBe("requested");
+        f.host.revokeDeliveryOperatorGrant(grant); release(); expect(await playing).toBe(true);
+        expect((await replayIntentRows(f.value.id))[0]).toEqual({...original,state:"succeeded"}); expect(calls).toHaveLength(4);
+        const ledger=(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1',[id]))[0]; expect(Number(ledger.invocations)).toBe(2); expect(Number(ledger.generation)).toBe(2);
+        expect(await rows('SELECT * FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1',[id])).toHaveLength(1);
+      } finally {release(); await playing.catch(()=>{});}
+    },async()=>{count++;if(count<=3)return Response.json({code:"rate_limited"},{status:429});enter();await resume;});
+  },30_000);
+  test.skipIf(!sql)("native operator grant withdrawal during actual PostgreSQL source-lock wait rolls back replay admission before provider cut",async()=>{
+    const f=await fixture();
+    await provider(async(calls,endpoint)=>{
+      const original=await resolvedReplayFixture(f,endpoint),id=original.intent_id,grant=f.host.issueDeliveryOperatorGrant();
+      const operator=app.createDeliveryReplayOperator(bindingIdentity,grant,f.issued.credential,goldenProfiles.delivery);
+      const before={intent:await replayIntentRows(f.value.id),ledger:await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1',[id])};
+      let enter!:()=>void,release!:()=>void;const entered=new Promise<void>(resolve=>{enter=resolve;}),resume=new Promise<void>(resolve=>{release=resolve;});
+      const held=sql!.begin(async tx=>{await tx.unsafe('SELECT id FROM todo WHERE id=$1 FOR UPDATE',[f.value.id]);enter();await resume;});await entered;
+      const playing=operator.replay(id); const handled=playing.catch(error=>error);
+      try {
+        let blocked=false;for(let attempt=0;attempt<100;attempt++){const waiting=await sql!.unsafe("SELECT count(*) AS n FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FOR SHARE OF t, u%'");if(Number(waiting[0].n)>0){blocked=true;break;}await Bun.sleep(10);}
+        expect(blocked).toBe(true);await app.initializeApplication(authEnvironment);release();await held;
+        expect(await handled).toMatchObject({code:"invalid_credentials"});expect(calls).toHaveLength(3);expect(await replayIntentRows(f.value.id)).toEqual(before.intent);expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1',[id])).toEqual(before.ledger);
+      }finally{release();await held;await handled;}
+    },async()=>Response.json({code:"rate_limited"},{status:429}));
+  },30_000);
+
   test.skipIf(!sql)("native PostgreSQL schema try-admission refuses an occupied transaction guard with bounded no-commit evidence, then fresh generated migration recovers", async () => {
     const f = await fixture(); const old = await rows('SELECT binding,lease_ms FROM "__jadpo_delivery_activations_v1"');
     await rows('ALTER TABLE "__jadpo_delivery_activations_v1" DROP COLUMN lease_ms');

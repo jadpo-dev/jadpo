@@ -451,6 +451,7 @@ impl TargetGenerator<'_> {
         if !self.project.delivery_model().bindings().is_empty() {
             line(output, "// Native read-only worker bridge: the selected issuer is this private current host, never a caller-provided principal, callback or setter.");
             line(output, "export function readCurrentDeliveryCredentialProof(proof: unknown) { return readDeliveryCredentialProof(proof, authenticationStorage, firstPartyAuthentication); }");
+            line(output, "export function readCurrentDeliveryOperatorGrant(grant: unknown) { return readDeliveryOperatorGrant(grant, authenticationStorage, firstPartyAuthentication); }");
         }
     }
 

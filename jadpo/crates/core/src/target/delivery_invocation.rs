@@ -25,13 +25,13 @@ impl TargetGenerator<'_> {
             output,
             "const deliveryOutcomes = new WeakMap<object, any>();",
         );
-        line(output, "export async function prepareDeliveryInvocation(binding: string, proof: unknown, intentId: string, at: unknown, profile: Readonly<{ executionMs: number; leaseMs: number }>) {");
+        line(output, "async function prepareDeliveryInvocationInternal(binding: string, proof: unknown, intentId: string, at: unknown, profile: Readonly<{ executionMs: number; leaseMs: number }>, operatorGrant: unknown | null) {");
         line(
             output,
             "  const operationTime = validateInstant(at, \"delivery.operationTime\");",
         );
         line(output, "  if (profile === null || typeof profile !== \"object\" || Reflect.ownKeys(profile).sort().join(\",\") !== \"executionMs,leaseMs\" || !Number.isSafeInteger(profile.executionMs) || !Number.isSafeInteger(profile.leaseMs) || profile.executionMs <= 0 || profile.leaseMs <= 0 || profile.leaseMs > profile.executionMs) invalid(\"delivery.profile\", \"an explicit finite execution/lease profile\");");
-        line(output, "  readCurrentDeliveryCredentialProof(proof);");
+        line(output, "  readCurrentDeliveryCredentialProof(proof); if (operatorGrant !== null) readCurrentDeliveryOperatorGrant(operatorGrant);");
         line(output, "  let credential: string; switch (binding) {");
         for binding in self.project.delivery_model().bindings() {
             let effect = binding.service_effect_for_lowering();
@@ -57,22 +57,23 @@ impl TargetGenerator<'_> {
         // cannot be reset by a later invocation.
         line(output, "  const limits = Object.freeze({ maxInvocations: 3, lifetimeMs: 3_600_000, executionMs: profile.executionMs, leaseMs: profile.leaseMs });");
         line(output, "  const started = performance.now();");
-        line(output, "  const prepared = await rootPersistence.withOperationTime(operationTime).transaction((tx: any) => tx.prepare_delivery_invocation(binding, proof, intentId, limits));");
-        line(output, "  if (prepared === null) return null;");
+        line(output, "  const admissionPersistence = operatorGrant === null ? rootPersistence : rootPersistence.withDeadline(started + profile.executionMs); const prepared = await admissionPersistence.withOperationTime(operationTime).transaction((tx: any) => tx.prepare_delivery_invocation(binding, proof, intentId, limits, operatorGrant));");
+        line(output, "  if (prepared === null) return null; if (operatorGrant !== null) { readCurrentDeliveryOperatorGrant(operatorGrant); readCurrentDeliveryCredentialProof(proof); }");
         line(output, "  const token = Object.freeze({});");
         // databaseRemainingMs was sampled under the authoritative database
         // clock. Subtract the ENTIRE monotonic admission elapsed time; a slow
         // COMMIT can never extend a database lease by assuming host UTC agrees.
-        line(output, "  deliveryInvocations.set(token, { binding, prepared, credential, deadlineAt: started + prepared.databaseRemainingMs, used: false });");
+        line(output, "  deliveryInvocations.set(token, { binding, prepared, credential, deadlineAt: started + prepared.databaseRemainingMs, operatorGrant, proof, used: false });");
         line(output, "  return token;");
         line(output, "}");
+        line(output, "export function prepareDeliveryInvocation(binding: string, proof: unknown, intentId: string, at: unknown, profile: Readonly<{ executionMs: number; leaseMs: number }>) { return prepareDeliveryInvocationInternal(binding, proof, intentId, at, profile, null); }");
         line(
             output,
             "export async function dispatchDeliveryInvocation(token: unknown) {",
         );
         line(output, "  const invocation = typeof token === \"object\" && token !== null ? deliveryInvocations.get(token) : undefined;");
         line(output, "  if (invocation === undefined || invocation.used) throw new AuthenticationFault(\"invalid_credentials\", 401);");
-        line(output, "  invocation.used = true;");
+        line(output, "  if (invocation.operatorGrant !== null) { readCurrentDeliveryOperatorGrant(invocation.operatorGrant); readCurrentDeliveryCredentialProof(invocation.proof); } invocation.used = true;");
         line(
             output,
             "  const base = captureOperation(null, null, undefined, false);",
@@ -171,9 +172,9 @@ impl TargetGenerator<'_> {
         if self.project.delivery_model().bindings().is_empty() {
             return output;
         }
-        line(&mut output, "async prepare_delivery_invocation(binding: string, proof: unknown, intentId: string, limits: DeliveryClaimLimits) {");
+        line(&mut output, "async prepare_delivery_invocation(binding: string, proof: unknown, intentId: string, limits: DeliveryClaimLimits, operatorGrant: unknown | null = null) {");
         line(&mut output, "  requireTransaction(); if (operationTime === null) return fault(\"delivery.operation_time\");");
-        line(&mut output, "  return client.transaction(async () => {");
+        line(&mut output, "  if (operatorGrant !== null) readCurrentDeliveryOperatorGrant(operatorGrant); return client.transaction(async () => {");
         line(
             &mut output,
             "    if (!await client.check_delivery_authority(binding, proof)) return null;",
@@ -234,7 +235,7 @@ impl TargetGenerator<'_> {
             line(&mut output, &format!("        const revision = sources.length === 0 ? null : await client.read_delivery_schedule_revision({}, intent.sourceEntityId);", ts_string(&s.entity.text)));
             line(&mut output, "        const payload = validateDeliveryPayload(binding, intent.payload); if (payload.idempotency_key !== intent.intentId) return fault(\"delivery.payload_identity\");");
             line(&mut output, "        if (revision !== intent.sourceRevision || sources.length !== 1 || sources[0].recipient !== payload.to) { await client.cancel_delivery_intent(intentId); return null; }");
-            line(&mut output, "        const handle = await client.claim_delivery_intent(intentId, limits); if (handle === null) return null;");
+            line(&mut output, "        const handle = operatorGrant === null ? await client.claim_delivery_intent(intentId, limits) : await client.claim_delivery_resolved_replay(intentId, limits); if (handle === null) return null;");
             // Recheck crypto issuer after all awaited lock/claim work but before
             // committing the checkpoint. Live SQL role rows remain locked.
             line(
@@ -250,7 +251,7 @@ impl TargetGenerator<'_> {
             line(&mut output, "        const databaseRemainingMs = Math.min(Date.parse(handle.leaseUntil), Date.parse(handle.executionDeadline), Date.parse(handle.lifetimeDeadline)) - Date.parse(clocks[0].now);");
             line(
                 &mut output,
-                "        readCurrentDeliveryCredentialProof(proof);",
+                "        readCurrentDeliveryCredentialProof(proof); if (operatorGrant !== null) readCurrentDeliveryOperatorGrant(operatorGrant);",
             );
             line(&mut output, "        return Object.freeze({ handle, payload, sourceEntityId: intent.sourceEntityId, sourceRevision: intent.sourceRevision, databaseRemainingMs });");
             line(&mut output, "      }");

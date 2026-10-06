@@ -1022,7 +1022,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
                 let delivery_reader = if self.project.delivery_model().bindings().is_empty() {
                     ""
                 } else {
-                    ", readDeliveryCredentialProof"
+                    ", readDeliveryCredentialProof, readDeliveryOperatorGrant"
                 };
                 line(&mut output, &format!("import {{ createFirstPartyAuthentication{delivery_reader} }} from \"./first-party-authentication.ts\";"));
                 if self.has_jwt() {
@@ -3143,7 +3143,7 @@ export const temporal = Object.freeze({
         if !self.project.delivery_model().bindings().is_empty() {
             line(
                 &mut output,
-                "import { readCurrentDeliveryCredentialProof, readDeliverySelectionSender, validateDeliveryPayload, validateDeliverySelectionCursor } from \"./app.ts\";",
+                "import { readCurrentDeliveryCredentialProof, readCurrentDeliveryOperatorGrant, readDeliverySelectionSender, validateDeliveryPayload, validateDeliverySelectionCursor } from \"./app.ts\";",
             );
         }
         line(&mut output, "let persistenceReady = false;");
