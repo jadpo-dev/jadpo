@@ -8,8 +8,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications, resolvedAuthorityPrincipals } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004", "JOB-001", "JOB-002", "JOB-003", "REL-002", "REL-004", "CONFIG-001", "CONFIG-002", "CONFIG-003", "BOUNDARY-001"];
-const partial = ["REL-003"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004", "JOB-001", "JOB-002", "JOB-003", "REL-002", "REL-004", "CONFIG-001", "CONFIG-002", "CONFIG-003", "BOUNDARY-001", "REL-003"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
@@ -604,9 +603,8 @@ async function send(request: any, retainKey?: string) {
   return { status: response!.status, code: body?.error?.code, body, databaseQueries: statements.length, authenticationAttempts, writes: statements.filter(row => ["INSERT", "UPDATE", "DELETE", "REPLACE"].includes(row.operation)).length };
 }
 const results: any[] = [];
-const partialEvidence: any[] = [];
 try {
-  for (const case_ of contract.cases.filter((case_: any) => supported.includes(case_.id) || partial.includes(case_.id))) {
+  for (const case_ of contract.cases.filter((case_: any) => supported.includes(case_.id))) {
     if ((case_.fixtureVariants && !["REL-001", "BOUNDARY-001"].includes(case_.id)) || (case_.followUps && case_.id !== "USER-001")) throw new Error("Unsupported scenario extension");
     if (case_.id === "REL-001") {
       const scenarios = [];
@@ -627,6 +625,12 @@ try {
       results.push({ id: case_.id, scenarios });
       continue;
     }
+    if (case_.id === "REL-003") {
+      // Compiler-only subject: supplied aliases remain unverified. No fixture
+      // database action stands in for the diagnosed protected assignment.
+      results.push({ id: case_.id, raw: [{ protectedAttempt: JSON.parse(readFileSync(join(project, "../owner-attempt-probe.json"), "utf8")) }] });
+      continue;
+    }
     const start = raw.length;
     try {
     await reset(case_);
@@ -638,13 +642,6 @@ try {
     if (["AUTH-009", "AUTH-011"].includes(case_.id)) await prepareServiceFixture(case_);
     if (["REL-002", "REL-004"].includes(case_.id)) {
       await relationshipOperation(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue;
-    }
-    if (case_.id === "REL-003") {
-      await seedTodo(t1, alice); raw.push({ ownerTransferFixture: await todoSnapshot(t1), operation: case_.operation });
-      await send({ method: "POST", path: "/todos", auth: "alice-session", json: { title: "owner injection", owner_id: bob } });
-      await send({ method: "PATCH", path: "/todos/t1", auth: "alice-session", json: { owner_id: bob } });
-      raw.push({ ownerTransferPersistence: await todoSnapshot(t1), sourceProbeSha256: stringDigest(readFileSync(join(project, "../owner-partial-probe.json"), "utf8")) });
-      partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_exact_transfer_human_decision_missing" }); continue;
     }
     if (["AUTH-003", "AUTH-004", "AUTH-007"].includes(case_.id)) {
       await captureJwtFixture(case_);
@@ -719,10 +716,10 @@ try {
     } catch {
       // Keep later IDs executable and retain an opaque failure disposition;
       // exception/provider text and credentials never enter the raw ledger.
-      (partial.includes(case_.id) ? partialEvidence : results).push({ id: case_.id, adapterFailure: true, raw: raw.slice(start) });
+      results.push({ id: case_.id, adapterFailure: true, raw: raw.slice(start) });
     }
   }
-  writeFileSync(output, JSON.stringify({ backend, supported, results, partialEvidence }, null, 2) + "\n", { flag: "wx" });
+  writeFileSync(output, JSON.stringify({ backend, supported, results }, null, 2) + "\n", { flag: "wx" });
 } finally {
   server.stop(true); jwksServer.stop(true); globalThis.fetch = nativeFetch; setSessionStorageUnavailable(false); db?.close(); if (pg) await pg.close(); prototype.prepare = originalPrepare; prototype.exec = originalExec; globalThis.Date = nativeDate;
 }

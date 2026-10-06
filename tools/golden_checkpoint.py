@@ -18,6 +18,7 @@ import tempfile
 from urllib.parse import parse_qs, quote, urlsplit
 
 import golden_cases as harness
+import golden_owner_attempt as owner_attempt
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
@@ -26,7 +27,7 @@ SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'READ-001', 'PATCH-005', 'DELETE-001', 'LIST-001', 'LIST-002',
              'LIST-003', 'REL-001', 'DELETE-002', 'AUTH-002', 'AUTH-006',
              'AUTH-010', 'USER-001', 'AUTH-003', 'AUTH-004', 'AUTH-007', 'AUTH-008',
-             'AUTH-009', 'AUTH-011', 'JOB-004', 'JOB-001', 'JOB-002', 'JOB-003', 'REL-002', 'REL-004', 'CONFIG-001', 'CONFIG-002', 'CONFIG-003', 'BOUNDARY-001')
+             'AUTH-009', 'AUTH-011', 'JOB-004', 'JOB-001', 'JOB-002', 'JOB-003', 'REL-002', 'REL-004', 'CONFIG-001', 'CONFIG-002', 'CONFIG-003', 'BOUNDARY-001', 'REL-003')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
@@ -67,43 +68,6 @@ def safe_run(command: list[str], **kwargs):
     return result
 
 
-def prepare_owner_partial(output: Path, project: Path, environment: dict):
-    """Real refusal/review observations; does not satisfy REL-003 disposition."""
-    compiler = str(ROOT/'jadpo/target/debug/jadpo')
-    mutation = output/'owner-mutation-source'
-    shutil.copytree(project, mutation, ignore=shutil.ignore_patterns('build'))
-    path = mutation/'entities/todo.jadpo'
-    authored = path.read_text()
-    action = '''
-    action checkpoint_reassign_owner(todo_id: Todo.id, owner_id: User.id)
-        fails TodoNotFound, TodoMutationConflict -> Todo
-    {
-        return attempt update required Todo {
-            where: id == todo_id
-            set: { owner_id: Todo.owner_id(owner_id) }
-            missing: TodoNotFound { todo_id: todo_id }
-            conflict: TodoMutationConflict
-        }
-    }
-'''
-    path.write_text(authored.rstrip()[:-1]+action+'}\n')
-    checked = subprocess.run([compiler, 'check', str(mutation), '--diagnostic-format=json'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
-    diagnostic = json.loads(checked.stdout)
-    if checked.returncode == 0 or diagnostic.get('status') != 'failed':
-        raise ValueError('Ordinary owner transfer was not refused')
-    projection = output/'owner-policy-projection'
-    shutil.copytree(project, projection, ignore=shutil.ignore_patterns('build'))
-    owner = projection/'entities/todo.jadpo'
-    before = '        role: TodoRole.owner\n        immutable: true'
-    if owner.read_text().count(before) != 1:
-        raise ValueError('Owner policy partial projection source changed')
-    owner.write_text(owner.read_text().replace(before, before+'\n        policy { TodoRole.owner: [create, read] }'))
-    approval = json.loads(safe_run([compiler, 'approval', str(projection), '--before', str(project)], env=environment).stdout)
-    probe = {'scope': 'Partial owner-transfer refusal and separate owner-field policy review projection; exact transfer human-decision disposition is not emitted',
-             'semanticDisposition': None, 'mutationSource': hashes(mutation), 'mutationCheck': diagnostic,
-             'projectionSource': hashes(projection), 'projectionApproval': approval}
-    (output/'owner-partial-probe.json').write_text(json.dumps(probe, indent=2)+'\n')
-    return {name: hashes(output/name) for name in ('owner-mutation-source', 'owner-policy-projection')}
 
 
 @contextmanager
@@ -816,6 +780,7 @@ def boundary_observations(case: dict, raw: list):
 
 def observations(case: dict, raw: list, clock: str | None = None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
+    if case['id'] == 'REL-003': return owner_attempt.observations(case, raw)
     if case['id'] == 'BOUNDARY-001': return boundary_observations(case, raw)
     if case['id'] == 'JOB-004': return maintenance_observations(case, raw)
     if case['id'] == 'CONFIG-003': return readiness_observations(case, raw)
@@ -1108,6 +1073,8 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
     if len(outputs) != 2 or {output['backend'] for output in outputs} != set(harness.BACKENDS):
         raise ValueError('Missing/duplicate backend')
     for output in outputs:
+        if output.get('partialEvidence'):
+            raise ValueError('Legacy partial evidence cannot substitute native policy observations')
         ids = [item['id'] for item in output['results']]
         if len(ids) != len(set(ids)) or set(ids) != set(SUPPORTED):
             raise ValueError('Missing/duplicate/foreign supported result')
@@ -1130,16 +1097,10 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
         entry['failures'] = harness.assess(cases[entry['id']], observed[key])
         entry['failures'].extend(failure for scenario in observed[key] for step in scenario['steps'] for failure in step.get('checkpoint_failures', []))
         entry['status'] = 'failed' if entry['failures'] else 'passed'
-    report['status'] = 'failed' if any(entry['status'] == 'failed' for entry in report['results']) else 'not_run'
+    report['status'] = 'observations_passed' if all(entry['status'] == 'passed' for entry in report['results']) else 'failed' if any(entry['status'] == 'failed' for entry in report['results']) else 'not_run'
     harness.validate_report(report, root)
 
 
-def validate_partial_outputs(output: dict, cases: dict):
-    """Integrity of retained causal probes, never application acceptance passes."""
-    partial = output.get('partialEvidence')
-    ids = ('REL-003',)
-    if not isinstance(partial, list) or len(partial) != len(ids) or {item.get('id') for item in partial} != set(ids):
-        raise ValueError('Missing/duplicate original partial probe inventory')
 
 
 def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=ROOT):
@@ -1162,8 +1123,8 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
         raise ValueError('Changed actual pinned JWT dependency files')
     if {name: harness.digest(evidence/name) for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem')} != checkpoint['tls_fixture']:
         raise ValueError('Changed ephemeral local JWKS TLS fixture')
-    if {name: hashes(evidence/name) for name in ('owner-mutation-source', 'owner-policy-projection')} != checkpoint['owner_partial_sources'] or harness.digest(evidence/'owner-partial-probe.json') != checkpoint['owner_partial_probe_sha256']:
-        raise ValueError('Changed partial owner refusal/review evidence')
+    owner_case = next(case for case in harness.read_contract(root)['cases'] if case['id'] == 'REL-003')
+    owner_capture = owner_attempt.validate(root, evidence, owner_case, checkpoint['owner_attempt'])
     outputs = []
     for backend in harness.BACKENDS:
         path = evidence/f'{backend}-raw.json'
@@ -1172,7 +1133,9 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
         outputs.append(json.loads(path.read_text()))
     cases = {case['id']: case for case in harness.read_contract(root)['cases']}
     for output in outputs:
-        if 'partialEvidence' in output: validate_partial_outputs(output, cases)
+        retained = [item for item in output['results'] if item['id'] == 'REL-003']
+        if len(retained) != 1 or not harness.same_json(retained[0].get('raw'), [{'protectedAttempt': owner_capture}]):
+            raise ValueError('Raw policy observation differs from native protected-attempt artifact')
     plan_path = evidence/'application/build/persistence/entities.json'
     expected_plans = [plan for plan in json.loads(plan_path.read_text())['query_plans'] if plan.get('entity') == 'Todo' and plan.get('strategy') == 'indexed_keyset_page']
     expected_failures = json.loads((evidence/'application/build/audit/failures.json').read_text())['failures']
@@ -1250,7 +1213,8 @@ def main():
     shutil.copyfile(ROOT/'tests/assurance/service-reference-mail-v0.1.json', external)
     safe_run([str(ROOT/'jadpo/target/debug/jadpo'), 'build', str(project)], env=environment)
     generated = hashes(project/'build')
-    owner_partial_sources = prepare_owner_partial(output, project, environment)
+    owner_case = next(case for case in harness.read_contract(ROOT)['cases'] if case['id'] == 'REL-003')
+    owner_binding = owner_attempt.collect(ROOT, output, project, owner_case, environment)
     target = project/'build/target'
     original = (target/'persistence.ts').read_text()
     declaration = 'import { SQL } from "bun";'
@@ -1322,9 +1286,8 @@ def main():
                             'raw_files': {f'{backend}-raw.json': harness.digest(output/f'{backend}-raw.json') for backend in harness.BACKENDS},
                             'dependency_files': dependency_binding,
                             'tls_fixture': tls_binding,
-                            'owner_partial_sources': owner_partial_sources,
-                            'owner_partial_probe_sha256': harness.digest(output/'owner-partial-probe.json'),
-                            'remaining': 'Scoped supporting checkpoint; unobserved cases, complete accepted-successor parity and final exact-source require-golden evidence are not claimed'}
+                            'owner_attempt': owner_binding,
+                            'remaining': 'Scoped functional accepted-successor observations; whole prerequisite closure, issuer/release authority, native hard lifetime and final exact-source require-golden qualification remain separate'}
     if harness.provenance(ROOT) != binding:
         raise ValueError('Source/compiler changed during checkpoint')
     validate_checkpoint(report, output, dependencies)

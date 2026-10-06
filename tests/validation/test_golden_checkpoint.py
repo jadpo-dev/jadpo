@@ -1,12 +1,15 @@
 """Synthetic counterexamples for checkpoint integrity, not application passes."""
 from copy import deepcopy
 import hashlib
+import gzip
 import json
 from pathlib import Path
 import shutil
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,13 +30,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
         for name in (harness.ACCEPTANCE, harness.OBLIGATIONS, 'tools/golden_cases.py',
                      'tests/assurance/service-reference-mail-v0.1.json', harness.JOB001_SUCCESSOR,
                      'tools/golden_checkpoint.py', 'tools/golden_http_checkpoint.ts',
-                     'tools/golden_sql_observer.ts', 'tools/golden_startup_observer.ts'):
+                     'tools/golden_sql_observer.ts', 'tools/golden_startup_observer.ts', 'tools/golden_owner_attempt.py'):
             destination = self.root/name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT/name, destination)
         self.compiler = self.root/'jadpo/target/debug/jadpo'
         self.compiler.parent.mkdir(parents=True)
         self.compiler.write_text('synthetic compiler digest fixture; never executable')
+        self.synthetic_compiler_digest = harness.digest(self.compiler)
         contract = harness.read_contract(self.root)
         self.clock = contract['clock']
         self.cases = {case['id']: case for case in contract['cases']}
@@ -46,6 +50,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         if case_id in ('CONFIG-001', 'CONFIG-002'): return self.preflight_raw(case_id)
         if case_id == 'CONFIG-003': return self.readiness_raw()
         if case_id == 'BOUNDARY-001': return self.boundary_raw()
+        if case_id == 'REL-003': return self.owner_raw()
         if case_id in ('REL-002', 'REL-004'): return self.relationship_raw(case_id)
         if case_id in ('JOB-001', 'JOB-002', 'JOB-003'): return self.reminder_raw(case_id)
         if case_id == 'JOB-004': return self.maintenance_raw()
@@ -347,6 +352,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
         statements = [{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'SELECT', 'sql': 'SELECT "id", "deleted_at" FROM "todo" WHERE "deleted_at" IS NOT NULL AND "deleted_at" <= $1 ORDER BY "deleted_at" ASC, "id" ASC LIMIT 500', 'maintenanceCutoff': '2025-12-16T12:00:00Z'}, {'operation': 'DELETE', 'sql': 'DELETE FROM "todo" WHERE "id" = $2 AND ("deleted_at" IS NOT NULL AND "deleted_at" <= $1)', 'maintenanceRowIdentity': checkpoint.ALIASES['t2'], 'maintenanceCutoff': '2025-12-16T12:00:00Z'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}]
         return [{'maintenanceFixture': {'before': before, 'metadata': metadata, 'sourceRevision': 'synthetic_revision', 'specification': {'fixture': case['fixture'], 'run': case['run']}}}, {'nativeMaintenance': {'callable': 'runLifecycleMaintenance', 'at': case['run']['at'], 'statements': statements, 'auditEvents': [event], 'after': deepcopy([before[0], before[2]])}}]
 
+    def owner_raw(self):
+        # Approved compiler output is a negative protocol fixture. No native
+        # process is run and the isolated compiler remains a digest-only file.
+        artifact = json.loads(gzip.decompress((ROOT/'tests/validation/evidence/rm601-protected-attempt/pinned-native-protected-attempt.json.gz').read_bytes()))
+        case = self.cases['REL-003']
+        records = [{'name': name, 'exit_code': code, 'stdout_sha256': 'synthetic', 'stderr_sha256': 'synthetic'} for name, code in zip(['checked-baseline', 'ordinary-refused-attempt', 'protected-attempt', 'fresh-export-validation'], [0, 1, 0, 0])]
+        return [{'protectedAttempt': {'classification': 'compiler_only_protected_attempt', 'specification': {'fixture': deepcopy(case['fixture']), 'operation': deepcopy(case['operation'])}, 'request': checkpoint.owner_attempt.request_for(case), 'artifact': artifact, 'compiler_sha256': self.synthetic_compiler_digest, 'baselineCheck': {'status': 'passed'}, 'ordinaryAttemptCheck': {'status': 'failed'}, 'nativeExecutions': records}}]
+
     def outputs(self):
         outputs = [{'backend': backend, 'results': [{'id': case_id, 'scenarios' if case_id == 'REL-001' else 'raw': self.raw(case_id)} for case_id in checkpoint.SUPPORTED]} for backend in harness.BACKENDS]
         for output in outputs:
@@ -375,6 +388,93 @@ class CheckpointIntegrityTests(unittest.TestCase):
                             for index in range(1, 8): sql = sql.replace('?'+str(index), '$'+str(index)+('::TEXT' if index == 2 else '::TIMESTAMPTZ(3)' if index == 3 else '::text' if index in (4, 5) else ''))
                             request['statements'][0]['sql'] = sql
         return outputs
+
+    def owner_evidence_fixture(self, evidence):
+        # Only isolated source/protocol fixtures: the synthetic compiler file
+        # remains non-executable. Native refusal replay lives in actual evidence.
+        source = self.root/'examples/golden-todo-migration'
+        if not source.exists(): shutil.copytree(ROOT/'examples/golden-todo-migration', source, ignore=shutil.ignore_patterns('build'))
+        project = evidence/'application'; shutil.copytree(source, project)
+        reference = project/checkpoint.owner_attempt.REFERENCE; reference.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(self.root/checkpoint.owner_attempt.REFERENCE, reference)
+        attempt = evidence/'owner-attempt-source'; shutil.copytree(project, attempt)
+        todo = attempt/'entities/todo.jadpo'; todo.write_text(checkpoint.owner_attempt.attempted_source(todo.read_text()))
+        capture = self.owner_raw()[0]['protectedAttempt']
+        exported = (json.dumps(capture['artifact'], sort_keys=True, separators=(',', ':'))+'\n').encode()
+        (evidence/'owner-attempt-artifact.json').write_bytes(exported)
+        (evidence/'owner-attempt-request.json').write_text(json.dumps(capture['request']))
+        for record in capture['nativeExecutions']:
+            name = record['name']
+            body = json.dumps(capture['baselineCheck' if name == 'checked-baseline' else 'ordinaryAttemptCheck']).encode() if name in ('checked-baseline', 'ordinary-refused-attempt') else exported
+            (evidence/(name+'.stdout')).write_bytes(body); (evidence/(name+'.stderr')).write_bytes(b'')
+            record.update(stdout_sha256=harness.digest(evidence/(name+'.stdout')), stderr_sha256=harness.digest(evidence/(name+'.stderr')))
+        (evidence/'owner-attempt-probe.json').write_text(json.dumps(capture))
+        return capture, exported
+
+    def test_protected_attempt_validator_binds_exact_sources_and_remeasures_native_export(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory); capture, exported = self.owner_evidence_fixture(evidence)
+            recorded = checkpoint.owner_attempt.binding(evidence)
+            native = SimpleNamespace(returncode=0, stdout=exported, stderr=b'')
+            with patch.object(checkpoint.owner_attempt.subprocess, 'run', return_value=native) as run:
+                self.assertEqual(checkpoint.owner_attempt.validate(self.root, evidence, self.cases['REL-003'], recorded), capture)
+                command = run.call_args.args[0]
+                self.assertIn('--validate-export', command); self.assertIn('--expected-before-state', command)
+                self.assertEqual(command[0], str(self.compiler))
+            # Explicit declared SQLite resources cannot become source inputs.
+            (evidence/'application/checkpoint.sqlite').write_bytes(b'synthetic runtime resource')
+            with patch.object(checkpoint.owner_attempt.subprocess, 'run', return_value=native):
+                checkpoint.owner_attempt.validate(self.root, evidence, self.cases['REL-003'], recorded)
+            for path in (evidence/'application/entities/todo.jadpo', evidence/'owner-attempt-source/entities/todo.jadpo', evidence/'application/foreign.sqlite'):
+                original = path.read_bytes() if path.exists() else None
+                path.write_bytes((original or b'')+b'\n')
+                # Rebinding ordinary file hashes cannot replace exact current
+                # source/instrumentation equality or admit arbitrary databases.
+                with self.subTest(path=str(path)), patch.object(checkpoint.owner_attempt.subprocess, 'run') as run, self.assertRaises(ValueError):
+                    checkpoint.owner_attempt.validate(self.root, evidence, self.cases['REL-003'], checkpoint.owner_attempt.binding(evidence))
+                run.assert_not_called()
+                if original is None: path.unlink()
+                else: path.write_bytes(original)
+            # A coherent digest and valid decoder cannot replace the native
+            # comparison of every freshly derived canonical fact.
+            capture['artifact']['canonical']['attempt']['refusal_diagnostic']['message'] = 'changed diagnostic'
+            capture['artifact']['canonical']['attempt']['diagnostics'] = [capture['artifact']['canonical']['attempt']['refusal_diagnostic'] if row['code'] == 'TYPE_FIELD_UPDATE_FORBIDDEN' else row for row in capture['artifact']['canonical']['attempt']['diagnostics']]
+            capture['artifact']['subject_digest'] = checkpoint.owner_attempt.canonical_digest(capture['artifact']['canonical'])
+            forged = (json.dumps(capture['artifact'])+'\n').encode()
+            for name in ('owner-attempt-artifact.json', 'protected-attempt.stdout', 'fresh-export-validation.stdout'): (evidence/name).write_bytes(forged)
+            for record in capture['nativeExecutions']: record['stdout_sha256'] = harness.digest(evidence/(record['name']+'.stdout'))
+            (evidence/'owner-attempt-probe.json').write_text(json.dumps(capture))
+            with patch.object(checkpoint.owner_attempt.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stdout=b'', stderr=b'withheld')) as run, self.assertRaisesRegex(ValueError, 'Fresh native compiler refused'):
+                checkpoint.owner_attempt.validate(self.root, evidence, self.cases['REL-003'], checkpoint.owner_attempt.binding(evidence))
+            run.assert_called_once()
+
+    def test_protected_attempt_refusal_is_exact_unexecuted_and_non_releasable(self):
+        raw = self.owner_raw()
+        step = checkpoint.observations(self.cases['REL-003'], raw)[0]['steps'][0]
+        self.assertEqual(step['disposition'], raw[0]['protectedAttempt']['artifact']['canonical']['disposition'])
+        self.assertEqual(step['liveIdentityValidation'], 'unavailable')
+        for mutation in ('alias', 'fixture', 'release', 'authority', 'live', 'after', 'graph', 'runtime', 'feasibility', 'checked', 'field', 'callable', 'span', 'diagnostic', 'policy', 'missing-command', 'bool-exit', 'extra'):
+            changed = deepcopy(raw); capture = changed[0]['protectedAttempt']; c = capture['artifact']['canonical']
+            if mutation == 'alias': c['request']['value']['to']['alias'] = 'mallory'
+            elif mutation == 'fixture': capture['specification']['fixture'] = []
+            elif mutation == 'release': c['release_equivalent_success'] = True
+            elif mutation == 'authority': c['release_authority'] = True
+            elif mutation == 'live': c['request']['live_identity_validation'] = 'proven'
+            elif mutation == 'after': c['attempt']['checked_after'] = {}
+            elif mutation == 'graph': c['attempt']['semantic_graph'] = {}
+            elif mutation == 'runtime': c['attempt']['runtime_authority'] = 'granted'
+            elif mutation == 'feasibility': c['attempt']['feasibility'] = 'proven'
+            elif mutation == 'checked': c['attempt']['status'] = 'checked'
+            elif mutation == 'field': c['protected_field']['field'] = 'title'
+            elif mutation == 'callable': c['attempt']['callable'] = 'Todo.create'
+            elif mutation == 'span': c['attempt']['refusal_diagnostic']['primary']['start'] += 1
+            elif mutation == 'diagnostic': c['attempt']['diagnostics'] = []
+            elif mutation == 'policy': c['policy_rule'] = 'Todo.fields.title'
+            elif mutation == 'missing-command': capture['nativeExecutions'].pop()
+            elif mutation == 'bool-exit': capture['nativeExecutions'][0]['exit_code'] = False
+            else: capture['private_debug'] = 'undeclared'
+            capture['artifact']['subject_digest'] = checkpoint.owner_attempt.canonical_digest(c)
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                checkpoint.observations(self.cases['REL-003'], changed)
 
     def test_all_inventory_entries_retained_and_selected_observations_do_not_infer_pass(self):
         report = harness.run_cases(self.root)
@@ -449,6 +549,11 @@ class CheckpointIntegrityTests(unittest.TestCase):
         self.assertEqual(len(report['results']), 88)
 
     def test_artifact_raw_dependency_and_rederived_observation_integrity(self):
+        # This test challenges non-policy generated/raw bindings using isolated
+        # synthetic files. Native policy validation is tested separately and
+        # by actual both-adapter evidence; never execute the digest fixture.
+        native = patch.object(checkpoint.owner_attempt, 'validate', return_value=self.owner_raw()[0]['protectedAttempt'])
+        native.start(); self.addCleanup(native.stop)
         with tempfile.TemporaryDirectory() as temporary:
             evidence = Path(temporary)
             target = evidence/'application/build/target'; target.mkdir(parents=True)
@@ -475,14 +580,11 @@ class CheckpointIntegrityTests(unittest.TestCase):
             original['target/app.ts'] = harness.digest(evidence/'original-app.ts')
             original['target/jwt-authentication.ts'] = harness.digest(evidence/'original-jwt-authentication.ts')
             for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem'): (evidence/name).write_text(self.tls_text)
-            for name in ('owner-mutation-source', 'owner-policy-projection'):
-                (evidence/name).mkdir(); (evidence/name/'synthetic.jadpo').write_text('synthetic partial probe; never executed')
-            (evidence/'owner-partial-probe.json').write_text('{"synthetic":true}')
             report['checkpoint'] = {'supported_ids': list(checkpoint.SUPPORTED), 'generated_original': original,
                                     'generated_instrumented': checkpoint.hashes(evidence/'application/build'),
                                     'raw_files': {f'{backend}-raw.json': harness.digest(evidence/f'{backend}-raw.json') for backend in harness.BACKENDS},
                                     'dependency_files': checkpoint.hashes(jose), 'tls_fixture': {name: harness.digest(evidence/name) for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem')},
-                                    'owner_partial_sources': {name: checkpoint.hashes(evidence/name) for name in ('owner-mutation-source', 'owner-policy-projection')}, 'owner_partial_probe_sha256': harness.digest(evidence/'owner-partial-probe.json')}
+                                    'owner_attempt': {'synthetic': True}}
             checkpoint.validate_checkpoint(report, evidence, dependencies, self.root)
             for path in (target/'persistence.ts', evidence/'original-authentication.ts', evidence/'original-jwt-authentication.ts', evidence/'jwks-fixture-cert.pem', evidence/'sqlite-raw.json', jose/'package.json'):
                 previous = path.read_bytes(); path.write_bytes(previous+b'\n')
@@ -867,14 +969,16 @@ class CheckpointIntegrityTests(unittest.TestCase):
             else: raw[0]['serviceFixture']['specification']['fixture'] = []
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-011'], raw, self.clock)
 
-    def test_relationship_partial_observations_never_promote_original_case_entries(self):
+    def test_legacy_partial_evidence_cannot_substitute_native_policy_subject(self):
         outputs = self.outputs()
         for output in outputs:
-            output['partialEvidence'] = [{'id': case_id, 'raw': [{'accepted': False, 'fault': {'kind': 'constraint'}}]} for case_id in ('REL-003',)]
-        report = harness.run_cases(self.root); checkpoint.apply_checkpoint(report, outputs, self.root)
-        for entry in report['results']:
-            if entry['id'] == 'REL-003':
-                self.assertEqual(entry['status'], 'not_run'); self.assertNotIn('observations', entry)
+            output['partialEvidence'] = [{'id': 'REL-003', 'raw': [{'accepted': False}]}]
+        with self.assertRaisesRegex(ValueError, 'Legacy partial evidence'):
+            checkpoint.apply_checkpoint(harness.run_cases(self.root), outputs, self.root)
+        outputs = self.outputs()
+        next(item for item in outputs[0]['results'] if item['id'] == 'REL-003')['raw'] = [{'accepted': False}]
+        with self.assertRaisesRegex(ValueError, 'protected-attempt capture'):
+            checkpoint.apply_checkpoint(harness.run_cases(self.root), outputs, self.root)
 
     def test_relationship_acceptance_requires_native_public_normalizer_and_exact_original_sql_identity(self):
         for case_id in ('REL-002', 'REL-004'):
@@ -1151,17 +1255,17 @@ class CheckpointIntegrityTests(unittest.TestCase):
             else:
                 with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(case, raw)
 
-    def partial_outputs_fixture(self):
-        return {'partialEvidence': [{'id': 'REL-003', 'adapterFailure': True, 'raw': []}]}
-
-    def test_partial_inventory_preserves_exact_remaining_original_owner_case(self):
-        checkpoint.validate_partial_outputs(self.partial_outputs_fixture(), self.cases)
-        for mutation in ('missing', 'duplicate', 'foreign'):
-            output = self.partial_outputs_fixture()
-            if mutation == 'missing': output['partialEvidence'] = []
-            elif mutation == 'duplicate': output['partialEvidence'].append(deepcopy(output['partialEvidence'][0]))
-            else: output['partialEvidence'][0]['id'] = 'BOUNDARY-001'
-            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.validate_partial_outputs(output, self.cases)
+    def test_policy_case_retains_original44_inventory_with_explicit_static_classification(self):
+        self.assertEqual(set(checkpoint.SUPPORTED), set(self.cases))
+        self.assertEqual(len(checkpoint.SUPPORTED), 44)
+        outputs = self.outputs()
+        report = harness.run_cases(self.root); checkpoint.apply_checkpoint(report, outputs, self.root)
+        for entry in report['results']:
+            if entry['id'] == 'REL-003':
+                self.assertEqual(entry['status'], 'passed')
+                self.assertEqual(entry['observations'][0]['steps'][0]['evidenceClassification'], 'compiler_only_protected_attempt')
+                self.assertFalse(entry['observations'][0]['steps'][0]['releaseAuthority'])
+        self.assertFalse(report['release_equivalent'])
 
     def test_generated_relative_modules_must_exist_before_native_startup(self):
         with tempfile.TemporaryDirectory() as directory:
