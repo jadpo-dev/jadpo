@@ -62,6 +62,7 @@ fn derive_non_approval_artifacts(
         artifact("openapi/openapi.json", model.openapi_json()),
         artifact("diagnostics/catalogue.json", catalogue_manifest_json()),
         artifact("diagnostics/reference.md", catalogue_reference_markdown()),
+        artifact("audit/deployment.json", model.deployment.to_string()),
     ];
     if project.syntax.sources.iter().any(|s| {
         s.file
@@ -242,6 +243,7 @@ struct ArtifactModel<'project> {
     configurations: Vec<&'project ConfigDeclaration>,
     relationships: operational_failures::RelationshipAnalysis,
     http_boundaries: http_boundary_failures::Analysis,
+    deployment: serde_json::Value,
 }
 
 #[derive(Clone)]
@@ -526,6 +528,7 @@ impl<'project> ArtifactModel<'project> {
             configurations,
             relationships: operational_failures::RelationshipAnalysis::new(project),
             http_boundaries: http_boundary_failures::Analysis::new(project_path, project),
+            deployment: crate::target::deployment_surface_metadata(project_path, project),
         }
     }
 

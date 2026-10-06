@@ -844,7 +844,13 @@ fn snapshot(path: &Path, project: &AnalyzedProject) -> Result<Value, String> {
             "runtime_conformance":"not_established", "delivery_authority": if project.delivery_model().bindings().is_empty() { "not_resolved" } else { "checked_nonexecuting_phase_obligations" },
             "feasible_job_scenarios":"not_generated"}),
     );
-    for category in ["emissions", "deployment"] {
+    impact.insert("deployment", model.deployment.clone());
+    if let Some(deployment) = model.deployment["facts"].as_object() {
+        for key in ["listener", "readiness", "application_plane"] {
+            facts.insert(format!("deployment_surface:{key}"), deployment[key].clone());
+        }
+    }
+    for category in ["emissions"] {
         impact.insert(
             category,
             json!({"status":"unsupported_analysis","facts":null}),

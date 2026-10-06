@@ -47,6 +47,51 @@ pub(crate) fn first_party_authentication_supported(
         .is_ok_and(|generator| generator.first_party_supported())
 }
 
+/// Static expected deployment contract from the same native target predicates.
+/// A successful generator is not evidence of a listener, readiness or authority.
+pub(crate) fn deployment_surface_metadata(
+    project_path: &Path,
+    project: &AnalyzedProject,
+) -> serde_json::Value {
+    // Use the complete generation result, including dependency validation;
+    // unsupported native targets never acquire a fabricated deployment surface.
+    if let Err(diagnostic) = derive_target(project_path, project) {
+        return serde_json::json!({"schema_version":1,"status":"target_generation_rejected",
+            "facts":null,"diagnostic":{"code":diagnostic.code,"rule_id":diagnostic.rule_id},
+            "runtime_conformance":"not_established","release_authority":false});
+    }
+    let generator = TargetGenerator::new(project_path, project)
+        .expect("successful target generation constructed the same checked model");
+    let advisories = generator
+        .project
+        .semantics
+        .external_effects
+        .iter()
+        .map(|effect| (snake_case(&effect.service), "unprobed"))
+        .collect::<BTreeMap<_, _>>();
+    serde_json::json!({"schema_version":1,"status":"compiler_supported_expected_native_contract",
+        "evidence":"native_target_generator_not_runtime_host_configuration",
+        "facts":{
+            "producer":"bun_target","target":"target/app.ts",
+            "listener":{"factory":"createDeploymentServer","hostname":"127.0.0.1",
+                "port":{"required_api_argument":true,"integer_min":0,"integer_max":65535,
+                    "native_main_environment":"JADPO_DEPLOYMENT_PORT","native_main_activation":"only_when_explicitly_present",
+                    "resolved_value":null},"separate_from_application_listener":true},
+            "readiness":{"handler":"handleDeploymentRequest","method":"GET",
+                "paths":["/health/ready","/health"],"authentication":"compiler_owned_deployment_plane_no_authored_route_dispatch",
+                "database_check":if generator.has_entities(){"native_database_readiness"}else{"not_applicable_no_persistent_entities"},
+                "response_statuses":if generator.has_entities(){vec![200,503]}else{vec![200]},
+                "exception_status":503,"service_advisories":advisories,
+                "advisories_qualify_provider_health":false},
+            "application_plane":{"handler":"handleRequest","reserved_readiness_path":"/health/ready",
+                "deployment_aliases_automatically_mounted":false,
+                "authored_other_health_routes":"ordinary_checked_routes_preserved",
+                "authored_routes_at_reserved_path":"excluded_by_native_application_boundary"},
+            "declared_configuration_preflight":generator.configuration.is_some()},
+        "runtime_conformance":"not_established","live_listener":null,"current_readiness":null,
+        "worker_execution_profile":null,"release_authority":false})
+}
+
 pub fn derive_target(
     project_path: &Path,
     project: &AnalyzedProject,
