@@ -378,7 +378,7 @@ async function readinessProbe(case_: any) {
     clockNow += 5_000; await Bun.sleep(1_100); await sample("recovered_control");
     await send({ method: "GET", path: "/todos", auth: "alice-session" }, "readinessRecovery");
     const recovery = raw.pop().readinessRecovery;
-    raw.push({ nativeReadiness: { specification: case_.fixture, selectedBackend: backend, deploymentCallable: "createDeploymentServer", hostname: deployment.hostname, applicationPort: application.port, deploymentPort: deployment.port, phases, healthyControl: healthy, outage, recovery, canonicalMainStartup: "Separate original CONFIG startup controls retained; whole canonical URI startup remains open." } });
+    raw.push({ nativeReadiness: { serviceMetadata: JSON.parse(readFileSync(join(project, "build/audit/services.json"), "utf8")), specification: case_.fixture, selectedBackend: backend, deploymentCallable: "createDeploymentServer", hostname: deployment.hostname, applicationPort: application.port, deploymentPort: deployment.port, phases, healthyControl: healthy, outage, recovery, canonicalMainStartup: "Separate original CONFIG startup controls retained; whole canonical URI startup remains open." } });
   } finally { process.exit = nativeExit; application.stop(true); deployment.stop(true); }
 }
 async function boundaryProbe(case_: any) {

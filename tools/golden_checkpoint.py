@@ -609,6 +609,12 @@ def readiness_observations(case: dict, raw: list):
     capture = raw[0]['nativeReadiness']
     if not harness.same_json(capture.get('specification'), case['fixture']) or capture.get('selectedBackend') not in harness.BACKENDS or capture.get('deploymentCallable') != 'createDeploymentServer' or capture.get('hostname') != '127.0.0.1':
         raise ValueError('Changed original started-application/native deployment boundary')
+    effects = capture.get('serviceMetadata', {}).get('effects')
+    if not isinstance(effects, list) or not effects or any(not isinstance(effect.get('service'), str) or not re.fullmatch('[A-Za-z][A-Za-z0-9]*', effect['service']) for effect in effects):
+        raise ValueError('Missing checked readiness external-service metadata')
+    # The generated native advisory is a non-probing literal for each checked
+    # external service. Derive keys from artifact identities, never public data.
+    advisory = {re.sub(r'(?<!^)(?=[A-Z])', '_', effect['service']).lower(): 'unprobed' for effect in effects}
     ports = [capture.get(key) for key in ('applicationPort', 'deploymentPort')]
     if any(type(port) is not int or not 0 < port <= 65535 for port in ports) or len(set(ports)) != 2:
         raise ValueError('Missing distinct actual application/deployment listeners')
@@ -628,7 +634,7 @@ def readiness_observations(case: dict, raw: list):
         if direct.get('callable') != 'handleDeploymentRequest' or direct.get('path') != '/health/ready' or direct.get('status') != responses[0]['status'] or not harness.same_json(direct.get('body'), responses[0]['body']) or not harness.same_json(responses[0]['body'], responses[1]['body']) or responses[0]['status'] != responses[1]['status']:
             raise ValueError('Real deployment listener/alias/direct native handler disagree')
         body = responses[0]['body']
-        if set(body) != {'status', 'checks', 'advisories'} or body['checks'] != {'database': 'available' if responses[0]['status'] == 200 else 'unavailable'} or body['status'] != ('ready' if responses[0]['status'] == 200 else 'not_ready'):
+        if not harness.same_json(body.get('advisories'), advisory) or set(body) != {'status', 'checks', 'advisories'} or body['checks'] != {'database': 'available' if responses[0]['status'] == 200 else 'unavailable'} or body['status'] != ('ready' if responses[0]['status'] == 200 else 'not_ready'):
             raise ValueError('Missing native deployment database readiness disposition')
     if any(phases[index]['responses'][0]['status'] != 200 for index in (0, 2)) or not instant(phases[0].get('at')) < instant(phases[1].get('at')) < instant(phases[2].get('at')):
         raise ValueError('Missing chronological healthy and actual recovered deployment controls')
@@ -1059,11 +1065,14 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
     expected_source_revision = json.loads((evidence/'application/build/app.meta.json').read_text())['source_revision']
     expected_jobs = json.loads((evidence/'application/build/audit/jobs.json').read_text())
     expected_configuration = json.loads((evidence/'application/build/audit/configuration.json').read_text())
+    expected_services = json.loads((evidence/'application/build/audit/services.json').read_text())
     for output in outputs:
         for item in output['results']:
             journals = [scenario['raw'] for scenario in item['scenarios']] if item['id'] == 'REL-001' else [item['raw']]
             for raw in journals:
                 for event in raw:
+                    if 'nativeReadiness' in event and not harness.same_json(event['nativeReadiness'].get('serviceMetadata'), expected_services):
+                        raise ValueError('Raw readiness advisory service binding differs from generated artifacts')
                     if 'nativeStartup' in event and (not harness.same_json(event['nativeStartup'].get('configurationMetadata'), expected_configuration) or event['nativeStartup'].get('sourceRevision') != expected_source_revision):
                         raise ValueError('Raw preflight declarations/source differ from generated artifacts')
                     if 'reminderFixture' in event and not harness.same_json(event['reminderFixture'].get('jobMetadata'), expected_jobs):

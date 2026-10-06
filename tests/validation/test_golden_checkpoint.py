@@ -242,7 +242,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
     def readiness_raw(self):
         phases = []
         for index, (label, status) in enumerate((('healthy_control', 200), ('database_unavailable', 503), ('recovered_control', 200))):
-            ready = {'status': 'ready' if status == 200 else 'not_ready', 'checks': {'database': 'available' if status == 200 else 'unavailable'}, 'advisories': {}}
+            ready = {'status': 'ready' if status == 200 else 'not_ready', 'checks': {'database': 'available' if status == 200 else 'unavailable'}, 'advisories': {'reminder_mail': 'unprobed'}}
             responses = []
             for plane, path in [('deployment', '/health/ready'), ('deployment', '/health'), ('application', '/health/ready'), ('application', '/health'), ('application', '/health/live')]:
                 code, body = (status, deepcopy(ready)) if plane == 'deployment' else (200, {'status': 'healthy'}) if path == '/health/live' else (404, {'error': {'code': 'not_found'}})
@@ -251,7 +251,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         query = 'SELECT "id" AS "id", "title" AS "title", "status" AS "status", "due_at" AS "due_at", "created_at" AS "created_at", "updated_at" AS "updated_at" FROM "todo" WHERE "owner_id" = ?1 AND "deleted_at" IS NULL AND (?2 IS NULL OR "status" = ?2) AND (?3 IS NULL OR "due_at" <= ?3) AND ?4 IS NULL AND ?5 IS NULL AND ("deleted_at" IS NULL) AND (("todo"."owner_id" = ?7)) ORDER BY "created_at" DESC, "id" DESC LIMIT ?6'
         request = {'method': 'GET', 'path': '/todos', 'requestedPath': '/todos', 'requestJson': None, 'auth': 'alice-session', 'status': 200, 'authenticationAttempts': 1, 'credentialsIssued': 0, 'principals': [{'kind': 'user', 'subject': 'alice', 'authenticationStrength': 'primary', 'values': {'user_id': checkpoint.ALIASES['alice']}}], 'authorityQueries': {'principal': [], 'credential': []}, 'faultConfiguration': {'sessionStorageUnavailable': False}, 'at': phases[0]['at'], 'statements': [{'operation': 'SELECT', 'sql': query, 'numericParameters': {'6': 26}, 'todoOwnerIdentities': {'1': checkpoint.ALIASES['alice'], '7': checkpoint.ALIASES['alice']}}]}
         phases[2]['statements'] = [{'operation': 'CREATE', 'sql': 'CREATE TABLE IF NOT EXISTS "todo" (id TEXT)'}, {'operation': 'SELECT', 'sql': 'SELECT sessions.id, sessions.data, sessions.revoked FROM "__jadpo_auth_sessions" AS sessions LIMIT 0'}]
-        return [{'nativeReadiness': {'specification': self.cases['CONFIG-003']['fixture'], 'selectedBackend': 'sqlite', 'deploymentCallable': 'createDeploymentServer', 'hostname': '127.0.0.1', 'applicationPort': 30001, 'deploymentPort': 30002, 'phases': phases, 'healthyControl': deepcopy(request), 'recovery': {**deepcopy(request), 'at': phases[2]['at']}, 'outage': {'startedAt': phases[0]['at'], 'restoredAt': phases[1]['at'], 'mode': 'actual separate-connection SQLite exclusive lock', 'lockAcquireStatements': [{'operation': 'BEGIN', 'sql': 'BEGIN EXCLUSIVE'}], 'lockReleaseStatements': [{'operation': 'ROLLBACK', 'sql': 'ROLLBACK'}], 'triggeringRequest': {**request, 'status': 500}}}}]
+        return [{'nativeReadiness': {'serviceMetadata': {'effects': [{'service': 'ReminderMail'}]}, 'specification': self.cases['CONFIG-003']['fixture'], 'selectedBackend': 'sqlite', 'deploymentCallable': 'createDeploymentServer', 'hostname': '127.0.0.1', 'applicationPort': 30001, 'deploymentPort': 30002, 'phases': phases, 'healthyControl': deepcopy(request), 'recovery': {**deepcopy(request), 'at': phases[2]['at']}, 'outage': {'startedAt': phases[0]['at'], 'restoredAt': phases[1]['at'], 'mode': 'actual separate-connection SQLite exclusive lock', 'lockAcquireStatements': [{'operation': 'BEGIN', 'sql': 'BEGIN EXCLUSIVE'}], 'lockReleaseStatements': [{'operation': 'ROLLBACK', 'sql': 'ROLLBACK'}], 'triggeringRequest': {**request, 'status': 500}}}}]
 
     def preflight_raw(self, case_id):
         case = self.cases[case_id]
@@ -430,6 +430,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
             (failure_path.parent/'lifecycle-maintenance.json').write_text(json.dumps(self.maintenance_raw()[0]['maintenanceFixture']['metadata']))
             (failure_path.parent/'jobs.json').write_text(json.dumps(self.reminder_raw('JOB-001')[0]['reminderFixture']['jobMetadata']))
             (failure_path.parent/'configuration.json').write_text(json.dumps(self.preflight_raw('CONFIG-001')[0]['nativeStartup']['configurationMetadata']))
+            (failure_path.parent/'services.json').write_text(json.dumps(self.readiness_raw()[0]['nativeReadiness']['serviceMetadata']))
             (evidence/'application/build/app.meta.json').write_text(json.dumps({'source_revision': 'synthetic_revision'}))
             outputs = self.outputs()
             for output in outputs: (evidence/f'{output["backend"]}-raw.json').write_text(json.dumps(output))
@@ -942,6 +943,17 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 elif mutation == 'fault_operation': fault['semanticOperationId'] = 'private-canary'
                 else: fault['schemaVersion'] = True
                 with self.subTest(case=case_id, mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases[case_id], raw)
+
+    def test_readiness_checked_advisory_never_admits_arbitrary_public_values(self):
+        for mutation in ('secret_literal', 'foreign_key', 'missing', 'non_object', 'foreign_service', 'missing_metadata'):
+            raw = self.readiness_raw(); capture = raw[0]['nativeReadiness']; phase = capture['phases'][1]
+            if mutation == 'foreign_service': capture['serviceMetadata']['effects'][0]['service'] = 'ForeignService'
+            elif mutation == 'missing_metadata': capture.pop('serviceMetadata')
+            else:
+                advisories = {'reminder_mail': 'private-canary'} if mutation == 'secret_literal' else {'foreign': 'unprobed'} if mutation == 'foreign_key' else {} if mutation == 'missing' else ['unprobed']
+                for response in phase['responses'][:2]: response['body']['advisories'] = deepcopy(advisories)
+                phase['direct']['body']['advisories'] = deepcopy(advisories)
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['CONFIG-003'], raw)
 
     def test_readiness_native_business_query_principal_and_causal_timeline_are_required(self):
         for mutation in ('healthy_query', 'recovery_query', 'foreign_probe', 'outage_queries', 'outage_route', 'outage_auth_fault', 'healthy_principal', 'recovery_principal', 'outage_principal', 'outage_time', 'healthy_time', 'recovery_time', 'owner_bind', 'broad_query', 'placeholder', 'duplicate_query', 'restoration_time', 'recovery_initialization'):
