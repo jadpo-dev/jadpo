@@ -1,0 +1,5 @@
+{"schema_version": 1, "run_id": "RM-601-17cfef1715a1", "task_id": "RM-601", "actor": "golden-adapters-persistence-source-links", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 1.5], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T16:39:58.615851+00:00", "phase": "planning"}
+{"at": "2026-10-06T16:41:13.277847+00:00", "phase": "implementation", "note": "Checker and AST confirm separate field Name and lexical RHS; only create fields and optional/required point queries traversed"}
+{"at": "2026-10-06T16:45:22.514536+00:00", "phase": "verification", "note": "Focused checked source controls now pass; fresh source/native export and target-byte equality checks"}
+{"at": "2026-10-06T16:50:44.331315+00:00", "phase": "review", "note": "Self-reviewed native all-copy coherent export refusals and byte-equal generated targets; unsupported scope explicit"}
+{"at": "2026-10-06T16:51:33.145765+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm601-persistence-source-links/report.json"}
