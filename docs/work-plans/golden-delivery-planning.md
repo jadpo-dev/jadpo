@@ -149,11 +149,10 @@ Its [separate corrective review](../../tests/validation/rm109-independent-relati
 approves bounded total classification on both adapters; both product leaves are
 integrated. Retention cleanup JOB-004 runs correctly on both adapters (34 IDs,
 68/0/20), but its [initial verifier review](../../tests/validation/rm109-independent-native-maintenance-harness-review.json)
-finds missing transaction-order/identity/audit-entity checks. The verifier's
-separate correction is under review and does not yet replace the independently
-approved 33-ID count. Configuration diagnostics, canonical database transport and safe
-native provider-fault correlation remain implementation gaps. Both writers
-continue while these bounded reviews run.
+finds missing transaction-order/identity/audit-entity checks. Its [separate corrective review](../../tests/validation/rm109-independent-native-maintenance-correction-review.json)
+approves exact transaction ordering, row identity and audit-entity verification;
+48 raw-evidence mutations refuse on both adapters. The original finding remains
+retained. This qualifies JOB-004 in the scoped count.
 
 At `aecb7d9`, the fresh [combined gate](../../build/validation/20261006T090844-96336/report.json)
 passes all 69 supported checks, including the newly registered relationship suite
@@ -173,6 +172,47 @@ fully qualified diagnostics aggregate; healthy persistent lifecycle controls
 serve business HTTP on both adapters. Canonical healthy database transport and
 CONFIG-003 remain unresolved. This new source needs a fresh combined gate after
 its maintained runtime registration is integrated.
+
+The current independently approved supporting window reaches **39 original IDs
+on both adapters: 78 passed, zero failed, ten not run**. The
+[reminder correction review](../../tests/validation/rm109-independent-native-reminder-correction-review.json)
+qualifies JOB-001–003 through actual native delivery and durable receipt/marker
+transactions; the [initial reminder finding](../../tests/validation/rm109-independent-native-reminder-review.json)
+remains retained. The
+[relationship correction review](../../tests/validation/rm109-independent-native-relationship-cases-correction-review.json)
+qualifies REL-002/004 through their original kernel-persistence operations and
+safe public classification, with exact statement, placeholder and identity
+checks. Its [original finding](../../tests/validation/rm109-independent-native-relationship-cases-review.json)
+remains retained, including an explicitly corrected reviewer placeholder probe.
+These operations do not prove permission for an invented authored route.
+
+The [deployment-readiness review](../../tests/validation/rm403-independent-deployment-readiness-review.json)
+approves explicit native loopback readiness separation, actual outage/recovery,
+application alias refusal and preserved liveness.
+[CONFIG-003 eligibility](../../tests/validation/evidence/golden-loop-deployment-readiness-independent/config003-case-eligibility-audit.json)
+permits the actual initialized native host/listener seam; it adds no canonical
+main-startup precondition to the frozen case. Exact CONFIG-001–003 collection
+and independent harness review remain the next window.
+
+The [static job-audit review](../../tests/validation/rm306-independent-static-checked-job-audit-review.json)
+approves agreement with the exact sealed checked lowering while explicitly
+preserving the distinction between emitted protocol and runtime certification.
+Whole native task and final golden gates remain open. The current integrated
+source at `54757f0` stopped its
+[combined gate](../../build/validation/20261006T094724-99390/report.json)
+at Rust diagnostic discovery: the environment name `JADPO_DEPLOYMENT_PORT`
+was misclassified as a public diagnostic. The preserved red ran one passing
+step and one failing step; no later checks ran. Local correction `6e10061`
+excludes the environment name, retains real diagnostic discovery, and passes
+26 catalogue checks plus six discovery checks. Its [new combined gate](../../build/validation/20261006T095412-14973/report.json) passes22 preceding checks, then stops at a missing `configuration-preflight.ts` in the compiler-owned selective delivery fixture copy. No product failure is inferred from an unavailable module. Separate one-line copy correction `7b055f9` passes its actual generated-host control and is next for integration; both gate failures remain retained.
+
+[Retained review verification](../../tests/validation/evidence/golden-loop-integration-inventory/scoped-review-retention-verification.json)
+checks all manifest hashes and archived members while excluding private fixture
+keys and databases. The root
+[timing limitation](../../tests/validation/evidence/golden-loop-integration-inventory/review-timing-limitation.json)
+records native executions inside a review phase without inventing phase splits.
+The loop continues through configuration cases, safe provider-fault correlation
+and remaining authenticated retry, startup/native lifetime and provenance gates.
 
 ### Pending database binding decision — 2026-10-06
 
@@ -845,7 +885,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-105 | Short; checked keyset-page lowering and both-adapter plan evidence | RM-101, RM-204, RM-102; accepted URL-encoded JSON cursor and supported-database pagination | planned | complete |
 | RM-107 | Short; bounded route implemented and both database adapters exercised | RM-101/RM-102 complete; owner resolved email output while preserving policy | planned | done |
 | RM-108 | Decision-dependent composition; scoped owner choices accepted | RM-105–107 and RM-304 complete; RM-307 unfinished. Owner accepted 3 scheduled invocations / 1 hour, narrow reminder-service authority and exact self-disable repair. Owner approved golden-only 60s execution / renewable 40s lease on 2026-10-06; checked worker and recovery gates remain. Fresh full gate passes 61/61; self-disable correction independently approved. Checked bindings/admission/completion remain | planned | in_progress |
-| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol and real twenty-three-ID migrated HTTP checkpoint and ordering correction reviewed; 46 supporting entries pass and 42 remain not_run. Full accepted-successor execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
+| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol; 39 original IDs independently reviewed across SQLite/PostgreSQL, 78 supporting entries pass and ten remain not_run. CONFIG-001–003 next; latest integrated gate correction under verification. Full accepted-successor execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
 | RM-110 | Short; integration evidence, not another feature | RM-109, RM-504, RM-505, RM-603 | planned | queued |
 | RM-204 | Decision; public query/header decoding contract | Compiler/runtime/OpenAPI/formatter agreement and independent runtime/security review recorded in history | planned | complete |
 | RM-205 | Decision; separate lifecycle from authorisation | [Frozen entity-owned contract and 27 cases](../lifecycle-plan.md); independent correction review approved R1–R3 | planned | complete |

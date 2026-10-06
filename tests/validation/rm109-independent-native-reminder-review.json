@@ -1,0 +1,47 @@
+{
+  "task": "RM-109",
+  "reviewer": "root independent from reminder implementation",
+  "candidate": "948b6c88cd8ecb89bf0cdcdfa8546c77c152194e",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-54dcda734f3e",
+  "disposition": "changes_required",
+  "scope": "Native JOB001\u2013003 functional execution and explicitly accepted frozen JOB001 successor; no product worker fault inferred from verifier finding. Does not close full golden or native conformance.",
+  "checks": [
+    {
+      "kind": "own immutable no-cache compiler capture before contracts",
+      "result": "86 contract tests pass; own fresh CLI build and real SQLite/PostgreSQL loopback provider/JWKS execution",
+      "checkpoint_counts": {
+        "passed": 74,
+        "failed": 0,
+        "not_run": 14
+      }
+    },
+    {
+      "kind": "accepted overlay",
+      "result": "Exact SHA84807a4e11acdbcfe2f07e34da3bb66507fd322d84b1d4da302a9a47108db731; frozen base3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608 retained; other43caseobjects unchanged; original44x2inventory preserved."
+    },
+    {
+      "kind": "clock/authority/receipts",
+      "result": "Real HTTP-created fixtures and schedule enrollment, native worker and202provider; controlled global Date semantic/receipt clock remains distinct from captured real storage credential authority wall clock. Marker equals persisted receipt.observed_at, genuine credential expiry exceeds actual authority clock. Fiveexcludedstates and replay/eligiblepositivecontrols execute."
+    },
+    {
+      "kind": "actual fullvalidator rawhash-rebound negative probes",
+      "result": "Five causally/scope contradictory mutations accepted on each adapter (10 actual failures); original raw bytes restored and original valid controls pass after probes."
+    }
+  ],
+  "findings": [
+    {
+      "priority": "P2",
+      "location": "tools/golden_checkpoint.py:reminder_observations.completed",
+      "problem": "Any earlier BEGIN and any later COMMIT can substitute for the owning receipt/sent-mark transaction, and marker SQL has no identity predicate/bind qualification. Full validator accepts removed owningBEGIN, removed owningCOMMIT, owningROLLBACK, receipt/mark split across transactions, and bulk sent-marker UPDATE after only raw hash rebind.",
+      "required_correction": "Require exact successful same owning transaction bracket for native receipt insertion/read/current-source marker; refuse split, rollback or cleanup transaction substitution; qualify identity-scoped marker and actual safe UUID binding. Preserve these original reds and independently replay correction."
+    }
+  ],
+  "retained_setup_failures": [
+    "Initial own checkpoint lacked explicit pinned JOSEdependency path and stopped before compiler execution; clean contracts passed. Subsequent fresh output uses existing exact pinned dependency checked by native runner, not a product correction."
+  ],
+  "evidence": "tests/validation/evidence/golden-loop-reminder-independent/manifest.json",
+  "original_review_immutable": true,
+  "current_integrated_case_coverage": "34 original cases independently qualified; reminder3heldpendingverifiercorrection"
+}

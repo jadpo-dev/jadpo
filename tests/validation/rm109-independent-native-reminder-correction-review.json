@@ -1,0 +1,25 @@
+{
+  "task": "RM-109",
+  "reviewer": "root independent from product/harness correction implementation",
+  "candidate": "f6efb128ee0ba7c2dd29a7d53b8d7ddfdbbcb9e9",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-54dcda734f3e",
+  "disposition": "scoped_approved",
+  "scope": "Corrective decoder slice and exact original cases only; does not close fullgolden/prerequisite/audit gates. Prior independent report and red bytes retained unchanged.",
+  "original_report": "rm109-independent-native-reminder-review.json",
+  "original_report_sha256": "bf514b8662bb26961e0d009d34c10cfabbfef4418a96f567b30696e688a2fe8e",
+  "checks": {
+    "own_immutable_no_compiler_cache_before_contracts": true,
+    "clean_contracts": 87,
+    "own_fresh_actual_two_adapter_checkpoint": {
+      "passed": 74,
+      "failed": 0,
+      "not_run": 14
+    },
+    "own_actual_fullvalidator_replays_refused": 10,
+    "untouched_controls_restored_and_validated": 2
+  },
+  "conclusion": "Owning successful receipt/read/UUIDmarker transaction and exact safe marker identity are qualified; allfive actual original red mutations onbothDB now refuse. ApprovedJOB1successor exacthash remains explicit.",
+  "evidence": "tests/validation/evidence/golden-loop-reminder-correction-independent/manifest.json"
+}

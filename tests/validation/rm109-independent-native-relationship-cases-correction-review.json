@@ -1,0 +1,25 @@
+{
+  "task": "RM-109",
+  "reviewer": "root independent from product/harness correction implementation",
+  "candidate": "475f1bf28eb6d1ff8447b58ce1064007f4f8869b",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-54dcda734f3e",
+  "disposition": "scoped_approved",
+  "scope": "Corrective decoder slice and exact original cases only; does not close fullgolden/prerequisite/audit gates. Prior independent report and red bytes retained unchanged.",
+  "original_report": "rm109-independent-native-relationship-cases-review.json",
+  "original_report_sha256": "cdcccf5125d49ddb083b1646dfdf539a2a91499343f54c98e152a8679d8ce9f1",
+  "checks": {
+    "own_immutable_no_compiler_cache_before_contracts": true,
+    "clean_contracts": 87,
+    "own_fresh_actual_two_adapter_checkpoint": {
+      "passed": 78,
+      "failed": 0,
+      "not_run": 10
+    },
+    "own_actual_fullvalidator_replays_refused": 12,
+    "untouched_controls_restored_and_validated": 2
+  },
+  "conclusion": "Exactly one complete original relationship SQL operation and original placeholder/UUIDbinds are qualified. Three actualred mutations plus disclosure/foreignowner/changedafter controls now refuse onbothDB. Review notes firstSQLiteplaceholder no-op and new genuineolddecoder red explicitly. Native FK/publicnormalizer behavior remainscorrect; no authoredroute/principal invented.",
+  "evidence": "tests/validation/evidence/golden-loop-relationship-cases-correction-independent/manifest.json"
+}

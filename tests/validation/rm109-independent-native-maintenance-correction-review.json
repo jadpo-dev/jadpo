@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-109",
+  "candidate": "551c5963c6ae7a1c3481456389d193f88c821fde",
+  "parent": "4d7ae09765b3becc6878f183b6df8cfd7c2103a8",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-a969955463f6",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "approved_scoped_correction",
+  "scoped_approval": true,
+  "findings": [],
+  "scope": "Immutable tools-only native maintenance evidence correction. Actual checked Todo lifecycle maintenance JOB-004 trace under accepted POLICY-D30-M1; no product purge changes, authored job authority, scheduling qualification, full roadmap or golden closure.",
+  "original_review": {
+    "path": "tests/validation/rm109-independent-native-maintenance-harness-review.json",
+    "sha256": "76f70a69c8bf25029b21cd71b4235cfe426fc3fdd327ca7e04bdc6b7c0290648",
+    "disposition": "changes_required",
+    "preserved_unchanged": true,
+    "correction": "All four original raw-hash-rebound causal/scope negatives now refuse on each native adapter."
+  },
+  "independent_execution": {
+    "immutable_archive": "/private/tmp/jadpo-maintenance-correction-independent",
+    "fresh_compiler_sha256": "f4805fcd98b7ea59be9f6cc648fb9da05c7b873cfa760a371ca7b5d9a8179863",
+    "fresh_checkpoint": {
+      "passed": 68,
+      "failed": 0,
+      "not_run": 20,
+      "overall_status": "not_run",
+      "backends": [
+        "sqlite",
+        "postgres"
+      ],
+      "report_sha256": "41129237e68d660f00b781f2355ea9ec344d1c87e31292cf1ca1be7ce33e6da7",
+      "JOB-004_cases": 2
+    },
+    "checkpoint_integrity_tests": {
+      "passed": 41,
+      "failed": 0
+    },
+    "full_validate_checkpoint_actual_raw_hash_rebound_probes": {
+      "cases": 50,
+      "refused_mutations": 48,
+      "accepted_unchanged_controls": 2,
+      "per_adapter": {
+        "control": 1,
+        "refused": 24
+      },
+      "original_four": [
+        "missing_begin",
+        "late_begin",
+        "missing_id_predicate",
+        "missing_audit_entity"
+      ],
+      "ledger_unchanged": true,
+      "all_mutations_restored": true,
+      "restored_raw_hashes": {
+        "sqlite-raw.json": "d61ab16de4a36a21b4b9e483790e9dec262960bc63a7d495440632e116a76a4e",
+        "postgres-raw.json": "d16e4e120d323b1297bd58df3b8fe20a03a67e20d67e404c8bcb69a1bff533b1"
+      }
+    }
+  },
+  "code_evidence": [
+    "Validator requires exactly one BEGIN before bounded SELECT before identity-scoped DELETE before exactly one COMMIT and refuses every ROLLBACK in the journal.",
+    "Observer captures only second-bind canonical UUIDv4 for generated exact todo id predicate; validator requires selected original t2 UUID and refuses missing, invalid or foreign DELETE bind.",
+    "Validator requires audit event.entity and generated capability.entity Todo; authority source revision, clause, retention binding, fixed attempt clock, count, batch500, cutoff, row token and retained original29-day/31-day/active fixture remain checked.",
+    "Actual full artifact binding refuses coherently rebound foreign maintenance metadata/source; original source/generated/compiler/dependency/TLS/owner projection bindings remain required. No acceptance ID or frozen expectation removed.",
+    "Unaltered fresh native SQLite and PostgreSQL runLifecycleMaintenance trace preserves young and active rows and deletes only expired row. Actual native transaction SQL and committed audit underpin both JOB-004 observations."
+  ],
+  "preserved_negatives": {
+    "author_first_checkpoint": {
+      "counts": {
+        "passed": 67,
+        "failed": 1,
+        "not_run": 20
+      },
+      "sha256": "c5408eedc4f507b19c9e44000713fed15a7adfa22ac662bf647bc43ad80915fd",
+      "failure": "PostgreSQL AUTH-009 fixture adapterFailure before retained events; cause unobserved, not attributed to purge. Both JOB-004 passed."
+    },
+    "author_second_checkpoint": {
+      "counts": {
+        "passed": 68,
+        "failed": 0,
+        "not_run": 20
+      },
+      "sha256": "718ed8660b15f20de3ebdd1a4e724305ab4e4614af7eef7c385a569a1e8e7ff1"
+    },
+    "author_hash_bindings_verified": 3,
+    "reviewer_setup": "First challenge script SyntaxError from missing space before numeric else branch occurred before executing probes; original script/log retained, corrected challenge matrix completed. No product failure imputed."
+  },
+  "evidence_directory": "tests/validation/evidence/golden-loop-maintenance-correction-independent",
+  "artifact_retention": {
+    "excluded_private_fixture_or_database_bytes": 2,
+    "notice": "digest-only-exclusions.json",
+    "complete_disposable_checkpoint": "/private/tmp/jadpo-maintenance-correction-independent/complete-replay-checkpoint",
+    "limitation": "Retained safe report bindings remain unchanged; full validator replay requires excluded ephemeral TLS/private fixture bytes in disposable capture or checkpoint regeneration. No private PEM/database bytes retained in integration evidence."
+  },
+  "limits": [
+    "Supporting checkpoint remains20 not_run across88 original cases/backend records; overall not_run and release_equivalent false. No whole golden or RM-109 closure.",
+    "e66 CONFIG001/CONFIG002/BOUNDARY001 partials retained with no promotions; canonical healthy transport remains unresolved at this fixed candidate.",
+    "Mock/local disposable native environments only; no production provider, deployment or publishing.",
+    "Review approval applies only to fixed551c596 leaf and accepted native maintenance mapping; later source/runtime changes require their own bound evidence."
+  ],
+  "created_at": "2026-10-06T08:23:29.727321+00:00"
+}

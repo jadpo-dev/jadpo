@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T09:18:11+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T09:57:46+01:00 · figures reflect the recorded roadmap.
 
-The supporting golden Todo harness now has independent coverage of 33 original cases on both databases. Native test setup fixes the four earlier PATCH failures; both delivery lanes continue toward full golden acceptance.
+The supporting golden Todo harness has independent coverage of39 original cases on both databases. Two implementation lanes and independent review continue toward full technical acceptance.
 
 ## At a glance
 
@@ -20,9 +20,10 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- The fresh integrated source passes69/69 supported checks and all66 supporting entries for33 original golden cases on SQLite/PostgreSQL;22 entries remain unexecuted. Earlier failed attempts remain retained. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
+- Independent reminder, retention and relationship corrective reviews qualify39 original IDs:78 supporting passes on SQLite/PostgreSQL, ten entries remain unexecuted. Earlier failures and raw verifier findings remain retained. The previous69-check gate stays pinned to its original source; newest combined gate passes22 preceding checks, then finds a missing preflight module in a selective test copy. Its separate fixture correction is next for integration. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
 - All eighteen frozen native recovery traces now have scoped component evidence, including bounded scheduling and privileged replay with current-owner and durable no-effect checks. Whole-task integration gates remain open. [Operator review](../../tests/validation/rm307-independent-native-operator-review.json).
 - Separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan are approved. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06).
+- Native deployment readiness is independently approved on a separate explicit loopback listener, with preserved liveness and real outage/recovery. Checked static job audit now agrees with native lowering without claiming runtime certification. [Readiness review](../../tests/validation/rm403-independent-deployment-readiness-review.json).
 
 ## Since the previous report
 
@@ -56,7 +57,7 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Continue two implementation lanes: native reminder cases and relationship observations; deployment readiness separation and safe provider-fault correlation. Review the retention-verifier correction; the newly integrated startup preflight needs its next combined gate. Canonical database transport awaits the pending contract decision.
+Continue exact CONFIG-001–003 cases and native safe provider-fault correlation. Independently review recovery advisory cancellation; retain native lifetime/startup and authenticated retry/provenance gates. Finish newest combined gate. Canonical database transport awaits the pending contract decision.
 
 ## Input needed
 

@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-403",
+  "candidate": "8db28d9b7814f6ed29840c4877d9b8406c9a1d04",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-403-742e91fb9409",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "approved_scoped_deployment_readiness_boundary",
+  "scoped_approval": true,
+  "findings": [],
+  "scope": "Independent immutable compiler/native-host review of deployment-only readiness handler/listener and CLI dev selection/probe continuity. Accepted CONFIG-003 deployment-plane exclusion and CONFIG-D10/P5 boundaries; no final golden, platform promotion, whole RM403 or hard native lifetime approval.",
+  "independent_execution": {
+    "fresh_cli_build_seconds": 15.95,
+    "fresh_compiler_sha256": "10c96ab992f63fce8810b8a96b5287027529ee0763de68a72bd31f574f43354e",
+    "actual_runtime_counts": {
+      "original_plane_sqlite": {
+        "passed": 4,
+        "failed": 0,
+        "assertions": 369,
+        "log": "plane-sqlite-hosted.log",
+        "sha256": "757198c30f42da7636e6baab0e8c719aae80b2444b3a65a027dfb3f65ea8960e"
+      },
+      "original_plane_postgres": {
+        "passed": 4,
+        "failed": 0,
+        "assertions": 369,
+        "log": "plane-postgres-original.log",
+        "sha256": "fb6ae38a88fdf357bcc2d0ae0589b0d4fbbad3641d0803ab92ac90b829064e4a"
+      },
+      "original_recovery_sqlite_plus_authored_liveness": {
+        "passed": 12,
+        "failed": 0,
+        "assertions": 774,
+        "log": "recovery-sqlite-original.log",
+        "sha256": "f2ecdd7d2cc59d33d4878367478ca9740fa53321969bdfc0f34760b69c7d0aa7"
+      },
+      "original_recovery_postgres": {
+        "passed": 14,
+        "failed": 0,
+        "assertions": 4773,
+        "log": "recovery-postgres-original.log",
+        "sha256": "eb28b3369441766befd279ca7eb379964172b0f6d2c1d4fd2cdf5b4ac5424c9a"
+      },
+      "reviewer_strengthening_sqlite": {
+        "passed": 19,
+        "failed": 0,
+        "assertions": 1720,
+        "log": "strengthened-sqlite-corrected.log",
+        "sha256": "2c70b0007eeb32476139139634fe3bb5b376acf032fa8df79871ef2cea59d848"
+      },
+      "reviewer_service_plane_postgres": {
+        "passed": 5,
+        "failed": 0,
+        "assertions": 587,
+        "log": "strengthened-plane-postgres.log",
+        "sha256": "3eb6fa9790c365fd381eaaf7fb7bc92afe8f15a0dd25f9f83283c4029e8de8a4"
+      },
+      "reviewer_recovery_postgres": {
+        "passed": 14,
+        "failed": 0,
+        "assertions": 5128,
+        "log": "strengthened-recovery-postgres-corrected.log",
+        "sha256": "98e0bfbe994cf5592e31d40bf9feeed6f007669b8446cb75f7ce17ddf55ecfab"
+      },
+      "reviewer_service_authority_outage_sqlite": {
+        "passed": 6,
+        "failed": 0,
+        "assertions": 628,
+        "log": "service-authority-outage-sqlite.log",
+        "sha256": "97698eca9f8142cfd31d49626282f2285a46373af6fe375407a696e65dcb8519"
+      },
+      "reviewer_service_authority_outage_postgres": {
+        "passed": 6,
+        "failed": 0,
+        "assertions": 628,
+        "log": "service-authority-outage-postgres.log",
+        "sha256": "0d1d33f410aaf31dc233ebccb12c9b1baaf6a140d8544e7194833f214e1eec71"
+      }
+    },
+    "cli_unit_tests": {
+      "passed": 45,
+      "failed": 0
+    },
+    "dev_watch_restart_rollback_protocol": {
+      "passed": 3,
+      "failed": 0,
+      "mock_transport": true,
+      "observed": "Two independently bound sockets; probes recorded exclusively deployment /health/ready on a different port, restart/failed candidate restoration retained."
+    },
+    "native_main_strengthening_in_combined_SQLite_run": {
+      "passed": 3,
+      "cases": "Actual native Bun and Node generated main each explicit/omitted readiness port; poisoned .env ignored with --env-file=/dev/null;12 malformed port values fail before application listen with generic safe startup diagnostics;2 authored nativeAPI callbacks refused by semantic.unknown_callee."
+    },
+    "fresh_fixture_builds": [
+      "golden-todo-migration",
+      "first-party-authentication",
+      "persistence-seed"
+    ],
+    "author_source_and_raw_hash_bindings_verified": 37,
+    "original_author_test_fixtures_restored": true
+  },
+  "boundary_evidence": [
+    "Application handleRequest returns safe404 for reserved /health/ready before database gating or authentication; default compiler GET /health likewise404 only when no authored GET health route. Actual direct/Bun/Node with absent, invalid, valid opaque user, browser session and real owner-bound service credential all remain excluded.",
+    "Separate handleDeploymentRequest accepts only GET /health/ready or GET /health and invokes private readiness; business, service identity, token exchange, authored header and public liveness routes remain404 there. Native createDeploymentServer validates an explicit safe integer port and binds only127.0.0.1, independent from both application listeners.",
+    "Real SQLite missing directory/startup lock and real PostgreSQL ALLOW_CONNECTIONS false plus backend termination yield deployment503, applicationalias404 and liveness200 without restarting. Existing32-way recovery/authority and same credential regressions remain observed.",
+    "Actual renamed service credential store causes fresh service business authentication503 while all application readiness aliases stay404 with valid browser/service credentials and liveness remains200 on direct/Bun/Node. Restoring table makes the same service credential work. Healthy DB ping remains200 during this private authority-table outage, an explicitly retained probe-coverage limitation.",
+    "Application and deployment responses generate server request IDs and ignore spoofed X-Request-ID/X-Correlation-ID; canary query, supplied credentials, signing keys, provider/database details and checks/advisories remain absent from app404 envelopes.",
+    "Ordinary authored GET /health and POST /health checked output is retained; constant authored /health/live remains before readiness/auth and matches emitted OpenAPI. Canonical generated public inventory/OpenAPI have no readiness aliases; application handler contains no refreshDatabaseReadiness call.",
+    "Native main enables readiness listener only via explicit JADPO_DEPLOYMENT_PORT; no automatic deployment listener/default numeric port. Authored code cannot call native handler/factory; existing native integration trust boundary is retained, no route grant or credential bootstrap introduced.",
+    "Request handler reads no ambient configuration/environment/provider secret; advisory service identifiers remain static unprobed values. Explicit initialization/native startup snapshot owns configuration reads. URL/crypto/operation metadata local setup remains retained host behavior."
+  ],
+  "preserved_negatives": [
+    "Own initial default sandbox SQLite plane server listen failed EADDRINUSE at port0; watch protocol1pass2fail socket permission/startup early-refusal. Original logs retained; approved host reruns4/369 and3pass respectively. No product failure imputed.",
+    "Own first strengthened outage assertion attempted not.toContain(empty pre-issuance credential); actual404 response was safe. Original strengthened logs/source retained, filtering empty sentinel fixed reviewer assertion and both reruns passed.",
+    "Own first native callback probe expected diagnostic code on stdout using incomplete route fixture. Original log/source retained; valid Text output route and combined diagnostic streams show semantic.unknown_callee; corrected actual native main suite passed.",
+    "Author original stale public{ready:true} CLI assertion failure remains copied/hashed; contract assertion updated to new separate deployment boundary, no runtime defect silently relabeled."
+  ],
+  "limits": [
+    "Approves exact new deployment/application boundary only. CONFIG-003 final golden harness execution and current complete source-bound gate remain parent-owned work; no frozen-case promotion here.",
+    "One-second asynchronous response bound requires a progressing event loop; cancellation remains best effort. Synchronous SQLite/blocking host code, native probe lifetime, initial adapter/module evaluation and whole startup hard interruption remain unproved. This candidate does not change that architecture.",
+    "CLI readiness uses3second polling,250ms read/write timeout and50ms retry; local connect/host scheduling/port-release reservation do not establish a universal hard bound or adversarial same-host socket protection. Retained mock protocol is actual CLI evidence, not live platform/controller promotion proof.",
+    "Loopback/network isolation is the native deployment authority boundary. A trusted native host can access the exported handler; ordinary business credentials cannot select it. No new authenticated deployment principal is asserted.",
+    "Canonical healthy DatabaseUrl transport collision remains unresolved at this candidate. The successful real Bun/Node controls use accepted isolated fixtures; no canonical healthy launch qualification is inferred.",
+    "Unix/macOS/Bun1.2.20 and disposable PostgreSQL16.3 observed; no Windows/cloud/load/production provider campaign. No task completion or release-equivalent claim."
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-deployment-readiness-independent",
+  "artifact_retention": {
+    "safe_generated_sources_logs_and_certificates_only": true,
+    "private_fixture_keys_or_database_bytes_retained": 0,
+    "notice": "digest-only-exclusions.json"
+  },
+  "created_at": "2026-10-06T08:35:06.063465+00:00"
+}

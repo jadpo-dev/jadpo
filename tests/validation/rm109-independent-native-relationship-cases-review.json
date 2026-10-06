@@ -1,0 +1,38 @@
+{
+  "task": "RM-109",
+  "reviewer": "root independent from implementation",
+  "candidate": "4aec710aa4f61c59fe8d7d9d82e25aac08b1ef32",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-54dcda734f3e",
+  "disposition": "changes_required",
+  "scope": "REL002/004 original persistence-kind native FK/restricted-delete operations and actual emitted public normalizer; no authored HTTP route or principal is invented. This is not authenticated source-action permission evidence and does not resolve REL003 or prior reminder-verifier finding.",
+  "checks": [
+    {
+      "kind": "own immutable capture",
+      "result": "No compiler cache before87clean contracts; fresh source compiler and actual both-adapter checkpoint78passed/0failed/10not_run. Counts reflect executions; reminder integrity is held under its separately preserved finding."
+    },
+    {
+      "kind": "real native constraint/public failure",
+      "result": "Exact absent-owner INSERT/restricted retained disabled-owner DELETE through emitted persistenceAsync/native driver; actual exported normalizePersistenceFailure returns409relationship_conflict with fixed safe message; before/after rows unchanged. Exactoperation original kind persistence, no fabricated current-user principal or fake authored route."
+    },
+    {
+      "kind": "fullvalidator actual rawhash-rebound controls",
+      "result": "Foreign owner bind, public debug canary and changed retained rows refuse on both adapters; untouched controls validate after restoring original bytes."
+    },
+    {
+      "kind": "fullvalidator actual rawhash-rebound red probes",
+      "result": "Accepts broadened OR1=1 DELETE, wrong$2identity parameter and duplicateoriginalINSERT on both adapters (six admissions). Decoder prefix+any checks differ from producer anchored original-operation capture."
+    }
+  ],
+  "findings": [
+    {
+      "priority": "P2",
+      "location": "tools/golden_checkpoint.py:relationship_observations",
+      "problem": "Exact original persistence operation is not constrained to one full SQLstatement and original identity parameter ordinal. Real coherently rehashed journals with broadDELETE/wrongplaceholder/duplicateINSERT are admitted with oldledger unchanged.",
+      "required_correction": "Match exactly one complete original relationship SQL operation with consistent backend placeholder syntax and required typed row/owner UUIDs at original ordinals; reject broadening, incorrectbindposition and duplicates. Preserve these six original red records and independently replay correction."
+    }
+  ],
+  "evidence": "tests/validation/evidence/golden-loop-relationship-cases-independent/manifest.json",
+  "original_review_immutable": true
+}

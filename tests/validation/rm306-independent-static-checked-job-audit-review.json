@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-306",
+  "candidate": "2bfbb366abee8dfb05d562858df231b58a224a81",
+  "baseline": "8db28d9b7814f6ed29840c4877d9b8406c9a1d04",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-306-b6bdca53ceb3",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "approved_scoped_static_checked_job_audit",
+  "scoped_approval": true,
+  "findings": [],
+  "scope": "Static outer checked-job audit consistency with sealed source binding and available lowering, metadata only. No runtime conformance, live authority, selected profiles, whole RM306 or complete golden approval.",
+  "independent_execution": {
+    "fresh_cli_build_seconds": 15.84,
+    "candidate_compiler_sha256": "a3e0624f327e13dbcaf15cf3e272a846b9c96e93906f781ce48f528c05e4172f",
+    "baseline_independently_built_compiler_sha256": "10c96ab992f63fce8810b8a96b5287027529ee0763de68a72bd31f574f43354e",
+    "unchanged_focused_tests": {
+      "approval_subject": 48,
+      "job_delivery_model": 8,
+      "ordinary_jobs": 10,
+      "total": 66,
+      "failed": 0
+    },
+    "reviewer_adversarial_contract_tests": {
+      "passed": 2,
+      "failed": 0,
+      "whole_cached_AST_mutations": 10,
+      "refusing_boundaries_per_mutation": [
+        "approval subject",
+        "whole artifact publication",
+        "target derivation"
+      ],
+      "rehashed_outer_audit_execution_claim_refusals": 5
+    },
+    "actual_cli_variant_builds": {
+      "canonical": "success",
+      "checked_job_renamed": "success with supported exact source-bound row and native host lowering",
+      "ordinary": "refuses toolchain.target_job_not_implemented",
+      "mixed_checked_plus_ordinary": "refuses toolchain.target_job_not_implemented"
+    },
+    "actual_target_byte_parity": {
+      "equal": true,
+      "files": 9,
+      "baseline": "own fixed8db generated canonical target",
+      "candidate": "own fixed2bf generated canonical target"
+    },
+    "author_source_and_evidence_hash_bindings_verified": 13,
+    "original_author_contract_test_restored": true,
+    "runtime_database_tests_repeated": false
+  },
+  "code_and_fact_evidence": [
+    "Outer lowering_supported derives from complete sealed delivery JobDeclaration equality and nested binding runtime_lowering_supported, never name match alone. Checked-project approval/artifact boundary already refuses stale or incomplete complete-job coverage before publication.",
+    "Canonical and renamed rows explicitly publish binding_matches_source_job=true, runtime_lowering_supported=true, emitted_checked_delivery_protocol and runtime_conformance=not_certified_by_static_audit. Whole target build success remains separate: valid mixed audit has checked row supported plus ordinary rowfalse/pending, but target correctly refuses ordinary job.",
+    "Only those four outer audit fields differ against own baseline; nested delivery source facts identical. Both profiles remain null, live_authority_established false and all existing runtime-supported obligation flags remain unchanged false. No execution, credential/bootstrap/default profile or live grant inferred.",
+    "Ordinary rows retain false lowering support, pending_checked_worker_binding and null profile. Checked renamed binding proves absence of hardcoded job name. Approval subject impact facts agree with the complete mixed/static audit and sealed facts.",
+    "Ten own cached AST interval/name/run/removal/retry/concurrency/delivery/argument/descriptor/duplicate/removed-job cases refuse all publication/target paths. Five coherently rehashed outer support/conformance/binding/disposition/profile edits refuse approval export.",
+    "All9 generated runtime target files remain byte identical with independently built immutable baseline compiler; candidate code changes only artifact audit derivation and associated tests/evidence."
+  ],
+  "preserved_negatives": [
+    "Author first contracts expected wrong native factory name and partial stale audit publication; original failed log retained, corrected expectations match actual createDeliveryJobHost and existing whole checked-project refusal.",
+    "Author first parity comparison used stale ignored generated baseline predating readiness refinement; original failed parity retained. Actual own fixed8db compiler generates baseline and passes9file parity.",
+    "Own initial variant batch expected wrong diagnostic substring target.job_not_implemented; actual ordinary refusal was toolchain.target_job_not_implemented. Resume command then had SyntaxError before execution from missing space after else. Both setup mistakes recorded, original diagnostic retained and correct mixed refusal observed; no compiler/runtime finding imputed."
+  ],
+  "limits": [
+    "Static audit support describes available source-bound lowering, not successful complete target build for mixed ordinary jobs. Explicit non-certification and current obligation limits are preserved.",
+    "Previously approved runtime recovery18ID/native host/authority evidence remains separately scoped; this review does not replay or relabel it as static certification.",
+    "Full combined current-source gate, exact golden case execution, whole RM306/RM307 and final golden closure remain separate parent/harness work.",
+    "No product/test edits outside own disposable capture, no roadmap/status changes, private key/database bytes, deployment or publishing."
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-static-job-audit-independent",
+  "created_at": "2026-10-06T08:46:29.161957+00:00"
+}
