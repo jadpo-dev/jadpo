@@ -1067,6 +1067,11 @@ describe("ordinary native PostgreSQL probe ownership", () => {
         expect(proof.watchdog).toBe(false); expect(proof.nativeExit).toBe(143);
         expect(proof.backendRemaining).toBe(0); expect(proof.cleanupBeforeFixtureTeardown).toBe(true);
         expect(proof.safeNativeOutput).toBe(true); expect(proof.protocolFailure).toBeNull();
+        if (mode !== "healthy") {
+          const responses = proof.observations.find((p: any) => p.phase === "first_http_joiners").responses;
+          expect(responses).toHaveLength(32);
+          expect(responses.every((r: any) => r.status === 503 && r.elapsedMs >= 900 && r.elapsedMs < 1600)).toBe(true);
+        }
         expect(proof.downstreamClosed).toBe(proof.connections); expect(proof.upstreamClosed).toBe(proof.connections);
         expect(proof.nativeProcesses).toHaveLength(2); expect(proof.formerPorts.every((p: any) => p.refused)).toBe(true);
         console.log(stdout.trim());
