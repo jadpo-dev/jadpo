@@ -25,6 +25,82 @@ candidate has independent transaction/effect review.
 
 ## Checkpoint
 
+**Resumed parallel recovery batch, 2026-10-06 (chat
+`01a10f20-b464-7543-925c-171de6c52598`):** baseline `c068060` on `main`
+contains the merged, independently reviewed native scheduler assembly and
+44-ID result protocol. Its [hosted supported check](https://github.com/richardwillars/jadpo/actions/runs/37390753166)
+passed on that exact baseline; later changes require fresh combined validation. The owner requested parallel continuation and approved
+the golden-only per-delivery **60s execution / renewable 40s lease** profile; see the
+[accepted decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06).
+This supersedes the pending profile input in earlier dated checkpoints.
+Actual `gpt-6.1-sol/high` is verified from this chat's turn-context metadata and
+matches the bounded batch pin for runtime recovery, real adapter preparation
+and consequential independent review. No persistent Goal is active.
+
+The compiler/runtime writer owns scheduler lease/recovery implementation in
+`codex/rm306-recovery`; the independent harness writer owns real application
+adapter preparation in `codex/rm109-adapters`. Both use isolated worktrees from
+the committed baseline. The coordinator owns combined validation, shared
+records and integration on `codex/parallel-recovery-integration`. Public worker
+activation, all 18 recovery traces and full golden acceptance remain gated on
+their actual runtime and review evidence. The selected profile alone closes no
+task. Root integration timing: `RM-306-82e78735c9d4` (original 2–8h estimate).
+
+
+**Reviewed integration checkpoint:** product `d071557`, followed only by four
+stale body-status assertion corrections in `26eb143`, passes a fresh
+[67/67 supported gate](../../build/validation/20261006T041625-33809/report.json).
+The full verifier now registers constant authored liveness and the supporting
+real eight-ID HTTP checkpoint. That checkpoint executes SQLite and PostgreSQL:
+**16 passed, 0 failed, 72 not_run** across the unchanged 44-ID inventory.
+[Retained raw/generated artifacts](../../build/validation/20261006T041625-33809/retained-evidence.json)
+include a compressed snapshot of all declared original/instrumented generated
+artifacts; dependency versions, lock and installed file hashes remain bound in
+the ledger. This is migrated-source supporting evidence. The separate frozen
+application still reports 49 compile diagnostics and no behavioural execution;
+`--require-golden`, full audit agreement and release equivalence remain open.
+
+Native singleton activation renewal preserves durable generation, page,
+`scheduledFor`, operation snapshot and immutable execution deadline. It renews
+only a still-live fence, using database time and the stored checked duration;
+legacy active rows cannot derive renewal authority from old timestamps.
+The generated loop renews **between intents** before admitting another
+invocation, clamps authority conservatively, and commits before provider work.
+This supplies neither an in-flight heartbeat nor a public worker default.
+The golden per-delivery 60s/40s decision does not select the separate singleton
+activation profile or satisfy any of the 18 generated recovery traces.
+
+Independent review initially rejected numeric coercion of SQLite durable
+activation durations; the strict storage/type decoder correction is
+[approved](../../tests/validation/rm306-independent-activation-renewal-correction-review.json),
+with the [original failed review](../../tests/validation/rm306-independent-activation-renewal-review.json)
+retained. Corrected complete hook suites pass SQLite65/722 and PostgreSQL64/643,
+including adapter-specific skips. The
+[eight-ID harness/verifier review](../../tests/validation/rm109-independent-eight-id-checkpoint-review.json)
+and [public boundary correction review](../../tests/validation/rm109-independent-boundary-correction-review.json)
+are independently approved on fixed revisions. Actual HTTP failures exposed
+healthy-body liveness and accepted GF-032 body/path 422 gaps; the compiler now
+preserves constant authored health before auth/readiness, rejects dependent
+reserved liveness, and keeps malformed JSON400 and unexpected faults500.
+Frozen expected values and sources were preserved.
+
+Failed initial HTTP observations remain in
+[the before-correction evidence](../../tests/validation/evidence/rm109-http-checkpoint-before/manifest.json).
+Two earlier combined gates are retained unchanged:
+[stale ordinary-route count](../../build/validation/20261006T041053-14022/report.json)
+and [stale lifecycle body status](../../build/validation/20261006T041221-17500/report.json).
+Root self-review confirmed fixed review hashes, frozen-contract byte preservation,
+remaining-gate reporting and the combined source diff. Task timing remains
+partial: writers `RM-306-b14092ad34ce`, `RM-306-ca81b382a441`,
+`RM-109-b75502a23daf`; reviewers `RM-306-32698d678cf1`,
+`RM-109-4a315d209179`, `RM-109-dc5c85b71b24`; coordinator
+`RM-306-82e78735c9d4`, `RM-109-ef490bf2f11d`.
+No completed-task marker is added. This bounded batch ends at reviewed,
+combined delivery; next independent lanes are generated crash/reclaim traces
+and expanded real case observations, followed by checked reminder integration.
+
+
+
 **Current parallel delivery batch, 2026-10-06 (chat
 `01a10e31-cf29-7bb1-b0f6-13828aa5256e`):** the owner explicitly resumed the
 session's plan: public GitHub baseline, focused delivery queue refresh, one
@@ -566,8 +642,8 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-104 | Short; runtime primitive exists, authored integration missing | Generated SQLite/PostgreSQL HTTP evidence and independent runtime/security review recorded in history | planned | complete |
 | RM-105 | Short; checked keyset-page lowering and both-adapter plan evidence | RM-101, RM-204, RM-102; accepted URL-encoded JSON cursor and supported-database pagination | planned | complete |
 | RM-107 | Short; bounded route implemented and both database adapters exercised | RM-101/RM-102 complete; owner resolved email output while preserving policy | planned | done |
-| RM-108 | Decision-dependent composition; scoped owner choices accepted | RM-105–107 and RM-304 complete; RM-307 unfinished. Owner accepted 3 scheduled invocations / 1 hour, narrow reminder-service authority and exact self-disable repair. New input: golden-only worker execution/lease profile (60s/40s proposed below). Fresh full gate passes 61/61; self-disable correction independently approved. Checked bindings/admission/completion remain | needs input | in_progress |
-| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol and supporting verifier inventory independently reviewed; all 88 cases not_run. Real adapters and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
+| RM-108 | Decision-dependent composition; scoped owner choices accepted | RM-105–107 and RM-304 complete; RM-307 unfinished. Owner accepted 3 scheduled invocations / 1 hour, narrow reminder-service authority and exact self-disable repair. Owner approved golden-only 60s execution / renewable 40s lease on 2026-10-06; checked worker and recovery gates remain. Fresh full gate passes 61/61; self-disable correction independently approved. Checked bindings/admission/completion remain | planned | in_progress |
+| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol and real eight-ID migrated HTTP checkpoint independently reviewed; 16 supporting entries pass and 72 remain not_run. Original frozen-source execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
 | RM-110 | Short; integration evidence, not another feature | RM-109, RM-504, RM-505, RM-603 | planned | queued |
 | RM-204 | Decision; public query/header decoding contract | Compiler/runtime/OpenAPI/formatter agreement and independent runtime/security review recorded in history | planned | complete |
 | RM-205 | Decision; separate lifecycle from authorisation | [Frozen entity-owned contract and 27 cases](../lifecycle-plan.md); independent correction review approved R1–R3 | planned | complete |
@@ -578,7 +654,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-303 | Decision-dependent provider adapter | [Generated HTTP adapter, 19 tests/90 assertions, 59/59 supported checks and approved independent review](../implementation-history.md#2026-10-03--rm-303-checked-provider-adapter) | planned | complete |
 | RM-304 | Short after service contract | [History](../implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes); independent correction review and fresh supported gate pass; malformed host-map seams excluded | planned | complete |
 | RM-305 | Decision; independently reviewed ASYNC-001 semantic freeze complete | [History](../implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract); 18 traces remain contract-only, with implementation in RM-306/RM-307 | planned | complete |
-| RM-306 | Decision-dependent outbox/compiler subsystem | Static/read/hook/current-issuer/paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage corrections independently approved. Final65/65 supported gate: normal SQLite51/442 and PG50/448; renamed representation52/458 and51/464. Owner resumed the parallel plan, actual6.1-sol/high; closed native scheduler assembly now passes6 focused tests per adapter with independent correction review. Combined supported gate65/65 passes;18 traces/profile and public execution remain open. [Resume point and limits](#rm-301307108--services-durable-jobs-and-reminders) | planned | in_progress |
+| RM-306 | Decision-dependent outbox/compiler subsystem | Static/read/hook/current-issuer/paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage corrections independently approved. Final65/65 supported gate: normal SQLite51/442 and PG50/448; renamed representation52/458 and51/464. Owner resumed the parallel plan, actual6.1-sol/high; closed native scheduler assembly now passes6 focused tests per adapter with independent correction review. Native activation renewal and strict duration correction independently reviewed; 18 traces and public execution remain open. Golden per-delivery60s/40s profile approved; singleton activation profile separate. [Resume point and limits](#rm-301307108--services-durable-jobs-and-reminders) | planned | in_progress |
 | RM-307 | Decision-dependent worker subsystem | RM-306, RM-304 | planned | queued |
 | RM-401 | Decision; bounded retries enabled by default | Contract frozen after phase probe and independent correction re-review; [completion evidence](../implementation-history.md#2026-10-02--rm-401-bounded-retry-contract) | planned | complete |
 | RM-402 | Short after retry/failure decisions | RM-401, reviewed RM-207 boundary-contract milestone; scoped corrections/native LOCKED/jitter/revision review approved; fresh supported gate61/61; [current TX checkpoint and limits](../transaction-retry-plan.md#rm-402-reviewed-adapter-checkpoint--2026-10-04) | planned | in_progress |

@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "review_id": "RM109-EIGHT-ID-HTTP-CHECKPOINT-20261006",
+  "task": "RM-109",
+  "candidate_commit": "d071557",
+  "completed_at_utc": "2026-10-06T03:14:41.816994+00:00",
+  "disposition": "scoped_approved",
+  "reviewer": {
+    "actor": "independent_review",
+    "independent": true,
+    "did_not_implement_candidate": true,
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "timing": "RM-109-4a315d209179"
+  },
+  "scope": "Eight original case ID migrated HTTP checkpoint and supporting full/quick verifier integration. Final public boundary review is separate. No full RM-109 or frozen-source golden approval.",
+  "findings": [],
+  "source_sha256": {
+    "tools/golden_cases.py": "58fce66db37a93822e520f1c495433bd15c4e7f9658a4b4e8adebf061750f427",
+    "tools/golden_checkpoint.py": "4bfe6083f39b52b4757cdda8edfdf57a56421748eaf4f66277328b63e4ceb584",
+    "tools/golden_http_checkpoint.ts": "97d929a4ca872c6ece4e1e946bda8f57c52f7678b0c8be8bd6fa1f75821d61a8",
+    "tools/golden_sql_observer.ts": "571ab98a669d189c357d62fb10a218f1443511963759253542bab370d3d0ac0c",
+    "tools/verify.py": "66a19adf8b285835078cbbf6bd27df1203bd58d3dcaab070edb697cea465744b",
+    "tests/validation/README.md": "7f5cd8b1b4d90e29bd344c19e6278950164dfed795e38057757a3d407e0d1d6c",
+    "tests/validation/test_golden_checkpoint.py": "09b140dc5c9b361cec381ac9a60df70438d539a76a5f6724d28afa4ecfcbd2ea"
+  },
+  "independent_execution": {
+    "fresh_compiler_build": [
+      "cargo",
+      "build",
+      "--locked",
+      "-p",
+      "jadpo-cli"
+    ],
+    "checkpoint_command": "python3 tools/golden_checkpoint.py --output /private/tmp/jadpo-review-checkpoint-d071557 --jwt-dependencies /Users/richardwillars/Documents/Codex/LLM-coding/build/validation/jwt-dependencies",
+    "exit_code": 0,
+    "case_backend_entries": 88,
+    "passed": 16,
+    "failed": 0,
+    "not_run": 72,
+    "status": "not_run",
+    "release_equivalent": false,
+    "compiler_sha256": "16316f3c65ee9843d4d036e218f5ddeb0036b6bb256913e0d6854a3b7f2e062f",
+    "original_supported_ids": [
+      "AUTH-001",
+      "AUTH-005",
+      "AUTH-012",
+      "PUBLIC-001",
+      "CREATE-002",
+      "CREATE-004",
+      "READ-002",
+      "READ-003"
+    ],
+    "python_contracts": "focused test_golden*.py passes; raw log retained",
+    "earlier_boundary_supporting_check": "12 tests147assertions pass; final boundary approval not supplied by this review"
+  },
+  "independent_challenges": {
+    "candidate": "d071557",
+    "challenges": [
+      {
+        "probe": "fresh final report",
+        "passed": true
+      },
+      {
+        "probe": "extra ledger observation tampered despite expectation fields match",
+        "refused": true,
+        "reason": "Ledger observations differ from raw observations"
+      },
+      {
+        "probe": "missing original case ID",
+        "refused": true,
+        "reason": "Missing, duplicate or foreign case/backend results"
+      },
+      {
+        "probe": "raw response bytes changed",
+        "refused": true,
+        "reason": "Changed raw observations"
+      },
+      {
+        "probe": "adapter source drift",
+        "refused": true,
+        "reason": "Stale or foreign harness provenance/schema"
+      },
+      {
+        "probe": "generated artifact bytes changed",
+        "refused": true,
+        "reason": "Changed generated instrumented artifacts"
+      }
+    ],
+    "all_source_evidence_restored": true
+  },
+  "reviewed_invariants": [
+    "The full frozen 44-ID/two-backend inventory remains. The unsupported 72 entries are explicitly not_run; failed selected observations fail the checkpoint.",
+    "Actual loopback HTTP responses and physical SQL/authentication instrumentation derive observations. The driver never reads expectations to synthesize success.",
+    "READ-002 executes both original concealment requests and compares complete public bodies, normalizing only request IDs. CREATE-004 separately reads the persisted row and checks exact response identity.",
+    "Original and instrumented generated artifacts are retained and hashed. Instrumentation redirects SQL to a transparent observation wrapper and adds an authentication counter, without substituting handler outcomes.",
+    "The adapter, harness and observer are bound source inputs. A freshly rebuilt compiler and generated artifacts are hashed. Installed JWT files are hashed alongside canonical lock/declaration/version checks.",
+    "Source drift, raw tampering, generated artifact tampering, a missing ID and tampered additional observation fields are refused. The restored original report validates.",
+    "The full supported verifier executes a separate checkpoint with partial counts. Quick explicitly skips it. Frozen compilation, behaviour and case protocol remain separate; --require-golden still rejects."
+  ],
+  "limitations": [
+    "Only eight original IDs on migrated source executed. The original frozen application does not execute.",
+    "No all-44 golden closure, route/OpenAPI/policy/query audit closure, RM-108/RM-402/RM-403 prerequisite closure, completed-task marker or release-equivalence claim.",
+    "The supplied writer JWT cache path was absent. The own final checkpoint used the existing project cache, matched canonical declarations, lock and version, and retained file hashes.",
+    "The final liveness/GF-032 public boundary review is separately owned by the boundary reviewer. Its approval remains required at this report epoch.",
+    "Local source and observation hashes establish integrity; they do not attest against malicious simultaneous replacement of a report and all evidence."
+  ],
+  "raw_evidence_manifest": "tests/validation/evidence/parallel-harness-independent/manifest.json",
+  "conclusion": "Approve the pinned supporting harness and verifier integration narrowly. Retain 16 real passed observations; the remaining 72 case/backend entries and full frozen golden gate remain open."
+}

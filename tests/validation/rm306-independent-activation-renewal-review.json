@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "review_id": "RM306-ACTIVATION-RENEWAL-ORIGINAL-20261006",
+  "task": "RM-306",
+  "disposition": "changes_required",
+  "reviewer": {
+    "actor": "independent_review",
+    "independent": true,
+    "did_not_implement_candidate": true,
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "timing": "RM-306-32698d678cf1"
+  },
+  "candidate_commit": "023eaa4cc0069d53d5a200d657799ef1a33900b7",
+  "completed_at_utc": "2026-10-06T03:07:41.080741+00:00",
+  "source_sha256": {
+    "jadpo/crates/core/src/runtime/delivery_scheduler.ts": "13fa7a582503ef5668af39747d055026f7af8395a776e5edc8a323b57103a3e4",
+    "jadpo/crates/core/src/target/delivery_scheduler.rs": "12d16aab4a7c1e756e89636c8e97208694a3149bc1442465484ad0537275ccbe",
+    "tests/runtime/delivery-hook-components.test.ts": "e8e1b269089322e621c63ede5d868607f21a95ed2412dcbdd033b7070ee02c00"
+  },
+  "finding": {
+    "id": "ACT-RENEW-DURATION-DECODE-01",
+    "severity": "P2",
+    "description": "SQLite BIGINT-affinity column accepts TEXT0x10; Number coercion accepts16 while renewal SQL arithmetic interprets0. Decoder grants renewal handle from noncanonical corrupted immutable lease duration instead of refusing. No fence bypass demonstrated.",
+    "reproduction": "native-probe.ts with exact unchanged native runtime factory and actual SQLite database; stale forged-generation control refused with unchanged durable row",
+    "required_change": "Decode safe positive integer number or canonical decimal BIGINT string consistently; reject alternate lexical/storage forms atomically; retain exact whole row on refusal.",
+    "raw_evidence": "tests/validation/evidence/parallel-renewal-independent/native-sqlite.log"
+  },
+  "independent_checks": [
+    {
+      "adapter": "sqlite",
+      "tests_passed": 20,
+      "skipped": 1,
+      "assertions": 335,
+      "host_exit_code": 0
+    },
+    {
+      "adapter": "postgres16",
+      "tests_passed": 21,
+      "assertions": 340,
+      "host_exit_code": 0,
+      "own_probe": "stale forged handle + current forged metadata both pass"
+    }
+  ],
+  "scope": "Private singleton renewal/storage migration and generated between-intent renewal; no public job activation/default/inflight renewal/18trace closure/full golden approval",
+  "initial_environment_failures": "Sandbox socket errors SQLite and PostgreSQL shared-memory failure retained separately; host reruns passed; fresh disposable cluster stopped by EXIT trap.",
+  "source_pins_match_after_checks": true,
+  "evidence_sha256": {
+    "tests/validation/evidence/parallel-renewal-independent/sqlite-host.log": "85b9d386e43772c7fc2ea3df82378cc7bb037fa3fd18e16b7430bb62942070ce",
+    "tests/validation/evidence/parallel-renewal-independent/sqlite.log": "5a537be56cc5c795b78c9ef66bf226e7fde23fbe3fd4f5d88fbc759bdb9450c8",
+    "tests/validation/evidence/parallel-renewal-independent/native-sqlite.log": "6846e52778ea8e69dff55a869adf1ca00f72f35bed1bd3c8e7de5205965fe913",
+    "tests/validation/evidence/parallel-renewal-independent/postgres-review.sh": "76699da74d6d319cdcef84adc596ca425427d77e8e72e7edc49b315193797866",
+    "tests/validation/evidence/parallel-renewal-independent/postgres.log": "3746ad0719cea73b1301617bce30aa55e5be14562e179cd7b6fa65f8d4282ca4",
+    "tests/validation/evidence/parallel-renewal-independent/native-probe.ts": "3a0dbff9dc624ded321f9ab23b716f5b55aca36d2674f1f7a432f2110b50febb",
+    "tests/validation/evidence/parallel-renewal-independent/postgres-host.log": "15de1a5c0715a4738d2afccab1e5896449ec34e8800eb0193331658e98bf1864"
+  }
+}

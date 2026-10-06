@@ -1,0 +1,11 @@
+{"schema_version": 1, "run_id": "RM-109-4a315d209179", "task_id": "RM-109", "actor": "independent-review-parallel", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T02:57:07.556489+00:00", "phase": "planning"}
+{"at": "2026-10-06T02:57:26.467735+00:00", "phase": "paused", "note": "Baseline protocol review complete; awaiting real adapter final source pin"}
+{"at": "2026-10-06T02:58:43.200033+00:00", "phase": "review", "note": "Review requested liveness body reconciliation under frozen golden AUTH-012/PUBLIC-001"}
+{"at": "2026-10-06T02:59:01.356816+00:00", "phase": "paused", "note": "Liveness reconciliation design review sent to integration owner; waiting for source pin"}
+{"at": "2026-10-06T03:04:03.117871+00:00", "phase": "review", "note": "Root requested route-input authoritative contract review for real golden mismatch CREATE-002/READ-003"}
+{"at": "2026-10-06T03:04:46.447413+00:00", "phase": "paused", "note": "Existing owner GF-032 decision located; authoritative route-input correction sent; awaiting final source capture"}
+{"at": "2026-10-06T03:11:25.215738+00:00", "phase": "review", "note": "Immutable e8bade6 capture received; review real harness/liveness/input-boundary and own full checkpoint"}
+{"at": "2026-10-06T03:12:15.373010+00:00", "phase": "verification", "note": "Own fresh8-ID checkpoint passed16/0/72; run independent source drift/raw tamper/ledger tamper and boundary probes"}
+{"at": "2026-10-06T03:13:06.698011+00:00", "phase": "paused", "note": "Own checkpoint16/0/72 + tamper challenges and boundary12/147 passed; finish narrow scheduler correction review before fresh final integration checkpoint"}
+{"at": "2026-10-06T03:13:08.442423+00:00", "phase": "verification", "note": "Final d071557 received; same public/harness semantics, changed Rust count + supporting integration; refresh own exact-source checkpoint and retained tamper challenges"}
+{"at": "2026-10-06T03:14:42.325969+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm109-independent-eight-id-checkpoint-review.json"}

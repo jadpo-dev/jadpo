@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "review_id": "RM306-ACTIVATION-RENEWAL-CORRECTION-20261006",
+  "task": "RM-306",
+  "disposition": "scoped_approved",
+  "reviewer": {
+    "actor": "independent_review",
+    "independent": true,
+    "did_not_implement_candidate": true,
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "timing": "RM-306-32698d678cf1"
+  },
+  "candidate_commit": "e8bade688ef94b5d492aac1a05782913cafda785",
+  "scheduler_correction_commit": "cc3a7cdd54d41e19271a6675afe47c0f8231b101",
+  "completed_at_utc": "2026-10-06T03:13:07.449904+00:00",
+  "source_sha256": {
+    "jadpo/crates/core/src/runtime/delivery_scheduler.ts": "13fa7a582503ef5668af39747d055026f7af8395a776e5edc8a323b57103a3e4",
+    "jadpo/crates/core/src/target/delivery_scheduler.rs": "12d16aab4a7c1e756e89636c8e97208694a3149bc1442465484ad0537275ccbe",
+    "tests/runtime/delivery-hook-components.test.ts": "e8e1b269089322e621c63ede5d868607f21a95ed2412dcbdd033b7070ee02c00"
+  },
+  "resolved_findings": [
+    {
+      "id": "ACT-RENEW-DURATION-DECODE-01",
+      "original_review": "tests/validation/rm306-independent-activation-renewal-review.json",
+      "resolution": "Durable positive intervals/lease durations require actual INTEGER storage on SQLite; PostgreSQL accepts safe positive integers/canonical decimal BIGINT text only. Decoder runs under rowlock before current/reclaim/page/finish/renew decisions. Own unchanged0x10 corruption now throws delivery.activation_state; writer actual10-state x4method no-mutation matrix passes.",
+      "own_probe": "tests/validation/evidence/parallel-renewal-independent/native-correction-sqlite.log"
+    }
+  ],
+  "independent_checks": [
+    {
+      "adapter": "sqlite",
+      "scope": "corrected native storage suite",
+      "tests_passed": 12,
+      "skipped": 1,
+      "assertions": 315,
+      "exit_code": 0
+    },
+    {
+      "adapter": "postgres16",
+      "scope": "corrected generated scheduler + native storage suite",
+      "tests_passed": 21,
+      "skipped": 1,
+      "assertions": 340,
+      "exit_code": 0,
+      "own_probe": "stale forged-generation refusal; current forged handle deadlines ignored"
+    }
+  ],
+  "stable_capture": {
+    "source": "git archive e8bade6 into reviewer-owned directory; no implementation changes",
+    "compiler": "fresh separate Cargo test target generated component renderer from capture",
+    "source_rewritten": false,
+    "dependency_link_issue": "supplied writer JWT path absent; initial final-capture attempts failed for missing fixture dependency, preserved separate host logs; repaired with existing verified cache and reran final suites",
+    "cluster_cleanup": "fresh own disposable cluster EXITtrap stopped; original cluster pg_ctl status confirmed no server running"
+  },
+  "reviewed_invariants": [
+    "Renewal duration is durable and immutable. A legacy active row with null duration cannot renew; expired reclaim installs the explicit profile.",
+    "A single database-time renewal UPDATE checks exact activation ID, generation, live old lease and execution deadline. A fresh post-statement database-time check refuses late authority.",
+    "The lease is capped by its immutable execution deadline. GREATEST/MAX prevents shortening during clock regression.",
+    "Renewal leaves the staged page, cursor, operation snapshot, schedule occurrence, generation and execution deadline unchanged. Rollback restores the exact row.",
+    "The generated renewal transaction acknowledges COMMIT before each new intent admission. Conservative monotonic deadline projection retains the original immutable execution cap.",
+    "Reclaim never allows stale renewal or finish; durable work survives a crash."
+  ],
+  "limits": [
+    "No public profile, worker activation or default changed. The golden 60-second/40-second decision applies only per delivery.",
+    "No in-flight lease heartbeat, full 18-trace closure, all 44 golden case closure or release-equivalence approval.",
+    "Own focused checks and probes only; root owns the full supported gate."
+  ],
+  "evidence_sha256": {
+    "tests/validation/evidence/parallel-renewal-independent/sqlite-host.log": "85b9d386e43772c7fc2ea3df82378cc7bb037fa3fd18e16b7430bb62942070ce",
+    "tests/validation/evidence/parallel-renewal-independent/sqlite.log": "5a537be56cc5c795b78c9ef66bf226e7fde23fbe3fd4f5d88fbc759bdb9450c8",
+    "tests/validation/evidence/parallel-renewal-independent/sqlite-correction-final.log": "88956a055e117c3b813f84a15166d0ad4059652dcd7629cc3aef6d2acff111da",
+    "tests/validation/evidence/parallel-renewal-independent/native-original-captured-sqlite.log": "c0c14f8b42615d35096298d242e67b73927027a7b886af1b5fd157559c2c8bbd",
+    "tests/validation/evidence/parallel-renewal-independent/native-original-captured-probe.ts": "a92c207cdb6c4de87e3c651e9485b3bac861c6a7e0a00fd3adebd340d13ba7a3",
+    "tests/validation/evidence/parallel-renewal-independent/native-sqlite.log": "6846e52778ea8e69dff55a869adf1ca00f72f35bed1bd3c8e7de5205965fe913",
+    "tests/validation/evidence/parallel-renewal-independent/postgres-correction-final.log": "69fd01d7ff6d44e58a2b2b29a400594dd3df05f37020b158bbe9adb47a342dfa",
+    "tests/validation/evidence/parallel-renewal-independent/sqlite-correction-host.log": "c380fa79a4ac75c45ecd724b3fbec6ad7614e17315933cb122bf7ac8989ccaa4",
+    "tests/validation/evidence/parallel-renewal-independent/native-correction-sqlite.log": "98cc3debd3fe95ccd96093ad1d690d11e9b1514a6d40246b5ed5765fb68a7e00",
+    "tests/validation/evidence/parallel-renewal-independent/postgres-correction-review.sh": "aa66bad8bfe6e4fc1b7ed3b553996cb632f376c276a9911ae8ec452fec3f4fba",
+    "tests/validation/evidence/parallel-renewal-independent/native-correction-probe.ts": "34059497a1445f0d5132a5c6941a66e02a9894eadd0210790f0dd85d885d7358",
+    "tests/validation/evidence/parallel-renewal-independent/postgres-review.sh": "76699da74d6d319cdcef84adc596ca425427d77e8e72e7edc49b315193797866",
+    "tests/validation/evidence/parallel-renewal-independent/postgres.log": "3746ad0719cea73b1301617bce30aa55e5be14562e179cd7b6fa65f8d4282ca4",
+    "tests/validation/evidence/parallel-renewal-independent/postgres-correction-host.log": "b094757ba1ff1030f84365ce02e49f71a1b910afcc396247553296c6552856d1",
+    "tests/validation/evidence/parallel-renewal-independent/native-probe.ts": "3a0dbff9dc624ded321f9ab23b716f5b55aca36d2674f1f7a432f2110b50febb",
+    "tests/validation/evidence/parallel-renewal-independent/postgres-host.log": "15de1a5c0715a4738d2afccab1e5896449ec34e8800eb0193331658e98bf1864"
+  }
+}

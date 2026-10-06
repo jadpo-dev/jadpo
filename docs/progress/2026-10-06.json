@@ -11,7 +11,7 @@
         1.0,
         4.0
       ],
-      "planning": "needs input"
+      "planning": "planned"
     },
     "RM-109": {
       "id": "RM-109",
@@ -1131,25 +1131,25 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T00:32:13+01:00",
+  "captured_at": "2026-10-06T04:22:59+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "1bd647b4e21c859533f5565ff3c5da1ab1f2f87a7b71c42dba38c5b03ef3c842",
+    "docs/implementation-roadmap.md": "74713b02ba48a60fc062aaf2cc5953cf693a72a4444e06e5b974f6bc6797d603",
     "docs/implementation-history.md": "3719a84aae5f217b59f3196b2fb757b3b3d632f24a3e2d3da00f0092545db4f6",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "753fac1974d20417c1a18495b7aff4d473ae1f83c0a7beab0e64e46442576c4c",
-    "docs/work-plans/roadmap-assessment.md": "91a950f82ff1f504ff62b389bba0ab7581a6d3c01d7a37b9ac5f5c2622834c55"
+    "docs/work-plans/golden-delivery-planning.md": "ebebf0145acfb371418c3e7759c0ece4760b629651cef15c905adcb89f9390df",
+    "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "Established the public Git workflow and completed the first parallel native-scheduler/harness-preparation checkpoint. No whole roadmap task closed.",
+    "summary": "The parallel golden delivery batch added reviewed activation renewal and real generated HTTP observations on both databases. All 67 supported checks pass; the full golden gate remains open.",
     "delivered": [
-      "Partial RM-306: generated native scheduler assembly, cursor correction and independent SQLite/PostgreSQL review; combined supported gate 65/65.",
-      "Partial RM-109: source-bound 44-ID/two-backend protocol and reviewed supporting verifier inventory; all 88 entries remain not_run.",
-      "Refreshed immediate delivery queue and isolated writer ownership without changing stable IDs, scopes or estimates."
+      "Singleton activation renews its durable live lease between delivery intents, with database time and strict duration decoding; generated crash/reclaim acceptance remains open. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).",
+      "Eight original golden HTTP IDs pass on SQLite and PostgreSQL (16 entries); 72 remain unexecuted. Real failures led to reviewed constant liveness and accepted 422 input corrections. [Independent reviews](../../tests/validation/rm109-independent-boundary-correction-review.json).",
+      "The integrated compiler/runtime and supporting HTTP checkpoint pass 67 registered checks. [Fresh report](../../build/validation/20261006T041625-33809/report.json)."
     ],
-    "next": "Continue bounded scheduler recovery and the 18 contract traces, and prepare real golden application adapters; retain required transaction, readiness and final acceptance gates.",
-    "input_needed": "Pending golden-only worker profile: recommended 60-second execution deadline and 40-second renewable claim lease. Alternative leaves the profile unset and worker execution disabled. No answer assumed."
+    "next": "Generate the separate-process crash/reclaim traces while expanding real golden case observations; then integrate the checked reminder worker using the approved 60s execution / renewable 40s lease profile.",
+    "input_needed": "None for the delivered bounded batch. The separate singleton activation profile must be selected before public activation; full golden prerequisites remain open."
   },
   "changes": {
     "completed": [],
