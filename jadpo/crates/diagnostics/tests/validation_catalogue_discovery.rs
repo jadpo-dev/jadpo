@@ -87,3 +87,21 @@ fn compound_test_cfg_is_excluded_without_hiding_platform_emitters() {
         ["TYPE_REAL_PLATFORM", "TYPE_REAL_PRODUCTION"]
     );
 }
+
+#[test]
+fn native_environment_bindings_do_not_become_public_diagnostics() {
+    let codes = discovery::emitted_codes(
+        r#"
+fn start() {
+    child.env("JADPO_DEPLOYMENT_PORT", "8001");
+    let _ = std::env::var("JADPO_ASCII");
+    let _ = std::env::var("JADPO_DEBUG_TARGET_STACKS");
+    fail("JADPO_TARGET_AUTH_NOT_IMPLEMENTED");
+}
+"#,
+    );
+    assert_eq!(
+        codes.into_iter().collect::<Vec<_>>(),
+        ["JADPO_TARGET_AUTH_NOT_IMPLEMENTED"]
+    );
+}
