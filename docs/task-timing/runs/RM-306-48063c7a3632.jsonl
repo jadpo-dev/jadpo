@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-306-48063c7a3632", "task_id": "RM-306", "actor": "scheduler-fixture-copy", "actor_kind": "agent", "category": "fix", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T07:17:01.812632+00:00", "phase": "planning"}
+{"at": "2026-10-06T07:17:18.131898+00:00", "phase": "verification", "note": "Six copied canonical applications now carry exact pinned service bytes and compiler-recognised isolated repository marker; baseline integration compiler for checks"}
+{"at": "2026-10-06T07:18:41.416880+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm306-golden-fixture-import/manifest.json"}

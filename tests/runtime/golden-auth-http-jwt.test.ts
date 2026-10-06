@@ -1,6 +1,7 @@
+import { copyGoldenFixture } from "./golden-fixture";
 import { afterAll, beforeEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,7 +10,6 @@ import { pathToFileURL } from "node:url";
 // Only the external issuer discovery/JWKS documents are supplied by the test.
 const root = mkdtempSync(join(tmpdir(), "jadpo-golden-http-jwt-"));
 const project = join(root, "application");
-const source = resolve("examples/golden-todo-migration");
 const previousSqlitePath = Bun.env.SQLITE_PATH;
 const previousDatabaseUrl = Bun.env.DATABASE_URL;
 const originalFetch = globalThis.fetch;
@@ -25,7 +25,7 @@ afterAll(() => {
   else Bun.env.DATABASE_URL = previousDatabaseUrl;
   rmSync(root, { recursive: true, force: true });
 });
-cpSync(source, project, { recursive: true, filter: path => path !== join(source, "build") });
+copyGoldenFixture(project);
 const compiler = Bun.env.JADPO_BIN ?? resolve("jadpo/target/debug/jadpo");
 const build = Bun.spawnSync([compiler, "build", project], { stdout: "pipe", stderr: "pipe" });
 if (build.exitCode !== 0) throw new Error(`Golden HTTP/JWT fixture failed to build:\n${build.stdout}\n${build.stderr}`);

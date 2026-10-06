@@ -1,6 +1,7 @@
+import { copyGoldenFixture } from "./golden-fixture";
 import { afterAll, expect, test } from "bun:test";
 import { SQL } from "bun";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,8 +11,7 @@ if (!databaseUrl) throw new Error("DATABASE_URL is required for the PostgreSQL k
 
 const root = mkdtempSync(join(tmpdir(), "jadpo-golden-page-postgres-"));
 const project = join(root, "application");
-const source = resolve("examples/golden-todo-migration");
-cpSync(source, project, { recursive: true, filter: path => path !== join(source, "build") });
+copyGoldenFixture(project);
 const compiler = Bun.env.JADPO_BIN ?? resolve("jadpo/target/debug/jadpo");
 const build = Bun.spawnSync([compiler, "build", project], { stdout: "pipe", stderr: "pipe" });
 if (build.exitCode !== 0) throw new Error(`Golden PostgreSQL page fixture failed to build:\n${build.stdout}\n${build.stderr}`);
