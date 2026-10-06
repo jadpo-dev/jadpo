@@ -16,6 +16,10 @@ const generatedAuthApplication = join(
   "../../examples/first-party-authentication/build/target/app.ts",
 );
 const authReadinessHarness = join(import.meta.dir, "fixtures/readiness-auth-server.ts");
+// The controlled evaluators strip module imports. Supply the real emitted
+// helper in this imported/library context; native supervision is tested by the
+// separate actual startup-ownership suite.
+const { initialNativeStartupDeadline } = await import(pathToFileURL(join(dirname(generatedApplication), "startup-owner.ts")).href);
 
 const root = mkdtempSync(join(tmpdir(), "jadpo-readiness-"));
 const databaseDirectory = join(root, "recovered");
@@ -790,8 +794,8 @@ describe("actual emitted aggregate initialization cancellation", () => {
           .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(join(dirname(fixture), "persistence.ts")).href));
         const javascript = new Bun.Transpiler({ loader: "ts" }).transformSync(source) + '\nreturn {refresh: refreshPersistenceReadiness, state: () => ({ ready: persistenceReady, fatal: persistenceInitializationFatal, client: activePersistenceClient }), unavailable: () => { persistenceReady = false; persistenceProbeNeeded = true; }, unknownError: () => Object.assign(new OutcomeUnknownFault("schema.fixture"), {code: "57014"})};';
         const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
-        const emitted = await new AsyncFunction("SQL", "Database", "Bun", "performance", "setTimeout", "clearTimeout", "console", javascript)(
-          SQL, Database, { env: { DATABASE_URL: "postgres://fixture.invalid/never_opened" } }, { now: () => now },
+        const emitted = await new AsyncFunction("initialNativeStartupDeadline", "SQL", "Database", "Bun", "performance", "setTimeout", "clearTimeout", "console", javascript)(
+          initialNativeStartupDeadline, SQL, Database, { env: { DATABASE_URL: "postgres://fixture.invalid/never_opened" } }, { now: () => now },
           (callback: () => void) => { const id = ++sequence; timers.set(id, callback); return id; },
           (id: number) => timers.delete(id), { error() {} },
         );
@@ -879,7 +883,7 @@ if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
       .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(join(dirname(generatedApplication), "persistence.ts")).href));
     const javascript = new Bun.Transpiler({loader:"ts"}).transformSync(source) + '\nreturn {connection: postgres, ready: persistenceReady, fatal: persistenceInitializationFatal};';
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-    const emitted = await new AsyncFunction("SQL", "Database", "Bun", javascript)(SQL,Database,{env:{DATABASE_URL:Bun.env.JADPO_READINESS_TEST_DATABASE_URL!}});
+    const emitted = await new AsyncFunction("initialNativeStartupDeadline", "SQL", "Database", "Bun", javascript)(initialNativeStartupDeadline,SQL,Database,{env:{DATABASE_URL:Bun.env.JADPO_READINESS_TEST_DATABASE_URL!}});
     try {
       expect(emitted.ready).toBe(true);expect(emitted.fatal).toBe(false);
       const connection=await emitted.connection.reserve();
@@ -944,7 +948,7 @@ if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
       const javascript = new Bun.Transpiler({ loader: "ts" }).transformSync(source)
         + '\nreturn {refresh: refreshPersistenceReadiness, state: () => ({ready: persistenceReady, fatal: persistenceInitializationFatal, client: activePersistenceClient}), unavailable: () => {persistenceReady=false; persistenceProbeNeeded=true;}, close: () => postgres?.close()};';
       const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
-      emitted = await new AsyncFunction("SQL", "Database", "Bun", javascript)(SQL, Database, {env:{DATABASE_URL:databaseUrl}});
+      emitted = await new AsyncFunction("initialNativeStartupDeadline", "SQL", "Database", "Bun", javascript)(initialNativeStartupDeadline, SQL, Database, {env:{DATABASE_URL:databaseUrl}});
       expect(emitted.state().ready).toBe(true);
       const originalClient = emitted.state().client;
       await control.unsafe('DROP INDEX IF EXISTS "account_owner_email_idx"');

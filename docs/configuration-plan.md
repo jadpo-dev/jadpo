@@ -455,6 +455,14 @@ owned execution with termination acknowledgement, rather than another response
 race. Fatal-before-bind and those remaining limits apply to both Bun and Node
 application listener paths; no platform/cloud qualification is inferred.
 
+### RM-403 initial native startup ownership — 2026-10-06
+
+The [independent startup-owner review](../tests/validation/rm403-independent-startup-owner-product-review.json) approves the initial compiler-owned child and original ten-second parent deadline. Configuration, imports, native schema setup and final private IPC acknowledgment precede listener publication. Timeout kills the owned child and observes its exit; delayed COMPLETE/READY records cannot reset the timer or authorize binding. Actual held native PostgreSQL COMMIT and delayed final handoff controls close their owners without opening an application or deployment listener. The original final-handoff race and corrected native observations remain retained.
+
+Integration preserves the approved hourly maintenance scheduler between private COMPLETE and the fresh pre-bind deadline check. The [independent maintenance diagnostic review](../tests/validation/rm403-independent-maintenance-failure-relay-review.json) verifies that its exact four-field `retention.schedule.failure` event is forwarded before and after startup while extra fields and raw errors are refused. That observation carries no readiness authority: a held COMPLETE still times out after ten seconds with zero binds. A real generated scheduler failure preserves application liveness 200 and deployment readiness 503; its parent relay changes from absent to one safe event. The [fresh combined supported gate](../tests/validation/evidence/rm403504-integrated-startup-temporal/report.json) passes all 80 registered checks, including native owner suites on SQLite and PostgreSQL.
+
+These reviews qualify initial native main-entry ownership on the observed Bun/macOS host, including the node:http listener branch under Bun. They do not qualify the Node engine, post-startup native request/recovery hard lifetimes, synchronous SQLite calls in the serving process, parent death or other platforms. Mail remains advisory/unprobed. Whole CONFIG-P5/RM-403 and final golden acceptance remain open.
+
 ## 7. Required evidence
 
 | Area | Required positive and adversarial evidence |

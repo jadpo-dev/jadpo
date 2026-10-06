@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T16:58:46+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T18:05:50+01:00 · figures reflect the recorded roadmap.
 
-Reminder/hourly maintenance and worker recovery are complete. The reviewed authentication/HTTP artifact checkpoint now passes all77 full supported checks; formal golden acceptance remains open while parallel delivery continues.
+Reviewed initial native startup now runs under an owned ten-second deadline; safe maintenance failures remain visible. The fresh combined supported gate passes 80/80 and supporting golden observations pass 88/88, while full golden acceptance remains open.
 
 ## At a glance
 
@@ -11,18 +11,18 @@ Reminder/hourly maintenance and worker recovery are complete. The reviewed authe
 | Completed since task-ID tracking began | 21 |
 | Remaining open tasks | 82 |
 | Of those, conditional / not activated | 28 |
-| In progress | 9 |
+| In progress | 10 |
 | Marked ready for work | 4 |
-| Queued behind dependencies | 18 |
+| Queued behind dependencies | 17 |
 | Decision / blocked / external / review | 23 |
 
 Completed counts cover the reorganised roadmap, not all earlier development. Older capabilities are in the history; there is no reliable whole-project percentage.
 
 ## Delivered
 
-- Checked reminder delivery and scan use the accepted separate 60s/40s profiles; hourly 500-row maintenance now has durable UTC singleton/restart/rollback/unknown-COMMIT behavior on both databases. [Completion](../../tests/validation/rm108-rm307-completion-reconciliation.json).
-- All18 frozen worker recovery obligations are independently reconciled. The current reviewed HTTP/authentication checkpoint passes77/77 supported checks and88 supporting golden observations; formal49 diagnostics/88not-run remain explicit. [Fresh gate](../../tests/validation/evidence/rm601-root-integrated-boundary/report.json).
-- All 44 original golden IDs have 88 independent supporting observations; signed bearer/JWT private retry controls and local nonrelease approval corrections have scoped reviews. The formal golden and protected release gates remain open. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
+- [Native startup and diagnostic integration](../../tests/validation/evidence/rm403504-integrated-startup-temporal/report.json) passed both database suites without weakening final readiness authority.
+- [Temporal provenance](../../tests/validation/rm504-independent-temporal-provenance-metadata-review.json) distinguishes exact compiler enum bytes from host Intl data; unreported rule versions remain explicit.
+- [Local durable approval consumption](../../tests/validation/evidence/rm603-independent-native-ledger-case-review/corrected-review.json) has scoped independent approval; results remain non-releasable.
 
 ## Since the previous report
 
@@ -58,10 +58,10 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Independently review fixed initial startup supervision, source-only lexical binding links and corrected durable local approval consumption; integrate approved sources and obtain a fresh required full gate. Whole request/recovery limits and final golden/approval/datastore gates remain.
+Integrate reviewed persistence links, then qualify structured deployment facts, bounded recovery native work and missing PostgreSQL restart/policy/time cases.
 
 ## Input needed
 
-Earlier publication approval for fixed fe966ef and canonical PostgreSQL/SQLite database URI successor questions remain unanswered. The accepted separate 60s/40s delivery and scan profiles require no further approval; independent work continues.
+The previously asked required database-binding successor and publication checkpoint decisions remain unanswered; independent local delivery continues. See [the concrete database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06).
 
 [Roadmap](../implementation-roadmap.md) · [Completed evidence](../implementation-history.md) · [Estimate basis](../task-timing/README.md) · [Reporting rules](README.md)

@@ -1,6 +1,8 @@
 import {afterAll,beforeAll,expect,test as bunTest} from 'bun:test';
 const test=(name:string,body:()=>Promise<unknown>|unknown)=>bunTest(name,body,60_000);
 import {createHash} from 'node:crypto';
+import {Database} from 'bun:sqlite';
+import {createLocalConsumptionLedger} from '../../tools/local_approval_ledger';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,readdirSync,cpSync,rmSync,symlinkSync,renameSync} from 'node:fs';
 import {tmpdir} from 'node:os';import {resolve,join,relative} from 'node:path';import {pathToFileURL} from 'node:url';
 import {createLocalApprovalVerifier,localPayloadBytes,type LocalRecord,type TrustedContext,type LocalVerifierOptions} from '../../tools/local_approval_verifier';
@@ -52,6 +54,103 @@ test('all local positives remain explicitly non-releasable; complete signed set 
  expect(result).toEqual({status:'local_test_non_releasable',release_authority:false,consumed:inspection.decisions.length,replay_scope:'test_verifier_instance_memory_only'});
  await expect(verifier.verify(inspection.export,set)).rejects.toMatchObject({code:'consumed_approval'});expect(verifier.consumedCount).toBe(inspection.decisions.length);
  if(evidence)writeFileSync(join(evidence,'local-positive-result.json'),JSON.stringify(result,null,2)+'\n');
+});
+test('durable local consumption survives a new verifier and native database reopen without conferring release authority',async()=>{
+ const path=join(root,'reopened-approval-ledger.sqlite');let database=new Database(path);
+ try {
+  const ledger=createLocalConsumptionLedger(database),{verifier,inspection}=await setup(contextCopy(),{ledger});
+  const original=records(inspection),set=await signedSet(original);
+  await expect(verifier.verify(inspection.export,await signedSet(original.slice(0,-1)))).rejects.toMatchObject({code:'incomplete_decisions'});
+  expect(ledger.consumedCount).toBe(0);
+  expect(await verifier.verify(inspection.export,set)).toEqual({status:'local_test_non_releasable',release_authority:false,consumed:original.length,replay_scope:'caller_owned_sqlite_ledger'});
+  const rows=database.query('SELECT approval_id,descriptor_json,descriptor_digest FROM __jadpo_local_approval_consumption ORDER BY approval_id').all() as any[];
+  expect(rows.length).toBe(original.length);
+  for(const row of rows){const record=original.find(value=>value.approval_id===row.approval_id)!;expect(row.descriptor_json).toBe(new TextDecoder().decode(localPayloadBytes(record)));expect(row.descriptor_digest).toBe(sha(localPayloadBytes(record)));}
+  database.close();database=new Database(path);
+  const reopened=createLocalConsumptionLedger(database),fresh=await setup(contextCopy(),{ledger:reopened});
+  await expect(fresh.verifier.verify(fresh.inspection.export,set)).rejects.toMatchObject({code:'consumed_approval'});
+  expect(reopened.consumedCount).toBe(original.length);
+ }finally{database.close();}
+});
+test('two verifier instances sharing native durable storage admit exactly one complete signed set',async()=>{
+ const path=join(root,'concurrent-approval-ledger.sqlite'),a=new Database(path),b=new Database(path);
+ try {
+  const one=await setup(contextCopy(),{ledger:createLocalConsumptionLedger(a)}),two=await setup(contextCopy(),{ledger:createLocalConsumptionLedger(b)}),set=await signedSet(records(one.inspection));
+  const results=await Promise.allSettled([one.verifier.verify(one.inspection.export,set),two.verifier.verify(two.inspection.export,set)]);
+  expect(results.filter(value=>value.status==='fulfilled').length).toBe(1);
+  const refusal=results.find(value=>value.status==='rejected') as PromiseRejectedResult;expect(refusal.reason).toMatchObject({code:'consumed_approval'});
+  expect(one.verifier.consumedCount).toBe(one.inspection.decisions.length);expect(two.verifier.consumedCount).toBe(one.inspection.decisions.length);
+ }finally{a.close();b.close();}
+});
+test('actual native ledger write lock refuses without consumption and the identical signed set works after release',async()=>{
+ const path=join(root,'locked-approval-ledger.sqlite'),database=new Database(path),locker=new Database(path);
+ try {
+  const ledger=createLocalConsumptionLedger(database),{verifier,inspection}=await setup(contextCopy(),{ledger}),set=await signedSet(records(inspection));
+  locker.run('BEGIN IMMEDIATE');const started=performance.now();
+  expect(()=>ledger.consume(records(inspection),baseContext.now,localPayloadBytes)).toThrow(expect.objectContaining({code:'ledger_unavailable'}));
+  // Bound the native storage cut separately from full compiler rederivation.
+  expect(performance.now()-started).toBeLessThan(100);
+  await expect(verifier.verify(inspection.export,set)).rejects.toMatchObject({code:'ledger_unavailable'});
+  expect(ledger.consumedCount).toBe(0);
+  locker.run('ROLLBACK');expect((await verifier.verify(inspection.export,set)).consumed).toBe(inspection.decisions.length);
+ }finally{if(locker.inTransaction)locker.run('ROLLBACK');locker.close();database.close();}
+});
+test('ledger schema tampering and caller-owned transactions fail closed before signed-record consumption',async()=>{
+ const database=new Database(join(root,'tampered-approval-ledger.sqlite'));
+ try {
+  const ledger=createLocalConsumptionLedger(database),{verifier,inspection}=await setup(contextCopy(),{ledger}),set=await signedSet(records(inspection));
+  database.run('BEGIN IMMEDIATE');await expect(verifier.verify(inspection.export,set)).rejects.toMatchObject({code:'ledger_transaction_already_owned'});database.run('ROLLBACK');
+  database.run("CREATE TRIGGER untrusted_consumption AFTER INSERT ON __jadpo_local_approval_consumption BEGIN DELETE FROM __jadpo_local_approval_consumption; END");
+  await expect(verifier.verify(inspection.export,set)).rejects.toMatchObject({code:'ledger_schema_mismatch'});
+  expect((database.query('SELECT count(*) AS n FROM __jadpo_local_approval_consumption').get() as any).n).toBe(0);
+  database.run('DROP TRIGGER untrusted_consumption');expect((await verifier.verify(inspection.export,set)).consumed).toBe(inspection.decisions.length);
+ }finally{database.close();}
+});
+test('durable ledger rejects memory, disabled journalling or asynchronous durability; forged adapters cannot be substituted',async()=>{
+ const memory=new Database(':memory:'),database=new Database(join(root,'invalid-approval-ledger.sqlite'));
+ try {
+  expect(()=>createLocalConsumptionLedger(memory)).toThrow(expect.objectContaining({code:'durable_ledger_required'}));
+  // Bun1.2.20's native defensive setting ignores journal_mode=OFF; MEMORY
+  // actually changes the mode and exercises the non-durable storage guard.
+  database.run('PRAGMA journal_mode=MEMORY');expect((database.query('PRAGMA journal_mode').get() as any).journal_mode).toBe('memory');expect(()=>createLocalConsumptionLedger(database)).toThrow(expect.objectContaining({code:'durable_ledger_required'}));
+  database.run('PRAGMA journal_mode=DELETE');database.run('PRAGMA synchronous=OFF');expect(()=>createLocalConsumptionLedger(database)).toThrow(expect.objectContaining({code:'durable_ledger_required'}));
+  await expect(setup(contextCopy(),{ledger:{replayScope:'caller_owned_sqlite_ledger',has:()=>false,consume:()=>{},consumedCount:0} as any})).rejects.toMatchObject({code:'native_ledger_required'});
+ }finally{memory.close();database.close();}
+});
+test('connection-local temporary schema objects cannot change the caller-owned durable ledger contract',async()=>{
+ const variants=[
+  {create:'CREATE TEMP TABLE __jadpo_local_approval_consumption (placeholder TEXT)',drop:'DROP TABLE temp.__jadpo_local_approval_consumption'},
+  {create:'CREATE TEMP VIEW __jadpo_local_approval_consumption AS SELECT 1 AS placeholder',drop:'DROP VIEW temp.__jadpo_local_approval_consumption'},
+  {create:'CREATE TEMP TABLE __jadpo_local_approval_consumption_version (placeholder TEXT)',drop:'DROP TABLE temp.__jadpo_local_approval_consumption_version'},
+  {create:'CREATE TEMP TRIGGER ledger_test_observer AFTER INSERT ON main.__jadpo_local_approval_consumption BEGIN SELECT 1; END',drop:'DROP TRIGGER temp.ledger_test_observer'},
+  {create:'CREATE TEMP TABLE __JADPO_LOCAL_APPROVAL_CONSUMPTION (placeholder TEXT)',drop:'DROP TABLE temp.__JADPO_LOCAL_APPROVAL_CONSUMPTION'},
+  {create:'CREATE TEMP VIEW __JADPO_LOCAL_APPROVAL_CONSUMPTION_VERSION AS SELECT 1 AS placeholder',drop:'DROP VIEW temp.__JADPO_LOCAL_APPROVAL_CONSUMPTION_VERSION'},
+  {create:'CREATE TEMP TRIGGER ledger_test_upper_temp AFTER INSERT ON main."__JADPO_LOCAL_APPROVAL_CONSUMPTION" BEGIN SELECT 1; END',drop:'DROP TRIGGER temp.ledger_test_upper_temp'},
+  {create:'CREATE TRIGGER ledger_test_upper_main AFTER INSERT ON main."__JADPO_LOCAL_APPROVAL_CONSUMPTION" BEGIN SELECT 1; END',drop:'DROP TRIGGER main.ledger_test_upper_main'},
+  {create:'CREATE TRIGGER ledger_test_upper_version AFTER INSERT ON main."__JADPO_LOCAL_APPROVAL_CONSUMPTION_VERSION" BEGIN SELECT 1; END',drop:'DROP TRIGGER main.ledger_test_upper_version'},
+ ];
+ for(const [index,variant] of variants.entries()){
+  const database=new Database(join(root,`temporary-schema-${index}.sqlite`));
+  try{
+   const ledger=createLocalConsumptionLedger(database),{verifier,inspection}=await setup(contextCopy(),{ledger}),set=await signedSet(records(inspection));
+   database.run(variant.create);
+   await expect(verifier.verify(inspection.export,set)).rejects.toMatchObject({code:'ledger_schema_mismatch'});
+   expect((database.query('SELECT count(*) AS n FROM main.__jadpo_local_approval_consumption').get() as any).n).toBe(0);
+   expect(()=>createLocalConsumptionLedger(database)).toThrow(expect.objectContaining({code:'ledger_schema_mismatch'}));
+   database.run(variant.drop);expect((await verifier.verify(inspection.export,set)).consumed).toBe(inspection.decisions.length);
+  }finally{database.close();}
+ }
+});
+test('native descriptor insert failure after an earlier row rolls back the entire ledger set',async()=>{
+ const database=new Database(join(root,'rollback-approval-ledger.sqlite'));
+ try {
+  const ledger=createLocalConsumptionLedger(database),{inspection}=await setup(),list=records(inspection);
+  expect(list.length).toBeGreaterThan(1);const malformed=structuredClone(list);(malformed[1] as any).issuer=null;
+  // This deliberately injects malformed storage input below the signed verifier,
+  // provoking SQLite NOT NULL after the first actual insert, rather than a JS fault.
+  expect(()=>ledger.consume(malformed,baseContext.now,localPayloadBytes)).toThrow(expect.objectContaining({code:'ledger_unavailable'}));
+  expect(ledger.consumedCount).toBe(0);ledger.consume(list,baseContext.now,localPayloadBytes);expect(ledger.consumedCount).toBe(list.length);
+ }finally{database.close();}
 });
 test('AP-01: ordinary repository approval JSON and JWS-supplied key material confer no issuer authority',async()=>{
  const {verifier,inspection}=await setup();await expect(verifier.verify(inspection.export,JSON.stringify({approval:true}))).rejects.toMatchObject({code:'closed_shape'});expect(verifier.consumedCount).toBe(0);

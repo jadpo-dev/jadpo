@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-403-6c0b667c60d0", "task_id": "RM-403", "actor": "scheduler-startup-maintenance-relay", "actor_kind": "agent", "category": "fix", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T16:40:30.924182+00:00", "phase": "planning"}
+{"at": "2026-10-06T16:42:30.052498+00:00", "phase": "verification", "note": "Exactfourfieldfailure relay startup/postready +extra/wrongoutcome/rawwrongname controls4SQLite/24; fullPGowning underway"}
+{"at": "2026-10-06T16:48:47.196476+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-startup-maintenance-failure-relay/report.json"}

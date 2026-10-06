@@ -20,6 +20,27 @@ def native_probe(bun: Path, application: Path):
     return value
 
 
+def validate_temporal_metadata(generated: dict, native: dict, zone_file: Path):
+    """Bind enum bytes and genuine host reports; never impute Intl rule bytes."""
+    expected = {
+        'tzdb': 'IANA '+re.search(r'(\d{4}[a-z]+)', zone_file.name)[1],
+        'tzdbScope': 'compiler_zone_enumeration_only',
+        'zoneEnumVersion': 'IANA '+re.search(r'(\d{4}[a-z]+)', zone_file.name)[1],
+        'zoneEnumSource': str(zone_file.relative_to(ROOT)),
+        'zoneEnumByteDigest': 'sha256:'+harness.digest(zone_file),
+        'zoneEnumCount': len(set(zone_file.read_text().splitlines())),
+        'runtimeRuleProvider': 'ECMAScript Intl.DateTimeFormat',
+        'runtimeRuleDataVersion': native['reportedTimezoneDataVersion'],
+        'runtimeRuleDataVersionSource': 'process.versions.tz',
+        'runtimeRuleDataByteDigest': None,
+        'runtimeIcu': native['reportedIcu'],
+        'runtimeEngine': native['engine'],
+        'timezoneRules': 'runtime ICU; version recorded for release pinning',
+    }
+    if any(key not in generated or not harness.same_json(generated[key], value) for key, value in expected.items()):
+        raise ValueError('Actual emitted temporal provenance differs from compiler/runtime inputs')
+
+
 def collect(evidence: Path, dependencies: Path, bun: Path):
     report = json.loads((evidence/'golden-checkpoint.json').read_text())
     checkpoint.validate_checkpoint(report, evidence, dependencies)
@@ -39,13 +60,13 @@ def collect(evidence: Path, dependencies: Path, bun: Path):
     generated = native['generatedTemporalProvenance']
     zone_file = ROOT/'jadpo/data/iana-zones-2026c.txt'
     zones = zone_file.read_text().splitlines()
-    if generated['tzdb'] != 'IANA '+re.search(r'(\d{4}[a-z]+)', zone_file.name)[1] or generated['zoneEnumCount'] != len(set(zones)) or generated['runtimeIcu'] != native['reportedIcu'] or generated['runtimeEngine'] != native['engine'] or generated['timezoneRules'] != 'runtime ICU; version recorded for release pinning': raise ValueError('Actual emitted temporal provenance differs from compiler/runtime inputs')
+    validate_temporal_metadata(generated, native, zone_file)
     linked = checkpoint.safe_run(['/usr/bin/otool', '-L', str(bun)]).stdout.decode()
     if native['nativeIcu']['libraryPath'] not in linked: raise ValueError('Native ICU probe library is not a declared executable dependency')
     os_version = {name: checkpoint.safe_run(['/usr/bin/sw_vers', flag]).stdout.decode().strip() for name, flag in (('product', '-productVersion'), ('build', '-buildVersion'))}
     checkpoint.validate_checkpoint(report, evidence, dependencies)
     if harness.digest(bun) != binary_sha or helper_sha != {name: harness.digest(ROOT/name) for name in HELPERS}: raise ValueError('Executable/probe changed during observation')
-    return {'schema_version': 1, 'status': 'local_provenance_observed', 'source_report_sha256': harness.digest(evidence/'golden-checkpoint.json'), 'compiler_sha256': report['provenance']['compiler_sha256'], 'helper_sha256': helper_sha, 'executable_sha256': binary_sha, 'native': native, 'macos': os_version, 'declared_native_dependencies': linked.splitlines()[1:], 'standalone_native_library_file_present': Path(native['nativeIcu']['libraryPath']).is_file(), 'standalone_native_library_sha256': harness.digest(Path(native['nativeIcu']['libraryPath'])) if Path(native['nativeIcu']['libraryPath']).is_file() else None, 'zone_enumeration': {'source': str(zone_file.relative_to(ROOT)), 'sha256': harness.digest(zone_file), 'count': len(set(zones)), 'classification': 'compiler closed zone identifiers; not native rule bytes'}, 'jwt': {'declarations': declarations, 'installed_package_version': package['version'], 'installed_files': checkpoint.hashes(dependencies/'node_modules/jose'), 'dependency_manifest_sha256': harness.digest(canonical/'dependency.json'), 'historical_publisher_verification': pin['provenance_verification'], 'publisher_verification_rerun': False}, 'limits': ['Current native read-only observation; does not retroactively attest executable bytes during earlier SQLite/PostgreSQL requests.', 'Engine-reported ICU and directly observed loaded-library release are separate values, never relabeled.', 'Timezone version is observed directly through ucal_getTZDataVersion; equality with compiler zone-list release does not prove identical full rule bytes.', 'macOS native dependency resides in shared cache; no standalone dylib byte digest or cross-host reproducible ICU data pin is claimed.', 'No new PostgreSQL temporal semantics or complete TIME/RM504 qualification, protected release or engine/dependency update.']}
+    return {'schema_version': 1, 'status': 'local_provenance_observed', 'source_report_sha256': harness.digest(evidence/'golden-checkpoint.json'), 'compiler_sha256': report['provenance']['compiler_sha256'], 'helper_sha256': helper_sha, 'executable_sha256': binary_sha, 'native': native, 'macos': os_version, 'declared_native_dependencies': linked.splitlines()[1:], 'standalone_native_library_file_present': Path(native['nativeIcu']['libraryPath']).is_file(), 'standalone_native_library_sha256': harness.digest(Path(native['nativeIcu']['libraryPath'])) if Path(native['nativeIcu']['libraryPath']).is_file() else None, 'zone_enumeration': {'source': str(zone_file.relative_to(ROOT)), 'sha256': harness.digest(zone_file), 'count': len(set(zones)), 'classification': 'compiler closed zone identifiers; not native rule bytes'}, 'jwt': {'declarations': declarations, 'installed_package_version': package['version'], 'installed_files': checkpoint.hashes(dependencies/'node_modules/jose'), 'dependency_manifest_sha256': harness.digest(canonical/'dependency.json'), 'historical_publisher_verification': pin['provenance_verification'], 'publisher_verification_rerun': False}, 'limits': ['Current native read-only observation; does not retroactively attest executable bytes during earlier SQLite/PostgreSQL requests.', 'Engine-reported ICU and directly observed loaded-library release are separate values, never relabeled.', 'Loaded-library timezone version is separately observed through ucal_getTZDataVersion; it is not imputed as Intl rule data. Generated rule version records only process.versions.tz; enum equality does not attest rule bytes.', 'macOS native dependency resides in shared cache; no standalone dylib byte digest or cross-host reproducible ICU data pin is claimed.', 'No new PostgreSQL temporal semantics or complete TIME/RM504 qualification, protected release or engine/dependency update.']}
 
 
 def validate(receipt: dict, evidence: Path, dependencies: Path, bun: Path):

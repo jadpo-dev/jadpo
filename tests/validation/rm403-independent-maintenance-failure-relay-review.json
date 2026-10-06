@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "task": "RM-403",
+  "reviewer": "startup_owner_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-403-0544a7abc135",
+  "product_commit": "58a9e8bf7c228bb2d5b16a399bf096c2c101edd1",
+  "author_evidence_commit": "1d1914e9c9a4431eb3067167b00b282e136aa913",
+  "comment_provenance_correction_commit": "930a393bd2674a146d8ac149671c003473924207",
+  "approved": true,
+  "status": "bounded_startup_hourly_maintenance_failure_relay_approved",
+  "task_closed": false,
+  "release_equivalent": false,
+  "scope": "Six-line compiler-owned supervisor diagnostic relay for the existing four-field retention.schedule.failure event; source, native producer, negative transport and readiness-authority controls only.",
+  "source_sha256": "928851343d57e1430a4a47cf69f4de9ee784626a10646e5a94a9d877ec171dc2",
+  "cli_pins": {
+    "actual_hourly_startup_reference": "2edf593858a578a4a7227593e06fbba1934f83954ef63a761fbecffd2be97c25",
+    "author_leaf_native_transport_controls": "afceefc818f5b5562493988e2301a7e0bd316326e9a4b78a6261f6c2244f9350"
+  },
+  "source_assessment": [
+    "Existing schemaVersion===1 validation precedes exact four-field shape, maintenance_audit kind, retention.schedule.failure event and failed outcome. Any extra field, raw error, wrong kind/outcome/event or schema is refused.",
+    "Branch precedes startup-only operational diagnostics and general startup early return, so the same existing safe event survives startup and serving phases.",
+    "The parser returns observation data only. Native private PREPARED/COMPLETE/READY authority, original startup deadline, listener ordering, owner kill/exited acknowledgment and shutdown are unchanged.",
+    "Actual generated hourly scheduler and app/persistence are unchanged. Replay asserts only the six-line helper branch differs from the root reference compiler emission."
+  ],
+  "independent_native_actual_producer": {
+    "kind": "actual_generated_maintenance_failure_relay",
+    "referenceCompiler": "2edf593858a578a4a7227593e06fbba1934f83954ef63a761fbecffd2be97c25",
+    "results": [
+      {
+        "mode": "before",
+        "liveStatus": 200,
+        "readinessStatus": 503,
+        "exit": 143,
+        "trace": [
+          {
+            "pid": 93950,
+            "kind": "preload"
+          },
+          {
+            "pid": 93951,
+            "kind": "preload"
+          },
+          {
+            "pid": 93951,
+            "kind": "actual_producer",
+            "event": {
+              "schemaVersion": 1,
+              "kind": "maintenance_audit",
+              "eventName": "retention.schedule.failure",
+              "outcome": "failed"
+            }
+          }
+        ],
+        "relayed": [],
+        "stdout": "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"runtime.live\",\"classification\":\"live\",\"requestId\":\"startup\",\"traceId\":null,\"semanticOperationId\":\"runtime:start\",\"sourceRevision\":\"src_dfcaa0c9864979f8\",\"attributes\":{\"port\":60196,\"readiness\":\"not_ready\"}}\n",
+        "stderr": "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"dependency.unavailable\",\"classification\":\"RUNTIME_DEPENDENCY_UNAVAILABLE\",\"requestId\":\"readiness\",\"traceId\":null,\"semanticOperationId\":\"health:ready\",\"sourceRevision\":\"src_dfcaa0c9864979f8\",\"attributes\":{}}\n{\"schemaVersion\":1,\"kind\":\"maintenance_audit\",\"eventName\":\"retention.purge.batch\",\"operation\":\"retention_purge(Todo)\",\"entity\":\"Todo\",\"clause\":\"Todo.lifecycle.purge\",\"sourceRevision\":\"src_dfcaa0c9864979f8\",\"retentionBinding\":\"config.soft_delete_retention\",\"attemptNow\":\"2026-10-06T16:52:26.257Z\",\"selectedCount\":0,\"committedCount\":null,\"rowIdentityTokens\":[],\"bound\":500,\"outcome\":\"unknown\"}\n",
+        "appSha256": "be04f3924ada1e4ec1bccd4cb0ebbecfd38b182294d342e7c9f6ff9a5022d51a",
+        "persistenceSha256": "b186ab741b2fe2ccbdeb7786236c76ad7f884bcd54ffdf6469e477953db4f770",
+        "beforeHelperSha256": "1703f0b05e1fd20dc5bbf00c17a3e2188bbe28393a36d765a1f71953c6900960",
+        "helperSha256": "1703f0b05e1fd20dc5bbf00c17a3e2188bbe28393a36d765a1f71953c6900960",
+        "producerOwnerExited": true
+      },
+      {
+        "mode": "after",
+        "liveStatus": 200,
+        "readinessStatus": 503,
+        "exit": 143,
+        "trace": [
+          {
+            "pid": 93952,
+            "kind": "preload"
+          },
+          {
+            "pid": 93953,
+            "kind": "preload"
+          },
+          {
+            "pid": 93953,
+            "kind": "actual_producer",
+            "event": {
+              "schemaVersion": 1,
+              "kind": "maintenance_audit",
+              "eventName": "retention.schedule.failure",
+              "outcome": "failed"
+            }
+          },
+          {
+            "pid": 93952,
+            "kind": "actual_producer",
+            "event": {
+              "schemaVersion": 1,
+              "kind": "maintenance_audit",
+              "eventName": "retention.schedule.failure",
+              "outcome": "failed"
+            }
+          }
+        ],
+        "relayed": [
+          {
+            "schemaVersion": 1,
+            "kind": "maintenance_audit",
+            "eventName": "retention.schedule.failure",
+            "outcome": "failed"
+          }
+        ],
+        "stdout": "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"runtime.live\",\"classification\":\"live\",\"requestId\":\"startup\",\"traceId\":null,\"semanticOperationId\":\"runtime:start\",\"sourceRevision\":\"src_dfcaa0c9864979f8\",\"attributes\":{\"port\":60200,\"readiness\":\"not_ready\"}}\n",
+        "stderr": "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"dependency.unavailable\",\"classification\":\"RUNTIME_DEPENDENCY_UNAVAILABLE\",\"requestId\":\"readiness\",\"traceId\":null,\"semanticOperationId\":\"health:ready\",\"sourceRevision\":\"src_dfcaa0c9864979f8\",\"attributes\":{}}\n{\"schemaVersion\":1,\"kind\":\"maintenance_audit\",\"eventName\":\"retention.purge.batch\",\"operation\":\"retention_purge(Todo)\",\"entity\":\"Todo\",\"clause\":\"Todo.lifecycle.purge\",\"sourceRevision\":\"src_dfcaa0c9864979f8\",\"retentionBinding\":\"config.soft_delete_retention\",\"attemptNow\":\"2026-10-06T16:52:26.482Z\",\"selectedCount\":0,\"committedCount\":null,\"rowIdentityTokens\":[],\"bound\":500,\"outcome\":\"unknown\"}\n{\"schemaVersion\":1,\"kind\":\"maintenance_audit\",\"eventName\":\"retention.schedule.failure\",\"outcome\":\"failed\"}\n",
+        "appSha256": "be04f3924ada1e4ec1bccd4cb0ebbecfd38b182294d342e7c9f6ff9a5022d51a",
+        "persistenceSha256": "b186ab741b2fe2ccbdeb7786236c76ad7f884bcd54ffdf6469e477953db4f770",
+        "beforeHelperSha256": "1703f0b05e1fd20dc5bbf00c17a3e2188bbe28393a36d765a1f71953c6900960",
+        "helperSha256": "0e3a043c5d6644ba840e08ca8fc6715245c1f71015d1bcd988cfd337cbe8cb93",
+        "producerOwnerExited": true
+      }
+    ]
+  },
+  "independent_controls": {
+    "maintained_exact_git58_native": {
+      "passed": 4,
+      "assertions": 24,
+      "filtered": 18
+    },
+    "closed_parser": {
+      "kind": "independent_closed_scheduler_parser",
+      "positive": 2,
+      "refused": 24,
+      "phases": [
+        "startup",
+        "serving"
+      ]
+    },
+    "allowed_event_cannot_authorize_held_complete": {
+      "assertions": 18,
+      "kind": "owned_final_handoff",
+      "mode": "held-complete",
+      "elapsedMs": 10056.312375000001,
+      "polls": 924,
+      "bindings": 0,
+      "observations": [
+        {
+          "pid": 97628,
+          "phase": "preload"
+        },
+        {
+          "pid": 97630,
+          "phase": "preload"
+        },
+        {
+          "pid": 97630,
+          "phase": "complete_held"
+        }
+      ],
+      "exitAcknowledged": true
+    }
+  },
+  "source_archive_members_rehashed": 7,
+  "provenance": {
+    "maintained_test_exact_git58_sha256": "59ea4346745262fc41b6f4d39ed9e7b2f7834790a26dc9911c3047752c6a261d",
+    "author_actual_executed_archive_test_sha256": "1acafa0d8bff8242bcfd44eb3fe88fb7d63215e9bfa4109c731c789ca852d154",
+    "difference": "One explanatory comment only. Original archive/inventory preserved; exact Git58 independently replayed. Author correction separately records the executed variant and does not imply rerun.",
+    "helper_git_archive_identical": true
+  },
+  "findings": [],
+  "limits": [
+    "Native Bun1.2.20/macOS; node:http branch exercised under Bun only. No Node engine or other platform qualification.",
+    "Actual producer uses valid retention configuration with unavailable SQLite storage: accepted live 200/not_ready 503 path, not a fatal initial startup failure. Observer distinguishes serving child emission from parent relay by PID.",
+    "Before-startup/after-ready and delayed-COMPLETE records are labelled injected diagnostic transport controls. They complement the authentic hourly producer and do not claim to be actual scheduled pulses.",
+    "Exact original timer control includes native scheduling/exit overhead; held COMPLETE elapsed10056.312ms, no binds in924 actual port polls, one safe startup fault and native exit acknowledged.",
+    "Author PG22/179 and core105 evidence read; independent scope uses focused native transport/producer controls, without duplicating the complete PG matrix.",
+    "Root combined supported integration gate remains required. Initial native startup acceptance only; request/recovery hard bounds, CONFIG-P5, full RM-403 and RM-504 closure remain open.",
+    "Original author producer counter failure, comment-only capture mismatch and independent initial incomplete capture/build refusal remain retained without rewriting."
+  ],
+  "author_packet": "tests/validation/evidence/rm403-startup-maintenance-failure-relay/report.json",
+  "evidence_inventory": "tests/validation/evidence/rm403-independent-maintenance-failure-relay-58/inventory.json",
+  "timing": {
+    "outcome": "partial",
+    "active_minutes": 7.61,
+    "verification_minutes": 5.84,
+    "blocked_minutes": 4.44,
+    "elapsed_minutes": 12.05,
+    "scope": "Scoped independent relay review complete; RM-403 task acceptance open."
+  }
+}

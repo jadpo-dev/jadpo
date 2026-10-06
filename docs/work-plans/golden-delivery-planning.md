@@ -33,6 +33,8 @@ completion or a genuine blocker affecting every remaining independent lane.
 Conditional successors, production mail/deployment and external assurance remain
 outside this loop. No persistent Goal is active or newly created.
 
+**Current integrated evidence, 2026-10-06:** The [80/80 supported gate](../../tests/validation/evidence/rm403504-integrated-startup-temporal/report.json) qualifies reviewed lexical514, route323, optional durable ledger3a0, initial native startup087, exact maintenance failure relay58 and additive temporal provenance aed on the selected integration. All 88 supporting migrated HTTP entries pass on SQLite/PostgreSQL; frozen-source 49 diagnostics and formal 88 not-run entries remain separate. Whole tasks are still open. Persistence6c has isolated independent approval and awaits integration; structured deployment facts, recovery native budgets and PostgreSQL service restart are the next parallel slices. The [finite residual coverage audit](../../tests/validation/rm504-independent-residual-coverage-audit.json) identifies missing backend/time cases without promoting SQLite-only counters or unknown Intl rule data. Earlier dated checkpoints below preserve their original pending states.
+
 **Resumed working checkpoint, 2026-10-06:** The prior integrated local checkpoint is
 `1dd1e7705884bb4c4f1095102624063afc7578c8`; current reviewed changes extend it,
 with exact source pins and fresh verification recorded below. Nineteen of the selected 29 tasks
@@ -116,11 +118,11 @@ open. The [independent startup design review](../../tests/validation/rm403-indep
 approves bounded implementation of compiler-owned native child supervision;
 product implementation and its independent evidence remain in progress.
 
-The independently reviewed500/503 wire pairing and actual persistent-record503
+**Earlier 77-check checkpoint (superseded by current integrated evidence above):** The independently reviewed500/503 wire pairing and actual persistent-record503
 registration corrections are now included with all preceding boundary and
 private-authentication corrections. The [fresh combined77-check full supported gate](../../tests/validation/evidence/rm601-root-integrated-boundary/report.json)
 passes every registered check, including both native databases and supporting88/0/0
-HTTP observations. Frozen source49 diagnostics and formal88 not-run entries remain
+HTTP observations. Frozen source49 diagnostics and formal 88 not-run entries remain
 separate. Startup supervision, new lexical binding links and corrected local
 SQLite approval consumption are isolated follow-ons pending their own review and
 fresh integration. Independent ledger review found omitted temporary schema
@@ -1209,11 +1211,11 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-307 | Reviewed worker subsystem | All 18 frozen checked native recovery IDs reconciled; fresh maintained SQLite/PostgreSQL delivery suites pass in 76-check gate; completion recorded in history | planned | complete |
 | RM-401 | Decision; bounded retries enabled by default | Contract frozen after phase probe and independent correction re-review; [completion evidence](../implementation-history.md#2026-10-02--rm-401-bounded-retry-contract) | planned | complete |
 | RM-402 | Short after retry/failure decisions | RM-401, reviewed RM-207 boundary-contract milestone; scoped corrections/native LOCKED/jitter/revision and private fresh-authority hook review approved; public authenticated activation remains closed; historical supported gate61/61; [current TX checkpoint and limits](../transaction-retry-plan.md#rm-402-reviewed-adapter-checkpoint--2026-10-04) | planned | in_progress |
-| RM-403 | Short staged; CONFIG-P5 separates liveness and bounded dependency readiness | Scoped recovery/startup-lock, PostgreSQL auth-session, real connection-loss/32-way recovery and asynchronous response-deadline evidence independently approved. Response controller passes six deterministic groups, ten independent emitted-module probes and14-case live readiness. [CONFIG-P5](../configuration-plan.md#config-p5--liveness-and-readiness) retains synchronous/native/startup/platform gates; mail advisory/unprobed; actual6.1-sol/high | planned | in_progress |
-| RM-504 | Short; extend live evidence to claimed behaviours | RM-501 complete; RM-102, RM-402 unfinished | planned | queued |
+| RM-403 | Short staged; CONFIG-P5 separates liveness and bounded dependency readiness | Scoped recovery/deployment and exact initial native owner087/relay58 reviews approved; current supported gate 80/80 includes both native startup suites. Request/recovery hard lifetimes, synchronous serving SQLite, Node engine and otherplatforms remain open; [owning CONFIG-P5](../configuration-plan.md#rm-403-initial-native-startup-ownership--2026-10-06) | planned | in_progress |
+| RM-504 | Short; extend live evidence to claimed behaviours | Provenance aed has independent native approval and gate 80/80. Finite residual audit selects PostgreSQL policy/restart/day predicates and wider typed temporal claims; RM-402 prerequisite remains. [Residual audit](../../tests/validation/rm504-independent-residual-coverage-audit.json) | planned | in_progress |
 | RM-505 | Short; hostile cases from settled contracts | RM-501 complete; RM-106, RM-304, RM-307, RM-402 | planned | queued |
-| RM-601 | Short; versioned review artifact with exact provenance | Scoped job, static role/member, principal, actor-route, field/output and corrected generated-byte provenance reviews approved. Field48/48+4 internal; byte pins7 public+5 helper and fresh supported61/61. [Canonical audit and checkpoint](#rm-601603--review-artifacts-and-local-attestation-validation) retain full field-flow, worker/emission, feasible counterexample/provenance and whole artifact-review gates; owner selected6.1-sol/high | planned | in_progress |
-| RM-603 | Short; local verification boundary, release stays gated | RM-601; bounded native/JOSE localtest implementation d3133d9 has20 tests/112 assertions and is under independent review. Per-instance memory replay only; protected issuer belongs to RM-604 | planned | in_progress |
+| RM-601 | Short; versioned review artifact with exact provenance | Scoped exact field/output/HTTP, immutable lexical514 and route323 reviews approved; gate 80/80 qualifies current integration. Persistence6c independently approved in isolated capture, pending integration. Concrete feasibility, structured deployment and full source/artifact approval gates remain | planned | in_progress |
+| RM-603 | Short; local verification boundary, release stays gated | Native canonical v5/JOSE strict-root and optional caller-owned durable SQLite whole-set consumption independently approved;32 tests/271 assertions and current gate 80/80. Default memory mode per-instance; protected issuer/release authority stays outside local result; whole artifact prerequisite remains | planned | in_progress |
 
 ## Common delivery rules
 
@@ -4019,6 +4021,34 @@ non-releasable; RM-604's protected authority stays outside this slice. Register
 the checked local boundary in the supported gate only after independent review;
 never turn its report into golden or production release approval.
 
+**Independent lexical checkpoint `514b5bb`, 2026-10-06:** the [root source/CLI review](../../tests/validation/evidence/rm601-independent-lexical-514/review.json) approves immutable callable parameter/local links only. All85 focused contracts pass; fresh before/after source variants retain identical generated targets, and four additional nested mutability controls plus native parameter-reassignment refusal pass. Build-local structural addresses are explicitly insertion-unstable; value origins, pattern/persistence environments and route implicit bindings remain unresolved. Exact source is integrated; combined supported verification is pending. The parallel author’s next bounded slice is checked route input/query/path/header declaration linkage, preserving those limitations. No whole RM-601 closure.
+
+**Reviewed route source checkpoint `323201d`:** the [independent93-contract/fresh CLI review](../../tests/validation/evidence/rm601-independent-route-323/review.json) approves exact checked route transport declaration links only. Three sourcevariants and six actual written before/after target files are byte-equal; missing header declarations refuse. Principal/clock/persistence/pattern values and caller identity remain unresolved. Scoped source is integrated; fresh combined gate remains pending.
+
+**Durable local consumption slice, 2026-10-06:** retain the actual6.1-sol/high
+coupled security batch pin. A short plan is sufficient because accepted one-time
+whole-set consumption and the existing signed/native binding checks are settled.
+Add an optional explicitly caller-owned native SQLite ledger to the local-test
+verifier. The constructor receives an already opened native handle; no repository
+JSON, environment default, JWS key or filename supplies issuer authority. Keep the
+existing memory-only mode explicit. Require disk storage, full synchronous
+journalled commits, an owned immediate transaction, exact closed ledger schema
+and complete signed-record descriptors. Validate signatures, current authority,
+time and fresh native subject before the atomic whole-set insertion. A replay,
+native lock, damaged schema or failed commit yields no successful verification;
+failed validation consumes nothing. Never repair/delete consumed rows or retry an
+uncertain commit automatically.
+
+Qualify restart, concurrent separate processes, native write-lock refusal,
+mid-set native insert failure/rollback, tampered-schema refusal and precommit
+SIGKILL recovery, alongside real EdDSA/native-subject integration. Preserve
+local-test/non-releasable results and explicitly limit durability to the same
+caller-owned ledger: no protected filesystem, production issuer or release
+approval claim. Independent consequential review and a fresh combined supported
+gate are required before integration. Forecast1–4h, original task estimate kept.
+
+**Reviewed local checkpoint `3a0f503`:** both temporary-schema and mixed-case catalog findings are corrected. The exact five-file source set is approved by the [independent32-test/271-assertion review](../../tests/validation/evidence/rm603-independent-native-ledger-case-review/corrected-review.json), retaining the original red report and both18-member archives. The [root report](../../tests/validation/evidence/rm603-local-durable-consumption/report.json) preserves three source snapshots and7/118 latest signed-native controls. Local whole-set durability is qualified for the same caller-owned storage only; the fresh combined supported gate and whole RM-603 remain open.
+
 **RM-603 — L.** Define a verifier boundary accepting authenticated issuer evidence
 and canonical RM-601 subject; untrusted repository JSON can never become an issuer.
 Validate exact subject/policy/graph/version binding, each decision, reviewer role
@@ -4041,6 +4071,8 @@ instrumentation limits. Compare SQLite/PostgreSQL observations rather than
 assuming shared generated code proves parity. Missing tools are a blocked gate,
 not a skip/pass. Run the full verifier, not `--profile quick`. Luna High fixture
 work; Luna Extra High for adapter differences; Sol High security review as needed.
+
+**RM-504 residual audit, 2026-10-06:** the [source/native version audit](../../tests/validation/evidence/rm504-runtime-provenance-audit/report.json) maps registered PostgreSQL auth/policy/query/lifecycle suites and their counter limits. Temporal rules run through host Intl/ICU; the generated IANA2026c label identifies the checked zone list, while actual Bun1.2.20 reports ICU74.2 and no timezone-rule data version. A short additive provenance correction is now selected: explicitly bind enum source/bytes, report actual or unreported runtime rule data, preserve legacy enum-only field and all time behavior, qualify through maintained native temporal tests and separate review. Parallel author owns its isolated source; complete residual PostgreSQL acceptance remains open. Retained coupled6.1-sol/high pin; forecast0.5–1.5h for this bounded slice, original1–4h task estimate unchanged.
 
 **RM-505 — L.** Derive named hostile cases from the accepted lifecycle, auth,
 service/job and transaction obligations after its prerequisites. Cover revocation
@@ -4588,3 +4620,7 @@ restart, no-reissue and reconciliation belong to the gated job path, while
 deadline-aware operational mapping and independent runtime review remain. Run
 [`RM-207-aee77ee77b62`](../task-timing/runs/RM-207-aee77ee77b62.jsonl) records
 the 3.18-minute source/evidence review under the current batch pin.
+
+**RM-504 reviewed runtime provenance, 2026-10-06:** Additive metadata now distinguishes the compiler-owned zone enumeration from the host Intl rule provider. Exact enum bytes are hashed; absent host timezone-data versions remain `unreported` and the runtime rule-byte digest remains null. Candidate `aed690b` has an [independent bounded approval](../../tests/validation/rm504-independent-temporal-provenance-metadata-review.json): 9 native temporal tests / 49 assertions, 26 metadata refusal controls, and identical generated application bytes outside the provenance block. Root rehashed all 40 archived observations and integrated the additive patch while preserving the reviewed startup and hourly-maintenance code. The owning [TIME implementation record](../time-testing-plan.md) retains wider runtime/database matrix and release-pinning gaps. The [fresh combined supported gate](../../tests/validation/evidence/rm403504-integrated-startup-temporal/report.json) passes 80/80, including the native temporal suite and both database checkpoints. Whole RM-504 remains open.
+
+**RM-403 selected native startup integration, 2026-10-06:** Initial owner087 and narrow maintenance relay58 have scoped independent approvals. Root integrated only the startup delta while preserving hourly maintenance, route323 and temporal aed; 106 focused core checks and 20 native SQLite owner cases / 165 assertions passed before the relay addition. The [owning CONFIG-P5 record](../configuration-plan.md#rm-403-initial-native-startup-ownership--2026-10-06) links the exact source/IPC/real-producer reviews and retains wider hard-lifetime/platform gaps. The [fresh combined supported gate](../../tests/validation/evidence/rm403504-integrated-startup-temporal/report.json) passes 80/80 checks on 643 pinned source inputs, with 113 safe archived observations; whole RM-403 remains open.

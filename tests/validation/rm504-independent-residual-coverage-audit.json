@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "task": "RM-504",
+  "reviewer": "startup_owner_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-504-1acb19c41daa",
+  "status": "read_only_residual_matrix_saved",
+  "task_closed": false,
+  "implementation_performed": false,
+  "source_head": "61192182f2a55f446af34994e962864596a24c59",
+  "capture": "Exact individually hashed current registered sources, integration checkout may be dirty/concurrently progressing; no whole Git epoch attestation.",
+  "requirements": [
+    {
+      "path": "docs/implementation-roadmap.md",
+      "line": 255
+    },
+    {
+      "path": "docs/work-plans/golden-delivery-planning.md",
+      "line": 4064
+    },
+    {
+      "path": "docs/time-testing-plan.md",
+      "line": 954
+    }
+  ],
+  "coverage_credit": [
+    "Registered native PG modes cover ordinary/fresh JWT denial and credential selection, first-party/service declared authority, note ownership/rollback, selected keyset/EXPLAIN/query predicates, lifecycle timestamps/retention and dossier change-record operation time. Existing independent receipts are source-scoped historical evidence, not current-source reruns.",
+    "Golden independent PG AUTH003/004/007/008 and009/011 receipts contain actual SQL observation and bounded authority mapping. These fill selected golden auth accounting; they do not supply all standalone JWT/service counts or membership/field policy coverage.",
+    "aed690b independent provenance review9/49 and26 metadata refusals qualifies additive enum/runtime distinction. Local native provenance review separately pins exact jose6.2.12 installed80-file inventory and retains FFI vs Intl distinction."
+  ],
+  "instrumentation_limits": [
+    {
+      "path": "tests/runtime/jwt-integration.test.ts",
+      "line": 212,
+      "limit": "Exact ordinary/fresh authority query counter is native SQLite only; PG explicit skip. Selected golden PG observer has a separate receipt."
+    },
+    {
+      "path": "tests/runtime/golden-service-credentials.test.ts",
+      "line": 152,
+      "limit": "Service authority/private+declared credential counts assert only under !postgres."
+    },
+    {
+      "path": "tools/golden_sql_observer.ts",
+      "line": 93,
+      "limit": "Records successful native begin callback and acknowledged commit only; line102 rejects reserve/file/distributed/control expansion. No general transaction rollback/retry or planner/minimum-query proof."
+    },
+    {
+      "path": "tests/runtime/golden-todo-postgres.test.ts",
+      "line": 159,
+      "limit": "Named EXPLAIN index/no-sort/fetch-limit probe with seeded distribution; not blanket planner guarantee."
+    }
+  ],
+  "residual_checks": [
+    {
+      "id": "PG-POLICY-ROLE-FIELD",
+      "claim": "Company-scoped direct/membership roles, admin/regular projections, field narrowing and membership revocation parity",
+      "source_anchors": {
+        "tests/runtime/policy-runtime.test.ts": [
+          9,
+          44,
+          123,
+          157,
+          168,
+          189,
+          199,
+          211,
+          232,
+          246,
+          252
+        ],
+        "tests/runtime/README.md": [
+          134
+        ]
+      },
+      "observed_limit": "This registered suite binds SQLite and seeds native Database only. PG validation-auth-policy covers note ownership/rollback/concurrency, not the company/membership/field contract.",
+      "next_executable_check": "Add native PG adapter path to the existing nine policy cases, register policy-runtime mode, run isolated SQLite and disposable PG against identical seeds, and compare safe status/projection/row state and pre-page scope. Record denied field mutation/write absence and membership revocation on next operation.",
+      "owner": "RM-504",
+      "executed_in_this_audit": false
+    },
+    {
+      "id": "PG-SERVICE-RESTART",
+      "claim": "A declared service key and exchanged bounded token remain coherent across a fresh target process with the same store",
+      "source_anchors": {
+        "tests/runtime/golden-service-credentials.test.ts": [
+          205,
+          213,
+          224
+        ],
+        "tests/runtime/postgres.sh": [
+          46
+        ]
+      },
+      "observed_limit": "PG returns after the initial exchange, before any fresh native child; its passing test count does not qualify restart. SQLite executes the child.",
+      "next_executable_check": "Keep the existing SQLite control, pass the disposable PG URL to an actual fresh generated target child, reuse identical declared/private store and explicit config/signing key, exchange/use old credentials in the child, then verify current status/revocation and exact cleanup. Run golden-service-credentials SQLite and registered PG mode.",
+      "owner": "RM-504",
+      "executed_in_this_audit": false
+    },
+    {
+      "id": "PG-TIME-DAY-PREDICATES",
+      "claim": "23/24/25-hour local-day bounds form correct half-open typed database predicates",
+      "source_anchors": {
+        "tests/runtime/temporal.test.ts": [
+          115,
+          122
+        ],
+        "docs/time-testing-plan.md": [
+          959
+        ],
+        "jadpo/crates/core/src/target.rs": [
+          1460,
+          1548
+        ]
+      },
+      "observed_limit": "Maintained test compares host duration only. No runtime suite uses day_bounds for a DB range predicate; golden PG due_before/keyset assertions do not exercise local-day start/end inclusion.",
+      "next_executable_check": "Use one checked bounded temporal entity/query fixture on both adapters. For each London23/24/25-hour date seed start-1ms,start,end-1ms,end; derive bounds via generated temporal and pass them as typed Instant query parameters. Assert identical start-inclusive/end-exclusive identities and canonical wire values.",
+      "owner": "RM-504",
+      "executed_in_this_audit": false
+    },
+    {
+      "id": "PG-TIME-ROUNDTRIP-FAULTS",
+      "claim": "Typed time values decode without host Date authority, and invalid precision/range/zone/schema ownership fail safely",
+      "source_anchors": {
+        "tests/compile/pass/129_temporal_lifecycle.jadpo": [
+          7,
+          10,
+          11,
+          12,
+          13
+        ],
+        "jadpo/crates/core/src/target.rs": [
+          1406,
+          1412,
+          1417,
+          1422,
+          7330,
+          7334,
+          7339
+        ],
+        "docs/time-testing-plan.md": [
+          973,
+          976,
+          978,
+          980,
+          982
+        ]
+      },
+      "observed_limit": "Compile fixture129 declares Event Instant/Time/lifecycle fields but no maintained native runtime suite imports/builds it. Existing PG golden/lifecycle/dossier proves selected Instant operation timestamps and nullable lifecycle transitions, not a full CalendarDate/Duration/Time roundtrip or corruption matrix.",
+      "next_executable_check": "Extend a checked fixture with supported temporal stored forms and nullable/projection/join/aggregate paths actually generated. Execute UTC-offset/leap-ms/Time-zone/CalendarDate/Duration roundtrips on both adapters; assert caller-inaccessible create/change timestamps and unchanged no-op. Independently seed invalid stored Time zone/object, NULL/schema mismatch, range, and legacy higher-precision/zone-less column drift; observe contained PersistenceFault before authored code. Do not infer Date.toISOString detects native precision lost by the driver.",
+      "owner": "RM-504",
+      "executed_in_this_audit": false
+    },
+    {
+      "id": "HOST-TIME-CLAIM-MATRIX",
+      "claim": "Explicit non-European gap policies and named/structured/friendly formatting claims",
+      "source_anchors": {
+        "tests/runtime/temporal.test.ts": [
+          87,
+          104,
+          115,
+          149,
+          176
+        ],
+        "docs/time-testing-plan.md": [
+          957,
+          966,
+          968,
+          971
+        ]
+      },
+      "observed_limit": "New York covers overlap earlier/later and gap forward only; London covers all rejection/shift policies. Friendly tests cover two minute examples and unsupported locale. No maintained equivalent matrix for named/structured options, threshold/day/DST/fallback cases.",
+      "next_executable_check": "Add finite host controls for New York gap reject/backward and overlap reject; assert named and structured formatting with each declared locale/hour-cycle/zone-name option plus explicit-reference midnight, adjacent-day, DST and absolute-fallback boundaries. Keep host output separate from database evidence; no expansion of accepted locale/zone behavior.",
+      "owner": "RM-504",
+      "executed_in_this_audit": false
+    },
+    {
+      "id": "INTL-RULE-QUALIFICATION",
+      "claim": "Exact runtime timezone/locale data ownership where identical pinned behavior is claimed",
+      "source_anchors": {
+        "jadpo/crates/core/src/target.rs": [
+          1232
+        ],
+        "docs/time-testing-plan.md": [
+          73,
+          1113,
+          1117,
+          1119,
+          1121
+        ]
+      },
+      "observed_limit": "aed metadata correctly attests enum bytes, actual Intl provider, ICU74.2, process.versions.tz unreported and null rule-byte digest. Native FFI ICU78.1/tz2026c is a separate observation and cannot attest Intl rules.",
+      "next_executable_check": "At a supported-host qualification boundary, capture genuine engine/tz/ICU/CLDR reports and verified distribution/data bytes or a supported native attestation that binds the actual Intl implementation. Compare finite timezone transition/locale-format corpus across identically qualified hosts, with mismatch refusal. Until that is possible preserve unreported/null and narrower host-qualified claims; no enum/FFI version substitution.",
+      "owner": "TIME-D16 / supported-host qualification",
+      "executed_in_this_audit": false
+    },
+    {
+      "id": "RM402-DEPENDENCY",
+      "claim": "Public authenticated retry-policy-query-time parity and whole request bounds",
+      "source_anchors": {
+        "docs/transaction-retry-plan.md": [
+          334,
+          345,
+          347,
+          350
+        ],
+        "tests/validation/rm402-rm403-independent-next-prerequisite-audit.json": [
+          1
+        ]
+      },
+      "observed_limit": "Private fresh-authority/native JWT/signed tests support isolated prerequisite leaves; public admission remains closed. Full generated eligibility/effect proof, whole native phase bounds and integrated one-revision/outbox retry trace remain outside the accepted RM504 metadata/PG slices.",
+      "next_executable_check": "Reuse reviewed private native SQLite/PG prerequisite receipts without promoting them. After RM402 author supplies reviewed public generated eligibility and phase evidence, run the actual supported protected graph with native retry abort, fresh authority/policy/time changes, one committed revision/intent and no duplicate external dispatch. Independent phase/source review is required.",
+      "owner": "RM-402 prerequisite",
+      "executed_in_this_audit": false
+    }
+  ],
+  "next_smallest_authorized_slice": "PG-SERVICE-RESTART: one authentic fresh process after exchange; independent parent/root reviews future test leaf. Broader policy/day-bound checks remain queued.",
+  "fresh_gate_followup": {
+    "command": "python3 tools/verify.py --profile full",
+    "limit": "Use fresh compiler/generated targets; record DB/Bun/JWT exact declared+installed bytes and genuine enum/runtime provenance with backend observations. Missing tools are blocked, quick omits PG. Root owns current combined gate. This audit runs no native tests and gives no new pass count."
+  },
+  "prior_evidence_summary": "tests/validation/evidence/rm504-independent-residual-coverage-audit/prior-native-summary.json",
+  "source_inventory": "tests/validation/evidence/rm504-independent-residual-coverage-audit/source-inventory.json",
+  "limits": [
+    "Finite successor matrix for current claimed surfaces, not proof of all28 TIME/TEST acceptance items or whole golden completion.",
+    "Original historical/runtime metadata/raw results retained; no task/release/platform closure and no algorithm, auth authority, configuration or production runtime changes."
+  ],
+  "timing": {
+    "active_minutes": 4.11,
+    "verification_minutes": 0,
+    "outcome": "partial",
+    "scope": "Read-only source/evidence residual audit; no new native executions or task closure."
+  }
+}

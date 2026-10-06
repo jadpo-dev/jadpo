@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-403-20c073113dfb", "task_id": "RM-403", "actor": "scheduler-native-startup-implementation", "actor_kind": "agent", "category": "subsystem", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T15:16:18.516344+00:00", "phase": "planning"}
+{"at": "2026-10-06T15:24:01.907947+00:00", "phase": "implementation", "note": "Independent design approved; inert helper/source exploration was recorded in initial planning interval; compiler earliest-import and native bind integration now"}
+{"at": "2026-10-06T15:35:12.173935+00:00", "phase": "verification", "note": "Maintained native generated ownership controls, synchronous import and actual COMMIT stall; original healthy-shutdown red retained"}
+{"at": "2026-10-06T15:58:03.871300+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-owned-startup/report.json"}

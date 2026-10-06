@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-601-03cc038b5803", "task_id": "RM-601", "actor": "01a10f20-b464-7543-925c-171de6c52598", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 1.5], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T16:18:35.061995+00:00", "phase": "planning"}
+{"at": "2026-10-06T16:18:51.512626+00:00", "phase": "verification", "note": "Fresh combined supported gate after independently approved lexical514 and durableledger3a0f503 source integration; startup correction remains isolated"}
+{"at": "2026-10-06T16:21:56.933855+00:00", "phase": "paused", "note": "Combined supported gate continues independently; root selects RM-504 residual PostgreSQL coverage audit"}
+{"at": "2026-10-06T16:34:09.413304+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm601603-integrated-lexical-ledger/report.json"}

@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "task": "RM-504",
+  "reviewer": "startup_owner_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-504-b1549650facc",
+  "candidate_commit": "aed690b42808c30ba6515bf54f6f5f0d450a9af6",
+  "base_commit": "323201d025a747aeeb66a6377f1a4249454504e1",
+  "status": "bounded_temporal_provenance_metadata_approved",
+  "approved": true,
+  "task_closed": false,
+  "release_equivalent": false,
+  "scope": "Additive emitted compiler zone enumeration and actual or unreported host runtime-rule provenance only; no changed time algorithm, acceptedzones, formatting or runtimeauth.",
+  "findings": [],
+  "compiler": {
+    "before_sha256": "0b42a41baf507cfcffdecbb93e6ba4a6b4b0f1fa4994446bcbbcb5f2874206a8",
+    "after_sha256": "b62034379725f158d8c477b3b7fee95ca350bca2ed9d3eade2d549379861fbca",
+    "preserved_in_independent_capture": true
+  },
+  "source_and_artifact_validation": {
+    "author_archive_members_rehashed": 40,
+    "author_archive_sha256": "6b1d37d447af98e86bd517900ff3141595228e62b8ac5ca09918a77ed48a48c4",
+    "compiler_input_dictionary_pins_verified": 101,
+    "actual_emission_manifest_source_files_verified": 69,
+    "actual_emitted_artifact_bytes_match_manifest": true,
+    "independent_generation": {
+      "results": [
+        {
+          "epoch": "before",
+          "app_sha256": "567a65aeb34606e83b34b0b014ba3541841e9b808f7dbc1ac19dc4bc264ecf41",
+          "identical": true
+        },
+        {
+          "epoch": "after",
+          "app_sha256": "b8890230323dfd5dcd74a7de632fe6669153359aafa1251d7fbd3b80279584d3",
+          "identical": true
+        }
+      ],
+      "metadata_only_difference": true,
+      "metadata_stripped_sha256": "59e7937e00a425754562796e2b8c9564deb1553be0b7111a5ee22c95e13f883a"
+    }
+  },
+  "independent_execution": {
+    "maintained_temporal_tests": 9,
+    "maintained_temporal_assertions": 49,
+    "focused_helper_protocol_tests": 1,
+    "actual_snapshot_field_mutation_or_removal_refusals": 26,
+    "unchanged_actual_native_control": true,
+    "native_observation": {
+      "executable": "/Users/richardwillars/.bun/bin/bun",
+      "platform": "darwin",
+      "architecture": "arm64",
+      "engine": "Bun 1.2.20",
+      "reportedIcu": "74.2",
+      "reportedTimezoneDataVersion": "unreported",
+      "nativeIcu": {
+        "libraryPath": "/usr/lib/libicucore.A.dylib",
+        "releaseVersion": [
+          78,
+          1,
+          0,
+          0
+        ],
+        "timezoneDataVersion": "2026c",
+        "status": 0
+      },
+      "generatedTemporalProvenance": {
+        "tzdb": "IANA 2026c",
+        "tzdbScope": "compiler_zone_enumeration_only",
+        "zoneEnumVersion": "IANA 2026c",
+        "zoneEnumSource": "jadpo/data/iana-zones-2026c.txt",
+        "zoneEnumByteDigest": "sha256:8879d870bf49ac7457c39a4dcecfa35e35de7496a2a7e9d32788c9a67366fb99",
+        "runtimeRuleProvider": "ECMAScript Intl.DateTimeFormat",
+        "runtimeRuleDataVersion": "unreported",
+        "runtimeRuleDataVersionSource": "process.versions.tz",
+        "runtimeRuleDataByteDigest": null,
+        "zoneEnumCount": 419,
+        "defaultLocale": "en-GB",
+        "unsupportedLocale": "fallback_to_default",
+        "localeData": "compiler-owned Intl boundary; declared locales and zones verified at startup",
+        "runtimeIcu": "74.2",
+        "runtimeEngine": "Bun 1.2.20",
+        "timezoneRules": "runtime ICU; version recorded for release pinning"
+      },
+      "generatedImportControl": {
+        "databaseMode": "isolated ephemeral SQLite memory",
+        "observedDriverInitializations": 0
+      },
+      "canonicalZoneControl": "America/Coyhaique"
+    }
+  },
+  "source_conclusions": [
+    "ExactSHA256 uses include_bytes! of same compiler-owned IANAzonefile that supplies accepted enum; no resserialized/normalizedlist digest substituted. zoneEnumSource/version/digest explicitly identify enuminput.",
+    "Legacytzdb field unchanged and explicitly compiler_zone_enumeration_only; enum is distinct from native transitionrules.",
+    "runtimeRuleDataVersion reads only genuine process.versions.tz nonblank string; absence/blank produces unreported. runtimeRuleProvider/source are explicit; ICU/engine reports remain independent; runtime rulebyte digest null.",
+    "NativeFFI loadedlibrary data remains separately named and is never imputed as Intl runtimeRuleDataVersion or rulebyte attestation.",
+    "Freshhelper compares all13 required provenance fields to exactcompiler enuminput and independently collected actualhostreport, refusingmissing/changed values; it does not silently certify newfields from historicalreceipt.",
+    "GeneratedObject.freeze remainsflatimmutablemetadata. Metadata-stripped before/after actualCLI output identical; no arithmetic/zone acceptance/formatter/auth algorithm change.",
+    "Owning TIME implementationrecord documents new distinctions without changing accepted/frozen decisiontable."
+  ],
+  "limits": [
+    "PinnedactualBun1.2.20/macOSarm64 observation only; actualreported timezone-dataversion branch remains unobserved on thishost. Synthetic helper fixture explicitly verifies reportedversion can differfrom enum; it is not nativeversionattestation.",
+    "Snapshotmutation controls modify measured generatedmetadata and exercise strictcomparison; they do not mutate OS ICUrules or claim full native-receipt validation campaign.",
+    "DirectloadedmacOS libraryICU78.1/tz2026c does not establish exact Intl ruleversion or rulebyte equality; runtime byteattestation remainsnull.",
+    "Historicalreceipt files untouched. Currenthelper requires additivefields on freshcompiler epochs; historicalsource/tool receipts remain tied to own earlier versions.",
+    "Author102protocol suite reported and source reviewed; independent scope runs focusedmetadata protocol and maintainednativeTemporal tests. Root freshcombined gate and broadRM504/PGcoverage remainopen.",
+    "Initialindependentcapture omitted7 compiler splitmodules; nativeprobe refusedmissingfile before native observation. ExactGitmanifest69pins corrected, originalfailure retained; no writer source changed."
+  ],
+  "evidence_inventory": "tests/validation/evidence/rm504-independent-temporal-provenance-aed/inventory.json",
+  "timing": {
+    "active_minutes": 4.82,
+    "verification_minutes": 1.53,
+    "blocked_minutes": 5.56,
+    "paused_minutes": 1.45,
+    "elapsed_minutes": 11.83,
+    "outcome": "partial",
+    "scope": "Independent bounded metadata review completed; whole RM504 remains open."
+  }
+}

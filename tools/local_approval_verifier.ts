@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, existsSync, lstatSync, readlinkSync } from 'node:fs';
 import { resolve, relative, join, dirname, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {isLocalConsumptionLedger,LocalLedgerError,type LocalConsumptionLedger} from './local_approval_ledger';
 
 export class LocalApprovalError extends Error { constructor(public readonly code:string) {super(code);} }
 const fail=(code:string):never=>{throw new LocalApprovalError(code);};
@@ -64,7 +65,7 @@ export type NativeInputs={compilerPath:string,compilerSha256:string,compilerWork
 export type Reviewer={identity:string,roles:readonly string[],decisionIds:readonly string[]};
 export type Issuer={identity:string,keyId:string,publicKey:CryptoKey,reviewers:readonly Reviewer[]};
 export type TrustedContext={changeId:string,implementers:readonly string[],now:number,issuers:readonly Issuer[],revokedApprovalIds:ReadonlySet<string>,supersededApprovalIds:ReadonlySet<string>,oneTime:true};
-export type LocalVerifierOptions={native:NativeInputs,dependencyDirectory:string,dependencyFiles:Record<string,string>,context:()=>TrustedContext};
+export type LocalVerifierOptions={native:NativeInputs,dependencyDirectory:string,dependencyFiles:Record<string,string>,context:()=>TrustedContext,ledger?:LocalConsumptionLedger};
 export type LocalDecision={id:string,nativeJson:string,alternatives:readonly string[]};
 export type LocalBinding={subjectDigest:string,beforePolicyDigest:string,afterPolicyDigest:string,beforeGraphDigest:string,afterGraphDigest:string,compilerVersion:string,policySchemaVersion:number,approvalSchemaVersion:number,canonicalization:string,compilerBinaryDigest:string,compilerManifestDigest:string,reviewExportDigest:string};
 export type LocalInspection={export:string,binding:LocalBinding,decisions:readonly LocalDecision[]};
@@ -76,6 +77,9 @@ export const localPayloadBytes=(record:LocalRecord)=>new TextEncoder().encode(ca
 export async function createLocalApprovalVerifier(options:LocalVerifierOptions){
  // Copy configuration: later caller mutation cannot change the selected native pins.
  const native=structuredClone(options.native),dependencyDirectory=options.dependencyDirectory,dependencyFiles=structuredClone(options.dependencyFiles),context=options.context;
+ const ledger=options.ledger;if(ledger!==undefined&&!isLocalConsumptionLedger(ledger))fail('native_ledger_required');
+ const stored=<T>(operation:()=>T):T=>{try{return operation();}catch(error){if(error instanceof LocalLedgerError)fail(error.code);throw error;}};
+ const replayScope=ledger?.replayScope??'test_verifier_instance_memory_only';
  for(const value of [native.compilerSha256,native.beforeSourceDigest,native.beforeStateDigest,native.afterSourceDigest,native.afterStateDigest])digest(value);
  if(Object.keys(dependencyFiles).length===0)fail('missing_dependency_pin');for(const pin of Object.values(dependencyFiles))digest(pin);
  const dependencyGuard=()=>{const compilerWorkspace=strictPath(native.compilerWorkspace,'compiler_symlink'),selectedDependency=strictPath(dependencyDirectory,'dependency_symlink');const runtime=join(compilerWorkspace,'crates/core/src/runtime/jwt');for(const name of ['package.json','bun.lock'])if(!readFileSync(strictPath(join(runtime,name),'compiler_symlink')).equals(readFileSync(strictPath(join(selectedDependency,name),'dependency_symlink'))))fail('dependency_declaration_mismatch');
@@ -88,6 +92,7 @@ export async function createLocalApprovalVerifier(options:LocalVerifierOptions){
  const jose=await import(pathToFileURL(strictPath(join(selectedDependency,'node_modules/jose/dist/webapi/index.js'),'dependency_symlink')).href);
  dependencyGuard();
  const consumed=new Set<string>();
+ const wasConsumed=(id:string)=>ledger?stored(()=>ledger.has(id)):consumed.has(id);
  const projectFiles=(directory:string)=>{directory=strictPath(directory,'project_symlink');if(!lstatSync(directory).isDirectory())fail('directory_projects_required');const result:Record<string,string>={};
   const walk=(dir:string)=>{for(const entry of readdirSync(dir,{withFileTypes:true})){if(entry.isDirectory()&&entry.name==='build')continue;const path=join(dir,entry.name);if(entry.isSymbolicLink())fail('project_symlink');if(entry.isDirectory())walk(path);else if(entry.isFile()&&entry.name.endsWith('.jadpo'))result[relative(directory,path).replaceAll('\\','/')]=hash(readFileSync(path));}};walk(directory);return result;};
  const nativePaths=()=>({compilerPath:strictPath(native.compilerPath,'compiler_symlink'),compilerWorkspace:strictPath(native.compilerWorkspace,'compiler_symlink'),beforePath:strictPath(native.beforePath,'project_symlink'),afterPath:strictPath(native.afterPath,'project_symlink')});
@@ -119,7 +124,7 @@ export async function createLocalApprovalVerifier(options:LocalVerifierOptions){
   async verify(reviewExport:string,envelopeJson:string){
    const current=inspect();if(reviewExport!==current.export)fail('review_surface_nonconformance');const ctx=snapshot();
    const envelope=parseStrict(envelopeJson).value;keys(envelope,['schema_version','kind','records']);if(envelope.schema_version!==1||envelope.kind!=='local_test_approval_set'||!Array.isArray(envelope.records))fail('closed_shape');
-   if(!ctx.issuers.length&&envelope.records.length===0)return Object.freeze({status:'local_inspection_only_non_releasable',release_authority:false,consumed:0,replay_scope:'test_verifier_instance_memory_only'});
+   if(!ctx.issuers.length&&envelope.records.length===0)return Object.freeze({status:'local_inspection_only_non_releasable',release_authority:false,consumed:0,replay_scope:replayScope});
    const records:LocalRecord[]=[],ids=new Set<string>(),decisionIds=new Set<string>();
    for(const compact of envelope.records){if(typeof compact!=='string'||compact.length>4*1024*1024||compact.split('.').length!==3)fail('malformed_jws');const parts=compact.split('.');
     const decode=(part:string)=>{if(!/^[A-Za-z0-9_-]+$/.test(part))fail('malformed_jws');const bytes=Buffer.from(part,'base64url');if(bytes.toString('base64url')!==part)fail('malformed_jws');return bytes;};
@@ -129,7 +134,7 @@ export async function createLocalApprovalVerifier(options:LocalVerifierOptions){
     const payload=text(verified.payload),record=parseStrict(payload).value as LocalRecord;keys(record,recordKeys);if(canonicalLocal(record)!==payload)fail('noncanonical_local_payload');
     if(record.schema_version!==1||record.kind!=='local_test_approval'||record.release_authority!==false)fail('invalid_local_scope');keys(record.binding,bindingKeys);
     if(record.issuer!==issuer.identity)fail('untrusted_issuer');if(record.change_id!==ctx.changeId)fail('change_mismatch');
-    const approval=nonempty(record.approval_id);if(ids.has(approval))fail('duplicate_approval');ids.add(approval);if(consumed.has(approval))fail('consumed_approval');
+    const approval=nonempty(record.approval_id);if(ids.has(approval))fail('duplicate_approval');ids.add(approval);if(wasConsumed(approval))fail('consumed_approval');
     if(ctx.revokedApprovalIds.has(approval)||ctx.supersededApprovalIds.has(approval))fail('inactive_approval');
     integer(record.issued_at);if(record.issued_at>ctx.now)fail('inactive_approval');if(record.expires_at!==null&&(integer(record.expires_at)<=ctx.now||record.expires_at<=record.issued_at))fail('inactive_approval');
     if(record.supersedes!==null&&(!ctx.supersededApprovalIds.has(nonempty(record.supersedes))||record.supersedes===approval))fail('invalid_supersession');
@@ -142,8 +147,9 @@ export async function createLocalApprovalVerifier(options:LocalVerifierOptions){
    // Recheck trusted time/entitlements and native bytes after every asynchronous signature
    // verification. No await lies between final replay checks and atomic set insertion.
    const finalContext=snapshot();if(!contextSame(ctx,finalContext))fail('trusted_context_changed');const finalNative=inspect();if(finalNative.export!==current.export)fail('native_subject_changed');
-   if(records.some(r=>consumed.has(r.approval_id)))fail('consumed_approval');for(const record of records)consumed.add(record.approval_id);
-   return Object.freeze({status:'local_test_non_releasable',release_authority:false,consumed:records.length,replay_scope:'test_verifier_instance_memory_only'});
-  },get consumedCount(){return consumed.size;}
+   if(ledger)stored(()=>ledger.consume(records,finalContext.now,localPayloadBytes));
+   else {if(records.some(r=>consumed.has(r.approval_id)))fail('consumed_approval');for(const record of records)consumed.add(record.approval_id);}
+   return Object.freeze({status:'local_test_non_releasable',release_authority:false,consumed:records.length,replay_scope:replayScope});
+  },get consumedCount(){return ledger?stored(()=>ledger.consumedCount):consumed.size;}
  });
 }

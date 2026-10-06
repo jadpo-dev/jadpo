@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-403-a6672818b361", "task_id": "RM-403", "actor": "scheduler-native-startup-completion", "actor_kind": "agent", "category": "subsystem", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T16:10:56.000689+00:00", "phase": "planning"}
+{"at": "2026-10-06T16:15:08.034534+00:00", "phase": "implementation", "note": "Independent exact4bf finalCOMPLETE race; closed prepared/COMPLETE beforebind +READY afteractualpublication, originaltimer retained; no stdout authority/reset"}
+{"at": "2026-10-06T16:19:17.265969+00:00", "phase": "verification", "note": "Healthy nativeBun/Node/library3/22 passed; running actualdelayedfinalIPC/fakequalifyingready +wrongsource/extra/staleowner beforebothadapterfullsuite"}
+{"at": "2026-10-06T16:26:59.064590+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-startup-final-handoff/report.json"}

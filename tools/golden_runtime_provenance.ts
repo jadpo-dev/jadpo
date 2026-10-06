@@ -21,7 +21,8 @@ try {
   if (status[0] !== 0 || !/^\d{4}[a-z]+$/u.test(timezoneDataVersion)) throw new Error("Native ICU timezone version probe failed");
   console.log(JSON.stringify({
     executable: process.execPath, platform: process.platform, architecture: process.arch,
-    engine: `Bun ${Bun.version}`, reportedIcu: process.versions.icu,
+    engine: `Bun ${Bun.version}`, reportedIcu: process.versions.icu ?? "unreported",
+    reportedTimezoneDataVersion: typeof process.versions.tz === "string" && process.versions.tz.trim() ? process.versions.tz : "unreported",
     nativeIcu: { libraryPath, releaseVersion: Array.from(version), timezoneDataVersion, status: status[0] },
     generatedTemporalProvenance: temporalProvenance,
     generatedImportControl: { databaseMode: "isolated ephemeral SQLite memory", observedDriverInitializations: driverInitializationCount() },

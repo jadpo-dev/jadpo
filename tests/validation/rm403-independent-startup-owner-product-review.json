@@ -1,0 +1,329 @@
+{
+  "schema_version": 1,
+  "task": "RM-403",
+  "reviewer": "startup_owner_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-403-990d3162ac54",
+  "candidate_commit": "087f2fd0344aa701489060b4bd8bbd7ec30c5f5b",
+  "product_commit": "7c21308d1092a43c7060db3bc223abb71afbf1a9",
+  "author_evidence_commit": "5fb57533debbba0ab5e23d5e0125fce06ab77d73",
+  "cli_sha256": "342e0a1ca1d4e96d0288c0be1196b520323167a99f04a428b69a38fa7b7f5b9a",
+  "status": "bounded_initial_native_startup_product_approved",
+  "approved": true,
+  "task_closed": false,
+  "release_equivalent": false,
+  "scope": "Compiler-owned initial native main startup only; later request/query/recovery/SQLite synchronous lifetime, parent death, platform and combined integration gates remain open.",
+  "source_inventory_members_rehashed": 10,
+  "independent_generation": [
+    {
+      "path": "examples/persistence-seed/build/target/app.ts",
+      "author_path": "build/validation/rm403-final-handoff-generated/build/target/app.ts",
+      "sha256": "716657334dc76c3911102d6f0d6da36a9419087cf62fbf05e22898e892bf6b80",
+      "identical": true
+    },
+    {
+      "path": "examples/persistence-seed/build/target/persistence.ts",
+      "author_path": "build/validation/rm403-final-handoff-generated/build/target/persistence.ts",
+      "sha256": "b3683c2e5fcf5b9bb7e29b19ce6865bf6dbb5711103e552ef9566f1ae08c456c",
+      "identical": true
+    },
+    {
+      "path": "examples/persistence-seed/build/target/startup-owner.ts",
+      "author_path": "build/validation/rm403-final-handoff-generated/build/target/startup-owner.ts",
+      "sha256": "9b0e702bcce13f7a3fbb96f9e14cc012481626dd27f5c6aa4576846a462c4803",
+      "identical": true
+    },
+    {
+      "path": "examples/persistence-seed/build/sql/sqlite/schema.sql",
+      "author_path": "build/validation/rm403-final-handoff-generated/build/sql/sqlite/schema.sql",
+      "sha256": "e078d18c72fb444ab8349a68a1e1746fd8a5c008ce2b74c95ceedbc5ab2d3789",
+      "identical": true
+    },
+    {
+      "path": "examples/persistence-seed/build/sql/postgres/schema.sql",
+      "author_path": "build/validation/rm403-final-handoff-generated/build/sql/postgres/schema.sql",
+      "sha256": "e078d18c72fb444ab8349a68a1e1746fd8a5c008ce2b74c95ceedbc5ab2d3789",
+      "identical": true
+    }
+  ],
+  "source_conclusions": [
+    "First emitted dependency owns native parent before persistence/service/auth dependency evaluation; parent awaits actual serving child exit for whole lifetime and never repeats initialization.",
+    "Exact native main path, source/owner/shape/phase IPC, earlier child BOOT plus parent remaining cap and original parent10s deadline are preserved; no env-only bypass, crossprocess absolute clock or perphase replenishment.",
+    "Closed PREPARED/COMPLETE occurs before both listener branches; fresh childcap checks immediately precede app and deployment binds and publication. Actual listener acknowledgements precede private finalREADY; parent clears timer only for exact READY owner/source/phase packet.",
+    "Ready/live stdout is bounded observation buffered until actual privateREADY; forged source-valid ready line cannot clear deadline or authorize startup.",
+    "Expiry requests nativeSIGKILL and awaits actual exited before parent result. No replacement/replay or rollback inferred from unknown committed schema.",
+    "Normal nativeSIGTERM yields143 with no startup fault and both ports closed; imported/library exports and null deadline retain no-spawn/no-bind behavior; realpath symlink main remains supervised.",
+    "Safe bounded diagnostics suppress raw static/native text and extra fields, retain declaration-qualified config diagnostics and typed audits. Existing recovery/library initialization clocks remain scoped."
+  ],
+  "native_results": {
+    "sqlite": {
+      "passed": 20,
+      "skipped_postgres": 1,
+      "assertions": 165
+    },
+    "postgres": {
+      "passed": 21,
+      "assertions": 175,
+      "held_commit": {
+        "kind": "generated_owned_startup_commit_probe",
+        "bun": "1.2.20",
+        "policyMs": 10000,
+        "elapsedMs": 10042.279958000001,
+        "connections": 10,
+        "closedConnections": 10,
+        "allBackendsRemaining": 0,
+        "ackObserved": true,
+        "commitsForwarded": 1,
+        "before": {
+          "listenerStarts": 0,
+          "childStillOwns": true,
+          "clientSocketClosed": false,
+          "schemaCommitted": true
+        },
+        "expiryObserved": false,
+        "terminationExit": 1,
+        "terminationAcknowledged": true,
+        "clientCloseObserved": true,
+        "backendRemaining": 0,
+        "listenerStarts": 0,
+        "publishedReady": false,
+        "startupFaultReported": true,
+        "source": "fresh generated persistence-seed fixture",
+        "scope": "Compiler-owned initial native startup termination; no request/recovery bound"
+      }
+    },
+    "final_handoff": [
+      {
+        "kind": "owned_final_handoff",
+        "mode": "held-complete",
+        "elapsedMs": 10040.543458,
+        "polls": 954,
+        "bindings": 0,
+        "observations": [
+          {
+            "pid": 42440,
+            "phase": "preload"
+          },
+          {
+            "pid": 42442,
+            "phase": "preload"
+          },
+          {
+            "pid": 42442,
+            "phase": "complete_held"
+          }
+        ],
+        "exitAcknowledged": true
+      },
+      {
+        "kind": "owned_final_handoff",
+        "mode": "held-complete-node",
+        "elapsedMs": 10041.426209,
+        "polls": 936,
+        "bindings": 0,
+        "observations": [
+          {
+            "pid": 43021,
+            "phase": "preload"
+          },
+          {
+            "pid": 43023,
+            "phase": "preload"
+          },
+          {
+            "pid": 43023,
+            "phase": "complete_held"
+          }
+        ],
+        "exitAcknowledged": true
+      },
+      {
+        "kind": "owned_final_handoff",
+        "mode": "held-ready",
+        "elapsedMs": 10039.784832999998,
+        "polls": 900,
+        "bindings": 890,
+        "observations": [
+          {
+            "pid": 43955,
+            "phase": "preload"
+          },
+          {
+            "pid": 43957,
+            "phase": "preload"
+          },
+          {
+            "pid": 43957,
+            "phase": "bun_bind"
+          },
+          {
+            "pid": 43957,
+            "phase": "bun_bind"
+          },
+          {
+            "pid": 43957,
+            "phase": "ready_send"
+          }
+        ],
+        "exitAcknowledged": true
+      },
+      {
+        "kind": "owned_final_handoff",
+        "mode": "wrong-ready-source",
+        "elapsedMs": 137.8050000000003,
+        "polls": 12,
+        "bindings": 0,
+        "observations": [
+          {
+            "pid": 44587,
+            "phase": "preload"
+          },
+          {
+            "pid": 44589,
+            "phase": "preload"
+          },
+          {
+            "pid": 44589,
+            "phase": "bun_bind"
+          },
+          {
+            "pid": 44589,
+            "phase": "bun_bind"
+          },
+          {
+            "pid": 44589,
+            "phase": "ready_send"
+          }
+        ],
+        "exitAcknowledged": true
+      },
+      {
+        "kind": "owned_final_handoff",
+        "mode": "extra-ready-field",
+        "elapsedMs": 135.83033299999806,
+        "polls": 12,
+        "bindings": 0,
+        "observations": [
+          {
+            "pid": 44590,
+            "phase": "preload"
+          },
+          {
+            "pid": 44592,
+            "phase": "preload"
+          },
+          {
+            "pid": 44592,
+            "phase": "bun_bind"
+          },
+          {
+            "pid": 44592,
+            "phase": "bun_bind"
+          },
+          {
+            "pid": 44592,
+            "phase": "ready_send"
+          }
+        ],
+        "exitAcknowledged": true
+      },
+      {
+        "kind": "owned_final_handoff",
+        "mode": "stale-ready-owner",
+        "elapsedMs": 137.04125000000204,
+        "polls": 12,
+        "bindings": 0,
+        "observations": [
+          {
+            "pid": 44593,
+            "phase": "preload"
+          },
+          {
+            "pid": 44595,
+            "phase": "preload"
+          },
+          {
+            "pid": 44595,
+            "phase": "bun_bind"
+          },
+          {
+            "pid": 44595,
+            "phase": "bun_bind"
+          },
+          {
+            "pid": 44595,
+            "phase": "ready_send"
+          }
+        ],
+        "exitAcknowledged": true
+      }
+    ],
+    "independent_child_bind_observer": {
+      "kind": "generated_owned_startup_commit_probe",
+      "bun": "1.2.20",
+      "policyMs": 10000,
+      "elapsedMs": 10034.716209,
+      "connections": 10,
+      "closedConnections": 10,
+      "allBackendsRemaining": 0,
+      "ackObserved": true,
+      "commitsForwarded": 1,
+      "before": {
+        "listenerStarts": 0,
+        "childStillOwns": true,
+        "clientSocketClosed": false,
+        "schemaCommitted": true
+      },
+      "expiryObserved": false,
+      "terminationExit": 1,
+      "terminationAcknowledged": true,
+      "observerPids": [
+        44239,
+        44240
+      ],
+      "childPid": 44239,
+      "clientCloseObserved": true,
+      "backendRemaining": 0,
+      "listenerStarts": 0,
+      "publishedReady": false,
+      "startupFaultReported": true,
+      "source": "fresh generated persistence-seed fixture",
+      "scope": "Compiler-owned initial native startup termination; no request/recovery bound"
+    },
+    "unchanged_original_COMPLETE_reproduction": {
+      "kind": "delayed_final_complete",
+      "elapsedMs": 10043.012958,
+      "exit": 1,
+      "stdout": "",
+      "stderr": "{\"schemaVersion\":1,\"kind\":\"operational_log_event\",\"eventName\":\"operation.failed\",\"classification\":\"RUNTIME_STARTUP_FAILED\",\"requestId\":\"startup\",\"traceId\":null,\"semanticOperationId\":\"runtime:start\",\"sourceRevision\":\"src_5e6ea6971d22ccbf\",\"attributes\":{}}\n"
+    }
+  },
+  "findings": [],
+  "resolved_findings": [
+    {
+      "priority": "P1",
+      "original_commit": "4bf0e1a1355b94f23727aabe1ae9f739cf77d63d",
+      "finding": "Premature BOUND completion canceled startup budget before COMPLETE consumption and lost safe fault.",
+      "original_evidence": "tests/validation/evidence/rm403-independent-startup-owner-4bf/review.json",
+      "resolution": "Final closed READY IPC acknowledgement retains original parent deadline; PREPARED/COMPLETE moved beforebind; original unchanged native reproduction now10.043s/exited1/safe startup fault/no publicready."
+    }
+  ],
+  "limits": [
+    "Pinned Bun1.2.20/macOSarm64/PostgreSQL16.3 native observation; node:http branch under Bun, no Node.js engine qualification.",
+    "Held READY occurs after fatal validation and COMPLETE consumption with listeners bound; they remain owned until originaldeadline cleanup. Parent readiness publication remains withheld. No before-validation listener/readiness is observed.",
+    "Independent COMMIT observer-only preload reaches both actual supervisor and servingchild PIDs; generated source untouched. Final handoff preloads deliberately delay/mutate IPC for labelled fault controls.",
+    "Measured10000ms policy includes scheduler and native exit overhead, not exact real-time guarantee.",
+    "Author preflight/core/readiness matrix read and source-bound; independent replay scope focused owning startup. Fresh combined integration supported gate remains root responsibility.",
+    "Original4bf revision-required review, sandbox bind/shared-memory failures, author WIP/test-only observer cleanup failures retained without rewriting; bounded native escalations approved."
+  ],
+  "evidence_inventory": "tests/validation/evidence/rm403-independent-startup-owner-087/inventory.json",
+  "timing": {
+    "active_minutes": 10.4,
+    "verification_minutes": 6.62,
+    "blocked_minutes": 25.92,
+    "elapsed_minutes": 36.32,
+    "outcome": "partial",
+    "scope": "Completed independent bounded startup review, task acceptance remains open."
+  }
+}

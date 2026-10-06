@@ -1109,3 +1109,15 @@ ICU/engine provenance. Route/job activation, service/auth fakes, crash/retry
 checkpoints, live PostgreSQL, and identical pinned timezone-rule evidence remain
 outside this core until their owning AUTH/SERVICE/ASYNC adapters or external
 test environment exist.
+
+The emitted temporal provenance distinguishes the compiler's closed zone
+identifier enumeration from runtime transition rules. Its legacy `tzdb` label
+is explicitly scoped to that enum; the enum has its own version and exact source
+byte digest. `Intl.DateTimeFormat` supplies runtime rules, with the genuine
+`process.versions.tz` value recorded only when the host reports it, otherwise
+`unreported`. Engine and ICU release reports remain separate, and runtime rule
+bytes have no claimed digest. This additive metadata does not change zone
+acceptance, arithmetic, formatting or the accepted TIME decisions. Identical
+pinned timezone-rule evidence remains outside this checkpoint.
+
+The [scoped implementation evidence](../tests/validation/evidence/rm504-temporal-provenance-distinction/report.json) records the actual engine reports, source/enum/compiler pins, metadata-only emitted-byte comparison and independent-review status.

@@ -255,6 +255,8 @@ The initial implementation should use a protected code-review/CI attestation
 provider with authenticated identities and branch/environment protection. The
 project does not invent its own cryptography.
 
+**Local validation checkpoint, 2026-10-06:** The reviewed native JOSE/canonical-v5 verifier enforces exact subjects, versions, authority separation, expiry and the whole decision set. Its optional caller-owned SQLite ledger consumes that set atomically and rejects durable replay, lock failures and unexpected main/TEMP schema; default memory consumption remains per verifier instance. The [independent native ledger review](../tests/validation/evidence/rm603-independent-native-ledger-case-review/corrected-review.json) passes 32 tests/271 assertions, and the [combined supported gate](../tests/validation/evidence/rm403504-integrated-startup-temporal/report.json) passes 80/80. Every local result remains non-releasable. Caller-owned storage and cryptographic/source digests do not supply a protected issuer, authenticated production reviewer or build attestation; RM-604 still owns that release authority, and whole RM-603 retains its canonical-artifact prerequisite.
+
 ## 5. Review surface
 
 The primary surface is an intent-first behavioural review, not a shortened code
