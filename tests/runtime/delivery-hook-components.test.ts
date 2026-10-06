@@ -531,7 +531,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
   // Explicit native activation test profile; per-delivery golden approval does
   // not choose a 500-call activation profile.
   const profile = Object.freeze({ executionMs: 120_000, leaseMs: 90_000 });
-  const activate = (proof: unknown, at = scanTime) => app.runDeliveryScheduleActivation(bindingIdentity, proof, profile, at);
+  const activate = (proof: unknown, at = scanTime) => app.runDeliveryScheduleActivation(bindingIdentity, proof, profile, profile, at);
   const activationRows = () => rows('SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [bindingIdentity]);
   async function fixture() {
     await clearScanTodos();
@@ -574,7 +574,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     }
     throw new Error("generated worker did not reach the durable checkpoint");
   }
-  const runWorker = (f: Awaited<ReturnType<typeof fixture>>, endpoint: string) => result(worker(f, endpoint, 'console.log(JSON.stringify(await app.runDeliveryScheduleActivation(binding,proof,profile,at)));process.exit(0);'));
+  const runWorker = (f: Awaited<ReturnType<typeof fixture>>, endpoint: string) => result(worker(f, endpoint, 'console.log(JSON.stringify(await app.runDeliveryScheduleActivation(binding,proof,profile,profile,at)));process.exit(0);'));
   test("generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick", async () => {
     const f = await fixture();
     await provider(async calls => {
@@ -592,13 +592,30 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const f = await fixture();
     await provider(async calls => {
       await expect(activate({})).rejects.toMatchObject({ code: "invalid_credentials" });
-      await expect(app.runDeliveryScheduleActivation("foreign-binding", f.proof, profile, scanTime)).rejects.toMatchObject({ code: "authority_invariant" });
+      await expect(app.runDeliveryScheduleActivation("foreign-binding", f.proof, profile, profile, scanTime)).rejects.toMatchObject({ code: "authority_invariant" });
       for (const invalid of [undefined, null, {}, { executionMs: 0, leaseMs: 1 }, { executionMs: 10, leaseMs: 20 }, { ...profile, extra: true }]) {
-        await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, invalid, scanTime)).rejects.toBeDefined();
+        await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, invalid, profile, scanTime)).rejects.toBeDefined();
+        await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, profile, invalid, scanTime)).rejects.toBeDefined();
       }
       expect(calls).toHaveLength(0); expect(await activationRows()).toEqual([]); expect(await intentRows(f.value.id)).toEqual([]);
     });
     await expect(persistence.delivery_activation_clock()).rejects.toMatchObject({ operation: "delivery.transaction_required" });
+  });
+  test("explicit activation and golden per-delivery profiles persist separately with no fallback or budget reset", async () => {
+    const f = await fixture(), activation = { executionMs: 10_000, leaseMs: 5_000 }, delivery = { executionMs: 60_000, leaseMs: 40_000 };
+    await provider(async calls => {
+      expect(await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, activation, delivery, scanTime)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1);
+      const ledger = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [calls[0].body.idempotency_key]))[0];
+      expect(Number(ledger.execution_ms)).toBe(60_000); expect(Number(ledger.lease_ms)).toBe(40_000);
+      expect(Number(ledger.max_invocations)).toBe(3); expect(Number(ledger.lifetime_ms)).toBe(3_600_000); expect(Number(ledger.invocations)).toBe(1);
+    }, async () => {
+      const row = (await activationRows())[0], id = JSON.parse(row.page).intentIds[0];
+      const ledger = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [id]))[0];
+      expect(Number(row.lease_ms)).toBe(5_000);
+      expect(Number(ledger.execution_ms)).toBe(60_000); expect(Number(ledger.lease_ms)).toBe(40_000);
+      expect(row.execution_deadline < ledger.execution_deadline).toBe(true);
+    });
   });
   test("owning page COMMIT failure leaves no intent/activation and cannot dispatch", async () => {
     const f = await fixture();
@@ -640,7 +657,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const short = { executionMs: 5_000, leaseMs: 1_500 };
     let initial: any;
     await provider(async calls => {
-      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, short, scanTime);
+      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, short, short, scanTime);
       expect(result).toEqual({ status: "finished", selected: 4, attempted: 4, continued: false });
       expect(calls).toHaveLength(4);
       expect(new Set(calls.map(call => call.body.idempotency_key)).size).toBe(4);
@@ -661,7 +678,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const f = await fixture(); for (let i = 0; i < 5; i++) await client.create_Todo(todo());
     let initial: any;
     await provider(async calls => {
-      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, { executionMs: 1_500, leaseMs: 1_000 }, scanTime);
+      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, { executionMs: 1_500, leaseMs: 1_000 }, { executionMs: 60_000, leaseMs: 40_000 }, scanTime);
       expect(result.status).toBe("partial"); expect(result.selected).toBe(6); expect(result.attempted < 6).toBe(true);
       expect(calls.length < 6).toBe(true);
       const row = (await activationRows())[0];
@@ -724,7 +741,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const later = todo(); await client.create_Todo(later);
     const resumedAt = "2026-10-08T08:01:00.000Z";
     await provider(async (calls, endpoint) => {
-      const code = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});adapter.setReferenceMailEndpointForTesting(${JSON.stringify(endpoint)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(resumedAt)});console.log(JSON.stringify(result));process.exit(0);`;
+      const code = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});adapter.setReferenceMailEndpointForTesting(${JSON.stringify(endpoint)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(profile)},${JSON.stringify(resumedAt)});console.log(JSON.stringify(result));process.exit(0);`;
       const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", code], { env: { ...Bun.env, NODE_ENV: "test", DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdout: "pipe", stderr: "pipe" });
       const [out, err, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
       expect(exit, err).toBe(0); expect(JSON.parse(out.trim().split("\n").at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
