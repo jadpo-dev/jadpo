@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-402-a2415974d94e", "task_id": "RM-402", "actor": "startup_owner_review", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 1.5], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T19:20:15.481464+00:00", "phase": "planning"}
+{"at": "2026-10-06T19:22:23.991525+00:00", "phase": "review", "note": "Native full suites and four material controls completed; save exact different-author review"}
+{"at": "2026-10-06T19:23:21.692090+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm402-protected-retry-admission-plan/exit-matrix/second-leaf-independent-native-review.json"}
