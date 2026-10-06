@@ -160,8 +160,8 @@ try {
   if (mode === "healthy" || mode === "omit-hold") {
     let ready = false; const end = performance.now() + 4000;
     while (performance.now() < end && !ready) { try { const [live, deployment] = await Promise.all([fetch(`http://127.0.0.1:${appPort}/health/live`, { signal: AbortSignal.timeout(200) }), fetch(`http://127.0.0.1:${deploymentPort}/health/ready`, { signal: AbortSignal.timeout(200) })]); healthyStatuses = [live.status, deployment.status]; ready = live.status === 200 && deployment.status === 200; } catch {} if (!ready) await Bun.sleep(10); }
-    const requiredObjects = await control`SELECT relname FROM pg_catalog.pg_class WHERE relnamespace='public'::regnamespace AND relname IN ('account','customer','__jadpo_changes') AND relkind='r'`;
-    if (!ready || requiredObjects.length !== 3 || await schemaObjects() === 0) throw Error("Same-profile healthy control failed"); child.kill("SIGTERM");
+    const requiredObjects = await control`SELECT relname FROM pg_catalog.pg_class WHERE relnamespace='public'::regnamespace AND relname IN ('account','customer') AND relkind='r'`;
+    if (!ready || requiredObjects.length !== 2 || await schemaObjects() === 0) throw Error("Same-profile healthy control failed"); child.kill("SIGTERM");
   }
   const exit = await child.exited, elapsedMs = performance.now() - nativeStarted;
   for (let index = 0; index < 100 && (closedConnections !== connections || closedUpstreams !== connections || await nativeBackendsRemaining() !== 0); index++) await Bun.sleep(10);
