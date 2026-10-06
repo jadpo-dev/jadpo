@@ -7,9 +7,20 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-002", "CREATE-004", "READ-002", "READ-003", "LIST-004", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-004", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
+const contract = JSON.parse(readFileSync(contractPath, "utf8"));
+const nativeDate = globalThis.Date;
+let clockNow = nativeDate.parse(contract.clock);
+if (!Number.isFinite(clockNow)) throw new Error("Missing frozen fixture clock");
+// Existing runtime suites use the same controlled Date seam. Only time reads
+// change; real handlers, SQL, authentication and generated validators execute.
+globalThis.Date = new Proxy(nativeDate, {
+  construct(target, arguments_) { return Reflect.construct(target, arguments_.length ? arguments_ : [clockNow]); },
+  apply() { return new nativeDate(clockNow).toString(); },
+  get(target, property) { return property === "now" ? () => clockNow : Reflect.get(target, property); },
+});
 const prototype = Database.prototype as any;
 const originalPrepare = prototype.prepare;
 const originalExec = prototype.exec;
@@ -27,6 +38,7 @@ prototype.prepare = function(sql: string, ...options: unknown[]) {
 if (backend === "sqlite") { Bun.env.SQLITE_PATH = join(project, "checkpoint.sqlite"); delete Bun.env.DATABASE_URL; }
 else { if (!Bun.env.DATABASE_URL) throw new Error("Missing isolated PostgreSQL URL"); delete Bun.env.SQLITE_PATH; }
 const app = await import(pathToFileURL(join(project, "build/target/app.ts")).href);
+const routes = JSON.parse(readFileSync(join(project, "build/inventory/routes.json"), "utf8")).routes;
 const db = backend === "sqlite" ? new Database(Bun.env.SQLITE_PATH, { strict: true }) : undefined;
 const pg = backend === "postgres" ? new SQL({ url: Bun.env.DATABASE_URL!, prepare: false }) : undefined;
 async function execute(sql: string, values: unknown[] = []) {
@@ -66,6 +78,14 @@ async function seedTodo(id: string, owner: string, dueAt: string | null = null) 
   const createdAt = "2026-01-15T11:00:00Z";
   await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, NULL)', [id, owner, "original fixture title", "open", dueAt === null ? null : pg ? dueAt : Date.parse(dueAt), pg ? createdAt : Date.parse(createdAt)]);
 }
+async function validateOutput(request: any, reply: any) {
+  const route = routes.find((route: any) => route.method === request.method && new RegExp("^" + route.path.replace(/\{[^}]+\}/gu, "[^/]+") + "$", "u").test(request.path));
+  if (!route?.output) throw new Error("Missing generated route output");
+  const validator = `validate_${route.output}`;
+  if (typeof app[validator] !== "function") throw new Error("Missing exported generated output validator");
+  try { raw.push({ outputValidation: { route: route.route, schema: route.output, validator, accepted: true, validatedBody: app[validator](reply.body, "checkpoint.response") } }); }
+  catch { raw.push({ outputValidation: { route: route.route, schema: route.output, validator, accepted: false } }); }
+}
 async function send(request: any) {
   const headers: Record<string, string> = {};
   const auth = Array.isArray(request.auth) ? request.auth : [request.auth];
@@ -78,25 +98,26 @@ async function send(request: any) {
   let body: any;
   try {
     response = await fetch(new URL(path, server.url), { method: request.method, headers, ...(request.json === undefined ? {} : { body: JSON.stringify(request.json) }) });
-    body = await response.json();
+    const text = await response.text();
+    body = text.length ? JSON.parse(text) : null;
   } finally { endSqlObservation(); }
   const authenticationAttempts = authenticationAttemptCount();
-  const captured = { method: request.method, path, auth: request.auth ?? null, requestJson: request.json ?? null, status: response!.status, body, statements, authenticationAttempts };
+  const captured = { method: request.method, path, auth: request.auth ?? null, requestJson: request.json ?? null, at: new Date(clockNow).toISOString(), status: response!.status, body, statements, authenticationAttempts };
   if (secrets.some(secret => JSON.stringify(captured).includes(secret))) throw new Error("Unsafe raw observation refused");
   raw.push(captured);
   return { status: response!.status, code: body?.error?.code, body, databaseQueries: statements.length, authenticationAttempts, writes: statements.filter(row => ["INSERT", "UPDATE", "DELETE", "REPLACE"].includes(row.operation)).length };
 }
 const results: any[] = [];
 try {
-  const contract = JSON.parse(readFileSync(contractPath, "utf8"));
   for (const case_ of contract.cases.filter((case_: any) => supported.includes(case_.id))) {
     if (case_.fixtureVariants || case_.followUps) throw new Error("Unsupported scenario extension");
     const start = raw.length;
     try {
     await reset();
-    if (case_.id.startsWith("PATCH-")) {
+    if (case_.id.startsWith("PATCH-") || ["READ-001", "DELETE-001"].includes(case_.id)) {
       const id = case_.id === "PATCH-004" ? t2 : t1;
-      await seedTodo(id, case_.id === "PATCH-004" ? bob : alice, ["PATCH-001", "PATCH-002"].includes(case_.id) ? "2026-02-01T00:00:00Z" : null);
+      await seedTodo(id, case_.id === "PATCH-004" ? bob : alice, ["PATCH-001", "PATCH-002", "PATCH-005"].includes(case_.id) ? "2026-02-01T00:00:00Z" : null);
+      if (case_.id === "PATCH-005") await execute('UPDATE todo SET reminder_sent_at = $1 WHERE id = $2', [pg ? "2026-01-15T11:59:00Z" : Date.parse("2026-01-15T11:59:00Z"), id]);
       raw.push({ fixture: await todoSnapshot(id) });
     }
     if (case_.id === "READ-002") {
@@ -105,12 +126,18 @@ try {
       for (const request of case_.requests) await send(request);
     } else {
       const reply = await send(case_.request);
+      if (["CREATE-001", "READ-001"].includes(case_.id)) await validateOutput(case_.request, reply);
       if (case_.id === "CREATE-004") {
         const rows = await execute('SELECT due_at FROM todo WHERE id = $1', [reply.body.id]);
         if (rows.length !== 1) throw new Error("Missing persisted create observation");
         raw.push({ persistence: { id: reply.body.id, storedDueAt: rows[0].due_at } });
       }
       if (case_.id.startsWith("PATCH-")) raw.push({ persistence: await todoSnapshot(case_.id === "PATCH-004" ? t2 : t1) });
+      if (case_.id === "CREATE-001") raw.push({ persistence: await todoSnapshot(reply.body.id) });
+      if (case_.id === "DELETE-001") {
+        raw.push({ persistence: await todoSnapshot(t1) });
+        await send({ ...case_.request, method: "GET" });
+      }
     }
     results.push({ id: case_.id, raw: raw.slice(start) });
     } catch {
@@ -121,5 +148,5 @@ try {
   }
   writeFileSync(output, JSON.stringify({ backend, supported, results }, null, 2) + "\n", { flag: "wx" });
 } finally {
-  server.stop(true); db?.close(); if (pg) await pg.close(); prototype.prepare = originalPrepare; prototype.exec = originalExec;
+  server.stop(true); db?.close(); if (pg) await pg.close(); prototype.prepare = originalPrepare; prototype.exec = originalExec; globalThis.Date = nativeDate;
 }
