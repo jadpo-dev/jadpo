@@ -121,7 +121,7 @@ def postgres(environment: dict):
             started = True
             safe_run(['createdb', '-h', '127.0.0.1', '-p', str(port), '-U', 'golden_checkpoint',
                       'golden_checkpoint'], env=environment)
-            yield {**environment, 'DATABASE_URL': f'postgres://golden_checkpoint@127.0.0.1:{port}/golden_checkpoint'}
+            yield {**environment, 'DATABASE_URL': f'postgres://golden_checkpoint@127.0.0.1:{port}/golden_checkpoint', 'GOLDEN_POSTGRES_DATA': str(directory/'data'), 'GOLDEN_POSTGRES_SOCKET': str(directory), 'GOLDEN_POSTGRES_PORT': str(port)}
         finally:
             if started:
                 safe_run(['pg_ctl', '-D', str(directory/'data'), '-m', 'immediate', '-w', 'stop'], env=environment)
@@ -681,6 +681,43 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
     harness.validate_report(report, root)
 
 
+def validate_partial_outputs(output: dict, cases: dict):
+    """Integrity of retained causal probes, never application acceptance passes."""
+    partial = output.get('partialEvidence')
+    ids = ('REL-002', 'REL-003', 'REL-004', 'CONFIG-001', 'CONFIG-002', 'BOUNDARY-001')
+    if not isinstance(partial, list) or len(partial) != len(ids) or {item.get('id') for item in partial} != set(ids):
+        raise ValueError('Missing/duplicate original partial probe inventory')
+    for item in partial:
+        if item.get('adapterFailure') is True: continue
+        case = cases[item['id']]
+        if item['id'].startswith('CONFIG-'):
+            startup = [event['nativeStartup'] for event in item['raw'] if 'nativeStartup' in event]
+            if len(startup) != 1 or not harness.same_json(startup[0].get('specification'), case['environment']):
+                raise ValueError('Changed original configuration probe environment')
+            probes = startup[0].get('probes', [])
+            if len(probes) != 2 or [probe.get('label') for probe in probes] != ['healthy_control', 'original_environment']:
+                raise ValueError('Missing/reordered actual startup control')
+            for probe, overrides in zip(probes, ({}, case['environment'])):
+                if not harness.same_json(probe.get('originalEnvironment'), overrides) or type(probe.get('exitCode')) is not int or type(probe.get('credentialTextDisclosed')) is not bool or not isinstance(probe.get('jsonEvents'), list) or not re.fullmatch('[a-f0-9]{64}', str(probe.get('outputSha256'))) or type(probe.get('outputBytes')) is not int:
+                    raise ValueError('Incomplete native startup output/exit/disclosure observation')
+                observers = [event for event in probe['jsonEvents'] if event.get('kind') == 'checkpoint_startup_observation']
+                if not probe['credentialTextDisclosed'] and (len(observers) != 1 or observers[0].get('exitCode') != probe['exitCode'] or type(observers[0].get('listenerStarts')) is not int):
+                    raise ValueError('Missing native listener-boundary observation')
+        elif item['id'] == 'BOUNDARY-001':
+            captures = [event for event in item['raw'] if 'boundaryVariants' in event]
+            if len(captures) != 1 or not harness.same_json(captures[0].get('specification'), {'fixtureVariants': case['fixtureVariants'], 'requestOrRun': case['requestOrRun']}):
+                raise ValueError('Changed original boundary variant inventory/operations')
+            variants = captures[0]['boundaryVariants']
+            if len(variants) != len(case['fixtureVariants']) or any(variant.get('variant_index') != index or variant.get('fixture_variant') != case['fixtureVariants'][index] for index, variant in enumerate(variants)):
+                raise ValueError('Missing/reordered original native boundary variant')
+            outage, provider = variants
+            if outage.get('healthyControl', {}).get('status') != 200 or outage.get('outage', {}).get('response', {}).get('status', 0) < 500:
+                raise ValueError('Missing healthy/outage actual HTTP causal control')
+            calls = provider.get('providerCalls', [])
+            if len(calls) != 1 or calls[0].get('responseStatus') != 401 or calls[0].get('authorizationPresent') is not True or not harness.same_json(provider.get('profiles'), {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}) or provider.get('nativeFixtureCreation', {}).get('status') != 201 or provider.get('nativeHostOutcome', {}).get('selected') != 1 or provider.get('nativeHostOutcome', {}).get('attempted') != 1:
+                raise ValueError('Missing actual native provider401/host execution/fixture/profile evidence')
+
+
 def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=ROOT):
     harness.validate_report(report, root)
     checkpoint = report['checkpoint']
@@ -709,6 +746,9 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
         if harness.digest(path) != checkpoint['raw_files'][path.name]:
             raise ValueError('Changed raw observations')
         outputs.append(json.loads(path.read_text()))
+    cases = {case['id']: case for case in harness.read_contract(root)['cases']}
+    for output in outputs:
+        if 'partialEvidence' in output: validate_partial_outputs(output, cases)
     plan_path = evidence/'application/build/persistence/entities.json'
     expected_plans = [plan for plan in json.loads(plan_path.read_text())['query_plans'] if plan.get('entity') == 'Todo' and plan.get('strategy') == 'indexed_keyset_page']
     expected_failures = json.loads((evidence/'application/build/audit/failures.json').read_text())['failures']

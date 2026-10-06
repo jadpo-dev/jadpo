@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications, resolvedAuthorityPrincipals } from "./golden_sql_observer.ts";
 
 const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011"];
-const partial = ["REL-002", "REL-003", "REL-004"];
+const partial = ["REL-002", "REL-003", "REL-004", "CONFIG-001", "CONFIG-002", "BOUNDARY-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
@@ -100,7 +100,7 @@ async function reset(case_?: any) {
   providerRequests.length = 0;
   clockNow = nativeDate.parse(case_?.timeline?.issuedAt ?? contract.clock);
   await app.initializeApplication(environment);
-  for (const table of ["service_credential", "__jadpo_auth_service_credentials", "service", "todo", "__jadpo_auth_sessions", "user"]) await execute(`DELETE FROM "${table}"`);
+  for (const table of ["reminder_service_membership", "service_credential", "__jadpo_auth_service_credentials", "service", "todo", "__jadpo_auth_sessions", "user"]) await execute(`DELETE FROM "${table}"`);
   const fixtureCreationClock = ["PATCH-002", "PATCH-005"].includes(case_?.id) ? nativeDate.parse("2026-01-15T11:00:00Z") : clockNow;
   const now = fixtureCreationClock;
   for (const [id, subject] of [[alice, "alice"], [bob, "bob"]]) await execute('INSERT INTO "user" (id, authentication_subject, email, status, created_at, disabled_at) VALUES ($1, $2, $3, $4, $5, NULL)', [id, subject, `${subject}@example.test`, "active", pg ? new Date(now).toISOString() : now]);
@@ -192,6 +192,82 @@ async function relationshipOperation(case_: any) {
   raw.push({ persistenceOperation: case_.operation, at: new Date(clockNow).toISOString(), accepted, fault, statements,
     publicBoundaryObserved: false, before,
     after: { users: await execute('SELECT id, status FROM "user" ORDER BY id'), todos: await execute('SELECT id, owner_id FROM todo ORDER BY id') } });
+}
+async function startupProbe(case_: any) {
+  const probes = [];
+  for (const label of ["healthy_control", "original_environment"]) {
+    const overrides = label === "healthy_control" ? {} : case_.environment;
+    const env = { ...Bun.env, ...environment, ...(pg ? { DATABASE_URL: Bun.env.DATABASE_URL } : {}), PORT: "0", JADPO_DEBUG_TARGET_STACKS: "0" };
+    for (const [key, value] of Object.entries(overrides)) if (value === "<missing>") delete env[key]; else env[key] = String(value);
+    const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "--preload", join(import.meta.dir, "golden_startup_observer.ts"), join(project, "build/target/app.ts")], { env, stdout: "pipe", stderr: "pipe" });
+    const timeout = setTimeout(() => child.kill(), 10_000);
+    const [exitCode, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    clearTimeout(timeout);
+    const text = stdout + stderr;
+    const confidential = [environment.SESSION_SIGNING_KEY, environment.MAIL_API_KEY, "postgres://user:password@", "password"];
+    const disclosed = confidential.some(value => text.includes(value));
+    const jsonEvents = [];
+    // Never retain arbitrary startup exception/stack text, even for partials.
+    for (const line of text.split("\n")) {
+      try { const parsed = JSON.parse(line); if (!disclosed && ["operational_log_event", "checkpoint_startup_observation"].includes(parsed.kind)) jsonEvents.push(parsed); } catch {}
+    }
+    probes.push({ label, originalEnvironment: overrides, exitCode, jsonEvents, outputSha256: stringDigest(text), outputBytes: Buffer.byteLength(text), credentialTextDisclosed: disclosed });
+  }
+  raw.push({ nativeStartup: { specification: case_.environment, probes } });
+}
+async function boundaryProbe(case_: any) {
+  const variants = [];
+  await send({ method: "GET", path: "/todos", auth: "alice-session" }, "boundaryHealthyControl");
+  const healthy = raw.pop().boundaryHealthyControl;
+  let outage: any;
+  if (pg) {
+    const data = Bun.env.GOLDEN_POSTGRES_DATA;
+    if (!data) throw new Error("Missing isolated database process provenance");
+    const stopped = Bun.spawn(["pg_ctl", "-D", data, "-m", "immediate", "-w", "stop"], { stdout: "pipe", stderr: "pipe" });
+    const stoppedCode = await stopped.exited;
+    try { await send({ method: "GET", path: "/todos", auth: "alice-session" }, "databaseOutage"); outage = raw.pop().databaseOutage; }
+    finally {
+      const restarted = Bun.spawn(["pg_ctl", "-D", data, "-l", join(data, "../restored-server.log"), "-o", `-h 127.0.0.1 -p ${Bun.env.GOLDEN_POSTGRES_PORT} -k ${Bun.env.GOLDEN_POSTGRES_SOCKET}`, "-w", "start"], { stdout: "pipe", stderr: "pipe" });
+      if (await restarted.exited !== 0) throw new Error("Isolated database restoration failed");
+    }
+    variants.push({ variant_index: 0, fixture_variant: case_.fixtureVariants[0], healthyControl: healthy, outage: { mode: "actual isolated PostgreSQL server stopped", stoppedCode, response: outage } });
+  } else {
+    db!.exec("BEGIN EXCLUSIVE");
+    try { await send({ method: "GET", path: "/todos", auth: "alice-session" }, "databaseOutage"); outage = raw.pop().databaseOutage; }
+    finally { db!.exec("ROLLBACK"); }
+    variants.push({ variant_index: 0, fixture_variant: case_.fixtureVariants[0], healthyControl: healthy, outage: { mode: "actual separate-connection SQLite exclusive lock", response: outage } });
+  }
+  await app.initializeApplication(environment);
+  clockNow = nativeDate.now(); // BOUNDARY has no pinned run clock; native worker authority uses database wall time.
+  const createClock = clockNow;
+  clockNow = createClock - 2 * 86_400_000;
+  try {
+    session = await app.authenticationHost().issue("browser_session", "alice", clockNow + 300_000, clockNow); secrets.push(session.credential, session.csrfToken);
+    await send({ method: "POST", path: "/todos", auth: "alice-session", json: { title: "boundary provider fixture", due_at: new nativeDate(createClock - 86_400_000).toISOString() } }, "boundaryFixtureCreation");
+  } finally { clockNow = createClock; }
+  const creation = raw.pop().boundaryFixtureCreation;
+  if (creation.status !== 201) throw new Error("Native overdue fixture creation failed");
+  await prepareServiceFixture({ ...case_, environment: undefined });
+  const serviceFixture = raw.pop().serviceFixture;
+  await execute('INSERT INTO reminder_service_membership (id, service_id, role) VALUES ($1, $2, $3)', [crypto.randomUUID(), reporting, "sender"]);
+  const adapter = await import(pathToFileURL(join(project, "build/target/service-adapter.ts")).href);
+  const previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+  const providerCalls: any[] = [];
+  const provider = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+    const body = await request.json();
+    providerCalls.push({ method: request.method, path: new URL(request.url).pathname, body, idempotencyKey: request.headers.get("Idempotency-Key"), authorizationPresent: request.headers.has("Authorization"), responseStatus: 401 });
+    return Response.json({ code: "authentication", private_provider_body: "CHECKPOINT_PRIVATE_PROVIDER_BODY" }, { status: 401 });
+  } });
+  adapter.setReferenceMailEndpointForTesting(provider.url.origin);
+  const profile = { executionMs: 60_000, leaseMs: 40_000 };
+  const host = app.createDeliveryJobHost("job.overdue_reminders.delivery.reminder_v1", serviceKey.credential, profile, profile);
+  let outcome: any = null; let thrown: any = null; const statements = beginSqlObservation();
+  try { outcome = await host.runOnce(); }
+  catch (error: any) { thrown = { name: error.name, code: error.code ?? null, kind: error.kind ?? null }; }
+  finally { endSqlObservation(); await host.stop(); adapter.setReferenceMailEndpointForTesting(null); provider.stop(true); if (previous === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previous; }
+  const persisted = await todoSnapshot(creation.body.id);
+  variants.push({ variant_index: 1, fixture_variant: case_.fixtureVariants[1], nativeFixtureCreation: creation, serviceFixture, profiles: { activation: profile, delivery: profile }, providerCalls, nativeHostOutcome: outcome, nativeHostThrown: thrown, statements, persisted });
+  raw.push({ boundaryVariants: variants, specification: { fixtureVariants: case_.fixtureVariants, requestOrRun: case_.requestOrRun } });
 }
 async function userSnapshot() {
   const rows = await execute('SELECT id, authentication_subject, status, disabled_at FROM "user" WHERE id = $1', [alice]);
@@ -340,7 +416,7 @@ const results: any[] = [];
 const partialEvidence: any[] = [];
 try {
   for (const case_ of contract.cases.filter((case_: any) => supported.includes(case_.id) || partial.includes(case_.id))) {
-    if ((case_.fixtureVariants && case_.id !== "REL-001") || (case_.followUps && case_.id !== "USER-001")) throw new Error("Unsupported scenario extension");
+    if ((case_.fixtureVariants && !["REL-001", "BOUNDARY-001"].includes(case_.id)) || (case_.followUps && case_.id !== "USER-001")) throw new Error("Unsupported scenario extension");
     if (case_.id === "REL-001") {
       const scenarios = [];
       for (const [variant_index, fixture_variant] of case_.fixtureVariants.entries()) {
@@ -363,6 +439,8 @@ try {
     const start = raw.length;
     try {
     await reset(case_);
+    if (["CONFIG-001", "CONFIG-002"].includes(case_.id)) { await startupProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_exact_native_configuration_diagnostics_missing" }); continue; }
+    if (case_.id === "BOUNDARY-001") { await boundaryProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_native_provider_boundary_request_id_missing" }); continue; }
     if (["AUTH-009", "AUTH-011"].includes(case_.id)) await prepareServiceFixture(case_);
     if (["REL-002", "REL-004"].includes(case_.id)) {
       await relationshipOperation(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_public_relationship_failure_mapping_missing" }); continue;
