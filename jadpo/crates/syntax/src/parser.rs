@@ -3684,6 +3684,18 @@ impl<'source> Parser<'source> {
                 QueryPagePredicateOperator::Equal,
                 self.parse_binary_expression(3, true),
             )
+        } else if self.at(TokenKind::GreaterEqual) {
+            self.bump();
+            (
+                QueryPagePredicateOperator::RequiredGreaterEqual,
+                self.parse_binary_expression(3, true),
+            )
+        } else if self.at(TokenKind::LeftAngle) {
+            self.bump();
+            (
+                QueryPagePredicateOperator::RequiredLess,
+                self.parse_binary_expression(3, true),
+            )
         } else if self.at(TokenKind::LessEqual) {
             self.bump();
             self.expect(

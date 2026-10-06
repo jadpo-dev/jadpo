@@ -688,12 +688,11 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const sourcePath = join(root,"app.ts");
     let source = readFileSync(sourcePath,"utf8");
     if (enableCandidate) {
-      // Counterfactual private conformance only: change this emitted closed
-      // admission bit, preserving every credential, policy, action and retry body.
-      const closed = "const __authenticatedRetryCandidate = true;\n      __operation = allowOperationRetries(__operation, false);";
-      const candidates = source.split(closed).length - 1;
-      expect(candidates).toBeGreaterThanOrEqual(2);
-      source = source.replaceAll(closed, "const __authenticatedRetryCandidate = true;\n      __operation = allowOperationRetries(__operation, __authenticatedRetryCandidate);");
+      // Actual public proof imports untouched compiler output. The private
+      // factory inspection below is used only by direct hook prerequisite tests.
+      const permission = '__operation = allowOperationRetries(__operation, __authenticatedRetryCandidate && authenticated.kind === "user" && __operation.refreshAuthority !== null);';
+      expect(source.split(permission).length - 1).toBe(3);
+      return await import(pathToFileURL(sourcePath).href);
     }
     const names: string[] = [], values: unknown[] = [];
     for (const match of source.matchAll(/^import \{([^}]+)\} from "([^"]+)";\n/gm)) {
@@ -710,7 +709,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
     return await new AsyncFunction(...names,javascript)(...values);
   }
-  for (const mode of ["fresh", "inactive", "revoked", "reinitialized", "late_owner", "cancelled", "elapsed", "deleted"] as const) test(`RM402 native retry authority hook ${mode} leaves public replay guards closed`,async()=>{
+  for (const mode of ["fresh", "inactive", "revoked", "reinitialized", "late_owner", "cancelled", "elapsed", "deleted"] as const) test(`RM402 private native retry authority hook ${mode} preserves checked admission gates`,async()=>{
     const f=await fixture(), inspected=await inspectRetryApplication();
     await inspected.initializeApplication(authEnvironment);
     const host=inspected.authenticationHost(), now=Date.now();
@@ -754,6 +753,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect((await stored(f.value.id))[0].title).toBe(mode === "fresh" ? "fresh retry title" : f.value.title);
       if(sql) expect(statements).toBe(mode === "fresh" ? 2 : 1);
       const emitted=readFileSync(join(root,"app.ts"),"utf8");
+      expect(emitted).toContain('__operation = allowOperationRetries(__operation, __authenticatedRetryCandidate && authenticated.kind === "user" && __operation.refreshAuthority !== null);');
       expect(emitted).toContain("__operation = allowOperationRetries(__operation, false);");
       expect(emitted).toContain("replayable: false && __operation.retryAllowed");
       expect(readFileSync(join(repository,"jadpo/crates/core/src/target.rs"),"utf8")).toContain("callable.policy.is_none()");
@@ -764,7 +764,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     }
   });
   for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"],["PATCH","attempt_exhausted"],["PATCH","elapsed"],["PATCH","cancelled"],["PATCH","api_fresh"],["PATCH","api_revoked"],["PATCH","jwt_fresh"],["PATCH","jwt_inactive"]] as const)
-  test.skipIf((mode === "elapsed" || mode === "cancelled") && sql === null)(`RM402 private authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
+  test.skipIf((mode === "elapsed" || mode === "cancelled") && sql === null)(`RM402 emitted authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
     const f = await fixture(), inspected = await inspectRetryApplication(true);
     await inspected.initializeApplication(authEnvironment);
     let host = inspected.authenticationHost(); const now = Date.now();
@@ -791,7 +791,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       issued = {credential:await new SignJWT({iss:issuer,aud:authEnvironment.OIDC_AUDIENCE,sub:owner,iat:seconds,exp:seconds+120}).setProtectedHeader({alg:"RS256",kid:"retry-jwt",typ:"JWT"}).sign(keys.privateKey),csrfToken:""};
     } else issued = await host.issue(strategy, owner, now + 3_600_000, now);
     // The native verifier captures its provider fetch at initialization. Publish
-    // this private app only after the fixture external boundary is installed.
+    // this native app only after the fixture external boundary is installed.
     if (jwt) { await inspected.initializeApplication(authEnvironment); host = inspected.authenticationHost(); }
     if (strategy === "api_bearer") {
       try {
@@ -804,6 +804,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const sessionId = jwt ? null : JSON.parse(Buffer.from(issued.credential.split(".")[2], "base64url").toString())[3];
     const replacementUser = mode === "rebound" ? crypto.randomUUID() : null;
     if (replacementUser) await rows('INSERT INTO "user" (id,authentication_subject,email,status,created_at,disabled_at) VALUES ($1,$2,$3,$4,$5,$6)', [replacementUser,replacementUser,`${replacementUser}@example.invalid`,"active",dbInstant(now),null]);
+    f.proof = await app.authenticationHost().prepareDeliveryCredential("api_bearer", f.issued.credential, Date.now());
     const oldIntent = (await scan(f.proof)).intents[0];
     expect(oldIntent.sourceRevision).toBe("1");
     const oldPayload = oldIntent.payload;
@@ -943,8 +944,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       if(jwt) expect(providerCalls).toEqual([authEnvironment.OIDC_ISSUER+"/.well-known/openid-configuration",authEnvironment.OIDC_ISSUER+"/jwks"]);
       const emitted = readFileSync(join(root,"app.ts"),"utf8");
       expect(emitted).not.toContain("allowOperationRetries(__operation, __authenticatedRetryCandidate)");
+      expect(emitted).toContain('__operation = allowOperationRetries(__operation, __authenticatedRetryCandidate && authenticated.kind === "user" && __operation.refreshAuthority !== null);');
       expect(emitted).toContain("__operation = allowOperationRetries(__operation, false);");
-      previousError(JSON.stringify({kind:"private_http_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,verb,mode,strategy,proofMode:jwt ? "jwt" : "signed",providerCalls,database:sql ? "postgres" : "sqlite",clientOutcome:mode === "cancelled" ? "AbortError" : "delivered",serverRequestAborted:serverRequest!.signal.aborted,blockedCredentialQueryObserved,blockedJwtAuthorityQueryObserved,status:response.status,events,sourceRevision:await revision(f.value.id),intentState:(await persistence.read_delivery_intent(oldIntent.intentId)).state}));
+      previousError(JSON.stringify({kind:"emitted_http_retry_conformance",modifiedAdmissionBit:false,emittedConditionalAdmission:true,verb,mode,strategy,proofMode:jwt ? "jwt" : "signed",providerCalls,database:sql ? "postgres" : "sqlite",clientOutcome:mode === "cancelled" ? "AbortError" : "delivered",serverRequestAborted:serverRequest!.signal.aborted,blockedCredentialQueryObserved,blockedJwtAuthorityQueryObserved,status:response.status,events,sourceRevision:await revision(f.value.id),intentState:(await persistence.read_delivery_intent(oldIntent.intentId)).state}));
     } finally {
       server.stop(true); console.error = previousError; globalThis.fetch = previousFetch; releaseGuard();
       if (locker) { locker.exec("ROLLBACK"); locker.close(); }
@@ -961,13 +963,14 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
   });
 
   for (const mode of ["fresh","inactive","revoked"] as const)
-  test(`RM402 private authenticated HTTP User.disable_user ${mode} preserves fresh authority and lifecycle`, async () => {
+  test(`RM402 emitted authenticated HTTP User.disable_user ${mode} preserves fresh authority and lifecycle`, async () => {
     const f = await fixture(), inspected = await inspectRetryApplication(true);
     await inspected.initializeApplication(authEnvironment);
     const host = inspected.authenticationHost(), now = Date.now();
     const issued = await host.issue("browser_session",owner,now+3_600_000,now);
     const sessionId = JSON.parse(Buffer.from(issued.credential.split(".")[2],"base64url").toString())[3];
     const initialUser = (await rows('SELECT status,disabled_at FROM "user" WHERE id=$1',[owner]))[0];
+    f.proof = await app.authenticationHost().prepareDeliveryCredential("api_bearer", f.issued.credential, Date.now());
     const oldIntent = (await scan(f.proof)).intents[0];
     const initialTodo = await rows('SELECT * FROM todo WHERE id=$1',[f.value.id]);
     const initialSchedule = await revision(f.value.id);
@@ -1046,8 +1049,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       const emitted=readFileSync(join(root,"app.ts"),"utf8");
       const route=emitted.split('semanticOperationId = "route:DELETE:/users/{user_id}";')[1].split('semanticOperationId =')[0];
       expect(route).toContain("const __authenticatedRetryCandidate = true;");
-      expect(route).toContain("__operation = allowOperationRetries(__operation, false);");
-      previousError(JSON.stringify({kind:"private_user_lifecycle_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,mode,database:sql ? "postgres" : "sqlite",blockedCredentialQueryObserved,status:response.status,events,userStatus:user.status,disabledAt:user.disabled_at,sourceRevision:initialSchedule,immutableIntentUnchanged:true}));
+      expect(route).toContain('__operation = allowOperationRetries(__operation, __authenticatedRetryCandidate && authenticated.kind === "user" && __operation.refreshAuthority !== null);');
+      previousError(JSON.stringify({kind:"emitted_user_lifecycle_retry_conformance",modifiedAdmissionBit:false,emittedConditionalAdmission:true,mode,database:sql ? "postgres" : "sqlite",blockedCredentialQueryObserved,status:response.status,events,userStatus:user.status,disabledAt:user.disabled_at,sourceRevision:initialSchedule,immutableIntentUnchanged:true}));
     } finally {
       server.stop(true);console.error=previousError;releaseGuard();
       if(locker) {locker.exec("ROLLBACK");locker.close();}
@@ -1059,7 +1062,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     }
   });
 
-  test("RM402 private authenticated HTTP User.disable_user refuses another user's lifecycle", async () => {
+  test("RM402 emitted authenticated HTTP User.disable_user refuses another user's lifecycle", async () => {
     const f=await fixture(),inspected=await inspectRetryApplication(true);
     await inspected.initializeApplication(authEnvironment);
     const now=Date.now(),other=crypto.randomUUID();
@@ -1077,14 +1080,15 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(await rows('SELECT id,status,disabled_at FROM "user" WHERE id IN ($1,$2) ORDER BY id',[owner,other])).toEqual(before);
       expect(events).toHaveLength(0); // declared policy refusal, no persistence-fault audit inferred
       expect(await revision(f.value.id)).toBe("1");
-      priorError(JSON.stringify({kind:"private_user_lifecycle_role_refusal",modifiedAdmissionBit:true,releasedPublicRetry:false,database:sql ? "postgres" : "sqlite",status:response.status,ownerAndTargetUnchanged:true,events}));
+      priorError(JSON.stringify({kind:"emitted_user_lifecycle_role_refusal",modifiedAdmissionBit:false,emittedConditionalAdmission:true,database:sql ? "postgres" : "sqlite",status:response.status,ownerAndTargetUnchanged:true,events}));
     } finally {server.stop(true);console.error=priorError;await rows('DELETE FROM "user" WHERE id=$1',[other]);}
   });
 
-  test.skipIf(sql === null)("RM402 private authenticated HTTP native lost COMMIT acknowledgement never retries acknowledged source work", async () => {
+  test.skipIf(sql === null)("RM402 emitted authenticated HTTP native lost COMMIT acknowledgement never retries acknowledged source work", async () => {
     const f = await fixture(), inspected = await inspectRetryApplication(true);
     await inspected.initializeApplication(authEnvironment);
     const issued = await inspected.authenticationHost().issue("browser_session",owner,Date.now()+3_600_000,Date.now());
+    f.proof = await app.authenticationHost().prepareDeliveryCredential("api_bearer", f.issued.credential, Date.now());
     const oldIntent = (await scan(f.proof)).intents[0];
     const direct = new URL(postgresUrl!), sockets: Socket[] = [];
     let armed = false, commitsForwarded = 0, commitAcknowledgementObserved = false, responseDropped = false;
@@ -1136,12 +1140,11 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const proxyUrl = new URL(postgresUrl!);proxyUrl.port=String((proxy.address() as AddressInfo).port);
     const readyPath = join(root,"retry-unknown-ready-"+crypto.randomUUID()+".json");
     const due = new Date(Date.now()+3_600_000).toISOString();
-    // Reuse the exact private factory: imported modules and every emitted
-    // auth/policy/action/retry body are preserved, selected admission bit only.
+    // The proxy child imports the exact emitted application, with initialization
+    // acknowledged before the parent arms business COMMIT interception.
     const childScript = `import {readFileSync} from "node:fs";import {join} from "node:path";import {pathToFileURL} from "node:url";
       const root=${JSON.stringify(root)};
-      const expect=value=>({toBeGreaterThanOrEqual:n=>{if(!(value>=n))throw Error("private candidate unavailable");}});
-      const inspected=await (${inspectRetryApplication.toString()})(true);
+      const inspected=await import(pathToFileURL(join(root,"app.ts")).href);
       await inspected.initializeApplication(${JSON.stringify(authEnvironment)});
       await Bun.write(${JSON.stringify(readyPath)},JSON.stringify({initialized:true}));
       const admission=await Bun.stdin.stream().getReader().read();if(admission.done||new TextDecoder().decode(admission.value).trim()!=="ARMED")throw Error("missing post-initialization admission");
@@ -1171,7 +1174,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect((await stored(f.value.id))[0].title).toBe("native unknown HTTP commit");expect(await revision(f.value.id)).toBe("2");
       const retained = await persistence.read_delivery_intent(oldIntent.intentId);
       expect(retained.state).toBe("pending");expect(retained.payload).toEqual(oldIntent.payload);expect(retained.sourceRevision).toBe("1");
-      console.error(JSON.stringify({kind:"private_http_retry_unknown_commit",modifiedAdmissionBit:true,releasedPublicRetry:false,initializedBeforeArmed:true,commitsForwarded,commitAcknowledgementObserved,responseDropped,status:result.status,events,sourceRevision:"2",intentState:retained.state}));
+      console.error(JSON.stringify({kind:"emitted_http_retry_unknown_commit",modifiedAdmissionBit:false,emittedConditionalAdmission:true,initializedBeforeArmed:true,commitsForwarded,commitAcknowledgementObserved,responseDropped,status:result.status,events,sourceRevision:"2",intentState:retained.state}));
     } finally {
       if(child?.exitCode===null)child.kill();for(const socket of sockets)socket.destroy();
       await new Promise<void>(resolve=>proxy.close(()=>resolve()));rmSync(readyPath,{force:true});

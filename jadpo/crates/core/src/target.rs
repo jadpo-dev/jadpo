@@ -1843,8 +1843,8 @@ export const temporal = Object.freeze({
         )
     }
 
-    /// Necessary private conformance candidate; never runtime replay permission.
-    /// Public activation still requires source-bound native authority evidence.
+    /// Checked source qualification for protected replay admission.
+    /// Native user identity and captured fresh authority remain runtime gates.
     fn authenticated_route_retry_candidate(&self, route: &jadpo_syntax::RouteDeclaration) -> bool {
         if route.public
             || !self.first_party_supported()
@@ -1876,7 +1876,7 @@ export const temporal = Object.freeze({
         let Some(principal) = self.principal else {
             return false;
         };
-        // This private qualification covers the selected signed/JWT user
+        // This source qualification covers the selected signed/JWT user
         // forms. Mixed service validators remain ordinary authentication; a
         // service principal cannot stand in for the checked user argument.
         let mut user_validator = false;
@@ -3852,6 +3852,47 @@ export const temporal = Object.freeze({
                     ),
                 );
             }
+        }
+        // Physical declarations must be qualified before driver decoding can
+        // erase Instant precision or turn a non-integer Duration into text.
+        // This gate belongs to the existing initial/recovery schema owner.
+        for (name, entity) in self.schema_entities() {
+            let temporal_fields = entity
+                .fields
+                .iter()
+                .filter_map(|field| {
+                    let root = self.representation_root_for(&field.field_type);
+                    match root.as_str() {
+                        "Instant" | "Duration" => Some((field, root)),
+                        _ => None,
+                    }
+                })
+                .collect::<Vec<_>>();
+            if temporal_fields.is_empty() {
+                continue;
+            }
+            let table = sql_identifier(&snake_case(name));
+            let expected = temporal_fields
+                .iter()
+                .map(|(field, root)| {
+                    format!(
+                        "{{ name: {}, type: {}, precision: {}, required: {} }}",
+                        ts_string(&field.name.text),
+                        if root == "Instant" { 1184 } else { 20 },
+                        if root == "Instant" { 3 } else { -1 },
+                        !self.reference_is_nullable(&field.field_type),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            line(&mut output, "  {");
+            line(&mut output, &format!("    const expected = [{expected}];"));
+            line(&mut output, &format!("    if (schemaPostgres !== null) {{ const columns = await persistenceAsync(\"schema.temporal\", () => initialization.execute(schemaPostgres!.unsafe(\"SELECT a.attname AS name, a.atttypid::integer AS type, a.atttypmod AS precision, a.attnotnull AS required FROM pg_catalog.pg_attribute AS a WHERE a.attrelid = pg_catalog.to_regclass($1) AND a.attnum > 0 AND NOT a.attisdropped\", [{}])));", ts_string(&table)));
+            line(&mut output, "      if (expected.some(field => !columns.some((column: Record<string, unknown>) => column.name === field.name && column.type === field.type && column.precision === field.precision && column.required === field.required))) throw new PersistenceFault(\"schema.temporal\", \"data\", new Error(\"incompatible temporal column declaration\"));");
+            line(&mut output, &format!("    }} else {{ const columns = persistenceSync(\"schema.temporal\", () => sqlite!.prepare({}).all()) as Array<{{ name: string; type: string; notnull: number }}>;", ts_string(&format!("PRAGMA table_info({table})"))));
+            line(&mut output, "      if (expected.some(field => !columns.some(column => column.name === field.name && column.type.toUpperCase().includes(\"INT\") && Boolean(column.notnull) === field.required))) throw new PersistenceFault(\"schema.temporal\", \"data\", new Error(\"incompatible temporal column declaration\"));");
+            line(&mut output, "    }");
+            line(&mut output, "  }");
         }
         if self.first_party_supported() {
             line(
@@ -9140,23 +9181,19 @@ export const temporal = Object.freeze({
                     output,
                     &format!("      checkedReadOnlyOperation = {read_only};"),
                 );
+                let authenticated_retry_candidate = self.authenticated_route_retry_candidate(route);
                 if !route.public {
-                    line(output, "      // Inert compiler-only candidate; the permission below remains closed.");
-                    line(
-                        output,
-                        &format!(
-                            "      const __authenticatedRetryCandidate = {};",
-                            self.authenticated_route_retry_candidate(route)
-                        ),
-                    );
+                    line(output, "      // Checked source eligibility still requires a native user and captured fresh authority.");
+                    line(output, &format!("      const __authenticatedRetryCandidate = {authenticated_retry_candidate};"));
                 }
-                line(
-                    output,
-                    &format!(
-                        "      __operation = allowOperationRetries(__operation, {});",
-                        route.public
-                    ),
-                );
+                let retry_permission = if route.public {
+                    "true"
+                } else if authenticated_retry_candidate {
+                    "__authenticatedRetryCandidate && authenticated.kind === \"user\" && __operation.refreshAuthority !== null"
+                } else {
+                    "false"
+                };
+                line(output, &format!("      __operation = allowOperationRetries(__operation, {retry_permission});"));
                 if let Some(query_reference) = &route.query {
                     let query_name = self.schema_declaration(&type_name(query_reference));
                     let query_record = self
@@ -10373,7 +10410,12 @@ export const temporal = Object.freeze({
                 .find(|field| field.name.text == predicate.field.text)
                 .expect("checked page predicate field exists");
             let value = self.expression(&predicate.value);
-            let value = if predicate.operator == jadpo_syntax::QueryPagePredicateOperator::Equal {
+            let value = if matches!(
+                predicate.operator,
+                jadpo_syntax::QueryPagePredicateOperator::Equal
+                    | jadpo_syntax::QueryPagePredicateOperator::RequiredGreaterEqual
+                    | jadpo_syntax::QueryPagePredicateOperator::RequiredLess
+            ) {
                 value
             } else {
                 format!("({value} ?? null)")
@@ -10454,6 +10496,18 @@ export const temporal = Object.freeze({
                 }
                 jadpo_syntax::QueryPagePredicateOperator::Equal => {
                     conditions.push(format!("{column} = {}", placeholder(parameter)));
+                    parameter += 1;
+                }
+                jadpo_syntax::QueryPagePredicateOperator::RequiredGreaterEqual
+                | jadpo_syntax::QueryPagePredicateOperator::RequiredLess => {
+                    let operator = if predicate.operator
+                        == jadpo_syntax::QueryPagePredicateOperator::RequiredGreaterEqual
+                    {
+                        ">="
+                    } else {
+                        "<"
+                    };
+                    conditions.push(format!("{column} {operator} {}", placeholder(parameter)));
                     parameter += 1;
                 }
                 jadpo_syntax::QueryPagePredicateOperator::OptionalEqual => {
@@ -13217,7 +13271,7 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn private_authenticated_retry_candidates_leave_every_public_permission_closed() {
+    fn protected_authenticated_retry_admission_requires_source_user_and_fresh_authority() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(3)
@@ -13251,9 +13305,22 @@ mod tests {
             .find(|o| o.relative_path == "target/app.ts")
             .unwrap()
             .contents;
-        assert!(app.contains("const __authenticatedRetryCandidate = true;"));
+        let permission = "__operation = allowOperationRetries(__operation, __authenticatedRetryCandidate && authenticated.kind === \"user\" && __operation.refreshAuthority !== null);";
+        assert_eq!(app.matches(permission).count(), 3);
+        for (method, route) in [("PATCH", "/todos/{todo_id}"), ("DELETE", "/todos/{todo_id}"), ("DELETE", "/users/{user_id}")] {
+            let marker = format!("semanticOperationId = \"route:{method}:{route}\";");
+            let emitted = app.split(&marker).nth(1).unwrap().split("semanticOperationId =").next().unwrap();
+            assert!(emitted.contains(permission));
+            assert!(emitted.contains("const __authenticatedRetryCandidate = true;"));
+            assert!(emitted.contains("const refreshAuthority = createRetryAuthority(authentication, credentialRequest, authenticated, true);"));
+        }
+        for marker in ["route:POST:/todos", "route:GET:/todos"] {
+            let marker = format!("semanticOperationId = \"{marker}\";");
+            let emitted = app.split(&marker).nth(1).unwrap().split("semanticOperationId =").next().unwrap();
+            assert!(emitted.contains("__operation = allowOperationRetries(__operation, false);"));
+            assert!(!emitted.contains(permission));
+        }
         assert!(!app.contains("allowOperationRetries(__operation, __authenticatedRetryCandidate)"));
-        assert!(app.contains("__operation = allowOperationRetries(__operation, false);"));
         assert!(!app.contains("allowOperationRetries(__operation, true)"));
         let route = project
             .syntax
@@ -13312,6 +13379,10 @@ mod tests {
         {
             assert!(renamed_generator.authenticated_route_retry_candidate(route));
         }
+        let renamed_outputs = derive_target(&path, &renamed).unwrap();
+        let renamed_app = &renamed_outputs.iter().find(|output| output.relative_path == "target/app.ts").unwrap().contents;
+        assert_eq!(renamed_app.matches(permission).count(), 3);
+        assert!(!renamed_app.contains("allowOperationRetries(__operation, true)"));
         let mut public = route.clone();
         public.public = true;
         assert!(!generator.authenticated_route_retry_candidate(&public));
@@ -13455,6 +13526,7 @@ mod tests {
             let outputs = derive_target(&path, project).unwrap();
             let app = &outputs.iter().find(|output| output.relative_path == "target/app.ts").unwrap().contents;
             assert!(!app.contains("const __authenticatedRetryCandidate = true;"));
+            assert!(!app.contains("authenticated.kind === \"user\" && __operation.refreshAuthority !== null"));
             assert!(!app.contains("allowOperationRetries(__operation, true)"));
         }
         let named_sources = crate::discover_sources(&path).unwrap().into_iter().map(|mut source| {

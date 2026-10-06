@@ -147,6 +147,17 @@ optional-query, required-query, update, and delete statements for each adapter.
 Postgres uses `$1`, `$2`, and so on; SQLite uses `?1`, `?2`, and so on. Values
 are never interpolated into SQL text.
 
+The bounded keyset-page successor also emits one required non-nullable stored
+`Instant >= start` / `Instant < end` pair. Both operands come from checked
+direct required input members with the entity field's nominal identity. Each
+value is evaluated once into an `Instant` adapter parameter; absence does not
+disable either bound. First and continuation statements retain both predicates,
+owner/equality scope, lifecycle visibility and the existing ordered cursor and
+page-size-plus-one rules. Range fields do not become equality index scope facts.
+A continuation uses the caller's supplied bounds; the cursor does not attest
+filter identity or a database snapshot across requests. Typed empty/reversed
+bounds produce the ordinary empty conjunction result without normalization.
+
 Entities may declare named compound uniqueness:
 
 ```text

@@ -1113,25 +1113,25 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T19:47:43+01:00",
+  "captured_at": "2026-10-06T20:28:03+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "872403854f1c6988a1b0bec9d50266d76f5f3203bcfcdac2c302c09d7d8bb3d9",
+    "docs/implementation-roadmap.md": "ffbdbb46cb8c78cda6f985f4d7b3d4de44231c204d2e1be1a671f0b4df0ace8f",
     "docs/implementation-history.md": "1782b2ee75b236b7a2e5d62a28beacd4fbeb6407e32aae71ea098a18e09f19d9",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "5bac87159b6e3bd3ef9b176999e97b5bb330a23923e6084115d00c71a4748185",
+    "docs/work-plans/golden-delivery-planning.md": "86984f27d3d9ca3066272491b6f78d6f2df4404b1fba8936f96def2efb56ef79",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "The reviewed golden integration now passes all 88 supported checks and all 88 migrated HTTP entries. This closes bounded verification slices, while full task and frozen technical acceptance gates remain open.",
+    "summary": "The reviewed golden integration passes all 92 supporting checks and all 88 migrated HTTP entries. Actual protected user retry, temporal declaration validation, day-range pages and native SQLite cancellation containment are now integrated; full tasks and frozen acceptance remain open.",
     "delivered": [
-      "Integrated independently reviewed anonymous literal-route candidates, inert selected-user eligibility, native deadlock/revocation/service controls and corrected lifecycle intent retention.",
-      "Integrated native PostgreSQL Duration decoding and both-adapter typed temporal roundtrips; preserved original driver/schema failures and exact source epochs.",
-      "Archived the88-check supported gate with655 unchanged source/tooling pins and72 actual compiler manifest pins; local results remain non-releasable.",
-      "Independently reviewed the next initial/recovery temporal schema gate and conditional retry admission plan. Found actual route shadowing that prevents the proposed finite feasibility plan from executing unchanged."
+      "Integrated independently reviewed actual emitted protected retry admission, retaining fresh user authority, service refusal, unknown-COMMIT containment and original cooperative budgets.",
+      "Integrated initial/recovery Instant/Duration schema validation and required-input half-open query pages; native 23/24/25-hour day controls and SQL-only boundary negatives passed independently.",
+      "Integrated the distinct native SQLite cancellation-boundary control with rollback/no replay and causal omitted-abort refusal.",
+      "Archived 180 safe raw gate files, 660 unchanged source/tooling pins and72 actual compiler input pins. Independently reviewed next jitter and joint outbox/revision controls; finite witness implementation continues in isolation."
     ],
-    "next": "Continue parallel batches: integrate the reviewed initial temporal schema gate; qualify actual emitted protected retry admission; implement the reviewed bounded typed local-day query predicates. Then finish the remaining full-task and exact-source golden acceptance audits.",
+    "next": "Continue parallel batches: fuse reviewed seeded jitter and joint source/change/outbox traces, finish the dispatch-closed conditional witness, and qualify remaining finite native readiness phases. Reconcile full task acceptance before recording completion.",
     "input_needed": "The previously asked required database-binding successor and publication checkpoint decisions remain unanswered; independent local delivery continues. See [the concrete database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06)."
   },
   "changes": {

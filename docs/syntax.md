@@ -2198,6 +2198,16 @@ from a nullable field, so silently replacing them with ordinary equality would
 change results. No generic arbitrary predicate, hidden relationship loading,
 new cursor codec or automatic freshness choice is introduced.
 
+A checked page query may use one required half-open stored `Instant` pair:
+`and: occurs_at >= input.start` and `and: occurs_at < input.end`. The two bounds
+must be direct required members of an original input binding, declared in the
+same entity-field nominal context (for example `start: Event.occurs_at` and
+`end: Event.occurs_at`). Optional, nullable, secret, sibling nominal, local,
+shadowed, callable or presentation-valued bounds are rejected. The pair can
+appear in either order, but duplicate, incomplete or mixed predicates on that
+field are rejected. This is a page-only extension; it does not add general
+compound `query many` predicates or source-level `temporal.day_bounds` calls.
+
 The [expanded grammar candidate](grammar-v0.1.md#18-successor-grammar-candidate--2026-10-04)
 records fixed clause order, update set/patch/transition forms, required conflict
 bindings and typed constraint-specific mappings. Compile-negative migration cases

@@ -1,15 +1,14 @@
 import { afterAll, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { Database } from "bun:sqlite";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { copyGoldenFixture } from "./golden-fixture";
-import { privateRetryApplication } from "./fixtures/protected-retry-application";
 
-// RM402 prerequisite only. All HTTP workers preserve the emitted bodies, native
-// crypto/store and current policy. Three inert admission bits are counterfactual;
-// no product flag or static repeatability exclusion is changed by this suite.
+// Actual emitted HTTP conformance: no permission substitution, dynamic source
+// evaluator or authored authority callback. Native crypto/current policy unchanged.
 const root = mkdtempSync(join(tmpdir(), "jadpo-protected-retry-"));
 const project = join(root, "application");
 copyGoldenFixture(project);
@@ -35,7 +34,10 @@ const configuration = {
   BROWSER_ORIGIN: "https://todo.test", OIDC_ISSUER: "https://issuer.test", OIDC_AUDIENCE: "todo",
   MAIL_API_KEY: Buffer.alloc(32, 82).toString("base64url"), MAIL_SENDER: "todo@example.test",
 };
-const app = await privateRetryApplication(path, true);
+const emittedSource = readFileSync(path, "utf8");
+const permission = '__operation = allowOperationRetries(__operation, __authenticatedRetryCandidate && authenticated.kind === "user" && __operation.refreshAuthority !== null);';
+expect(emittedSource.split(permission).length - 1).toBe(3);
+const app = await import(pathToFileURL(path).href);
 await app.initializeApplication(configuration);
 const sql = databaseUrl ? new SQL({ url: databaseUrl, prepare: false, max: 8 }) : null;
 const sqlite = databaseUrl ? null : new Database(Bun.env.SQLITE_PATH, { strict: true });
@@ -46,6 +48,7 @@ const error = console.error;
 console.error = (...args: any[]) => { try { const event = JSON.parse(args[0]); if (event.eventName === "transaction.attempt") captured.push(event); } catch {} error(...args); };
 afterAll(async () => {
   console.error = error;
+  expect(readFileSync(path, "utf8")).toBe(emittedSource);
   sqlite?.close(); await sql?.close();
   if (previousDatabase === undefined) delete Bun.env.DATABASE_URL; else Bun.env.DATABASE_URL = previousDatabase;
   if (previousSqlite === undefined) delete Bun.env.SQLITE_PATH; else Bun.env.SQLITE_PATH = previousSqlite;
@@ -56,16 +59,31 @@ async function source(label: string) {
   await rows('INSERT INTO "user" (id,authentication_subject,email,status,created_at,disabled_at) VALUES ($1,$2,$3,$4,$5,$6)', [owner, subject, `${owner}@example.test`, "active", instant(at), null]);
   const issued = await app.authenticationHost().issue("browser_session", subject, at + 3_600_000, at);
   const headers = { cookie: `todo_session=${issued.credential}`, origin: configuration.BROWSER_ORIGIN, "x-jadpo-csrf": issued.csrfToken, "content-type": "application/json" };
-  const response = await app.handleRequest(new Request("https://todo.test/todos", { method: "POST", headers, body: JSON.stringify({ title: label }) }));
+  const response = await app.handleRequest(new Request("https://todo.test/todos", { method: "POST", headers, body: JSON.stringify({ title: label, due_at: new Date(at + 3_600_000).toISOString() }) }));
   expect(response.status).toBe(201);
   const todo = await response.json();
-  return { owner, issued, headers, todo, sessionId: JSON.parse(Buffer.from(issued.credential.split(".")[2], "base64url").toString())[3] };
+  const service = crypto.randomUUID(), name = `intent-sender-${service}`;
+  await rows('INSERT INTO service (id,owner_id,name,status,created_at,disabled_at) VALUES ($1,$2,$3,$4,$5,$6)', [service, owner, name, "active", instant(at), null]);
+  await rows('INSERT INTO reminder_service_membership (id,service_id,role) VALUES ($1,$2,$3)', [crypto.randomUUID(), service, "sender"]);
+  const host = app.authenticationHost(), key = await host.issueServiceCredential("api_bearer", name, at + 3_600_000, at);
+  const proof = await host.prepareDeliveryCredential("api_bearer", key.credential, Date.now());
+  const { persistence } = await import(pathToFileURL(join(project, "build/target/persistence.ts")).href);
+  const binding = JSON.parse(readFileSync(join(project, "build/audit/jobs.json"), "utf8")).jobs[0].delivery.binding;
+  const page = await persistence.withOperationTime(new Date(at + 7_200_000).toISOString()).transaction((tx: any) => tx.select_delivery_intents(binding, proof));
+  const enrolled = page.intents.find((value: any) => value.sourceEntityId === todo.id); expect(enrolled).toBeDefined();
+  const originalIntent = await rows('SELECT * FROM "__jadpo_deliveries_v1" WHERE intent_id=$1', [enrolled.intentId]);
+  expect(originalIntent).toHaveLength(1);
+  expect(originalIntent[0]).toMatchObject({ intent_id: enrolled.intentId, source_entity: "Todo", source_entity_id: todo.id, source_revision: "1", state: "pending", ordering_key: todo.id, payload_version: "reminder.v1" });
+  expect(JSON.parse(originalIntent[0].payload)).toEqual(enrolled.payload);
+  expect(enrolled.payload.idempotency_key).toBe(enrolled.intentId);
+  return { owner, issued, headers, todo, enrolled, originalIntent, sessionId: JSON.parse(Buffer.from(issued.credential.split(".")[2], "base64url").toString())[3] };
 }
 async function snapshot(ids: string[]) {
   return JSON.stringify({
     sources: await rows('SELECT * FROM todo WHERE id IN ($1,$2) ORDER BY id', ids),
     owners: await rows('SELECT * FROM "user" WHERE id IN (SELECT owner_id FROM todo WHERE id IN ($1,$2)) ORDER BY id', ids),
     schedules: await rows('SELECT * FROM "__jadpo_delivery_schedules_v1" WHERE source_entity_id IN ($1,$2) ORDER BY source_entity_id', ids),
+    intents: await rows('SELECT * FROM "__jadpo_deliveries_v1" WHERE source_entity_id IN ($1,$2) ORDER BY source_entity_id,intent_id', ids),
   });
 }
 test("both service validator forms refuse all three protected user mutations before transaction admission", async () => {
@@ -116,7 +134,7 @@ async function worker(onEvent: (event: any, worker: any) => void) {
   } catch (failure) {
     child.kill(); await child.exited; reader.releaseLock(); await result.errors; throw failure;
   }
-  const ready = JSON.parse(output.trim()); expect(ready).toMatchObject({ ready: true, modifiedAdmissionBit: true, releasedPublicRetry: false });
+  const ready = JSON.parse(output.trim()); expect(ready).toMatchObject({ ready: true, modifiedAdmissionBit: false, emittedConditionalAdmission: true });
   result.port = ready.port;
   result.output = (async () => { while (!(await reader.read()).done) {} reader.releaseLock(); })();
   return result;
@@ -172,12 +190,13 @@ for (const revoke of [false, true]) test.skipIf(!sql)(`actual guarded HTTP Postg
     for (let i = 0; i < 2; i++) {
       const row = (await rows('SELECT title,owner_id,deleted_at FROM todo WHERE id=$1', [workers[i].fixture.todo.id]))[0];
       expect(row.owner_id).toBe(workers[i].fixture.owner); expect(row.deleted_at).toBeNull();
+      expect(await rows('SELECT * FROM "__jadpo_deliveries_v1" WHERE intent_id=$1', [workers[i].fixture.enrolled.intentId])).toEqual(workers[i].fixture.originalIntent);
       expect(row.title).toBe(revoke && i === index ? workers[i].fixture.todo.title : i === 0 ? "deadlock-a" : "deadlock-b");
       const revision = (await rows('SELECT schedule_revision FROM "__jadpo_delivery_schedules_v1" WHERE source_entity_id=$1', [workers[i].fixture.todo.id]))[0];
       expect(Number(revision.schedule_revision)).toBe(revoke && i === index ? 1 : 2);
     }
     expect(await snapshot([f.todo.id, g.todo.id])).not.toBe(before);
-    console.log(JSON.stringify({ control: revoke ? "deadlock-revocation" : "deadlock-fresh", modifiedAdmissionBit: true, releasedPublicRetry: false, nativeFreshCredentialLockWait: waiter, statuses: responses.map(value => value.status), attempts: workers.map(value => value.events) }));
+    console.log(JSON.stringify({ control: revoke ? "deadlock-revocation" : "deadlock-fresh", modifiedAdmissionBit: false, emittedConditionalAdmission: true, nativeFreshCredentialLockWait: waiter, statuses: responses.map(value => value.status), attempts: workers.map(value => value.events) }));
   } finally {
     release(); await heldWork?.catch(() => {}); await mutation?.catch(() => {});
     for (const w of workers) { w.child.stdin.end(); const exited = await Promise.race([w.child.exited, Bun.sleep(1_000).then(() => null)]); if (exited === null) { w.child.kill(); await w.child.exited; } await w.errors; await w.output; }

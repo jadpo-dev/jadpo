@@ -149,6 +149,7 @@ pub fn check_types(files: &[ParsedSyntax], graph: &SemanticGraph) -> TypeCheckRe
         catalogue,
         result: TypeCheckResult::default(),
         delivery_seals: delivery_seal::seals_from_files(files),
+        direct_range_inputs: None,
     };
     checker.check_files(files);
     checker.check_delivery_sealed_declarations(files);
@@ -733,6 +734,9 @@ struct TypeChecker<'graph> {
     catalogue: Catalogue,
     result: TypeCheckResult,
     delivery_seals: Vec<delivery_seal::DeliverySeal>,
+    // Only original input parameters/route input declarations, never aliases or
+    // shadowed locals, may supply the initial required page range operands.
+    direct_range_inputs: Option<BTreeSet<String>>,
 }
 
 impl TypeChecker<'_> {
@@ -2664,10 +2668,32 @@ impl TypeChecker<'_> {
         return_type: &TypeValue,
         source: &str,
     ) {
+        let parent_range_inputs = self.direct_range_inputs.clone();
+        if self.direct_range_inputs.is_none() {
+            self.direct_range_inputs = Some(
+                environment
+                    .iter()
+                    .filter_map(|(name, value)| {
+                        (!value.nullable
+                            && !value.secret
+                            && !matches!(
+                                name.as_str(),
+                                "principal" | "current_principal" | "clock" | "config"
+                            )
+                            && self.catalogue.record_kinds.get(&value.name)
+                                == Some(&jadpo_syntax::RecordKind::Input))
+                        .then(|| name.clone())
+                    })
+                    .collect(),
+            );
+        }
         for statement in &block.statements {
             match statement {
                 Statement::Binding(binding) => {
                     let inferred = self.infer_expression(&binding.value, environment, source);
+                    if let Some(inputs) = &mut self.direct_range_inputs {
+                        inputs.remove(&binding.name.text);
+                    }
                     let binding_type = if let Some(annotation) = &binding.annotation {
                         let expected = resolved_type_value(annotation, self.graph);
                         if let Some(received) = &inferred {
@@ -2692,6 +2718,9 @@ impl TypeChecker<'_> {
                     }
                 }
                 Statement::Assignment(assignment) => {
+                    if let Some(inputs) = &mut self.direct_range_inputs {
+                        inputs.remove(&assignment.target.text);
+                    }
                     let expected = environment.get(&assignment.target.text).cloned();
                     if expected.is_none() {
                         self.push_diagnostic("TYPE_ASSIGN_UNKNOWN", source, assignment.range);
@@ -2801,6 +2830,7 @@ impl TypeChecker<'_> {
                 Statement::Unsupported(_) => {}
             }
         }
+        self.direct_range_inputs = parent_range_inputs;
     }
 
     fn check_match_statement(
@@ -2991,6 +3021,12 @@ impl TypeChecker<'_> {
                 }
             }
 
+            let parent_range_inputs = self.direct_range_inputs.clone();
+            if let Some(inputs) = &mut self.direct_range_inputs {
+                for (name, _) in &pattern_bindings {
+                    inputs.remove(name);
+                }
+            }
             let mut arm_environment = environment.clone();
             arm_environment.extend(pattern_bindings);
             let mut arm_mutable_bindings = mutable_bindings.clone();
@@ -3001,6 +3037,7 @@ impl TypeChecker<'_> {
                 return_type,
                 source,
             );
+            self.direct_range_inputs = parent_range_inputs;
         }
 
         if wildcard_seen {
@@ -5450,9 +5487,38 @@ impl TypeChecker<'_> {
         let Some(entity_fields) = self.catalogue.records.get(target).cloned() else {
             return;
         };
+        use jadpo_syntax::QueryPagePredicateOperator as Op;
+        let mut range_fields = BTreeSet::new();
+        for predicate in &page.predicates {
+            if matches!(
+                predicate.operator,
+                Op::RequiredGreaterEqual | Op::RequiredLess
+            ) {
+                range_fields.insert(predicate.field.text.clone());
+            }
+        }
+        if range_fields.len() > 1 {
+            self.push_diagnostic("TYPE_QUERY_PAGE_RANGE_PAIR", source, page.range);
+        }
+        for field in &range_fields {
+            let operators = page
+                .predicates
+                .iter()
+                .filter(|p| &p.field.text == field)
+                .map(|p| p.operator)
+                .collect::<Vec<_>>();
+            if operators.len() != 2
+                || !operators.contains(&Op::RequiredGreaterEqual)
+                || !operators.contains(&Op::RequiredLess)
+            {
+                self.push_diagnostic("TYPE_QUERY_PAGE_RANGE_PAIR", source, page.range);
+            }
+        }
         let mut predicate_fields = BTreeSet::new();
         for predicate in &page.predicates {
-            if !predicate_fields.insert(predicate.field.text.clone()) {
+            if !range_fields.contains(&predicate.field.text)
+                && !predicate_fields.insert(predicate.field.text.clone())
+            {
                 self.push_diagnostic("TYPE_MISMATCH", source, predicate.field.range);
             }
             let Some(expected) = entity_fields.get(&predicate.field.text) else {
@@ -5482,6 +5548,42 @@ impl TypeChecker<'_> {
                                 predicate.value.range(),
                             );
                         }
+                    }
+                }
+                Op::RequiredGreaterEqual | Op::RequiredLess => {
+                    if expected.declared_type.nullable
+                        || expected.declared_type.secret
+                        || self
+                            .representation_root(&expected.declared_type.name)
+                            .as_deref()
+                            != Some("Instant")
+                    {
+                        self.push_diagnostic(
+                            "TYPE_QUERY_PAGE_RANGE_FIELD",
+                            source,
+                            predicate.field.range,
+                        );
+                    }
+                    if !self.required_range_input_field(&predicate.value, environment) {
+                        self.push_diagnostic(
+                            "TYPE_QUERY_PAGE_RANGE_INPUT",
+                            source,
+                            predicate.value.range(),
+                        );
+                    }
+                    if let Some(received) = received {
+                        let field_type = TypeValue {
+                            name: format!("{target}.{}", predicate.field.text),
+                            arguments: expected.declared_type.arguments.clone(),
+                            nullable: false,
+                            secret: false,
+                        };
+                        self.require_compatible(
+                            &received,
+                            &field_type,
+                            source,
+                            predicate.value.range(),
+                        );
                     }
                 }
                 jadpo_syntax::QueryPagePredicateOperator::OptionalEqual
@@ -5653,6 +5755,37 @@ impl TypeChecker<'_> {
             && left.arguments == right.arguments
             && (left.name == right.name
                 || self.representation_root(&left.name) == self.representation_root(&right.name))
+    }
+
+    fn required_range_input_field(
+        &self,
+        expression: &Expression,
+        environment: &BTreeMap<String, TypeValue>,
+    ) -> bool {
+        let Expression::Name(name) = expression else {
+            return false;
+        };
+        if name.path.len() != 2
+            || !self
+                .direct_range_inputs
+                .as_ref()
+                .is_some_and(|inputs| inputs.contains(&name.path[0].text))
+        {
+            return false;
+        }
+        environment
+            .get(&name.path[0].text)
+            .filter(|record| {
+                !record.nullable
+                    && !record.secret
+                    && self.catalogue.record_kinds.get(&record.name)
+                        == Some(&jadpo_syntax::RecordKind::Input)
+            })
+            .and_then(|record| self.catalogue.records.get(&record.name))
+            .and_then(|fields| fields.get(&name.path[1].text))
+            .is_some_and(|field| {
+                !field.optional && !field.declared_type.nullable && !field.declared_type.secret
+            })
     }
 
     fn optional_input_field(

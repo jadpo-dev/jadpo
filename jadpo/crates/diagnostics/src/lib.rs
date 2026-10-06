@@ -2854,8 +2854,8 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
         ),
         "SYN_QUERY_PAGE_PREDICATE_OPERATOR" => (
             "Unsupported page predicate operator",
-            "Page predicates support equality, optional equality filters and optional less-than-or-equal filters with statically bound values.",
-            "Use `==`, `matches optional` or `<= optional`",
+            "Page predicates support equality, optional equality and less-than-or-equal filters, and one required half-open Instant pair with direct required input fields.",
+            "Use `==`, `matches optional`, `<= optional`, or a checked same-field `>=` and `<` pair",
         ),
         "TYPE_QUERY_NULLABLE_FIELD_UNSUPPORTED" => (
             "Query predicate field is nullable",
@@ -2871,6 +2871,21 @@ fn persistence_type_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Pagination bound must be a literal integer",
             "Compile-time literal bounds keep the current query plan explicitly and statically bounded; dynamic limits and offsets are not part of this language slice.",
             "Use an integer literal for `limit` or `offset`",
+        ),
+        "TYPE_QUERY_PAGE_RANGE_PAIR" => (
+            "Page range requires one half-open pair on one field",
+            "Required page bounds support exactly one `>=` lower bound and one `<` upper bound on the same stored field; duplicate, incomplete, mixed or multiple-field ranges are outside this slice.",
+            "Keep one `>=` and one `<` predicate on the same field, without another predicate on that field",
+        ),
+        "TYPE_QUERY_PAGE_RANGE_FIELD" => (
+            "Page range field must store a non-nullable Instant",
+            "Required half-open page bounds apply only to a stored non-nullable, non-secret Instant field, preserving its declared field type.",
+            "Use a non-nullable, non-secret stored Instant field",
+        ),
+        "TYPE_QUERY_PAGE_RANGE_INPUT" => (
+            "Page range bound must be a direct required input field",
+            "Each required bound must name a non-nullable, non-secret required member of the original input binding; local aliases, shadows, assignments, calls and other expression origins are unsupported.",
+            "Use a direct required input member with the target field's declared type",
         ),
         "TYPE_QUERY_PAGINATION_RANGE" => (
             "Pagination bound is outside its allowed range",

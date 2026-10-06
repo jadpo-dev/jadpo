@@ -6,11 +6,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { copyGoldenFixture } from "./golden-fixture";
-import { privateRetryApplication } from "./fixtures/protected-retry-application";
 
-// Complementary private prerequisite: User.disable_user auth:fresh for exactly
-// the selected signed API/JWT forms. Counterfactual admission never releases a
-// product route. Retain the actual emitted crypto/policy/action/retry bodies.
+// Actual emitted User.disable_user HTTP for selected signed API/JWT forms.
+// Fresh imports exercise native conditional admission without rewriting output.
 const root = mkdtempSync(join(tmpdir(), "jadpo-selected-lifecycle-"));
 const project = join(root, "application"); copyGoldenFixture(project);
 const built = Bun.spawnSync([Bun.env.JADPO_BIN ?? resolve("jadpo/target/debug/jadpo"), "build", project], { stdout: "pipe", stderr: "pipe" });
@@ -30,18 +28,21 @@ if (databaseUrl) {
 } else delete Bun.env.DATABASE_URL;
 Bun.env.SQLITE_PATH = join(root, "fixture.sqlite");
 const environment = { DATABASE_URL: "https://db.test/golden", SESSION_SIGNING_KEY: Buffer.alloc(32, 91).toString("base64url"), BROWSER_ORIGIN: "https://todo.test", OIDC_ISSUER: "https://issuer.test", OIDC_AUDIENCE: "todo", MAIL_API_KEY: Buffer.alloc(32, 92).toString("base64url"), MAIL_SENDER: "todo@example.test" };
-const app = await privateRetryApplication(join(project, "build/target/app.ts"), true);
+const applicationPath = join(project, "build/target/app.ts");
+const emittedSource = readFileSync(applicationPath, "utf8");
+const permission = '__operation = allowOperationRetries(__operation, __authenticatedRetryCandidate && authenticated.kind === "user" && __operation.refreshAuthority !== null);';
+expect(emittedSource.split(permission).length - 1).toBe(3);
+const app = await import(pathToFileURL(applicationPath).href);
 await app.initializeApplication(environment);
-// The selector's closed issuer belongs to the actual native app module, not
-// the separate counterfactual HTTP evaluator closure.
-const nativeApplication = await import(pathToFileURL(join(project, "build/target/app.ts")).href);
+// The native HTTP application and selector share their actual closed issuer.
+const nativeApplication = app;
 const { persistence } = await import(pathToFileURL(join(project, "build/target/persistence.ts")).href);
 const sql = databaseUrl ? new SQL({ url: databaseUrl, prepare: false, max: 4 }) : null;
 const sqlite = databaseUrl ? null : new Database(Bun.env.SQLITE_PATH, { strict: true });
 const rows = async (statement: string, values: any[] = []): Promise<any[]> => sql ? [...await sql.unsafe(statement, values)] : sqlite!.prepare(statement).all(...values);
 const instant = (at: number) => sql ? new Date(at).toISOString() : at;
 const binding = JSON.parse(readFileSync(join(project, "build/audit/jobs.json"), "utf8")).jobs[0].delivery.binding;
-afterAll(async () => { sqlite?.close(); await sql?.close(); if (oldDatabase === undefined) delete Bun.env.DATABASE_URL; else Bun.env.DATABASE_URL = oldDatabase; if (oldSqlite === undefined) delete Bun.env.SQLITE_PATH; else Bun.env.SQLITE_PATH = oldSqlite; rmSync(root, { recursive: true, force: true }); });
+afterAll(async () => { expect(readFileSync(applicationPath, "utf8")).toBe(emittedSource); sqlite?.close(); await sql?.close(); if (oldDatabase === undefined) delete Bun.env.DATABASE_URL; else Bun.env.DATABASE_URL = oldDatabase; if (oldSqlite === undefined) delete Bun.env.SQLITE_PATH; else Bun.env.SQLITE_PATH = oldSqlite; rmSync(root, { recursive: true, force: true }); });
 
 for (const [mode, disposition] of [["signed", "fresh"], ["signed", "revoked"], ["signed", "inactive"], ["jwt", "fresh"], ["jwt", "inactive"]] as const)
 test(`selected ${mode} User.disable_user ${disposition} preserves current authority and retained intent`, async () => {
@@ -66,7 +67,7 @@ test(`selected ${mode} User.disable_user ${disposition} preserves current author
     credential = await new SignJWT({ iss: environment.OIDC_ISSUER, aud: environment.OIDC_AUDIENCE, sub: subject, iat: seconds, exp: seconds + 120 }).setProtectedHeader({ alg: "RS256", kid: "selected-lifecycle", typ: "JWT" }).sign(keys.privateKey);
   } else credential = "";
   await app.initializeApplication(environment); // JWT verifier captures actual fixture document boundary here.
-  await nativeApplication.initializeApplication(environment);
+
   const host = app.authenticationHost();
   if (mode === "signed") { const issued = await host.issue("api_bearer", subject, at + 3_600_000, at); credential = issued.credential; sessionId = JSON.parse(Buffer.from(credential.split(".")[2], "base64url").toString())[3]; }
   const headers = { authorization: `Bearer ${credential!}`, "content-type": "application/json" };
@@ -137,7 +138,7 @@ test(`selected ${mode} User.disable_user ${disposition} preserves current author
       const denied = await fetch(`http://127.0.0.1:${server.port}/users/${owner}`, { method: "DELETE", headers }); expect(denied.status).toBe(403); expect(events).toHaveLength(2);
     } else { expect(events).toHaveLength(1); expect(user.status).toBe(disposition === "inactive" ? "disabled" : "active"); expect(user.disabled_at).toBeNull(); }
     if (mode === "jwt") expect(providerDocuments).toEqual([environment.OIDC_ISSUER + "/.well-known/openid-configuration", environment.OIDC_ISSUER + "/jwks"]);
-    console.log(JSON.stringify({ control: `${mode}-${disposition}`, modifiedAdmissionBit: true, releasedPublicRetry: false, nativeRetryLookupWait: waiter, status: response.status, retainedIntent: enrolled.intentId, attempts: events, jwtDocumentRequests: providerDocuments.length }));
+    console.log(JSON.stringify({ control: `${mode}-${disposition}`, modifiedAdmissionBit: false, emittedConditionalAdmission: true, nativeRetryLookupWait: waiter, status: response.status, retainedIntent: enrolled.intentId, attempts: events, jwtDocumentRequests: providerDocuments.length }));
   } finally {
     console.error = previousError; globalThis.fetch = oldFetch; server.stop(true);
     if (locker) { locker.exec("ROLLBACK"); locker.close(); } release();

@@ -1064,6 +1064,8 @@ pub enum QueryPagePredicateOperator {
     Equal,
     OptionalEqual,
     OptionalLessEqual,
+    RequiredGreaterEqual,
+    RequiredLess,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

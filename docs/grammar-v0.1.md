@@ -1134,7 +1134,10 @@ equality_where      = "where", ":", identifier, "==", expression ;
 page_predicate      = identifier,
                       ( "==", expression
                       | "matches", "optional", expression
-                      | "<=", "optional", expression ) ;
+                      | "<=", "optional", expression
+                      | ">=", required_page_bound
+                      | "<", required_page_bound ) ;
+required_page_bound = runtime_identifier, ".", runtime_identifier ;
 page_order          = identifier, order_direction ;
 
 update_candidate    = "update", "(", entity_reference, ")", "{",
@@ -1191,6 +1194,17 @@ baseline. RM-218 owns any new numeric collection bound. Page predicates preserve
 requires the existing optional input-field provenance, not just a nullable value.
 `page_predicate` uses the current bounded predicate operand parser, not an
 arbitrary boolean expression that absorbs subsequent clauses.
+
+The implemented page predicate slice additionally accepts `field >= input.start`
+and `field < input.end` as one required half-open pair on the same stored,
+non-nullable `Instant` field. Exactly one lower and one upper predicate are
+required, in either authored order; no other predicate may use that field and
+only one such field pair is admitted. Each bound is a direct required,
+non-nullable, non-secret member of an original `input` declaration binding,
+nominally compatible with the target entity field. Local aliases, shadowed
+bindings, calls, clock/principal/config values, and presentation/other temporal
+types are outside this slice. Existing optional predicates and direct `many`
+query restrictions remain unchanged.
 
 The page result moves from `-> PageType` into `into: PageType`. The cursor is a
 type reference; its field tuple is derived from `order_by`, matching the current

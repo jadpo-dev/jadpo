@@ -2360,6 +2360,82 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
       await sql!.unsafe("DROP SEQUENCE IF EXISTS validation_cancel_in_flight_count");
     }
   });
+  test("SQLite captured cancellation at a returning native statement rolls back before commit without replay", async () => {
+    if (postgresUrl) return;
+    // Cooperative boundary injection: the original native write returns before
+    // this fixture aborts its captured request. No synchronous preemption claim.
+    for (const mode of ["abort_at_return", "normal_commit", "abort_before_call"] as const) {
+      const value = entry(`sqlite-statement-${mode}`, null);
+      const controller = new AbortController();
+      const capturedRequest = new Request("https://persistence.test/entries", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(value), signal: controller.signal,
+      });
+      const prototype: any = Database.prototype;
+      const originalPrepare = prototype.prepare, originalExec = prototype.exec;
+      const originalLog = console.error;
+      const events: any[] = [];
+      let begins = 0, rollbacks = 0, commits = 0, attemptedWrites = 0;
+      let activeNativeTransaction = false, provisionalRow = false;
+      let capturedSignalAbortedAtStatementReturn: boolean | null = null;
+      prototype.prepare = function (statement: string, ...bindings: unknown[]) {
+        const prepared = originalPrepare.call(this, statement, ...bindings);
+        if (statement.trim().toUpperCase().startsWith('INSERT INTO "ENTRY"')) {
+          const writer = this, originalGet = prepared.get;
+          prepared.get = (...values: unknown[]) => {
+            attemptedWrites++;
+            const result = originalGet.apply(prepared, values);
+            activeNativeTransaction = writer.inTransaction === true;
+            // Use original prepare on that same native writer, never an observer
+            // connection or a recursive interception of the business statement.
+            const inspect = originalPrepare.call(writer, 'SELECT id FROM "entry" WHERE id = ?1');
+            try { provisionalRow = inspect.get(value.id)?.id === value.id; }
+            finally { inspect.finalize(); }
+            if (mode === "abort_at_return") controller.abort();
+            capturedSignalAbortedAtStatementReturn = capturedRequest.signal.aborted;
+            return result;
+          };
+        }
+        return prepared;
+      };
+      prototype.exec = function (statement: string, ...values: unknown[]) {
+        const command = statement.trim().toUpperCase();
+        if (command === "BEGIN IMMEDIATE") begins++;
+        if (command === "ROLLBACK") rollbacks++;
+        if (command === "COMMIT") commits++;
+        return originalExec.call(this, statement, ...values);
+      };
+      console.error = (...args: unknown[]) => {
+        try { const event = JSON.parse(String(args[0])); if (event.eventName === "transaction.attempt") events.push(event); } catch {}
+        originalLog(...args);
+      };
+      try {
+        if (mode === "abort_before_call") controller.abort();
+        const response = await app.handleRequest(capturedRequest);
+        originalLog(JSON.stringify({ kind: "sqlite_cooperative_statement_cancellation", mode, status: response.status, nativeStatementReturned: attemptedWrites === 1, activeNativeTransaction, provisionalRow, capturedSignalAbortedAtStatementReturn, capturedRequestSignalAborted: capturedRequest.signal.aborted, begins, rollbacks, commits, attemptedWrites, events, claim: "cooperative_boundary_injection_not_synchronous_preemption" }));
+        if (mode === "normal_commit") {
+          expect(response.status).toBe(200); expect(await response.json()).toEqual(value);
+          expect(await stored(value.id)).toEqual([value]);
+          expect(await rows('SELECT revision FROM "__jadpo_changes" WHERE entity_id = $1', [value.id])).toEqual([{ revision: 1 }]);
+          expect([begins, rollbacks, commits, attemptedWrites]).toEqual([1, 0, 1, 1]);
+          expect(events).toHaveLength(1); expect(events[0]).toMatchObject({ attempt: 1, outcome: "committed", commitAcknowledged: true, retryScheduled: false, cancelled: false });
+          expect(activeNativeTransaction).toBe(true); expect(provisionalRow).toBe(true); expect(capturedSignalAbortedAtStatementReturn).toBe(false);
+        } else {
+          expect(response.status).toBe(503); expect((await response.json()).error.code).toBe("transaction_unavailable");
+          expect(await stored(value.id)).toEqual([]);
+          expect(await rows('SELECT revision FROM "__jadpo_changes" WHERE entity_id = $1', [value.id])).toEqual([]);
+          expect(events).toHaveLength(1); expect(events[0]).toMatchObject({ attempt: 1, outcome: "no_commit", commitAcknowledged: false, retryScheduled: false, cancelled: true });
+          expect(capturedRequest.signal.aborted).toBe(true);
+          if (mode === "abort_at_return") {
+            expect([begins, rollbacks, commits, attemptedWrites]).toEqual([1, 1, 0, 1]);
+            expect(activeNativeTransaction).toBe(true); expect(provisionalRow).toBe(true); expect(capturedSignalAbortedAtStatementReturn).toBe(true);
+            expect(events[0]).toMatchObject({ phase: "statement", rollbackProven: true, retryableCause: null });
+          } else { expect([begins, rollbacks, commits, attemptedWrites]).toEqual([0, 0, 0, 0]); expect(activeNativeTransaction).toBe(false); expect(provisionalRow).toBe(false); expect(capturedSignalAbortedAtStatementReturn).toBeNull(); }
+        }
+
+      } finally { prototype.prepare = originalPrepare; prototype.exec = originalExec; console.error = originalLog; }
+    }
+  });
   test("PostgreSQL SQLSTATE 40001 retries the complete nested action once", async () => {
     if (!postgresUrl) return;
     await sql!.unsafe("DROP TRIGGER IF EXISTS validation_retry_serialization ON \"entry\"");
