@@ -569,19 +569,19 @@ impl TargetGenerator<'_> {
         self.declared_credential_storage(output);
         output.push_str(r#"
 // Internal auth data cannot be reached through authored persistence operations.
-async function initializeAuthenticationStorage(initialization: ReturnType<typeof createInitializationControl>) {
+async function initializeAuthenticationStorage(initialization: ReturnType<typeof createInitializationControl>, schemaPostgres: SQL | null = postgres) {
 const authenticationSchema = 'CREATE TABLE IF NOT EXISTS "__jadpo_auth_sessions" ("id" TEXT PRIMARY KEY, "data" TEXT NOT NULL, "revoked" INTEGER NOT NULL DEFAULT 0)';
-if (postgres !== null) await persistenceAsync("authentication.schema", () => initialization.execute(postgres!.unsafe(authenticationSchema)));
+if (schemaPostgres !== null) await persistenceAsync("authentication.schema", () => initialization.execute(schemaPostgres!.unsafe(authenticationSchema)));
 else persistenceSync("authentication.schema", () => sqlite!.exec(authenticationSchema));
 // Reject an incompatible pre-existing internal table before opening a listener.
 const probe = 'SELECT sessions.id, sessions.data, sessions.revoked FROM "__jadpo_auth_sessions" AS sessions LIMIT 0';
-if (postgres !== null) await persistenceAsync("authentication.schema.validate", () => initialization.execute(postgres!.unsafe(probe)));
+if (schemaPostgres !== null) await persistenceAsync("authentication.schema.validate", () => initialization.execute(schemaPostgres!.unsafe(probe)));
 else persistenceSync("authentication.schema.validate", () => sqlite!.prepare(probe).all());
 const serviceSchema = 'CREATE TABLE IF NOT EXISTS "__jadpo_auth_service_credentials" ("id" TEXT PRIMARY KEY, "data" TEXT NOT NULL, "revoked" INTEGER NOT NULL DEFAULT 0)';
-if (postgres !== null) await persistenceAsync("authentication.schema", () => initialization.execute(postgres!.unsafe(serviceSchema)));
+if (schemaPostgres !== null) await persistenceAsync("authentication.schema", () => initialization.execute(schemaPostgres!.unsafe(serviceSchema)));
 else persistenceSync("authentication.schema", () => sqlite!.exec(serviceSchema));
 const serviceProbe = 'SELECT credentials.id, credentials.data, credentials.revoked FROM "__jadpo_auth_service_credentials" AS credentials LIMIT 0';
-if (postgres !== null) await persistenceAsync("authentication.schema.validate", () => initialization.execute(postgres!.unsafe(serviceProbe)));
+if (schemaPostgres !== null) await persistenceAsync("authentication.schema.validate", () => initialization.execute(schemaPostgres!.unsafe(serviceProbe)));
 else persistenceSync("authentication.schema.validate", () => sqlite!.prepare(serviceProbe).all());
 }
 async function authenticationRows(sql: string, values: string[]): Promise<any[]> {
