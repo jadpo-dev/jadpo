@@ -3201,6 +3201,11 @@ fn toolchain_catalogue_copy(code: &str) -> Option<AuthoredCopy> {
             "Generated TypeScript may use the Bun runtime and compiler-emitted relative modules only; undeclared external packages would make the output non-hermetic.",
             "Replace the import with supported runtime functionality or a generated relative module",
         ),
+        "JADPO_TARGET_LIVENESS_NOT_LOCAL" => (
+            "Authored liveness route is not dependency-free",
+            "GET /health/live must remain public and local before readiness or authentication. This target supports only an input-free inline return of an output record containing literals or declared enum constants.",
+            "Use auth: none and a single constant output return without inputs, calls, clocks, configuration or declared failures",
+        ),
         "JADPO_TARGET_STORE_NOT_IMPLEMENTED" => (
             "Authority store target adapter is not implemented",
             "The current executable target supports the `primary` PostgreSQL or SQLite authority domain; physical adapters for other named authority stores remain parked.",
@@ -3815,6 +3820,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
         "JADPO_TARGET_AUTH_NOT_IMPLEMENTED"
             | "JADPO_TARGET_DURABLE_WORKFLOW_NOT_IMPLEMENTED"
             | "JADPO_TARGET_STORE_NOT_IMPLEMENTED"
+            | "JADPO_TARGET_LIVENESS_NOT_LOCAL"
             | "ROUTE_AUTH_VALUE_INVALID"
             | "MIG_DECISION_UNRESOLVED"
             | "MIG_DECISION_MISSING"
@@ -3835,6 +3841,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
             DecisionOwner::Human,
             match code {
                 "ROUTE_AUTH_VALUE_INVALID" => "Choose the authentication boundary for `{route}`",
+                "JADPO_TARGET_LIVENESS_NOT_LOCAL" => "Choose a dependency-free public liveness response",
                 "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => {
                     "Choose and implement the authentication boundary"
                 }
@@ -4020,7 +4027,7 @@ pub fn catalogue_definition(code: &str) -> CatalogueDefinition {
                 vec!["callable", "declared", "reachable", "failures"]
             }
             "CLI_INCIDENT_REVISION_MISMATCH" => vec!["eventRevision", "localRevision"],
-            "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" => vec!["route"],
+            "JADPO_TARGET_AUTH_NOT_IMPLEMENTED" | "JADPO_TARGET_LIVENESS_NOT_LOCAL" => vec!["route"],
             "JADPO_TARGET_DURABLE_WORKFLOW_NOT_IMPLEMENTED" => vec!["callable"],
             "JADPO_TARGET_STORE_NOT_IMPLEMENTED" => vec!["name"],
             "JADPO_TARGET_JOB_NOT_IMPLEMENTED" => vec!["name"],

@@ -17,6 +17,7 @@ mod delivery_invocation;
 mod delivery_scheduler;
 mod delivery_selection;
 mod first_party;
+mod liveness;
 
 const JWT_PACKAGE: &str = include_str!("runtime/jwt/package.json");
 const JWT_LOCK: &str = include_str!("runtime/jwt/bun.lock");
@@ -404,6 +405,18 @@ impl<'project> TargetGenerator<'project> {
                     }
                 }
                 if let Declaration::Route(route) = declaration {
+                    if Self::is_liveness_route(route)
+                        && generator.authored_liveness_response(route).is_none()
+                    {
+                        let mut diagnostic = Diagnostic::error("JADPO_TARGET_LIVENESS_NOT_LOCAL")
+                            .with_fact(DiagnosticFact::Route("GET /health/live".to_owned()));
+                        diagnostic.primary = Some(SourceSpan {
+                            source: source.source_name.clone(),
+                            start: route.range.start,
+                            end: route.range.end,
+                        });
+                        return Err(diagnostic);
+                    }
                     if !route.public && !generator.first_party_supported() {
                         let name = format!("{} {}", method_name(route.method), route.path);
                         let mut diagnostic = Diagnostic::error("JADPO_TARGET_AUTH_NOT_IMPLEMENTED")
@@ -8623,7 +8636,16 @@ export const temporal = Object.freeze({
         line(output, "    const url = new URL(request.url);");
         line(output, "    requestPath = url.pathname;");
 
-        line(output, "    if (request.method === \"GET\" && url.pathname === \"/health/live\") return json(200, { status: \"live\" }, requestId);");
+        let liveness = self.project.syntax.sources.iter()
+            .flat_map(|source| &source.file.declarations)
+            .find_map(|declaration| match declaration {
+                Declaration::Route(route) if Self::is_liveness_route(route) => {
+                    self.authored_liveness_response(route)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| "{ status: \"live\" }".to_owned());
+        line(output, &format!("    if (request.method === \"GET\" && url.pathname === \"/health/live\") return json(200, {liveness}, requestId);"));
         if self.has_entities() {
             line(output, &format!("    if (request.method === \"GET\" && url.pathname === \"/health/ready\") {{ const ready = await refreshDatabaseReadiness(); return json(ready ? 200 : 503, {{ status: ready ? \"ready\" : \"not_ready\", checks: {{ database: ready ? \"available\" : \"unavailable\" }}, advisories: {readiness_advisories} }}, requestId); }}"));
             line(output, "    if (!databaseIsReady()) return json(503, errorEnvelope(\"dependency_unavailable\", \"A required dependency is unavailable.\", requestId), requestId);");
@@ -8723,6 +8745,9 @@ export const temporal = Object.freeze({
                 let Declaration::Route(route) = declaration else {
                     continue;
                 };
+                if Self::is_liveness_route(route) {
+                    continue;
+                }
                 let current_route_id = route_id;
                 route_id += 1;
                 line(
@@ -8953,11 +8978,9 @@ export const temporal = Object.freeze({
                         );
                     }
                     line(output, "        };");
-                    line(output, "      } catch {");
-                    line(
-                        output,
-                        "        return json(400, errorEnvelope(\"invalid_request\", \"Request validation failed.\", requestId), requestId);",
-                    );
+                    line(output, "      } catch (error) {");
+                    line(output, "        if (error instanceof ValidationError) return json(422, errorEnvelope(\"invalid_value\", \"Request path value is invalid.\", requestId), requestId);");
+                    line(output, "        throw error;");
                     line(output, "      }");
                 }
                 if let Some(input) = &route.input {
@@ -8965,11 +8988,12 @@ export const temporal = Object.freeze({
                         output,
                         &format!("      let input: {};", self.ts_type(input)),
                     );
+                    line(output, "      let body: unknown;");
+                    line(output, "      try { body = await request.json(); } catch (error) {");
+                    line(output, "        if (error instanceof SyntaxError) return json(400, errorEnvelope(\"invalid_request\", \"Request JSON syntax is invalid.\", requestId), requestId);");
+                    line(output, "        throw error;");
+                    line(output, "      }");
                     line(output, "      try {");
-                    line(
-                        output,
-                        "        const body: unknown = await request.json();",
-                    );
                     line(
                         output,
                         &format!(
@@ -8977,11 +9001,9 @@ export const temporal = Object.freeze({
                             self.validation_expression(input, "body", "\"request.body\"")
                         ),
                     );
-                    line(output, "      } catch {");
-                    line(
-                        output,
-                        "        return json(400, errorEnvelope(\"invalid_request\", \"Request validation failed.\", requestId), requestId);",
-                    );
+                    line(output, "      } catch (error) {");
+                    line(output, "        if (error instanceof ValidationError) return json(422, errorEnvelope(\"invalid_input\", \"Request body value is invalid.\", requestId), requestId);");
+                    line(output, "        throw error;");
                     line(output, "      }");
                 }
                 if let Some(deadline) = &route.deadline {

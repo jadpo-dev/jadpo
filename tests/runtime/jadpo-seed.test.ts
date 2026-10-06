@@ -104,12 +104,12 @@ describe("jadpo-seed generated HTTP target", () => {
     expect(await response.json()).toEqual({ email: "person@example.com" });
   });
 
-  test("contains invalid typed route path values behind the safe request envelope", async () => {
+  test("contains invalid typed route path values behind the safe value envelope", async () => {
     const response = await fetch(new URL("/registrations/not-an-email", server.url));
     const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(body).toMatchObject({ error: { code: "invalid_request" } });
+    expect(response.status).toBe(422);
+    expect(body).toMatchObject({ error: { code: "invalid_value" } });
     expect(JSON.stringify(body)).not.toContain("not-an-email");
   });
 
@@ -120,11 +120,11 @@ describe("jadpo-seed generated HTTP target", () => {
     });
     const body = (await response.json()) as Record<string, unknown>;
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     expect(body).toMatchObject({
       error: {
-        code: "invalid_request",
-        message: "Request validation failed.",
+        code: "invalid_input",
+        message: "Request body value is invalid.",
       },
     });
     expect(JSON.stringify(body)).not.toContain("not-an-email");
@@ -136,9 +136,9 @@ describe("jadpo-seed generated HTTP target", () => {
       invite_code: "x",
     });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({
-      error: { code: "invalid_request" },
+      error: { code: "invalid_input" },
     });
   });
 
@@ -162,9 +162,9 @@ describe("jadpo-seed generated HTTP target", () => {
       administrator: true,
     });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({
-      error: { code: "invalid_request" },
+      error: { code: "invalid_input" },
     });
   });
 

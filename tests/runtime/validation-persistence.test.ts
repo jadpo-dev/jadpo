@@ -1244,7 +1244,7 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
     const value = entry("boundary-reject");
     for (const body of [{ id: value.id, label: value.label }, { ...value, label: null }]) {
       const response = await request("/entries", body);
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(422);
       expect(await stored(value.id)).toEqual([]);
     }
   });

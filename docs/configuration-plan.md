@@ -233,7 +233,13 @@ VS Code grammar/snippet, compile fixtures, CLI integration cases, and a runnable
 configuration example cover the new surface.
 
 The compiler now generates public, compiler-owned `GET /health/live` and
-`GET /health/ready` handlers. Liveness is local and dependency-free. For an
+`GET /health/ready` handlers. Liveness is local and dependency-free. An authored
+`GET /health/live` is supported only with `auth: none`, no request inputs or
+runtime reads/calls, and one inline return of an output record containing
+literals or declared enum constants. Its validated output is returned before
+readiness/authentication; unsupported handlers fail closed with a located
+`JADPO_TARGET_LIVENESS_NOT_LOCAL` diagnostic. Applications without that authored
+route retain the compiler fallback `{ status: "live" }`. For an
 application with generated persistence, readiness checks the stable `database`
 dependency ID; other traffic gets a generic 503 while that required dependency
 is unavailable. Recoverable database connection failures keep the process live;

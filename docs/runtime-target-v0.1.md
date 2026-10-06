@@ -83,8 +83,9 @@ At the HTTP boundary it:
 - maps declared domain failures through compiler-derived status, code, message,
   and public-field allowlists;
 - never copies internal failure context into the response;
-- converts malformed or constraint-invalid input to the generic 400
-  `invalid_request` envelope; and
+- maps malformed JSON to 400 `invalid_request`, declared body contract violations
+  to 422 `invalid_input`, and declared path value violations to 422 `invalid_value`,
+  following the owner-selected GF-032 frozen golden expectations; and
 - contains output-contract failures, unknown generated-runtime failures, and
   other defects behind the generic 500 `internal_fault` envelope.
 

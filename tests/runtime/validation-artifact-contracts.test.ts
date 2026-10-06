@@ -142,7 +142,7 @@ async function agrees(path: string, body: any, accepted: boolean) {
   const operation = openapi.paths[path].post;
   const result = await response(path, body);
   // The independent concrete expectation is asserted against each side.
-  expect(result.status, `${path} runtime: ${JSON.stringify(body)}`).toBe(accepted ? 200 : 400);
+  expect(result.status, `${path} runtime: ${JSON.stringify(body)}`).toBe(accepted ? 200 : 422);
   expect(permits(operation.requestBody.content["application/json"].schema, body), `${path} schema: ${JSON.stringify(body)}`).toBe(accepted);
   if (accepted) {
     const output = await result.json();

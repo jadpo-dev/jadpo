@@ -60,9 +60,9 @@ async function accepts(path: string, body: unknown) {
 async function rejects(path: string, body: unknown) {
   const response = await app.handleRequest(request(path, body));
   const result = await response.json();
-  // docs/runtime-target-v0.1.md explicitly maps boundary validation to 400.
-  expect(response.status).toBe(400);
-  expect(result.error.code).toBe("invalid_request");
+  // GF-032 preserves 422 for decoded body contract violations.
+  expect(response.status).toBe(422);
+  expect(result.error.code).toBe("invalid_input");
   expect(result.error).not.toHaveProperty("stack");
 }
 
@@ -138,4 +138,25 @@ describe("generated field construction and boundary contracts", () => {
     expect(await response.json()).toEqual({ label: "12345", maybe: "four" });
     expect(reads).toBe(1);
   });
+});
+
+
+test("JSON syntax remains 400 while unexpected decoder and validation faults stay internal", async () => {
+  const malformed = new Request("https://field.test/customer", { method: "POST", body: "{" });
+  const invalid = await app.handleRequest(malformed);
+  expect(invalid.status).toBe(400);
+  expect((await invalid.json()).error.code).toBe("invalid_request");
+  const canary = "boundary-fault-canary-do-not-disclose";
+  for (const validationFault of [false, true]) {
+    const incoming = request("/customer", {});
+    Object.defineProperty(incoming, "json", { value: async () => {
+      if (!validationFault) throw new Error(canary);
+      return new Proxy({}, { ownKeys() { throw new SyntaxError(canary); } });
+    } });
+    const response = await app.handleRequest(incoming);
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body.error.code).toBe("internal_fault");
+    expect(JSON.stringify(body)).not.toContain(canary);
+  }
 });
