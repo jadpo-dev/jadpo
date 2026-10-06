@@ -60,6 +60,7 @@
   ],
   "runtime_suites": [
     "tests/runtime/authentication-selector.test.ts",
+    "tests/runtime/configuration-preflight.test.ts",
     "tests/runtime/delivery-completion-representation.test.ts",
     "tests/runtime/delivery-hook-components.test.ts",
     "tests/runtime/entity-dossier.test.ts",
@@ -122,6 +123,7 @@
     "readiness",
     "entity-dossier",
     "lifecycle",
-    "relationship-conflicts"
+    "relationship-conflicts",
+    "configuration-preflight"
   ]
 }
