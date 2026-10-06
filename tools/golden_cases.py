@@ -55,6 +55,12 @@ Generated output is excluded; application adapters must retain its own digest/ra
 observations once implemented. A missing built compiler is explicitly unknown.
 """
     paths = {ACCEPTANCE, OBLIGATIONS, 'tools/golden_cases.py'}
+    # Supporting checkpoint adapters/instrumentation are source inputs too.
+    # They are deliberately not registered as the complete golden drivers.
+    for name in ('tools/golden_checkpoint.py', 'tools/golden_http_checkpoint.ts',
+                 'tools/golden_sql_observer.ts'):
+        if (root / name).is_file():
+            paths.add(name)
     for directory in ('examples/golden-todo', 'examples/golden-todo-migration'):
         paths.update(source_paths(root, root / directory, 'build'))
     paths.update(source_paths(root, root / 'jadpo', 'target', ('.pyc', '.pyo')))
