@@ -762,7 +762,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
     }
   });
-  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"]] as const)
+  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"]] as const)
   test(`RM402 private authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
     const f = await fixture(), inspected = await inspectRetryApplication(true);
     await inspected.initializeApplication(authEnvironment);
@@ -771,6 +771,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     // Genuine freshly issued signed credential permits bounded first admission;
     // the next transaction attempt must consult its durable session/authority.
     const sessionId = JSON.parse(Buffer.from(issued.credential.split(".")[2], "base64url").toString())[3];
+    const replacementUser = mode === "rebound" ? crypto.randomUUID() : null;
+    if (replacementUser) await rows('INSERT INTO "user" (id,authentication_subject,email,status,created_at,disabled_at) VALUES ($1,$2,$3,$4,$5,$6)', [replacementUser,replacementUser,`${replacementUser}@example.invalid`,"active",dbInstant(now),null]);
     const oldIntent = (await scan(f.proof)).intents[0];
     expect(oldIntent.sourceRevision).toBe("1");
     const oldPayload = oldIntent.payload;
@@ -810,6 +812,11 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         const change = async (statement: string, values: unknown[]) => sql ? held.unsafe(statement, values) : sqlite!.prepare(statement).all(...values);
         if (mode === "inactive") await change('UPDATE "user" SET status=$1 WHERE id=$2', ["disabled",owner]);
         if (mode === "revoked") await change('DELETE FROM "__jadpo_auth_sessions" WHERE id=$1', [sessionId]);
+        if (mode === "row_deleted") await change('UPDATE todo SET deleted_at=$1 WHERE id=$2', [dbInstant(Date.now()),f.value.id]);
+        if (mode === "rebound") {
+          await change('UPDATE "user" SET authentication_subject=$1 WHERE id=$2', ["old-subject-"+owner,owner]);
+          await change('UPDATE "user" SET authentication_subject=$1 WHERE id=$2', [owner,replacementUser]);
+        }
       })().finally(releaseGuard);
     };
     const server = Bun.serve({hostname:"127.0.0.1",port:0,fetch:inspected.handleRequest});
@@ -827,6 +834,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       if (mode === "fresh") {
         expect(response.status).toBe(verb === "PATCH" ? 200 : 204);
         expect(events).toHaveLength(2);
+        expect(events[1].operationId).toBe(events[0].operationId);
         expect(events[1]).toMatchObject({attempt:2,outcome:"committed",commitAcknowledged:true,retryScheduled:false});
         expect(await revision(f.value.id)).toBe(verb === "PATCH" ? "2" : "1");
         expect(intents).toHaveLength(1); expect(intents[0].state).toBe("pending");
@@ -838,15 +846,22 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         if (verb === "PATCH") { expect(source.title).toBe("HTTP retried exactly once"); expect(source.deleted_at).toBeNull(); }
         else expect(source.deleted_at).not.toBeNull();
       } else {
-        expect(response.status).toBe(mode === "inactive" ? 403 : 401);
-        expect(events).toHaveLength(1);
-        expect(source.title).toBe(f.value.title); expect(source.deleted_at).toBeNull();
+        expect(response.status).toBe(mode === "inactive" ? 403 : mode === "revoked" ? 401 : mode === "row_deleted" ? 404 : 503);
+        if (mode === "row_deleted") {
+          // The second transaction returns a declared domain refusal. Native
+          // audit emits persistence evidence only, so no second fault event is
+          // inferred. PG mutation sequence includes the fixture deletion only.
+          expect(events).toHaveLength(1);
+          expect(source.deleted_at).not.toBeNull(); // The external native fixture deletion only.
+        } else { expect(events).toHaveLength(1); expect(source.deleted_at).toBeNull(); }
+        if (mode === "rebound") expect((await response.json()).error.code).toBe("authentication_unavailable");
+        expect(source.title).toBe(f.value.title);
         expect(await revision(f.value.id)).toBe("1");
         expect(intents).toHaveLength(1); expect(intents[0].state).toBe("pending");
       }
       expect(JSON.parse(intents[0].payload)).toEqual(oldPayload);
       expect(String(intents[0].source_revision)).toBe("1");
-      if (sql) expect(Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value)).toBe(mode === "fresh" ? 2 : 1);
+      if (sql) expect(Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value)).toBe(mode === "fresh" || mode === "row_deleted" ? 2 : 1);
       const emitted = readFileSync(join(root,"app.ts"),"utf8");
       expect(emitted).not.toContain("allowOperationRetries(__operation, __authenticatedRetryCandidate)");
       expect(emitted).toContain("__operation = allowOperationRetries(__operation, false);");
@@ -857,6 +872,10 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await pendingMutation; await heldWork;
       if (sql) { await rows(`DROP TRIGGER IF EXISTS "${trigger}" ON todo`); await rows(`DROP FUNCTION IF EXISTS "${fn}"()`); await rows(`DROP SEQUENCE IF EXISTS "${sequence}"`); }
       await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
+      if (replacementUser) {
+        await rows('DELETE FROM "user" WHERE id=$1',[replacementUser]);
+        await rows('UPDATE "user" SET authentication_subject=$1 WHERE id=$2',[owner,owner]);
+      }
     }
   });
 
