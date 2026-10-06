@@ -25,7 +25,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         # cannot establish real application behaviour. Production validation
         # still rejects passing observations when a compiler binding is absent.
         for name in (harness.ACCEPTANCE, harness.OBLIGATIONS, 'tools/golden_cases.py',
-                     'tests/assurance/service-reference-mail-v0.1.json',
+                     'tests/assurance/service-reference-mail-v0.1.json', harness.JOB001_SUCCESSOR,
                      'tools/golden_checkpoint.py', 'tools/golden_http_checkpoint.ts',
                      'tools/golden_sql_observer.ts', 'tools/golden_startup_observer.ts'):
             destination = self.root/name
@@ -43,6 +43,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id in ('JOB-001', 'JOB-002', 'JOB-003'): return self.reminder_raw(case_id)
         if case_id == 'JOB-004': return self.maintenance_raw()
         if case_id in ('AUTH-009', 'AUTH-011'): return self.service_raw(case_id)
         if case_id in ('AUTH-003', 'AUTH-004', 'AUTH-007'): return self.jwt_raw(case_id)
@@ -235,6 +236,57 @@ class CheckpointIntegrityTests(unittest.TestCase):
                         'statements': [{'sql': 'SELECT id FROM "todo" ORDER BY "created_at" DESC, "id" DESC LIMIT $6', 'operation': 'SELECT', 'numericParameters': {'6': 3}}], 'authenticationAttempts': 1})
         return raw
 
+    def reminder_raw(self, case_id):
+        """Deterministic protocol-only doubles; never establish application passes."""
+        case = self.cases[case_id]
+        binding = 'job.overdue_reminders.delivery.reminder_v1'
+        metadata = {'jobs': [{'job': 'overdue_reminders', 'delivery': {'binding': binding}}]}
+        kinds = ['completed', 'deleted', 'undated', 'reminded', 'disabled-owner'] if case_id == 'JOB-003' else ['eligible']
+        creations, prepared = [], []
+        for index, kind in enumerate(kinds):
+            row = {'id': f'00000000-0000-4000-8000-{100+index:012}', 'owner_id': checkpoint.ALIASES['bob' if kind == 'disabled-owner' else 'alice'], 'title': 'synthetic '+kind, 'due_at': None if kind == 'undated' else '2026-01-14T12:00:00Z', 'status': 'open', 'deleted_at': None, 'reminder_sent_at': None}
+            schedule = {'source_entity': 'Todo', 'source_entity_id': row['id'], 'schedule_revision': '1'}
+            creations.append({'kind': kind, 'row': deepcopy(row), 'schedule': schedule, 'validated': deepcopy(row), 'validator': 'validate_TodoView', 'creation': {'method': 'POST', 'path': '/todos', 'status': 201, 'at': '2026-01-13T12:00:00Z', 'body': deepcopy(row), 'statements': [{'operation': 'INSERT', 'sql': 'INSERT INTO "__jadpo_delivery_schedules_v1"'}]}})
+            if kind == 'completed': row['status'] = 'completed'
+            if kind == 'deleted': row['deleted_at'] = self.clock
+            if kind == 'reminded': row['reminder_sent_at'] = '2026-01-14T12:00:00Z'
+            prepared.append(row)
+        mutations = []
+        if case_id == 'JOB-003':
+            for method, path, status, body in [('PATCH', '/todos/'+prepared[0]['id'], 200, {'status': 'completed'}), ('DELETE', '/todos/'+prepared[1]['id'], 204, None)]:
+                mutations.append({'method': method, 'path': path, 'status': status, 'requestJson': body, 'at': self.clock, 'statements': [{'operation': 'UPDATE', 'sql': 'UPDATE "todo"'}]})
+            mutations.append({'fixtureOnlyPreviouslyReminded': {'id': prepared[3]['id'], 'at': prepared[3]['reminder_sent_at'], 'statements': [{'operation': 'UPDATE', 'sql': 'UPDATE todo SET reminder_sent_at = $1 WHERE id = $2'}]}})
+            mutations.append({'method': 'DELETE', 'path': '/users/'+checkpoint.ALIASES['bob'], 'status': 204, 'requestJson': None, 'at': self.clock, 'statements': [{'operation': 'UPDATE', 'sql': 'UPDATE "user"'}]})
+        principal = {'kind': 'service', 'subject': 'reporting', 'authenticationStrength': 'primary', 'values': {'service_id': checkpoint.ALIASES['reporting']}}
+        fixture = {'specification': {'fixture': case['fixture'], 'run': case['run']}, 'binding': binding, 'jobMetadata': metadata, 'fixtureRows': creations, 'preparedRows': prepared, 'mutations': mutations, 'service': {'id': checkpoint.ALIASES['reporting'], 'status': 'active'}, 'credential': {'service_id': checkpoint.ALIASES['reporting'], 'status': 'active', 'revoked_at': None, 'privateMetadataRevoked': False, 'expires_at': '2026-10-06T10:00:00Z'}, 'serviceIssuance': {'at': self.clock, 'actualAuthorityClock': '2026-10-06T09:00:00Z', 'expires': '2026-10-06T10:00:00Z', 'credentialsIssued': 1, 'authorityPrincipals': [principal], 'statements': [{'operation': 'INSERT', 'sql': 'INSERT INTO "service_credential"'}]}, 'ownerRows': [{'id': checkpoint.ALIASES[name], 'email': name+'@example.test', 'status': 'disabled' if name == 'bob' and case_id == 'JOB-003' else 'active'} for name in ('alice', 'bob')]}
+        def run(label, at, selected, source=None):
+            result = {'label': label, 'at': at, 'binding': binding, 'profiles': {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}, 'outcome': {'status': 'idle' if label == 'original_run' and case_id == 'JOB-002' else 'finished', 'selected': selected, 'attempted': selected, 'continued': False}, 'calls': [], 'intents': [], 'receipts': [], 'after': deepcopy(prepared), 'schedules': [deepcopy(item['schedule']) for item in creations], 'statements': [{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'SELECT', 'sql': 'SELECT c FROM "service_credential"'}, {'operation': 'SELECT', 'sql': 'SELECT t."id" AS source_id FROM "todo" WHERE "deleted_at" IS NULL AND t."due_at" IS NOT NULL AND t."reminder_sent_at" IS NULL ORDER BY t."due_at" ASC, t."id" ASC LIMIT 500'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}]}
+            if selected:
+                row = deepcopy(source or prepared[0]); row['reminder_sent_at'] = at
+                identity = '00000000-0000-4000-8000-000000000999'
+                body = {'to': 'alice@example.test', 'todo_title': row['title'], 'due_at': row['due_at'], 'idempotency_key': identity}
+                result.update(calls=[{'method': 'POST', 'path': '/v1/messages', 'body': body, 'idempotencyKey': identity, 'authorizationCorrect': True, 'at': at, 'responseStatus': 202}], intents=[{'intent_id': identity, 'source_entity_id': row['id'], 'source_revision': '1', 'state': 'succeeded', 'payload': deepcopy(body)}], receipts=[{'intent_id': identity, 'accepted_at': at, 'observed_at': at}], after=[row], schedules=[{'source_entity': 'Todo', 'source_entity_id': row['id'], 'schedule_revision': '1'}], statements=[{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'SELECT', 'sql': 'SELECT t."id" AS source_id FROM "todo" WHERE "deleted_at" IS NULL AND t."due_at" IS NOT NULL AND t."reminder_sent_at" IS NULL ORDER BY t."due_at" ASC, t."id" ASC LIMIT 500'}, {'operation': 'SELECT', 'sql': 'SELECT c FROM "service_credential" JOIN "reminder_service_membership" ON 1=1 WHERE "expires_at" > $1'}, {'operation': 'INSERT', 'sql': 'INSERT INTO "__jadpo_delivery_mail_receipts_v1"'}, {'operation': 'SELECT', 'sql': 'SELECT observed_at FROM "__jadpo_delivery_mail_receipts_v1"'}, {'operation': 'UPDATE', 'sql': 'UPDATE "todo" SET "reminder_sent_at" = $1'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}])
+            return result
+        raw = [{'reminderFixture': fixture}]
+        if case_id == 'JOB-001': raw.append({'nativeReminderRun': run('original_run', case['run']['at'], 1)})
+        elif case_id == 'JOB-002':
+            completed = run('completed_JOB001_fixture', self.clock, 1)
+            raw.append({'nativeReminderRun': completed})
+            for label, at in [('original_run', case['run']['at']), ('independent_due_replay_control', '2026-01-15T12:15:00Z')]:
+                replay = run(label, at, 0)
+                for field in ('after', 'intents', 'receipts', 'schedules'): replay[field] = deepcopy(completed[field])
+                raw.append({'nativeReminderRun': replay})
+        else:
+            raw.append({'nativeReminderRun': run('original_run', case['run']['at'], 0)})
+            control = deepcopy(creations[0]); control['row'].update(id='00000000-0000-4000-8000-000000000200', title='synthetic positive control')
+            control['schedule']['source_entity_id'] = control['row']['id']; control['creation']['body'] = deepcopy(control['row']); control['validated'] = deepcopy(control['row'])
+            raw.append({'reminderEligibleControl': control})
+            positive = run('eligible_positive_control', '2026-01-15T12:15:00Z', 1, control['row'])
+            positive['eligibleControlAfter'] = positive['after'][0]; positive['eligibleControlSchedule'] = positive['schedules'][0]
+            positive['after'] = deepcopy(prepared)
+            raw.append({'nativeReminderRun': positive})
+        return raw
+
     def maintenance_raw(self):
         case = self.cases['JOB-004']
         before = [{'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': '2025-12-17T12:00:00Z'}, {'id': checkpoint.ALIASES['t2'], 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': '2025-12-15T12:00:00Z'}, {'id': '00000000-0000-4000-8000-000000000023', 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': None}]
@@ -333,6 +385,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
             failure_path = evidence/'application/build/audit/failures.json'; failure_path.parent.mkdir()
             failure_path.write_text(json.dumps({'failures': [{'failure': 'UserDisabled', 'code': 'user_disabled'}]}))
             (failure_path.parent/'lifecycle-maintenance.json').write_text(json.dumps(self.maintenance_raw()[0]['maintenanceFixture']['metadata']))
+            (failure_path.parent/'jobs.json').write_text(json.dumps(self.reminder_raw('JOB-001')[0]['reminderFixture']['jobMetadata']))
             (evidence/'application/build/app.meta.json').write_text(json.dumps({'source_revision': 'synthetic_revision'}))
             outputs = self.outputs()
             for output in outputs: (evidence/f'{output["backend"]}-raw.json').write_text(json.dumps(output))
@@ -743,6 +796,84 @@ class CheckpointIntegrityTests(unittest.TestCase):
         for entry in report['results']:
             if entry['id'] in ('REL-002', 'REL-003', 'REL-004'):
                 self.assertEqual(entry['status'], 'not_run'); self.assertNotIn('observations', entry)
+
+    def test_approved_job001_overlay_is_explicit_exact_and_preserves_other43_originals(self):
+        frozen = harness.read_contract(self.root)
+        accepted, descriptor = harness.accepted_job001_contract(self.root)
+        original_ids = [case['id'] for case in frozen['cases']]
+        self.assertEqual([case['id'] for case in accepted['cases']], original_ids)
+        self.assertEqual(descriptor['sha256'], harness.JOB001_SUCCESSOR_SHA256)
+        for original, successor in zip(frozen['cases'], accepted['cases']):
+            if original['id'] != 'JOB-001': self.assertEqual(original, successor)
+            else:
+                self.assertEqual(original['expect']['idempotencyKey'], 'todo.id')
+                self.assertEqual(successor['expect']['idempotencyKey'], 'persisted reminder_intent.id')
+        report = harness.run_cases(self.root, accepted_job001=True)
+        self.assertEqual(len(report['results']), 88)
+        harness.validate_report(report, self.root)
+        self.assertNotIn('acceptance_successor', harness.run_cases(self.root))
+        for mutation in ('descriptor', 'original', 'foreign_original', 'file_drift', 'file_missing'):
+            changed = deepcopy(report)
+            path = self.root/harness.JOB001_SUCCESSOR; previous = path.read_bytes()
+            if mutation == 'descriptor': changed['acceptance_successor']['sha256'] = 'foreign'
+            elif mutation == 'original': next(entry for entry in changed['results'] if entry['id'] == 'JOB-001')['original_frozen_required_scenarios'] = []
+            elif mutation == 'foreign_original': next(entry for entry in changed['results'] if entry['id'] != 'JOB-001')['original_frozen_required_scenarios'] = []
+            elif mutation == 'file_drift': path.write_bytes(previous+b'\n')
+            else: path.unlink()
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): harness.validate_report(changed, self.root)
+            path.write_bytes(previous)
+        self.assertEqual(harness.read_contract(self.root), frozen)
+
+    def test_native_reminder_observations_require_exact_identity_receipt_clock_authority_and_controls(self):
+        accepted, _ = harness.accepted_job001_contract(self.root)
+        cases = {case['id']: case for case in accepted['cases']}
+        for case_id in ('JOB-001', 'JOB-002', 'JOB-003'):
+            observations = checkpoint.observations(cases[case_id], self.reminder_raw(case_id))
+            self.assertFalse(harness.assess(cases[case_id], observations))
+            if case_id == 'JOB-001':
+                self.assertTrue(harness.assess(self.cases[case_id], observations))
+            for mutation in ('missing_run', 'reorder', 'credential_expiry', 'authority_principal', 'creation_identity', 'creation_validator', 'fixture_state', 'execution_profile', 'host_sql', 'selector_bound'):
+                raw = self.reminder_raw(case_id); fixture = raw[0]['reminderFixture']
+                runs = [item['nativeReminderRun'] for item in raw if 'nativeReminderRun' in item]
+                if mutation == 'missing_run': raw.pop()
+                elif mutation == 'reorder': raw.reverse()
+                elif mutation == 'credential_expiry': fixture['credential']['expires_at'] = '2026-01-15T12:00:01Z'
+                elif mutation == 'authority_principal': fixture['serviceIssuance']['authorityPrincipals'] = []
+                elif mutation == 'creation_identity': fixture['fixtureRows'][0]['creation']['body']['id'] = 'foreign'
+                elif mutation == 'creation_validator': fixture['fixtureRows'][0]['validator'] = 'guessed'
+                elif mutation == 'fixture_state': fixture['preparedRows'][0]['status'] = 'foreign'
+                elif mutation == 'execution_profile': runs[0]['profiles']['delivery']['executionMs'] = 1
+                elif mutation == 'host_sql': runs[0]['statements'] = []
+                else:
+                    for statement in runs[0]['statements']: statement['sql'] = statement['sql'].replace('LIMIT 500', 'LIMIT 999')
+                with self.subTest(case=case_id, mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(cases[case_id], raw)
+        for mutation in ('key', 'payload', 'receipt_identity', 'sent_clock', 'source_revision', 'recipient', 'receipt_sql_order', 'receipt_sql_missing', 'provider_auth', 'provider_status'):
+            raw = self.reminder_raw('JOB-001'); run = raw[1]['nativeReminderRun']
+            if mutation == 'key': run['calls'][0]['idempotencyKey'] = checkpoint.ALIASES['t1']
+            elif mutation == 'payload': run['intents'][0]['payload']['todo_title'] = 'foreign'
+            elif mutation == 'receipt_identity': run['receipts'][0]['intent_id'] = 'foreign'
+            elif mutation == 'sent_clock': run['after'][0]['reminder_sent_at'] = '2026-01-15T12:00:01Z'
+            elif mutation == 'source_revision': run['schedules'][0]['schedule_revision'] = '2'
+            elif mutation == 'recipient': run['calls'][0]['body']['to'] = 'bob@example.test'; run['intents'][0]['payload']['to'] = 'bob@example.test'
+            elif mutation == 'receipt_sql_order': run['statements'][3], run['statements'][5] = run['statements'][5], run['statements'][3]
+            elif mutation == 'receipt_sql_missing': run['statements'].pop(3)
+            elif mutation == 'provider_auth': run['calls'][0]['authorizationCorrect'] = False
+            else: run['calls'][0]['responseStatus'] = 401
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(cases['JOB-001'], raw)
+        for mutation in ('replay_calls', 'replay_outcome', 'replay_receipt', 'replay_clock', 'excluded_rows', 'excluded_mutations', 'excluded_called', 'control_creation', 'control_identity', 'control_clock'):
+            case_id = 'JOB-002' if mutation.startswith('replay') else 'JOB-003'
+            raw = self.reminder_raw(case_id); runs = [item['nativeReminderRun'] for item in raw if 'nativeReminderRun' in item]
+            if mutation == 'replay_calls': runs[1]['calls'] = deepcopy(runs[0]['calls'])
+            elif mutation == 'replay_outcome': runs[1]['outcome']['selected'] = 1
+            elif mutation == 'replay_receipt': runs[1]['receipts'][0]['observed_at'] = 'foreign'
+            elif mutation == 'replay_clock': runs[2]['at'] = '2026-01-15T12:01:00Z'
+            elif mutation == 'excluded_rows': runs[1]['after'] = []
+            elif mutation == 'excluded_mutations': raw[0]['reminderFixture']['mutations'] = []
+            elif mutation == 'excluded_called': runs[0]['calls'] = deepcopy(runs[1]['calls'])
+            elif mutation == 'control_creation': next(item['reminderEligibleControl'] for item in raw if 'reminderEligibleControl' in item)['creation']['status'] = 500
+            elif mutation == 'control_identity': runs[1]['eligibleControlAfter']['id'] = 'foreign'
+            else: runs[1]['at'] = '2026-01-15T12:01:00Z'
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(cases[case_id], raw)
 
     def test_native_maintenance_requires_original_retention_rows_audit_cutoff_and_predicate(self):
         raw = self.maintenance_raw()

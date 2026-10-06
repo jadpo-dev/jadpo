@@ -25,7 +25,7 @@ SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'READ-001', 'PATCH-005', 'DELETE-001', 'LIST-001', 'LIST-002',
              'LIST-003', 'REL-001', 'DELETE-002', 'AUTH-002', 'AUTH-006',
              'AUTH-010', 'USER-001', 'AUTH-003', 'AUTH-004', 'AUTH-007', 'AUTH-008',
-             'AUTH-009', 'AUTH-011', 'JOB-004')
+             'AUTH-009', 'AUTH-011', 'JOB-004', 'JOB-001', 'JOB-002', 'JOB-003')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
@@ -370,6 +370,97 @@ def native_patch_fixture(case: dict, raw: list):
     return identity
 
 
+def reminder_observations(case: dict, raw: list):
+    fixtures = [item for item in raw if 'reminderFixture' in item]
+    runs = [item['nativeReminderRun'] for item in raw if 'nativeReminderRun' in item]
+    labels = {'JOB-001': ['original_run'], 'JOB-002': ['completed_JOB001_fixture', 'original_run', 'independent_due_replay_control'], 'JOB-003': ['original_run', 'eligible_positive_control']}[case['id']]
+    if len(fixtures) != 1 or [run.get('label') for run in runs] != labels or raw.index(fixtures[0]) >= raw.index(next(item for item in raw if 'nativeReminderRun' in item)):
+        raise ValueError('Missing/reordered original native reminder fixture/run/control')
+    fixture = fixtures[0]['reminderFixture']
+    if not harness.same_json(fixture.get('specification'), {'fixture': case['fixture'], 'run': case['run']}) or fixture.get('binding') != 'job.overdue_reminders.delivery.reminder_v1':
+        raise ValueError('Changed original reminder fixture/run/binding')
+    job_metadata = fixture.get('jobMetadata', {}).get('jobs', [])
+    if len(job_metadata) != 1 or job_metadata[0].get('job') != 'overdue_reminders' or job_metadata[0].get('delivery', {}).get('binding') != fixture['binding']:
+        raise ValueError('Missing emitted checked reminder binding metadata')
+    issuance = fixture.get('serviceIssuance', {}); credential = fixture.get('credential', {}); service = fixture.get('service', {})
+    principal = {'kind': 'service', 'subject': 'reporting', 'authenticationStrength': 'primary', 'values': {'service_id': ALIASES['reporting']}}
+    if service.get('id') != ALIASES['reporting'] or service.get('status') != 'active' or credential.get('service_id') != service['id'] or credential.get('status') != 'active' or credential.get('revoked_at') is not None or credential.get('privateMetadataRevoked') is not False or issuance.get('credentialsIssued') != 1 or issuance.get('authorityPrincipals') != [principal] or not isinstance(issuance.get('actualAuthorityClock'), str) or not isinstance(credential.get('expires_at'), str) or instant(credential['expires_at']) <= instant(issuance['actualAuthorityClock']) or instant(issuance.get('expires')) != instant(credential['expires_at']) or instant(issuance.get('at')) != '2026-01-15T12:00:00Z' or not any(row.get('operation') == 'INSERT' and 'INTO "service_credential"' in row.get('sql', '') for row in issuance.get('statements', [])):
+        raise ValueError('Missing genuinely issued native credential valid at actual DB authority clock')
+    creations = fixture.get('fixtureRows', []); prepared = fixture.get('preparedRows', [])
+    kinds = ['completed', 'deleted', 'undated', 'reminded', 'disabled-owner'] if case['id'] == 'JOB-003' else ['eligible']
+    if [item.get('kind') for item in creations] != kinds or len(prepared) != len(kinds) or len({row.get('id') for row in prepared}) != len(kinds):
+        raise ValueError('Missing/duplicate original reminder fixture states')
+    for created, row in zip(creations, prepared):
+        creation = created.get('creation', {}); original = created.get('row', {}); owner = ALIASES['bob' if created['kind'] == 'disabled-owner' else 'alice']
+        if creation.get('status') != 201 or creation.get('method') != 'POST' or creation.get('path') != '/todos' or instant(creation.get('at')) != '2026-01-13T12:00:00Z' or created.get('validator') != 'validate_TodoView' or not harness.same_json(created.get('validated'), creation.get('body')) or original.get('id') != row.get('id') or original.get('id') != creation.get('body', {}).get('id') or original.get('owner_id') != owner or row.get('owner_id') != owner or created.get('schedule') != {'source_entity': 'Todo', 'source_entity_id': row['id'], 'schedule_revision': '1'} or not any(statement.get('operation') == 'INSERT' and 'INTO "__jadpo_delivery_schedules_v1"' in statement.get('sql', '') for statement in creation.get('statements', [])):
+            raise ValueError('Missing actual native-created reminder row/owner/schedule/output')
+        kind = created['kind']
+        if kind != 'undated' and instant(row.get('due_at')) != '2026-01-14T12:00:00Z' or kind == 'undated' and row.get('due_at') is not None or row.get('status') != ('completed' if kind == 'completed' else 'open') or (row.get('deleted_at') is not None) != (kind == 'deleted') or (row.get('reminder_sent_at') is not None) != (kind == 'reminded'):
+            raise ValueError('Original reminder exclusion/eligible row state absent')
+    mutations = fixture.get('mutations', [])
+    if case['id'] == 'JOB-003':
+        if len(mutations) != 4:
+            raise ValueError('Missing recorded original native exclusion fixture mutations')
+        for mutation, method, path, status, body in ((mutations[0], 'PATCH', '/todos/'+prepared[0]['id'], 200, {'status': 'completed'}), (mutations[1], 'DELETE', '/todos/'+prepared[1]['id'], 204, None), (mutations[3], 'DELETE', '/users/'+ALIASES['bob'], 204, None)):
+            if mutation.get('method') != method or mutation.get('path') != path or mutation.get('status') != status or mutation.get('requestJson') != body or instant(mutation.get('at')) != '2026-01-15T12:00:00Z' or not any(row.get('operation') == 'UPDATE' for row in mutation.get('statements', [])):
+                raise ValueError('Missing actual native completion/deletion/owner-disable fixture operation')
+        previously = mutations[2].get('fixtureOnlyPreviouslyReminded', {})
+        if previously.get('id') != prepared[3]['id'] or instant(previously.get('at')) != instant(prepared[3]['reminder_sent_at']) or not any(row.get('operation') == 'UPDATE' and 'UPDATE todo SET reminder_sent_at' in row.get('sql', '') for row in previously.get('statements', [])):
+            raise ValueError('Missing explicit fixture-only prior reminder mutation')
+    elif mutations:
+        raise ValueError('Unspecified reminder fixture mutation')
+    owners = {row.get('id'): row for row in fixture.get('ownerRows', [])}
+    if owners.get(ALIASES['alice'], {}).get('status') != 'active' or owners.get(ALIASES['bob'], {}).get('status') != ('disabled' if case['id'] == 'JOB-003' else 'active'):
+        raise ValueError('Missing original active/disabled-owner authority states')
+    original = next(run for run in runs if run['label'] == 'original_run')
+    if instant(original.get('at')) != instant(case['run']['at']):
+        raise ValueError('Changed exact original native reminder run clock')
+    for run in runs:
+        if run.get('binding') != fixture['binding'] or not harness.same_json(run.get('profiles'), {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}) or not isinstance(run.get('calls'), list) or not isinstance(run.get('statements'), list):
+            raise ValueError('Missing actual native job host profile/call/SQL observations')
+        statements = run['statements']
+        if not any(row.get('operation') == 'SELECT' and 'FROM "service_credential"' in row.get('sql', '') for row in statements) or not any(row.get('operation') == 'BEGIN' for row in statements) or not any(row.get('operation') == 'COMMIT' for row in statements):
+            raise ValueError('Missing actual native credential/transaction host execution')
+        if run.get('outcome', {}).get('status') == 'finished' and not any(row.get('operation') == 'SELECT' and all(token in row.get('sql', '') for token in ('AS source_id', 'FROM "todo"', '"deleted_at" IS NULL', 't."due_at" IS NOT NULL', 't."reminder_sent_at" IS NULL', 'ORDER BY t."due_at" ASC, t."id" ASC LIMIT 500')) for row in statements):
+            raise ValueError('Missing actual checked eligible reminder selector/predicate/order/bound')
+    def completed(run):
+        if run.get('outcome') != {'status': 'finished', 'selected': 1, 'attempted': 1, 'continued': False}:
+            raise ValueError('Missing actual unique native host selection/attempt/completion outcome')
+        calls, intents, receipts, after, schedules = (run.get(key, []) for key in ('calls', 'intents', 'receipts', 'after', 'schedules'))
+        if len(calls) != 1 or len(intents) != 1 or len(receipts) != 1 or len(after) != 1 or len(schedules) != 1:
+            raise ValueError('Missing unique actual provider/intent/receipt/source completion')
+        call, intent, receipt, row, schedule = calls[0], intents[0], receipts[0], after[0], schedules[0]
+        identity = intent.get('intent_id')
+        if not isinstance(identity, str) or not re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', identity) or identity == row.get('id') or intent.get('state') != 'succeeded' or intent.get('source_entity_id') != row.get('id') or intent.get('source_revision') != schedule.get('schedule_revision') or schedule.get('source_entity_id') != row.get('id') or schedule.get('source_entity') != 'Todo' or not harness.same_json(intent.get('payload'), call.get('body')) or receipt.get('intent_id') != identity or call.get('idempotencyKey') != identity or call.get('body', {}).get('idempotency_key') != identity or call.get('authorizationCorrect') is not True or call.get('method') != 'POST' or call.get('path') != '/v1/messages' or call.get('responseStatus') != 202 or instant(call.get('at')) != instant(run.get('at')):
+            raise ValueError('Actual immutable intent/provider receipt/source-version key binding absent')
+        if row.get('owner_id') != ALIASES['alice'] or call['body'].get('to') != owners[ALIASES['alice']].get('email') or call['body'].get('todo_title') != row.get('title') or instant(call['body'].get('due_at')) != instant(row.get('due_at')) or row.get('reminder_sent_at') is None or instant(row['reminder_sent_at']) != instant(receipt.get('observed_at')) or not any(statement.get('operation') == 'SELECT' and 'observed_at FROM "__jadpo_delivery_mail_receipts_v1"' in statement.get('sql', '') for statement in run['statements']) or not any(statement.get('operation') == 'UPDATE' and 'UPDATE "todo" SET "reminder_sent_at"' in statement.get('sql', '') for statement in run['statements']):
+            raise ValueError('Actual recipient/source/receipt-observation sent-mark completion absent')
+        statements = run['statements']
+        inserts = [index for index, row in enumerate(statements) if row.get('operation') == 'INSERT' and 'INTO "__jadpo_delivery_mail_receipts_v1"' in row.get('sql', '')]
+        reads = [index for index, row in enumerate(statements) if row.get('operation') == 'SELECT' and 'SELECT observed_at FROM "__jadpo_delivery_mail_receipts_v1"' in row.get('sql', '')]
+        marks = [index for index, row in enumerate(statements) if row.get('operation') == 'UPDATE' and 'UPDATE "todo" SET "reminder_sent_at"' in row.get('sql', '')]
+        if len(inserts) != 1 or len(reads) != 1 or len(marks) != 1 or not inserts[0] < reads[0] < marks[0] or not any(row.get('operation') == 'BEGIN' for row in statements[:inserts[0]]) or not any(row.get('operation') == 'COMMIT' for row in statements[marks[0]+1:]) or not any(row.get('operation') == 'SELECT' and 'JOIN "reminder_service_membership"' in row.get('sql', '') and '"expires_at" >' in row['sql'] for row in statements):
+            raise ValueError('Missing causal native authority/receipt insertion/read/sent-mark/commit sequence')
+        return {'mailCalls': len(calls), 'recipient': 'alice.email', 'idempotencyKey': 'persisted reminder_intent.id', 'reminderSentAtPresent': row['reminder_sent_at'] is not None, 'idempotencyKeyEqualsBodyAndHeader': call['body']['idempotency_key'] == call['idempotencyKey'] == identity, 'reminderSentAtSource': 'compiler receipt observation time', 'sentMarkMatchesCurrentScheduleRevision': intent['source_revision'] == schedule['schedule_revision']}
+    if case['id'] == 'JOB-001':
+        return [{'variant_index': 0, 'steps': [completed(original)]}]
+    if case['id'] == 'JOB-002':
+        completed(runs[0])
+        if runs[1].get('outcome') != {'status': 'idle', 'selected': 0, 'attempted': 0, 'continued': False} or runs[2].get('outcome') != {'status': 'finished', 'selected': 0, 'attempted': 0, 'continued': False} or instant(runs[0].get('at')) != '2026-01-15T12:00:00Z' or instant(runs[2].get('at')) != '2026-01-15T12:15:00Z' or any(run['calls'] for run in runs[1:]) or any(not harness.same_json(run.get(field), runs[0].get(field)) for run in runs[1:] for field in ('after', 'intents', 'receipts', 'schedules')):
+            raise ValueError('Replay changed durable completion identity/receipt/source or dispatched again')
+        return [{'variant_index': 0, 'steps': [{'additionalMailCalls': len(original['calls'])}]}]
+    control = [item for item in raw if 'reminderEligibleControl' in item]
+    if original['calls'] or not harness.same_json(original.get('after'), prepared) or len(control) != 1 or not raw.index(next(item for item in raw if item.get('nativeReminderRun', {}).get('label') == 'original_run')) < raw.index(control[0]) < raw.index(next(item for item in raw if item.get('nativeReminderRun', {}).get('label') == 'eligible_positive_control')) or instant(runs[1].get('at')) != '2026-01-15T12:15:00Z' or len(runs[1]['calls']) != 1 or runs[1]['calls'][0].get('body', {}).get('todo_title') != control[0]['reminderEligibleControl'].get('row', {}).get('title') or len(runs[1].get('after', [])) != len(prepared) or any(not harness.same_json(row, prepared[index]) for index, row in enumerate(runs[1].get('after', []))):
+        raise ValueError('Excluded rows changed/called provider or missing real eligible positive control')
+    if original.get('outcome') != {'status': 'finished', 'selected': 0, 'attempted': 0, 'continued': False} or original.get('intents') != [] or original.get('receipts') != [] or runs[1].get('eligibleControlAfter', {}).get('id') != control[0]['reminderEligibleControl'].get('row', {}).get('id'):
+        raise ValueError('Missing original zero-selection/no-effect or foreign eligible source control')
+    eligible = control[0]['reminderEligibleControl']; creation = eligible.get('creation', {}); row = eligible.get('row', {})
+    if eligible.get('validator') != 'validate_TodoView' or not harness.same_json(eligible.get('validated'), creation.get('body')) or creation.get('status') != 201 or creation.get('method') != 'POST' or creation.get('path') != '/todos' or instant(creation.get('at')) != '2026-01-13T12:00:00Z' or row.get('id') != creation.get('body', {}).get('id') or row.get('owner_id') != ALIASES['alice'] or row.get('status') != 'open' or row.get('deleted_at') is not None or row.get('reminder_sent_at') is not None or instant(row.get('due_at')) != '2026-01-14T12:00:00Z' or eligible.get('schedule') != {'source_entity': 'Todo', 'source_entity_id': row['id'], 'schedule_revision': '1'} or not any(statement.get('operation') == 'INSERT' and 'INTO "__jadpo_delivery_schedules_v1"' in statement.get('sql', '') for statement in creation.get('statements', [])):
+        raise ValueError('Missing genuinely native-created eligible positive control')
+    completed({**runs[1], 'after': [runs[1].get('eligibleControlAfter')], 'schedules': [runs[1].get('eligibleControlSchedule')]})
+    return [{'variant_index': 0, 'steps': [{'mailCalls': len(original['calls'])}]}]
+
+
 def maintenance_observations(case: dict, raw: list):
     fixtures = [item for item in raw if 'maintenanceFixture' in item]
     runs = [item for item in raw if 'nativeMaintenance' in item]
@@ -418,6 +509,7 @@ def maintenance_observations(case: dict, raw: list):
 def observations(case: dict, raw: list, clock: str | None = None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
     if case['id'] == 'JOB-004': return maintenance_observations(case, raw)
+    if case['id'] in ('JOB-001', 'JOB-002', 'JOB-003'): return reminder_observations(case, raw)
     if case['id'] == 'USER-001' and case.get('followUps'):
         if clock is None: raise ValueError('Authentication timeline requires original controlled clock')
         return user_timeline_observations(case, raw, clock)
@@ -698,7 +790,7 @@ def observations(case: dict, raw: list, clock: str | None = None) -> list:
 
 
 def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
-    contract = harness.read_contract(root)
+    contract = harness.report_contract(report, root)
     cases = {case['id']: case for case in contract['cases']}
     observed = {}
     if len(outputs) != 2 or {output['backend'] for output in outputs} != set(harness.BACKENDS):
@@ -801,11 +893,14 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
     expected_failures = json.loads((evidence/'application/build/audit/failures.json').read_text())['failures']
     expected_maintenance = json.loads((evidence/'application/build/audit/lifecycle-maintenance.json').read_text())
     expected_source_revision = json.loads((evidence/'application/build/app.meta.json').read_text())['source_revision']
+    expected_jobs = json.loads((evidence/'application/build/audit/jobs.json').read_text())
     for output in outputs:
         for item in output['results']:
             journals = [scenario['raw'] for scenario in item['scenarios']] if item['id'] == 'REL-001' else [item['raw']]
             for raw in journals:
                 for event in raw:
+                    if 'reminderFixture' in event and not harness.same_json(event['reminderFixture'].get('jobMetadata'), expected_jobs):
+                        raise ValueError('Raw reminder binding differs from generated artifact')
                     if 'maintenanceFixture' in event and (not harness.same_json(event['maintenanceFixture'].get('metadata'), expected_maintenance) or event['maintenanceFixture'].get('sourceRevision') != expected_source_revision):
                         raise ValueError('Raw maintenance authority differs from generated artifact')
                     if 'queryMetadata' in event and not harness.same_json(event['queryMetadata'], expected_plans):
@@ -911,7 +1006,7 @@ def main():
         else:
             safe_run(command, env=environment)
         outputs.append(json.loads(raw_path.read_text()))
-    report = harness.run_cases(ROOT)
+    report = harness.run_cases(ROOT, accepted_job001='JOB-001' in SUPPORTED)
     apply_checkpoint(report, outputs, ROOT)
     report['checkpoint'] = {'scope': 'Migrated application checkpoint; original frozen source is not executing',
                             'supported_ids': list(SUPPORTED), 'fresh_build_command': ['cargo', 'build', '--locked', '-p', 'jadpo-cli'],
