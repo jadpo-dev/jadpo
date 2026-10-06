@@ -559,8 +559,20 @@ def preflight_observations(case: dict, raw: list):
     if not harness.same_json(startup.get('specification'), case['environment']) or startup.get('selectedBackend') not in harness.BACKENDS or len(probes) != 2 or [probe.get('label') for probe in probes] != ['healthy_control', 'original_environment']:
         raise ValueError('Changed exact original preflight environment/control inventory')
     for probe, overrides in zip(probes, ({}, case['environment'])):
-        if not harness.same_json(probe.get('originalEnvironment'), overrides) or type(probe.get('exitCode')) is not int or type(probe.get('credentialTextDisclosed')) is not bool or not re.fullmatch('[a-f0-9]{64}', str(probe.get('outputSha256'))) or type(probe.get('outputBytes')) is not int or not isinstance(probe.get('jsonEvents'), list):
+        if not harness.same_json(probe.get('originalEnvironment'), overrides) or type(probe.get('exitCode')) is not int or type(probe.get('credentialTextDisclosed')) is not bool or not re.fullmatch('[a-f0-9]{64}', str(probe.get('outputSha256'))) or type(probe.get('outputBytes')) is not int or probe['outputBytes'] <= 0 or not isinstance(probe.get('jsonEvents'), list):
             raise ValueError('Incomplete actual native preflight output/exit/nondisclosure')
+        for event in probe['jsonEvents']:
+            kind = event.get('kind')
+            if kind == 'checkpoint_startup_observation':
+                if set(event) != {'kind', 'exitCode', 'listenerStarts', 'listenerAttempts', 'driverInitializations'} or any(type(event.get(key)) is not int or event[key] < 0 for key in ('listenerStarts', 'listenerAttempts', 'driverInitializations')) or event['exitCode'] != probe['exitCode']:
+                    raise ValueError('Unexpected native startup observer public fields')
+            elif kind == 'configuration_diagnostic':
+                if set(event) != {'schemaVersion', 'kind', 'code', 'declaration'} or type(event['schemaVersion']) is not int or event['schemaVersion'] != 1:
+                    raise ValueError('Unexpected native preflight diagnostic public fields')
+            elif kind == 'operational_log_event':
+                if set(event) != {'schemaVersion', 'kind', 'eventName', 'classification', 'requestId', 'traceId', 'semanticOperationId', 'sourceRevision', 'attributes'} or type(event['schemaVersion']) is not int or event['schemaVersion'] != 1 or event['eventName'] != 'operation.failed' or event['classification'] != 'RUNTIME_STARTUP_FAILED' or event['requestId'] != 'startup' or event['traceId'] is not None or event['semanticOperationId'] != 'runtime:start' or event['sourceRevision'] != startup['sourceRevision'] or event['attributes'] != {}:
+                    raise ValueError('Unexpected native preflight operational public fields')
+            else: raise ValueError('Foreign retained native preflight event')
     original = probes[1]; events = original['jsonEvents']
     observers = [event for event in events if event.get('kind') == 'checkpoint_startup_observation']
     if len(observers) != 1 or observers[0].get('exitCode') != original['exitCode'] or any(type(observers[0].get(key)) is not int or observers[0][key] != 0 for key in ('listenerStarts', 'listenerAttempts', 'driverInitializations')):
@@ -620,13 +632,38 @@ def readiness_observations(case: dict, raw: list):
             raise ValueError('Missing native deployment database readiness disposition')
     if any(phases[index]['responses'][0]['status'] != 200 for index in (0, 2)) or not instant(phases[0].get('at')) < instant(phases[1].get('at')) < instant(phases[2].get('at')):
         raise ValueError('Missing chronological healthy and actual recovered deployment controls')
-    for key in ('healthyControl', 'recovery'):
-        request = capture.get(key, {})
-        if request.get('status') != 200 or request.get('method') != 'GET' or request.get('path') != '/todos' or request.get('auth') != 'alice-session' or request.get('authenticationAttempts') != 1 or not request.get('statements'):
-            raise ValueError('Missing actual authenticated healthy/recovery persistence request')
     outage = capture.get('outage', {})
-    if outage.get('triggeringRequest', {}).get('status', 0) < 500:
-        raise ValueError('Missing actual native persistence outage causal request')
+    requests = [capture.get('healthyControl', {}), outage.get('triggeringRequest', {}), capture.get('recovery', {})]
+    principal = {'kind': 'user', 'subject': 'alice', 'authenticationStrength': 'primary', 'values': {'user_id': ALIASES['alice']}}
+    parameter = '?' if capture['selectedBackend'] == 'sqlite' else '$'
+    # Exact emitted first-page Todo statement from the pinned successor. A
+    # compiler change requires a new real capture, never a broad SQL prefix.
+    status_bind = parameter+'2'+('::TEXT' if parameter == '$' else '')
+    due_bind = parameter+'3'+('::TIMESTAMPTZ(3)' if parameter == '$' else '')
+    cursor_cast = '::text' if parameter == '$' else ''
+    query_sql = ('SELECT "id" AS "id", "title" AS "title", "status" AS "status", "due_at" AS "due_at", "created_at" AS "created_at", "updated_at" AS "updated_at" FROM "todo" WHERE "owner_id" = '+parameter+'1 AND "deleted_at" IS NULL AND ('+status_bind+' IS NULL OR "status" = '+status_bind+') AND ('+due_bind+' IS NULL OR "due_at" <= '+due_bind+') AND '+parameter+'4'+cursor_cast+' IS NULL AND '+parameter+'5'+cursor_cast+' IS NULL AND ("deleted_at" IS NULL) AND (("todo"."owner_id" = '+parameter+'7)) ORDER BY "created_at" DESC, "id" DESC LIMIT '+parameter+'6')
+    for index, request in enumerate(requests):
+        validate_auth_observation(request)
+        if request.get('method') != 'GET' or request.get('path') != '/todos' or request.get('requestedPath') != '/todos' or request.get('auth') != 'alice-session' or request.get('requestJson') is not None or request['authenticationAttempts'] != 1 or not harness.same_json(request['principals'], [principal]) or request['credentialsIssued'] != 0 or request.get('faultConfiguration') != {'sessionStorageUnavailable': False}:
+            raise ValueError('Missing exact native authenticated Todo readiness causal request')
+        authority_query_accounting(request)
+        rows = request['statements']
+        if len(rows) != 1 or rows[0]['operation'] != 'SELECT' or rows[0]['sql'] != query_sql or rows[0].get('numericParameters') != {'6': 26} or rows[0].get('todoOwnerIdentities') != {'1': ALIASES['alice'], '7': ALIASES['alice']}:
+            raise ValueError('Missing native bounded owner-scoped Todo business query')
+        if index != 1 and request.get('status') != 200 or index == 1 and (type(request.get('status')) is not int or request['status'] < 500):
+            raise ValueError('Missing actual healthy/outage/recovery persistence result')
+    if any(rows[0]['sql'] != requests[0]['statements'][0]['sql'] for rows in [request['statements'] for request in requests[1:]]):
+        raise ValueError('Readiness causal requests use different native business queries')
+    if not instant(requests[0].get('at')) <= instant(phases[0]['at']) <= instant(outage.get('startedAt')) <= instant(requests[1].get('at')) < instant(phases[1]['at']) <= instant(outage.get('restoredAt')) < instant(phases[2]['at']) <= instant(requests[2].get('at')):
+        raise ValueError('Readiness business/outage/restoration chronology differs')
+    probe_sql = 'PRAGMA schema_version' if capture['selectedBackend'] == 'sqlite' else 'SELECT 1'
+    for phase in phases[:2]:
+        rows = phase['statements']
+        if len(rows) != 1 or rows[0].get('sql') != probe_sql or rows[0].get('operation') != ('PRAGMA' if capture['selectedBackend'] == 'sqlite' else 'SELECT'):
+            raise ValueError('Missing exact native physical readiness probe')
+    recovery_sql = [row['sql'] for row in phases[2]['statements']]
+    if not any(sql.startswith('CREATE TABLE IF NOT EXISTS "todo" (') for sql in recovery_sql) or 'SELECT sessions.id, sessions.data, sessions.revoked FROM "__jadpo_auth_sessions" AS sessions LIMIT 0' not in recovery_sql:
+        raise ValueError('Missing actual native persistence reinitialization probes')
     if capture['selectedBackend'] == 'sqlite':
         if outage.get('mode') != 'actual separate-connection SQLite exclusive lock' or [row.get('sql') for row in outage.get('lockAcquireStatements', [])] != ['BEGIN EXCLUSIVE'] or [row.get('sql') for row in outage.get('lockReleaseStatements', [])] != ['ROLLBACK']:
             raise ValueError('Missing real SQLite lock acquisition/restoration')

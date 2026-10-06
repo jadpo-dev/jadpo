@@ -358,20 +358,20 @@ async function readinessProbe(case_: any) {
       const stoppedCode = await stopped.exited;
       try {
         await send({ method: "GET", path: "/todos", auth: "alice-session" }, "readinessInvalidation");
-        outage = { mode: "actual isolated PostgreSQL stopped", stoppedCode, triggeringRequest: raw.pop().readinessInvalidation };
+        outage = { mode: "actual isolated PostgreSQL stopped", startedAt: new Date(clockNow).toISOString(), stoppedCode, triggeringRequest: raw.pop().readinessInvalidation };
         clockNow += 5_000; await Bun.sleep(1_100); await sample("database_unavailable");
       } finally {
         const restarted = Bun.spawn(["pg_ctl", "-D", data, "-l", join(data, "../restored-server.log"), "-o", `-h 127.0.0.1 -p ${Bun.env.GOLDEN_POSTGRES_PORT} -k ${Bun.env.GOLDEN_POSTGRES_SOCKET}`, "-w", "start"], { stdout: "pipe", stderr: "pipe" });
-        outage.restartedCode = await restarted.exited;
+        outage.restartedCode = await restarted.exited; outage.restoredAt = new Date(clockNow).toISOString();
         if (outage.restartedCode !== 0) throw new Error("Isolated PostgreSQL readiness restoration failed");
       }
     } else {
       const acquire = beginSqlObservation(); try { db!.exec("BEGIN EXCLUSIVE"); } finally { endSqlObservation(); }
       try {
         await send({ method: "GET", path: "/todos", auth: "alice-session" }, "readinessInvalidation");
-        outage = { mode: "actual separate-connection SQLite exclusive lock", lockAcquireStatements: acquire, triggeringRequest: raw.pop().readinessInvalidation };
+        outage = { mode: "actual separate-connection SQLite exclusive lock", startedAt: new Date(clockNow).toISOString(), lockAcquireStatements: acquire, triggeringRequest: raw.pop().readinessInvalidation };
         clockNow += 5_000; await Bun.sleep(1_100); await sample("database_unavailable");
-      } finally { const release = beginSqlObservation(); try { db!.exec("ROLLBACK"); } finally { endSqlObservation(); if (outage) outage.lockReleaseStatements = release; } }
+      } finally { const release = beginSqlObservation(); try { db!.exec("ROLLBACK"); } finally { endSqlObservation(); if (outage) { outage.lockReleaseStatements = release; outage.restoredAt = new Date(clockNow).toISOString(); } } }
     }
     // Native successful authenticated persistence clears the outage before the
     // deployment gate probes again. Both listeners retain their actual ports.

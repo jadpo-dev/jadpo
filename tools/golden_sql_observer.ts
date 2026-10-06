@@ -6,7 +6,7 @@ let driverInitializations = 0;
 export function driverInitializationCount() { return driverInitializations; }
 export const Database: typeof NativeDatabase = new Proxy(NativeDatabase, { construct(target, arguments_) { driverInitializations++; return Reflect.construct(target, arguments_); } });
 
-export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string; maintenanceRowIdentity?: string; reminderRowIdentity?: string; relationshipRowIdentity?: string; relationshipOwnerIdentity?: string };
+export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string; maintenanceRowIdentity?: string; reminderRowIdentity?: string; relationshipRowIdentity?: string; relationshipOwnerIdentity?: string; todoOwnerIdentities?: Record<string, string> };
 let active: StatementObservation[] | undefined;
 let authenticationAttempts = 0;
 let principals: unknown[] = [];
@@ -65,7 +65,8 @@ export function recordStatement(sql: string, parameters: unknown[] = []) {
   const relationshipDelete = /^DELETE FROM "user" WHERE id = [?$]1$/u.test(safe);
   const relationshipRowIdentity = (relationshipInsert || relationshipDelete) && fixtureUuid(parameters[0]) ? parameters[0] : undefined;
   const relationshipOwnerIdentity = relationshipInsert && fixtureUuid(parameters[1]) ? parameters[1] : undefined;
-  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters, ...(maintenanceCutoff ? { maintenanceCutoff } : {}), ...(maintenanceRowIdentity ? { maintenanceRowIdentity } : {}), ...(reminderRowIdentity ? { reminderRowIdentity } : {}), ...(relationshipRowIdentity ? { relationshipRowIdentity } : {}), ...(relationshipOwnerIdentity ? { relationshipOwnerIdentity } : {}) });
+  const todoOwnerIdentities = /^SELECT "id" AS "id",.* FROM "todo" WHERE "owner_id" = [?$]1 AND /u.test(safe) ? Object.fromEntries([0, 6].flatMap(index => fixtureUuid(parameters[index]) ? [[String(index + 1), parameters[index]]] : [])) : undefined;
+  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters, ...(maintenanceCutoff ? { maintenanceCutoff } : {}), ...(maintenanceRowIdentity ? { maintenanceRowIdentity } : {}), ...(relationshipRowIdentity ? { relationshipRowIdentity } : {}), ...(relationshipOwnerIdentity ? { relationshipOwnerIdentity } : {}), ...(reminderRowIdentity ? { reminderRowIdentity } : {}), ...(todoOwnerIdentities ? { todoOwnerIdentities } : {}) });
 }
 function observeConnection(connection: any): any {
   return new Proxy(connection, {
