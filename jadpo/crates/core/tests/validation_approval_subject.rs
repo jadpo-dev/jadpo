@@ -2612,3 +2612,293 @@ fn state_pin_requires_a_baseline_and_binds_compiler_provenance() {
     )
     .is_err());
 }
+
+fn protected_request(entity: &str, field: &str, callable: &str) -> String {
+    serde_json::json!({"entity":entity,"field":field,"callable":callable,
+        "row":{"parameter":"row_id","nominal_type":format!("{entity}.id"),"alias":"t1"},
+        "from":{"nominal_type":"User.id","alias":"alice"},
+        "to":{"parameter":"next_owner","nominal_type":"User.id","alias":"bob"}})
+    .to_string()
+}
+fn protected_fixture() -> (String, String) {
+    let baseline = format!("{}\nfailure Missing {{ kind: NotFound code: \"missing\" }}\nfailure Conflicted {{ kind: Conflict code: \"conflicted\" }}\n",compile_fixture("132_scoped_role_policy.jadpo"));
+    let attempt = format!("{baseline}\naction move_owner(row_id: Company.id, next_owner: User.id) fails Missing, Conflicted -> Company {{\n return attempt update required Company {{ where: id == row_id set: {{ owner_id: Company.owner_id(next_owner) }} missing: Missing conflict: Conflicted }}\n}}\n");
+    (baseline, attempt)
+}
+fn protected_subject(before: &str, after: &str, request: &str) -> Result<String, String> {
+    jadpo_core::derive_protected_attempt(
+        Path::new("/attempt/app.jadpo"),
+        &analyzed("/attempt", after),
+        Path::new("/baseline/app.jadpo"),
+        &analyzed("/baseline", before),
+        request,
+        None,
+        None,
+    )
+}
+#[test]
+fn protected_attempt_is_exact_native_refusal_with_unverified_intent_and_no_checked_after() {
+    let (baseline, attempt) = protected_fixture();
+    let request = protected_request("Company", "owner_id", "move_owner");
+    let raw = protected_subject(&baseline, &attempt, &request).unwrap();
+    let artifact: Value = serde_json::from_str(&raw).unwrap();
+    let c = &artifact["canonical"];
+    assert_eq!(c["policy_rule"], "Company.fields.owner_id");
+    assert_eq!(c["disposition"], "requires_human_decision");
+    assert_eq!(c["release_equivalent_success"], false);
+    assert_eq!(c["release_authority"], false);
+    assert_eq!(c["protected_field"]["direct_role"], "CompanyRole.owner");
+    assert_eq!(c["request"]["classification"], "supplied_unverified");
+    assert_eq!(c["request"]["live_identity_validation"], "unavailable");
+    assert_eq!(c["attempt"]["status"], "frontend_rejected_unexecuted");
+    assert!(c["attempt"]["checked_after"].is_null());
+    assert!(c["attempt"]["semantic_graph"].is_null());
+    assert_eq!(
+        c["attempt"]["refusal_diagnostic"]["code"],
+        "TYPE_FIELD_UPDATE_FORBIDDEN"
+    );
+    assert_eq!(
+        c["attempt"]["refusal_diagnostic"]["primary"],
+        c["attempt"]["assignment"]["field_location"]
+    );
+    let span = &c["attempt"]["assignment"]["field_location"];
+    assert_eq!(
+        &attempt[span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize],
+        "owner_id"
+    );
+    jadpo_core::validate_protected_attempt_export(&raw, &raw).unwrap();
+    let renamed_before = baseline
+        .replace("Company", "Workspace")
+        .replace("owner_id", "custodian_id");
+    let renamed_attempt = attempt
+        .replace("Company", "Workspace")
+        .replace("owner_id", "custodian_id");
+    let renamed: Value = serde_json::from_str(
+        &protected_subject(
+            &renamed_before,
+            &renamed_attempt,
+            &protected_request("Workspace", "custodian_id", "move_owner"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        renamed["canonical"]["policy_rule"],
+        "Workspace.fields.custodian_id"
+    );
+    assert_ne!(renamed["subject_digest"], artifact["subject_digest"]);
+}
+#[test]
+fn protected_attempt_rejects_unrelated_errors_projection_changed_protection_and_mismatched_request()
+{
+    let (baseline, attempt) = protected_fixture();
+    let request = protected_request("Company", "owner_id", "move_owner");
+    for invalid in [
+        baseline.clone(),
+        format!("{attempt}\nfunction broken() -> Text {{ return 12 }}"),
+        format!("{attempt}\ninput broken {{"),
+        attempt.replace("Company.owner_id(next_owner)", "Company.owner_id(row_id)"),
+        attempt.replace("Company.owner_id(next_owner)", "next_owner"),
+        attempt.replace("where: id == row_id", "where: owner_id == row_id"),
+        attempt.replace("owner_id: Company.owner_id(next_owner)", "name: \"benign\""),
+        attempt.replace("immutable: true", "immutable: false"),
+        attempt.replace("next_owner: User.id", "next_owner: Uuid"),
+        attempt.replace(
+            "return attempt update required Company",
+            "return attempt update required Article",
+        ),
+        attempt.replace("role: CompanyRole.owner", "role: CompanyRole.editor"),
+        attempt.replace(
+            "return attempt update",
+            "var ignored = 1\n return attempt update",
+        ),
+    ] {
+        assert!(
+            protected_subject(&baseline, &invalid, &request).is_err(),
+            "must refuse {invalid}"
+        );
+    }
+    for invalid in [
+        request.replace("owner_id", "name"),
+        request.replace("move_owner", "absent"),
+        request.replace("next_owner", "row_id"),
+        request.replace("Company.id", "User.id"),
+        request.replace("User.id", "Uuid"),
+        request.replace("\"bob\"", "null"),
+        request.replace("\"field\":", "\"unexpected\":true,\"field\":"),
+        request.replace("\"entity\":", "\"entity\":\"Other\",\"entity\":"),
+    ] {
+        assert!(
+            protected_subject(&baseline, &attempt, &invalid).is_err(),
+            "must refuse {invalid}"
+        );
+    }
+    let unrelated = baseline.replace("immutable: true", "immutable: false");
+    assert!(protected_subject(&unrelated, &attempt, &request).is_err());
+}
+#[test]
+fn protected_attempt_rederivation_refuses_coherently_rehashed_foreign_or_omitted_exports() {
+    let (baseline, attempt) = protected_fixture();
+    let request = protected_request("Company", "owner_id", "move_owner");
+    let raw = protected_subject(&baseline, &attempt, &request).unwrap();
+    let original: Value = serde_json::from_str(&raw).unwrap();
+    for (pointer, value) in [
+        (
+            "/canonical/request/value/to/alias",
+            serde_json::json!("mallory"),
+        ),
+        (
+            "/canonical/attempt/refusal_diagnostic/primary/start",
+            serde_json::json!(0),
+        ),
+        (
+            "/canonical/policy_rule",
+            serde_json::json!("Other.fields.owner_id"),
+        ),
+        ("/canonical/disposition", serde_json::json!("approved")),
+        (
+            "/canonical/before/state_digest",
+            serde_json::json!("sha256:foreign"),
+        ),
+        ("/canonical/before/policy", serde_json::json!({})),
+        ("/canonical/before/graph", serde_json::json!({})),
+        ("/canonical/compiler_version", serde_json::json!("foreign")),
+        ("/canonical/attempt/callable_tokens", serde_json::json!([])),
+        ("/canonical/release_authority", serde_json::json!(true)),
+    ] {
+        let mut forged = original.clone();
+        *forged.pointer_mut(pointer).unwrap() = value;
+        let canonical = serde_json::to_string(&forged["canonical"]).unwrap();
+        forged["subject_digest"] =
+            Value::String(format!("sha256:{:x}", Sha256::digest(canonical.as_bytes())));
+        assert!(
+            jadpo_core::validate_protected_attempt_export(&raw, &forged.to_string()).is_err(),
+            "must refuse {pointer}"
+        );
+    }
+    let mut self_asserted = original.clone();
+    self_asserted["canonical"]["release_authority"] = serde_json::json!(true);
+    self_asserted["subject_digest"] = Value::String(format!(
+        "sha256:{:x}",
+        Sha256::digest(
+            serde_json::to_string(&self_asserted["canonical"])
+                .unwrap()
+                .as_bytes()
+        )
+    ));
+    assert!(jadpo_core::validate_protected_attempt_export(
+        &self_asserted.to_string(),
+        &self_asserted.to_string()
+    )
+    .is_err());
+    let changed = protected_subject(
+        &baseline,
+        &attempt,
+        &request.replace("\"bob\"", "\"other\""),
+    )
+    .unwrap();
+    assert_ne!(raw, changed);
+    assert!(jadpo_core::validate_protected_attempt_export(&changed, &raw).is_err());
+    let changed = protected_subject(
+        &baseline,
+        &format!("{attempt}\n// exact bytes changed"),
+        &request,
+    )
+    .unwrap();
+    assert!(jadpo_core::validate_protected_attempt_export(&changed, &raw).is_err());
+    let b = analyzed("/baseline", &baseline);
+    let a = analyzed("/attempt", &attempt);
+    let c = &original["canonical"];
+    assert!(jadpo_core::derive_protected_attempt(
+        Path::new("/attempt/app.jadpo"),
+        &a,
+        Path::new("/baseline/app.jadpo"),
+        &b,
+        &request,
+        c["before"]["source_digest"].as_str(),
+        c["before"]["state_digest"].as_str()
+    )
+    .is_ok());
+    assert!(jadpo_core::derive_protected_attempt(
+        Path::new("/attempt/app.jadpo"),
+        &a,
+        Path::new("/baseline/app.jadpo"),
+        &b,
+        &request,
+        Some("sha256:foreign"),
+        None
+    )
+    .is_err());
+    assert!(jadpo_core::derive_protected_attempt(
+        Path::new("/attempt/app.jadpo"),
+        &a,
+        Path::new("/baseline/app.jadpo"),
+        &b,
+        &request,
+        None,
+        Some("sha256:foreign")
+    )
+    .is_err());
+}
+#[test]
+fn canonical_checked_delivery_baseline_and_exact_owner_attempt_retain_all_diagnostic_streams() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .unwrap();
+    let path = root.join("examples/golden-todo-migration");
+    let baseline = analyze_project(&path).unwrap();
+    let action = r#"
+    action checkpoint_reassign_owner(todo_id: Todo.id, owner_id: User.id)
+        fails TodoNotFound, TodoMutationConflict -> Todo
+    {
+        var changed = attempt update required Todo {
+            where: id == todo_id
+            set: { owner_id: Todo.owner_id(owner_id) }
+            missing: TodoNotFound { todo_id: todo_id }
+            conflict: TodoMutationConflict
+        }
+        return changed
+    }
+"#;
+    let sources = baseline
+        .syntax
+        .sources
+        .iter()
+        .map(|s| {
+            let mut text = s.source_text.clone();
+            if s.source_name.ends_with("entities/todo.jadpo") {
+                let end = text.rfind('}').unwrap();
+                text.insert_str(end, action);
+            }
+            SourceFile::new((&s.source_name).into(), text)
+        })
+        .collect();
+    let attempt = analyze_sources(sources).unwrap();
+    let request=serde_json::json!({"entity":"Todo","field":"owner_id","callable":"Todo.checkpoint_reassign_owner",
+        "row":{"parameter":"todo_id","nominal_type":"Todo.id","alias":"t1"},
+        "from":{"nominal_type":"User.id","alias":"alice"},
+        "to":{"parameter":"owner_id","nominal_type":"User.id","alias":"bob"}}).to_string();
+    let raw = jadpo_core::derive_protected_attempt(
+        &path, &attempt, &path, &baseline, &request, None, None,
+    )
+    .unwrap();
+    let subject: Value = serde_json::from_str(&raw).unwrap();
+    let c = &subject["canonical"];
+    assert_eq!(c["policy_rule"], "Todo.fields.owner_id");
+    assert_eq!(c["disposition"], "requires_human_decision");
+    assert_eq!(
+        c["before"]["impact"]["jobs"]["status"],
+        "compiler_checked_nonexecuting_contract"
+    );
+    let diagnostics = c["attempt"]["diagnostics"].as_array().unwrap();
+    assert!(diagnostics
+        .iter()
+        .any(|d| d["stage"] == "typing" && d["code"] == "TYPE_FIELD_UPDATE_FORBIDDEN"));
+    assert!(diagnostics
+        .iter()
+        .any(|d| d["stage"] == "semantics"
+            && d["code"] == "TYPE_JOB_DELIVERY_BINDING_NOT_IMPLEMENTED"));
+    assert!(jadpo_core::derive_approval_subject(&path, &attempt, None, None, None).is_err());
+    assert!(attempt.delivery_model().bindings().is_empty());
+}
