@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-109",
+  "candidate": "04c9156a5fd0feb0bddffdefaecdd80a851c8b9a",
+  "parent": "ea32f3187523a5cb6a4fc4416ac7176ebf27f5b5",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-54d33e244aaf",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "approved_scoped_advisory_correction",
+  "scoped_approval": true,
+  "findings": [],
+  "scope": "Immutable tools-only CONFIG003 emitted service-advisory decoder correction and retained CONFIG001/002 startup/CONFIG003 causal boundaries. Exact supported three frozen CONFIG case observations may qualify on each backend at this bound source. No canonical healthy main/whole configuration/startup hard-bound/runtime/compiler/publicjob/task/final golden approval.",
+  "original_reviews": [
+    {
+      "path": "tests/validation/rm109-independent-config-native-harness-review.json",
+      "sha256": "c1fbe1a05f6bcd8aea46148076d864f268668a0ff2c0efabbd142393e4ccd626",
+      "preserved_unchanged": true,
+      "disposition": "changes_required"
+    },
+    {
+      "path": "tests/validation/rm109-independent-config-native-correction-review.json",
+      "sha256": "2b99c034702b21e8c249fda8d806037f101533feb5080bcf4171bc72e7166da5",
+      "preserved_unchanged": true,
+      "disposition": "changes_required"
+    }
+  ],
+  "independent_execution": {
+    "immutable_archive": "/private/tmp/jadpo-config-advisory-independent",
+    "fresh_compiler_sha256": "c4e11e62fcde487c580d7568f7fbe57f7512ecc4b8f1d9cc587e26469647136c",
+    "fresh_checkpoint": {
+      "passed": 84,
+      "failed": 0,
+      "not_run": 4,
+      "overall_status": "not_run",
+      "report_sha256": "2e33e9c873c601ea52e62e9371a75ffaa10f307b03b9e4fdfac7832793d4e002",
+      "backends": [
+        "sqlite",
+        "postgres"
+      ],
+      "CONFIG_scoped_backend_cases": 6,
+      "remaining_not_run": [
+        [
+          "sqlite",
+          "REL-003"
+        ],
+        [
+          "sqlite",
+          "BOUNDARY-001"
+        ],
+        [
+          "postgres",
+          "REL-003"
+        ],
+        [
+          "postgres",
+          "BOUNDARY-001"
+        ]
+      ]
+    },
+    "all_validation_contract_tests": {
+      "passed": 93,
+      "failed": 0
+    },
+    "original198_matrix": {
+      "refused_mutations": 188,
+      "accepted_controls": 10,
+      "previously_admitted_original46_now_refused": 46
+    },
+    "exact_secret_advisory6_probes": {
+      "refused_original4": 4,
+      "accepted_controls": 2
+    },
+    "additional_all_phase72_probes": {
+      "refused_mutations": 66,
+      "accepted_controls": 6,
+      "phases": [
+        "healthy_control",
+        "database_unavailable",
+        "recovered_control"
+      ],
+      "scope": "Changed advisory literal, extra/missing key, wrong shape/missing field, missing services, coherently rebound foreign service/body, metadata-only name/case/credential slot changes and duplicate effect against unchanged emitted artifact all refuse."
+    },
+    "full_decoder_total": {
+      "probes": 276,
+      "refused_mutations": 258,
+      "accepted_unchanged_controls": 18,
+      "unexpected": 0
+    },
+    "raw_hash_rebound": true,
+    "ledger_unchanged": true,
+    "all_raw_bytes_restored": true,
+    "restored_hashes": {
+      "sqlite-raw.json": "e8ea3d35f2fb4ab123e231fde83eb15a3bea63ef37d3870ac10a4582bedd34da",
+      "postgres-raw.json": "f80557279ad1112cbb64dda0891c17e6ad4a855833301940e476039a465f3d34"
+    },
+    "prior_negative_receipt": "original50-correction-receipt.json"
+  },
+  "code_evidence": [
+    "Native service audit effects are captured from actual generated audit/services.json; full decoder compares the entire retained service metadata to the emitted source-bound artifact before deriving observations. Coherently editing public advisory and raw service identity alone cannot pass.",
+    "Readiness advisory keys derive from checked effect.service using the same ASCII uppercase-to-snake-case transformation as target.rs snake_case/readiness_advisories. For this exact golden source ReminderMail maps to reminder_mail; deduplication matches native BTreeSet behavior. Values are fixed literal unprobed. No public request/config/secret bytes determine advisory keys or values.",
+    "Every healthy/outage/recovered deployment body and its alias/direct counterpart requires the same exact advisory object alongside closed outer keys, safe status and stable database check state. Exact fixture secret as original reminder_mail value or extra private_credential key refuses on both backends.",
+    "Mail remains advisory and unprobed; no new provider/auth/native capability or authored API is introduced. Existing missing required mail secret preflight still fails before driver/listener; startup-required configuration and advisory readiness classification remain distinct approved behavior.",
+    "Original ea32 closed preflight event inventory, precise Todo owner1/policy-owner7 query and causal chronology remain enforced; original46 contradictions independently refuse at this correction. Product and original frozen44 bytes have no corrective-leaf delta."
+  ],
+  "actual_config_case_qualification": {
+    "CONFIG-001": "Exact original omitted MAIL_API_KEY reaches qualified config_required; native original child exits nonzero, zero constructor/listen counts and safe retained event shape/nondisclosure. Historical canonical healthy control remains separate red, with no invented success prerequisite.",
+    "CONFIG-002": "Exact original bad OIDC issuer and database URL reach both qualified config_invalid declarations in emitted binding/original expectation order. Safe native diagnostics precede constructors/listen; credentials remain absent.",
+    "CONFIG-003": "Explicit generated native started-host seam has actual authenticated Todo200 business controls, real separate-connection SQLite exclusive lock or isolated PostgreSQL stop/restart, deployment200\u2192503\u2192200, application readiness aliases404, constant-status liveness200 and zero native exit requests. Exact native safe advisory remains unprobed throughout. No native main transport precondition added."
+  },
+  "preserved_component_limits": {
+    "reference": "tests/validation/rm109-independent-config-native-correction-review.json additional_admissions_classification",
+    "meaning": "Previous Boolean observer exit equivalence, case-unasserted liveness-body drift and partial recovery statement inventory are retained limitations. This advisory leaf does not claim stricter whole typed-observer/constant-output/native initializer transaction certification or relabel old admissions as refusals. Existing independent runtime boundaries remain separate.",
+    "original_negatives": "Original9b/ea reports, author first startup/cache/backoff attempts and exact50 failed-probe history remain preserved; corrected receipts are separate evidence."
+  },
+  "author_evidence": {
+    "report_sha256": "62b26f99546de00fd46c24bf87910df565b82388db0eb3d9f04b17a70810ee47",
+    "safe_actual_evidence_sha256": "a9b176e766142702956ae470d45358a6aa73daf312cfbaab4fc0dabfd7ff4b8c",
+    "reported_controls": "Author4 exact-secret refusals/2 controls and36 all-phase/key/artifact refusals are preserved; independent phase matrix strengthens to66 refusals/6 controls."
+  },
+  "evidence_directory": "tests/validation/evidence/golden-loop-config-advisory-independent",
+  "artifact_retention": {
+    "safe_files": 110,
+    "inventory_sha256": "d314670b872ffa3cfdd2190e4ce160b7a714afe709e16a005bac22d66799687f",
+    "excluded_private_fixture_or_database_bytes": 2,
+    "notice": "digest-only-exclusions.json",
+    "complete_disposable_checkpoint": "/private/tmp/jadpo-config-advisory-independent/complete-host-checkpoint",
+    "limitation": "Full validator replay requires digest-excluded ephemeral JWKS private key/disposable SQLite database bytes in reviewer capture or regeneration. Mutated secret-bearing raw was restored before safe copy; no private PEM/database bytes retained in integration."
+  },
+  "limits": [
+    "Scoped supporting84 passes remain overall not_run/release_equivalent false; REL003/BOUNDARY001 remain not_run on each backend at this fixed leaf. No whole golden/RM109/RM403 closure.",
+    "Exact source-bound collector/advisory correction only; future source/runtime alignment and final require-golden gate need their own bound evidence.",
+    "Canonical healthy main transport, whole-startup/native/synchronous lifetime, broader request hard bounds and platform qualification stay separate/open.",
+    "No implementation/publishing/deployment, production provider or primary/shared plan edits."
+  ],
+  "created_at": "2026-10-06T09:30:39.260469+00:00"
+}

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-402",
+  "candidate": "22b96ec6d473426a30756a7206d484311efc8013",
+  "reviewer": "root",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timing_run": "RM-109-bd6b459b0c0a",
+  "disposition": "approve_scoped_private_retry_authority_hook_prerequisite",
+  "findings": [],
+  "independent_execution": {
+    "fresh_compiler_sha256": "a12d23549af31c50040d581d6802d7c310971141027791cd63ebcaeb24c0653e",
+    "canonical_generated_files": 33,
+    "sqlite_original": {
+      "pass": 8,
+      "fail": 0,
+      "assertions": 48
+    },
+    "postgres_original": {
+      "pass": 8,
+      "fail": 0,
+      "assertions": 56
+    },
+    "sqlite_authority_rebind": {
+      "pass": 1,
+      "fail": 0,
+      "assertions": 6
+    },
+    "postgres_authority_rebind": {
+      "pass": 1,
+      "fail": 0,
+      "assertions": 7
+    },
+    "postgres_expiry_snapshot": {
+      "pass": 1,
+      "fail": 0,
+      "assertions": 8
+    }
+  },
+  "correctness": [
+    "Original captured credential/header inventory and exact authentication owner are retained across awaits; owner replacement before or during lookup refuses continuation. Same normalized subject/kind/strength and materialized principal are required. Actual credential revocation, disabled authority and lifecycle deletion prevent a new successful mutation.",
+    "Fresh principal is passed into the actual retry persistence client; action context refreshes its operation-time snapshot and principal. One original monotonic retry window, route deadline and signal are checked before and after authority guard; no subsequent BEGIN after cancellation or elapsed budget.",
+    "Only existing proven no-commit retry path can reach hook. Original protected route retryAllowed=false, policy/UUID/provider/opaque/unknown exclusion guards stay unchanged. Tests explicitly expose private generated functions and enable internal retry context without any authored/public capability.",
+    "Actual user-authority rebinding to a different principal UUID is refused by native authentication invariant before subsequent mutation; database UPDATE sequence remains one on PostgreSQL and old Todo title is preserved on both adapters. This does not separately prove the later redundant materialized-equality guard through a native principal that the existing authenticator already refuses."
+  ],
+  "expiry_wait_grounding": {
+    "observation": "A genuine credential valid at second-attempt admission expired while its actual PostgreSQL session read was blocked; it remained valid for that attempt snapshot and the second transaction committed. Real query lock, expiry/guard/return times and stored title retained.",
+    "disposition": "Accepted per-attempt stable operation-time semantics, not a product finding.",
+    "references": [
+      "docs/time-testing-plan.md:159",
+      "docs/transaction-retry-plan.md:9",
+      "docs/transaction-retry-plan.md:49",
+      "docs/transaction-retry-plan.md:253",
+      "docs/authentication-plan.md:536"
+    ],
+    "original_assertion": "Original reviewer expected completion-time expiry rejection, which would impose an unaccepted time rule. Original failed run preserved unchanged. First expectation-edit attempt missed the assertion and its additional failure is separately preserved; corrected snapshot assertion passes."
+  },
+  "retained_negatives": [
+    "Reviewer authority-rebind initial expectation invalid_credentials differed from actual existing authentication_unavailable invariant classification; unchanged native product remained fail-closed. Original red retained; corrected exact native invariant expectation passes.",
+    "Author inspection/import/cookie/CSRF/build/format attempt limitations remain in author manifest; no whole-workspace format cleanup performed."
+  ],
+  "limits": [
+    "Hook-only prerequisite; no public authenticated retry activation, inline-action coverage, whole RM-402 completion or protected release authority.",
+    "Authority lookup is cooperative; elapsed budget forbids another transaction after return but does not guarantee native query settlement by the deadline.",
+    "Local disposable adapters/private test inspection do not qualify canonical configuration transport, final golden acceptance or production calibration.",
+    "Initial recorder planning phase includes unsplit reading/fresh compiler build; later review/verification phases are explicit, with no fabricated timing split."
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-retry-authority-hook-independent",
+  "inventory_sha256": "30c9a8d7ec9d40198533153d659d064ac0116fb882b2cdc70a777e783dadc7c7"
+}

@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-109",
+  "candidate": "ea32f3187523a5cb6a4fc4416ac7176ebf27f5b5",
+  "parent": "e94117d12538b3934753818c528b45e71a3e061f",
+  "reviewer": "boundary_review",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-109-e3b260fe67fc",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "changes_required_remaining_safe_advisory_decoder_gap",
+  "scoped_approval": false,
+  "scope": "Immutable tools-only CONFIG startup/readiness evidence correction. Original2 findings independently corrected; one remaining decoder safe-body gap. No public runtime implementation, source-epoch/main transport prerequisite, whole RM109/RM403 or final golden approval.",
+  "original_review": {
+    "path": "tests/validation/rm109-independent-config-native-harness-review.json",
+    "sha256": "c1fbe1a05f6bcd8aea46148076d864f268668a0ff2c0efabbd142393e4ccd626",
+    "unchanged": true,
+    "original_findings_corrected": true,
+    "exact_previously_admitted_negative_probes": 46,
+    "corrected_full_decoder_refusals": 46,
+    "receipt": "original46-correction-receipt.json"
+  },
+  "findings": [
+    {
+      "id": "CONFIG-HARNESS-ADVISORY-DISCLOSURE",
+      "priority": "P2",
+      "file": "tools/golden_checkpoint.py",
+      "line": 630,
+      "title": "Bind deployment advisory contents to the emitted secret-safe readiness contract",
+      "observation": "Full validate_checkpoint accepts four exact-secret negative mutations across SQLite/PostgreSQL. In captured outage deployment /health/ready and /health responses plus direct handler, body.advisories.reminder_mail is replaced by the exact fixture MAIL_API_KEY, or an extra private_credential advisory field carries that secret. Alias/direct bodies are changed consistently, raw SHA is updated and passing ledger remains unchanged. This is a retained-output contradiction of accepted secret-safe readiness, not a runtime secret leak: independently fresh actual bodies contain only reminder_mail:unprobed.",
+      "cause": "The outer body keys/status/database checks are restricted, but advisories value/shape/ID inventory are not examined. Even replacement of the original advisory object with an arbitrary list passes the full decoder.",
+      "required_correction": "Validate exact emitted native advisory dependency IDs, fixed unprobed classification and closed value/shape for this source-bound golden fixture. Refuse extra/foreign/private fields or values. Keep accepted mail advisory behavior, original CONFIG003 fixture/status expectations and existing explicit generated host seam; no new owner or canonical-main prerequisite.",
+      "evidence": "actual-secret-advisory-results.json"
+    }
+  ],
+  "independent_execution": {
+    "immutable_archive": "/private/tmp/jadpo-config-native-correction-independent",
+    "fresh_compiler_sha256": "5ff108c1e46216f6cf26049d2876b29ad0b474c009450a97f66088e2a0ecdfbd",
+    "fresh_checkpoint": {
+      "passed": 84,
+      "failed": 0,
+      "not_run": 4,
+      "overall_status": "not_run",
+      "report_sha256": "d2b15d2864cd485bd4da35d4ec0f6e70fadbe920f456f3246356cbc8e59a479a",
+      "backends": [
+        "sqlite",
+        "postgres"
+      ],
+      "CONFIG_scoped_backend_cases": 6
+    },
+    "protocol_tests": {
+      "golden": 67,
+      "all_validation_contracts": 92,
+      "failed": 0
+    },
+    "original198_full_decoder_probes": {
+      "accepted_unchanged_controls": 10,
+      "refused_mutations": 188,
+      "previous46_all_refused": true
+    },
+    "additional104_full_decoder_probes": {
+      "accepted_unchanged_controls": 6,
+      "refused_mutations": 82,
+      "accepted_negative_mutations": 16
+    },
+    "exact_secret_advisory6_full_decoder_probes": {
+      "accepted_unchanged_controls": 2,
+      "accepted_negative_mutations": 4,
+      "refused": 0
+    },
+    "total": {
+      "probes": 308,
+      "accepted_unchanged_controls": 18,
+      "refused_mutations": 270,
+      "accepted_negative_mutations": 20
+    },
+    "raw_hash_rebound": true,
+    "ledger_unchanged": true,
+    "all_mutated_raw_bytes_restored": true,
+    "restored_hashes": {
+      "sqlite-raw.json": "6b9aba8c4b8f234669b5bf28b9ae6416b5f565cbd1fe8d3bf1b4a6235f508535",
+      "postgres-raw.json": "ca1e4b62c59784523a024b6c40644ec39e4c3bcda018f1f15b274131b6646e16"
+    }
+  },
+  "confirmed_corrections": [
+    "Startup diagnostic/operational/observer event allowed public fields and exact identifiers/source revision are checked for both original and retained healthy probes. Foreign/extra secret fields and events now refuse; exact configured-secret original12 negative mutations refuse. Nonpositive output counts now refuse. No healthy-main success requirement added.",
+    "Readiness business healthy/outage/recovery requests require exact native GET/todos identity, original request path, Alice primary normalized principal, no credential issuance or injected session dependency fault, consistent authority-query accounting and exact emitted bounded Todo SQL with both owner1/policy-owner7 binds. Foreign principal/bind, missing/broad/duplicate/placeholder/query/limit mutations refuse.",
+    "Captured started/restored clocks are retained and compared with healthy, outage request, unavailable phase, recovered phase and final authenticated request. Original reversed chronology contradictions refuse. Exact SQLite PRAGMA/PostgreSQL SELECT1 physical probes and required native Todo/auth-storage reinitialization observations are enforced.",
+    "Own original44 contract/source/generated/compiler/dependency/TLS/hash bindings hold; source instrumentation adds only two bounded fixture UUID owner binds to exact Todo SELECT observation family. No product or frozen expectation delta in corrective leaf."
+  ],
+  "additional_admissions_classification": [
+    {
+      "scope": "minor typed instrumentation limitation",
+      "mutations": [
+        "observer_boolean_exit"
+      ],
+      "count": 4,
+      "meaning": "Boolean true equals integer1 on observer exit equality and passes, although actual native observer emits integer. This does not alter expected exitNonZero/counters or disclose a secret; record typed-schema limitation rather than invent a new frozen case criterion. Tighten type if claiming every observer field is strictly typed."
+    },
+    {
+      "scope": "case-scoped output limitation",
+      "mutations": [
+        "liveness_body_drift"
+      ],
+      "count": 2,
+      "meaning": "Liveness status200 remains observed by frozen CONFIG003; the case has no frozen body assertion. Mutated body status blocked is accepted. This supplies no compiler constant-output semantic approval; original runtime independent liveness approval remains separate."
+    },
+    {
+      "scope": "partial recovery trace shape limitation",
+      "mutations": [
+        "duplicate_recovery_todo",
+        "recovery_operation_mismatch",
+        "rollback_in_recovery"
+      ],
+      "count": 6,
+      "meaning": "Recovery SQL must contain Todo/auth validation markers but full statement inventory/operation correspondence is not exact. This is no whole native initializer/transaction settlement proof. Actual native reinitialization trace was observed; acceptance is scoped to frozen readiness outcome and original causal controls."
+    },
+    {
+      "scope": "safe advisory finding support",
+      "mutations": [
+        "readonly_unknown_advisory",
+        "private_advisory"
+      ],
+      "count": 4,
+      "meaning": "Arbitrary advisory list/unknown ID/private-canary field passes. Exact current secret-valued field probes independently confirm the remaining P2."
+    }
+  ],
+  "author_evidence": {
+    "author_report_sha256": "66ce079e233247e41a71f1d9d7e8dff013f05569d03d62f3b53a02c916a696a0",
+    "safe_evidence_sha256": "43b7b3f19253b152b112aeccee2a7deb2cb3c0a9b8335e37548e9356d2f343fb",
+    "original_report_and_negative_history_preserved": "Original9b unsafe-proof report remains byte-identical; author correction preserves original198 matrix and46 admitted negatives as failures that now refuse. Earlier preflight/cache/backoff setup reds remain retained; no relabeling."
+  },
+  "evidence_directory": "tests/validation/evidence/golden-loop-config-native-correction-independent",
+  "artifact_retention": {
+    "safe_files": 111,
+    "inventory_sha256": "685360ea6e15a6d62d7a3d31e4146cf81de74b53085d62fae4b0f6c8b0ba98de",
+    "excluded_private_fixture_or_database_bytes": 2,
+    "notice": "digest-only-exclusions.json",
+    "complete_disposable_checkpoint": "/private/tmp/jadpo-config-native-correction-independent/complete-host-checkpoint",
+    "limitation": "Full decoder replay requires excluded ephemeral TLS private key/disposable SQLite bytes or regeneration. Only digest/size/path retained in integration; mutated secret-bearing raw bytes restored before copy."
+  },
+  "limits": [
+    "All original46 findings are corrected at exact ea32; candidate case promotions remain withheld only for the remaining accepted secret-safe advisory contradiction.",
+    "Fresh84 passes are actual supporting case observations; four original case/backend records remain not_run. No full golden/task closure.",
+    "Original CONFIG negative and started-application readiness eligibility stay valid; no requirement for canonical healthy-main transport is introduced by this review.",
+    "Hard native/whole-startup settlement, final actual source/audit agreement and canonical main transport are separately open.",
+    "No production provider/deployment/publishing, no primary/shared plan/product edits."
+  ],
+  "created_at": "2026-10-06T09:21:29.971285+00:00"
+}

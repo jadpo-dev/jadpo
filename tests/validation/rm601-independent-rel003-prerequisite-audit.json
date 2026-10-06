@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-601",
+  "related_tasks": [
+    "RM-109",
+    "RM-603"
+  ],
+  "reviewer": "boundary_review",
+  "candidate": "37315d920efc6bdc58a69cef4ecbdf285e5a3bdd",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-601-1cbe34b4eb07",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "bounded_prerequisite_grounding_complete_not_implementation_approval",
+  "scope": "Read-only exact original REL003 policy refusal eligibility and smallest protected-field attempt review artifact/local fixture-trust window. No product/test/shared document changes, new case execution, owner question or wholeRM601/603 qualification.",
+  "accepted_case_criterion": {
+    "frozen_definition": {
+      "id": "REL-003",
+      "kind": "policy",
+      "title": "todo ownership cannot be reassigned through create, patch, or ordinary mutation",
+      "fixture": [
+        "alice active todo t1",
+        "active bob"
+      ],
+      "operation": {
+        "attemptOwnerChange": {
+          "todo": "t1",
+          "from": "alice",
+          "to": "bob"
+        }
+      },
+      "expect": {
+        "releaseEquivalentSuccess": false,
+        "disposition": "requires_human_decision",
+        "policyRule": "Todo.fields.owner_id"
+      }
+    },
+    "can_qualify_without_whole_RM601_603": true,
+    "reason": "The exact original case is kind policy. It requires releaseEquivalentSuccess=false, disposition=requires_human_decision and policyRule=Todo.fields.owner_id. It has no positive grant/valid protected issuer/release success, complete canonical behavior system, DB execution or healthy transport prerequisite. A genuinely compiler-derived exact attempted-field denial artifact and independent actual collector/decoder evidence can qualify this refusal; whole canonical/protected release requirements remain open independently.",
+    "not_currently_qualified": "Current scaffold native update refusal and unrelated checked field-policy projection do not supply this exact disposition/subject. No case promotion in this audit."
+  },
+  "current_grounding": [
+    {
+      "references": [
+        "jadpo/crates/semantic/src/typecheck.rs:560",
+        "jadpo/crates/semantic/src/typecheck.rs:3731",
+        "examples/golden-todo-migration/entities/todo.jadpo:31",
+        "docs/policy-plan.md:556",
+        "docs/policy-plan.md:575"
+      ],
+      "fact": "Todo.owner_id is a direct TodoRole.owner binding and immutable. Compiler marks such fields update_forbidden and emits TYPE_FIELD_UPDATE_FORBIDDEN. Entity update permission or an approval cannot override write ownership; a named transfer needs deliberate separate policy/authority/lifecycle semantics, and initial implementation may refuse it entirely."
+    },
+    {
+      "references": [
+        "jadpo/crates/core/src/artifacts/approval.rs:40",
+        "jadpo/crates/core/src/artifacts/approval.rs:140",
+        "jadpo/crates/core/src/artifacts/approval.rs:95",
+        "jadpo/crates/core/src/artifacts/approval.rs:478",
+        "jadpo/crates/core/src/artifacts/approval.rs:963"
+      ],
+      "fact": "Existing v5 ApprovalSubject requires both before/after supplied projects to have no frontend errors. It emits local_inspection_non_releasable/release_authority=false and generic fact-change decisions; it does not emit requires_human_decision for the actual invalid ownership mutation."
+    },
+    {
+      "references": [
+        "jadpo/crates/core/src/artifacts/approval/field_contracts.rs:357",
+        "jadpo/crates/core/src/artifacts/approval/actor_links.rs:1",
+        "docs/approval-protocol.md:36"
+      ],
+      "fact": "Field source contracts retain exact declaration tokens/type/reference and operation mappings; actor links retain checked nominal identity/scope/current-row requirements but are static may-call conditions. These helpers can bind exact protected baseline field and attempted write provenance; they do not establish feasible runtime owner transfer or reviewer authority."
+    },
+    {
+      "references": [
+        "tools/golden_checkpoint.py:69",
+        "tools/golden_checkpoint.py:77",
+        "tools/golden_checkpoint.py:101"
+      ],
+      "fact": "Current harness injects a real ordinary update attempt and separately adds a valid owner field policy for approval projection. It explicitly records semanticDisposition=null and unrelated projection scope. Reusing projectionApproval or hardcoded harness labels would not establish original REL003."
+    }
+  ],
+  "smallest_implementation_window": {
+    "step1": "Add a compiler-derived, canonical non-releasable protected-change-attempt/refusal record, using freshly checked baseline source and precise protected target field identity plus exact parsed attempted source/operation/intent. Retain original forbidden-field diagnostic and all ordinary frontend refusal. Do not run existing checked-after ApprovalSubject on invalid after source or silently relabel it as checked.",
+    "step2": "Record original fixture/request identity t1/fromAlice/toBob as supplied unverified intent, with explicit nominal fixture identity mapping and source/intent hashes. Derive policyRule from checked entity/field/role/immutability metadata and attempted assignment target/span, not a Todo/owner_id string heuristic or expected JSON. Bind baseline policy/graph/state and compiler/schema/canonicalization versions. Include immutable/direct-role reasons and attempt diagnostic/source provenance; mark failed-after/feasibility/data-origin facts unavailable rather than fabricate them.",
+    "step3": "Emit requested-change disposition requires_human_decision and releaseEquivalentSuccess=false with release_authority=false for this supported exact protected-field request. Keep compiler proof rejection of the current ordinary update distinct from the higher-level requested change of human-owned protection: docs/policy-proof-v0.1.md has one outcome per obligation, and approval changes a premise rather than converting an unsound derivation to proof. Other type/syntax errors must not be promoted to equivalent protected-policy review success.",
+    "step4": "Provide a machine-readable/local non-graphical path and capture the actual checked baseline plus diagnosed attempt artifact in the golden collector. Validate exact request/field/baseline/diagnostic/canonical bytes; explicitly refuse using a separate benign field-policy projection or ordinary repository assertion as substitute. Two backend ledger records may point to the same genuinely observed compiler-policy artifact with an honest static evidence classification; do not pretend that an unexecuted compiler-refused write ran on either database.",
+    "step5": "If adding a narrow local fixture trust adapter, accept authenticated test issuer context out of band and bind exact subject/decision/policy/graph/compiler/schema/expiry/authority. Distinguish fixture-validation results from protected release authority. Missing/foreign/self-issued/stale/replayed/forged ordinary JSON stays refused. Even a trusted local positive fixture must remain non-releasable; no source/env/file switch can bootstrap actual issuer or override immutable ownership."
+  },
+  "required_scoped_observables": [
+    "Actual CLI/compiler invocation of original attempted owner reassignment yields exact subject/path and requires_human_decision with no release-equivalent success. Baseline source is checked fresh; original action remains compile-refused and unexecuted.",
+    "Change protected entity/field, intent to another row/owner, target assignment/value provenance, diagnostic span/source, baseline policy/semantic graph, compiler/schema or attempt source; full decoder must reject stale/foreign or coherently rehashed unrelated subject/export. Valid renamed protected entity/field derives its own identity without hardcoded golden names.",
+    "Create/client-owner input, patch, ordinary update, alias/local/base-type copy cannot evade protected target-field ownership. Preserve existing checked source success for allowed title/status changes and actual forbidden-owner controls; no runtime transfer API added.",
+    "The field-policy projection alone, untouched source with changed human narrative, arbitrary type error, missing protected target, incomplete attempt or generic non-releasable artifact cannot satisfy exact REL003.",
+    "Test-only trust validation refuses local approval.json/env assertions, wrong subject/decision/authority/self issuer, stale/revoked/expired or consumed fixture token. Exact positive fixture if present only validates fixture mechanics and still cannot release.",
+    "Independent immutable consequential artifact/diagnostic/policy review and fresh source-bound collector negative mutations before case qualification. Complete RM601 facts/wholeRM603/AP matrix/RM604 protected CI stay separately unclosed."
+  ],
+  "owner_dependency": {
+    "new_question_required_now": false,
+    "why": "The frozen case requests a refusal artifact, not actual ownership transfer permission. Preserve accepted POLICY-D19/D36 and transfer constraints. Routine narrow derivation/fixture validation is eligible within authorized implementation; human transfer design/real protected authority would be a different scope and is not selected here."
+  },
+  "evidence": {
+    "source_and_case_binding": "tests/validation/evidence/golden-loop-rel003-prerequisite-audit/source-and-frozen-case-binding.json",
+    "sha256": "e10a8d69e8172030ac92383f5c8d6c34274bc9ce7183d2c8479db75251187d1b",
+    "source_files": 13,
+    "immutable_capture": "/private/tmp/jadpo-rel003-prerequisite-independent",
+    "actual_runtime_or_case_execution": false
+  },
+  "limits": [
+    "No implementation or scope approval, no fresh compiler build/case execution and no altered original source expectations.",
+    "Full RM601 behavioral/counterexample/provenance completeness, RM603 issuer protocol and RM604 real release authority remain genuine task gates; they are not retroactively imposed as extra negative-case conditions.",
+    "Local static refusal is no proof of effective live authorization, feasible ownership transfer or protected release approval.",
+    "No new question/publication/platform action or private fixture copies."
+  ],
+  "created_at": "2026-10-06T09:36:56.162382+00:00"
+}
