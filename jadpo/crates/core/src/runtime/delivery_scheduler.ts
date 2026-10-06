@@ -19,6 +19,16 @@ function createDeliverySchedulePrimitives(
     return value;
   };
   const positive = (value: number): void => { if (!Number.isSafeInteger(value) || value <= 0) fault("delivery.activation_profile"); };
+  const durablePositive = (value: unknown, storageType: unknown): void => {
+    // PostgreSQL BIGINT may be a canonical decimal string. SQLite affinity can
+    // retain arbitrary TEXT/REAL despite a positive CHECK; require INTEGER
+    // storage as well as the driver's safe integer value before native SQL can
+    // interpret the duration. Number coercion is not a durable decoder.
+    if (!isPostgres && storageType !== "integer") return fault("delivery.activation_state");
+    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return;
+    if (isPostgres && typeof value === "string" && /^[1-9][0-9]{0,15}$/u.test(value) && BigInt(value) <= BigInt(Number.MAX_SAFE_INTEGER)) return;
+    return fault("delivery.activation_state");
+  };
   const clock = isPostgres ? "to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')" : "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
   const add = (at: string, ms: number): string => {
     const value = Date.parse(at) + ms;
@@ -48,14 +58,16 @@ function createDeliverySchedulePrimitives(
     }
   };
   const lock = async (binding: string): Promise<any> => {
-    const rows = await execute("delivery.activation.lock", 'UPDATE "__jadpo_delivery_activations_v1" SET "generation" = "generation" WHERE "binding" = $1 RETURNING *, CAST("generation" AS TEXT) AS "generation"', [binding]);
+    const types = isPostgres ? "" : ', typeof("interval_ms") AS "__interval_storage_type", typeof("lease_ms") AS "__lease_storage_type"';
+    const rows = await execute("delivery.activation.lock", 'UPDATE "__jadpo_delivery_activations_v1" SET "generation" = "generation" WHERE "binding" = $1 RETURNING *, CAST("generation" AS TEXT) AS "generation"' + types, [binding]);
     if (rows.length !== 1) return fault("delivery.activation_binding");
     const row = rows[0];
     // Durable TEXT is not Instant authority merely because it sorts after DB
     // now. Decode under the same row lock before any live/reclaim/write choice;
     // a caught decoder fault rolls the enclosing native savepoint back.
-    if (typeof row.generation !== "string" || !/^(0|[1-9][0-9]{0,18})$/u.test(row.generation) || BigInt(row.generation) > 9223372036854775807n || !Number.isSafeInteger(Number(row.interval_ms)) || Number(row.interval_ms) <= 0) return fault("delivery.activation_state");
-    if (row.lease_ms !== null && (!Number.isSafeInteger(Number(row.lease_ms)) || Number(row.lease_ms) <= 0)) return fault("delivery.activation_state");
+    if (typeof row.generation !== "string" || !/^(0|[1-9][0-9]{0,18})$/u.test(row.generation) || BigInt(row.generation) > 9223372036854775807n) return fault("delivery.activation_state");
+    durablePositive(row.interval_ms, row.__interval_storage_type);
+    if (row.lease_ms !== null) durablePositive(row.lease_ms, row.__lease_storage_type);
     for (const field of ["last_tick", "pending_for", "continuation_for", "scheduled_for", "operation_time", "lease_until", "execution_deadline"]) if (row[field] !== null) instant(row[field]);
     if ((row.cursor === null) !== (row.continuation_for === null)) return fault("delivery.activation_state");
     if (row.activation_id === null) {

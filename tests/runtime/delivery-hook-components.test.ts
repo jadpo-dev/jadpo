@@ -1124,6 +1124,22 @@ describe(`native durable singleton activation storage (${sql ? "postgres" : "sql
       }
     }
   });
+  test.skipIf(sql !== null)("SQLite TEXT/REAL duration corruption refuses claim, page, finish and renewal before native SQL interprets it", async () => {
+    for (const field of ["lease_ms", "interval_ms"]) {
+      for (const corrupt of ["0x10", "0b10", "NaN", "duration", 1.5]) {
+        const binding = crypto.randomUUID(); await tick(binding, instant); const handle = await claim(binding, instant);
+        await stage(handle, [crypto.randomUUID()]);
+        await rows(`UPDATE "__jadpo_delivery_activations_v1" SET ${field}=$1 WHERE binding=$2`, [corrupt, binding]);
+        const type = (await rows(`SELECT typeof(${field}) AS storage_type FROM "__jadpo_delivery_activations_v1" WHERE binding=$1`, [binding]))[0].storage_type;
+        expect(type).toBe(typeof corrupt === "string" ? "text" : "real");
+        const before = await state(binding);
+        for (const operation of [() => claim(binding, scanTime), () => stage(handle, []), () => finish(handle), () => renew(handle)]) {
+          await expect(operation()).rejects.toMatchObject({ operation: "delivery.activation_state" });
+          expect(await state(binding)).toEqual(before);
+        }
+      }
+    }
+  });
   test("durable Instant decoding preserves the portable years0001 and9999 boundaries", async () => {
     for (const at of ["0001-01-01T00:00:00.000Z", "9999-12-31T23:59:59.999Z"]) {
       const binding = crypto.randomUUID(); await tick(binding, at); const handle = await claim(binding, at);
