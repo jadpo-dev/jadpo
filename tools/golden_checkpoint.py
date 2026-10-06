@@ -22,7 +22,8 @@ SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'CREATE-004', 'READ-002', 'READ-003', 'LIST-004', 'PATCH-001',
              'PATCH-002', 'PATCH-003', 'PATCH-004', 'CREATE-001', 'CREATE-003',
              'READ-001', 'PATCH-005', 'DELETE-001', 'LIST-001', 'LIST-002',
-             'LIST-003', 'REL-001', 'DELETE-002')
+             'LIST-003', 'REL-001', 'DELETE-002', 'AUTH-002', 'AUTH-006',
+             'AUTH-010', 'USER-001')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
@@ -33,6 +34,8 @@ def request_path(path: str) -> str:
     for alias, value in ALIASES.items():
         path = path.replace('/todos/'+alias, '/todos/'+value)
         path = path.replace('/users/'+alias+'/todos', '/users/'+value+'/todos')
+        if path == '/users/'+alias:
+            path = '/users/'+value
     return path
 
 
@@ -115,6 +118,103 @@ def collection_fixture(raw: list):
     return rows, {row['id']: row for row in rows}, fixtures[0]['queryMetadata']
 
 
+def validate_auth_observation(event: dict):
+    if not isinstance(event.get('principals'), list) or type(event.get('credentialsIssued')) is not int or event['credentialsIssued'] < 0:
+        raise ValueError('Missing native principal/credential issuance instrumentation')
+    for principal in event['principals']:
+        if set(principal) != {'kind', 'subject', 'authenticationStrength', 'values'} or principal['kind'] not in ('user', 'service') or not isinstance(principal['subject'], str) or principal['authenticationStrength'] not in ('primary', 'multi_factor'):
+            raise ValueError('Malformed native principal observation')
+        if not isinstance(principal['values'], dict) or set(principal['values']) != {principal['kind']+'_id'}:
+            raise ValueError('Malformed native principal identity')
+    if type(event.get('authenticationAttempts')) is not int or event['authenticationAttempts'] < 0 or not isinstance(event.get('statements'), list) or any(not isinstance(row.get('sql'), str) or not isinstance(row.get('operation'), str) for row in event['statements']):
+        raise ValueError('Missing physical authentication statement instrumentation')
+
+
+def authority_query_accounting(event: dict):
+    actual = {'principal': [index for index, row in enumerate(event['statements']) if row['operation'] == 'SELECT' and 'FROM "user" WHERE "authentication_subject"' in row['sql']],
+              'credential': [index for index, row in enumerate(event['statements']) if row['operation'] == 'SELECT' and 'FROM "__jadpo_auth_sessions"' in row['sql']]}
+    if not harness.same_json(event.get('authorityQueries'), actual):
+        raise ValueError('Missing/inconsistent actual authority query accounting')
+    return actual
+
+
+def authentication_fixture(case: dict, raw: list, reply: dict, clock: str):
+    captures = [item for item in raw if 'authenticationFixture' in item]
+    if len(captures) != 1 or raw.index(captures[0]) >= raw.index(reply):
+        raise ValueError('Missing/reordered native authentication fixture')
+    fixture = captures[0]['authenticationFixture']
+    if not harness.same_json(fixture.get('specification'), {'fixture': case['fixture'], 'timeline': case.get('timeline')}):
+        raise ValueError('Changed original authentication fixture/timeline specification')
+    user = fixture.get('user', {})
+    session = fixture.get('sessionRecord', {})
+    timeline = case.get('timeline', {})
+    strategy = 'api_bearer' if case['id'] == 'AUTH-010' else 'browser_session'
+    issuance = fixture.get('issuanceObservation', {})
+    if issuance.get('operation') != 'compiler-owned authentication issuance' or issuance.get('strategy') != strategy or type(issuance.get('credentialsIssued')) is not int or issuance['credentialsIssued'] != 1 or not isinstance(issuance.get('statements'), list) or not any(row.get('operation') == 'INSERT' and 'INTO "__jadpo_auth_sessions"' in row.get('sql', '') for row in issuance['statements']):
+        raise ValueError('Missing native issuance positive control/session persistence')
+    if user.get('id') != ALIASES['alice'] or user.get('authentication_subject') != 'alice' or user.get('status') != 'active' or user.get('disabled_at') is not None:
+        raise ValueError('Missing active authentication issuance fixture')
+    if session.get('strategy') != strategy or session.get('subject') != 'alice' or session.get('userId') != user['id'] or session.get('revoked') is not False:
+        raise ValueError('Invalid native credential session fixture')
+    if instant(fixture.get('issuedAt')) != instant(timeline.get('issuedAt', clock)) or instant(fixture.get('credentialExpiresAt')) != instant(session.get('expires')):
+        raise ValueError('Changed credential issuance clock/expiry')
+    if timeline and instant(fixture['credentialExpiresAt']) != instant(timeline['credentialExpiresAt']):
+        raise ValueError('Changed original credential timeline expiry')
+    if fixture['issuedAt'] >= fixture['credentialExpiresAt']:
+        raise ValueError('Invalid issued credential lifetime')
+    return fixture
+
+
+def user_timeline_observations(case: dict, raw: list, clock: str):
+    events = [item for item in raw if 'method' in item or 'operation' in item]
+    followups = case['followUps']
+    if len(events) != len(followups)+1:
+        raise ValueError('Missing disable/refresh/expiry timeline step')
+    authentication_fixture(case, raw, events[0], clock)
+    steps = []
+    requests = [(case['request'], case['timeline']['disabledAt']), *[(follow.get('request', follow), follow['at']) for follow in followups]]
+    for event, (request, at) in zip(events, requests):
+        if instant(event.get('at')) != instant(at):
+            raise ValueError('Changed ordered authentication timeline clock')
+        validate_auth_observation(event)
+        accounting = authority_query_accounting(event)
+        if event is not events[-1] and (len(accounting['principal']) != 1 or len(accounting['credential']) != 1):
+            raise ValueError('Missing real fresh/refresh session and principal authority reads')
+        if 'operation' in request:
+            if event.get('operation') != request['operation'] or event.get('auth') != request['auth'] or 'method' in event:
+                raise ValueError('Changed compiler-owned refresh timeline operation')
+            fault = event.get('fault')
+            metadata = event.get('failureMetadata')
+            if event.get('completed') is not False or not isinstance(fault, dict) or not isinstance(metadata, dict) or fault.get('failure') != metadata.get('failure') or fault.get('nativeCode') != 'principal_inactive':
+                raise ValueError('Missing native refresh fault/public failure mapping')
+            steps.append({'failure': fault['failure'], 'code': metadata['code'], 'credentialsIssued': event['credentialsIssued']})
+        else:
+            if event.get('method') != request['method'] or event.get('path') != request_path(request['path']) or not harness.same_json(event.get('auth'), request.get('auth')) or not harness.same_json(event.get('requestJson'), request.get('json')):
+                raise ValueError('Changed authentication timeline request')
+            step = {'status': event['status'], 'writes': sum(row['operation'] in ('INSERT', 'UPDATE', 'DELETE', 'REPLACE') for row in event['statements'])}
+            code = (event.get('body') or {}).get('error', {}).get('code')
+            if code is not None: step['code'] = code
+            steps.append(step)
+        steps[-1].update(databaseQueries=len(event['statements']), principalAuthorityQueries=len(accounting['principal']), credentialAuthorityQueries=len(accounting['credential']), authenticationAttempts=event['authenticationAttempts'])
+    primary_principals = events[0]['principals']
+    if len(primary_principals) != 1 or primary_principals[0]['kind'] != 'user' or primary_principals[0]['subject'] != 'alice' or primary_principals[0]['values'].get('user_id') != ALIASES['alice'] or any(event['principals'] for event in events[1:]):
+        raise ValueError('Missing native primary principal or unexpected follow-up principal')
+    fixtures = [item for item in raw if 'disableFixture' in item]
+    retained = [item for item in raw if 'disabledPersistence' in item]
+    if len(fixtures) != 1 or len(retained) != 1 or not raw.index(fixtures[0]) < raw.index(events[0]) < raw.index(retained[0]) < raw.index(events[1]):
+        raise ValueError('Missing/reordered disable fixture/request/persistence/follow-up')
+    before, after = fixtures[0]['disableFixture'], retained[0]['disabledPersistence']
+    if before['user']['id'] != ALIASES['alice'] or before['user']['status'] != 'active' or before['todo']['id'] != ALIASES['t1'] or before['todo']['owner_id'] != ALIASES['alice'] or before['todo']['deleted_at'] is not None or after['user']['id'] != before['user']['id'] or after['todo']['id'] != before['todo']['id']:
+        raise ValueError('Foreign disable user/todo fixture')
+    if not harness.same_json(before['todo'], after['todo']) or instant(after['user'].get('disabled_at')) != instant(case['timeline']['disabledAt']):
+        steps[0]['checkpoint_failures'] = ['Disablement changed todo or recorded a foreign disable clock']
+    fixture = next(item['authenticationFixture'] for item in raw if 'authenticationFixture' in item)
+    if not harness.same_json(fixture['sessionRecord'], after.get('sessionRecord')):
+        raise ValueError('Disablement did not retain otherwise valid session')
+    steps[0].update(userStatus=after['user']['status'], todoRowExists=after['todo']['id'] == ALIASES['t1'])
+    return [{'variant_index': 0, 'steps': steps}]
+
+
 def todo_statements(reply: dict):
     return [row for row in reply['statements'] if row['operation'] == 'SELECT' and re.search(r'FROM\s+"todo"', row['sql'], re.I)]
 
@@ -126,6 +226,9 @@ def observed_order(statement: dict):
 
 def observations(case: dict, raw: list, clock: str | None = None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
+    if case['id'] == 'USER-001' and case.get('followUps'):
+        if clock is None: raise ValueError('Authentication timeline requires original controlled clock')
+        return user_timeline_observations(case, raw, clock)
     if case['id'] == 'REL-001' and case.get('fixtureVariants'):
         variants = case['fixtureVariants']
         if len(raw) != len(variants):
@@ -181,6 +284,37 @@ def observations(case: dict, raw: list, clock: str | None = None) -> list:
             step['code'] = code
         if case['id'] in ('AUTH-012', 'PUBLIC-001'):
             step['body'] = reply['body']
+        if case['id'] in ('AUTH-002', 'AUTH-006', 'AUTH-010'):
+            if clock is None:
+                raise ValueError('Authentication case requires original controlled clock')
+            fixture = authentication_fixture(case, raw, reply, clock)
+            validate_auth_observation(reply)
+            accounting = authority_query_accounting(reply)
+            if case['id'] == 'AUTH-002':
+                if len(reply['principals']) != 1:
+                    raise ValueError('Missing/unbounded native authenticated principal')
+                principal = reply['principals'][0]
+                step['principalKind'] = principal['kind']
+                step['principalUser'] = next((alias for alias in ('alice', 'bob') if ALIASES[alias] == principal['values'].get('user_id')), None)
+                if principal['subject'] != fixture['user']['authentication_subject']:
+                    step['checkpoint_failures'] = ['Native principal has foreign provider-independent subject']
+                schema = validated_output_schema(raw, reply, 'GET /todos')
+                # The actual generated closed validator rejects undeclared
+                # provider payload fields anywhere in the returned page.
+                step['providerFieldsInOutput'] = schema != 'TodoPage'
+            if case['id'] == 'AUTH-006':
+                if len(accounting['principal']) != 1 or len(accounting['credential']) != 1:
+                    raise ValueError('Missing real disabled-user session/principal authority reads')
+                disabled = [item for item in raw if 'disabledUser' in item]
+                if len(disabled) != 1 or not raw.index(next(item for item in raw if 'authenticationFixture' in item)) < raw.index(disabled[0]) < raw.index(reply):
+                    raise ValueError('Missing/reordered disabled authority fixture')
+                item = disabled[0]
+                if item['disabledUser'].get('id') != fixture['user']['id'] or item['disabledUser'].get('status') != 'disabled' or instant(item['disabledUser'].get('disabled_at')) != instant(case['timeline']['disabledAt']) or instant(item.get('at')) != instant(case['timeline']['disabledAt']) or not harness.same_json(item.get('sessionRecord'), fixture['sessionRecord']):
+                    raise ValueError('Invalid disabled authority/unexpired native session fixture')
+            if case['id'] == 'AUTH-010':
+                step['principalAuthorityQueries'] = len(accounting['principal'])
+                step['credentialAuthorityQueries'] = len(accounting['credential'])
+                step['credentialAuthorityQueriesRecorded'] = isinstance(reply.get('authorityQueries'), dict) and 'credential' in reply['authorityQueries']
         if case['id'] in ('CREATE-001', 'READ-001'):
             route = 'POST /todos' if case['id'] == 'CREATE-001' else 'GET /todos/{todo_id}'
             step['outputSchema'] = validated_output_schema(raw, reply, route)
@@ -355,6 +489,7 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
         outputs.append(json.loads(path.read_text()))
     plan_path = evidence/'application/build/persistence/entities.json'
     expected_plans = [plan for plan in json.loads(plan_path.read_text())['query_plans'] if plan.get('entity') == 'Todo' and plan.get('strategy') == 'indexed_keyset_page']
+    expected_failures = json.loads((evidence/'application/build/audit/failures.json').read_text())['failures']
     for output in outputs:
         for item in output['results']:
             journals = [scenario['raw'] for scenario in item['scenarios']] if item['id'] == 'REL-001' else [item['raw']]
@@ -362,6 +497,8 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
                 for event in raw:
                     if 'queryMetadata' in event and not harness.same_json(event['queryMetadata'], expected_plans):
                         raise ValueError('Raw query metadata differs from generated artifact')
+                    if event.get('failureMetadata') is not None and not any(harness.same_json(event['failureMetadata'], item) for item in expected_failures):
+                        raise ValueError('Raw refresh failure mapping differs from generated artifact')
     reconstructed = deepcopy(report)
     apply_checkpoint(reconstructed, outputs, root)
     if not harness.same_json(reconstructed['results'], report['results']):
@@ -408,14 +545,23 @@ def main():
     if authentication.count(entry) != 1:
         raise ValueError('Generated authentication instrumentation entry changed')
     (output/'original-authentication.ts').write_text(authentication)
-    (target/'first-party-authentication.ts').write_text('import { recordAuthenticationAttempt } from ' +
-        json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';\n' +
-        authentication.replace(entry, entry + '\n      recordAuthenticationAttempt();'))
+    replacements = {
+        entry: entry + '\n      recordAuthenticationAttempt();',
+        'if (externallyVerified) return principal;': 'if (externallyVerified) { recordAuthenticatedPrincipal(principal); return principal; }',
+        '      return principal;\n    },\n    async refresh(': '      recordAuthenticatedPrincipal(principal);\n      return principal;\n    },\n    async refresh(',
+        '    return { credential, csrfToken, setCookie, expires };': '    recordCredentialIssued();\n    return { credential, csrfToken, setCookie, expires };',
+    }
+    for before, after in replacements.items():
+        if authentication.count(before) != 1:
+            raise ValueError('Generated authentication observation boundary changed')
+        authentication = authentication.replace(before, after)
+    (target/'first-party-authentication.ts').write_text('import { recordAuthenticationAttempt, recordAuthenticatedPrincipal, recordCredentialIssued } from ' +
+        json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';\n' + authentication)
     application = (target/'app.ts').read_text()
-    if application.count('function validate_TodoView(') != 1 or application.count('function validate_UserWithTodos(') != 1:
+    if any(application.count('function '+name+'(') != 1 for name in ('validate_TodoView', 'validate_UserWithTodos', 'validate_TodoPage')):
         raise ValueError('Generated output validation instrumentation changed')
     (output/'original-app.ts').write_text(application)
-    (target/'app.ts').write_text(application + '\nexport { validate_TodoView, validate_UserWithTodos };\n')
+    (target/'app.ts').write_text(application + '\nexport { validate_TodoView, validate_UserWithTodos, validate_TodoPage };\n')
     (target/'node_modules').symlink_to(dependencies/'node_modules', target_is_directory=True)
     instrumented_binding = hashes(project/'build', ('node_modules',))
     outputs = []

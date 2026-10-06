@@ -5,9 +5,20 @@ import { SQL as NativeSQL } from "bun";
 export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number> };
 let active: StatementObservation[] | undefined;
 let authenticationAttempts = 0;
+let principals: unknown[] = [];
+let credentialsIssued = 0;
 export function recordAuthenticationAttempt() { if (active) authenticationAttempts++; }
 export function authenticationAttemptCount() { return authenticationAttempts; }
-export function beginSqlObservation() { active = []; authenticationAttempts = 0; return active; }
+// Observe the actual normalized principal returned by the native boundary.
+// These closed fields contain fixture identities, never credential material.
+export function recordAuthenticatedPrincipal(principal: any) {
+  if (active) principals.push({ kind: principal.kind, subject: principal.subject,
+    authenticationStrength: principal.authenticationStrength, values: { ...principal.values } });
+}
+export function authenticatedPrincipals() { return principals; }
+export function recordCredentialIssued() { if (active) credentialsIssued++; }
+export function issuedCredentialCount() { return credentialsIssued; }
+export function beginSqlObservation() { active = []; authenticationAttempts = 0; principals = []; credentialsIssued = 0; return active; }
 export function endSqlObservation() { active = undefined; }
 export function recordStatement(sql: string, parameters: unknown[] = []) {
   if (!active) return;

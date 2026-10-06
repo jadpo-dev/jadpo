@@ -39,6 +39,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id == 'USER-001':
+            return self.user_timeline_raw()
         if case_id == 'REL-001':
             return [{'variant_index': index, 'fixture_variant': variant,
                      'raw': self.collection_raw(case_id, count)} for index, (variant, count) in enumerate(zip(case['fixtureVariants'], (0, 1, 100)))]
@@ -75,7 +77,54 @@ class CheckpointIntegrityTests(unittest.TestCase):
             replies.insert(0, {'fixture': fixture})
             if case_id == 'DELETE-001': replies.insert(2, {'persistence': after})
             else: replies.append({'persistence': after})
+        if case_id in ('AUTH-002', 'AUTH-006', 'AUTH-010'):
+            replies.insert(0, {'authenticationFixture': self.authentication_fixture(case_id)})
+            reply = replies[1]
+            reply.update(principals=[self.principal()], credentialsIssued=0, authorityQueries={'principal': [], 'credential': []})
+            if case_id == 'AUTH-002':
+                reply.update(status=200, body={'items': [], 'next': None})
+                replies.append({'outputValidation': {'route': 'GET /todos', 'schema': 'TodoPage', 'validator': 'validate_TodoPage', 'accepted': True, 'validatedBody': deepcopy(reply['body'])}})
+            if case_id == 'AUTH-006':
+                reply.update(status=403, body={'error': {'code': 'user_disabled'}}, principals=[], statements=self.authority_statements(), authorityQueries={'principal': [1], 'credential': [0]})
+                disabled = deepcopy(replies[0]['authenticationFixture']['user']); disabled.update(status='disabled', disabled_at=case['timeline']['disabledAt'])
+                replies.insert(1, {'disabledUser': disabled, 'at': case['timeline']['disabledAt'], 'sessionRecord': deepcopy(replies[0]['authenticationFixture']['sessionRecord'])})
+            if case_id == 'AUTH-010':
+                reply.update(status=204, body=None, statements=[{'operation': 'SELECT', 'sql': 'SELECT data FROM "__jadpo_auth_sessions" WHERE id = $1'}, {'operation': 'SELECT', 'sql': 'SELECT id FROM "user" WHERE "authentication_subject" = $1'}], authorityQueries={'principal': [1], 'credential': [0]})
         return replies
+
+    def principal(self):
+        return {'kind': 'user', 'subject': 'alice', 'authenticationStrength': 'primary', 'values': {'user_id': checkpoint.ALIASES['alice']}}
+
+    def authority_statements(self):
+        return [{'operation': 'SELECT', 'sql': 'SELECT data FROM "__jadpo_auth_sessions" WHERE id = $1'}, {'operation': 'SELECT', 'sql': 'SELECT id FROM "user" WHERE "authentication_subject" = $1'}]
+
+    def authentication_fixture(self, case_id):
+        case = self.cases[case_id]
+        expires = case.get('timeline', {}).get('credentialExpiresAt', '2026-01-15T12:05:00Z')
+        return {'user': {'id': checkpoint.ALIASES['alice'], 'authentication_subject': 'alice', 'status': 'active', 'disabled_at': None},
+                'sessionRecord': {'strategy': 'api_bearer' if case_id == 'AUTH-010' else 'browser_session', 'subject': 'alice', 'userId': checkpoint.ALIASES['alice'], 'expires': expires, 'revoked': False},
+                'issuedAt': case.get('timeline', {}).get('issuedAt', self.clock), 'credentialExpiresAt': expires,
+                'issuanceObservation': {'operation': 'compiler-owned authentication issuance', 'strategy': 'api_bearer' if case_id == 'AUTH-010' else 'browser_session', 'credentialsIssued': 1, 'statements': [{'operation': 'INSERT', 'sql': 'INSERT INTO "__jadpo_auth_sessions" VALUES (?)'}]},
+                'specification': {'fixture': case['fixture'], 'timeline': case.get('timeline')}}
+
+    def user_timeline_raw(self):
+        case = self.cases['USER-001']; fixture = self.authentication_fixture('USER-001')
+        todo = {'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': None}
+        disabled = deepcopy(fixture['user']); disabled.update(status='disabled', disabled_at=case['timeline']['disabledAt'])
+        def reply(request, at, status, body, principals):
+            return {'method': request['method'], 'path': checkpoint.request_path(request['path']), 'auth': request['auth'], 'requestJson': None,
+                    'at': at, 'status': status, 'body': body, 'statements': [] if status == 401 else self.authority_statements(), 'authenticationAttempts': 1, 'principals': principals, 'credentialsIssued': 0,
+                    'authorityQueries': {'principal': [], 'credential': []} if status == 401 else {'principal': [1], 'credential': [0]}}
+        follow = case['followUps']
+        return [{'authenticationFixture': fixture}, {'disableFixture': {'user': deepcopy(fixture['user']), 'todo': deepcopy(todo)}},
+                reply(case['request'], case['timeline']['disabledAt'], 204, None, [self.principal()]),
+                {'disabledPersistence': {'user': disabled, 'todo': deepcopy(todo), 'sessionRecord': deepcopy(fixture['sessionRecord'])}},
+                reply(follow[0]['request'], follow[0]['at'], 403, {'error': {'code': 'user_disabled'}}, []),
+                {'operation': follow[1]['operation'], 'auth': follow[1]['auth'], 'at': follow[1]['at'], 'completed': False,
+                 'fault': {'failure': 'UserDisabled', 'nativeCode': 'principal_inactive', 'status': 401},
+                 'failureMetadata': {'failure': 'UserDisabled', 'code': 'user_disabled'},
+                 'statements': self.authority_statements(), 'authenticationAttempts': 0, 'principals': [], 'credentialsIssued': 0, 'authorityQueries': {'principal': [1], 'credential': [0]}},
+                reply(follow[2]['request'], follow[2]['at'], 401, {'error': {'code': 'invalid_credentials'}}, [])]
 
     def collection_raw(self, case_id, count=5):
         case = self.cases[case_id]
@@ -193,6 +242,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 (evidence/retained).write_text('synthetic original')
             plan_path = evidence/'application/build/persistence/entities.json'; plan_path.parent.mkdir()
             plan_path.write_text(json.dumps({'query_plans': self.query_plans}))
+            failure_path = evidence/'application/build/audit/failures.json'; failure_path.parent.mkdir()
+            failure_path.write_text(json.dumps({'failures': [{'failure': 'UserDisabled', 'code': 'user_disabled'}]}))
             outputs = self.outputs()
             for output in outputs: (evidence/f'{output["backend"]}-raw.json').write_text(json.dumps(output))
             report = harness.run_cases(self.root); checkpoint.apply_checkpoint(report, outputs, self.root)
@@ -214,6 +265,19 @@ class CheckpointIntegrityTests(unittest.TestCase):
             entry['observations'][0]['steps'][0]['writes'] = 99
             with self.assertRaisesRegex(ValueError, 'differ from raw'):
                 checkpoint.validate_checkpoint(changed, evidence, dependencies, self.root)
+            # Even coherently rehashed raw cannot replace the compiler's
+            # declared native-fault to public-failure metadata.
+            changed_outputs = deepcopy(outputs)
+            timeline = next(item for item in changed_outputs[0]['results'] if item['id'] == 'USER-001')['raw']
+            timeline[5]['failureMetadata']['code'] = 'foreign_public_code'
+            changed = deepcopy(report)
+            raw_path = evidence/'sqlite-raw.json'; original_raw = raw_path.read_bytes()
+            raw_path.write_text(json.dumps(changed_outputs[0]))
+            changed['checkpoint']['raw_files']['sqlite-raw.json'] = harness.digest(raw_path)
+            checkpoint.apply_checkpoint(changed, changed_outputs, self.root)
+            with self.assertRaisesRegex(ValueError, 'refresh failure mapping'):
+                checkpoint.validate_checkpoint(changed, evidence, dependencies, self.root)
+            raw_path.write_bytes(original_raw)
             changed = deepcopy(report)
             raw_path = evidence/'sqlite-raw.json'
             raw_output = json.loads(raw_path.read_text())
@@ -389,6 +453,67 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 raw = [deepcopy(original[index]) for index in order]
                 with self.assertRaisesRegex(ValueError, 'Reordered repeated-delete'):
                     checkpoint.observations(self.cases['DELETE-002'], raw, self.clock)
+
+    def test_native_principal_identity_and_actual_validator_determine_auth_output(self):
+        raw = self.raw('AUTH-002')
+        step = checkpoint.observations(self.cases['AUTH-002'], raw, self.clock)[0]['steps'][0]
+        self.assertEqual(step['principalUser'], 'alice')
+        raw[1]['principals'][0]['values']['user_id'] = checkpoint.ALIASES['bob']
+        self.assertEqual(checkpoint.observations(self.cases['AUTH-002'], raw, self.clock)[0]['steps'][0]['principalUser'], 'bob')
+        raw[-1]['outputValidation']['accepted'] = False
+        self.assertTrue(checkpoint.observations(self.cases['AUTH-002'], raw, self.clock)[0]['steps'][0]['providerFieldsInOutput'])
+        for mutation in ('missing', 'multiple', 'private'):
+            raw = self.raw('AUTH-002')
+            if mutation == 'missing': del raw[1]['principals']
+            elif mutation == 'multiple': raw[1]['principals'].append(self.principal())
+            else: raw[1]['principals'][0]['values']['provider_claim'] = 'foreign'
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-002'], raw, self.clock)
+
+    def test_disabled_authority_fixture_clock_session_and_chronology_are_bound(self):
+        for mutation in ('active', 'revoked', 'issued', 'expiry', 'disabled', 'order', 'specification', 'issuance', 'storage'):
+            raw = self.raw('AUTH-006')
+            if mutation == 'active': raw[0]['authenticationFixture']['user']['status'] = 'disabled'
+            elif mutation == 'revoked': raw[1]['sessionRecord']['revoked'] = True
+            elif mutation == 'issued': raw[0]['authenticationFixture']['issuedAt'] = self.clock
+            elif mutation == 'expiry': raw[0]['authenticationFixture']['credentialExpiresAt'] = self.clock
+            elif mutation == 'disabled': raw[1]['disabledUser']['disabled_at'] = self.clock
+            elif mutation == 'order': raw.reverse()
+            elif mutation == 'specification': raw[0]['authenticationFixture']['specification']['fixture'] = []
+            elif mutation == 'issuance': raw[0]['authenticationFixture']['issuanceObservation']['credentialsIssued'] = 0
+            else: raw[0]['authenticationFixture']['issuanceObservation']['statements'] = []
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-006'], raw, self.clock)
+
+    def test_fresh_authority_counts_are_reconstructed_from_physical_sql(self):
+        raw = self.raw('AUTH-010')
+        step = checkpoint.observations(self.cases['AUTH-010'], raw, self.clock)[0]['steps'][0]
+        self.assertEqual((step['principalAuthorityQueries'], step['credentialAuthorityQueries']), (1, 1))
+        raw[1]['statements'].append(deepcopy(raw[1]['statements'][1])); raw[1]['authorityQueries']['principal'].append(2)
+        self.assertEqual(checkpoint.observations(self.cases['AUTH-010'], raw, self.clock)[0]['steps'][0]['principalAuthorityQueries'], 2)
+        raw[1]['authorityQueries']['credential'] = []
+        with self.assertRaisesRegex(ValueError, 'query accounting'): checkpoint.observations(self.cases['AUTH-010'], raw, self.clock)
+        raw = self.raw('AUTH-010'); del raw[1]['authorityQueries']
+        with self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-010'], raw, self.clock)
+
+    def test_full_user_timeline_retains_all_steps_clocks_and_refresh_issuance(self):
+        raw = self.raw('USER-001')
+        observations = checkpoint.observations(self.cases['USER-001'], raw, self.clock)
+        self.assertEqual(len(observations[0]['steps']), 4)
+        self.assertFalse(harness.assess(self.cases['USER-001'], observations))
+        raw[5]['credentialsIssued'] = 1
+        self.assertTrue(harness.assess(self.cases['USER-001'], checkpoint.observations(self.cases['USER-001'], raw, self.clock)))
+        for mutation in ('missing', 'clock', 'request', 'operation', 'fault', 'mapping', 'session', 'order', 'authority', 'principal'):
+            raw = self.raw('USER-001')
+            if mutation == 'missing': raw.pop(5)
+            elif mutation == 'clock': raw[5]['at'] = self.clock
+            elif mutation == 'request': raw[4]['method'] = 'GET'
+            elif mutation == 'operation': raw[5]['operation'] = 'synthetic refresh'
+            elif mutation == 'fault': raw[5]['fault']['nativeCode'] = 'invalid_credentials'
+            elif mutation == 'mapping': raw[5]['failureMetadata']['failure'] = 'ServiceDisabled'
+            elif mutation == 'session': raw[3]['disabledPersistence']['sessionRecord']['revoked'] = True
+            elif mutation == 'order': raw[2], raw[3] = raw[3], raw[2]
+            elif mutation == 'authority': raw[5].update(statements=[], authorityQueries={'principal': [], 'credential': []})
+            else: raw[2]['principals'] = []
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['USER-001'], raw, self.clock)
 
     def test_cursor_duplicate_fails_case_even_when_frozen_summary_fields_match(self):
         outputs = self.outputs()
