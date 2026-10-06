@@ -27,7 +27,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         for name in (harness.ACCEPTANCE, harness.OBLIGATIONS, 'tools/golden_cases.py',
                      'tests/assurance/service-reference-mail-v0.1.json',
                      'tools/golden_checkpoint.py', 'tools/golden_http_checkpoint.ts',
-                     'tools/golden_sql_observer.ts'):
+                     'tools/golden_sql_observer.ts', 'tools/golden_startup_observer.ts'):
             destination = self.root/name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT/name, destination)
@@ -731,6 +731,41 @@ class CheckpointIntegrityTests(unittest.TestCase):
         for entry in report['results']:
             if entry['id'] in ('REL-002', 'REL-003', 'REL-004'):
                 self.assertEqual(entry['status'], 'not_run'); self.assertNotIn('observations', entry)
+
+    def partial_outputs_fixture(self):
+        output = {'partialEvidence': [{'id': case_id, 'adapterFailure': True, 'raw': []} for case_id in ('REL-002', 'REL-003', 'REL-004')]}
+        for case_id in ('CONFIG-001', 'CONFIG-002'):
+            environment = self.cases[case_id]['environment']
+            probes = [{'label': label, 'originalEnvironment': overrides, 'exitCode': 1, 'jsonEvents': [{'kind': 'checkpoint_startup_observation', 'exitCode': 1, 'listenerStarts': 0}], 'outputSha256': 'a'*64, 'outputBytes': 120, 'credentialTextDisclosed': False} for label, overrides in (('healthy_control', {}), ('original_environment', environment))]
+            output['partialEvidence'].append({'id': case_id, 'raw': [{'nativeStartup': {'specification': environment, 'probes': probes}}]})
+        case = self.cases['BOUNDARY-001']
+        variants = [{'variant_index': 0, 'fixture_variant': case['fixtureVariants'][0], 'healthyControl': {'status': 200}, 'outage': {'response': {'status': 500}}}, {'variant_index': 1, 'fixture_variant': case['fixtureVariants'][1], 'providerCalls': [{'responseStatus': 401, 'authorizationPresent': True}], 'profiles': {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}, 'nativeFixtureCreation': {'status': 201}, 'nativeHostOutcome': {'selected': 1, 'attempted': 1}}]
+        output['partialEvidence'].append({'id': 'BOUNDARY-001', 'raw': [{'boundaryVariants': variants, 'specification': {'fixtureVariants': case['fixtureVariants'], 'requestOrRun': case['requestOrRun']}}]})
+        return output
+
+    def test_partial_startup_and_boundary_inventory_and_causal_controls_are_bound(self):
+        checkpoint.validate_partial_outputs(self.partial_outputs_fixture(), self.cases)
+        for mutation in ('missing_id', 'duplicate_id', 'environment', 'control_order', 'exit', 'observer', 'output_digest', 'missing_variant', 'variant_order', 'healthy', 'outage', 'provider_uncalled', 'provider_status', 'profile', 'native_creation', 'native_selection'):
+            output = self.partial_outputs_fixture()
+            config = output['partialEvidence'][3]['raw'][0]['nativeStartup']
+            boundary = output['partialEvidence'][-1]['raw'][0]['boundaryVariants']
+            if mutation == 'missing_id': output['partialEvidence'].pop()
+            elif mutation == 'duplicate_id': output['partialEvidence'][-1]['id'] = 'REL-002'
+            elif mutation == 'environment': config['specification'] = {}
+            elif mutation == 'control_order': config['probes'].reverse()
+            elif mutation == 'exit': config['probes'][1]['exitCode'] = '1'
+            elif mutation == 'observer': config['probes'][1]['jsonEvents'] = []
+            elif mutation == 'output_digest': config['probes'][1]['outputSha256'] = 'foreign'
+            elif mutation == 'missing_variant': boundary.pop()
+            elif mutation == 'variant_order': boundary.reverse()
+            elif mutation == 'healthy': boundary[0]['healthyControl']['status'] = 500
+            elif mutation == 'outage': boundary[0]['outage']['response']['status'] = 200
+            elif mutation == 'provider_uncalled': boundary[1]['providerCalls'] = []
+            elif mutation == 'provider_status': boundary[1]['providerCalls'][0]['responseStatus'] = 202
+            elif mutation == 'profile': boundary[1]['profiles']['activation']['executionMs'] = 1
+            elif mutation == 'native_creation': boundary[1]['nativeFixtureCreation']['status'] = 400
+            elif mutation == 'native_selection': boundary[1]['nativeHostOutcome']['selected'] = 0
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.validate_partial_outputs(output, self.cases)
 
     def test_cursor_duplicate_fails_case_even_when_frozen_summary_fields_match(self):
         outputs = self.outputs()
