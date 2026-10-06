@@ -84,3 +84,24 @@ test("real unique/check/custom-trigger failures keep generic declared conflict, 
   const unknown = new PersistenceFault("transaction.commit", "unknown", actualForeignKey, null, { phase: "commit", database: sql ? "postgres" : "sqlite", outcome: "unknown", retryableCause: null, rollbackProven: false, commitAcknowledged: false });
   expect(normalizePersistenceFailure(unknown)).toBeNull(); expect(normalizePersistenceFailure(new OutcomeUnknownFault("transaction.commit", actualForeignKey))).toBeNull();
 });
+
+// Exact immutable independent review counterexamples: no cause inspection may
+// replace a safe public failure with a second exception.
+test("the native public normalizer returns null for all eight unreadable error shapes", () => {
+  const revoked = Proxy.revocable({}, {}); revoked.revoke();
+  const values: Array<[string, unknown]> = [
+    ["code accessor", { get code() { throw Error("unreadable code"); } }],
+    ["cause accessor", { code: "23503", get cause() { throw Error("unreadable cause"); } }],
+    ["message accessor", { code: "SQLITE_CONSTRAINT_TRIGGER", errno: 1811, get message() { throw Error("unreadable message"); } }],
+    ["wrapped cause accessor", new PersistenceFault("test.constraint", "constraint", { code: "23503", get cause() { throw Error("unreadable nested cause"); } })],
+    ["get proxy", new Proxy({}, { get() { throw Error("unreadable proxy"); } })],
+    ["prototype proxy", new Proxy({}, { getPrototypeOf() { throw Error("unreadable prototype"); } })],
+    ["revoked proxy", revoked.proxy],
+    ["code conversion", { code: { toString() { throw Error("unreadable conversion"); } } }],
+  ];
+  for (const [name, value] of values) {
+    let result: unknown = "not evaluated";
+    expect(() => { result = normalizePersistenceFailure(value); }, name).not.toThrow();
+    expect(result, name).toBeNull();
+  }
+});

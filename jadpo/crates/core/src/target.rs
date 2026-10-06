@@ -3466,9 +3466,11 @@ export const temporal = Object.freeze({
         );
         line(&mut output, "}");
         line(&mut output, "export function normalizePersistenceFailure(error: unknown): Readonly<{ status: 409; code: \"relationship_conflict\"; message: string }> | null {");
+        line(&mut output, "  try {");
         line(&mut output, "  if ((error instanceof PersistenceFault ? error.kind : classifyPersistenceError(error)) !== \"constraint\") return null;");
         line(&mut output, "  const seen = new Set<object>(); let current = error, foreignKey = false; for (let depth = 0; depth < 8 && typeof current === \"object\" && current !== null && !seen.has(current); depth++) { if (current instanceof OutcomeUnknownFault || current instanceof PersistenceFault && (current.kind === \"unknown\" || current.transaction?.outcome === \"unknown\")) return null; seen.add(current); const detail = current as { code?: unknown; errno?: unknown; message?: unknown; cause?: unknown }; const codes = [detail.code, detail.errno].map(value => String(value)); if (codes.includes(\"23503\") || codes.includes(\"SQLITE_CONSTRAINT_FOREIGNKEY\") || codes.includes(\"787\")) foreignKey = true; if ((codes.includes(\"SQLITE_CONSTRAINT_TRIGGER\") || codes.includes(\"1811\")) && detail.message === \"FOREIGN KEY constraint failed\") foreignKey = true; current = detail.cause; }");
         line(&mut output, "  if (typeof current === \"object\" && current !== null) return null; return foreignKey ? Object.freeze({ status: 409, code: \"relationship_conflict\", message: \"The operation conflicts with a relationship.\" }) : null;");
+        line(&mut output, "  } catch { return null; }");
         line(&mut output, "}");
         line(&mut output, "function transactionFault(operation: string, cause: unknown, transaction: TransactionEvidence): PersistenceFault {");
         line(&mut output, "  return new PersistenceFault(operation, transaction.outcome === \"unknown\" ? \"unknown\" : classifyPersistenceError(cause), cause, identifyPersistenceConstraint(cause), Object.freeze(transaction));");
