@@ -71,9 +71,9 @@ describe("compiler-private bounded readiness response", () => {
     const generated = readFileSync(join(dirname(generatedApplication), "persistence.ts"), "utf8");
     const source = readFileSync(join(import.meta.dir, "../../jadpo/crates/core/src/runtime/readiness_gate.ts"), "utf8");
     expect(generated).toContain(source);
-    expect(generated).toContain("async function initializePersistenceOnce(publish = true)");
+    expect(generated).toContain("async function initializePersistenceOnce(publish = true, setCancel?");
     expect(generated).toContain("if (publish) { persistenceReady = true;");
-    expect(generated).toContain("recovering ? initializePersistenceOnce(false)");
+    expect(generated).toContain("recovering ? initializePersistenceOnce(false, setCancel)");
     expect(generated).toContain("persistenceInvalidationGeneration++");
     expect(generated).toContain("export function refreshPersistenceReadiness(): Promise<boolean> { return readinessGate.refresh(); }");
     expect(generated).not.toContain("const timer = setTimeout(() => query.cancel()");
@@ -762,3 +762,116 @@ describe("generated runtime readiness", () => {
     });
   }
 });
+
+describe("actual emitted aggregate initialization cancellation", () => {
+  for (const fixture of [generatedApplication, generatedAuthApplication]) {
+    for (const disposition of ["late_success", "cancelled_57014", "late_schema_failure", "unknown_57014", "throwing_cancel"] as const) {
+      test(`${fixture.includes("first-party") ? "authentication" : "persistence"}: ${disposition}`, async () => {
+        let now = 0, recovering = false, starts = 0, cancels = 0;
+        let settle!: (rows: unknown[]) => void, reject!: (error: unknown) => void;
+        const timers = new Map<number, () => void>(); let sequence = 0;
+        const sql = ((parts: TemplateStringsArray) => query(parts.join("?"))) as any;
+        sql.unsafe = (statement: string) => query(statement);
+        const chosen = fixture.includes("first-party") ? 'CREATE TABLE IF NOT EXISTS "__jadpo_auth_sessions"' : 'CREATE INDEX IF NOT EXISTS "account_owner_email_idx"';
+        const executed: string[] = [];
+        function query(statement: string) {
+          const blocked = recovering && statement.includes(chosen);
+          const promise = blocked ? new Promise<unknown[]>((yes, no) => { settle = yes; reject = no; }) : Promise.resolve([]);
+          return Object.assign(promise, {
+            execute() { starts++; executed.push(statement); return this; },
+            cancel() { cancels++; if (disposition === "throwing_cancel") throw new Error("native cancel unavailable"); return this; },
+          });
+        }
+        function SQL() { return sql; }
+        let source = readFileSync(join(dirname(fixture), "persistence.ts"), "utf8")
+          .replace(/^import .+;\n/gm, "")
+          .replace(/\bexport /gu, "")
+          .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(join(dirname(fixture), "persistence.ts")).href));
+        const javascript = new Bun.Transpiler({ loader: "ts" }).transformSync(source) + '\nreturn {refresh: refreshPersistenceReadiness, state: () => ({ ready: persistenceReady, fatal: persistenceInitializationFatal, client: activePersistenceClient }), unavailable: () => { persistenceReady = false; persistenceProbeNeeded = true; }, unknownError: () => Object.assign(new OutcomeUnknownFault("schema.fixture"), {code: "57014"})};';
+        const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
+        const emitted = await new AsyncFunction("SQL", "Database", "Bun", "performance", "setTimeout", "clearTimeout", "console", javascript)(
+          SQL, Database, { env: { DATABASE_URL: "postgres://fixture.invalid/never_opened" } }, { now: () => now },
+          (callback: () => void) => { const id = ++sequence; timers.set(id, callback); return id; },
+          (id: number) => timers.delete(id), { error() {} },
+        );
+        const originalClient = emitted.state().client;
+        expect(emitted.state().ready).toBe(true);
+        recovering = true; emitted.unavailable();
+        const responses = Array.from({ length: 32 }, () => emitted.refresh());
+        expect(responses.every(value => value === responses[0])).toBe(true);
+        for (let i = 0; i < 100 && !settle; i++) await Promise.resolve();
+        expect(typeof settle).toBe("function");
+        const startsAtExpiry = starts;
+        now = 1000; for (const callback of [...timers.values()]) callback();
+        expect(await Promise.all(responses)).toEqual(Array(32).fill(false));
+        expect(cancels).toBe(1); expect(emitted.state().ready).toBe(false);
+        expect(emitted.state().fatal).toBe(false); expect(emitted.state().client).toBe(originalClient);
+        now = 60000;
+        expect(await Promise.all(Array.from({ length: 128 }, () => emitted.refresh()))).toEqual(Array(128).fill(false));
+        expect(starts).toBe(startsAtExpiry); expect(cancels).toBe(1);
+        if (disposition === "cancelled_57014") reject(Object.assign(new Error("cancelled"), { code: "57014" }));
+        else if (disposition === "late_schema_failure") reject(Object.assign(new Error("invalid schema"), { code: "42P01" }));
+        else if (disposition === "unknown_57014") reject(emitted.unknownError());
+        else settle([]);
+        for (let i = 0; i < 100; i++) await Promise.resolve();
+        expect(starts).toBe(startsAtExpiry); // No subsequent schema/auth statement runs.
+        expect(emitted.state().ready).toBe(false); expect(emitted.state().client).toBe(originalClient);
+        expect(emitted.state().fatal).toBe((disposition === "late_schema_failure" || disposition === "unknown_57014"));
+        recovering = false;
+        expect(await emitted.refresh()).toBe((disposition !== "late_schema_failure" && disposition !== "unknown_57014"));
+        expect(emitted.state().ready).toBe((disposition !== "late_schema_failure" && disposition !== "unknown_57014"));
+        expect(executed.some(statement => statement.includes(chosen))).toBe(true);
+      });
+    }
+  }
+});
+
+if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
+  test("actual generated PostgreSQL recovery retains a held native DDL lifetime after advisory cancellation", async () => {
+    const databaseUrl = Bun.env.JADPO_READINESS_TEST_DATABASE_URL!;
+    const control = new SQL({ url: databaseUrl, prepare: false, max: 2 });
+    let locker: any = null, emitted: any = null;
+    try {
+      const source = readFileSync(join(dirname(generatedApplication), "persistence.ts"), "utf8")
+        .replace(/^import .+;\n/gm, "").replace(/\bexport /gu, "")
+        .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(join(dirname(generatedApplication), "persistence.ts")).href));
+      const javascript = new Bun.Transpiler({ loader: "ts" }).transformSync(source)
+        + '\nreturn {refresh: refreshPersistenceReadiness, state: () => ({ready: persistenceReady, fatal: persistenceInitializationFatal, client: activePersistenceClient}), unavailable: () => {persistenceReady=false; persistenceProbeNeeded=true;}, close: () => postgres?.close()};';
+      const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
+      emitted = await new AsyncFunction("SQL", "Database", "Bun", javascript)(SQL, Database, {env:{DATABASE_URL:databaseUrl}});
+      expect(emitted.state().ready).toBe(true);
+      const originalClient = emitted.state().client;
+      await control.unsafe('DROP INDEX IF EXISTS "account_owner_email_idx"');
+      locker = await control.reserve(); await locker.unsafe('BEGIN');
+      await locker.unsafe('LOCK TABLE "account" IN ACCESS EXCLUSIVE MODE');
+      emitted.unavailable(); const started = performance.now();
+      const responses = Array.from({length:32},()=>emitted.refresh());
+      expect(responses.every(response=>response===responses[0])).toBe(true);
+      let blocked = false;
+      for(let i=0;i<40;i++) {
+        const rows = await control.unsafe("SELECT query FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'");
+        if(rows.some(row=>String(row.query).includes('CREATE INDEX IF NOT EXISTS "account_owner_email_idx"'))) {blocked=true;break;}
+        await Bun.sleep(10);
+      }
+      expect(blocked).toBe(true);
+      expect(await Promise.all(responses)).toEqual(Array(32).fill(false));
+      expect(performance.now()-started).toBeLessThan(1600);
+      expect(emitted.state().ready).toBe(false); expect(emitted.state().client).toBe(originalClient);
+      // Bun's advisory cancel does not establish interruption of this held DDL.
+      // Keep the actual native slot, refuse replacement work, and fence late success.
+      expect(await Promise.all(Array.from({length:128},()=>emitted.refresh()))).toEqual(Array(128).fill(false));
+      const stillBlocked = await control.unsafe("SELECT query FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'");
+      expect(stillBlocked.filter(row=>String(row.query).includes('CREATE INDEX IF NOT EXISTS "account_owner_email_idx"'))).toHaveLength(1);
+      expect(emitted.state().fatal).toBe(false);
+      await locker.unsafe('ROLLBACK'); locker.release(); locker=null;
+      await Bun.sleep(300);
+      expect(emitted.state().ready).toBe(false); expect(emitted.state().client).toBe(originalClient);
+      expect(emitted.state().fatal).toBe(false);
+      expect(await emitted.refresh()).toBe(true); expect(emitted.state().ready).toBe(true);
+      expect(emitted.state().client).not.toBe(originalClient);
+    } finally {
+      if(locker) {await locker.unsafe('ROLLBACK').catch(()=>{});locker.release();}
+      await emitted?.close(); await control.close();
+    }
+  }, 10000);
+}
