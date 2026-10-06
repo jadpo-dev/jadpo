@@ -629,6 +629,60 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(row.execution_deadline < ledger.execution_deadline).toBe(true);
     });
   });
+  for (const malformed of [false, true]) test(`BOUNDARY-001: actual provider authentication ${malformed ? "malformed" : "typed"} rejection has a safe native job envelope and retains unknown without resend`, async () => {
+    const f = await fixture(), overdue = new Date(Date.now() - 60_000).toISOString();
+    await rows('UPDATE todo SET due_at=$1 WHERE id=$2', [sql ? overdue : Date.parse(overdue), f.value.id]);
+    const approved = { executionMs: 60_000, leaseMs: 40_000 };
+    const host = app.createDeliveryJobHost(bindingIdentity, f.issued.credential, approved, approved);
+    const providerCanary = "PRIVATE_PROVIDER_AUTH_BODY_CANARY", stackCanary = "PRIVATE_STACK_CANARY";
+    const events: string[] = [], previousError = console.error;
+    console.error = (...values: unknown[]) => { events.push(values.map(String).join(" ")); };
+    let restarted: any;
+    try {
+      await provider(async calls => {
+        const result = await host.runOnce();
+        expect(result).toMatchObject({ status: "finished", selected: 1, attempted: 1, continued: false });
+        expect(Object.keys(result).sort()).toEqual(["attempted", "continued", "failures", "selected", "status"]);
+        expect(result.failures).toHaveLength(1);
+        const failure = result.failures[0];
+        expect(Object.keys(failure)).toEqual(["error"]);
+        expect(Object.keys(failure.error).sort()).toEqual(["code", "message", "request_id"]);
+        expect(failure.error).toMatchObject({code:malformed ? "outcome_unknown" : "internal_fault",message:malformed ? "The operation may have completed." : "An internal error occurred."});
+        expect(failure.error.request_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+        expect(Object.isFrozen(result.failures)).toBe(true); expect(Object.isFrozen(failure)).toBe(true); expect(Object.isFrozen(failure.error)).toBe(true);
+        const serialized = JSON.stringify(result);
+        for (const secret of [providerCanary,stackCanary,authEnvironment.MAIL_API_KEY,f.issued.credential,"SQL", "ServiceAdapterFault", "service-adapter.ts"]) expect(serialized).not.toContain(secret);
+        expect(calls).toHaveLength(1); expect(calls[0].possibleDispatch).toBe(1);
+        const id = calls[0].body.idempotency_key, original = await persistence.read_delivery_intent(id);
+        expect(original.state).toBe("outcome_unknown"); expect(original.payload).toEqual(calls[0].body);
+        expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+        const claim = (await rows('SELECT invocations,possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1',[id]))[0];
+        expect(Number(claim.invocations)).toBe(1); expect(Number(claim.possible_dispatch)).toBe(1);
+        // Receipt schema is lazy; this first failed dispatch may never create it.
+        // Prove native absence or exact zero rows; do not seed a private receipt table.
+        const receiptMetadata = sql
+          ? await rows("SELECT to_regclass('\"__jadpo_delivery_mail_receipts_v1\"') AS relation")
+          : await rows("SELECT name FROM sqlite_master WHERE type='table' AND name='__jadpo_delivery_mail_receipts_v1'");
+        const receiptPresent = sql ? receiptMetadata[0].relation !== null : receiptMetadata.length !== 0;
+        if (receiptPresent) expect(await rows('SELECT * FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1',[id])).toEqual([]);
+        else expect(sql ? receiptMetadata[0].relation : receiptMetadata).toEqual(sql ? null : []);
+        const event = events.map(line=>JSON.parse(line)).find(value=>value.classification===(malformed ? "RUNTIME_OUTCOME_UNKNOWN" : "RUNTIME_SERVICE_MISCONFIGURED"));
+        expect(event).toBeDefined(); expect(event.requestId).toBe(failure.error.request_id);
+        expect(event.semanticOperationId).toBe(bindingIdentity); expect(event.attributes).toEqual({});
+        expect(JSON.stringify(event)).not.toContain(providerCanary);
+        await host.stop();
+        restarted = app.createDeliveryJobHost(bindingIdentity,f.issued.credential,approved,approved);
+        expect((await restarted.runOnce()).status).toBe("idle");
+        // Private explicit fixture-time activation observes the next interval;
+        // the public closed host still captures its own clock and credential.
+        const later = new Date(Date.now()+900_000).toISOString();
+        expect((await app.runDeliveryScheduleActivation(bindingIdentity,f.proof,approved,approved,later)).status).toBe("finished");
+        expect(calls).toHaveLength(1); expect(await intentRows(f.value.id)).toHaveLength(1);
+        const retained = await persistence.read_delivery_intent(id); expect(retained.state).toBe("outcome_unknown"); expect(retained.payload).toEqual(original.payload);
+        expect(Number((await rows('SELECT invocations FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1',[id]))[0].invocations)).toBe(1);
+      }, async () => malformed ? Response.json({code:"authentication",private_detail:providerCanary+stackCanary},{status:401}) : Response.json({code:"authentication"},{status:401,headers:{"x-private-provider-canary":providerCanary+stackCanary}}));
+    } finally {console.error=previousError;await host.stop();await restarted?.stop();}
+  });
   test("trusted closed job host uses a real service credential and captured wall clock; start and stop remain bounded native controls", async () => {
     const f = await fixture();
     const overdue = new Date(Date.now() - 60_000).toISOString();
