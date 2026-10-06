@@ -21,6 +21,8 @@ OBLIGATIONS = 'tests/validation/golden-obligations.json'
 BACKENDS = ('sqlite', 'postgres')
 KINDS = {'http', 'job', 'persistence', 'policy', 'preflight', 'runtime'}
 SCHEMA_VERSION = 1
+JOB001_SUCCESSOR = 'tests/assurance/service-acceptance-successor-v0.1.json'
+JOB001_SUCCESSOR_SHA256 = '84807a4e11acdbcfe2f07e34da3bb66507fd322d84b1d4da302a9a47108db731'
 
 
 def digest(path: Path) -> str:
@@ -47,6 +49,33 @@ def read_contract(root: Path) -> dict:
     return contract
 
 
+def accepted_job001_contract(root: Path) -> tuple[dict, dict]:
+    """Explicit checkpoint-only owner-approved overlay, never frozen mutation."""
+    contract = read_contract(root)
+    path = root/JOB001_SUCCESSOR
+    if not path.is_file() or digest(path) != JOB001_SUCCESSOR_SHA256:
+        raise ValueError('Missing/drifted exact approved JOB001 successor')
+    successor = json.loads(path.read_text())
+    if successor.get('base_path') != ACCEPTANCE or successor.get('base_sha256') != digest(root/ACCEPTANCE) or successor.get('base_sha256') != '3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608':
+        raise ValueError('Approved JOB001 successor has foreign frozen base')
+    replacements = successor.get('replacements', [])
+    unchanged = [case['id'] for case in contract['cases'] if case['id'] != 'JOB-001']
+    if len(contract['cases']) != 44 or len(replacements) != 1 or replacements[0].get('id') != 'JOB-001' or successor.get('unchanged_case_ids') != unchanged:
+        raise ValueError('Approved successor changed original44/unchanged43 inventory')
+    result = deepcopy(contract)
+    result['cases'] = [deepcopy(replacements[0]) if case['id'] == 'JOB-001' else case for case in result['cases']]
+    descriptor = {'path': JOB001_SUCCESSOR, 'sha256': JOB001_SUCCESSOR_SHA256, 'base_path': ACCEPTANCE, 'base_sha256': successor['base_sha256'], 'replacement_ids': ['JOB-001'], 'unchanged_case_ids': unchanged, 'scope': 'Explicit approved JOB001 UUID acceptance successor; original44 inventory retained; no release equivalence'}
+    return result, descriptor
+
+
+def report_contract(report: dict, root: Path) -> dict:
+    if 'acceptance_successor' not in report: return read_contract(root)
+    contract, descriptor = accepted_job001_contract(root)
+    if not same_json(report.get('acceptance_successor'), descriptor):
+        raise ValueError('Changed/foreign approved acceptance successor descriptor')
+    return contract
+
+
 def provenance(root: Path) -> dict:
     """Bind every authored project input and compiler implementation, not Git HEAD.
 
@@ -58,6 +87,7 @@ observations once implemented. A missing built compiler is explicitly unknown.
     if not (root/external_service).is_file():
         raise ValueError('Missing pinned golden external service reference')
     paths = {ACCEPTANCE, OBLIGATIONS, 'tools/golden_cases.py', external_service}
+    if (root/JOB001_SUCCESSOR).is_file(): paths.add(JOB001_SUCCESSOR)
     # Supporting checkpoint adapters/instrumentation are source inputs too.
     # They are deliberately not registered as the complete golden drivers.
     for name in ('tools/golden_checkpoint.py', 'tools/golden_http_checkpoint.ts',
@@ -147,7 +177,7 @@ def assess(case: dict, observations: list) -> list[str]:
     return failures
 
 
-def run_cases(root: Path, drivers: dict[tuple[str, str], Callable] | None = None) -> dict:
+def run_cases(root: Path, drivers: dict[tuple[str, str], Callable] | None = None, *, accepted_job001=False) -> dict:
     """Execute registered adapters, otherwise emit explicit pending entries.
 
 Drivers keyed by (backend, kind) receive a copy of the entire frozen case and
@@ -156,7 +186,8 @@ This repository deliberately registers no adapters until application composition
 and reviewed observation instrumentation are available. No JSON pass import API
 is offered. Driver failures cannot delete a case or abort later inventory entries.
 """
-    contract = read_contract(root)
+    contract, successor = accepted_job001_contract(root) if accepted_job001 else (read_contract(root), None)
+    frozen = read_contract(root)
     binding = provenance(root)
     drivers = drivers or {}
     results = []
@@ -164,6 +195,8 @@ is offered. Driver failures cannot delete a case or abort later inventory entrie
         for case in contract['cases']:
             entry = {'id': case['id'], 'backend': backend, 'kind': case['kind'],
                      'required_scenarios': scenarios(case), 'status': 'not_run'}
+            if successor is not None and case['id'] == 'JOB-001':
+                entry['original_frozen_required_scenarios'] = scenarios(next(original for original in frozen['cases'] if original['id'] == case['id']))
             driver = drivers.get((backend, case['kind']))
             if driver is None:
                 entry['reason'] = 'Source-bound application adapter is not implemented'
@@ -184,7 +217,7 @@ is offered. Driver failures cannot delete a case or abort later inventory entrie
             results.append(entry)
     if provenance(root) != binding:
         raise ValueError('Source or compiler changed during the harness run')
-    return {'schema_version': SCHEMA_VERSION, 'contract_version': contract.get('contractVersion'),
+    return {**({'acceptance_successor': successor} if successor is not None else {}), 'schema_version': SCHEMA_VERSION, 'contract_version': contract.get('contractVersion'),
             'provenance': binding, 'results': results, 'release_equivalent': False,
             'status': 'observations_passed' if all(r['status'] == 'passed' for r in results)
                       else 'failed' if any(r['status'] == 'failed' for r in results) else 'not_run',
@@ -193,7 +226,8 @@ is offered. Driver failures cannot delete a case or abort later inventory entrie
 
 def validate_report(report: dict, root: Path) -> None:
     """Reject stale/missing/foreign/tampered supporting results; not attestation."""
-    contract = read_contract(root)
+    contract = report_contract(report, root)
+    frozen = read_contract(root)
     if (report.get('schema_version') != SCHEMA_VERSION or report.get('provenance') != provenance(root)
             or report.get('contract_version') != contract.get('contractVersion')):
         raise ValueError('Stale or foreign harness provenance/schema')
@@ -206,6 +240,12 @@ def validate_report(report: dict, root: Path) -> None:
         case = expected[key]
         if entry.get('kind') != case['kind'] or entry.get('required_scenarios') != scenarios(case):
             raise ValueError('Changed case expectations or fixture scenarios')
+        if 'acceptance_successor' in report and case['id'] == 'JOB-001':
+            original = next(item for item in frozen['cases'] if item['id'] == 'JOB-001')
+            if not same_json(entry.get('original_frozen_required_scenarios'), scenarios(original)):
+                raise ValueError('Missing/changed original frozen JOB001 expectations')
+        elif 'original_frozen_required_scenarios' in entry:
+            raise ValueError('Foreign original expectation overlay')
         status = entry.get('status')
         if status == 'passed':
             if report['provenance']['compiler_sha256'] is None or assess(case, entry.get('observations')) or entry.get('failures') != []:

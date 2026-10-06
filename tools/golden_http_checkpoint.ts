@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications, resolvedAuthorityPrincipals } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004", "JOB-001", "JOB-002", "JOB-003"];
 const partial = ["REL-002", "REL-003", "REL-004", "CONFIG-001", "CONFIG-002", "BOUNDARY-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
@@ -192,6 +192,99 @@ async function relationshipOperation(case_: any) {
   raw.push({ persistenceOperation: case_.operation, at: new Date(clockNow).toISOString(), accepted, fault, statements,
     publicBoundaryObserved: false, before,
     after: { users: await execute('SELECT id, status FROM "user" ORDER BY id'), todos: await execute('SELECT id, owner_id FROM todo ORDER BY id') } });
+}
+const reminderBinding = "job.overdue_reminders.delivery.reminder_v1";
+async function clearReminderFixture() {
+  // Independent original case fixtures use this process's disposable database.
+  // This clears prior case history, never repairs or bootstraps a schedule row.
+  const names = ["__jadpo_delivery_mail_receipts_v1", "__jadpo_delivery_attempts_v1", "__jadpo_delivery_dead_letters_v1", "__jadpo_delivery_claims_v1", "__jadpo_delivery_cancellations_v1", "__jadpo_delivery_activations_v1", "__jadpo_deliveries_v1", "__jadpo_delivery_keys_v1"];
+  for (const name of names) {
+    const present = pg ? await execute('SELECT to_regclass($1) AS present', [name]) : await execute('SELECT name AS present FROM sqlite_master WHERE type = $1 AND name = $2', ["table", name]);
+    if (present.some((row: any) => row.present)) await execute(`DELETE FROM "${name}"`);
+  }
+}
+async function createReminderTodo(owner: "alice" | "bob", title: string, dueAt: string | null) {
+  const runClock = clockNow;
+  const saved = session;
+  clockNow = nativeDate.parse("2026-01-13T12:00:00Z");
+  let creation: any;
+  try {
+    session = await app.authenticationHost().issue("browser_session", owner, clockNow + 300_000, clockNow); secrets.push(session.credential, session.csrfToken);
+    await send({ method: "POST", path: "/todos", auth: `${owner}-session`, json: { title, ...(dueAt === null ? {} : { due_at: dueAt }) } }, "reminderFixtureCreation");
+    creation = raw.pop().reminderFixtureCreation;
+  } finally { clockNow = runClock; session = saved; }
+  if (creation.status !== 201) throw new Error("Native reminder fixture creation failed");
+  const validated = app.validate_TodoView(creation.body, "checkpoint.reminderFixture");
+  return { creation, validated, validator: "validate_TodoView", row: await todoSnapshot(validated.id), schedule: await scheduleSnapshot(validated.id) };
+}
+async function reminderProbe(case_: any) {
+  await clearReminderFixture(); clockNow = nativeDate.parse("2026-01-15T12:00:00Z");
+  const dueAt = "2026-01-14T12:00:00Z";
+  const fixtureRows: any[] = [];
+  const mutations: any[] = [];
+  if (case_.id === "JOB-003") {
+    for (const kind of ["completed", "deleted", "undated", "reminded", "disabled-owner"]) {
+      const fixture = await createReminderTodo(kind === "disabled-owner" ? "bob" : "alice", `excluded ${kind}`, kind === "undated" ? null : dueAt);
+      fixtureRows.push({ kind, ...fixture });
+      if (kind === "completed" || kind === "deleted") {
+        await send({ method: kind === "completed" ? "PATCH" : "DELETE", path: `/todos/${fixture.row.id}`, auth: "alice-session", ...(kind === "completed" ? { json: { status: "completed" } } : {}) }, "reminderFixtureMutation");
+        mutations.push(raw.pop().reminderFixtureMutation);
+      } else if (kind === "reminded") {
+        const statements = beginSqlObservation();
+        try { await execute('UPDATE todo SET reminder_sent_at = $1 WHERE id = $2', [pg ? dueAt : nativeDate.parse(dueAt), fixture.row.id]); } finally { endSqlObservation(); }
+        mutations.push({ fixtureOnlyPreviouslyReminded: { id: fixture.row.id, at: dueAt, statements } });
+      } else if (kind === "disabled-owner") {
+        const saved = session; session = await app.authenticationHost().issue("browser_session", "bob", clockNow + 300_000, clockNow); secrets.push(session.credential, session.csrfToken);
+        try { await send({ method: "DELETE", path: "/users/bob", auth: "bob-session" }, "reminderFixtureMutation"); mutations.push(raw.pop().reminderFixtureMutation); } finally { session = saved; }
+      }
+    }
+  } else fixtureRows.push({ kind: "eligible", ...await createReminderTodo("alice", "eligible original reminder", dueAt) });
+  // Original semantic run clock is January. Worker authority independently
+  // checks actual DB wall time, so the genuinely issued key remains valid there.
+  const authorityExpires = Math.max(clockNow, nativeDate.now()) + 3_600_000;
+  await execute('INSERT INTO service (id, owner_id, name, status, created_at, disabled_at) VALUES ($1,$2,$3,$4,$5,NULL)', [reporting, alice, "reporting", "active", pg ? new Date(clockNow).toISOString() : clockNow]);
+  const issuanceStatements = beginSqlObservation();
+  try { serviceKey = await app.authenticationHost().issueServiceCredential("api_bearer", "reporting", authorityExpires, clockNow); } finally { endSqlObservation(); }
+  secrets.push(serviceKey.credential);
+  const serviceIssuance = { at: new Date(clockNow).toISOString(), actualAuthorityClock: new nativeDate().toISOString(), expires: new Date(serviceKey.expires).toISOString(), statements: issuanceStatements, credentialsIssued: issuedCredentialCount(), authorityPrincipals: resolvedAuthorityPrincipals() };
+  await execute('INSERT INTO reminder_service_membership (id,service_id,role) VALUES ($1,$2,$3)', [crypto.randomUUID(), reporting, "sender"]);
+  const ownerRows = await execute('SELECT id,email,status,disabled_at FROM "user" ORDER BY id');
+  const preparedRows = [];
+  for (const fixture of fixtureRows) preparedRows.push(await todoSnapshot(fixture.row.id));
+  raw.push({ reminderFixture: { specification: { fixture: case_.fixture, run: case_.run }, fixtureRows, mutations, preparedRows, ownerRows, serviceIssuance, service: await serviceSnapshot(), credential: await serviceCredentialSnapshot(), jobMetadata: JSON.parse(readFileSync(join(project, "build/audit/jobs.json"), "utf8")), binding: reminderBinding } });
+  const adapter = await import(pathToFileURL(join(project, "build/target/service-adapter.ts")).href);
+  const previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
+  const calls: any[] = [];
+  const provider = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+    const body = await request.json(); const key = request.headers.get("Idempotency-Key");
+    calls.push({ method: request.method, path: new URL(request.url).pathname, body, idempotencyKey: key, authorizationCorrect: request.headers.get("Authorization") === `Bearer ${environment.MAIL_API_KEY}`, at: new Date(clockNow).toISOString(), responseStatus: 202 });
+    return Response.json({ accepted_at: new Date(clockNow).toISOString() }, { status: 202, headers: { "Idempotency-Key": key ?? "" } });
+  } });
+  adapter.setReferenceMailEndpointForTesting(provider.url.origin);
+  const profile = { executionMs: 60_000, leaseMs: 40_000 }; const host = app.createDeliveryJobHost(reminderBinding, serviceKey.credential, profile, profile);
+  let eligibleControlId: string | null = null;
+  async function run(at: string, label: string) {
+    clockNow = nativeDate.parse(at); const callStart = calls.length; const statements = beginSqlObservation(); let outcome: any;
+    try { outcome = await host.runOnce(); } finally { endSqlObservation(); }
+    const after = []; for (const fixture of fixtureRows) after.push(await todoSnapshot(fixture.row.id));
+    const intents = await execute('SELECT intent_id,source_entity_id,source_revision,state,payload FROM "__jadpo_deliveries_v1" ORDER BY intent_id');
+    const receiptPresent = pg ? await execute('SELECT to_regclass($1) AS present', ["__jadpo_delivery_mail_receipts_v1"]) : await execute('SELECT name AS present FROM sqlite_master WHERE name = $1', ["__jadpo_delivery_mail_receipts_v1"]);
+    const receipts = receiptPresent.some((row: any) => row.present) ? await execute('SELECT intent_id,accepted_at,observed_at FROM "__jadpo_delivery_mail_receipts_v1" ORDER BY intent_id') : [];
+    const schedules = []; for (const fixture of fixtureRows) schedules.push(await scheduleSnapshot(fixture.row.id));
+    raw.push({ nativeReminderRun: { ...(eligibleControlId ? { eligibleControlAfter: await todoSnapshot(eligibleControlId), eligibleControlSchedule: await scheduleSnapshot(eligibleControlId) } : {}), label, at, binding: reminderBinding, profiles: { activation: profile, delivery: profile }, outcome, calls: calls.slice(callStart), statements, after, intents: intents.map((row: any) => ({ ...row, payload: JSON.parse(row.payload) })), receipts, schedules } });
+  }
+  try {
+    await run("2026-01-15T12:00:00Z", case_.id === "JOB-002" ? "completed_JOB001_fixture" : "original_run");
+    if (case_.id === "JOB-002") {
+      await run(case_.run.at, "original_run");
+      await run("2026-01-15T12:15:00Z", "independent_due_replay_control");
+    } else if (case_.id === "JOB-003") {
+      const eligible = await createReminderTodo("alice", "eligible positive control", dueAt);
+      eligibleControlId = eligible.row.id;
+      raw.push({ reminderEligibleControl: eligible });
+      await run("2026-01-15T12:15:00Z", "eligible_positive_control");
+    }
+  } finally { await host.stop(); adapter.setReferenceMailEndpointForTesting(null); provider.stop(true); if (previous === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previous; }
 }
 async function maintenanceProbe(case_: any) {
   clockNow = nativeDate.parse(case_.run.at);
@@ -399,12 +492,12 @@ async function validateOutput(request: any, reply: any) {
 async function send(request: any, retainKey?: string) {
   const headers: Record<string, string> = {};
   const auth = Array.isArray(request.auth) ? request.auth : [request.auth];
-  if (auth.includes("alice-session")) Object.assign(headers, { cookie: session.setCookie.split(";", 1)[0], origin: environment.BROWSER_ORIGIN, "x-jadpo-csrf": session.csrfToken });
+  if (auth.includes("alice-session") || auth.includes("bob-session")) Object.assign(headers, { cookie: session.setCookie.split(";", 1)[0], origin: environment.BROWSER_ORIGIN, "x-jadpo-csrf": session.csrfToken });
   for (const name of ["alice-jwt", "bob-jwt"]) if (auth.includes(name)) headers.authorization = `Bearer ${jwtCredentials[name]}`;
   if (auth.includes("reporting-service-key")) headers.authorization = `Bearer ${serviceKey.credential}`;
   if (auth.includes("alice-bounded-bearer")) headers.authorization = `Bearer ${bearer.credential}`;
   if (auth.includes("invalid-jwt") || auth.includes("invalid-bearer")) headers.authorization = "Bearer INVALID_CHECKPOINT_CREDENTIAL";
-  const path = request.path.replace("/todos/t2", `/todos/${t2}`).replace("/todos/t1", `/todos/${t1}`).replace("/users/alice/todos", `/users/${alice}/todos`).replace(/^\/users\/alice$/u, `/users/${alice}`);
+  const path = request.path.replace("/todos/t2", `/todos/${t2}`).replace("/todos/t1", `/todos/${t1}`).replace("/users/alice/todos", `/users/${alice}/todos`).replace(/^\/users\/alice$/u, `/users/${alice}`).replace(/^\/users\/bob$/u, `/users/${bob}`);
   if (request.json !== undefined) headers["content-type"] = "application/json";
   const providerStart = providerRequests.length;
   const statements = beginSqlObservation();
@@ -456,6 +549,7 @@ try {
     const start = raw.length;
     try {
     await reset(case_);
+    if (["JOB-001", "JOB-002", "JOB-003"].includes(case_.id)) { await reminderProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
     if (case_.id === "JOB-004") { await maintenanceProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
     if (["CONFIG-001", "CONFIG-002"].includes(case_.id)) { await startupProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_exact_native_configuration_diagnostics_missing" }); continue; }
     if (case_.id === "BOUNDARY-001") { await boundaryProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_native_provider_boundary_request_id_missing" }); continue; }
