@@ -1,8 +1,9 @@
+import { copyGoldenFixture } from "./golden-fixture";
 import { afterAll, beforeEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { SQL } from "bun";
 import { connect } from "node:net";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -11,7 +12,6 @@ import { pathToFileURL } from "node:url";
 // SQLite and PostgreSQL. Trusted provisioning remains host-only.
 const root = mkdtempSync(join(tmpdir(), "jadpo-golden-service-"));
 const project = join(root, "application");
-const source = resolve("examples/golden-todo-migration");
 const previousSqlitePath = Bun.env.SQLITE_PATH;
 const previousDatabaseUrl = Bun.env.DATABASE_URL;
 const postgresUrl = Bun.env.JADPO_GOLDEN_SERVICE_DATABASE_URL;
@@ -43,7 +43,7 @@ afterAll(async () => {
   else Bun.env.DATABASE_URL = previousDatabaseUrl;
   rmSync(root, { recursive: true, force: true });
 });
-cpSync(source, project, { recursive: true, filter: path => path !== join(source, "build") });
+copyGoldenFixture(project);
 const compiler = Bun.env.JADPO_BIN ?? resolve("jadpo/target/debug/jadpo");
 const build = Bun.spawnSync([compiler, "build", project], { stdout: "pipe", stderr: "pipe" });
 if (build.exitCode !== 0) throw new Error(`Golden service fixture failed to build:\n${build.stdout}\n${build.stderr}`);

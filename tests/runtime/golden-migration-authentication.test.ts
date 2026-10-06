@@ -1,5 +1,6 @@
+import { copyGoldenFixture } from "./golden-fixture";
 import { afterAll, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,7 +8,7 @@ import { Database } from "bun:sqlite";
 
 const root = mkdtempSync(join(tmpdir(), "jadpo-golden-migration-"));
 const project = join(root, "golden-todo-migration");
-cpSync("examples/golden-todo-migration", project, { recursive: true });
+copyGoldenFixture(project);
 const compiler = Bun.env.JADPO_BIN ?? resolve("jadpo/target/debug/jadpo");
 const build = Bun.spawnSync([compiler, "build", project], { stdout: "pipe", stderr: "pipe" });
 if (build.exitCode !== 0) throw new Error(`Golden migration failed to build:\n${build.stdout}\n${build.stderr}`);

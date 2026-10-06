@@ -1,6 +1,7 @@
+import { copyGoldenFixture } from "./golden-fixture";
 import { afterAll, afterEach, beforeEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,7 +10,6 @@ import { pathToFileURL } from "node:url";
 // an isolated generated target. The frozen 44-case harness remains RM-109.
 const root = mkdtempSync(join(tmpdir(), "jadpo-golden-routes-"));
 const project = join(root, "application");
-const source = resolve("examples/golden-todo-migration");
 const previousSqlitePath = Bun.env.SQLITE_PATH;
 const previousDatabaseUrl = Bun.env.DATABASE_URL;
 let database: Database | undefined;
@@ -32,7 +32,7 @@ sqlitePrototype.prepare = function (this: Database, sql: string, ...options: unk
     },
   });
 };
-cpSync(source, project, { recursive: true, filter: path => path !== join(source, "build") });
+copyGoldenFixture(project);
 const compiler = Bun.env.JADPO_BIN ?? resolve("jadpo/target/debug/jadpo");
 const build = Bun.spawnSync([compiler, "build", project], { stdout: "pipe", stderr: "pipe" });
 if (build.exitCode !== 0) throw new Error(`Golden route fixture failed to build:\n${build.stdout}\n${build.stderr}`);

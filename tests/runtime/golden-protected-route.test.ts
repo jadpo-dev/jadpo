@@ -1,6 +1,7 @@
+import { copyGoldenFixture } from "./golden-fixture";
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { cpSync, existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -10,7 +11,6 @@ import { pathToFileURL } from "node:url";
 // execution of the frozen 44-case acceptance suite or the service lifecycle gate.
 const root = mkdtempSync(join(tmpdir(), "jadpo-golden-protected-"));
 const project = join(root, "application");
-const source = resolve("examples/golden-todo-migration");
 const previousSqlitePath = Bun.env.SQLITE_PATH;
 const previousDatabaseUrl = Bun.env.DATABASE_URL;
 let database: Database | undefined;
@@ -25,7 +25,7 @@ afterAll(async () => {
   else Bun.env.DATABASE_URL = previousDatabaseUrl;
   rmSync(root, { recursive: true, force: true });
 });
-cpSync(source, project, { recursive: true, filter: path => path !== join(source, "build") });
+copyGoldenFixture(project);
 writeFileSync(join(project, "routes/adapter-probe.jadpo"), `
 route GET /adapter-probe {
     auth: none
