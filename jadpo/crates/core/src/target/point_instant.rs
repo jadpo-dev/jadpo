@@ -62,9 +62,11 @@ impl TargetGenerator<'_> {
             entity.fields.iter().map(|f| f.name.text.clone()).collect();
         fn allocate(used: &mut BTreeSet<String>, base: String) -> String {
             let mut candidate = base.clone();
-            let mut index = 0;
+            let mut index = 0_usize;
             while !used.insert(candidate.clone()) {
-                index += 1;
+                index = index
+                    .checked_add(1)
+                    .expect("a reserved alias cannot exhaust the source field namespace");
                 candidate = format!("{base}_{index}");
             }
             candidate
@@ -72,11 +74,12 @@ impl TargetGenerator<'_> {
         entity
             .fields
             .iter()
-            .filter(|f| self.representation_root_for(&f.field_type) == "Instant")
-            .map(|f| {
+            .enumerate()
+            .filter(|(_, f)| self.representation_root_for(&f.field_type) == "Instant")
+            .map(|(ordinal, f)| {
                 let field = f.name.text.clone();
-                let value = allocate(&mut used, format!("jadpo_point_epoch_{field}"));
-                let kind = allocate(&mut used, format!("jadpo_point_type_{field}"));
+                let value = allocate(&mut used, format!("jadpo_point_epoch_{ordinal}"));
+                let kind = allocate(&mut used, format!("jadpo_point_type_{ordinal}"));
                 (
                     field,
                     value,

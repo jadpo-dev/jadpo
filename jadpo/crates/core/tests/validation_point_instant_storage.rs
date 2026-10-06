@@ -81,10 +81,10 @@ fn nullable_and_nominal_instant_keep_physical_kind_checks() {
 }
 #[test]
 fn every_authored_alias_collision_is_allocated_without_new_reserved_names() {
-    let source=SOURCE.replace("entity TimedRecord {", "entity TimedRecord {\n jadpo_point_epoch_instant: Text\n jadpo_point_epoch_instant_1: Text\n jadpo_point_type_instant: Text");
+    let source=SOURCE.replace("entity TimedRecord {", "entity TimedRecord {\n jadpo_point_epoch_6: Text\n jadpo_point_epoch_6_1: Text\n jadpo_point_type_6: Text");
     let (_, persistence) = outputs(&source);
-    assert!(persistence.contains("jadpo_point_epoch_instant_2"));
-    assert!(persistence.contains("jadpo_point_type_instant_1"));
+    assert!(persistence.contains("jadpo_point_epoch_6_2"));
+    assert!(persistence.contains("jadpo_point_type_6_1"));
 }
 #[test]
 fn no_ordinary_point_keeps_legacy_decoders_and_private_helpers() {
@@ -106,4 +106,18 @@ fn ordinary_optional_read_and_many_legacy_use_distinct_contexts() {
     let (app, _) = outputs(source);
     assert!(app.contains("persistence.query_many_TemporalRecord_by_instant_order_by_id_asc"));
     assert!(!app.contains("map((value: unknown) => validate_TemporalRecord(value, \"database.TemporalRecord\", true))"));
+}
+
+#[test]
+fn supported_long_fields_use_bounded_ascii_companions() {
+    for size in [52, 63] {
+        let field = "a".repeat(size);
+        let source = SOURCE.replace("\n instant: Instant", &format!("\n {field}: Instant"));
+        let (_, persistence) = outputs(&source);
+        assert!(persistence.contains("jadpo_point_epoch_3"));
+        assert!(persistence.contains("jadpo_point_type_3"));
+        assert!(!persistence.contains(&format!("jadpo_point_epoch_{field}")));
+        assert!(format!("jadpo_point_epoch_{}_{}", usize::MAX, usize::MAX).len() <= 63);
+        assert!(format!("jadpo_point_type_{}_{}", usize::MAX, usize::MAX).len() <= 63);
+    }
 }
