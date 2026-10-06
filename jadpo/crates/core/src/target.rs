@@ -3333,7 +3333,9 @@ export const temporal = Object.freeze({
             &mut output,
             "export type TransactionOutcome = \"no_commit\" | \"committed\" | \"unknown\";",
         );
-        line(&mut output, "export type RetryableCause = \"sqlite_busy\" | \"sqlite_locked\" | \"postgres_connection\" | \"postgres_serialization\" | \"postgres_deadlock\" | null;");
+        line(&mut output, "export type RetryableCause = \"sqlite_busy\" | \"sqlite_locked\" | \"postgres_connection\" | \"postgres_serialization\" | \"postgres_deadlock\" | \"delivery_schema_busy\" | null;");
+        line(&mut output, "const deliverySchemaRefusals = new WeakSet<object>();");
+        line(&mut output, "function isDeliverySchemaRefusal(error: unknown): boolean { const seen = new Set<object>(); let current = error; for (let depth = 0; depth < 8 && typeof current === \"object\" && current !== null && !seen.has(current); depth++) { if (deliverySchemaRefusals.has(current)) return true; seen.add(current); current = (current as { cause?: unknown }).cause; } return false; }");
         line(&mut output, "export type TransactionEvidence = Readonly<{ phase: TransactionPhase; database: \"sqlite\" | \"postgres\"; outcome: TransactionOutcome; retryableCause: RetryableCause; rollbackProven: boolean; commitAcknowledged: boolean }>;");
         line(&mut output, "class RequestDeadlineFault extends Error { readonly code = \"JADPO_REQUEST_DEADLINE\"; constructor() { super(\"declared operation deadline exceeded\"); this.name = \"RequestDeadlineFault\"; } }");
         line(
@@ -3452,6 +3454,7 @@ export const temporal = Object.freeze({
             "function retryablePersistenceCause(error: unknown): RetryableCause {",
         );
         line(&mut output, "  const codes = persistenceErrorCodes(error);");
+        line(&mut output, "  if (isDeliverySchemaRefusal(error)) return \"delivery_schema_busy\";");
         line(
             &mut output,
             "  if (codes.some(code => code === \"SQLITE_BUSY\")) return \"sqlite_busy\";",
@@ -3920,7 +3923,8 @@ export const temporal = Object.freeze({
             "          if (error.kind === \"unknown\") throw error;",
         );
         line(&mut output, "          const serverAbort = retryableCause === \"postgres_serialization\" || retryableCause === \"postgres_deadlock\";");
-        line(&mut output, "          throw new PersistenceFault(error.operation, error.kind, error, error.constraint, Object.freeze({ phase: \"statement\", database: \"postgres\", outcome: \"no_commit\", retryableCause: serverAbort ? retryableCause : null, rollbackProven: true, commitAcknowledged: false }));");
+        line(&mut output, "          const nativeSchemaRefusal = retryableCause === \"delivery_schema_busy\" && isDeliverySchemaRefusal(error); ");
+        line(&mut output, "          throw new PersistenceFault(error.operation, error.kind, error, error.constraint, Object.freeze({ phase: \"statement\", database: \"postgres\", outcome: \"no_commit\", retryableCause: serverAbort || nativeSchemaRefusal ? retryableCause : null, rollbackProven: true, commitAcknowledged: false }));");
         line(&mut output, "        }");
         line(&mut output, "        if (callbackState === \"not_started\") throw transactionFault(\"transaction.begin\", error, { phase: \"begin\", database: \"postgres\", outcome: \"no_commit\", retryableCause, rollbackProven: false, commitAcknowledged: false });");
         line(&mut output, "        const serverAbort = retryableCause === \"postgres_serialization\" || retryableCause === \"postgres_deadlock\";");

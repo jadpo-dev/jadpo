@@ -38,6 +38,24 @@ const deliveryOutbox = (() => {
   const execute = async (operation: string, sql: string, values: unknown[] = []): Promise<any[]> => {
     const checkLifetime = (): void => { if (transactional) requireTransaction(); };
     checkLifetime();
+    if (postgres !== null) {
+      const created = /^CREATE TABLE IF NOT EXISTS "(__jadpo_[A-Za-z0-9_]+)"/u.exec(sql);
+      if (created !== null) {
+        // Avoid hot-path DDL locks entirely. IF NOT EXISTS alone does not
+        // serialize concurrent first creation in PostgreSQL's type catalogue.
+        const present = await persistenceAsync("delivery.schema.present", () => { checkLifetime(); return postgres!.unsafe('SELECT to_regclass($1) IS NOT NULL AS present', [`"${created[1]}"`]); });
+        if (present.length !== 1) return fault("delivery.schema.cardinality");
+        if (present[0].present === true) return [];
+      }
+      if (created !== null || /^ALTER TABLE "__jadpo_[A-Za-z0-9_]+"/u.test(sql)) {
+        // Compiler-owned transaction lock: no session lock, no blocking
+        // acquisition or new wait default. A losing transaction may restart
+        // only through the existing bounded no-commit/rollback retry policy.
+        const lock = await persistenceAsync("delivery.schema.admission", () => { checkLifetime(); return postgres!.unsafe('SELECT pg_try_advisory_xact_lock(1245791312, 1145392214) AS acquired'); });
+        if (lock.length !== 1) return fault("delivery.schema.cardinality");
+        if (lock[0].acquired !== true) { const refusal = new PersistenceFault("delivery.schema.admission", "driver", new Error("native delivery schema busy")); deliverySchemaRefusals.add(refusal); throw refusal; }
+      }
+    }
     return postgres !== null
       ? persistenceAsync(operation, () => { checkLifetime(); return postgres!.unsafe(sql, values); })
       : persistenceSync(operation, () => { checkLifetime(); const statement = sqlite!.prepare(sql); try { return statement.all(...values); } finally { statement.finalize(); } });
