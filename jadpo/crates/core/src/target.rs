@@ -55,6 +55,12 @@ pub fn derive_target(
         relative_path: "target/app.ts",
         contents: generator.generate(),
     }];
+    if generator.configuration.is_some() {
+        outputs.push(GeneratedArtifact {
+            relative_path: "target/configuration-preflight.ts",
+            contents: generator.configuration_preflight(),
+        });
+    }
     if !generator.tests.is_empty() {
         outputs.push(GeneratedArtifact {
             relative_path: "target/tests.ts",
@@ -1481,6 +1487,19 @@ export const temporal = Object.freeze({
 "#);
     }
 
+    fn configuration_preflight(&self) -> String {
+        let mut output = String::new();
+        line(&mut output, "// Generated pure declared-value validation; no datastore, provider or authority dependency.");
+        self.runtime_prelude_parts(&mut output, true);
+        self.temporal_runtime(&mut output);
+        self.type_aliases(&mut output);
+        self.validators_parts(&mut output, false);
+        self.configuration_runtime(&mut output);
+        line(&mut output, "if (Bun.main === decodeURIComponent(new URL(\"./app.ts\", import.meta.url).pathname)) { try { loadConfiguration(Bun.env); } catch (error) { reportConfigurationDiagnostics(error); console.error(JSON.stringify({ schemaVersion: 1, kind: \"operational_log_event\", eventName: \"operation.failed\", classification: \"RUNTIME_STARTUP_FAILED\", requestId: \"startup\", traceId: null, semanticOperationId: \"runtime:start\", sourceRevision:");
+        line(&mut output, &format!("{}, attributes: {{}} }})); process.exit(1); }} }}", ts_string(&self.source_revision())));
+        output
+    }
+
     fn configuration_runtime(&self, output: &mut String) {
         let Some(configuration) = self.configuration else {
             return;
@@ -1498,6 +1517,8 @@ export const temporal = Object.freeze({
         }
         line(output, "};");
         line(output, "let configuration: ApplicationConfiguration;");
+        line(output, "class ConfigurationFault extends Error { readonly diagnostics: readonly Readonly<{ code: \"config_required\" | \"config_invalid\"; declaration: string }>[]; constructor(diagnostics: Array<{ code: \"config_required\" | \"config_invalid\"; declaration: string }>, safeMessage = \"Configuration validation failed.\") { super(safeMessage); this.name = \"ConfigurationFault\"; this.diagnostics = Object.freeze(diagnostics.map(value => Object.freeze(value))); } }");
+        line(output, "function reportConfigurationDiagnostics(error: unknown): void { if (!(error instanceof ConfigurationFault)) return; for (const diagnostic of error.diagnostics) console.error(JSON.stringify({ schemaVersion: 1, kind: \"configuration_diagnostic\", ...diagnostic })); }");
         line(output, "");
         line(
             output,
@@ -1556,11 +1577,7 @@ export const temporal = Object.freeze({
         line(output, "}");
         line(output, "function loadConfiguration(environment: Record<string, string | undefined>): ApplicationConfiguration {");
         let retention_fields = self.lifecycle_purge_config_fields();
-        if retention_fields.is_empty() {
-            line(output, "  return {");
-        } else {
-            line(output, "  const loaded: ApplicationConfiguration = {");
-        }
+        line(output, "  const loaded = {} as ApplicationConfiguration; let retentionFailure: string | undefined; const diagnostics: Array<{ code: \"config_required\" | \"config_invalid\"; declaration: string }> = [];");
         for field in &configuration.fields {
             let binding = field
                 .binding
@@ -1606,21 +1623,15 @@ export const temporal = Object.freeze({
                 &parsed,
                 &ts_string(&format!("config.{}", field.name.text)),
             );
-            line(output, &format!("    {}: {validated},", field.name.text));
+            let declaration = format!("{}.{}", configuration.name.text, field.name.text);
+            line(output, &format!("  try {{ (loaded as any).{} = {validated}; }} catch {{ diagnostics.push({{ code: environment[{}] === undefined || environment[{}] === \"\" ? \"config_required\" : \"config_invalid\", declaration: {} }}); }}", field.name.text, ts_string(binding), ts_string(binding), ts_string(&declaration)));
+
         }
-        line(output, "  };");
         for field in retention_fields {
-            line(
-                output,
-                &format!(
-                    "  if (durationMilliseconds(loaded.{field}, {}) <= 0) throw new Error(\"Retention must be positive: config.{field}\");",
-                    ts_string(&format!("config.{field}"))
-                ),
-            );
+            let declaration = ts_string(&format!("{}.{}", configuration.name.text, field));
+            line(output, &format!("  if (!diagnostics.some(issue => issue.declaration === {declaration})) {{ try {{ if (durationMilliseconds(loaded.{field}, {}) <= 0) {{ retentionFailure = \"Retention must be positive: config.{field}\"; throw new Error(\"retention must be positive\"); }} }} catch {{ diagnostics.push({{ code: \"config_invalid\", declaration: {declaration} }}); }} }}", ts_string(&format!("config.{field}"))));
         }
-        if !self.lifecycle_purge_config_fields().is_empty() {
-            line(output, "  return loaded;");
-        }
+        line(output, "  if (diagnostics.length !== 0) throw new ConfigurationFault(diagnostics, diagnostics.length === 1 ? retentionFailure : undefined); return Object.freeze(loaded);");
         line(output, "}");
         line(output, "");
     }
@@ -3125,6 +3136,9 @@ export const temporal = Object.freeze({
         let mut output = String::new();
         line(&mut output, "// Generated by Jadpo 0.0.1. Do not edit.");
         line(&mut output, "import { SQL } from \"bun\";");
+        if self.configuration.is_some() {
+            line(&mut output, "import \"./configuration-preflight.ts\";");
+        }
         line(&mut output, "import { Database } from \"bun:sqlite\";");
         if !self.project.delivery_model().bindings().is_empty() {
             line(
@@ -7180,6 +7194,10 @@ export const temporal = Object.freeze({
     }
 
     fn runtime_prelude(&self, output: &mut String) {
+        self.runtime_prelude_parts(output, false);
+    }
+
+    fn runtime_prelude_parts(&self, output: &mut String, configuration_only: bool) {
         line(output, "type JsonObject = Record<string, unknown>;");
         line(
             output,
@@ -7211,7 +7229,7 @@ export const temporal = Object.freeze({
         line(output, "class ValidationError extends Error {}");
         line(output, "class RequestSyntaxError extends Error {}");
         line(output, "");
-        if self.has_route_headers() {
+        if self.has_route_headers() && !configuration_only {
             line(
                 output,
                 "const rawHeaderCounts = new WeakMap<Request, ReadonlyMap<string, number>>();",
@@ -7636,6 +7654,7 @@ export const temporal = Object.freeze({
         );
         line(output, "}");
         line(output, "");
+        if configuration_only { return; }
         line(
             output,
             "function json(status: number, body: unknown, requestId: string): Response {",
@@ -7876,6 +7895,10 @@ export const temporal = Object.freeze({
     }
 
     fn validators(&self, output: &mut String) {
+        self.validators_parts(output, true);
+    }
+
+    fn validators_parts(&self, output: &mut String, database_decoders: bool) {
         for (name, check, expectation) in [
             (
                 "Email",
@@ -8029,7 +8052,7 @@ export const temporal = Object.freeze({
         }
 
         for (name, declaration) in &self.records {
-            if declaration.is_persistent_entity() {
+            if declaration.is_persistent_entity() && database_decoders {
                 line(
                     output,
                     &format!(
@@ -8066,7 +8089,7 @@ export const temporal = Object.freeze({
                 output,
                 &format!("function validate_{name}(value: unknown, path: string): {name} {{"),
             );
-            if declaration.is_persistent_entity() {
+            if declaration.is_persistent_entity() && database_decoders {
                 line(output, &format!("  const object = expectObject(path.startsWith(\"database.\") ? decodeDatabase_{name}(value, path) : value, path);"));
             } else {
                 line(output, "  const object = expectObject(value, path);");
@@ -9257,6 +9280,7 @@ export const temporal = Object.freeze({
         }
         line(output, "    }));");
         line(output, "  } catch (error) {");
+        if self.configuration.is_some() { line(output, "    reportConfigurationDiagnostics(error);"); }
         line(output, "    reportRuntimeFault(");
         line(output, "      \"RUNTIME_STARTUP_FAILED\",");
         line(output, "      \"runtime:start\",");
