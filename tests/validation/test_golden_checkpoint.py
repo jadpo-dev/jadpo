@@ -264,8 +264,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
         database = {'variant_index': 0, 'fixture_variant': case['fixtureVariants'][0], 'healthyControl': healthy, 'outage': {'mode': 'actual separate-connection SQLite exclusive lock', 'response': failed, 'lockAcquireStatements': [{'sql': 'BEGIN EXCLUSIVE'}], 'lockReleaseStatements': [{'sql': 'ROLLBACK'}]}}
         payload = {'idempotency_key': intent_id, 'to': 'alice@example.test', 'from': 'todos@example.test', 'todo_title': 'synthetic boundary', 'due_at': '2026-01-14T12:00:00Z'}
         row = {'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice'], 'reminder_sent_at': None}
-        state = {'intents': [{'intent_id': intent_id, 'source_entity_id': row['id'], 'source_revision': 1, 'state': 'outcome_unknown', 'payload': payload}], 'claims': [{'intent_id': intent_id, 'invocations': 1, 'possible_dispatch': 1}], 'receipts': [], 'todo': row}
+        state = {'intents': [{'intent_id': intent_id, 'source_entity_id': row['id'], 'source_revision': '1', 'state': 'outcome_unknown', 'payload': payload}], 'claims': [{'intent_id': intent_id, 'invocations': 1, 'possible_dispatch': 1}], 'receipts': [], 'todo': row}
         provider = {'variant_index': 1, 'fixture_variant': case['fixtureVariants'][1], 'providerCalls': [{'method': 'POST', 'path': '/v1/messages', 'body': payload, 'idempotencyKey': intent_id, 'authorizationPresent': True, 'responseStatus': 401, 'responseBody': {'code': 'authentication'}, 'responseHeaders': {'x-private-provider-canary': 'CHECKPOINT_PRIVATE_PROVIDER_AUTH_HEADER_STACK'}}], 'profiles': {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}, 'nativeFixtureCreation': {'status': 201, 'method': 'POST', 'requestedPath': '/todos', 'body': {'id': row['id']}, 'at': '2026-01-13T12:00:00Z'}, 'nativeHostOutcome': {'status': 'finished', 'selected': 1, 'attempted': 1, 'continued': False, 'failures': [fault()]}, 'nativeHostThrown': None, 'operationalEvents': [{'schemaVersion': 1, 'kind': 'operational_log_event', 'eventName': 'service.attempt', 'operationId': request_id, 'attempt': 1, 'elapsedMs': 1, 'outcome': 'misconfigured', 'retryScheduled': False, 'retryDelayMs': None}, event()], 'statements': [{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'UPDATE', 'sql': checkpoint.native_boundary_delivery_sql('sqlite')[0], 'deliveryIntentIdentity': intent_id}, {'operation': 'COMMIT', 'sql': 'COMMIT'}, {'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'WITH', 'sql': checkpoint.native_boundary_delivery_sql('sqlite')[1], 'deliveryIntentIdentity': intent_id, 'deliveryOutcomeState': 'outcome_unknown'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}], 'persisted': row, 'durableAfter': state, 'restart': {'at': '2026-01-15T12:15:00Z', 'outcome': {'status': 'finished', 'selected': 1, 'attempted': 1, 'continued': False}, 'statements': [{'operation': 'SELECT', 'sql': 'SELECT 1'}], 'durable': deepcopy(state)}}
+        def activation(identity):
+            return {'schemaVersion': 1, 'kind': 'operational_log_event', 'eventName': 'transaction.attempt', 'operationId': identity, 'operation': 'job.overdue_reminders.delivery.reminder_v1.activation_stage', 'attempt': 1, 'database': 'sqlite', 'phase': 'commit', 'outcome': 'committed', 'retryableCause': None, 'rollbackProven': False, 'commitAcknowledged': True, 'elapsedMs': 1, 'selectedDelayMs': None, 'retryScheduled': False, 'cancelled': False}
+        provider['durableAfter']['schedules'] = [{'source_entity': 'Todo', 'source_entity_id': row['id'], 'schedule_revision': '1'}]
+        provider['restart']['durable']['schedules'] = deepcopy(provider['durableAfter']['schedules'])
+        provider['operationalEvents'].insert(0, activation(checkpoint.ALIASES['t1']))
+        provider['restart']['operationalEvents'] = [activation(checkpoint.ALIASES['t2'])]
         return [{'boundaryVariants': [database, provider], 'selectedBackend': 'sqlite', 'sourceRevision': 'synthetic_revision', 'binding': 'job.overdue_reminders.delivery.reminder_v1', 'jobMetadata': self.reminder_raw('JOB-001')[0]['reminderFixture']['jobMetadata'], 'specification': {'fixtureVariants': case['fixtureVariants'], 'requestOrRun': case['requestOrRun']}}]
 
     def preflight_raw(self, case_id):
@@ -348,6 +354,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 if result['id'] in ('CONFIG-001', 'CONFIG-002'): result['raw'][0]['nativeStartup']['selectedBackend'] = output['backend']
                 if result['id'] == 'BOUNDARY-001':
                     cap = result['raw'][0]; cap['selectedBackend'] = output['backend']
+                    cap['boundaryVariants'][1]['operationalEvents'][0]['database'] = output['backend']
+                    cap['boundaryVariants'][1]['restart']['operationalEvents'][0]['database'] = output['backend']
                     for statement in cap['boundaryVariants'][1]['statements']:
                         if statement['operation'] in ('UPDATE', 'WITH'):
                             statement['sql'] = checkpoint.native_boundary_delivery_sql(output['backend'])[statement['operation'] == 'WITH']
@@ -1205,6 +1213,33 @@ class CheckpointIntegrityTests(unittest.TestCase):
             elif mutation == 'duplicate': rows.append(deepcopy(rows[4]))
             elif mutation == 'collapsed': rows[2:4] = []
             else: provider['restart']['statements'].append(deepcopy(rows[1]))
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['BOUNDARY-001'], raw)
+
+    def test_boundary_activation_events_are_closed_ordered_and_owned_by_separate_native_runs(self):
+        for mutation in ('missing_first', 'missing_replay', 'extra_secret', 'foreign_backend', 'foreign_binding', 'uncommitted', 'same_id', 'replay_service'):
+            raw = self.boundary_raw(); provider = raw[0]['boundaryVariants'][1]
+            if mutation == 'missing_first': provider['operationalEvents'].pop(0)
+            elif mutation == 'missing_replay': provider['restart']['operationalEvents'] = []
+            elif mutation == 'extra_secret': provider['operationalEvents'][0]['credential'] = 'private'
+            elif mutation == 'foreign_backend': provider['operationalEvents'][0]['database'] = 'postgres'
+            elif mutation == 'foreign_binding': provider['operationalEvents'][0]['operation'] = 'foreign'
+            elif mutation == 'uncommitted': provider['operationalEvents'][0]['commitAcknowledged'] = False
+            elif mutation == 'same_id': provider['restart']['operationalEvents'][0]['operationId'] = provider['operationalEvents'][0]['operationId']
+            else: provider['restart']['operationalEvents'].append(deepcopy(provider['operationalEvents'][1]))
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['BOUNDARY-001'], raw)
+
+    def test_boundary_refuses_unbalanced_journal_nonfinite_event_and_foreign_revision(self):
+        for mutation in ('nested_begin', 'dangling_begin', 'unmatched_commit', 'nan_attempt', 'inf_activation', 'foreign_revision', 'missing_schedule'):
+            raw = self.boundary_raw(); provider = raw[0]['boundaryVariants'][1]
+            if mutation == 'nested_begin': provider['statements'].insert(4, {'operation': 'BEGIN', 'sql': 'BEGIN'})
+            elif mutation == 'dangling_begin': provider['statements'].append({'operation': 'BEGIN', 'sql': 'BEGIN'})
+            elif mutation == 'unmatched_commit': provider['statements'].insert(0, {'operation': 'COMMIT', 'sql': 'COMMIT'})
+            elif mutation == 'nan_attempt': provider['operationalEvents'][1]['elapsedMs'] = float('nan')
+            elif mutation == 'inf_activation': provider['operationalEvents'][0]['elapsedMs'] = float('inf')
+            elif mutation == 'foreign_revision':
+                for snapshot in (provider['durableAfter'], provider['restart']['durable']): snapshot['intents'][0]['source_revision'] = 'foreign'
+            else:
+                for snapshot in (provider['durableAfter'], provider['restart']['durable']): snapshot['schedules'] = []
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['BOUNDARY-001'], raw)
 
     def test_cursor_duplicate_fails_case_even_when_frozen_summary_fields_match(self):

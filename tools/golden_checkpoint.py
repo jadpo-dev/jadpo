@@ -6,6 +6,7 @@ import argparse
 from contextlib import contextmanager
 from copy import deepcopy
 import json
+import math
 import hashlib
 import os
 from pathlib import Path
@@ -695,14 +696,29 @@ def native_boundary_delivery_sql(backend: str):
     return dispatch, completion
 
 
-def validate_native_boundary_transactions(provider: dict, backend: str, identity: str):
-    statements = provider.get('statements', [])
-    controls = []
+def native_boundary_transaction_controls(statements: list):
+    controls = []; open_transaction = False
     for index, row in enumerate(statements):
         sql = row.get('sql')
         match = re.match(r'^\s*([a-z]+)', sql, re.I) if isinstance(sql, str) else None
         if not match or row.get('operation') != match[1].upper(): raise ValueError('Boundary statement operation differs from actual SQL')
-        if row['operation'] in ('BEGIN', 'COMMIT', 'ROLLBACK'): controls.append((index, row['operation']))
+        operation = row['operation']
+        if operation not in ('BEGIN', 'COMMIT', 'ROLLBACK'): continue
+        if operation == 'BEGIN':
+            if open_transaction or sql not in ('BEGIN', 'BEGIN IMMEDIATE'): raise ValueError('Native boundary transaction journal contains unmatched/nested BEGIN')
+            open_transaction = True
+        else:
+            if not open_transaction or sql != operation: raise ValueError('Native boundary transaction journal contains unmatched completion')
+            open_transaction = False
+        controls.append((index, operation))
+    if open_transaction: raise ValueError('Native boundary transaction journal remains open')
+    return controls
+
+
+def validate_native_boundary_transactions(provider: dict, backend: str, identity: str):
+    statements = provider.get('statements', [])
+    controls = native_boundary_transaction_controls(statements)
+    native_boundary_transaction_controls(provider.get('restart', {}).get('statements', []))
     brackets = []
     dispatch, completion = native_boundary_delivery_sql(backend)
     for expected, prefix, operation in ((dispatch, 'UPDATE "__jadpo_delivery_claims_v1" SET "possible_dispatch"', 'UPDATE'), (completion, 'WITH "outcome_clock"', 'WITH')):
@@ -720,6 +736,12 @@ def validate_native_boundary_transactions(provider: dict, backend: str, identity
         raise ValueError('Later native unknown-intent replay dispatched or completed again')
 
 
+def validate_native_boundary_activation_event(event: dict, backend: str, binding: str):
+    expected = {'schemaVersion': 1, 'kind': 'operational_log_event', 'eventName': 'transaction.attempt', 'operation': binding+'.activation_stage', 'attempt': 1, 'database': backend, 'phase': 'commit', 'outcome': 'committed', 'retryableCause': None, 'rollbackProven': False, 'commitAcknowledged': True, 'selectedDelayMs': None, 'retryScheduled': False, 'cancelled': False}
+    if set(event) != set(expected) | {'operationId', 'elapsedMs'} or any(not harness.same_json(event.get(key), value) for key, value in expected.items()) or not re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', str(event.get('operationId'))) or type(event.get('elapsedMs')) not in (int, float) or not math.isfinite(event['elapsedMs']) or event['elapsedMs'] < 0:
+        raise ValueError('Missing exact native successful activation transaction event')
+
+
 def boundary_observations(case: dict, raw: list):
     if len(raw) != 1 or 'boundaryVariants' not in raw[0]: raise ValueError('Missing exact native boundary capture')
     capture = raw[0]
@@ -732,10 +754,14 @@ def boundary_observations(case: dict, raw: list):
         error = envelope.get('error', {})
         if set(envelope) != {'error'} or set(error) != {'code', 'message', 'request_id'} or error.get('code') != 'internal_fault' or error.get('message') != 'An internal error occurred.' or not re.fullmatch(('req_' if http else '')+r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', str(error.get('request_id'))):
             raise ValueError('Missing actual closed safe native failure envelope')
+        if not http:
+            if not isinstance(events, list) or not events: raise ValueError('Missing native activation event')
+            validate_native_boundary_activation_event(events[0], capture['selectedBackend'], operation)
+            events = events[1:]
         if not isinstance(events, list) or [event.get('eventName') for event in events] != (['operation.failed'] if http else ['service.attempt', 'operation.failed']): raise ValueError('Missing exact native boundary operational event sequence')
         if not http:
             attempt = events[0]
-            if set(attempt) != {'schemaVersion', 'kind', 'eventName', 'operationId', 'attempt', 'elapsedMs', 'outcome', 'retryScheduled', 'retryDelayMs'} or type(attempt['schemaVersion']) is not int or attempt['schemaVersion'] != 1 or attempt['kind'] != 'operational_log_event' or attempt['operationId'] != error['request_id'] or type(attempt['attempt']) is not int or attempt['attempt'] != 1 or type(attempt['elapsedMs']) not in (int, float) or attempt['elapsedMs'] < 0 or attempt['outcome'] != 'misconfigured' or attempt['retryScheduled'] is not False or attempt['retryDelayMs'] is not None:
+            if set(attempt) != {'schemaVersion', 'kind', 'eventName', 'operationId', 'attempt', 'elapsedMs', 'outcome', 'retryScheduled', 'retryDelayMs'} or type(attempt['schemaVersion']) is not int or attempt['schemaVersion'] != 1 or attempt['kind'] != 'operational_log_event' or attempt['operationId'] != error['request_id'] or type(attempt['attempt']) is not int or attempt['attempt'] != 1 or type(attempt['elapsedMs']) not in (int, float) or not math.isfinite(attempt['elapsedMs']) or attempt['elapsedMs'] < 0 or attempt['outcome'] != 'misconfigured' or attempt['retryScheduled'] is not False or attempt['retryDelayMs'] is not None:
                 raise ValueError('Actual native provider attempt/failure envelope disagree')
         event = events[-1]
         if set(event) != {'schemaVersion', 'kind', 'eventName', 'classification', 'requestId', 'traceId', 'semanticOperationId', 'sourceRevision', 'attributes'} or type(event['schemaVersion']) is not int or event['schemaVersion'] != 1 or event['kind'] != 'operational_log_event' or event['eventName'] != 'operation.failed' or event['classification'] != classification or event['requestId'] != error['request_id'] or event['traceId'] is not None or event['semanticOperationId'] != operation or event['sourceRevision'] != capture.get('sourceRevision') or event['attributes'] != {}:
@@ -772,10 +798,17 @@ def boundary_observations(case: dict, raw: list):
     if not harness.same_json(first, durable) or len(first.get('intents', [])) != 1 or len(first.get('claims', [])) != 1 or first.get('receipts') != [] or not harness.same_json(first.get('todo'), persisted):
         raise ValueError('Missing actual unchanged native unknown intent/claim/source/receipt state')
     intent, claim = first['intents'][0], first['claims'][0]; key = calls[0].get('body', {}).get('idempotency_key')
+    schedules = first.get('schedules', [])
+    if len(schedules) != 1 or schedules[0].get('source_entity') != 'Todo' or schedules[0].get('source_entity_id') != persisted['id'] or not re.fullmatch(r'[1-9][0-9]*', str(schedules[0].get('schedule_revision'))) or not harness.same_json(schedules[0].get('schedule_revision'), intent.get('source_revision')):
+        raise ValueError('Native unknown intent revision differs from actual current source schedule')
     if not re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', str(key)) or key != calls[0].get('idempotencyKey') or intent.get('intent_id') != key or intent.get('source_entity_id') != persisted['id'] or intent.get('state') != 'outcome_unknown' or not harness.same_json(intent.get('payload'), calls[0]['body']) or claim.get('intent_id') != key or type(claim.get('invocations')) is not int or claim['invocations'] != 1 or type(claim.get('possible_dispatch')) is not int or claim['possible_dispatch'] != 1:
         raise ValueError('Native provider dispatch is not the persisted uncertain intent')
     if not harness.same_json(restart.get('outcome'), {'status': 'finished', 'selected': 1, 'attempted': 1, 'continued': False}) or not restart.get('statements') or instant(restart.get('at')) <= instant(creation.get('at')):
         raise ValueError('Missing actual later native no-resend control')
+    replay_events = restart.get('operationalEvents', [])
+    if not isinstance(replay_events, list) or len(replay_events) != 1: raise ValueError('Missing exact later native activation event')
+    validate_native_boundary_activation_event(replay_events[0], capture['selectedBackend'], capture['binding'])
+    if replay_events[0]['operationId'] == provider['operationalEvents'][0]['operationId']: raise ValueError('Native activation replay reuses operation identity')
     validate_native_boundary_transactions(provider, capture['selectedBackend'], key)
     provider_step = public_error(outcome['failures'][0], provider.get('operationalEvents', []), capture['binding'], 'RUNTIME_SERVICE_MISCONFIGURED')
     return [{'variant_index': index, 'steps': [step]} for index, step in enumerate((database_step, provider_step))]
