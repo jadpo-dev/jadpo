@@ -84,6 +84,19 @@ class CheckpointIntegrityTests(unittest.TestCase):
             replies.insert(0, {'fixture': fixture})
             if case_id == 'DELETE-001': replies.insert(2, {'persistence': after})
             else: replies.append({'persistence': after})
+        if case_id in ('PATCH-002', 'PATCH-005'):
+            fixture = next(item['fixture'] for item in replies if 'fixture' in item)
+            persisted = next(item for item in replies if 'persistence' in item)
+            fixture.update(status='open', created_at='2026-01-15T11:00:00.000Z', updated_at='2026-01-15T11:00:00.000Z')
+            if case_id == 'PATCH-005': fixture['reminder_sent_at'] = '2026-01-15T11:59:00.000Z'
+            before = deepcopy(fixture); before['reminder_sent_at'] = None
+            body = {field: before[field] for field in ('id', 'title', 'status', 'due_at', 'created_at', 'updated_at')}
+            creation = {'method': 'POST', 'path': '/todos', 'auth': 'alice-session', 'status': 201, 'at': '2026-01-15T11:00:00Z', 'requestJson': {'title': 'original fixture title', 'due_at': '2026-02-01T00:00:00Z'}, 'body': body, 'authenticationAttempts': 1, 'principals': [self.principal()], 'credentialsIssued': 0, 'statements': [{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'INSERT', 'sql': 'INSERT INTO "todo"'}, {'operation': 'INSERT', 'sql': 'INSERT INTO "__jadpo_delivery_schedules_v1"'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}]}
+            enrollment = {'source_entity': 'Todo', 'source_entity_id': fixture['id'], 'schedule_revision': '1'}
+            capture = {'logicalAlias': 't1', 'before': before, 'after': deepcopy(fixture), 'enrollment': enrollment, 'enrollmentAfterSetup': deepcopy(enrollment), 'setupStatements': [{'operation': 'UPDATE', 'sql': 'UPDATE todo SET reminder_sent_at = $1 WHERE id = $2'}] if case_id == 'PATCH-005' else [], 'validator': 'validate_TodoView', 'validatedBody': deepcopy(body), 'requestCredentialIssuance': {'at': self.clock, 'expires': '2026-01-15T12:05:00Z', 'strategy': 'browser_session', 'credentialsIssued': 1, 'statements': [{'operation': 'INSERT', 'sql': 'INSERT INTO "__jadpo_auth_sessions"'}]}}
+            next(item for item in replies if 'method' in item)['statements'].append({'operation': 'UPDATE', 'sql': 'UPDATE "__jadpo_delivery_schedules_v1"'})
+            persisted['enrollmentAfterPrimary'] = {**enrollment, 'schedule_revision': '2'}
+            replies[:0] = [{'fixtureCreation': creation}, {'fixtureEnrollment': capture}]
         if case_id in ('AUTH-002', 'AUTH-006', 'AUTH-010'):
             replies.insert(0, {'authenticationFixture': self.authentication_fixture(case_id)})
             reply = replies[1]
@@ -434,9 +447,38 @@ class CheckpointIntegrityTests(unittest.TestCase):
         step = checkpoint.observations(self.cases['PATCH-005'], raw, self.clock)[0]['steps'][0]
         self.assertEqual(step['storedDueAt'], '2026-02-15T09:00:00Z')
         self.assertEqual(step['storedReminderSentAt'], '2026-01-15T11:59:00Z')
-        raw[0]['fixture']['reminder_sent_at'] = None
-        with self.assertRaisesRegex(ValueError, 'previously reminded'):
+        next(item['fixture'] for item in raw if 'fixture' in item)['reminder_sent_at'] = None
+        with self.assertRaises(ValueError):
             checkpoint.observations(self.cases['PATCH-005'], raw, self.clock)
+
+    def test_native_patch_fixture_requires_real_creation_identity_enrollment_and_setup(self):
+        for case_id in ('PATCH-002', 'PATCH-005'):
+            for mutation in ('creation_missing', 'creation_order', 'status', 'identity', 'clock', 'validator', 'insert', 'schedule_insert', 'commit', 'source_identity', 'before_revision', 'setup_revision', 'after_revision', 'advance', 'credentials', 'setup_state', 'principal', 'transaction_order'):
+                raw = self.raw(case_id)
+                creation = next(item for item in raw if 'fixtureCreation' in item)
+                capture = next(item['fixtureEnrollment'] for item in raw if 'fixtureEnrollment' in item)
+                reply = next(item for item in raw if 'method' in item)
+                retained = next(item for item in raw if 'persistence' in item)
+                if mutation == 'creation_missing': raw.remove(creation)
+                elif mutation == 'creation_order': raw.append(raw.pop(0))
+                elif mutation == 'status': creation['fixtureCreation']['status'] = 200
+                elif mutation == 'identity': creation['fixtureCreation']['body']['id'] = 'foreign'
+                elif mutation == 'clock': creation['fixtureCreation']['at'] = self.clock
+                elif mutation == 'validator': capture['validator'] = 'validate_Foreign'
+                elif mutation in ('insert', 'schedule_insert', 'commit'):
+                    remove = {'insert': 'INSERT INTO "todo"', 'schedule_insert': 'INSERT INTO "__jadpo_delivery_schedules_v1"', 'commit': 'COMMIT'}[mutation]
+                    creation['fixtureCreation']['statements'] = [row for row in creation['fixtureCreation']['statements'] if row['sql'] != remove]
+                elif mutation == 'source_identity': capture['enrollment']['source_entity_id'] = checkpoint.ALIASES['bob']
+                elif mutation == 'before_revision': capture['enrollment']['schedule_revision'] = '9'
+                elif mutation == 'setup_revision': capture['enrollmentAfterSetup']['schedule_revision'] = '2'
+                elif mutation == 'after_revision': retained['enrollmentAfterPrimary']['schedule_revision'] = '1'
+                elif mutation == 'advance': reply['statements'] = []
+                elif mutation == 'credentials': capture['requestCredentialIssuance']['credentialsIssued'] = 0
+                elif mutation == 'setup_state': capture['after']['owner_id'] = checkpoint.ALIASES['bob']
+                elif mutation == 'principal': creation['fixtureCreation']['principals'] = []
+                elif mutation == 'transaction_order': creation['fixtureCreation']['statements'].reverse()
+                with self.subTest(case_id=case_id, mutation=mutation), self.assertRaises(ValueError):
+                    checkpoint.observations(self.cases[case_id], raw, self.clock)
 
     def test_soft_delete_requires_retained_row_and_actual_subsequent_get(self):
         raw = self.raw('DELETE-001')

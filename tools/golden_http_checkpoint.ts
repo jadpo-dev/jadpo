@@ -71,14 +71,15 @@ const db = backend === "sqlite" ? new Database(Bun.env.SQLITE_PATH, { strict: tr
 db?.exec("PRAGMA foreign_keys = ON");
 const pg = backend === "postgres" ? new SQL({ url: Bun.env.DATABASE_URL!, prepare: false }) : undefined;
 async function execute(sql: string, values: unknown[] = []) {
-  if (pg) return await pg.unsafe(sql, values);
+  if (pg) { recordStatement(sql, values); return await pg.unsafe(sql, values); }
   const statement = db!.prepare(sql.replace(/\$(\d+)/gu, "?$1"));
   try { return statement.all(...values); } finally { statement.finalize(); }
 }
 const alice = "00000000-0000-4000-8000-000000000001";
 const bob = "00000000-0000-4000-8000-000000000002";
 const t2 = "00000000-0000-4000-8000-000000000022";
-const t1 = "00000000-0000-4000-8000-000000000021";
+const fixtureT1 = "00000000-0000-4000-8000-000000000021";
+let t1 = fixtureT1;
 const environment = {
   DATABASE_URL: "https://db.test/golden", SESSION_SIGNING_KEY: Buffer.alloc(32, 71).toString("base64url"),
   BROWSER_ORIGIN: "https://todo.test", OIDC_ISSUER: jwksServer.url.origin, OIDC_AUDIENCE: "todo",
@@ -95,14 +96,16 @@ let jwtFixtures: Record<string, any> = {};
 let secrets: string[] = Object.values(environment).filter(value => value === environment.SESSION_SIGNING_KEY || value === environment.MAIL_API_KEY);
 async function reset(case_?: any) {
   setSessionStorageUnavailable(false);
+  t1 = fixtureT1;
   providerRequests.length = 0;
   clockNow = nativeDate.parse(case_?.timeline?.issuedAt ?? contract.clock);
   await app.initializeApplication(environment);
   for (const table of ["service_credential", "__jadpo_auth_service_credentials", "service", "todo", "__jadpo_auth_sessions", "user"]) await execute(`DELETE FROM "${table}"`);
-  const now = Date.now();
+  const fixtureCreationClock = ["PATCH-002", "PATCH-005"].includes(case_?.id) ? nativeDate.parse("2026-01-15T11:00:00Z") : clockNow;
+  const now = fixtureCreationClock;
   for (const [id, subject] of [[alice, "alice"], [bob, "bob"]]) await execute('INSERT INTO "user" (id, authentication_subject, email, status, created_at, disabled_at) VALUES ($1, $2, $3, $4, $5, NULL)', [id, subject, `${subject}@example.test`, "active", pg ? new Date(now).toISOString() : now]);
   const statements = beginSqlObservation();
-  try { session = await app.authenticationHost().issue("browser_session", "alice", case_?.timeline ? nativeDate.parse(case_.timeline.credentialExpiresAt) : now + 300_000, now); }
+  try { session = await app.authenticationHost().issue("browser_session", "alice", case_?.timeline ? nativeDate.parse(case_.timeline.credentialExpiresAt) : Math.max(now, clockNow) + 300_000, now); }
   finally { endSqlObservation(); }
   issuanceObservation = { operation: "compiler-owned authentication issuance", strategy: "browser_session", statements, credentialsIssued: issuedCredentialCount() };
   if (["AUTH-010", "AUTH-008"].includes(case_?.id)) {
@@ -259,6 +262,33 @@ async function seedTodo(id: string, owner: string, dueAt: string | null = null, 
   const createdAt = options.createdAt ?? "2026-01-15T11:00:00Z";
   await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, $7)', [id, owner, "original fixture title", options.status ?? "open", dueAt === null ? null : pg ? dueAt : Date.parse(dueAt), pg ? createdAt : Date.parse(createdAt), options.deletedAt === undefined ? null : pg ? options.deletedAt : Date.parse(options.deletedAt)]);
 }
+async function scheduleSnapshot(id: string) {
+  const rows = await execute('SELECT source_entity, source_entity_id, CAST(schedule_revision AS TEXT) AS schedule_revision FROM "__jadpo_delivery_schedules_v1" WHERE source_entity = $1 AND source_entity_id = $2', ["Todo", id]);
+  if (rows.length !== 1) throw new Error("Missing native-created schedule identity");
+  return { ...rows[0] };
+}
+async function nativePatchFixture(case_: any) {
+  const requestClock = clockNow;
+  clockNow = nativeDate.parse("2026-01-15T11:00:00Z");
+  let creation: any;
+  try { creation = await send({ method: "POST", path: "/todos", auth: "alice-session", json: { title: "original fixture title", due_at: "2026-02-01T00:00:00Z" } }, "fixtureCreation"); }
+  finally { clockNow = requestClock; }
+  if (creation.status !== 201 || typeof creation.body?.id !== "string") throw new Error("Native Todo fixture creation failed");
+  const validatedBody = app.validate_TodoView(creation.body, "checkpoint.fixture");
+  t1 = validatedBody.id;
+  const before = await todoSnapshot(t1);
+  const enrollment = await scheduleSnapshot(t1);
+  const setupStatements = beginSqlObservation();
+  try {
+    if (case_.id === "PATCH-005") await execute('UPDATE todo SET reminder_sent_at = $1 WHERE id = $2', [pg ? "2026-01-15T11:59:00Z" : nativeDate.parse("2026-01-15T11:59:00Z"), t1]);
+  } finally { endSqlObservation(); }
+  const credentialStatements = beginSqlObservation();
+  try { session = await app.authenticationHost().issue("browser_session", "alice", requestClock + 300_000, requestClock); }
+  finally { endSqlObservation(); }
+  secrets.push(session.credential, session.csrfToken);
+  const requestCredentialIssuance = { at: new Date(requestClock).toISOString(), expires: new Date(session.expires).toISOString(), strategy: "browser_session", credentialsIssued: issuedCredentialCount(), statements: credentialStatements };
+  raw.push({ fixtureEnrollment: { logicalAlias: "t1", before, after: await todoSnapshot(t1), enrollment, enrollmentAfterSetup: await scheduleSnapshot(t1), setupStatements, validator: "validate_TodoView", validatedBody, requestCredentialIssuance } });
+}
 async function captureCollectionFixture() {
   const ids = await execute('SELECT id FROM todo ORDER BY id');
   const rows = [];
@@ -361,9 +391,9 @@ try {
       clockNow = nativeDate.parse(case_.timeline.requestAt);
     }
     if (case_.id.startsWith("PATCH-") || ["READ-001", "DELETE-001", "DELETE-002"].includes(case_.id)) {
+      if (["PATCH-002", "PATCH-005"].includes(case_.id)) await nativePatchFixture(case_);
       const id = case_.id === "PATCH-004" ? t2 : t1;
-      await seedTodo(id, case_.id === "PATCH-004" ? bob : alice, ["PATCH-001", "PATCH-002", "PATCH-005"].includes(case_.id) ? "2026-02-01T00:00:00Z" : null);
-      if (case_.id === "PATCH-005") await execute('UPDATE todo SET reminder_sent_at = $1 WHERE id = $2', [pg ? "2026-01-15T11:59:00Z" : Date.parse("2026-01-15T11:59:00Z"), id]);
+      if (!["PATCH-002", "PATCH-005"].includes(case_.id)) await seedTodo(id, case_.id === "PATCH-004" ? bob : alice, case_.id === "PATCH-001" ? "2026-02-01T00:00:00Z" : null);
       if (case_.id === "DELETE-002") await execute('UPDATE todo SET deleted_at = $1 WHERE id = $2', [pg ? "2026-01-15T11:59:00Z" : Date.parse("2026-01-15T11:59:00Z"), id]);
       raw.push({ fixture: await todoSnapshot(id) });
     }
@@ -405,7 +435,7 @@ try {
         if (rows.length !== 1) throw new Error("Missing persisted create observation");
         raw.push({ persistence: { id: reply.body.id, storedDueAt: rows[0].due_at } });
       }
-      if (case_.id.startsWith("PATCH-")) raw.push({ persistence: await todoSnapshot(case_.id === "PATCH-004" ? t2 : t1) });
+      if (case_.id.startsWith("PATCH-")) raw.push({ persistence: await todoSnapshot(case_.id === "PATCH-004" ? t2 : t1), ...(["PATCH-002", "PATCH-005"].includes(case_.id) ? { enrollmentAfterPrimary: await scheduleSnapshot(t1) } : {}) });
       if (case_.id === "DELETE-002") raw.push({ persistence: await todoSnapshot(t1) });
       if (case_.id === "CREATE-001") raw.push({ persistence: await todoSnapshot(reply.body.id) });
       if (case_.id === "DELETE-001") {
