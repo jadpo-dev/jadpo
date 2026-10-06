@@ -273,6 +273,14 @@ struct CallableModel {
 }
 
 impl<'project> ArtifactModel<'project> {
+    fn has_persistence_entities(&self) -> bool {
+        // Match the native target's emitted persistence boundary, including
+        // checked entities without the optional normalized dossier model.
+        self.records
+            .values()
+            .any(|record| record.is_persistent_entity())
+    }
+
     fn job_audit_json(&self) -> String {
         let jobs = self.project.syntax.sources.iter().flat_map(|source| {
             source.file.declarations.iter().filter(|declaration| matches!(declaration, Declaration::Job(_))).map(|declaration| {
@@ -1147,7 +1155,7 @@ impl<'project> ArtifactModel<'project> {
                 failure_groups.entry(409).or_default();
             }
             failure_groups.entry(500).or_default();
-            if !self.project.entity_model.entities.is_empty() {
+            if self.has_persistence_entities() {
                 failure_groups.entry(503).or_default();
             }
             for (status, names) in failure_groups {
@@ -1200,7 +1208,7 @@ impl<'project> ArtifactModel<'project> {
                             );
                         }
                         if matches!(status, 500 | 503)
-                            && (status == 500 || !self.project.entity_model.entities.is_empty())
+                            && (status == 500 || self.has_persistence_entities())
                             && contract.public_fields.is_empty()
                             && operational_wire_pairs(status)
                                 .iter()
@@ -1234,7 +1242,7 @@ impl<'project> ArtifactModel<'project> {
                 }));
                 if status == 409 && relationships.may_fail
                     || status == 500
-                    || status == 503 && !self.project.entity_model.entities.is_empty()
+                    || status == 503 && self.has_persistence_entities()
                 {
                     references.push(bun_operational_schema_json(status));
                 }
@@ -1249,7 +1257,7 @@ impl<'project> ArtifactModel<'project> {
                     json_string(&match status {
                         409 if relationships.may_fail => "Bun relationship constraint conflict or declared failure".to_owned(),
                         500 => "Bun operational failure or declared failure; uncertain effects are not automatically retried".to_owned(),
-                        503 if !self.project.entity_model.entities.is_empty() => "Bun storage unavailable or declared failure".to_owned(),
+                        503 if self.has_persistence_entities() => "Bun storage unavailable or declared failure".to_owned(),
                         _ if !native.is_empty() => "Native HTTP boundary failure or declared failure".to_owned(),
                         _ => names.join(" or "),
                     }),

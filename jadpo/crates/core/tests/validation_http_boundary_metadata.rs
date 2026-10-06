@@ -414,3 +414,32 @@ fn operational_codes_bind_static_messages_and_keep_distinct_domain_refs() {
         .iter()
         .any(|f| f["code"] == "internal_fault" && f["message"] == "An internal error occurred."));
 }
+
+#[test]
+fn native_persistence_entities_register_503_without_requiring_a_dossier() {
+    let source = include_str!("../../../../tests/validation/evidence/rm601-operational500503-wire-collision/fixture.jadpo");
+    let bare = source.replace("entity Entry {id:Uuid name:Text unique identity:id persistence {store:primary role:authority}", "entity Entry {id:Uuid identity name:Text unique");
+    let p = clean(&bare);
+    assert!(
+        p.entity_model.entities.is_empty(),
+        "Control must remain outside the optional dossier model"
+    );
+    let (_, api, _) = outputs(Path::new("bare-entity.jadpo"), &p);
+    for path in ["/write", "/read"] {
+        let error = &schema(&api, path, "post", "503")["properties"]["error"];
+        assert_eq!(
+            error["properties"]["code"]["enum"],
+            serde_json::json!(["transaction_unavailable", "read_unavailable"])
+        );
+        assert_eq!(error["oneOf"].as_array().unwrap().len(), 2);
+    }
+    for source in [
+        PUBLIC.to_owned(),
+        PUBLIC.to_owned() + "\nvalue Unstored {id:Uuid}\n",
+    ] {
+        let (_, api, _) = outputs(Path::new("no-persistence.jadpo"), &clean(&source));
+        assert!(api["paths"]["/plain"]["get"]["responses"]
+            .get("503")
+            .is_none());
+    }
+}
