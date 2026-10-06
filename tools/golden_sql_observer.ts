@@ -6,7 +6,7 @@ let driverInitializations = 0;
 export function driverInitializationCount() { return driverInitializations; }
 export const Database: typeof NativeDatabase = new Proxy(NativeDatabase, { construct(target, arguments_) { driverInitializations++; return Reflect.construct(target, arguments_); } });
 
-export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string; maintenanceRowIdentity?: string; relationshipRowIdentity?: string; relationshipOwnerIdentity?: string; reminderRowIdentity?: string };
+export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string; maintenanceRowIdentity?: string; relationshipRowIdentity?: string; relationshipOwnerIdentity?: string; reminderRowIdentity?: string; todoOwnerIdentities?: Record<string, string> };
 let active: StatementObservation[] | undefined;
 let authenticationAttempts = 0;
 let principals: unknown[] = [];
@@ -65,7 +65,8 @@ export function recordStatement(sql: string, parameters: unknown[] = []) {
   const relationshipOwnerIdentity = relationshipInsert && fixtureUuid(parameters[1]) ? parameters[1] : undefined;
   // Capture only the exact native sent-mark source identity, never auth binds.
   const reminderRowIdentity = /^UPDATE "todo" SET "reminder_sent_at" = [?$]1, "updated_at" = [?$]2 WHERE "id" = [?$]3 AND "reminder_sent_at" IS NULL RETURNING \*$/u.test(safe) && typeof parameters[2] === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(parameters[2]) ? parameters[2] : undefined;
-  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters, ...(maintenanceCutoff ? { maintenanceCutoff } : {}), ...(maintenanceRowIdentity ? { maintenanceRowIdentity } : {}), ...(relationshipRowIdentity ? { relationshipRowIdentity } : {}), ...(relationshipOwnerIdentity ? { relationshipOwnerIdentity } : {}), ...(reminderRowIdentity ? { reminderRowIdentity } : {}) });
+  const todoOwnerIdentities = /^SELECT "id" AS "id",.* FROM "todo" WHERE "owner_id" = [?$]1 AND /u.test(safe) ? Object.fromEntries([0, 6].flatMap(index => fixtureUuid(parameters[index]) ? [[String(index + 1), parameters[index]]] : [])) : undefined;
+  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters, ...(maintenanceCutoff ? { maintenanceCutoff } : {}), ...(maintenanceRowIdentity ? { maintenanceRowIdentity } : {}), ...(relationshipRowIdentity ? { relationshipRowIdentity } : {}), ...(relationshipOwnerIdentity ? { relationshipOwnerIdentity } : {}), ...(reminderRowIdentity ? { reminderRowIdentity } : {}), ...(todoOwnerIdentities ? { todoOwnerIdentities } : {}) });
 }
 function observeConnection(connection: any): any {
   return new Proxy(connection, {

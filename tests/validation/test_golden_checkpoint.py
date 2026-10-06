@@ -248,15 +248,17 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 code, body = (status, deepcopy(ready)) if plane == 'deployment' else (200, {'status': 'healthy'}) if path == '/health/live' else (404, {'error': {'code': 'not_found'}})
                 responses.append({'plane': plane, 'path': path, 'origin': 'http://127.0.0.1:'+str(30002 if plane == 'deployment' else 30001), 'method': 'GET', 'status': code, 'body': body})
             phases.append({'label': label, 'at': f'2026-01-15T12:00:{index:02}Z', 'applicationPort': 30001, 'deploymentPort': 30002, 'responses': responses, 'direct': {'callable': 'handleDeploymentRequest', 'path': '/health/ready', 'status': status, 'body': deepcopy(ready)}, 'processExitCalls': [], 'statements': [{'operation': 'PRAGMA', 'sql': 'PRAGMA schema_version'}]})
-        request = {'method': 'GET', 'path': '/todos', 'auth': 'alice-session', 'status': 200, 'authenticationAttempts': 1, 'statements': [{'operation': 'SELECT', 'sql': 'SELECT id FROM todo'}]}
-        return [{'nativeReadiness': {'specification': self.cases['CONFIG-003']['fixture'], 'selectedBackend': 'sqlite', 'deploymentCallable': 'createDeploymentServer', 'hostname': '127.0.0.1', 'applicationPort': 30001, 'deploymentPort': 30002, 'phases': phases, 'healthyControl': deepcopy(request), 'recovery': deepcopy(request), 'outage': {'mode': 'actual separate-connection SQLite exclusive lock', 'lockAcquireStatements': [{'operation': 'BEGIN', 'sql': 'BEGIN EXCLUSIVE'}], 'lockReleaseStatements': [{'operation': 'ROLLBACK', 'sql': 'ROLLBACK'}], 'triggeringRequest': {**request, 'status': 500}}}}]
+        query = 'SELECT "id" AS "id", "title" AS "title", "status" AS "status", "due_at" AS "due_at", "created_at" AS "created_at", "updated_at" AS "updated_at" FROM "todo" WHERE "owner_id" = ?1 AND "deleted_at" IS NULL AND (?2 IS NULL OR "status" = ?2) AND (?3 IS NULL OR "due_at" <= ?3) AND ?4 IS NULL AND ?5 IS NULL AND ("deleted_at" IS NULL) AND (("todo"."owner_id" = ?7)) ORDER BY "created_at" DESC, "id" DESC LIMIT ?6'
+        request = {'method': 'GET', 'path': '/todos', 'requestedPath': '/todos', 'requestJson': None, 'auth': 'alice-session', 'status': 200, 'authenticationAttempts': 1, 'credentialsIssued': 0, 'principals': [{'kind': 'user', 'subject': 'alice', 'authenticationStrength': 'primary', 'values': {'user_id': checkpoint.ALIASES['alice']}}], 'authorityQueries': {'principal': [], 'credential': []}, 'faultConfiguration': {'sessionStorageUnavailable': False}, 'at': phases[0]['at'], 'statements': [{'operation': 'SELECT', 'sql': query, 'numericParameters': {'6': 26}, 'todoOwnerIdentities': {'1': checkpoint.ALIASES['alice'], '7': checkpoint.ALIASES['alice']}}]}
+        phases[2]['statements'] = [{'operation': 'CREATE', 'sql': 'CREATE TABLE IF NOT EXISTS "todo" (id TEXT)'}, {'operation': 'SELECT', 'sql': 'SELECT sessions.id, sessions.data, sessions.revoked FROM "__jadpo_auth_sessions" AS sessions LIMIT 0'}]
+        return [{'nativeReadiness': {'specification': self.cases['CONFIG-003']['fixture'], 'selectedBackend': 'sqlite', 'deploymentCallable': 'createDeploymentServer', 'hostname': '127.0.0.1', 'applicationPort': 30001, 'deploymentPort': 30002, 'phases': phases, 'healthyControl': deepcopy(request), 'recovery': {**deepcopy(request), 'at': phases[2]['at']}, 'outage': {'startedAt': phases[0]['at'], 'restoredAt': phases[1]['at'], 'mode': 'actual separate-connection SQLite exclusive lock', 'lockAcquireStatements': [{'operation': 'BEGIN', 'sql': 'BEGIN EXCLUSIVE'}], 'lockReleaseStatements': [{'operation': 'ROLLBACK', 'sql': 'ROLLBACK'}], 'triggeringRequest': {**request, 'status': 500}}}}]
 
     def preflight_raw(self, case_id):
         case = self.cases[case_id]
         fields = [{'configuration': 'TodoConfiguration', 'name': name, 'binding': binding} for name, binding in [('mail_api_key', 'MAIL_API_KEY'), ('database_url', 'DATABASE_URL'), ('oidc_issuer', 'OIDC_ISSUER')]]
         diagnostics = [{'schemaVersion': 1, 'kind': 'configuration_diagnostic', 'code': 'config_required' if value == '<missing>' else 'config_invalid', 'declaration': 'TodoConfiguration.'+binding.lower()} for binding, value in reversed(list(case['environment'].items()))]
         observer = {'kind': 'checkpoint_startup_observation', 'exitCode': 1, 'listenerStarts': 0, 'listenerAttempts': 0, 'driverInitializations': 0}
-        original = {'label': 'original_environment', 'originalEnvironment': case['environment'], 'exitCode': 1, 'jsonEvents': [observer, *diagnostics, {'kind': 'operational_log_event', 'classification': 'RUNTIME_STARTUP_FAILED', 'sourceRevision': 'synthetic_revision', 'attributes': {}}], 'outputSha256': 'a'*64, 'outputBytes': 100, 'credentialTextDisclosed': False}
+        original = {'label': 'original_environment', 'originalEnvironment': case['environment'], 'exitCode': 1, 'jsonEvents': [observer, *diagnostics, {'schemaVersion': 1, 'kind': 'operational_log_event', 'eventName': 'operation.failed', 'classification': 'RUNTIME_STARTUP_FAILED', 'requestId': 'startup', 'traceId': None, 'semanticOperationId': 'runtime:start', 'sourceRevision': 'synthetic_revision', 'attributes': {}}], 'outputSha256': 'a'*64, 'outputBytes': 100, 'credentialTextDisclosed': False}
         healthy = {'label': 'healthy_control', 'originalEnvironment': {}, 'exitCode': 1, 'jsonEvents': [{**observer, 'driverInitializations': 1}], 'outputSha256': 'b'*64, 'outputBytes': 200, 'credentialTextDisclosed': False}
         return [{'nativeStartup': {'specification': case['environment'], 'selectedBackend': 'sqlite', 'sourceRevision': 'synthetic_revision', 'configurationMetadata': {'fields': fields}, 'probes': [healthy, original]}}]
 
@@ -331,7 +333,13 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 if result['id'] in ('CONFIG-001', 'CONFIG-002'): result['raw'][0]['nativeStartup']['selectedBackend'] = output['backend']
                 if result['id'] == 'CONFIG-003':
                     capture = result['raw'][0]['nativeReadiness']; capture['selectedBackend'] = output['backend']
-                    if output['backend'] == 'postgres': capture['outage'].update(mode='actual isolated PostgreSQL stopped', stoppedCode=0, restartedCode=0)
+                    if output['backend'] == 'postgres':
+                        capture['outage'].update(mode='actual isolated PostgreSQL stopped', stoppedCode=0, restartedCode=0)
+                        for phase in capture['phases'][:2]: phase['statements'] = [{'operation': 'SELECT', 'sql': 'SELECT 1'}]
+                        for request in (capture['healthyControl'], capture['recovery'], capture['outage']['triggeringRequest']):
+                            sql = request['statements'][0]['sql']
+                            for index in range(1, 8): sql = sql.replace('?'+str(index), '$'+str(index)+('::TEXT' if index == 2 else '::TIMESTAMPTZ(3)' if index == 3 else '::text' if index in (4, 5) else ''))
+                            request['statements'][0]['sql'] = sql
         return outputs
 
     def test_all_inventory_entries_retained_and_selected_observations_do_not_infer_pass(self):
@@ -918,6 +926,44 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 self.assertTrue(harness.assess(self.cases[case_id], checkpoint.observations(self.cases[case_id], raw)))
         outputs = self.outputs(); next(item for item in outputs[0]['results'] if item['id'] == 'CONFIG-001')['raw'][0]['nativeStartup']['selectedBackend'] = 'postgres'
         with self.assertRaisesRegex(ValueError, 'adapter lineage'): checkpoint.apply_checkpoint(harness.run_cases(self.root), outputs, self.root)
+
+    def test_preflight_retained_events_are_closed_and_cannot_hide_disclosure(self):
+        for case_id in ('CONFIG-001', 'CONFIG-002'):
+            for mutation in ('negative_bytes', 'empty_bytes', 'fault_secret', 'observer_secret', 'foreign_event', 'healthy_secret', 'fault_request', 'fault_operation', 'boolean_schema'):
+                raw = self.preflight_raw(case_id); cap = raw[0]['nativeStartup']; probe = cap['probes'][1]
+                fault = next(event for event in probe['jsonEvents'] if event['kind'] == 'operational_log_event')
+                if mutation == 'negative_bytes': probe['outputBytes'] = -1
+                elif mutation == 'empty_bytes': probe['outputBytes'] = 0
+                elif mutation == 'fault_secret': fault['credential'] = 'private-canary'
+                elif mutation == 'observer_secret': probe['jsonEvents'][0]['credential'] = 'private-canary'
+                elif mutation == 'foreign_event': probe['jsonEvents'].append({'kind': 'foreign', 'credential': 'private-canary'})
+                elif mutation == 'healthy_secret': cap['probes'][0]['jsonEvents'][0]['credential'] = 'private-canary'
+                elif mutation == 'fault_request': fault['requestId'] = 'private-canary'
+                elif mutation == 'fault_operation': fault['semanticOperationId'] = 'private-canary'
+                else: fault['schemaVersion'] = True
+                with self.subTest(case=case_id, mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases[case_id], raw)
+
+    def test_readiness_native_business_query_principal_and_causal_timeline_are_required(self):
+        for mutation in ('healthy_query', 'recovery_query', 'foreign_probe', 'outage_queries', 'outage_route', 'outage_auth_fault', 'healthy_principal', 'recovery_principal', 'outage_principal', 'outage_time', 'healthy_time', 'recovery_time', 'owner_bind', 'broad_query', 'placeholder', 'duplicate_query', 'restoration_time', 'recovery_initialization'):
+            raw = self.readiness_raw(); cap = raw[0]['nativeReadiness']; outage = cap['outage']['triggeringRequest']
+            if mutation in ('healthy_query', 'recovery_query'): cap['healthyControl' if mutation == 'healthy_query' else 'recovery']['statements'][0]['sql'] = 'SELECT 1'
+            elif mutation == 'foreign_probe': cap['phases'][1]['statements'][0].update(operation='SELECT', sql='SELECT 1 FROM foreign_fixture')
+            elif mutation == 'outage_queries': outage['statements'] = []
+            elif mutation == 'outage_route': outage.update(method='POST', path='/auth/exchange', principals=[], statements=[])
+            elif mutation == 'outage_auth_fault': outage['faultConfiguration']['sessionStorageUnavailable'] = True
+            elif mutation in ('healthy_principal', 'recovery_principal', 'outage_principal'):
+                request = cap['healthyControl'] if mutation == 'healthy_principal' else cap['recovery'] if mutation == 'recovery_principal' else outage
+                request['principals'][0]['subject'] = 'bob'
+            elif mutation == 'outage_time': outage['at'] = '2026-01-15T12:01:00Z'
+            elif mutation == 'healthy_time': cap['healthyControl']['at'] = cap['phases'][2]['at']
+            elif mutation == 'recovery_time': cap['recovery']['at'] = cap['phases'][0]['at']
+            elif mutation == 'owner_bind': outage['statements'][0]['todoOwnerIdentities']['7'] = checkpoint.ALIASES['bob']
+            elif mutation == 'broad_query': outage['statements'][0]['sql'] += ' OR 1=1'
+            elif mutation == 'placeholder': outage['statements'][0]['sql'] = outage['statements'][0]['sql'].replace('?7', '?8')
+            elif mutation == 'duplicate_query': outage['statements'].append(deepcopy(outage['statements'][0]))
+            elif mutation == 'restoration_time': cap['outage']['restoredAt'] = cap['phases'][0]['at']
+            else: cap['phases'][2]['statements'] = [{'operation': 'SELECT', 'sql': 'SELECT 1'}]
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['CONFIG-003'], raw)
 
     def test_readiness_case_requires_real_distinct_listeners_outage_recovery_and_liveness_controls(self):
         case = self.cases['CONFIG-003']
