@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-109-e93508ccd171", "task_id": "RM-109", "actor": "golden-native-safe-boundary", "actor_kind": "agent", "category": "slice", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T09:14:27.548147+00:00", "phase": "planning"}
+{"at": "2026-10-06T09:20:56.847493+00:00", "phase": "paused", "note": "Preserving BOUNDARY WIP and initial native red while correcting independently identified CONFIG advisory disclosure."}
