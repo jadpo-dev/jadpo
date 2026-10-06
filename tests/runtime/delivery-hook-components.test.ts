@@ -548,7 +548,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       // A separate connection observes both durable commits before HTTP.
       const activation = (await activationRows())[0];
       const claim = (await rows('SELECT possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
-      calls.push({ body, page: JSON.parse(activation.page), possibleDispatch: Number(claim.possible_dispatch) });
+      calls.push({ body, page: JSON.parse(activation.page), possibleDispatch: Number(claim.possible_dispatch), scheduledFor: activation.scheduled_for, operationTime: activation.operation_time });
       if (onCall) { const response = await onCall(); if (response instanceof Response) return response; }
       return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
     } });
@@ -569,9 +569,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     return present ? intentRows(id) : [];
   }
   const goldenProfiles = { activation: { executionMs: 60_000, leaseMs: 40_000 }, delivery: { executionMs: 60_000, leaseMs: 40_000 } };
-  function worker(f: Awaited<ReturnType<typeof fixture>>, endpoint: string, body: string, profiles = { activation: profile, delivery: profile }) {
+  function worker(f: Awaited<ReturnType<typeof fixture>>, endpoint: string, body: string, profiles = { activation: profile, delivery: profile }, timeZone?: string) {
     const code = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});adapter.setReferenceMailEndpointForTesting(${JSON.stringify(endpoint)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const binding=${JSON.stringify(bindingIdentity)},profile=${JSON.stringify(profiles.activation)},deliveryProfile=${JSON.stringify(profiles.delivery)},at=${JSON.stringify(scanTime)};${body}`;
-    const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", code], { env: { ...Bun.env, NODE_ENV: "test", DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", code], { env: { ...Bun.env, ...(timeZone ? { TZ: timeZone } : {}), NODE_ENV: "test", DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
     const done = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
     return { child, done };
   }
@@ -963,6 +963,146 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(await activationRows()).toEqual([]); expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
     });
   });
+
+  test.skipIf(!sql)("native PostgreSQL schema try-admission refuses an occupied transaction guard with bounded no-commit evidence, then fresh generated migration recovers", async () => {
+    const f = await fixture(); const old = await rows('SELECT binding,lease_ms FROM "__jadpo_delivery_activations_v1"');
+    await rows('ALTER TABLE "__jadpo_delivery_activations_v1" DROP COLUMN lease_ms');
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; }), released = new Promise<void>(resolve => { release = resolve; });
+    const held = sql!.begin(async tx => { await tx.unsafe('SELECT pg_advisory_xact_lock(1245791312, 1145392214)'); enter(); await released; });
+    try {
+      await entered; const source = await stored(f.value.id);
+      await provider(async (calls, endpoint) => {
+        const refusing = worker(f, endpoint, 'const began=performance.now();try{await app.runDeliveryScheduleActivation(binding,proof,profile,deliveryProfile,at);throw Error("occupied guard accepted");}catch(error){if(error.operation!=="delivery.schema.admission")throw error;console.log(JSON.stringify({operation:error.operation,evidence:error.transaction,elapsed:performance.now()-began}));}process.exit(0);', goldenProfiles);
+        const refused = await result(refusing); expect(refused.operation).toBe("delivery.schema.admission");
+        expect(refused.evidence).toMatchObject({ phase: "statement", outcome: "no_commit", retryableCause: "delivery_schema_busy", rollbackProven: true, commitAcknowledged: false });
+        expect(refused.elapsed < 1000).toBe(true); expect(calls).toHaveLength(0); expect(await stored(f.value.id)).toEqual(source);
+        expect(await enrollmentRowsIfPresent(f.value.id)).toEqual([]); expect(await activationRows()).toEqual([]);
+        release(); await held;
+        const marker = join(root, `schema-committed-${crypto.randomUUID()}`);
+        const recovered = worker(f, endpoint, `const completed=await app.runDeliveryScheduleActivation(binding,proof,profile,deliveryProfile,at);await Bun.write(${JSON.stringify(marker)},JSON.stringify(completed));await Bun.stdin.stream().getReader().read();console.log(JSON.stringify(completed));process.exit(0);`, goldenProfiles);
+        try {
+          expect(await ready(marker)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+          expect(await sql!.begin(async tx => (await tx.unsafe('SELECT pg_try_advisory_xact_lock(1245791312, 1145392214) AS acquired'))[0].acquired)).toBe(true);
+          recovered.child.stdin.write("exit\n"); expect((await result(recovered)).status).toBe("finished");
+          expect(calls).toHaveLength(1); expect(Number((await activationRows())[0].interval_ms)).toBe(900_000);
+        } finally { recovered.child.kill(); await recovered.done; }
+        const forged = worker(f, endpoint, `const {PersistenceFault}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});let attempts=0;try{await persistence.transaction(async()=>{attempts++;throw new PersistenceFault("delivery.schema.admission","driver",Object.assign(new Error("fake schema busy"),{code:"JADPO_DELIVERY_SCHEMA_BUSY"}));},{replayable:true,operationId:"forged-schema-busy",operation:"test.forged_schema",startedAt:performance.now(),signal:null});}catch(error){console.log(JSON.stringify({attempts,evidence:error.transaction}));}process.exit(0);`, goldenProfiles);
+        const spoofed = await result(forged); expect(spoofed.attempts).toBe(1); expect(spoofed.evidence.retryableCause).toBeNull(); expect(calls).toHaveLength(1);
+      });
+    } finally {
+      release(); await held;
+      // Restore other disposable fixture rows' retained immutable durations;
+      // the native migration never invents authority for legacy active rows.
+      await rows('ALTER TABLE "__jadpo_delivery_activations_v1" ADD COLUMN IF NOT EXISTS lease_ms BIGINT CHECK (lease_ms > 0)');
+      for (const row of old) await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_ms=$1 WHERE binding=$2', [row.lease_ms, row.binding]);
+    }
+  });
+  test("ASYNC-DUPLICATE-ENQUEUE: two fresh generated processes race the same source revision and retain one original payload", async () => {
+    const f = await fixture();
+    await provider(async (calls, endpoint) => {
+      const markers = [join(root, `duplicate-a-${crypto.randomUUID()}`), join(root, `duplicate-b-${crypto.randomUUID()}`)];
+      const body = (marker: string) => `await Bun.write(${JSON.stringify(marker)},JSON.stringify({ready:true}));await Bun.stdin.stream().getReader().read();const started=performance.now(),deadline=started+profile.executionMs;const page=await persistence.withDeadline(deadline).withOperationTime(at).transaction(tx=>tx.select_delivery_intents(binding,proof),{replayable:true,operationId:"duplicate-enqueue",operation:"test.closed_delivery_selection",startedAt:started,deadlineAt:deadline,signal:null,refreshOperationTime:()=>at});console.log(JSON.stringify(page));process.exit(0);`;
+      const first = worker(f, endpoint, body(markers[0]), goldenProfiles);
+      let second: ReturnType<typeof worker> | undefined;
+      try {
+        await ready(markers[0]);
+        second = worker(f, endpoint, body(markers[1]), goldenProfiles);
+        await ready(markers[1]); first.child.stdin.write("go\n"); second.child.stdin.write("go\n");
+        const [a, b] = await Promise.all([result(first), result(second)]); expect(a.intents).toHaveLength(1); expect(b.intents).toHaveLength(1);
+        expect(a.intents[0].intentId).toBe(b.intents[0].intentId); expect(a.intents[0].payload).toEqual(b.intents[0].payload);
+        expect(await intentRows(f.value.id)).toHaveLength(1); expect(await revision(f.value.id)).toBe("1"); expect(calls).toHaveLength(0);
+        expect((await persistence.read_delivery_intent(a.intents[0].intentId)).payload).toEqual(a.intents[0].payload);
+        expect((await runWorker(f, endpoint, goldenProfiles)).attempted).toBe(1); expect(calls).toHaveLength(1);
+        expect(calls[0].body.idempotency_key).toBe(a.intents[0].intentId); expect(calls[0].body).toEqual(a.intents[0].payload);
+      } catch (error) {
+        first.child.kill(); second?.child.kill(); const outputs = await Promise.all([first.done, ...(second ? [second.done] : [])]);
+        throw new Error(`${String(error)}\n${outputs.map(output => output[1]).join("\n")}`, { cause: error });
+      } finally { first.child.kill(); second?.child.kill(); await Promise.all([first.done, ...(second ? [second.done] : [])]); }
+    });
+  }, 30_000);
+  test("ASYNC-PER-KEY-ORDER: an adapter-proven unknown K blocks newer K while a fresh generated worker completes independent J", async () => {
+    const f = await fixture(); let attempts = 0;
+    await provider(async (calls, endpoint) => {
+      expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("finished");
+      const old = await persistence.read_delivery_intent(calls[0].body.idempotency_key); expect(old.state).toBe("outcome_unknown");
+      await patch(f.value.id, { due_at: dueB }); const independent = todo(); await client.create_Todo(independent);
+      const page = await scan(f.proof), later = page.intents.find((intent: any) => intent.sourceEntityId === f.value.id);
+      expect(later.intentId).not.toBe(old.intentId); expect(later.orderingKey).toBe(old.orderingKey);
+      await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, "2026-10-08T08:16:00.000Z"));
+      expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("finished"); expect(calls).toHaveLength(2);
+      expect(calls[1].body.idempotency_key).not.toBe(later.intentId); expect(calls[1].body.idempotency_key).not.toBe(old.intentId);
+      expect((await stored(independent.id))[0].reminder_sent_at).not.toBeNull(); expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+      expect(await persistence.read_delivery_intent(old.intentId)).toEqual(old); expect((await persistence.read_delivery_intent(later.intentId)).state).toBe("pending");
+      expect(await rows('SELECT intent_id FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [later.intentId])).toEqual([]);
+    }, async () => { if (++attempts === 1) return Response.json({ accepted_at: instant }, { status: 202 }); });
+  });
+  test("ASYNC-KEY-RELEASE-AFTER-KNOWN-TERMINAL: success cancellation and listed no-effect failure release K without rewriting earlier history", async () => {
+    for (const terminal of ["succeeded", "cancelled", "failed"]) {
+      const f = await fixture(), prior = (await scan(f.proof)).intents[0]; let attempts = 0;
+      await provider(async (calls, endpoint) => {
+        if (terminal === "cancelled") expect(await persistence.transaction((tx: any) => tx.cancel_delivery_intent(prior.intentId))).toBe("cancelled");
+        else expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("finished");
+        const history = await persistence.read_delivery_intent(prior.intentId); expect(history.state).toBe(terminal);
+        const claimHistory = await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [prior.intentId]);
+        await patch(f.value.id, { due_at: dueB }); const next = (await scan(f.proof)).intents[0]; expect(next.intentId).not.toBe(prior.intentId); expect(next.orderingKey).toBe(prior.orderingKey);
+        await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, "2026-10-08T08:16:00.000Z"));
+        expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("finished");
+        expect(calls.at(-1).body.idempotency_key).toBe(next.intentId); expect((await persistence.read_delivery_intent(next.intentId)).state).toBe("succeeded");
+        expect(await persistence.read_delivery_intent(prior.intentId)).toEqual(history);
+        expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [prior.intentId])).toEqual(claimHistory);
+      }, async () => { if (terminal === "failed" && ++attempts === 1) return Response.json({ code: "invalid_recipient" }, { status: 400 }); });
+    }
+  });
+  test("ASYNC-COALESCE-DOWNTIME: fresh generated worker resumes one latest UTC occurrence after many missed ticks", async () => {
+    const f = await fixture();
+    await provider(async (calls, endpoint) => {
+      const down = worker(f, endpoint, 'for(const t of ["2026-10-08T05:02:00.000Z","2026-10-08T07:16:00.000Z","2026-10-08T08:07:33.000Z"]){await persistence.transaction(tx=>tx.tick_delivery_schedule(binding,900000,t));}console.log(JSON.stringify({done:true}));process.exit(0);', goldenProfiles);
+      expect(await result(down)).toEqual({ done: true }); expect(calls).toHaveLength(0);
+      expect(await activationRows()).toHaveLength(1); expect((await activationRows())[0].pending_for).toBe("2026-10-08T08:00:00.000Z");
+      const resumed = worker(f, endpoint, 'console.log(JSON.stringify(await app.runDeliveryScheduleActivation(binding,proof,profile,deliveryProfile,"2026-10-08T08:08:44.000Z")));process.exit(0);', goldenProfiles);
+      expect(await result(resumed)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1); expect(calls[0].scheduledFor).toBe("2026-10-08T08:00:00.000Z"); expect(calls[0].operationTime).toBe("2026-10-08T08:08:44.000Z");
+      expect(String((await activationRows())[0].generation)).toBe("1"); expect((await activationRows())[0].pending_for).toBeNull();
+      expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("idle"); expect(calls).toHaveLength(1);
+    });
+  });
+  test("ASYNC-COALESCE-OVERLAP: repeated fresh-process ticks retain one latest follow-up while the singleton provider is in flight", async () => {
+    const f = await fixture(); let enter!: () => void, release!: () => void, attempt = 0;
+    const entered = new Promise<void>(resolve => { enter = resolve; }), released = new Promise<void>(resolve => { release = resolve; });
+    await provider(async (calls, endpoint) => {
+      const first = worker(f, endpoint, 'console.log(JSON.stringify(await app.runDeliveryScheduleActivation(binding,proof,profile,deliveryProfile,at)));process.exit(0);', goldenProfiles);
+      try {
+        await entered; const initial = (await activationRows())[0], independent = todo(); await client.create_Todo(independent);
+        const ticks = worker(f, endpoint, 'for(const t of ["2026-10-08T08:16:00.000Z","2026-10-08T08:31:00.000Z","2026-10-08T08:46:00.000Z","2026-10-08T08:48:00.000Z","2026-10-08T08:16:00.000Z"]){await persistence.transaction(tx=>tx.tick_delivery_schedule(binding,900000,t));}console.log(JSON.stringify({done:true}));process.exit(0);', goldenProfiles);
+        expect(await result(ticks)).toEqual({ done: true }); const running = (await activationRows())[0];
+        expect(await activationRows()).toHaveLength(1); expect(running.pending_for).toBe("2026-10-08T08:45:00.000Z");
+        for (const field of ["activation_id", "generation", "scheduled_for", "operation_time", "execution_deadline", "page"]) expect(running[field]).toBe(initial[field]);
+        expect((await runWorker(f, endpoint, goldenProfiles)).status).toBe("idle"); expect(calls).toHaveLength(1);
+        release(); expect((await result(first)).status).toBe("finished"); expect((await activationRows())[0].pending_for).toBe("2026-10-08T08:45:00.000Z");
+        const next = worker(f, endpoint, 'console.log(JSON.stringify(await app.runDeliveryScheduleActivation(binding,proof,profile,deliveryProfile,"2026-10-08T08:48:59.000Z")));process.exit(0);', goldenProfiles);
+        expect(await result(next)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+        expect(calls).toHaveLength(2); expect(calls[1].scheduledFor).toBe("2026-10-08T08:45:00.000Z"); expect(calls[1].operationTime).toBe("2026-10-08T08:48:59.000Z");
+        expect(String((await activationRows())[0].generation)).toBe("2"); expect((await activationRows())[0].pending_for).toBeNull();
+      } finally { release(); first.child.kill(); await first.done; }
+    }, async () => { if (++attempt === 1) { enter(); await released; } });
+  }, 30_000);
+  test("ASYNC-UTC-INTERVAL: real Europe/London child offsets cross DST while scheduled occurrences stay fifteen UTC minutes apart", async () => {
+    const f = await fixture(); await patch(f.value.id, { due_at: "2026-03-28T00:00:00.000Z" });
+    await provider(async (calls, endpoint) => {
+      const body = (at: string) => `const when=${JSON.stringify(at)};const outcome=await app.runDeliveryScheduleActivation(binding,proof,profile,deliveryProfile,when);console.log(JSON.stringify({offset:new Date(when).getTimezoneOffset(),outcome}));process.exit(0);`;
+      const before = await result(worker(f, endpoint, body("2026-03-29T00:59:30.000Z"), goldenProfiles, "Europe/London"));
+      expect(before.offset).toBe(0); expect(before.outcome.status).toBe("finished");
+      const independent = { ...todo(), due_at: "2026-03-28T00:00:00.000Z" }; await client.create_Todo(independent);
+      const after = await result(worker(f, endpoint, body("2026-03-29T01:14:30.000Z"), goldenProfiles, "Europe/London"));
+      expect(after.offset).toBe(-60); expect(after.outcome.status).toBe("finished"); expect(calls).toHaveLength(2);
+      expect(calls[0].scheduledFor).toBe("2026-03-29T00:45:00.000Z"); expect(calls[1].scheduledFor).toBe("2026-03-29T01:00:00.000Z");
+      expect(Date.parse(calls[1].scheduledFor) - Date.parse(calls[0].scheduledFor)).toBe(900_000);
+      expect(calls[0].operationTime).toBe("2026-03-29T00:59:30.000Z"); expect(calls[1].operationTime).toBe("2026-03-29T01:14:30.000Z");
+      expect(String((await activationRows())[0].generation)).toBe("2");
+    });
+  });
+
 });
 
 describe(`committed admission and adapter-origin outcome components (${sql ? "postgres" : "sqlite"})`, () => {

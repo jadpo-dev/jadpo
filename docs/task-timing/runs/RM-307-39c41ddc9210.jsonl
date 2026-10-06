@@ -1,0 +1,7 @@
+{"schema_version": 1, "run_id": "RM-307-39c41ddc9210", "task_id": "RM-307", "actor": "golden-worker-loop", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T06:53:10.734406+00:00", "phase": "planning"}
+{"at": "2026-10-06T06:56:56.264234+00:00", "phase": "verification", "note": "Six frozen ordering/scheduling IDs through separate canonical generated processes and reference provider"}
+{"at": "2026-10-06T07:03:01.264982+00:00", "phase": "implementation", "note": "First-use PostgreSQL catalogue race and safe SQLite busy refusal require bounded native schema admission and closed staging replay; preserve initial reds"}
+{"at": "2026-10-06T07:05:46.245300+00:00", "phase": "verification", "note": "Bounded schema admission, closed-only staging replay and six traces; forced held-guard migration control before broad tests"}
+{"at": "2026-10-06T07:16:57.573914+00:00", "phase": "blocked", "note": "Priority parent-requested canonical fixture copy repair; runtime candidate remains isolated awaiting final rerun"}
+{"at": "2026-10-06T07:19:17.452993+00:00", "phase": "verification", "note": "Resuming native schema race candidate after independent fixture repair commit; final cross-process bootstrap readiness sequencing and retained stderr diagnostics"}
+{"at": "2026-10-06T07:20:20.335219+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm307-ordering-scheduling/manifest.json"}

@@ -39,7 +39,12 @@ impl TargetGenerator<'_> {
         line(output, "  }");
         line(output, "  const started = performance.now();");
         line(output, "  const readCursor = (value: unknown) => { const cursor = validateDeliverySelectionCursor(binding, value); if (Date.parse(cursor.dueAt) >= Date.parse(cursor.operationTime)) invalid(\"delivery.cursor\", \"coordinates before their recorded selection snapshot\"); return cursor; };");
-        line(output, "  const staged = await rootPersistence.withOperationTime(operationTime).transaction(async (tx: any) => {");
+        // This closed callback contains authority reads and source/outbox/page
+        // writes only. The existing bounded proven-no-commit retry policy may
+        // restart it; every attempt rechecks live issuer/membership and no
+        // provider capability exists before acknowledged owning COMMIT.
+        line(output, "  const stagingDeadlineAt = started + activationProfile.executionMs;");
+        line(output, "  const staged = await rootPersistence.withDeadline(stagingDeadlineAt).withOperationTime(operationTime).transaction(async (tx: any) => {");
         line(
             output,
             "    await tx.tick_delivery_schedule(binding, intervalMs, operationTime);",
@@ -68,7 +73,7 @@ impl TargetGenerator<'_> {
         );
         line(output, "    readCurrentDeliveryCredentialProof(proof);");
         line(output, "    return Object.freeze({ handle, page, remainingMs: Math.min(Date.parse(handle.leaseUntil), Date.parse(handle.executionDeadline)) - Date.parse(clocks), executionRemainingMs: Date.parse(handle.executionDeadline) - Date.parse(clocks) });");
-        line(output, "  });");
+        line(output, "  }, { replayable: true, operationId: crypto.randomUUID(), operation: `${binding}.activation_stage`, startedAt: started, deadlineAt: stagingDeadlineAt, signal: null });");
         // Owning COMMIT acknowledgement precedes every invocation/HTTP call.
         // A slow commit is charged in full against the database-time remainder.
         line(output, "  if (staged === null) return Object.freeze({ status: \"idle\", selected: 0, attempted: 0, continued: false });");
