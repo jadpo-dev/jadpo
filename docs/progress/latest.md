@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T11:18:47+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T12:00:11+01:00 · figures reflect the recorded roadmap.
 
-The supporting golden Todo harness has independent coverage of 43 original cases on both databases. The final ownership-refusal case and technical acceptance prerequisites continue in the parallel loop.
+All 44 original golden Todo cases now have independent supporting observations on both databases: 88 passed. Required artifact agreement and technical acceptance prerequisites continue in the parallel delivery loop.
 
 ## At a glance
 
@@ -11,24 +11,18 @@ The supporting golden Todo harness has independent coverage of 43 original cases
 | Completed since task-ID tracking began | 19 |
 | Remaining open tasks | 84 |
 | Of those, conditional / not activated | 28 |
-| In progress | 10 |
+| In progress | 11 |
 | Marked ready for work | 4 |
-| Queued behind dependencies | 19 |
+| Queued behind dependencies | 18 |
 | Decision / blocked / external / review | 23 |
 
 Completed counts cover the reorganised roadmap, not all earlier development. Older capabilities are in the history; there is no reliable whole-project percentage.
 
 ## Delivered
 
-- Fresh combined source68503c0 passes73/73 supported checks and84/0/4 supporting entries for42 independently reviewed original IDs; four entries remain unexecuted. All original verifier findings and both integration failures remain retained. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
-- All eighteen frozen native recovery traces now have scoped component evidence, including bounded scheduling and privileged replay with current-owner and durable no-effect checks. Whole-task integration gates remain open. [Operator review](../../tests/validation/rm307-independent-native-operator-review.json).
-- Separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan are approved. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06).
-- Native deployment readiness is independently approved on a separate explicit loopback listener, with preserved liveness and real outage/recovery. Checked static job audit now agrees with native lowering without claiming runtime certification. [Readiness review](../../tests/validation/rm403-independent-deployment-readiness-review.json).
-- Aggregate recovery advisory cancellation independently passes SQLite21/944, PostgreSQL25/4971 and12 emitted-module controls; actual native locking retains one owner and late results cannot publish. Hard native lifetime/startup bounds remain open. [Review](../../tests/validation/rm403-independent-recovery-cancellation-review.json).
-- Native provider-fault envelopes independently pass typed, extra-field, HTML and null reply controls, with real durable unknown/no-resend state and matching generated request IDs. Exact BOUNDARY-001 collector integration remains next. [Review](../../tests/validation/rm109-independent-native-job-safe-boundary-review.json).
-- CONFIG-001–003 advisory/causal/nondisclosure corrections independently approved; guarded private retry-authority hook independently passes actual SQLite/PostgreSQL controls with unchanged public eligibility. [Retry review](../../tests/validation/rm402-independent-private-retry-authority-hook-review.json).
-- Current-source BOUNDARY-001 corrective review passed86/0/2 and156 raw-evidence mutation refusals/sixcontrols. Initial-only PostgreSQL10s schema/authority budget and concurrent admission independently approved; hard acquisition/setup/COMMIT/SQLite lifetime remains open. [Boundary review](../../tests/validation/rm109-independent-native-safe-boundary-correction-review.json).
-- Current local executable/native ICU/timezone/JWT observation independently approved with one unchanged native control and18 refusals; full RM504 and rule-byte qualification remain open. [Review](../../tests/validation/rm504-independent-local-runtime-provenance-review.json).
+- Fresh independent native collection passes88/0/0 across44 original IDs,94 scenarios and100 steps;101 protocol checks pass and24 coherently rebound evidence controls are refused. These are supporting observations, with final golden acceptance open. [Review](../../tests/validation/rm109-independent-complete44-review.json).
+- Exact protected owner-change refusal and native relationship-conflict artifact metadata have scoped independent approval; aliases remain unverified and no protected release authority is granted. [Current checkpoint](../work-plans/golden-delivery-planning.md#exact-protected-owner-change-artifact-review).
+- Local runtime/ICU/JWT provenance has independent controls and an exact complete44 remeasurement. Database/native rule-byte and cross-host qualification remain open. [Provenance review](../../tests/validation/rm504-independent-local-runtime-provenance-review.json).
 
 ## Since the previous report
 
@@ -62,7 +56,7 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Combined e88ca29 gate reached61 passing checks then one PostgreSQL proxy-targeting fixture failure; deterministic startup/business arming correction is underway with original red retained. Independently review emitted REL-003 refusal artifact, native relationship artifact parity and remaining acceptance prerequisites. Canonical database transport awaits its pending contract decision.
+Reconcile16 actual HTTP authentication/parser responses with native route/OpenAPI/failure artifacts, independently review private authenticated retries and local approval verification, then run fresh combined exact-source supported verification. Native lifetime and canonical database transport gates remain open.
 
 ## Input needed
 

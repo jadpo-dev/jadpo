@@ -338,3 +338,24 @@ for replay eligibility rather than establishing broad safe-default support.
 Durable outbox/compiler binding and whole-task conformance remain open. These
 limits preserve the owner's cooperative deadline decision; no universal response
 latency or exactly-once effect guarantee is claimed.
+
+
+### RM-402 private authenticated HTTP prerequisite review — 2026-10-06
+
+The [independent native review](../tests/validation/rm402-independent-private-http-review.json)
+approves the inert candidate and private conformance slices `f273727`, `564270e`
+and `fce6f5d`. Public protected-route admission remains literal false, and explicit
+callable policy remains excluded. The ordinary repeatability path preserves its
+prior behavior; the private path additionally excludes create/default identity
+and unproved transitive effects.
+
+Fresh exact generated bodies are exercised through real HTTP with only the private
+admission bit changed: SQLite seven controls/121 assertions and PostgreSQL eight/154
+pass. Native aborted transactions retry current valid PATCH/DELETE once; disabled,
+revoked or rebound authority refuses subsequent mutation, and a soft-deleted row
+stays concealed. Three-attempt exhaustion and the original cumulative one-second
+retry budget retain source, schedule and immutable previous intent. The awaited
+authority-lock elapsed-budget control is PostgreSQL-only. A checked worker cancels
+stale prior intent before claim. All 105 core tests pass; original reviewer setup
+errors remain retained. Native HTTP disconnect/unknown COMMIT and whole accepted
+RM-402 gates remain open; this does not activate public authenticated retry.

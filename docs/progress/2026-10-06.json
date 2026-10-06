@@ -575,7 +575,7 @@
       "id": "RM-603",
       "epic": "E06",
       "description": "Implement and locally test attestation validation bound to policy/graph digest, reviewer authority, versions and expiry; reject missing, stale, replayed, forged and scope-mismatched approvals.",
-      "state": "queued",
+      "state": "in progress",
       "depends_on": "RM-601",
       "estimate": "1\u20134h (L)",
       "hours": [
@@ -1131,30 +1131,24 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T11:18:47+01:00",
+  "captured_at": "2026-10-06T12:00:11+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "0b74db6f7eae04afb97431c5b9b8d0616c5ef3933aa6350717af691301b355c4",
+    "docs/implementation-roadmap.md": "9a748d1aed6e9391cbea3059f607141fcaedeeac457e4f7de97ff61abf0aa342",
     "docs/implementation-history.md": "3719a84aae5f217b59f3196b2fb757b3b3d632f24a3e2d3da00f0092545db4f6",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "01bd06bf4698a0ca2d75b6c94dd89401e0518cacd486ff573de077e22e0d2228",
+    "docs/work-plans/golden-delivery-planning.md": "75d9df125494e64a3fadc7e25d326c941739af52d419aa11c798331cf040cd7f",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "The supporting golden Todo harness has independent coverage of 43 original cases on both databases. The final ownership-refusal case and technical acceptance prerequisites continue in the parallel loop.",
+    "summary": "All 44 original golden Todo cases now have independent supporting observations on both databases: 88 passed. Required artifact agreement and technical acceptance prerequisites continue in the parallel delivery loop.",
     "delivered": [
-      "Fresh combined source68503c0 passes73/73 supported checks and84/0/4 supporting entries for42 independently reviewed original IDs; four entries remain unexecuted. All original verifier findings and both integration failures remain retained. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).",
-      "All eighteen frozen native recovery traces now have scoped component evidence, including bounded scheduling and privileged replay with current-owner and durable no-effect checks. Whole-task integration gates remain open. [Operator review](../../tests/validation/rm307-independent-native-operator-review.json).",
-      "Separate 60-second execution / renewable 40-second lease profiles for each delivery and the whole reminder scan are approved. [Decision](../decision-register.md#golden-reminder-execution-and-lease-profile--2026-10-06).",
-      "Native deployment readiness is independently approved on a separate explicit loopback listener, with preserved liveness and real outage/recovery. Checked static job audit now agrees with native lowering without claiming runtime certification. [Readiness review](../../tests/validation/rm403-independent-deployment-readiness-review.json).",
-      "Aggregate recovery advisory cancellation independently passes SQLite21/944, PostgreSQL25/4971 and12 emitted-module controls; actual native locking retains one owner and late results cannot publish. Hard native lifetime/startup bounds remain open. [Review](../../tests/validation/rm403-independent-recovery-cancellation-review.json).",
-      "Native provider-fault envelopes independently pass typed, extra-field, HTML and null reply controls, with real durable unknown/no-resend state and matching generated request IDs. Exact BOUNDARY-001 collector integration remains next. [Review](../../tests/validation/rm109-independent-native-job-safe-boundary-review.json).",
-      "CONFIG-001\u2013003 advisory/causal/nondisclosure corrections independently approved; guarded private retry-authority hook independently passes actual SQLite/PostgreSQL controls with unchanged public eligibility. [Retry review](../../tests/validation/rm402-independent-private-retry-authority-hook-review.json).",
-      "Current-source BOUNDARY-001 corrective review passed86/0/2 and156 raw-evidence mutation refusals/sixcontrols. Initial-only PostgreSQL10s schema/authority budget and concurrent admission independently approved; hard acquisition/setup/COMMIT/SQLite lifetime remains open. [Boundary review](../../tests/validation/rm109-independent-native-safe-boundary-correction-review.json).",
-      "Current local executable/native ICU/timezone/JWT observation independently approved with one unchanged native control and18 refusals; full RM504 and rule-byte qualification remain open. [Review](../../tests/validation/rm504-independent-local-runtime-provenance-review.json)."
+      "Fresh independent native collection passes88/0/0 across44 original IDs,94 scenarios and100 steps;101 protocol checks pass and24 coherently rebound evidence controls are refused. These are supporting observations, with final golden acceptance open. [Review](../../tests/validation/rm109-independent-complete44-review.json).",
+      "Exact protected owner-change refusal and native relationship-conflict artifact metadata have scoped independent approval; aliases remain unverified and no protected release authority is granted. [Current checkpoint](../work-plans/golden-delivery-planning.md#exact-protected-owner-change-artifact-review).",
+      "Local runtime/ICU/JWT provenance has independent controls and an exact complete44 remeasurement. Database/native rule-byte and cross-host qualification remain open. [Provenance review](../../tests/validation/rm504-independent-local-runtime-provenance-review.json)."
     ],
-    "next": "Combined e88ca29 gate reached61 passing checks then one PostgreSQL proxy-targeting fixture failure; deterministic startup/business arming correction is underway with original red retained. Independently review emitted REL-003 refusal artifact, native relationship artifact parity and remaining acceptance prerequisites. Canonical database transport awaits its pending contract decision.",
+    "next": "Reconcile16 actual HTTP authentication/parser responses with native route/OpenAPI/failure artifacts, independently review private authenticated retries and local approval verification, then run fresh combined exact-source supported verification. Native lifetime and canonical database transport gates remain open.",
     "input_needed": "Public push, PR and checked merge of fe966ef remain pending after automatic review rejected publication. A separate concrete PostgreSQL/SQLite database URI successor is pending because required golden DATABASE_URL conflicts with absent-URL SQLite selection. Both delivery lanes continue independent work."
   },
   "changes": {

@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-601-19300b3e8400", "task_id": "RM-601", "actor": "relationship_metadata_review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T10:25:38.949722+00:00", "phase": "planning"}
+{"at": "2026-10-06T10:26:18.939017+00:00", "phase": "review", "note": "Fixed candidate semantic and native metadata review; initial recorder category error retained in tool history."}
+{"at": "2026-10-06T10:26:49.822820+00:00", "phase": "verification", "note": "Owned fresh compiler, native adapter runs and additional checked-source controls."}
+{"at": "2026-10-06T10:30:56.059975+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm601-independent-relationship-metadata-review.json"}

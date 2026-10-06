@@ -1,0 +1,41 @@
+{
+  "scope": "Independent native original44 supporting accepted-successor observations; not final golden release qualification",
+  "reviewed_commit": "8c90e71435c576d23d3bd2fb14c47fb3148d7234",
+  "owned_capture": "/private/tmp/jadpo-root-complete44-review",
+  "owned_compiler_sha256": "5ec1d5cc8d5727c14e497b65f6c6e2a5f072b058b93de98f80ce72a551f9b828",
+  "checkpoint_sha256": "a95d035088ab67084d2cd0653da5b287ba9811cfe728bb677200f99919ea8130",
+  "status": "observations_passed",
+  "release_equivalent": false,
+  "evidence_counts": {
+    "passed": 88,
+    "failed": 0,
+    "not_run": 0,
+    "scenarios": 94,
+    "steps": 100
+  },
+  "verification_protocol_tests": 101,
+  "actual_fullvalidator_controls": {
+    "negative_refusals": 24,
+    "unchanged_accepted": 2
+  },
+  "review_findings": [],
+  "reviewed_boundaries": [
+    "Native checked baseline and rejected ordinary protected attempt plus fresh native validation, complete source inventory and command bytes",
+    "Original44 IDs and two backends preserved; native policy capture does not claim alias/live identity or runtime authority",
+    "Fullvalidator rejects coherently rebound nonrelease classification, before/attempt/source drift, arbitrary SQLite resources and backend policy substitution"
+  ],
+  "limits": [
+    "Original frozen application remains separate; supporting migrated source passes cases",
+    "Required artifacts, runtime lifetime and approval prerequisites plus exact-source final gate remain open",
+    "No whole-task completion marker or protected issuer authorization"
+  ],
+  "retained_files": {
+    "contracts.log": "f746bcf8964b5b75788693b0d592b5ca6071303e214e5222efc22436f5e96565",
+    "actual-rebound-controls.json": "a7fd5b0d0140c3b30449bc70d695fd013474465394d38f56fef826439f8754d3",
+    "safe-checkpoint.tar.gz": "847a98c8ad402167b7b93c4b239ce58b3b2fd85b7421788426b5c6414505720c",
+    "checkpoint.log": "8a3d8bfed8a40e04279e0b2eb83c005c55b9675f03c3b2517cea93613a3ea4a4",
+    "safe-archive-inventory.json": "36753c2f4bfa34598f9aeb2e605603854314287502ee162ff0300e99051649f5",
+    "rebound.log": "80b601379756f41ce9277464de3275c11e401f6be70e25cc94742c2534444ada",
+    "build.log": "f584740eb8f7c7b15eb90f0400236321f08c4799e954763629cd08ee5bc4f4bb"
+  }
+}

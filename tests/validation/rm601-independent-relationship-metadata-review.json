@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "task": "RM-601",
+  "candidate_commit": "e87795b8ae13b93402a9fca2f575aaac4271a07e",
+  "baseline": "d15bed0b6a683b237092e5ce6dec789cfc596ab9",
+  "reviewer": "relationship_metadata_review",
+  "independent_non_author": true,
+  "disposition": "scoped_approval",
+  "scope": "Checked static route relationship failure metadata and target patch occurrence helper; no whole task/release closure",
+  "capture": "/private/tmp/jadpo-independent-relationship-e877",
+  "owned_cargo_target": "/private/tmp/jadpo-independent-relationship-e877-target",
+  "compiler": {
+    "path": "/private/tmp/jadpo-independent-relationship-e877-target/debug/jadpo",
+    "sha256": "17540991f3e35eb80d662b2f389e2c315eb371c72f955f86e506ac2e11e4e470",
+    "fresh_candidate_build": true,
+    "shared_target": false
+  },
+  "actual_model": "gpt-6.1-sol",
+  "actual_effort": "high",
+  "model_evidence": "Retained parent batch pin verified from current chat metadata; inherited without override. Consequential source/transaction metadata review requires Sol High.",
+  "source_sha256_before_and_after": {
+    "jadpo/crates/core/src/artifacts.rs": "173d01a7f5c02e1ad980f48a455ccf8949278e03f3bb8b785ea6c9cc6aa6987f",
+    "jadpo/crates/core/src/artifacts/operational_failures.rs": "3c47870f51d821b43dbf9172b5a45472f12fd7c302dcec2a6d38137de0f3a443",
+    "jadpo/crates/core/src/target.rs": "8584d1a0b6dc78ac98e386833a16ebc336408f9e503731935ab0f386e07034bd",
+    "jadpo/crates/core/tests/validation_relationship_metadata.rs": "c620887b8f6eaff2d7e8cfc5f93c05a7ebdbf12e035fb1179bff35c902b74f5f",
+    "tests/runtime/relationship-conflicts.test.ts": "cdbc5d6a42162eccb9c4b4373a641ab1c99a36f948b54da56843b8ab8fed665f"
+  },
+  "author_inventory_verified": {
+    "sha256": "700888877a5659ad73137a5074e0b277778a16d9c030b6b6347f82d7e18f30aa",
+    "files": 22
+  },
+  "findings": [],
+  "checks": [
+    {
+      "kind": "core_lib",
+      "pass": 104,
+      "fail": 0,
+      "log": "core-corrected.log"
+    },
+    {
+      "kind": "maintained_checked_metadata",
+      "pass": 6,
+      "fail": 0,
+      "log": "metadata.log"
+    },
+    {
+      "kind": "additional_checked_source_and_controls",
+      "pass": 8,
+      "fail": 0,
+      "scope": "6 maintained and 2 added cases; conditional derived outgoing FK and precise no-FK control, incoming whole patch, generated touched referenced parent key and no-reference control",
+      "log": "additional-source-probes-retained.log"
+    },
+    {
+      "kind": "actual_sqlite_native",
+      "pass": 6,
+      "fail": 0,
+      "assertions": 88,
+      "log": "sqlite-maintained.log"
+    },
+    {
+      "kind": "actual_postgres_native",
+      "pass": 6,
+      "fail": 0,
+      "assertions": 86,
+      "log": "postgres-native-parity.log",
+      "disposable_local_cluster": true
+    },
+    {
+      "kind": "additional_actual_sqlite_delete",
+      "pass": 3,
+      "fail": 0,
+      "assertions": 23,
+      "log": "native-delete-probes-retained.log",
+      "scope": "Parent cascade reaching RESTRICT:409 safe envelope/all rows retained; cascade-only:200/all rows deleted; nullable SET NULL:200/child retained and column NULL. Fresh emitted routes/OpenAPI/failure audit/persistence bytes retained per mode."
+    }
+  ],
+  "source_review": [
+    "Persistence records are normalized by the existing core pipeline; reference.target is the exact checked target DDL entity/field. Entity role and name prefixes do not determine FK reachability.",
+    "Monotone union follows resolved semantic NodeId caller/callee edges. Author cycle, inline route and renamed normalized persistence fixtures execute under the owned compiler.",
+    "CREATE outgoing references; UPDATE exact ordinary/conditional/whole patch columns, lifecycle transition set columns and generated create_or_change touched fields; incoming referenced key updates use the actual default ON UPDATE NO ACTION.",
+    "Physical DELETE inspects incoming RESTRICT and cascade closure with visited fence. Outgoing relationships alone do not implicate deleting their source. Logical lifecycle delete is a native UPDATE with exact transition columns.",
+    "SET NULL source fields must be nullable; semantic checker rejects a nullable FK target as DATA_RELATIONSHIP_TARGET_NOT_KEY, so the SET NULL source cannot be a supported referenced parent key that creates an unmodeled incoming NO ACTION conflict.",
+    "Missing checked patch mapping is explicit qualified:false/may_fail:null/conservative_possible:true only where the normalized source entity has relationship-sensitive writes. Existing exact metadata boundary test executes in core104; unrelated mapping corruption stays precise false. It does not qualify a successfully emitted artifact by itself.",
+    "Closed safe409 code/message/envelope appears selectively in route operational list and OpenAPI while retaining declared Conflict alternatives. Global failure catalogue agrees descriptor. Native23503/787/restrict1811 and unrelated unique/check/custom trigger/unknown COMMIT precedence tested on both adapters; runtime classifier and authority code unchanged.",
+    "Patch helper shares exact source/range checked occurrence with target lowering, requires one inferred type and one record, and does not select a same-named parameter. Source shadowing control passes."
+  ],
+  "retained_attempts": [
+    {
+      "log": "core-initial-missing-root-marker.log",
+      "result": "95pass9fail",
+      "cause": "Immutable git archive lacked repository root marker, preventing relative pinned service import discovery; exact original output retained. Plain non-Git .git root marker added, candidate source unchanged; actual fresh rerun104pass."
+    },
+    {
+      "log": "additional-source-probes-initial-invalid-fixture.log",
+      "result": "7pass1fail",
+      "cause": "Reviewer fixture passed field-selection to patch, rejected by TYPE_PATCH_INPUT_BINDING/TYPE_PATCH_NOT_INPUT. Not checked product counterexample."
+    },
+    {
+      "log": "additional-source-probes-second-invalid-fixture.log",
+      "result": "7pass1fail",
+      "cause": "Reviewer local binding from selected nested patch did not preserve omission-aware input contract; changed to direct typed patch parameter. Original rejection retained."
+    }
+  ],
+  "limitations": [
+    "Static may-outcome is a branch/value-independent conservative analysis, not evidence an execution happened or was authorized.",
+    "Unresolved facts remain unqualified; final acceptance consumer must refuse them. Final consumer and combined supported gate are owned by parent.",
+    "No duplicate full verify gate; parent must integrate fixed candidate and run current combined gate.",
+    "Inline whole-record patch target availability remains unchanged; metadata availability does not grant runtime support.",
+    "No frozen source/acceptance, runtime classifier, retry policy, protected transfer, public issuer or golden completion change.",
+    "Compiler byte identity belongs to this owned capture only; no retroactive binding to author or other compiler bytes."
+  ],
+  "evidence_inventory": "tests/validation/evidence/rm601-independent-relationship-e877/inventory.json",
+  "evidence_inventory_sha256": "249ab3cb9ff5021a8bf6dce42321a87700af4f7f255bf7568ddd096a0431df60",
+  "timer": "RM-601-19300b3e8400",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "timing": {
+    "path": "docs/task-timing/runs/RM-601-19300b3e8400.jsonl",
+    "sha256": "721e3a0d26376baf1aa53258ee3aaf2f8ef80dcafe5bc589eb34b3b6b4144b5d",
+    "outcome": "partial",
+    "active_minutes": 5.29,
+    "verification_minutes": 4.1,
+    "note": "Initial unsupported recorder category failed before any timer existed; corrected category immediately. No backfilled interval."
+  }
+}
