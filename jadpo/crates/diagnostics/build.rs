@@ -135,6 +135,7 @@ fn is_diagnostic_code(value: &str) -> bool {
     ];
     value != "JADPO_DEBUG_TARGET_STACKS"
         && value != "JADPO_ASCII"
+        && value != "JADPO_DEPLOYMENT_PORT"
         && PREFIXES.iter().any(|prefix| {
             value
                 .strip_prefix(prefix)
