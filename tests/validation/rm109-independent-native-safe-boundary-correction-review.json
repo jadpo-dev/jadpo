@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-109 / BOUNDARY-001",
+  "candidate": "fdcdca7",
+  "root_product_epoch": "c471179",
+  "reviewer": "root",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timing_run": "RM-109-001d90318336",
+  "disposition": "approve_scoped_current_source_BOUNDARY001_harness_correction",
+  "findings": [],
+  "original_review": "tests/validation/rm109-independent-native-safe-boundary-harness-review.json",
+  "independent_execution": {
+    "fresh_compiler_sha256": "df865f00d5e70c5f20d099a21bbee313e576819768237b58a8ec7d4d8547d0ad",
+    "supported_protocol_tests": 98,
+    "counts": {
+      "passed": 86,
+      "failed": 0,
+      "not_run": 2
+    },
+    "original_ids_independently_observed": 43,
+    "raw_mutation_probes": 162,
+    "negative_refusals": 156,
+    "controls_accepted": 6,
+    "actual_adapters": [
+      "SQLite",
+      "disposable PostgreSQL"
+    ],
+    "hash_equal_product_and_frozen_inputs": 117
+  },
+  "correctness": [
+    "Actual native application HTTP database outage yields closed safe500 envelope with generated UUID/event/source identity, restored healthy control and actual typed Todo owner query. No SQL/stack/provider secret leaks.",
+    "Actual exact typed401 provider response yields native safe internal_fault envelope with matching real operation-context UUID, service/failure semantic binding and generated source revision. Extra/HTML/null classifications retain separate approved component proof, not inferred from this typed-only fixture.",
+    "Actual exact provider intent UUID appears in body/header and native durable claim. Possible dispatch and unknown completion each have distinct successfully committed, balanced top-level native transactions with exact intent/state predicates. Unknown durable payload/claim/receipt/marker and actual schedule revision remain unchanged through fresh host/later interval; provider dispatch count stays one. Discovery selected1/attempted1 on replay does not imply another provider call.",
+    "Current actual first/replay activation transaction events remain separately retained with closed schema, finite timing and native transaction identity. Original unmatched-BEGIN, coherent foreign revision and NaN timing counterexamples now refuse under fullraw hash rebinding.",
+    "Scoped source contains the previously reviewed schema-admission/operator replay leaves and private fresh-authority hook, with input hashes checked against current root; earlier03 epochs are preserved separately."
+  ],
+  "retained_negatives": [
+    "Own initial capture lacked pinned JWT declaration/lock files; collector stopped before execution. Original setup failure retained; exact copied canonical manifests and untouched native collection then pass.",
+    "Additional replay adaptation initially retained its historical receipt output path. New receipt preserved separately; original immutable historical replay recreated original bytes and expected manifest hash verified. Corrected script writes to its own capture; its fresh replay remains68refusals/4controls. No historical evidence substitution retained."
+  ],
+  "limits": [
+    "Exact original BOUNDARY-001 supporting case qualifies; REL-003 is stillnot_run, whole RM-109/RM-110 and final require-golden remain open.",
+    "Static/root product parity is exact at c471179; a later startup/REL/compiler change requires fresh combined gate/source evidence.",
+    "Local disposable storage/reference provider and trusted checkpoint observations do not establish production startup, release issuer approval or whole native lifetime.",
+    "Coherent internally consistent UUID correlation control remains accepted: decoder checks actual observation topology, not a cryptographic independent origin attestation."
+  ],
+  "evidence_directory": "tests/validation/evidence/golden-loop-boundary-correction-independent",
+  "inventory_sha256": "87abdf9b9cfce717d2c1df841b8005d91389441d866f6634c22e3e3757582d74",
+  "safe_archive_members": 86,
+  "digest_only_exclusions": 2
+}

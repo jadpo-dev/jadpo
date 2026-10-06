@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "decision": "source_grounded_bounded_plan_assessment",
+  "task": "RM-601",
+  "source_commit": "c4711790e383ae08d010d21b10c77d94156b272b",
+  "capture": "/private/tmp/jadpo-relationship-parity-grounding",
+  "scope": "Owning Next artifact parity slice\u2014native relationship failures assessment only. No source implementation/runtime tests/current compiler candidate approval, shared plan/progress changes, public capability or whole601/603 prerequisite.",
+  "pin": {
+    "actual_model": "gpt-6.1-sol",
+    "effort": "high",
+    "parent_verified": true,
+    "retained": true
+  },
+  "actual_gap": {
+    "target_normalizer": "Safe relationship_conflict409 exists; approved classifier containsunknown dominance/depth/cycle/uninspectablefailclosed behavior.",
+    "artifact_catalogue": "routes_json uses universal bun_operational_failures_json lackingrelationship409; OpenAPI constructs native schemas only500/503. Presence of any entity is currently a global503 heuristic, insufficientfornew409.",
+    "owning_plan": "docs/work-plans/golden-delivery-planning.md:307 explicitper-route actual FK reachability and no invented failures."
+  },
+  "packet": {
+    "scope": "Smallest checked per-route FK operational metadata derivation, not runtime behavior changes/authority or whole approval closure.",
+    "existing_inputs": [
+      {
+        "reference": "core/lib.rs285,386",
+        "fact": "Normalized persistence specifications are applied before semantics and typing; RecordField.reference is actual target DDL FK input."
+      },
+      {
+        "reference": "semantic/lib.rs222,2690,2740,3638",
+        "fact": "Route node METHOD/path and resolved NodeId CallEdges cover run, inline, nested arguments/handler expressions. Closure by IDs handles cycles/receiver resolution without duplicate suffix resolver."
+      },
+      {
+        "reference": "core/target.rs10322 and artifacts/approval/field_contracts.rs552",
+        "fact": "Patch record uses exact source+occurrence range typing observation. Local shadows already resolved by checker; no nominal parameter-name resolution."
+      },
+      {
+        "reference": "core/target.rs6312",
+        "fact": "Emitted FK ONDELETE comes only from normalized explicit reference; ONUPDATE defaultNOACTION. Same-named/nominal role field alone is not a FK."
+      },
+      {
+        "reference": "core/entity_model.rs15,75",
+        "fact": "Entity mutation names/logical effects lose field/physical verb precision, so cannot substitute for route-specific mutation facts."
+      }
+    ],
+    "mutation_rules": {
+      "create": "Inspect actual persisted fields including target-supplied lifecycle initial/default assignments; outgoing normalized FK columns provide static may-fail fact. Traverse value/conflict-handler expressions for nested checked calls. No query-only inference from project having entities.",
+      "update": "Written changes, whole-patch fields from exact checked occurrence type, conditional and derived changes, transition.set and generated touch fields as actually lowered. Include both outgoing FK source columns and incoming FK target columns modified (parent unique-key update defaultNOACTION).",
+      "physical_delete": "Actual emitted DELETE only; inspect incoming restrictive relationships. Follow declared cascading delete propagation to downstream restriction with visited entities/edges. Outgoing FK alone does not create a delete conflict. Do not conflate pure cascade/set-null with actual restrictive failure; preserve explicit source-bound may analysis where unsupported effects remain unqualified.",
+      "lifecycle_delete": "UpdateExpression.transition resolves lifecycle transition.set; logical policy effect delete stays SQLUPDATE. No ordinary physical owner-delete authority. Maintenance purge is distinct native capability and not reachable authored route."
+    },
+    "negative_and_parity_packet": [
+      "Pure query route with other FK entities elsewhere stays without relationship409.",
+      "Mutation of unrelated entity or column outside outgoing/incoming FK endpoints stays without relationship409.",
+      "Physical delete of child with only outgoing FK stays without relationship409; incoming restrict positive.",
+      "Soft delete transition touching only status/timestamp stays without relationship409, even incoming restrictive children.",
+      "Reference create/update and parent unique-key update positive; nullable omission/no assignment remains precise and conditional assignment remains static possible.",
+      "Whole patch occurrence/local shadow type, inline/nested calls and cyclic checked callgraph tests; renamed entities/references maintain facts, nominal aliases without normalized reference do not fabricate constraints.",
+      "Ordinary declared conflict409 schema remains separate; combine with operational closed safe409 envelope where both possible.",
+      "Compare inventory/failure catalogue/OpenAPI emitted code/message/status/envelope to actual reviewed native23503/787/RESTRICT1811 controls.",
+      "Unrelated actual unique/check/customtrigger1811, unknownCOMMIT/cyclic/deep/uninspectablecause controls remain normalizer-negative; do not change runtime classifier to make metadata pass."
+    ],
+    "implementation_window": [
+      "Derive one nonexecuting source-bound relationship-failure route fact from normalized schema and checked callgraph/written fields; avoid second name resolver or nominal string-prefix inference.",
+      "Extract/reuse checked patch-occurrence mapping as source/range utility rather than repeat target private helper parameter lookup. Context must carry actual source for inline routes; current target helper scans callable bodies only, so do not claim unsupported inline whole-patch target support from metadata alone.",
+      "Render global native operational descriptor relationship_conflict409 safeconstantmessage and closed envelope, per-route operational presence, and OpenAPI409 schema; preserve declared domain failure precedence and existingunknown500.",
+      "Immutable compiler metadata tests plus consequential independent review and actual current native parity evidence/fresh supported gate; no new authored hardDelete or owner-transfer route."
+    ],
+    "honesty_limits": [
+      "Checked callgraph is static may-call, not execution/authorization proof or complete value/path feasibility. Do not infer successful execution from emitted metadata.",
+      "Generic existingEntityModel effect sets and old AST walkers omit conditional/conflict/include paths; use checked graph/exhaustive new fact collector rather than those coarse sets.",
+      "No new semantic owner decision identified; routine module placement and extraction may be serialized with compiler writer exports.",
+      "Scoped metadata parity does not require wholeRM601/603 first and does not close those genuine release gates."
+    ]
+  },
+  "precise_existing_bindings": {
+    "docs/failure-model.md": "3e973fa567fc037ae4023d3fc19ae1c0b7846f981782863feb52562feec55b69",
+    "docs/work-plans/golden-delivery-planning.md": "8253e77867406e6187bc6385c96b5348dcdfdebe99a1c8a107bb05b23af1440d",
+    "jadpo/crates/core/src/artifacts/approval/field_contracts.rs": "d005d7210e0a1635574a3b204231dc01afaa0195222e099dd99f98672ab6b850",
+    "jadpo/crates/core/src/artifacts.rs": "139db071fe2ffab3e7ba8f95471213a929d106968bc1e5862a3aa28058bcd6e6",
+    "jadpo/crates/core/src/entity_model.rs": "c5132636604a548fce5a8a6ec6b2ab1d581515c5dafea6216eac92c6ce542daa",
+    "jadpo/crates/core/src/lib.rs": "b6058d4471f9a8538e184be840f72d2d2d36fdb14a8c7dc31759e7256377f57e",
+    "jadpo/crates/core/src/target.rs": "72ac882cceb7941fb27c9d1bcba43c5ae24674320e4ac150a40f8f611e18d00f",
+    "jadpo/crates/semantic/src/lib.rs": "85daa640d69db66caf0f8a8ccb571daed3205f3b78d312b535e0aab4f1d71a30",
+    "jadpo/crates/semantic/src/typecheck.rs": "b007fa04d5e3196a5766cdd568e917cdf4c725b639f789d2fb14933c5e7fbd3f",
+    "jadpo/crates/syntax/src/ast.rs": "876c99d298553beea1ffe9579a1119b624b6b961f8a6d7d5b39bea13d7c5a940"
+  },
+  "review_requirements": [
+    "Use same normalized explicit reference facts native target emits. A nominal type name or role field name alone cannot fabricate an FK.",
+    "Native FK source-column create/update, incoming parent target-key update defaultNOACTION, restrictive physical delete/deletion-cascade closure are separate cases.",
+    "Logical policy delete only becomes409 if its actual UPDATE columns canviolate actual FK; no ordinary authored hard-delete capability is added.",
+    "Patch occurrence requires unique exactsource/range checked type; unresolved/ambiguous field map must be explicit unknown/refused or conservatively scoped with evidence, never pretend precise success.",
+    "Graph closure gives checked staticmay-call, not statement reachability/value feasibility execution certification. Render presence as possible operational outcome, preserve honest conservative supersets where checkedvalue proof absent; pure reads/unrelated writes must still exclude409.",
+    "Global descriptor + routeinventory + failurecatalogue + OpenAPI closed409 schema must remain consistent with actual native classifier/domain precedence; no classifyunique/check/customtrigger failures asrelationships or weakenunknownCOMMIT.",
+    "Current approved native component evidence may groundplan; future concrete metadata candidate stillneeds fresh semantic/render assertions, own negative review, native currentgenerated parity asappropriate and supportedgate."
+  ],
+  "owner_choices": [],
+  "completion": "No case/task promotion; smallest implementation iseligiblewithinexistingacceptedcontract; whole release gates stayopen independently.",
+  "evidence": {
+    "directory": "/private/tmp/jadpo-parallel-integration/tests/validation/evidence/golden-loop-relationship-parity-grounding",
+    "source_binding_sha256": "aa76c1887666bc083de0bd7a7d58e1eb7f074e2c97f5dcfd5946f16d498b77f1",
+    "packet_sha256": "dfc4b4f4698586257908c3186854933430c733eea7710eafe34736b81efcef09",
+    "inventory_sha256": "c002dd5a0aaa3e9a8d5fad3e8472e006f57c4006a1d3dcf4234a9ae0731e64c2",
+    "private_or_database_bytes": false
+  },
+  "timer": {
+    "run_id": "RM-601-11a5494cf2d0",
+    "outcome": "partial",
+    "original_estimate_hours": [
+      1,
+      4
+    ],
+    "active_minutes": 5.13,
+    "verification_minutes": 2.11
+  }
+}

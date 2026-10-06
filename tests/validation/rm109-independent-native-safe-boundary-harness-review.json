@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "decision": "changes_required_for_causal_decoder_integrity; historical_actual_boundary_observations_verified",
+  "scope": "Independent immutable tools-only BOUNDARY-001 native boundary collector/decoder review. No product edits, current integration qualification, whole golden/release gate or RM109 completion.",
+  "source": {
+    "commit": "03a910f8084209611c57132da8c051754c65d774",
+    "capture": "/private/tmp/jadpo-boundary-harness-independent",
+    "actual_fresh_compiler": true,
+    "original_frozen_acceptance_sha256": "3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608",
+    "original_case": {
+      "id": "BOUNDARY-001",
+      "kind": "http",
+      "title": "database and service faults use a generic safe envelope",
+      "fixtureVariants": [
+        "database unavailable",
+        "mail provider authentication failure"
+      ],
+      "requestOrRun": [
+        "GET /todos",
+        "overdue_reminders"
+      ],
+      "expect": {
+        "rawSqlPublic": false,
+        "providerBodyPublic": false,
+        "stackPublic": false,
+        "requestIdPresent": true
+      }
+    },
+    "fresh_checkpoint_sha256": "ef9daaea4955a49f4a8eb2bdb0a7b195d38250e8fa445a8a84d1a2b3213de008",
+    "fresh_provenance_preserved": true,
+    "epoch_limitation": "Parent/author source audit identified missing already-approved root leaves074f266 and11b147a. This immutable03 source cannot establish current root qualification; separate aligned immutable capture/fresh compiler/both-adapter raw is required."
+  },
+  "model_pin": {
+    "actual_model": "gpt-6.1-sol",
+    "actual_effort": "high",
+    "verified_by_parent": true,
+    "retained": true,
+    "reason": "Consequential native transaction/authority boundary and full decoder integrity review."
+  },
+  "tests": {
+    "fresh_sqlite_and_disposable_postgresql": {
+      "passed": 86,
+      "failed": 0,
+      "not_run": 2,
+      "command": "python3 tools/golden_checkpoint.py --output complete-host-checkpoint --jwt-dependencies /private/tmp/jadpo-maintenance-correction-independent/build/validation/jwt-dependencies",
+      "host_access": "approved local disposable servers; no production credentials/mail/deployment"
+    },
+    "all_contract_tests": {
+      "passed": 96,
+      "command": "python3 -m unittest discover -s tests/validation -p 'test_*.py'"
+    },
+    "full_validator_raw_probes": {
+      "total": 144,
+      "refused_negatives": 132,
+      "accepted_controls": 6,
+      "admitted_support_counterexamples": 6,
+      "original_author_replay": {
+        "refused": 70,
+        "controls": 2
+      },
+      "additional": {
+        "refused": 62,
+        "controls": 4,
+        "admitted_support": 6
+      },
+      "method": "Mutation of independently freshly collected full raw, coherent raw SHA rebind, complete validate_checkpoint execution. Original raw bytes restored and full validator rerun successfully; valid coherently changed UUID correlation serves as positive control, not a false rejection demand."
+    }
+  },
+  "findings": [
+    {
+      "id": "BOUNDARY-TRANSACTION-BALANCE",
+      "priority": "P2",
+      "location": "tools/golden_checkpoint.py:698",
+      "observed": "On both adapters, insert an unmatched BEGIN immediately before WITH outcome_clock and rebind the raw digest. Full validator accepts, since only nearest preceding BEGIN/following COMMIT are checked. The resulting journal contains two top-level BEGINs and one owning COMMIT yet is certified as successful owning transaction.",
+      "expected": "Validate actual top-level BEGIN/COMMIT/ROLLBACK balance/order (savepoints separate) for first and later native runs before deriving owning committed dispatch/completion.",
+      "frozen_scope": "No new semantic expectation; correct supporting durable-causality assertion already made by decoder. Actual closed safe public envelopes passed."
+    }
+  ],
+  "support_limits": [
+    {
+      "probe": "durable_foreign_revision_support",
+      "admitted_on": [
+        "sqlite",
+        "postgres"
+      ],
+      "observed": "Change intent.source_revision to foreign in both first and replay durable snapshots; decoder accepts. Snapshot equality verifies preservation, but original source revision is not grounded to independently observed schedule revision.",
+      "classification": "Supporting source-binding integrity gap; no invented revision constant or new BOUNDARY requirement."
+    },
+    {
+      "probe": "event_elapsed_nan_support",
+      "admitted_on": [
+        "sqlite",
+        "postgres"
+      ],
+      "observed": "Set service.attempt.elapsedMs to NaN; decoder accepts despite JSON event numeric-domain integrity claim.",
+      "classification": "Supporting emitted event type/domain limit; numeric finiteness can be grounded without new semantic acceptance."
+    }
+  ],
+  "actual_boundary_evidence": {
+    "full_validator_after_restoration": "pass",
+    "backends": [
+      {
+        "backend": "sqlite",
+        "raw_sha256": "9226e704c135ced093ecd58a3b8b50d2be948ac352625d24b60279bf74d13950",
+        "original_binding_matches": true,
+        "provider_calls_cumulative": 1,
+        "first_outcome": {
+          "status": "finished",
+          "selected": 1,
+          "attempted": 1,
+          "continued": false,
+          "failures": [
+            {
+              "error": {
+                "code": "internal_fault",
+                "message": "An internal error occurred.",
+                "request_id": "cd1a1086-b6ef-4697-9896-22d611380a3b"
+              }
+            }
+          ]
+        },
+        "restart_outcome": {
+          "status": "finished",
+          "selected": 1,
+          "attempted": 1,
+          "continued": false
+        },
+        "unknown_retained": true,
+        "intent_state": "outcome_unknown",
+        "possible_dispatch": 1,
+        "invocations": 1,
+        "receipt_count": 0,
+        "reminder_sent_at": null,
+        "database_unavailability_mode": "actual separate-connection SQLite exclusive lock",
+        "database_healthy_status": 200,
+        "database_failure_status": 500,
+        "derived_frozen_observations": [
+          {
+            "variant_index": 0,
+            "steps": [
+              {
+                "rawSqlPublic": false,
+                "providerBodyPublic": false,
+                "stackPublic": false,
+                "requestIdPresent": true
+              }
+            ]
+          },
+          {
+            "variant_index": 1,
+            "steps": [
+              {
+                "rawSqlPublic": false,
+                "providerBodyPublic": false,
+                "stackPublic": false,
+                "requestIdPresent": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "backend": "postgres",
+        "raw_sha256": "269b799d141089e87e70661ff96fd713f449c4dc918f3e9ae7f8094b34dd2eb3",
+        "original_binding_matches": true,
+        "provider_calls_cumulative": 1,
+        "first_outcome": {
+          "status": "finished",
+          "selected": 1,
+          "attempted": 1,
+          "continued": false,
+          "failures": [
+            {
+              "error": {
+                "code": "internal_fault",
+                "message": "An internal error occurred.",
+                "request_id": "253b9f00-074d-4ac1-a0ca-1d3690f4a1b1"
+              }
+            }
+          ]
+        },
+        "restart_outcome": {
+          "status": "finished",
+          "selected": 1,
+          "attempted": 1,
+          "continued": false
+        },
+        "unknown_retained": true,
+        "intent_state": "outcome_unknown",
+        "possible_dispatch": 1,
+        "invocations": 1,
+        "receipt_count": 0,
+        "reminder_sent_at": null,
+        "database_unavailability_mode": "actual isolated PostgreSQL server stopped",
+        "database_healthy_status": 200,
+        "database_failure_status": 500,
+        "derived_frozen_observations": [
+          {
+            "variant_index": 0,
+            "steps": [
+              {
+                "rawSqlPublic": false,
+                "providerBodyPublic": false,
+                "stackPublic": false,
+                "requestIdPresent": true
+              }
+            ]
+          },
+          {
+            "variant_index": 1,
+            "steps": [
+              {
+                "rawSqlPublic": false,
+                "providerBodyPublic": false,
+                "stackPublic": false,
+                "requestIdPresent": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "interpretation": {
+    "frozen_criterion": "Both original database-unavailable and typed mail-provider authentication failure variants produce closed safe public/native error envelopes; UUID request IDs match emitted event identity/source/semantic operation. No raw SQL/provider canary/stack is public.",
+    "provider_response": "Actual POST/v1/messages typed401 body exactly code=authentication; private header canary only. Mutated malformed body is decoder-negative only; no reclassification of malformed provider responses.",
+    "replay": "Cumulative calls exactly1 before/after a later fresh host. First and later native outcomes selected1/attempted1. Later discovery/attempt accounting is preserved; it does not mean another provider invocation. Retained unknown state/possible_dispatch1/invocations1/no receipt/no sent marker unchanged.",
+    "source_scope": "Historical03 frozen BOUNDARY criterion observations verified on both adapters. No current integration promotion before aligned source epoch and decoder correction review.",
+    "original_author_negatives": "Original first/second raw failures retained in author evidence; absent exact old tool provenance prevents retroactive attestation. They are not silently relabeled."
+  },
+  "evidence": {
+    "directory": "/private/tmp/jadpo-parallel-integration/tests/validation/evidence/golden-loop-boundary-harness-independent",
+    "inventory_sha256": "3466cb465c0428ce1ceeda2599a67fc729a198148087af23fe886791b1322a44",
+    "safe_files": 103,
+    "excluded_private_or_database_files": 2,
+    "exclusion_notice_sha256": "afd062b8b206e921ed652089fd64bf95301bfaf38580973135ed97308b79e801",
+    "reproduction_limitation": "Excluded private JWKS key/database bytes retained only in disposable capture; integration stores digests/path/size. Full replay requires capture or fresh regeneration.",
+    "original_probe_results_sha256": "12beace3eb62fe32f0c2aaabf2e8f51bda7efb3e0a55cd936ab4b9f6e2020de0",
+    "additional_probe_results_sha256": "733ca3abdc03ef419dc6d2117c5a58339f2dd88e5942c33f1179b439fd01f82c"
+  },
+  "timer": {
+    "run_id": "RM-109-5a0b203a4be5",
+    "outcome": "partial",
+    "original_estimate_hours": [
+      1,
+      4
+    ],
+    "active_minutes": 6.0,
+    "verification_minutes": 5.6
+  },
+  "reviewer_setup_note": "Observation summary first attempted a nonexistent helper golden_cases.load_suite; corrected to exact frozen acceptance.json. Full collector/probe results unaffected; no product failure imputed."
+}

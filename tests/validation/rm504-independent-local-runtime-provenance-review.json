@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "decision": "scoped_approve",
+  "candidate": "c527948308ae2371216f074a4abbd3147c01631d",
+  "task": "RM-504",
+  "scope": "Current macOS local Bun/native-library/timezone/JWT dependency provenance only; no whole temporal, cross-host or identical rule-byte qualification.",
+  "model_pin": {
+    "model": "gpt-6.1-sol",
+    "reasoning": "high",
+    "retained": true
+  },
+  "findings": [],
+  "independent_execution": {
+    "fresh_native_receipt_sha256": "fc8f7e84e7b4694b47a0623ae17ee72224a2b3e50175c9a1cd39cf5b94d9ad09",
+    "unchanged_native_controls": 1,
+    "negative_refusals": 18,
+    "actual_byte_mutations": [
+      "isolated JWT declaration cache lock",
+      "isolated installed jose JavaScript file"
+    ],
+    "fresh_probe_each_control": true,
+    "checkpoint_validation_before_and_after": true,
+    "source_revision_after": "c527948308ae2371216f074a4abbd3147c01631d"
+  },
+  "observed": {
+    "engine": "Bun 1.2.20",
+    "reported_icu": "74.2",
+    "directly_loaded_icu_release": [
+      78,
+      1,
+      0,
+      0
+    ],
+    "direct_native_timezone_version": "2026c",
+    "generated_driver_initializations": 1,
+    "jose_version": "6.2.12",
+    "installed_files": 80
+  },
+  "implementation_review": [
+    "Direct FFI u_getVersion and ucal_getTZDataVersion probe runs in selected actual Bun process; nonzero ICU error status refused. Library path also checked against executable declared dependencies.",
+    "Generated application import is isolated in SQLite memory with import.meta.main false; no route, worker or real delivery executed.",
+    "Source/emitted/cache package and lock equality, installed package shape, full checkpoint provenance and executable/helper byte guards are checked before/after observation.",
+    "Receipt validation freshly remeasures native and file evidence rather than accepting supplied labels. Independent controls add OS, driver, dependency declaration and zone digest forgeries, plus genuine isolated installed-file byte drift."
+  ],
+  "limits": [
+    "Current native read-only observation; does not retroactively attest executable bytes during earlier SQLite/PostgreSQL requests.",
+    "Engine-reported ICU and directly observed loaded-library release are separate values, never relabeled.",
+    "Timezone version is observed directly through ucal_getTZDataVersion; equality with compiler zone-list release does not prove identical full rule bytes.",
+    "macOS native dependency resides in shared cache; no standalone dylib byte digest or cross-host reproducible ICU data pin is claimed.",
+    "No new PostgreSQL temporal semantics or complete TIME/RM504 qualification, protected release or engine/dependency update.",
+    "otool declaration and direct FFI library observation do not independently prove the exact Intl timezone-rule byte implementation; loaded native library and engine-reported ICU remain separately named.",
+    "Original native checkpoint belongs to pre-initial-startup-budget source epoch; this local observation does not qualify the new combined e88 runtime.",
+    "Historical publisher signature result is cited from its owning manifest; it was not rerun in this scope."
+  ],
+  "evidence": {
+    "directory": "/private/tmp/jadpo-parallel-integration/tests/validation/evidence/golden-loop-runtime-provenance-independent",
+    "safe_files": 9,
+    "safe_inventory_sha256": "5f6ea4d4d51ae7d14f1fa813abbc09cf55204eb02cde1b1f43f767ba0bb66df6",
+    "private_pem_or_database_binaries_retained": false
+  },
+  "timing": "Current root RM-109-001d90318336 verification span includes integration and this scoped review; no backfilled separate RM504 duration."
+}

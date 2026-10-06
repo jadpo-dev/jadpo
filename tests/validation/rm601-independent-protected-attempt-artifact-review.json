@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "decision": "scoped_approve",
+  "candidate": "571b771b20b6f17b12fbf0a51add2763330e2fee",
+  "task": "RM-601",
+  "scope": "Exact non-releasable protected-change attempt artifact for immutable direct-role ordinary single update. Authoritative compiler refusal supports REL003 collector implementation; no executed ownership transfer, checked-after or whole approval/release completion.",
+  "model_pin": {
+    "model": "gpt-6.1-sol",
+    "reasoning": "high",
+    "retained": true
+  },
+  "findings": [],
+  "independent_execution": {
+    "fresh_owned_compiler_build_exit": 0,
+    "approval_tests": 52,
+    "approval_failures": 0,
+    "initial_capture_failure": "13 older tests lacked examples omitted by root capture; original39pass13fail preserved, fixed-revision examples added with prior files byte-identical, full52pass thereafter. Not a product failure.",
+    "native_author_replay_controls": 6,
+    "additional_native_cli_controls": 4,
+    "additional_native_cli_refusals": 6,
+    "coherent_rehash_mutations_refused": [
+      "native exact diagnostic omission",
+      "invented checked-after",
+      "invented live identity proof",
+      "invented runtime test",
+      "invented release-equivalent success"
+    ],
+    "native_renamed_field_control": "Todo.fields.custodian_id derived from actual fresh checked renamed source; distinct digest/span, not a substitute frozen REL003 case."
+  },
+  "implementation_review": [
+    "Fresh checked baseline and schema-identity validation precede attempted project analysis; closed serde request rejects unknown/duplicate properties and requires bounded names. Optional before source/state pins are checked against a freshly emitted full snapshot.",
+    "Checked baseline immutable required direct-role contract, exact selected action, sole update, identity predicate, exact nominal parameter and explicit field nominal constructor are structurally bound. Native TYPE_FIELD_UPDATE_FORBIDDEN diagnostic must match the actual assignment field source/range.",
+    "All six real frontend diagnostic streams are retained. Only exact protected-field refusal and unchanged actual job-delivery-derived refusal are allowed; unrelated frontend errors refuse the artifact. Existing ordinary check remains rejected.",
+    "Full freshly rederived canonical subject equality rejects even coherently rehashed altered exports; CLI supplies the freshly derived expected value, not caller authority.",
+    "No change to immutable field/typechecker policy, provider delivery eligibility, protected issuer, runtime transfer permissions or frozen expected rule."
+  ],
+  "limits": [
+    "Supplied Alice/Bob/t1 labels remain unverified; no database reads, executed row/principal membership or live fixture origin are claimed.",
+    "Attempt assignment value is a parsed nominal spelling, not checked value/data-origin proof; semantic graph and checked-after are null.",
+    "The single-update ordinary action surface is intentionally narrow; generalized protected planning, input/data feasibility, attestation and wholeRM601/RM603 remain open.",
+    "Exact backend collector qualification still requires independently reviewed actual artifact/raw receipt integration; compiler review alone does not mark REL003 executed or88/88."
+  ],
+  "evidence": {
+    "directory": "/private/tmp/jadpo-parallel-integration/tests/validation/evidence/golden-loop-protected-attempt-independent",
+    "safe_inventory_sha256": "3a9ad5b1c4e1efa1acea81588acffaad0ef0cf1eccd9fdc90a9594bf26819b27",
+    "archive_members": 100,
+    "private_keys_or_database_binaries_retained": false
+  },
+  "timing": "Included in root RM-109-001d90318336 verification span, alongside integration/gates/provenance; no fabricated separate RM601 duration."
+}

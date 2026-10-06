@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "decision": "scoped_approve",
+  "candidate": "80ed094b24103d46592ceace6ff7998a129aa05c",
+  "task": "RM-403",
+  "scope": "Initial-only PostgreSQL schema/authentication transaction server budget/admission and publication fences; independent immutable source/runtime review. No product edits, whole-startup/native lifetime, SQLite/recovery hardbound, canonical golden case promotion or RM403 closure.",
+  "capture": "/private/tmp/jadpo-postgres-startup-independent",
+  "model_pin": {
+    "model": "gpt-6.1-sol",
+    "reasoning": "high",
+    "actual_verified_by_parent": true,
+    "retained": true,
+    "reason": "Consequential native transaction ownership/server timeout/admission and fatal startup boundaries."
+  },
+  "findings": [],
+  "implementation_review": {
+    "original_clock": "initializePersistenceOnce captures monotonic entry+10000 before driver construction. Initial publish=true PostgreSQL begin callback setBudget checks original deadline before any schema work; each execute installs transaction-local statement/lock timeout from remaining original budget and checks after actual settlement. No per-statement reset.",
+    "owner": "Explicit SQL.begin transaction client passed into entity/index/change-log/auth DDL and authentication-column validation; global SQL/storage owner never swapped. Fixed database-scoped pg_advisory_xact_lock on actual same transaction before schema work. Lock ownership ends with native transaction settlement.",
+    "publication": "check before callback completion and again after begin/COMMIT settlement; expiry cancels current advisory query, returns false/fatal, disposes timer and prevents public listener bind. No native-owner replacement before settlement.",
+    "recovery": "Budget/admission branch only publish=true PostgreSQL; publish=false recovery retains existing singleflight/advisory cancellation, late success fences, genuine fatal schema/unknown57014 behavior. SQLite schema branch does not acquire this new budget.",
+    "timeout_isolation": "set_config(...,true) transaction-local; actual same-backend max1 pool native strengthening confirms preexisting25s statement/21s lock settings restored, not merely observed0 on unspecified connection."
+  },
+  "independent_execution": {
+    "fresh_cli_and_actual_fixtures": {
+      "fresh_compiler_exit": 0,
+      "fresh_persistence_fixture_build_exit": 0,
+      "fresh_authentication_fixture_build_exit": 0,
+      "derived_emitted_module_source_bound": true
+    },
+    "sqlite_focused": {
+      "tests": 11,
+      "failures": 0,
+      "assertions": 187,
+      "includes": "Native malformed authentication schema before both public/deployment bind; ten actual emitted recovery cancellation/disposition controls."
+    },
+    "postgres_focused": {
+      "tests": 17,
+      "failures": 0,
+      "assertions": 232,
+      "includes": "Both-adapter fatal native schema, two separate-process fresh main startup ready200, native timeout isolation, held/cumulative/advisory admission budget, retained emitted cancellation controls."
+    },
+    "strengthened_cumulative_native": {
+      "first_blocker_release_ms": 7000,
+      "author_release_ms": 5000,
+      "observed_second_native_lock": true,
+      "elapsed_ms": 10112,
+      "owning_initializer_backend_absent": true,
+      "both_partial_indexes_absent": true,
+      "public_application_and_deployment_bound": false,
+      "interpretation": "The second actual native wait only has original remaining budget; refreshing server limits cannot reset aggregate clock."
+    },
+    "held_native": {
+      "elapsed_ms": 10116,
+      "fixture_lock_remained_held_until_child_failed": true,
+      "initializer_backend_absent": true,
+      "partial_index_absent": true,
+      "public_bind": false
+    },
+    "admission_native": {
+      "elapsed_ms": 10114,
+      "actual_transaction_guard_held": true,
+      "initializer_backend_absent": true,
+      "public_bind": false
+    },
+    "same_backend_nondefault_settings": {
+      "tests": 1,
+      "failures": 0,
+      "assertions": 5,
+      "native_backend_identity_equal": true,
+      "statement_timeout_restored": "25s",
+      "lock_timeout_restored": "21s"
+    },
+    "additional_actual_emitted_controlled_fences": {
+      "tests": 4,
+      "failures": 0,
+      "assertions": 24,
+      "cases": [
+        "healthy within original budget and decreasing remaining limits",
+        "late native begin callback refuses0queries before publication",
+        "late timeout setup refuses0schema queries",
+        "late COMMIT settlement refuses publication/fatal"
+      ],
+      "scope": "Whole actual emitted module with controlled driver/clock; supports refusal/ownership semantics, not actual acquisition/setup/COMMIT transport hard settlement."
+    }
+  },
+  "explicit_limits": [
+    "Actual native pool acquisition/BEGIN may wait before callback; original deadline causes refusal when it arrives, but prompt native cancellation/termination is unproved.",
+    "Timeout setup uses native same transaction; original clock fences next work, but setup query lifetime before server limit installation is not hard-qualified.",
+    "COMMIT/acknowledgement may settle after deadline. Publication is fenced after settlement; no guarantee of physical rollback after an already committed transaction or prompt unknown COMMIT transport settlement.",
+    "Native held-statement measurements around10.1s include host scheduling/observer latency; they are bounded observed server waits, not universal exact10s public response/whole-process lifetime.",
+    "Synchronous SQLite constructor/query/recovery and whole preflight/module/initial process hard lifetime remain open; require owned isolated lifetime/termination acknowledgement.",
+    "Initial-only admission does not qualify bootstrap-versus-recovery/general cross-source migrations or Node/cloud hard lifetime. Existing recovery owner is retained.",
+    "No business-route retry eligibility widening, new credential/time semantics, arbitrary authored callbacks, global request/pool timeouts or revised frozen acceptance."
+  ],
+  "original_evidence": {
+    "retained_author_parallel_catalogue_failure": "postgres-readiness-concurrency-first.log",
+    "retained_safe_diagnostic": "postgres-readiness-concurrency-diagnostic.log",
+    "classification": "Original actual23505 pg_type_typname_nsp_index red preserved as source-distinct author evidence. Own final concurrent success does not erase original failed trace or impute an unobserved cause."
+  },
+  "policy_scope": "Concrete10s initial schema/authentication policy grounded in existing configuration-plan/options; routine numerical implementation choice within accepted scope, no inferred human approval requirement or unrelated delivery60/40 profile. Scope approval needs further integrated checks before any task closure.",
+  "evidence": {
+    "directory": "/private/tmp/jadpo-parallel-integration/tests/validation/evidence/golden-loop-postgres-startup-independent",
+    "safe_inventory_sha256": "a2730fcc8020ece857f5cb8900aa9608dc0975a1538347919c64d5ab7e165790",
+    "safe_files": 68,
+    "private_pem_or_database_binaries_retained": false,
+    "excluded_artifact_notice_sha256": "f83aec055b043b634ab2ca0906ad92b2eacd24a976a833d0d88988ad497f4f9b",
+    "source_bindings_sha256": "bb6941ebf260c99b87689d2225e47a848a873ea349d98b1580c34a6efa271f35",
+    "own_local_disposable_native_databases_cleaned": true
+  },
+  "timer": {
+    "run_id": "RM-403-7fa87048817a",
+    "outcome": "partial",
+    "original_estimate_hours": [
+      1,
+      4
+    ],
+    "active_minutes": 5.31,
+    "verification_minutes": 3.84
+  }
+}

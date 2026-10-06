@@ -304,6 +304,104 @@ RM-601/603 or positive protected issuer approval is not added as a new condition
 to this exact negative case; their genuine final-release gates remain open.
 Implementation and consequential artifact review continue in parallel.
 
+The [current-source BOUNDARY correction review](../../tests/validation/rm109-independent-native-safe-boundary-correction-review.json)
+approves `fdcdca7` after actual independent two-adapter collection **86/0/2**,
+all98 protocol tests and156 refused actual raw mutations with six valid controls.
+The original unmatched-BEGIN finding and older source epochs remain retained;
+balanced dispatch/completion commits, actual first/replay event ownership and
+native schedule-revision binding now agree. This raises scoped coverage to
+**43 original IDs**, leaving only REL-003 unexecuted on both backend ledgers.
+The code is integrated as `d303c62`; no full-task acceptance marker is added.
+
+The [initial PostgreSQL budget review](../../tests/validation/rm403-independent-postgres-startup-budget-review.json)
+approves `80ed094` within initial schema/authentication transaction scope.
+Independent native held/cumulative/admission lock controls time out near10.1s
+with rollback, backend settlement and zero application binds. The strengthened
+cumulative proof releases its first lock at7s under the original10s budget;
+transaction-owned settings restore even nondefault pooled values and two fresh
+concurrent startups both become ready. Controlled delayed-BEGIN/setup/COMMIT
+publication probes are explicitly separate from native transport lifetime.
+Initial pool acquisition, setup/COMMIT acknowledgement, synchronous SQLite,
+recovery and whole-startup hard lifetime remain unqualified. It is integrated
+as `d15bed0`; the fresh full supported gate at that combined source is running.
+
+### Exact protected owner-change artifact review
+
+The compiler `protected-attempt` artifact has scoped independent approval
+([review](../../tests/validation/rm601-independent-protected-attempt-artifact-review.json)).
+A fresh owned compiler passes all 52 approval tests, six native CLI replay controls,
+and ten additional native controls/refusals. The exact native protected-field span
+and all frontend diagnostic streams are retained; invented checked-after, live
+identity proof, executed runtime evidence and release success are refused even
+with a coherent rehash. A separately renamed actual protected field derives its
+own rule and digest, without substituting it for frozen REL-003.
+
+The artifact binds a freshly checked full baseline to the exact rejected ordinary
+assignment. Its supplied row/from/to labels remain unverified, the attempt remains
+unexecuted, and release authority is false. The tools lane is now implementing
+the exact REL-003 collector against this reviewed artifact; compiler approval alone
+does not promote the case or close RM-601/RM-603. Original owner-transfer policy
+and frozen expectations are preserved.
+
+### Current combined verification and local provenance correction
+
+The combined `e88ca29` verifier reached 61 passing checks and one failing
+PostgreSQL persistence check ([original report](../../build/validation/20261006T110900-36241/report.json)).
+The unchanged business fault proxy now intercepted the newly introduced initial
+schema transaction before the application import completed; the first expected
+business success instead returned startup-unavailable 503. Source ordering grounds
+that diagnosis; the original failed log lacks a separately captured child phase
+trace. A deterministic startup-complete/parent-arm handshake is being implemented
+without weakening the expected business retry or unknown-commit results. This red
+run is retained separately from the prior 73/73 combined green source epoch.
+
+The exact-file Bun invocation correction passes 99 verification protocol tests
+and the intended readiness file passes 22 tests/951 assertions. It prevents
+retained same-name evidence copies from being discovered as executable suites.
+The original `d15bed0` path-selection failure remains retained.
+
+Current local executable/native ICU/JWT provenance has independent scoped approval
+([review](../../tests/validation/rm504-independent-local-runtime-provenance-review.json)):
+one fresh native unchanged control and 18 refusals, including actual isolated JWT
+lock and installed JavaScript byte mutations. Bun reports ICU 74.2; the directly
+loaded macOS library reports ICU 78.1 and timezone data 2026c. These remain separate
+observations. Full rule-byte equality, cross-host pinning and RM-504 closure are
+unqualified; this observation binds the earlier fixed native checkpoint source.
+
+Retention limitation: the root BOUNDARY correction review originally executed
+compiler bytes `df865f00…` through a shared build target. A later combined build
+overwrote that target. Original source/raw output and recorded digest remain
+retained, but the original executable bytes were not preserved. An independently
+rebuilt owned target has different bytes (`5579749b…`) and is not substituted into
+the original report. Any fresh replay needs its own compiler and newly collected
+runtime evidence. The fixed tools checkpoint used for local provenance retains
+its matching original compiler.
+
+### Next artifact parity slice — native relationship failures
+
+At the reviewed compiler `c471179`, native foreign-key rejection safely exposes
+`relationship_conflict`/409, while generated route inventory, failure catalogue
+and OpenAPI omit that operational code. This is an actual metadata gap beyond
+the independently observed REL-002/004 kernel cases. Keep the runtime classifier
+and unknown-outcome dominance unchanged. Add the static safe code/message/status
+and closed public envelope to the native operational catalogue, then derive each
+route's possible relationship failure from its checked reachable persistence
+operations and actual reference constraints. A pure read or unrelated mutation
+must not receive a fabricated relational failure merely because the project has
+entities. Ordinary declared conflict schemas remain separate.
+
+The implementation should share the target's normalized persistence reference
+knowledge, preserve callable/inline-route/nested-call traversal and cycle fences,
+and inspect the specific fields written by create/update and actual physical
+delete effects. Logical lifecycle delete is a soft UPDATE and cannot be treated
+as unrestricted owner DELETE. Tests must compare emitted route/OpenAPI/audit
+contracts against actual existing native FK failures, include unrelated unique,
+check and trigger failures/unknown COMMIT controls, and retain negative pure-read,
+non-reference mutation, renamed/entity-alias and nested-call cases. No authored
+owner-transfer/delete route or generic admin permission is introduced. A fixed
+candidate needs consequential artifact review and a fresh supported gate; whole
+RM-109/601 release agreement remains open until all other accepted artifacts match.
+
 ### Pending database binding decision — 2026-10-06
 
 Healthy native golden startup has an existing contract collision: the golden
@@ -975,7 +1073,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-105 | Short; checked keyset-page lowering and both-adapter plan evidence | RM-101, RM-204, RM-102; accepted URL-encoded JSON cursor and supported-database pagination | planned | complete |
 | RM-107 | Short; bounded route implemented and both database adapters exercised | RM-101/RM-102 complete; owner resolved email output while preserving policy | planned | done |
 | RM-108 | Decision-dependent composition; scoped owner choices accepted | RM-105–107 and RM-304 complete; RM-307 unfinished. Owner accepted 3 scheduled invocations / 1 hour, narrow reminder-service authority and exact self-disable repair. Owner approved golden-only 60s execution / renewable 40s lease on 2026-10-06; checked worker and recovery gates remain. Fresh full gate passes 61/61; self-disable correction independently approved. Checked bindings/admission/completion remain | planned | in_progress |
-| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol; 42 original IDs independently reviewed across SQLite/PostgreSQL, 84 supporting entries pass and four remain not_run. CONFIG-001–003 corrective review approved; exact current-source BOUNDARY replay/review and REL-003 refusal artifact next; fresh merged supported gate running. Full accepted-successor execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
+| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol; 43 original IDs independently reviewed across SQLite/PostgreSQL, 86 supporting entries pass and two remain not_run. CONFIG/BOUNDARY corrective reviews approved; exact REL-003 refusal artifact next; fresh combined d15bed0 supported gate running. Full accepted-successor execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
 | RM-110 | Short; integration evidence, not another feature | RM-109, RM-504, RM-505, RM-603 | planned | queued |
 | RM-204 | Decision; public query/header decoding contract | Compiler/runtime/OpenAPI/formatter agreement and independent runtime/security review recorded in history | planned | complete |
 | RM-205 | Decision; separate lifecycle from authorisation | [Frozen entity-owned contract and 27 cases](../lifecycle-plan.md); independent correction review approved R1–R3 | planned | complete |
