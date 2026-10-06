@@ -312,7 +312,16 @@ impl<'project> ArtifactModel<'project> {
                 if let Some(delivery) = delivery {
                     row["delivery"] = delivery.source_facts();
                     row["delivery_service_effects"] = serde_json::json!([delivery.source_facts()["service_contract"]["operation"]]);
-                    row["durable_failure_dispositions"] = serde_json::json!("pending_generated_worker_conformance");
+                    // Static source/implementation support is distinct from a
+                    // successful target build, live host authority or runtime tests.
+                    let source_bound = delivery.matches_source_job(job);
+                    let lowering_supported = source_bound && row["delivery"]["runtime_lowering_supported"] == true;
+                    row["binding_matches_source_job"] = serde_json::json!(source_bound);
+                    row["runtime_lowering_supported"] = serde_json::json!(lowering_supported);
+                    row["runtime_conformance"] = serde_json::json!("not_certified_by_static_audit");
+                    if lowering_supported {
+                        row["durable_failure_dispositions"] = serde_json::json!("emitted_checked_delivery_protocol");
+                    }
                 }
                 row
             })
