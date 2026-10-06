@@ -258,8 +258,8 @@ describe("entity lifecycle transition lowering", () => {
       status: "open",
       deleted_at: new Date().toISOString(),
     });
-    expect(forgedUser.status).toBe(400);
-    expect(forgedTodo.status).toBe(400);
+    expect(forgedUser.status).toBe(422);
+    expect(forgedTodo.status).toBe(422);
   });
 
   test("rejects host persistence attempts to override lifecycle initial state", async () => {
