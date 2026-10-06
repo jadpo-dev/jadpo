@@ -385,7 +385,7 @@ fn principal_contracts(project: &AnalyzedProject, facts: &mut BTreeMap<String, V
 }
 
 fn snapshot(path: &Path, project: &AnalyzedProject) -> Result<Value, String> {
-    let model = ArtifactModel::new(project);
+    let model = ArtifactModel::new(path, project);
     let mut facts = BTreeMap::<String, Value>::new();
     let mut sources = BTreeMap::new();
     let mut locations = BTreeMap::new();

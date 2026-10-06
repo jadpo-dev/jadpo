@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod approval;
 mod artifact_provenance;
+mod http_boundary_failures;
 pub(crate) mod operational_failures;
 pub use approval::{
     approval_text, derive_approval_subject, derive_approval_subject_with_state_pin,
@@ -42,7 +43,7 @@ fn derive_non_approval_artifacts(
     project_path: &Path,
     project: &AnalyzedProject,
 ) -> Vec<GeneratedArtifact> {
-    let model = ArtifactModel::new(project);
+    let model = ArtifactModel::new(project_path, project);
     let metadata = normalized_manifest(project_path, project);
     let mut outputs = vec![
         artifact("app.meta.json", metadata),
@@ -240,6 +241,7 @@ struct ArtifactModel<'project> {
     callables: Vec<CallableModel>,
     configurations: Vec<&'project ConfigDeclaration>,
     relationships: operational_failures::RelationshipAnalysis,
+    http_boundaries: http_boundary_failures::Analysis,
 }
 
 #[derive(Clone)]
@@ -331,7 +333,7 @@ impl<'project> ArtifactModel<'project> {
         serde_json::json!({"schema_version": if self.project.delivery_model().bindings().is_empty() { 1 } else { 2 }, "scope": "checked_nonexecuting_schedule_entries", "jobs": jobs}).to_string()
     }
 
-    fn new(project: &'project AnalyzedProject) -> Self {
+    fn new(project_path: &Path, project: &'project AnalyzedProject) -> Self {
         let mut types = BTreeMap::new();
         let mut enums = BTreeMap::new();
         let mut records = BTreeMap::new();
@@ -515,6 +517,7 @@ impl<'project> ArtifactModel<'project> {
             callables,
             configurations,
             relationships: operational_failures::RelationshipAnalysis::new(project),
+            http_boundaries: http_boundary_failures::Analysis::new(project_path, project),
         }
     }
 
@@ -663,6 +666,7 @@ impl<'project> ArtifactModel<'project> {
             .map(|route| {
                 let failures = self.route_failures(&route.key);
                 let relationships = self.relationships.route(&route.key);
+                let boundary = self.http_boundaries.route(&route.key);
                 let path_fields = route.path_fields.iter().map(|(name, field_type)| {
                     format!(
                         "{{\"name\":{},\"type\":{}}}",
@@ -680,7 +684,7 @@ impl<'project> ArtifactModel<'project> {
                     )
                 });
                 format!(
-                    "{{\"route\":{},\"method\":{},\"path\":{},\"auth\":{},\"path_fields\":{},\"query\":{},\"headers\":{},\"input\":{},\"output\":{},\"success\":{{\"kind\":{},\"http_status\":{}}},\"deadline_ms\":{},\"behavior\":{},\"callable\":{},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{},\"relationship_failure_analysis\":{}}}",
+                    "{{\"route\":{},\"method\":{},\"path\":{},\"auth\":{},\"path_fields\":{},\"query\":{},\"headers\":{},\"input\":{},\"output\":{},\"success\":{{\"kind\":{},\"http_status\":{}}},\"deadline_ms\":{},\"behavior\":{},\"callable\":{},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{},\"relationship_failure_analysis\":{},\"http_boundary_failures\":{},\"http_boundary_analysis\":{}}}",
                     json_string(&route.key),
                     json_string(route.method),
                     json_string(&route.path),
@@ -721,7 +725,9 @@ impl<'project> ArtifactModel<'project> {
                         )
                     })),
                     bun_operational_failures_json(relationships.may_fail),
-                    relationships.json()
+                    relationships.json(),
+                    boundary.failures_json(),
+                    boundary.json()
                 )
             });
         format!("{{\"schema_version\":2,\"routes\":{}}}", json_array(routes))
@@ -774,8 +780,8 @@ impl<'project> ArtifactModel<'project> {
             )
         });
         format!(
-            "{{\"schema_version\":2,\"policy\":{{\"closed_public_payloads\":true,\"internal_context_disclosed\":false}},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{}}}",
-            json_array(contracts), bun_operational_failures_json(true)
+            "{{\"schema_version\":2,\"policy\":{{\"closed_public_payloads\":true,\"internal_context_disclosed\":false}},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{},\"http_boundary\":{}}}",
+            json_array(contracts), bun_operational_failures_json(true), self.http_boundaries.audit()
         )
     }
 
@@ -1108,6 +1114,8 @@ impl<'project> ArtifactModel<'project> {
                     "\"{success_status}\":{{\"description\":{}}}",
                     json_string(success_description)
                 ));
+            } else if route.behavior == "service_credential_exchange" {
+                responses.push(r#""200":{"description":"Bounded service bearer issued","content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"access_token":{"type":"string"},"token_type":{"type":"string","enum":["Bearer"]},"expires_at":{"type":"string","format":"date-time"}},"required":["access_token","token_type","expires_at"]}}}}"#.to_owned());
             } else if let Some(output) = &route.output {
                 responses.push(format!(
                     "\"{success_status}\":{{\"description\":{},\"content\":{{\"application/json\":{{\"schema\":{}}}}}}}",
@@ -1123,7 +1131,11 @@ impl<'project> ArtifactModel<'project> {
             if route.deadline_ms.is_some() {
                 responses.push("\"504\":{\"description\":\"The route operation exceeded its declared deadline\"}".to_owned());
             }
+            let boundary = self.http_boundaries.route(&route.key);
             let mut failure_groups = BTreeMap::<u16, Vec<&str>>::new();
+            for failure in &boundary.failures {
+                failure_groups.entry(failure.status).or_default();
+            }
             for failure in self.route_failures(&route.key) {
                 failure_groups
                     .entry(failure.http_status)
@@ -1131,7 +1143,9 @@ impl<'project> ArtifactModel<'project> {
                     .push(failure.name);
             }
             let relationships = self.relationships.route(&route.key);
-            if relationships.may_fail { failure_groups.entry(409).or_default(); }
+            if relationships.may_fail {
+                failure_groups.entry(409).or_default();
+            }
             failure_groups.entry(500).or_default();
             if !self.project.entity_model.entities.is_empty() {
                 failure_groups.entry(503).or_default();
@@ -1146,8 +1160,36 @@ impl<'project> ArtifactModel<'project> {
                         )
                     })
                     .collect::<Vec<_>>();
+                let native = boundary
+                    .failures
+                    .iter()
+                    .filter(|failure| failure.status == status)
+                    .collect::<Vec<_>>();
+                // The wire cannot distinguish two causes emitting the same
+                // closed envelope. Exclude native alternatives from colliding
+                // domain references so oneOf never double-matches that body.
+                for (reference, name) in references.iter_mut().zip(&names) {
+                    if let Some(contract) = self
+                        .project
+                        .failures
+                        .contracts
+                        .iter()
+                        .find(|contract| contract.name == *name)
+                    {
+                        let overlap = native
+                            .iter()
+                            .filter(|failure| failure.code == contract.code)
+                            .map(|failure| failure.schema())
+                            .collect::<Vec<_>>();
+                        if !overlap.is_empty() {
+                            *reference = serde_json::json!({"allOf":[serde_json::from_str::<serde_json::Value>(reference).unwrap(),{"not":{"anyOf":overlap}}]}).to_string();
+                        }
+                    }
+                }
+                references.extend(native.iter().map(|failure| failure.schema().to_string()));
                 if status == 409 && relationships.may_fail
-                    || status == 500 || status == 503 && !self.project.entity_model.entities.is_empty()
+                    || status == 500
+                    || status == 503 && !self.project.entity_model.entities.is_empty()
                 {
                     references.push(bun_operational_schema_json(status));
                 }
@@ -1163,6 +1205,7 @@ impl<'project> ArtifactModel<'project> {
                         409 if relationships.may_fail => "Bun relationship constraint conflict or declared failure".to_owned(),
                         500 => "Bun operational failure or declared failure; uncertain effects are not automatically retried".to_owned(),
                         503 if !self.project.entity_model.entities.is_empty() => "Bun storage unavailable or declared failure".to_owned(),
+                        _ if !native.is_empty() => "Native HTTP boundary failure or declared failure".to_owned(),
                         _ => names.join(" or "),
                     }),
                     failure_schema
@@ -1237,6 +1280,12 @@ impl<'project> ArtifactModel<'project> {
                 json_array(
                     strategies
                         .iter()
+                        .filter(|s| {
+                            route.behavior != "service_credential_exchange"
+                                || s.exchange.as_ref().is_some_and(|exchange| {
+                                    unquote(&exchange.path.text) == route.path
+                                })
+                        })
                         .map(|s| format!("{{{}:[]}}", json_string(&s.name.text))),
                 )
             };
@@ -1246,7 +1295,9 @@ impl<'project> ArtifactModel<'project> {
             let operation = format!(
                 "{}:{{\"operationId\":{},\"parameters\":{},\"requestBody\":{},\"responses\":{{{}}},\"security\":{},\"x-jadpo-fresh-authority\":{}{}}}",
                 json_string(&route.method.to_ascii_lowercase()),
-                json_string(route.callable.as_deref().unwrap_or(&route.key)),
+                json_string(&if route.behavior == "service_credential_exchange" {
+                    strategies.iter().find(|strategy| strategy.exchange.as_ref().is_some_and(|exchange| unquote(&exchange.path.text)==route.path)).map(|strategy|format!("exchange_service_credential_{}",strategy.name.text)).unwrap_or_else(||route.key.clone())
+                } else {route.callable.clone().unwrap_or_else(||route.key.clone())}),
                 parameters,
                 request_body,
                 responses.join(","),
@@ -1255,32 +1306,6 @@ impl<'project> ArtifactModel<'project> {
                 deadline_extension
             );
             paths.entry(route.path.clone()).or_default().push(operation);
-        }
-
-        for strategy in &strategies {
-            let Some(exchange) = &strategy.exchange else {
-                continue;
-            };
-            let path = unquote(&exchange.path.text).to_owned();
-            let response_schema = r#"{"type":"object","additionalProperties":false,"properties":{"access_token":{"type":"string"},"token_type":{"type":"string","enum":["Bearer"]},"expires_at":{"type":"string","format":"date-time"}},"required":["access_token","token_type","expires_at"]}"#;
-            let success_response = [
-                "\"200\":{\"description\":\"Bounded service bearer issued\",\"content\":{\"application/json\":{\"schema\":",
-                response_schema,
-                "}}}",
-            ]
-            .concat();
-            let responses = format!(
-                "{success_response},\"401\":{{\"description\":\"Credential absent, invalid, or ambiguous\"}},\"403\":{{\"description\":\"Service is disabled\"}},\"503\":{{\"description\":\"Authentication authority unavailable\"}}"
-            );
-            let operation = format!(
-                r#""post":{{"operationId":{},"parameters":[],"requestBody":null,"responses":{{{responses}}},"security":[{{{}:[]}}],"x-jadpo-fresh-authority":false}}"#,
-                json_string(&format!(
-                    "exchange_service_credential_{}",
-                    strategy.name.text
-                )),
-                json_string(&strategy.name.text),
-            );
-            paths.entry(path).or_default().push(operation);
         }
 
         let mut schemas = Vec::new();
@@ -2295,8 +2320,15 @@ route POST /todos {
 
 fn bun_operational_failures_json(relationships: bool) -> String {
     let base = r#"[{"code":"internal_fault","http_status":500,"condition":"contained_runtime_defect"},{"code":"transaction_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the operation.","condition":"retryable_no_commit_not_retried_or_exhausted","automatic_retry":false},{"code":"read_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the read.","condition":"checked_query_only_operation_with_listed_structured_driver_cause","automatic_retry":false},{"code":"outcome_unknown","semantic_http_default":null,"http_status":500,"message":"The operation may have completed.","condition":"effect_may_have_occurred","automatic_retry":false}]"#;
-    if relationships { format!("{},{}]", &base[..base.len()-1], operational_failures::RELATIONSHIP_FAILURE) }
-    else { base.to_owned() }
+    if relationships {
+        format!(
+            "{},{}]",
+            &base[..base.len() - 1],
+            operational_failures::RELATIONSHIP_FAILURE
+        )
+    } else {
+        base.to_owned()
+    }
 }
 
 fn bun_operational_schema_json(status: u16) -> String {
