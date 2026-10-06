@@ -12760,6 +12760,7 @@ mod tests {
             // Every execution module/schema is untouched full-target output.
             for (name, path) in [
                 ("persistence.ts", "target/persistence.ts"),
+                ("configuration-preflight.ts", "target/configuration-preflight.ts"),
                 ("app.ts", "target/app.ts"),
                 ("authentication.ts", "target/authentication.ts"),
                 (
