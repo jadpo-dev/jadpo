@@ -996,7 +996,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
             line(
                 &mut output,
                 &format!(
-                    "import {{ persistence as rootPersistence, PersistenceFault, PolicyFault, isPersistenceReady as databaseIsReady, isPersistenceInitializationFatal as persistenceInitializationFatal, refreshPersistenceReadiness as refreshDatabaseReadiness{isolated_test_import}{lifecycle_import}{delivery_import} }} from \"./persistence.ts\";"
+                    "import {{ persistence as rootPersistence, PersistenceFault, PolicyFault, normalizePersistenceFailure, isPersistenceReady as databaseIsReady, isPersistenceInitializationFatal as persistenceInitializationFatal, refreshPersistenceReadiness as refreshDatabaseReadiness{isolated_test_import}{lifecycle_import}{delivery_import} }} from \"./persistence.ts\";"
                 ),
             );
             if self.project.delivery_model().bindings().is_empty() {
@@ -3467,6 +3467,11 @@ export const temporal = Object.freeze({
             &mut output,
             "  return codes.some(code => code.startsWith(\"23\") || code.startsWith(\"SQLITE_CONSTRAINT\")) ? \"constraint\" : \"driver\";",
         );
+        line(&mut output, "}");
+        line(&mut output, "export function normalizePersistenceFailure(error: unknown): Readonly<{ status: 409; code: \"relationship_conflict\"; message: string }> | null {");
+        line(&mut output, "  if ((error instanceof PersistenceFault ? error.kind : classifyPersistenceError(error)) !== \"constraint\") return null;");
+        line(&mut output, "  const seen = new Set<object>(); let current = error, foreignKey = false; for (let depth = 0; depth < 8 && typeof current === \"object\" && current !== null && !seen.has(current); depth++) { if (current instanceof OutcomeUnknownFault || current instanceof PersistenceFault && (current.kind === \"unknown\" || current.transaction?.outcome === \"unknown\")) return null; seen.add(current); const detail = current as { code?: unknown; errno?: unknown; message?: unknown; cause?: unknown }; const codes = [detail.code, detail.errno].map(value => String(value)); if (codes.includes(\"23503\") || codes.includes(\"SQLITE_CONSTRAINT_FOREIGNKEY\") || codes.includes(\"787\")) foreignKey = true; if ((codes.includes(\"SQLITE_CONSTRAINT_TRIGGER\") || codes.includes(\"1811\")) && detail.message === \"FOREIGN KEY constraint failed\") foreignKey = true; current = detail.cause; }");
+        line(&mut output, "  if (typeof current === \"object\" && current !== null) return null; return foreignKey ? Object.freeze({ status: 409, code: \"relationship_conflict\", message: \"The operation conflicts with a relationship.\" }) : null;");
         line(&mut output, "}");
         line(&mut output, "function transactionFault(operation: string, cause: unknown, transaction: TransactionEvidence): PersistenceFault {");
         line(&mut output, "  return new PersistenceFault(operation, transaction.outcome === \"unknown\" ? \"unknown\" : classifyPersistenceError(cause), cause, identifyPersistenceConstraint(cause), Object.freeze(transaction));");
@@ -9178,6 +9183,7 @@ export const temporal = Object.freeze({
             line(output, "      reportRuntimeFault(\"RUNTIME_OUTCOME_UNKNOWN\", semanticOperationId, sourceRevision, requestId, error);");
             line(output, "      return json(500, errorEnvelope(\"outcome_unknown\", \"The operation may have completed.\", requestId), requestId);");
             line(output, "    }");
+            line(output, "    const persistenceFailure = normalizePersistenceFailure(error); if (persistenceFailure !== null) return json(persistenceFailure.status, errorEnvelope(persistenceFailure.code, persistenceFailure.message, requestId), requestId);");
             line(output, "    if (error instanceof PersistenceFault && error.kind === \"driver\" && error.transaction?.outcome === \"no_commit\" && (error.transaction.phase === \"begin\" || error.transaction.rollbackProven)) {");
             line(output, "      return json(503, errorEnvelope(\"transaction_unavailable\", \"A temporary storage issue prevented the operation.\", requestId), requestId);");
             line(output, "    }");
@@ -10597,7 +10603,7 @@ export const temporal = Object.freeze({
             .filter_map(|binding| {
                 binding.constraint.as_ref().map(|constraint| {
                     format!(
-                        "if (error instanceof PersistenceFault && error.kind === \"constraint\" && error.constraint === {}) throw new DomainFailure({});",
+                        "if (error instanceof PersistenceFault && error.kind === \"constraint\" && normalizePersistenceFailure(error) === null && error.constraint === {}) throw new DomainFailure({});",
                         ts_string(&if constraint.path.len() == 1 {
                             format!("{entity}.{}", constraint.path[0].text)
                         } else {
@@ -10618,7 +10624,7 @@ export const temporal = Object.freeze({
             .find(|binding| binding.constraint.is_none())
         {
             checks.push(format!(
-                "if (error instanceof PersistenceFault && error.kind === \"constraint\") throw new DomainFailure({});",
+                "if (error instanceof PersistenceFault && error.kind === \"constraint\" && normalizePersistenceFailure(error) === null) throw new DomainFailure({});",
                 self.domain_failure_arguments(&binding.rejection),
             ));
         }
