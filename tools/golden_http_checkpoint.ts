@@ -1,4 +1,4 @@
-// Real migrated-application observations for the reviewed eight-case slice.
+// Real migrated-application observations for the bounded HTTP slice.
 // Receives the full frozen contract; never reads expected values to emit results.
 import { Database } from "bun:sqlite";
 import { SQL } from "bun";
@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-002", "CREATE-004", "READ-002", "READ-003"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-002", "CREATE-004", "READ-002", "READ-003", "LIST-004", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const prototype = Database.prototype as any;
@@ -37,6 +37,7 @@ async function execute(sql: string, values: unknown[] = []) {
 const alice = "00000000-0000-4000-8000-000000000001";
 const bob = "00000000-0000-4000-8000-000000000002";
 const t2 = "00000000-0000-4000-8000-000000000022";
+const t1 = "00000000-0000-4000-8000-000000000021";
 const environment = {
   DATABASE_URL: "https://db.test/golden", SESSION_SIGNING_KEY: Buffer.alloc(32, 71).toString("base64url"),
   BROWSER_ORIGIN: "https://todo.test", OIDC_ISSUER: "https://issuer.test", OIDC_AUDIENCE: "todo",
@@ -54,12 +55,23 @@ async function reset() {
 }
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.handleRequest });
 const raw: any[] = [];
+const persistedInstant = (value: unknown) => value === null ? null : new Date(value as any).toISOString();
+async function todoSnapshot(id: string) {
+  const rows = await execute('SELECT id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at FROM todo WHERE id = $1', [id]);
+  if (rows.length !== 1) throw new Error("Missing fixture/persistence row");
+  const row = rows[0];
+  return { ...row, due_at: persistedInstant(row.due_at), reminder_sent_at: persistedInstant(row.reminder_sent_at), created_at: persistedInstant(row.created_at), updated_at: persistedInstant(row.updated_at), deleted_at: persistedInstant(row.deleted_at) };
+}
+async function seedTodo(id: string, owner: string, dueAt: string | null = null) {
+  const createdAt = "2026-01-15T11:00:00Z";
+  await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, NULL)', [id, owner, "original fixture title", "open", dueAt === null ? null : pg ? dueAt : Date.parse(dueAt), pg ? createdAt : Date.parse(createdAt)]);
+}
 async function send(request: any) {
   const headers: Record<string, string> = {};
   const auth = Array.isArray(request.auth) ? request.auth : [request.auth];
   if (auth.includes("alice-session")) Object.assign(headers, { cookie: session.setCookie.split(";", 1)[0], origin: environment.BROWSER_ORIGIN, "x-jadpo-csrf": session.csrfToken });
   if (auth.includes("invalid-jwt") || auth.includes("invalid-bearer")) headers.authorization = "Bearer INVALID_CHECKPOINT_CREDENTIAL";
-  const path = request.path.replace("/todos/t2", `/todos/${t2}`);
+  const path = request.path.replace("/todos/t2", `/todos/${t2}`).replace("/todos/t1", `/todos/${t1}`);
   if (request.json !== undefined) headers["content-type"] = "application/json";
   const statements = beginSqlObservation();
   let response: Response;
@@ -82,6 +94,11 @@ try {
     const start = raw.length;
     try {
     await reset();
+    if (case_.id.startsWith("PATCH-")) {
+      const id = case_.id === "PATCH-004" ? t2 : t1;
+      await seedTodo(id, case_.id === "PATCH-004" ? bob : alice, ["PATCH-001", "PATCH-002"].includes(case_.id) ? "2026-02-01T00:00:00Z" : null);
+      raw.push({ fixture: await todoSnapshot(id) });
+    }
     if (case_.id === "READ-002") {
       const now = Date.now();
       await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)', [t2, bob, "private bob todo", "open", pg ? new Date(now).toISOString() : now]);
@@ -93,6 +110,7 @@ try {
         if (rows.length !== 1) throw new Error("Missing persisted create observation");
         raw.push({ persistence: { id: reply.body.id, storedDueAt: rows[0].due_at } });
       }
+      if (case_.id.startsWith("PATCH-")) raw.push({ persistence: await todoSnapshot(case_.id === "PATCH-004" ? t2 : t1) });
     }
     results.push({ id: case_.id, raw: raw.slice(start) });
     } catch {

@@ -37,7 +37,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         case = self.cases[case_id]
         replies = []
         for request in case.get('requests', [case.get('request')]):
-            replies.append({'method': request['method'], 'path': request['path'].replace('/todos/t2', '/todos/00000000-0000-4000-8000-000000000022'),
+            replies.append({'method': request['method'], 'path': checkpoint.request_path(request['path']),
                             'auth': request.get('auth'), 'requestJson': request.get('json'),
                             'status': 404 if case_id == 'READ-002' else 401,
                             'body': {'error': {'code': 'todo_not_found' if case_id == 'READ-002' else 'authentication_required', 'request_id': f'req_{len(replies)}'}},
@@ -45,6 +45,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
         if case_id == 'CREATE-004':
             replies[0]['body'] = {'id': 'synthetic-id', 'due_at': None}
             replies.append({'persistence': {'id': 'synthetic-id', 'storedDueAt': None}})
+        if case_id.startswith('PATCH-'):
+            fixture = {'id': checkpoint.ALIASES['t2' if case_id == 'PATCH-004' else 't1'],
+                       'owner_id': checkpoint.ALIASES['bob' if case_id == 'PATCH-004' else 'alice'],
+                       'title': 'original fixture title', 'due_at': '2026-02-01T00:00:00.000Z' if case_id in ('PATCH-001', 'PATCH-002') else None}
+            after = deepcopy(fixture)
+            if case_id == 'PATCH-002': after['due_at'] = None
+            replies.insert(0, {'fixture': fixture})
+            replies.append({'persistence': after})
         return replies
 
     def outputs(self):
@@ -54,7 +62,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         report = harness.run_cases(self.root)
         checkpoint.apply_checkpoint(report, self.outputs(), self.root)
         self.assertEqual(len(report['results']), 88)
-        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 72)
+        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 88 - len(checkpoint.SUPPORTED)*2)
         self.assertEqual(report['status'], 'failed')
         self.assertFalse(report['release_equivalent'])
 
@@ -159,6 +167,35 @@ class CheckpointIntegrityTests(unittest.TestCase):
         self.assertTrue(all(entry['status'] == 'not_run' for entry in report['results']))
         with self.assertRaisesRegex(ValueError, 'Passing label lacks complete matching observations'):
             checkpoint.apply_checkpoint(report, self.outputs(), self.root)
+
+    def test_patch_due_and_title_derive_from_persisted_values(self):
+        raw = self.raw('PATCH-001')
+        raw[-1]['persistence']['title'] = 'observed actual title'
+        step = checkpoint.observations(self.cases['PATCH-001'], raw)[0]['steps'][0]
+        self.assertEqual(step['storedTitle'], 'observed actual title')
+        self.assertEqual(step['storedDueAt'], '2026-02-01T00:00:00Z')
+        raw[-1]['persistence']['due_at'] = '2030-01-01T00:00:00Z'
+        self.assertEqual(checkpoint.observations(self.cases['PATCH-001'], raw)[0]['steps'][0]['storedDueAt'], '2030-01-01T00:00:00Z')
+        cleared = checkpoint.observations(self.cases['PATCH-002'], self.raw('PATCH-002'))[0]['steps'][0]
+        self.assertIsNone(cleared['storedDueAt'])
+
+    def test_patch_fixtures_owner_identity_due_date_and_order_are_required(self):
+        for mutation in ('owner', 'id', 'due', 'missing', 'order'):
+            raw = self.raw('PATCH-001')
+            if mutation == 'owner': raw[0]['fixture']['owner_id'] = checkpoint.ALIASES['bob']
+            elif mutation == 'id': raw[-1]['persistence']['id'] = 'foreign'
+            elif mutation == 'due': raw[0]['fixture']['due_at'] = None
+            elif mutation == 'missing': raw.pop()
+            else: raw[0], raw[1] = raw[1], raw[0]
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                checkpoint.observations(self.cases['PATCH-001'], raw)
+
+    def test_rejected_patch_cannot_claim_zero_writes_when_storage_changed(self):
+        for case_id in ('PATCH-003', 'PATCH-004'):
+            raw = self.raw(case_id)
+            raw[-1]['persistence']['title'] = 'changed behind instrumentation'
+            with self.subTest(case_id=case_id), self.assertRaisesRegex(ValueError, 'storage changed'):
+                checkpoint.observations(self.cases[case_id], raw)
 
 
 if __name__ == '__main__': unittest.main()
