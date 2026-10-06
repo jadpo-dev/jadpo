@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications, resolvedAuthorityPrincipals } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004"];
 const partial = ["REL-002", "REL-003", "REL-004", "CONFIG-001", "CONFIG-002", "BOUNDARY-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
@@ -192,6 +192,23 @@ async function relationshipOperation(case_: any) {
   raw.push({ persistenceOperation: case_.operation, at: new Date(clockNow).toISOString(), accepted, fault, statements,
     publicBoundaryObserved: false, before,
     after: { users: await execute('SELECT id, status FROM "user" ORDER BY id'), todos: await execute('SELECT id, owner_id FROM todo ORDER BY id') } });
+}
+async function maintenanceProbe(case_: any) {
+  clockNow = nativeDate.parse(case_.run.at);
+  await seedTodo(t1, alice, null, { deletedAt: new nativeDate(clockNow - 29 * 86_400_000).toISOString() });
+  await seedTodo(t2, alice, null, { deletedAt: new nativeDate(clockNow - 31 * 86_400_000).toISOString() });
+  await seedTodo("00000000-0000-4000-8000-000000000023", alice);
+  const before = [await todoSnapshot(t1), await todoSnapshot(t2), await todoSnapshot("00000000-0000-4000-8000-000000000023")];
+  const metadata = JSON.parse(readFileSync(join(project, "build/audit/lifecycle-maintenance.json"), "utf8"));
+  raw.push({ maintenanceFixture: { before, metadata, sourceRevision: JSON.parse(readFileSync(join(project, "build/app.meta.json"), "utf8")).source_revision, specification: { fixture: case_.fixture, run: case_.run } } });
+  const auditEvents: any[] = []; const nativeError = console.error;
+  console.error = (...values: unknown[]) => { try { const event = JSON.parse(values.map(String).join(" ")); if (event.kind === "maintenance_audit") auditEvents.push(event); } catch {} nativeError(...values); };
+  const statements = beginSqlObservation();
+  try { await app.runLifecycleMaintenance(); }
+  finally { endSqlObservation(); console.error = nativeError; }
+  const retained = await execute('SELECT id FROM todo ORDER BY id'); const after = [];
+  for (const row of retained) after.push(await todoSnapshot(row.id));
+  raw.push({ nativeMaintenance: { callable: "runLifecycleMaintenance", at: new Date(clockNow).toISOString(), statements, auditEvents, after } });
 }
 async function startupProbe(case_: any) {
   const probes = [];
@@ -439,6 +456,7 @@ try {
     const start = raw.length;
     try {
     await reset(case_);
+    if (case_.id === "JOB-004") { await maintenanceProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
     if (["CONFIG-001", "CONFIG-002"].includes(case_.id)) { await startupProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_exact_native_configuration_diagnostics_missing" }); continue; }
     if (case_.id === "BOUNDARY-001") { await boundaryProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_native_provider_boundary_request_id_missing" }); continue; }
     if (["AUTH-009", "AUTH-011"].includes(case_.id)) await prepareServiceFixture(case_);

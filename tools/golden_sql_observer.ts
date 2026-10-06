@@ -2,7 +2,7 @@
 // here; the exact original and instrumented files are retained and hashed.
 import { SQL as NativeSQL } from "bun";
 
-export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number> };
+export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string };
 let active: StatementObservation[] | undefined;
 let authenticationAttempts = 0;
 let principals: unknown[] = [];
@@ -42,7 +42,16 @@ export function recordStatement(sql: string, parameters: unknown[] = []) {
   // Retain bounded integer limit/offset observations; strings, dates, secrets
   // and arbitrary driver parameter payloads remain absent from raw evidence.
   const numericParameters = Object.fromEntries(parameters.flatMap((value, index) => Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 1000 ? [[String(index + 1), value as number]] : []));
-  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters });
+  // The compiler-owned retention predicate has one typed Instant bind. Retain
+  // only that value on its exact SELECT/DELETE shape, never arbitrary binds.
+  let maintenanceCutoff: string | undefined;
+  if (/^(?:SELECT "id", "deleted_at" FROM "todo"|DELETE FROM "todo")/u.test(safe) && /"deleted_at" <= [?$]1/u.test(safe)) {
+    const value = parameters[0];
+    if (typeof value === "number" && Number.isSafeInteger(value) || typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(value)) {
+      const date = new Date(value); if (Number.isFinite(date.getTime())) maintenanceCutoff = date.toISOString();
+    }
+  }
+  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters, ...(maintenanceCutoff ? { maintenanceCutoff } : {}) });
 }
 function observeConnection(connection: any): any {
   return new Proxy(connection, {

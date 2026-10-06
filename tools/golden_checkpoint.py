@@ -6,6 +6,7 @@ import argparse
 from contextlib import contextmanager
 from copy import deepcopy
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -24,7 +25,7 @@ SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'READ-001', 'PATCH-005', 'DELETE-001', 'LIST-001', 'LIST-002',
              'LIST-003', 'REL-001', 'DELETE-002', 'AUTH-002', 'AUTH-006',
              'AUTH-010', 'USER-001', 'AUTH-003', 'AUTH-004', 'AUTH-007', 'AUTH-008',
-             'AUTH-009', 'AUTH-011')
+             'AUTH-009', 'AUTH-011', 'JOB-004')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
@@ -369,8 +370,47 @@ def native_patch_fixture(case: dict, raw: list):
     return identity
 
 
+def maintenance_observations(case: dict, raw: list):
+    fixtures = [item for item in raw if 'maintenanceFixture' in item]
+    runs = [item for item in raw if 'nativeMaintenance' in item]
+    if len(fixtures) != 1 or len(runs) != 1 or raw.index(fixtures[0]) >= raw.index(runs[0]):
+        raise ValueError('Missing/reordered native maintenance fixture and execution')
+    fixture, run = fixtures[0]['maintenanceFixture'], runs[0]['nativeMaintenance']
+    if not harness.same_json(fixture.get('specification'), {'fixture': case['fixture'], 'run': case['run']}) or run.get('callable') != 'runLifecycleMaintenance' or instant(run.get('at')) != instant(case['run']['at']):
+        raise ValueError('Changed original maintenance fixture/run/clock')
+    before, after = fixture.get('before', []), run.get('after', [])
+    by_id = {row['id']: row for row in before}
+    if len(before) != 3 or set(by_id) != {ALIASES['t1'], ALIASES['t2'], '00000000-0000-4000-8000-000000000023'} or any(row.get('owner_id') != ALIASES['alice'] for row in before) or instant(by_id[ALIASES['t1']].get('deleted_at')) != '2025-12-17T12:00:00Z' or instant(by_id[ALIASES['t2']].get('deleted_at')) != '2025-12-15T12:00:00Z' or by_id['00000000-0000-4000-8000-000000000023'].get('deleted_at') is not None:
+        raise ValueError('Missing exact29day/31day/active original retention fixture')
+    if len(after) != 2 or {row.get('id') for row in after} != {ALIASES['t1'], '00000000-0000-4000-8000-000000000023'} or any(not harness.same_json(row, by_id[row['id']]) for row in after):
+        raise ValueError('Native retention altered young/active rows or missed expired row')
+    events = run.get('auditEvents', [])
+    if len(events) != 1:
+        raise ValueError('Missing native retention maintenance audit')
+    event = events[0]
+    capabilities = fixture.get('metadata', {}).get('capabilities', [])
+    if len(capabilities) != 1:
+        raise ValueError('Missing generated maintenance authority metadata')
+    capability = capabilities[0]
+    if event.get('sourceRevision') != fixture.get('sourceRevision') or not isinstance(fixture.get('sourceRevision'), str) or event.get('kind') != 'maintenance_audit' or event.get('eventName') != capability.get('audit_event') or event.get('clause') != capability.get('clause') or event.get('operation') != capability.get('effect') or event.get('retentionBinding') != capability.get('retention_binding') or capability.get('source_callable') is not False or event.get('outcome') != 'committed' or event.get('selectedCount') != 1 or event.get('committedCount') != len(before) - len(after) or instant(event.get('attemptNow')) != instant(case['run']['at']):
+        raise ValueError('Missing native committed maintenance authority/clause/count/clock binding')
+    expected_token = hashlib.sha256(('Todo:'+ALIASES['t2']).encode()).hexdigest()[:16]
+    if event.get('rowIdentityTokens') != [expected_token]:
+        raise ValueError('Native maintenance audit identifies a foreign deleted row')
+    statements = run.get('statements', [])
+    selected = [row for row in statements if row.get('operation') == 'SELECT' and 'FROM "todo"' in row.get('sql', '')]
+    deleted = [row for row in statements if row.get('operation') == 'DELETE' and 'FROM "todo"' in row.get('sql', '')]
+    if len(selected) != 1 or len(deleted) != 1 or not re.search(r'ORDER BY "deleted_at" ASC, "id" ASC LIMIT (\d+)', selected[0]['sql']):
+        raise ValueError('Missing actual bounded native retention selection/delete')
+    limit = int(re.search(r'LIMIT (\d+)', selected[0]['sql'])[1])
+    if limit != event.get('bound') or limit != capability.get('batch_limit') or any(instant(row.get('maintenanceCutoff')) != '2025-12-16T12:00:00Z' or '"deleted_at" IS NOT NULL' not in row['sql'] or '"deleted_at" <=' not in row['sql'] for row in selected+deleted) or not statements.index(selected[0]) < statements.index(deleted[0]) or not any(row.get('operation') == 'COMMIT' for row in statements[statements.index(deleted[0])+1:]):
+        raise ValueError('Native retention predicate/cutoff/transaction/batch disagrees with audit')
+    return [{'variant_index': 0, 'steps': [{'hardDeletedCount': len(before)-len(after), 'retainedCount': len(after), 'batchLimit': limit}]}]
+
+
 def observations(case: dict, raw: list, clock: str | None = None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
+    if case['id'] == 'JOB-004': return maintenance_observations(case, raw)
     if case['id'] == 'USER-001' and case.get('followUps'):
         if clock is None: raise ValueError('Authentication timeline requires original controlled clock')
         return user_timeline_observations(case, raw, clock)
@@ -752,11 +792,15 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
     plan_path = evidence/'application/build/persistence/entities.json'
     expected_plans = [plan for plan in json.loads(plan_path.read_text())['query_plans'] if plan.get('entity') == 'Todo' and plan.get('strategy') == 'indexed_keyset_page']
     expected_failures = json.loads((evidence/'application/build/audit/failures.json').read_text())['failures']
+    expected_maintenance = json.loads((evidence/'application/build/audit/lifecycle-maintenance.json').read_text())
+    expected_source_revision = json.loads((evidence/'application/build/app.meta.json').read_text())['source_revision']
     for output in outputs:
         for item in output['results']:
             journals = [scenario['raw'] for scenario in item['scenarios']] if item['id'] == 'REL-001' else [item['raw']]
             for raw in journals:
                 for event in raw:
+                    if 'maintenanceFixture' in event and (not harness.same_json(event['maintenanceFixture'].get('metadata'), expected_maintenance) or event['maintenanceFixture'].get('sourceRevision') != expected_source_revision):
+                        raise ValueError('Raw maintenance authority differs from generated artifact')
                     if 'queryMetadata' in event and not harness.same_json(event['queryMetadata'], expected_plans):
                         raise ValueError('Raw query metadata differs from generated artifact')
                     if event.get('failureMetadata') is not None and not any(harness.same_json(event['failureMetadata'], item) for item in expected_failures):

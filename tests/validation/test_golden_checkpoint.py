@@ -43,6 +43,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id == 'JOB-004': return self.maintenance_raw()
         if case_id in ('AUTH-009', 'AUTH-011'): return self.service_raw(case_id)
         if case_id in ('AUTH-003', 'AUTH-004', 'AUTH-007'): return self.jwt_raw(case_id)
         if case_id == 'AUTH-008': return self.cache_raw()
@@ -234,6 +235,15 @@ class CheckpointIntegrityTests(unittest.TestCase):
                         'statements': [{'sql': 'SELECT id FROM "todo" ORDER BY "created_at" DESC, "id" DESC LIMIT $6', 'operation': 'SELECT', 'numericParameters': {'6': 3}}], 'authenticationAttempts': 1})
         return raw
 
+    def maintenance_raw(self):
+        case = self.cases['JOB-004']
+        before = [{'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': '2025-12-17T12:00:00Z'}, {'id': checkpoint.ALIASES['t2'], 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': '2025-12-15T12:00:00Z'}, {'id': '00000000-0000-4000-8000-000000000023', 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': None}]
+        metadata = {'capabilities': [{'audit_event': 'retention.purge.batch', 'batch_limit': 500, 'clause': 'Todo.lifecycle.purge', 'effect': 'retention_purge(Todo)', 'retention_binding': 'config.soft_delete_retention', 'source_callable': False}]}
+        token = hashlib.sha256(('Todo:'+checkpoint.ALIASES['t2']).encode()).hexdigest()[:16]
+        event = {'sourceRevision': 'synthetic_revision', 'kind': 'maintenance_audit', 'eventName': 'retention.purge.batch', 'clause': 'Todo.lifecycle.purge', 'operation': 'retention_purge(Todo)', 'retentionBinding': 'config.soft_delete_retention', 'outcome': 'committed', 'selectedCount': 1, 'committedCount': 1, 'attemptNow': case['run']['at'], 'rowIdentityTokens': [token], 'bound': 500}
+        statements = [{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'SELECT', 'sql': 'SELECT "id", "deleted_at" FROM "todo" WHERE "deleted_at" IS NOT NULL AND "deleted_at" <= $1 ORDER BY "deleted_at" ASC, "id" ASC LIMIT 500', 'maintenanceCutoff': '2025-12-16T12:00:00Z'}, {'operation': 'DELETE', 'sql': 'DELETE FROM "todo" WHERE "deleted_at" IS NOT NULL AND "deleted_at" <= $1', 'maintenanceCutoff': '2025-12-16T12:00:00Z'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}]
+        return [{'maintenanceFixture': {'before': before, 'metadata': metadata, 'sourceRevision': 'synthetic_revision', 'specification': {'fixture': case['fixture'], 'run': case['run']}}}, {'nativeMaintenance': {'callable': 'runLifecycleMaintenance', 'at': case['run']['at'], 'statements': statements, 'auditEvents': [event], 'after': deepcopy([before[0], before[2]])}}]
+
     def outputs(self):
         return [{'backend': backend, 'results': [{'id': case_id, 'scenarios' if case_id == 'REL-001' else 'raw': self.raw(case_id)} for case_id in checkpoint.SUPPORTED]} for backend in harness.BACKENDS]
 
@@ -322,6 +332,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
             plan_path.write_text(json.dumps({'query_plans': self.query_plans}))
             failure_path = evidence/'application/build/audit/failures.json'; failure_path.parent.mkdir()
             failure_path.write_text(json.dumps({'failures': [{'failure': 'UserDisabled', 'code': 'user_disabled'}]}))
+            (failure_path.parent/'lifecycle-maintenance.json').write_text(json.dumps(self.maintenance_raw()[0]['maintenanceFixture']['metadata']))
+            (evidence/'application/build/app.meta.json').write_text(json.dumps({'source_revision': 'synthetic_revision'}))
             outputs = self.outputs()
             for output in outputs: (evidence/f'{output["backend"]}-raw.json').write_text(json.dumps(output))
             report = harness.run_cases(self.root); checkpoint.apply_checkpoint(report, outputs, self.root)
@@ -731,6 +743,30 @@ class CheckpointIntegrityTests(unittest.TestCase):
         for entry in report['results']:
             if entry['id'] in ('REL-002', 'REL-003', 'REL-004'):
                 self.assertEqual(entry['status'], 'not_run'); self.assertNotIn('observations', entry)
+
+    def test_native_maintenance_requires_original_retention_rows_audit_cutoff_and_predicate(self):
+        raw = self.maintenance_raw()
+        self.assertFalse(harness.assess(self.cases['JOB-004'], checkpoint.observations(self.cases['JOB-004'], raw, self.clock)))
+        for mutation in ('missing', 'order', 'young_date', 'expired_date', 'active_date', 'retained_identity', 'retained_state', 'audit_count', 'audit_token', 'audit_clause', 'audit_clock', 'cutoff', 'predicate', 'limit', 'commit', 'authority', 'source_revision'):
+            raw = self.maintenance_raw(); fixture = raw[0]['maintenanceFixture']; run = raw[1]['nativeMaintenance']; audit = run['auditEvents'][0]
+            if mutation == 'missing': raw.pop()
+            elif mutation == 'order': raw.reverse()
+            elif mutation == 'young_date': fixture['before'][0]['deleted_at'] = '2025-12-01T12:00:00Z'
+            elif mutation == 'expired_date': fixture['before'][1]['deleted_at'] = None
+            elif mutation == 'active_date': fixture['before'][2]['deleted_at'] = self.clock
+            elif mutation == 'retained_identity': run['after'][0]['id'] = checkpoint.ALIASES['t2']
+            elif mutation == 'retained_state': run['after'][0]['deleted_at'] = None
+            elif mutation == 'audit_count': audit['committedCount'] = 0
+            elif mutation == 'audit_token': audit['rowIdentityTokens'] = ['foreign']
+            elif mutation == 'audit_clause': audit['clause'] = 'Foreign.lifecycle.purge'
+            elif mutation == 'audit_clock': audit['attemptNow'] = '2030-01-01T00:00:00Z'
+            elif mutation == 'cutoff': run['statements'][1]['maintenanceCutoff'] = self.clock
+            elif mutation == 'predicate': run['statements'][2]['sql'] = 'DELETE FROM "todo"'
+            elif mutation == 'limit': run['statements'][1]['sql'] = run['statements'][1]['sql'].replace('LIMIT 500', 'LIMIT 999')
+            elif mutation == 'commit': run['statements'].pop()
+            elif mutation == 'authority': fixture['metadata']['capabilities'][0]['source_callable'] = True
+            elif mutation == 'source_revision': audit['sourceRevision'] = 'foreign'
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['JOB-004'], raw, self.clock)
 
     def partial_outputs_fixture(self):
         output = {'partialEvidence': [{'id': case_id, 'adapterFailure': True, 'raw': []} for case_id in ('REL-002', 'REL-003', 'REL-004')]}
