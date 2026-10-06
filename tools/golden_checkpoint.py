@@ -18,7 +18,8 @@ import golden_cases as harness
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'CREATE-004', 'READ-002', 'READ-003', 'LIST-004', 'PATCH-001',
-             'PATCH-002', 'PATCH-003', 'PATCH-004')
+             'PATCH-002', 'PATCH-003', 'PATCH-004', 'CREATE-001', 'CREATE-003',
+             'READ-001', 'PATCH-005', 'DELETE-001')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
@@ -87,11 +88,13 @@ def public_shape(body):
     return body
 
 
-def observations(case: dict, raw: list) -> list:
+def observations(case: dict, raw: list, clock: str | None = None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
     if case['id'] not in SUPPORTED or case.get('fixtureVariants') or case.get('followUps'):
         raise ValueError('Unsupported case/scenario')
     expected_requests = case.get('requests', [case.get('request')])
+    if case['id'] == 'DELETE-001':
+        expected_requests = [case['request'], {**case['request'], 'method': 'GET'}]
     replies = [item for item in raw if 'method' in item]
     if len(replies) != len(expected_requests):
         raise ValueError('Missing request observation')
@@ -101,6 +104,8 @@ def observations(case: dict, raw: list) -> list:
             raise ValueError('Foreign request observation')
         if not harness.same_json(request.get('auth'), reply.get('auth')) or not harness.same_json(request.get('json'), reply.get('requestJson')):
             raise ValueError('Changed request credential selection/body')
+        if clock is not None and instant(reply.get('at')) != instant(clock):
+            raise ValueError('Changed or missing controlled request clock')
         if type(reply.get('authenticationAttempts')) is not int or reply['authenticationAttempts'] < 0:
             raise ValueError('Missing authentication instrumentation')
         if not isinstance(reply.get('statements'), list) or any(not isinstance(row.get('sql'), str) or not isinstance(row.get('operation'), str) for row in reply['statements']):
@@ -114,11 +119,34 @@ def observations(case: dict, raw: list) -> list:
         step = {'status': reply['status'], 'databaseQueries': len(reply['statements']),
                 'authenticationAttempts': reply['authenticationAttempts'],
                 'writes': sum(row['operation'] in ('INSERT', 'UPDATE', 'DELETE', 'REPLACE') for row in reply['statements'])}
-        code = reply['body'].get('error', {}).get('code')
+        code = (reply['body'] or {}).get('error', {}).get('code')
         if code is not None:
             step['code'] = code
         if case['id'] in ('AUTH-012', 'PUBLIC-001'):
             step['body'] = reply['body']
+        if case['id'] in ('CREATE-001', 'READ-001'):
+            validations = [item['outputValidation'] for item in raw if 'outputValidation' in item]
+            if len(validations) != 1:
+                raise ValueError('Missing generated output validation')
+            validation = validations[0]
+            if validation.get('validator') != 'validate_' + str(validation.get('schema')):
+                raise ValueError('Foreign generated output validator')
+            route = 'POST /todos' if case['id'] == 'CREATE-001' else 'GET /todos/{todo_id}'
+            if validation.get('route') != route:
+                raise ValueError('Foreign generated output route')
+            step['outputSchema'] = validation.get('schema') if validation.get('accepted') is True and harness.same_json(validation.get('validatedBody'), reply['body']) else None
+            if case['id'] == 'CREATE-001':
+                persisted = [item['persistence'] for item in raw if 'persistence' in item]
+                if len(persisted) != 1 or persisted[0].get('id') != reply['body'].get('id'):
+                    raise ValueError('Missing created row owner observation')
+                step['storedOwner'] = next((alias for alias in ('alice', 'bob') if ALIASES[alias] == persisted[0].get('owner_id')), None)
+            else:
+                fixtures = [item['fixture'] for item in raw if 'fixture' in item]
+                if len(fixtures) != 1 or fixtures[0].get('id') != ALIASES['t1'] or fixtures[0].get('owner_id') != ALIASES['alice'] or fixtures[0].get('deleted_at') is not None or reply['body'].get('id') != fixtures[0]['id']:
+                    raise ValueError('Missing or foreign owned read fixture/output identity')
+                step['privateFieldsAbsent'] = [field for field in ('owner_id', 'deleted_at', 'reminder_sent_at') if field not in reply['body']]
+        if case['id'] in ('CREATE-001', 'CREATE-003', 'PATCH-005', 'DELETE-001') and clock is None:
+            raise ValueError('Temporal case requires original controlled clock')
         if case['id'] == 'CREATE-004':
             persisted = [item.get('persistence') for item in raw if 'persistence' in item]
             if len(persisted) != 1 or persisted[0]['id'] != reply['body'].get('id'):
@@ -133,16 +161,34 @@ def observations(case: dict, raw: list) -> list:
                 raise ValueError('Missing or foreign patch fixture/persistence observation')
             if before[0].get('owner_id') != ALIASES['bob' if case['id'] == 'PATCH-004' else 'alice']:
                 raise ValueError('Changed patch fixture owner')
-            if case['id'] in ('PATCH-001', 'PATCH-002'):
+            if case['id'] in ('PATCH-001', 'PATCH-002', 'PATCH-005'):
                 if instant(before[0].get('due_at')) != '2026-02-01T00:00:00Z':
                     raise ValueError('Missing originally due-dated patch fixture')
                 step['storedDueAt'] = instant(after[0]['due_at'])
+            if case['id'] == 'PATCH-005':
+                if before[0].get('reminder_sent_at') is None:
+                    raise ValueError('Missing previously reminded patch fixture')
+                step['storedReminderSentAt'] = instant(after[0]['reminder_sent_at'])
             if case['id'] == 'PATCH-001':
                 step['storedTitle'] = after[0]['title']
             if not raw.index(next(item for item in raw if 'fixture' in item)) < raw.index(reply) < raw.index(next(item for item in raw if 'persistence' in item)):
                 raise ValueError('Reordered patch fixture/request/persistence observations')
             if case['id'] in ('PATCH-003', 'PATCH-004') and step['writes'] == 0 and not harness.same_json(before[0], after[0]):
                 raise ValueError('Rejected patch storage changed despite zero traced writes')
+        if case['id'] == 'DELETE-001':
+            fixtures = [item['fixture'] for item in raw if 'fixture' in item]
+            retained = [item['persistence'] for item in raw if 'persistence' in item]
+            if len(fixtures) != 1 or fixtures[0].get('id') != ALIASES['t1'] or fixtures[0].get('owner_id') != ALIASES['alice'] or fixtures[0].get('deleted_at') is not None:
+                raise ValueError('Missing originally active delete fixture')
+            if len(retained) != 1 or retained[0].get('id') != ALIASES['t1']:
+                raise ValueError('Missing retained soft-delete row')
+            fixture_index = raw.index(next(item for item in raw if 'fixture' in item))
+            persistence_index = raw.index(next(item for item in raw if 'persistence' in item))
+            if not fixture_index < raw.index(replies[0]) < persistence_index < raw.index(replies[1]):
+                raise ValueError('Reordered delete fixture/request/persistence/follow-up')
+            step['rowExists'] = True  # Presence of this actual SELECT result.
+            step['deletedAt'] = instant(retained[0]['deleted_at'])
+            step['subsequentGetStatus'] = replies[1]['status']
     return [{'variant_index': 0, 'steps': [step]}]
 
 
@@ -157,7 +203,7 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
         if len(ids) != len(set(ids)) or set(ids) != set(SUPPORTED):
             raise ValueError('Missing/duplicate/foreign supported result')
         for item in output['results']:
-            observed[(output['backend'], item['id'])] = None if item.get('adapterFailure') is True else observations(cases[item['id']], item['raw'])
+            observed[(output['backend'], item['id'])] = None if item.get('adapterFailure') is True else observations(cases[item['id']], item['raw'], contract.get('clock'))
     for entry in report['results']:
         key = (entry['backend'], entry['id'])
         if key not in observed:
@@ -186,7 +232,8 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
         raise ValueError('Changed generated instrumented artifacts')
     original = dict(instrumented)
     for name, retained in (('persistence.ts', 'original-persistence.ts'),
-                           ('first-party-authentication.ts', 'original-authentication.ts')):
+                           ('first-party-authentication.ts', 'original-authentication.ts'),
+                           ('app.ts', 'original-app.ts')):
         original['target/'+name] = harness.digest(evidence/retained)
     if original != checkpoint['generated_original']:
         raise ValueError('Changed retained generated original artifacts')
@@ -246,6 +293,11 @@ def main():
     (target/'first-party-authentication.ts').write_text('import { recordAuthenticationAttempt } from ' +
         json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';\n' +
         authentication.replace(entry, entry + '\n      recordAuthenticationAttempt();'))
+    application = (target/'app.ts').read_text()
+    if application.count('function validate_TodoView(') != 1:
+        raise ValueError('Generated output validation instrumentation changed')
+    (output/'original-app.ts').write_text(application)
+    (target/'app.ts').write_text(application + '\nexport { validate_TodoView };\n')
     (target/'node_modules').symlink_to(dependencies/'node_modules', target_is_directory=True)
     outputs = []
     for backend in harness.BACKENDS:

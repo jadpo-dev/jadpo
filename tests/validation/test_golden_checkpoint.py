@@ -31,28 +31,42 @@ class CheckpointIntegrityTests(unittest.TestCase):
         self.compiler = self.root/'jadpo/target/debug/jadpo'
         self.compiler.parent.mkdir(parents=True)
         self.compiler.write_text('synthetic compiler digest fixture; never executable')
-        self.cases = {case['id']: case for case in harness.read_contract(self.root)['cases']}
+        contract = harness.read_contract(self.root)
+        self.clock = contract['clock']
+        self.cases = {case['id']: case for case in contract['cases']}
 
     def raw(self, case_id):
         case = self.cases[case_id]
         replies = []
-        for request in case.get('requests', [case.get('request')]):
+        requests = case.get('requests', [case.get('request')])
+        if case_id == 'DELETE-001': requests = [case['request'], {**case['request'], 'method': 'GET'}]
+        for request in requests:
             replies.append({'method': request['method'], 'path': checkpoint.request_path(request['path']),
                             'auth': request.get('auth'), 'requestJson': request.get('json'),
+                            'at': self.clock,
                             'status': 404 if case_id == 'READ-002' else 401,
                             'body': {'error': {'code': 'todo_not_found' if case_id == 'READ-002' else 'authentication_required', 'request_id': f'req_{len(replies)}'}},
                             'statements': [], 'authenticationAttempts': 1})
         if case_id == 'CREATE-004':
             replies[0]['body'] = {'id': 'synthetic-id', 'due_at': None}
             replies.append({'persistence': {'id': 'synthetic-id', 'storedDueAt': None}})
-        if case_id.startswith('PATCH-'):
+        if case_id in ('CREATE-001', 'READ-001'):
+            replies[0]['body'] = {'id': checkpoint.ALIASES['t1'], 'title': 'synthetic view', 'due_at': None}
+            replies.append({'outputValidation': {'route': 'POST /todos' if case_id == 'CREATE-001' else 'GET /todos/{todo_id}', 'schema': 'TodoView', 'validator': 'validate_TodoView', 'accepted': True, 'validatedBody': deepcopy(replies[0]['body'])}})
+            if case_id == 'CREATE-001': replies.append({'persistence': {'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice']}})
+            else: replies.insert(0, {'fixture': {'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': None}})
+        if case_id.startswith('PATCH-') or case_id == 'DELETE-001':
             fixture = {'id': checkpoint.ALIASES['t2' if case_id == 'PATCH-004' else 't1'],
                        'owner_id': checkpoint.ALIASES['bob' if case_id == 'PATCH-004' else 'alice'],
-                       'title': 'original fixture title', 'due_at': '2026-02-01T00:00:00.000Z' if case_id in ('PATCH-001', 'PATCH-002') else None}
+                       'title': 'original fixture title', 'due_at': '2026-02-01T00:00:00.000Z' if case_id in ('PATCH-001', 'PATCH-002', 'PATCH-005') else None,
+                       'reminder_sent_at': self.clock if case_id == 'PATCH-005' else None, 'deleted_at': None}
             after = deepcopy(fixture)
             if case_id == 'PATCH-002': after['due_at'] = None
+            if case_id == 'PATCH-005': after.update(due_at='2026-02-15T09:00:00Z', reminder_sent_at=None)
+            if case_id == 'DELETE-001': after['deleted_at'] = self.clock
             replies.insert(0, {'fixture': fixture})
-            replies.append({'persistence': after})
+            if case_id == 'DELETE-001': replies.insert(2, {'persistence': after})
+            else: replies.append({'persistence': after})
         return replies
 
     def outputs(self):
@@ -136,7 +150,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
             target = evidence/'application/build/target'; target.mkdir(parents=True)
             dependencies = evidence/'dependencies'; jose = dependencies/'node_modules/jose'; jose.mkdir(parents=True)
             (jose/'package.json').write_text('synthetic dependency')
-            for generated, retained in (('persistence.ts', 'original-persistence.ts'), ('first-party-authentication.ts', 'original-authentication.ts')):
+            for generated, retained in (('persistence.ts', 'original-persistence.ts'), ('first-party-authentication.ts', 'original-authentication.ts'), ('app.ts', 'original-app.ts')):
                 (target/generated).write_text('synthetic instrumented')
                 (evidence/retained).write_text('synthetic original')
             outputs = self.outputs()
@@ -145,6 +159,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
             original = checkpoint.hashes(evidence/'application/build')
             original['target/persistence.ts'] = harness.digest(evidence/'original-persistence.ts')
             original['target/first-party-authentication.ts'] = harness.digest(evidence/'original-authentication.ts')
+            original['target/app.ts'] = harness.digest(evidence/'original-app.ts')
             report['checkpoint'] = {'supported_ids': list(checkpoint.SUPPORTED), 'generated_original': original,
                                     'generated_instrumented': checkpoint.hashes(evidence/'application/build'),
                                     'raw_files': {f'{backend}-raw.json': harness.digest(evidence/f'{backend}-raw.json') for backend in harness.BACKENDS},
@@ -196,6 +211,58 @@ class CheckpointIntegrityTests(unittest.TestCase):
             raw[-1]['persistence']['title'] = 'changed behind instrumentation'
             with self.subTest(case_id=case_id), self.assertRaisesRegex(ValueError, 'storage changed'):
                 checkpoint.observations(self.cases[case_id], raw)
+
+    def test_temporal_cases_require_original_clock_and_actual_instants(self):
+        for case_id in ('CREATE-001', 'CREATE-003', 'PATCH-005', 'DELETE-001'):
+            raw = self.raw(case_id)
+            with self.subTest(case_id=case_id), self.assertRaisesRegex(ValueError, 'requires original controlled clock'):
+                checkpoint.observations(self.cases[case_id], raw)
+            next(item for item in raw if 'method' in item)['at'] = '2030-01-01T00:00:00Z'
+            with self.subTest(case_id=case_id), self.assertRaisesRegex(ValueError, 'request clock'):
+                checkpoint.observations(self.cases[case_id], raw, self.clock)
+
+    def test_output_schema_requires_real_validator_result_and_exact_validated_body(self):
+        for case_id in ('CREATE-001', 'READ-001'):
+            for mutation in ('missing', 'rejected', 'body', 'validator', 'route'):
+                raw = self.raw(case_id)
+                item = next(item for item in raw if 'outputValidation' in item)
+                if mutation == 'missing': raw.remove(item)
+                elif mutation == 'rejected': item['outputValidation']['accepted'] = False
+                elif mutation == 'body': item['outputValidation']['validatedBody']['title'] = 'foreign'
+                else: item['outputValidation'][mutation] = 'foreign'
+                with self.subTest(case_id=case_id, mutation=mutation):
+                    if mutation in ('rejected', 'body'):
+                        self.assertIsNone(checkpoint.observations(self.cases[case_id], raw, self.clock)[0]['steps'][0]['outputSchema'])
+                    else:
+                        with self.assertRaises(ValueError): checkpoint.observations(self.cases[case_id], raw, self.clock)
+
+    def test_changed_due_and_reminder_clear_are_independent_stored_observations(self):
+        raw = self.raw('PATCH-005')
+        raw[-1]['persistence']['reminder_sent_at'] = '2026-01-15T11:59:00Z'
+        step = checkpoint.observations(self.cases['PATCH-005'], raw, self.clock)[0]['steps'][0]
+        self.assertEqual(step['storedDueAt'], '2026-02-15T09:00:00Z')
+        self.assertEqual(step['storedReminderSentAt'], '2026-01-15T11:59:00Z')
+        raw[0]['fixture']['reminder_sent_at'] = None
+        with self.assertRaisesRegex(ValueError, 'previously reminded'):
+            checkpoint.observations(self.cases['PATCH-005'], raw, self.clock)
+
+    def test_soft_delete_requires_retained_row_and_actual_subsequent_get(self):
+        raw = self.raw('DELETE-001')
+        step = checkpoint.observations(self.cases['DELETE-001'], raw, self.clock)[0]['steps'][0]
+        self.assertTrue(step['rowExists'])
+        self.assertEqual(step['deletedAt'], self.clock)
+        self.assertEqual(step['subsequentGetStatus'], 401)
+        raw = [item for item in raw if not ('method' in item and item['method'] == 'GET')]
+        with self.assertRaisesRegex(ValueError, 'Missing request'):
+            checkpoint.observations(self.cases['DELETE-001'], raw, self.clock)
+
+    def test_read_fixture_identity_and_delete_snapshot_order_are_bound(self):
+        raw = self.raw('READ-001'); raw[0]['fixture']['owner_id'] = checkpoint.ALIASES['bob']
+        with self.assertRaisesRegex(ValueError, 'owned read fixture'):
+            checkpoint.observations(self.cases['READ-001'], raw, self.clock)
+        raw = self.raw('DELETE-001'); raw[0], raw[1] = raw[1], raw[0]
+        with self.assertRaisesRegex(ValueError, 'Reordered delete'):
+            checkpoint.observations(self.cases['DELETE-001'], raw, self.clock)
 
 
 if __name__ == '__main__': unittest.main()
