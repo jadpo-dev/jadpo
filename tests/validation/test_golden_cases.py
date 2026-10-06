@@ -30,6 +30,7 @@ class GoldenProtocolTests(unittest.TestCase):
         self.write(harness.OBLIGATIONS, json.dumps({'acceptance_sha256': harness.digest(self.root/harness.ACCEPTANCE),
                                                    'cases': {'SYNTHETIC-001': {'status': 'not_executed'}}}))
         self.write('tools/golden_cases.py', 'synthetic-harness')
+        self.write('tests/assurance/service-reference-mail-v0.1.json', '{"synthetic":true}')
         self.write('examples/golden-todo-migration/app.jadpo', '// synthetic source')
         self.write('jadpo/crates/core/src/lib.rs', '// synthetic compiler')
         self.write('jadpo/crates/core/src/runtime/synthetic.ts', '// embedded runtime')
@@ -56,6 +57,16 @@ class GoldenProtocolTests(unittest.TestCase):
         self.assertEqual([r['backend'] for r in report['results']], ['sqlite', 'postgres'])
         self.assertTrue(all(r['reason'] and r['status'] == 'not_run' for r in report['results']))
         harness.validate_report(report, self.root)
+
+    def test_pinned_external_golden_service_input_drift_and_deletion_refuse_stale_report(self):
+        report = self.run_synthetic()
+        path = self.root/'tests/assurance/service-reference-mail-v0.1.json'
+        self.assertIn(str(path.relative_to(self.root)), report['provenance']['files'])
+        path.write_text('{"synthetic":"changed external input"}')
+        with self.assertRaises(ValueError): harness.validate_report(report, self.root)
+        path.unlink()
+        with self.assertRaisesRegex(ValueError, 'Missing pinned golden external service reference'):
+            harness.validate_report(report, self.root)
 
     def test_complete_observations_are_supporting_results_never_release_claims(self):
         report = self.run_synthetic()

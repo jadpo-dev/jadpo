@@ -54,7 +54,10 @@ Uncommitted edits and adding/removing files therefore invalidate an old result.
 Generated output is excluded; application adapters must retain its own digest/raw
 observations once implemented. A missing built compiler is explicitly unknown.
 """
-    paths = {ACCEPTANCE, OBLIGATIONS, 'tools/golden_cases.py'}
+    external_service = 'tests/assurance/service-reference-mail-v0.1.json'
+    if not (root/external_service).is_file():
+        raise ValueError('Missing pinned golden external service reference')
+    paths = {ACCEPTANCE, OBLIGATIONS, 'tools/golden_cases.py', external_service}
     # Supporting checkpoint adapters/instrumentation are source inputs too.
     # They are deliberately not registered as the complete golden drivers.
     for name in ('tools/golden_checkpoint.py', 'tools/golden_http_checkpoint.ts',

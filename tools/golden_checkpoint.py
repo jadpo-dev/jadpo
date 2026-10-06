@@ -23,7 +23,7 @@ SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'PATCH-002', 'PATCH-003', 'PATCH-004', 'CREATE-001', 'CREATE-003',
              'READ-001', 'PATCH-005', 'DELETE-001', 'LIST-001', 'LIST-002',
              'LIST-003', 'REL-001', 'DELETE-002', 'AUTH-002', 'AUTH-006',
-             'AUTH-010', 'USER-001')
+             'AUTH-010', 'USER-001', 'AUTH-003', 'AUTH-004', 'AUTH-007', 'AUTH-008')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
@@ -148,7 +148,7 @@ def authentication_fixture(case: dict, raw: list, reply: dict, clock: str):
     user = fixture.get('user', {})
     session = fixture.get('sessionRecord', {})
     timeline = case.get('timeline', {})
-    strategy = 'api_bearer' if case['id'] == 'AUTH-010' else 'browser_session'
+    strategy = 'api_bearer' if case['id'] in ('AUTH-010', 'AUTH-008') else 'browser_session'
     issuance = fixture.get('issuanceObservation', {})
     if issuance.get('operation') != 'compiler-owned authentication issuance' or issuance.get('strategy') != strategy or type(issuance.get('credentialsIssued')) is not int or issuance['credentialsIssued'] != 1 or not isinstance(issuance.get('statements'), list) or not any(row.get('operation') == 'INSERT' and 'INTO "__jadpo_auth_sessions"' in row.get('sql', '') for row in issuance['statements']):
         raise ValueError('Missing native issuance positive control/session persistence')
@@ -163,6 +163,61 @@ def authentication_fixture(case: dict, raw: list, reply: dict, clock: str):
     if fixture['issuedAt'] >= fixture['credentialExpiresAt']:
         raise ValueError('Invalid issued credential lifetime')
     return fixture
+
+
+def jwt_fixture(case: dict, raw: list, reply: dict, clock: str):
+    fixtures = [item for item in raw if 'jwtFixture' in item]
+    if len(fixtures) != 1 or raw.index(fixtures[0]) >= raw.index(reply):
+        raise ValueError('Missing/reordered real JWT fixture')
+    fixture = fixtures[0]['jwtFixture']
+    if not harness.same_json(fixture.get('specification'), {'fixture': case['fixture'], 'request': case['request'], 'clock': clock}):
+        raise ValueError('Changed original JWT fixture/request/clock')
+    issuer = urlsplit(fixture.get('issuer', ''))
+    if issuer.scheme != 'https' or issuer.hostname != '127.0.0.1' or not issuer.port or issuer.path or issuer.query or issuer.username or not isinstance(fixture.get('certificateSha256'), str):
+        raise ValueError('Missing isolated real HTTPS JWT issuer')
+    credentials = fixture.get('credentials')
+    if not isinstance(credentials, list) or len(credentials) != 1:
+        raise ValueError('Missing real signed JWT credential fixture')
+    token = credentials[0]; claims = token.get('claims', {}); header = token.get('header', {}); key = token.get('publicJwk', {})
+    subject = 'bob' if case['id'] == 'AUTH-004' else 'alice'
+    if token.get('name') != subject+'-jwt' or claims.get('iss') != fixture['issuer'] or claims.get('aud') != fixture.get('audience') or claims.get('sub') != subject or type(claims.get('iat')) is not int or type(claims.get('exp')) is not int or claims['exp'] <= claims['iat']:
+        raise ValueError('Foreign or invalid JWT claim fixture')
+    if header.get('alg') != 'RS256' or header.get('kid') != key.get('kid') or key.get('alg') != header['alg'] or key.get('kty') != 'RSA' or any(field in key for field in ('d', 'p', 'q', 'dp', 'dq', 'qi', 'oth', 'k')):
+        raise ValueError('Missing public-only actual JWT signing key fixture')
+    users = fixture.get('users', [])
+    if not any(user.get('id') == ALIASES[subject] and user.get('authentication_subject') == subject and user.get('status') == 'active' for user in users):
+        raise ValueError('Missing active JWT authority fixture')
+    return fixture, token
+
+
+def validate_real_jwt_verification(reply: dict, fixture: dict, token: dict):
+    validate_auth_observation(reply)
+    claims = token['claims']
+    verified = [{'strategy': 'api_bearer', 'subject': claims['sub'], 'issuer': claims['iss'], 'audience': claims['aud'], 'issuedAt': claims['iat'], 'expires': claims['exp']}]
+    if not harness.same_json(reply.get('jwtVerifications'), verified):
+        raise ValueError('Missing actual native JOSE verification')
+    expected_provider = [{'method': 'GET', 'path': '/.well-known/openid-configuration', 'authorizationPresent': False, 'status': 200, 'body': {'issuer': fixture['issuer'], 'jwks_uri': fixture['issuer']+'/jwks'}},
+                         {'method': 'GET', 'path': '/jwks', 'authorizationPresent': False, 'status': 200, 'body': {'keys': [token['publicJwk']]}}]
+    if not harness.same_json(reply.get('providerRequests'), expected_provider):
+        raise ValueError('Missing real local discovery/JWKS request/response observations')
+    if len(reply['principals']) != 1 or reply['principals'][0]['kind'] != 'user' or reply['principals'][0]['subject'] != claims['sub'] or reply['principals'][0]['values'].get('user_id') != ALIASES[claims['sub']]:
+        raise ValueError('Missing real JWT native principal authority mapping')
+    if len(authority_query_accounting(reply)['principal']) != 1:
+        raise ValueError('Missing actual JWT principal authority SQL')
+
+
+def validate_cache_fault_control(case: dict, raw: list, reply: dict, clock: str):
+    controls = [item for item in raw if 'cacheFaultControl' in item]
+    if len(controls) != 1 or not raw.index(next(item for item in raw if 'authenticationFixture' in item)) < raw.index(controls[0]) < raw.index(reply):
+        raise ValueError('Missing/reordered real cache-unavailable control')
+    control = controls[0]['cacheFaultControl']
+    if control.get('method') != 'DELETE' or control.get('path') != request_path('/users/alice') or control.get('auth') != 'alice-bounded-bearer' or control.get('requestJson') is not None or instant(control.get('at')) != instant(clock):
+        raise ValueError('Foreign cache-unavailable control request/clock')
+    validate_auth_observation(control)
+    if control.get('status') != 503 or (control.get('body') or {}).get('error', {}).get('code') != 'authentication_unavailable' or control['statements'] or control['principals'] or control['credentialsIssued'] != 0 or control['authenticationAttempts'] != 1 or control.get('storageReads') != [{'operation': 'session.get', 'outcome': 'faulted'}]:
+        raise ValueError('Cache fault did not fail native authentication before authority/business SQL')
+    if control.get('faultConfiguration') != {'sessionStorageUnavailable': True} or reply.get('faultConfiguration') != control['faultConfiguration'] or reply.get('storageReads') != []:
+        raise ValueError('Missing active/unaccessed cache fault for bounded authentication')
 
 
 def user_timeline_observations(case: dict, raw: list, clock: str):
@@ -284,13 +339,40 @@ def observations(case: dict, raw: list, clock: str | None = None) -> list:
             step['code'] = code
         if case['id'] in ('AUTH-012', 'PUBLIC-001'):
             step['body'] = reply['body']
-        if case['id'] in ('AUTH-002', 'AUTH-006', 'AUTH-010'):
+        if case['id'] in ('AUTH-003', 'AUTH-004', 'AUTH-007'):
+            if clock is None: raise ValueError('JWT case requires original controlled clock')
+            fixture, token = jwt_fixture(case, raw, reply, clock)
+            if case['id'] == 'AUTH-004':
+                controls = [item for item in raw if 'jwtValidityControl' in item]
+                if len(controls) != 1 or not raw.index(next(item for item in raw if 'jwtFixture' in item)) < raw.index(controls[0]) < raw.index(reply):
+                    raise ValueError('Missing/reordered real conflicting JWT validity control')
+                control = controls[0]['jwtValidityControl']
+                if control.get('method') != 'GET' or control.get('path') != '/todos' or control.get('auth') != 'bob-jwt' or control.get('status') != 200 or instant(control.get('at')) != instant(clock):
+                    raise ValueError('Invalid conflicting JWT validity control')
+                validate_real_jwt_verification(control, fixture, token)
+                validate_auth_observation(reply)
+                if reply.get('jwtVerifications') != [] or reply.get('providerRequests') != [] or reply.get('storageReads') != [] or reply['principals'] != []:
+                    raise ValueError('Conflicting credentials reached validation/resolution')
+            else:
+                validate_real_jwt_verification(reply, fixture, token)
+                if case['id'] == 'AUTH-003':
+                    principal = reply['principals'][0]
+                    step.update(principalKind=principal['kind'], principalUser=next((alias for alias in ('alice', 'bob') if ALIASES[alias] == principal['values'].get('user_id')), None), providerFieldsInOutput=validated_output_schema(raw, reply, 'GET /todos') != 'TodoPage')
+                else:
+                    persisted = [item for item in raw if 'provisioningPersistence' in item]
+                    if len(persisted) != 1 or raw.index(persisted[0]) <= raw.index(reply) or token['claims'].get('email') != 'attacker@example.test' or not any(user.get('id') == ALIASES['alice'] and user.get('email') == 'alice@example.test' for user in fixture['users']):
+                        raise ValueError('Missing original provisioning/provider-email fixture and persistence')
+                    step['privateFieldsAbsent'] = ['email'] if 'email' not in reply['body'] else []
+                    step['providerEmailUsed'] = not harness.same_json(fixture['users'], persisted[0]['provisioningPersistence']) or token['claims']['email'] in json.dumps(reply['body'])
+                    if validated_output_schema(raw, reply, 'GET /users/{user_id}/todos') != 'UserWithTodos' or reply['body'].get('user_id') != ALIASES['alice']:
+                        step['checkpoint_failures'] = ['Foreign self-service output validator/identity']
+        if case['id'] in ('AUTH-002', 'AUTH-006', 'AUTH-010', 'AUTH-008'):
             if clock is None:
                 raise ValueError('Authentication case requires original controlled clock')
             fixture = authentication_fixture(case, raw, reply, clock)
             validate_auth_observation(reply)
             accounting = authority_query_accounting(reply)
-            if case['id'] == 'AUTH-002':
+            if case['id'] in ('AUTH-002', 'AUTH-008'):
                 if len(reply['principals']) != 1:
                     raise ValueError('Missing/unbounded native authenticated principal')
                 principal = reply['principals'][0]
@@ -298,10 +380,13 @@ def observations(case: dict, raw: list, clock: str | None = None) -> list:
                 step['principalUser'] = next((alias for alias in ('alice', 'bob') if ALIASES[alias] == principal['values'].get('user_id')), None)
                 if principal['subject'] != fixture['user']['authentication_subject']:
                     step['checkpoint_failures'] = ['Native principal has foreign provider-independent subject']
-                schema = validated_output_schema(raw, reply, 'GET /todos')
+                schema = validated_output_schema(raw, reply, 'GET /todos') if case['id'] == 'AUTH-002' else None
                 # The actual generated closed validator rejects undeclared
                 # provider payload fields anywhere in the returned page.
-                step['providerFieldsInOutput'] = schema != 'TodoPage'
+                if case['id'] == 'AUTH-002': step['providerFieldsInOutput'] = schema != 'TodoPage'
+                else:
+                    validate_cache_fault_control(case, raw, reply, clock)
+                    step.update(principalAuthorityQueries=len(accounting['principal']), credentialAuthorityQueries=len(accounting['credential']))
             if case['id'] == 'AUTH-006':
                 if len(accounting['principal']) != 1 or len(accounting['credential']) != 1:
                     raise ValueError('Missing real disabled-user session/principal authority reads')
@@ -475,12 +560,15 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
     original = dict(instrumented)
     for name, retained in (('persistence.ts', 'original-persistence.ts'),
                            ('first-party-authentication.ts', 'original-authentication.ts'),
+                           ('jwt-authentication.ts', 'original-jwt-authentication.ts'),
                            ('app.ts', 'original-app.ts')):
         original['target/'+name] = harness.digest(evidence/retained)
     if original != checkpoint['generated_original']:
         raise ValueError('Changed retained generated original artifacts')
     if hashes(dependencies/'node_modules/jose') != checkpoint['dependency_files']:
         raise ValueError('Changed actual pinned JWT dependency files')
+    if {name: harness.digest(evidence/name) for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem')} != checkpoint['tls_fixture']:
+        raise ValueError('Changed ephemeral local JWKS TLS fixture')
     outputs = []
     for backend in harness.BACKENDS:
         path = evidence/f'{backend}-raw.json'
@@ -499,6 +587,8 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
                         raise ValueError('Raw query metadata differs from generated artifact')
                     if event.get('failureMetadata') is not None and not any(harness.same_json(event['failureMetadata'], item) for item in expected_failures):
                         raise ValueError('Raw refresh failure mapping differs from generated artifact')
+                    if 'jwtFixture' in event and event['jwtFixture'].get('certificateSha256') != checkpoint['tls_fixture']['jwks-fixture-cert.pem']:
+                        raise ValueError('Raw local JWT issuer trust differs from captured TLS fixture')
     reconstructed = deepcopy(report)
     apply_checkpoint(reconstructed, outputs, root)
     if not harness.same_json(reconstructed['results'], report['results']):
@@ -538,8 +628,11 @@ def main():
     if original.count(declaration) != 1:
         raise ValueError('Generated SQL instrumentation import changed')
     (output/'original-persistence.ts').write_text(original)
-    (target/'persistence.ts').write_text(original.replace(declaration,
-        'import { SQL } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';'))
+    storage_entry = '  async get(id: string) {'
+    if original.count(storage_entry) != 1:
+        raise ValueError('Generated native session storage observation boundary changed')
+    (target/'persistence.ts').write_text('import { observeAuthenticationStorageRead } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';\n' + original.replace(declaration,
+        'import { SQL } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';').replace(storage_entry, storage_entry+'\n    observeAuthenticationStorageRead();'))
     authentication = (target/'first-party-authentication.ts').read_text()
     entry = 'async authenticate(request: Request, freshAuthority: boolean, operationNow: number, mutates = false): Promise<AuthPrincipal> {'
     if authentication.count(entry) != 1:
@@ -557,12 +650,23 @@ def main():
         authentication = authentication.replace(before, after)
     (target/'first-party-authentication.ts').write_text('import { recordAuthenticationAttempt, recordAuthenticatedPrincipal, recordCredentialIssued } from ' +
         json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';\n' + authentication)
+    jwt = (target/'jwt-authentication.ts').read_text()
+    jwt_return = '        return Object.freeze({ kind: "valid", subject: payload.sub, authenticationStrength: "jwt" });'
+    if jwt.count(jwt_return) != 1:
+        raise ValueError('Generated native JWT verification observation boundary changed')
+    (output/'original-jwt-authentication.ts').write_text(jwt)
+    (target/'jwt-authentication.ts').write_text('import { recordJwtVerification } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';\n' + jwt.replace(jwt_return,
+        '        recordJwtVerification({ strategy: name, subject: payload.sub, issuer: payload.iss, audience: payload.aud, issuedAt: payload.iat, expires: payload.exp });\n' + jwt_return))
     application = (target/'app.ts').read_text()
     if any(application.count('function '+name+'(') != 1 for name in ('validate_TodoView', 'validate_UserWithTodos', 'validate_TodoPage')):
         raise ValueError('Generated output validation instrumentation changed')
     (output/'original-app.ts').write_text(application)
     (target/'app.ts').write_text(application + '\nexport { validate_TodoView, validate_UserWithTodos, validate_TodoPage };\n')
     (target/'node_modules').symlink_to(dependencies/'node_modules', target_is_directory=True)
+    safe_run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+              '-keyout', str(output/'jwks-fixture-key.pem'), '-out', str(output/'jwks-fixture-cert.pem'),
+              '-days', '2', '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1'], env=environment)
+    tls_binding = {name: harness.digest(output/name) for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem')}
     instrumented_binding = hashes(project/'build', ('node_modules',))
     outputs = []
     for backend in harness.BACKENDS:
@@ -582,6 +686,7 @@ def main():
                             'generated_original': generated, 'generated_instrumented': instrumented_binding,
                             'raw_files': {f'{backend}-raw.json': harness.digest(output/f'{backend}-raw.json') for backend in harness.BACKENDS},
                             'dependency_files': dependency_binding,
+                            'tls_fixture': tls_binding,
                             'remaining': 'Scoped supporting checkpoint; unobserved cases, complete accepted-successor parity and final exact-source require-golden evidence are not claimed'}
     if harness.provenance(ROOT) != binding:
         raise ValueError('Source/compiler changed during checkpoint')
