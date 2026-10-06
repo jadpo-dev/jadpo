@@ -25,7 +25,7 @@ SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'READ-001', 'PATCH-005', 'DELETE-001', 'LIST-001', 'LIST-002',
              'LIST-003', 'REL-001', 'DELETE-002', 'AUTH-002', 'AUTH-006',
              'AUTH-010', 'USER-001', 'AUTH-003', 'AUTH-004', 'AUTH-007', 'AUTH-008',
-             'AUTH-009', 'AUTH-011', 'JOB-004', 'JOB-001', 'JOB-002', 'JOB-003', 'REL-002', 'REL-004', 'CONFIG-001', 'CONFIG-002', 'CONFIG-003')
+             'AUTH-009', 'AUTH-011', 'JOB-004', 'JOB-001', 'JOB-002', 'JOB-003', 'REL-002', 'REL-004', 'CONFIG-001', 'CONFIG-002', 'CONFIG-003', 'BOUNDARY-001')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
@@ -603,6 +603,16 @@ def preflight_observations(case: dict, raw: list):
     return [{'variant_index': 0, 'steps': [step]}]
 
 
+def native_todo_first_page_sql(backend: str):
+    parameter = '?' if backend == 'sqlite' else '$'
+    # Exact emitted first-page Todo statement from the pinned successor. A
+    # compiler change requires a new real capture, never a broad SQL prefix.
+    status_bind = parameter+'2'+('::TEXT' if parameter == '$' else '')
+    due_bind = parameter+'3'+('::TIMESTAMPTZ(3)' if parameter == '$' else '')
+    cursor_cast = '::text' if parameter == '$' else ''
+    return ('SELECT "id" AS "id", "title" AS "title", "status" AS "status", "due_at" AS "due_at", "created_at" AS "created_at", "updated_at" AS "updated_at" FROM "todo" WHERE "owner_id" = '+parameter+'1 AND "deleted_at" IS NULL AND ('+status_bind+' IS NULL OR "status" = '+status_bind+') AND ('+due_bind+' IS NULL OR "due_at" <= '+due_bind+') AND '+parameter+'4'+cursor_cast+' IS NULL AND '+parameter+'5'+cursor_cast+' IS NULL AND ("deleted_at" IS NULL) AND (("todo"."owner_id" = '+parameter+'7)) ORDER BY "created_at" DESC, "id" DESC LIMIT '+parameter+'6')
+
+
 def readiness_observations(case: dict, raw: list):
     if len(raw) != 1 or 'nativeReadiness' not in raw[0]:
         raise ValueError('Missing exact native readiness listener capture')
@@ -641,13 +651,7 @@ def readiness_observations(case: dict, raw: list):
     outage = capture.get('outage', {})
     requests = [capture.get('healthyControl', {}), outage.get('triggeringRequest', {}), capture.get('recovery', {})]
     principal = {'kind': 'user', 'subject': 'alice', 'authenticationStrength': 'primary', 'values': {'user_id': ALIASES['alice']}}
-    parameter = '?' if capture['selectedBackend'] == 'sqlite' else '$'
-    # Exact emitted first-page Todo statement from the pinned successor. A
-    # compiler change requires a new real capture, never a broad SQL prefix.
-    status_bind = parameter+'2'+('::TEXT' if parameter == '$' else '')
-    due_bind = parameter+'3'+('::TIMESTAMPTZ(3)' if parameter == '$' else '')
-    cursor_cast = '::text' if parameter == '$' else ''
-    query_sql = ('SELECT "id" AS "id", "title" AS "title", "status" AS "status", "due_at" AS "due_at", "created_at" AS "created_at", "updated_at" AS "updated_at" FROM "todo" WHERE "owner_id" = '+parameter+'1 AND "deleted_at" IS NULL AND ('+status_bind+' IS NULL OR "status" = '+status_bind+') AND ('+due_bind+' IS NULL OR "due_at" <= '+due_bind+') AND '+parameter+'4'+cursor_cast+' IS NULL AND '+parameter+'5'+cursor_cast+' IS NULL AND ("deleted_at" IS NULL) AND (("todo"."owner_id" = '+parameter+'7)) ORDER BY "created_at" DESC, "id" DESC LIMIT '+parameter+'6')
+    query_sql = native_todo_first_page_sql(capture['selectedBackend'])
     for index, request in enumerate(requests):
         validate_auth_observation(request)
         if request.get('method') != 'GET' or request.get('path') != '/todos' or request.get('requestedPath') != '/todos' or request.get('auth') != 'alice-session' or request.get('requestJson') is not None or request['authenticationAttempts'] != 1 or not harness.same_json(request['principals'], [principal]) or request['credentialsIssued'] != 0 or request.get('faultConfiguration') != {'sessionStorageUnavailable': False}:
@@ -684,8 +688,102 @@ def readiness_observations(case: dict, raw: list):
     return [{'variant_index': 0, 'steps': [{'readyStatus': unavailable[0]['status'], 'readyPlane': unavailable[0]['plane'], 'readyOnApplicationRouter': any(response['status'] != 404 for response in application_ready), 'liveStatus': unavailable[4]['status'], 'restartRequested': any(phase['processExitCalls'] for phase in phases)}]}]
 
 
+def native_boundary_delivery_sql(backend: str):
+    clock = "strftime('<literal>', '<literal>')" if backend == 'sqlite' else "to_char(clock_timestamp() AT TIME ZONE '<literal>', '<literal>')"
+    dispatch = 'UPDATE "__jadpo_delivery_claims_v1" SET "possible_dispatch" = 1 WHERE "intent_id" = $1 AND "claim_id" = $2 AND "generation" = $3 AND "possible_dispatch" = 0 AND ' + ' AND '.join(f'"{column}" > {clock}' for column in ('lease_until', 'execution_deadline', 'lifetime_deadline')) + ' RETURNING "intent_id"'
+    completion = f'WITH "outcome_clock" AS MATERIALIZED (SELECT {clock} AS "now") UPDATE "__jadpo_deliveries_v1" SET "state" = $1 WHERE "intent_id" = $2 AND "state" = ' + "'<literal>'" + ' AND EXISTS (SELECT 1 FROM "__jadpo_delivery_claims_v1" WHERE "intent_id" = $2 AND "claim_id" = $3 AND "generation" = $4 AND "possible_dispatch" = 1 AND ' + ' AND '.join(f'"{column}" > (SELECT "now" FROM "outcome_clock")' for column in ('lease_until', 'execution_deadline', 'lifetime_deadline')) + ') RETURNING "intent_id", "payload_version", (SELECT "now" FROM "outcome_clock") AS "observed_at"'
+    return dispatch, completion
+
+
+def validate_native_boundary_transactions(provider: dict, backend: str, identity: str):
+    statements = provider.get('statements', [])
+    controls = []
+    for index, row in enumerate(statements):
+        sql = row.get('sql')
+        match = re.match(r'^\s*([a-z]+)', sql, re.I) if isinstance(sql, str) else None
+        if not match or row.get('operation') != match[1].upper(): raise ValueError('Boundary statement operation differs from actual SQL')
+        if row['operation'] in ('BEGIN', 'COMMIT', 'ROLLBACK'): controls.append((index, row['operation']))
+    brackets = []
+    dispatch, completion = native_boundary_delivery_sql(backend)
+    for expected, prefix, operation in ((dispatch, 'UPDATE "__jadpo_delivery_claims_v1" SET "possible_dispatch"', 'UPDATE'), (completion, 'WITH "outcome_clock"', 'WITH')):
+        matches = [index for index, row in enumerate(statements) if row['sql'].startswith(prefix)]
+        if len(matches) != 1: raise ValueError('Missing or duplicate native dispatch/unknown completion')
+        index = matches[0]; row = statements[index]
+        if ' '.join(row['sql'].split()) != expected or row['operation'] != operation or row.get('deliveryIntentIdentity') != identity or operation == 'WITH' and row.get('deliveryOutcomeState') != 'outcome_unknown':
+            raise ValueError('Native dispatch/unknown completion lost exact intent/state predicate/bind')
+        before = [item for item in controls if item[0] < index]; after = [item for item in controls if item[0] > index]
+        if not before or not after or before[-1][1] != 'BEGIN' or after[0][1] != 'COMMIT':
+            raise ValueError('Native dispatch/unknown completion lacks owning successful transaction')
+        brackets.append((before[-1][0], after[0][0]))
+    if brackets[0][1] >= brackets[1][0]: raise ValueError('Native uncertain completion precedes durable dispatch commitment')
+    if any(row.get('deliveryIntentIdentity') or row.get('deliveryOutcomeState') or row.get('sql', '').startswith(('UPDATE "__jadpo_delivery_claims_v1" SET "possible_dispatch"', 'WITH "outcome_clock"')) for row in provider.get('restart', {}).get('statements', [])):
+        raise ValueError('Later native unknown-intent replay dispatched or completed again')
+
+
+def boundary_observations(case: dict, raw: list):
+    if len(raw) != 1 or 'boundaryVariants' not in raw[0]: raise ValueError('Missing exact native boundary capture')
+    capture = raw[0]
+    if not harness.same_json(capture.get('specification'), {'fixtureVariants': case['fixtureVariants'], 'requestOrRun': case['requestOrRun']}) or capture.get('selectedBackend') not in harness.BACKENDS or capture.get('binding') != 'job.overdue_reminders.delivery.reminder_v1':
+        raise ValueError('Changed original boundary variants/operations/native binding')
+    variants = capture['boundaryVariants']
+    if len(variants) != 2 or any(type(variant.get('variant_index')) is not int or variant['variant_index'] != index or variant.get('fixture_variant') != case['fixtureVariants'][index] for index, variant in enumerate(variants)):
+        raise ValueError('Missing/reordered native boundary variant')
+    def public_error(envelope: dict, events: list, operation: str, classification: str, http=False):
+        error = envelope.get('error', {})
+        if set(envelope) != {'error'} or set(error) != {'code', 'message', 'request_id'} or error.get('code') != 'internal_fault' or error.get('message') != 'An internal error occurred.' or not re.fullmatch(('req_' if http else '')+r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', str(error.get('request_id'))):
+            raise ValueError('Missing actual closed safe native failure envelope')
+        if not isinstance(events, list) or [event.get('eventName') for event in events] != (['operation.failed'] if http else ['service.attempt', 'operation.failed']): raise ValueError('Missing exact native boundary operational event sequence')
+        if not http:
+            attempt = events[0]
+            if set(attempt) != {'schemaVersion', 'kind', 'eventName', 'operationId', 'attempt', 'elapsedMs', 'outcome', 'retryScheduled', 'retryDelayMs'} or type(attempt['schemaVersion']) is not int or attempt['schemaVersion'] != 1 or attempt['kind'] != 'operational_log_event' or attempt['operationId'] != error['request_id'] or type(attempt['attempt']) is not int or attempt['attempt'] != 1 or type(attempt['elapsedMs']) not in (int, float) or attempt['elapsedMs'] < 0 or attempt['outcome'] != 'misconfigured' or attempt['retryScheduled'] is not False or attempt['retryDelayMs'] is not None:
+                raise ValueError('Actual native provider attempt/failure envelope disagree')
+        event = events[-1]
+        if set(event) != {'schemaVersion', 'kind', 'eventName', 'classification', 'requestId', 'traceId', 'semanticOperationId', 'sourceRevision', 'attributes'} or type(event['schemaVersion']) is not int or event['schemaVersion'] != 1 or event['kind'] != 'operational_log_event' or event['eventName'] != 'operation.failed' or event['classification'] != classification or event['requestId'] != error['request_id'] or event['traceId'] is not None or event['semanticOperationId'] != operation or event['sourceRevision'] != capture.get('sourceRevision') or event['attributes'] != {}:
+            raise ValueError('Actual native request/event/source/semantic operation disagree')
+        serialized = json.dumps(envelope)
+        return {'rawSqlPublic': bool(re.search(r'\b(?:SELECT|INSERT|UPDATE|DELETE|SQL)\b', serialized)), 'providerBodyPublic': 'CHECKPOINT_PRIVATE_PROVIDER_AUTH_HEADER_STACK' in serialized or 'authentication' in serialized, 'stackPublic': bool(re.search(r'(?:ServiceAdapterFault|[\w-]+\.ts:\d+|at \w+\()', serialized)), 'requestIdPresent': bool(error['request_id'])}
+    database, provider = variants
+    principal = {'kind': 'user', 'subject': 'alice', 'authenticationStrength': 'primary', 'values': {'user_id': ALIASES['alice']}}
+    for request in (database.get('healthyControl', {}), database.get('outage', {}).get('response', {})):
+        validate_auth_observation(request); authority_query_accounting(request)
+        if request.get('method') != 'GET' or request.get('path') != '/todos' or request.get('requestedPath') != '/todos' or request.get('auth') != 'alice-session' or request['authenticationAttempts'] != 1 or not harness.same_json(request['principals'], [principal]) or request['credentialsIssued'] != 0 or not harness.same_json(request.get('faultConfiguration'), {'sessionStorageUnavailable': False}):
+            raise ValueError('Missing native authenticated boundary Todo request')
+        statements = request['statements']
+        if len(statements) != 1 or statements[0].get('operation') != 'SELECT' or statements[0].get('sql') != native_todo_first_page_sql(capture['selectedBackend']) or not harness.same_json(statements[0].get('numericParameters'), {'6': 26}) or statements[0].get('todoOwnerIdentities') != {'1': ALIASES['alice'], '7': ALIASES['alice']}:
+            raise ValueError('Missing actual owner-scoped boundary business query')
+    healthy, outage = database['healthyControl'], database['outage']
+    if healthy['status'] != 200 or healthy.get('operationalEvents') != [] or outage['response']['status'] != 500 or instant(healthy['at']) > instant(outage['response']['at']):
+        raise ValueError('Missing actual healthy then persistence-failure boundary control')
+    if capture['selectedBackend'] == 'sqlite':
+        if outage.get('mode') != 'actual separate-connection SQLite exclusive lock' or [row.get('sql') for row in outage.get('lockAcquireStatements', [])] != ['BEGIN EXCLUSIVE'] or [row.get('sql') for row in outage.get('lockReleaseStatements', [])] != ['ROLLBACK']:
+            raise ValueError('Missing real boundary SQLite lock/release')
+    elif outage.get('mode') != 'actual isolated PostgreSQL server stopped' or type(outage.get('stoppedCode')) is not int or outage['stoppedCode'] != 0:
+        raise ValueError('Missing real boundary PostgreSQL outage')
+    database_step = public_error(outage['response']['body'], outage['response'].get('operationalEvents', []), 'route:GET:/todos', 'RUNTIME_UNHANDLED_FAULT', True)
+    calls = provider.get('providerCalls', []); outcome = provider.get('nativeHostOutcome', {})
+    if provider.get('nativeHostThrown') is not None or not harness.same_json(provider.get('profiles'), {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}) or set(outcome) != {'status','selected','attempted','continued','failures'} or outcome.get('status') != 'finished' or type(outcome.get('selected')) is not int or outcome['selected'] != 1 or type(outcome.get('attempted')) is not int or outcome['attempted'] != 1 or outcome.get('continued') is not False or len(outcome.get('failures', [])) != 1:
+        raise ValueError('Missing checked native provider-fault host outcome/profile')
+    if len(calls) != 1 or calls[0].get('responseStatus') != 401 or calls[0].get('method') != 'POST' or calls[0].get('path') != '/v1/messages' or calls[0].get('authorizationPresent') is not True or not harness.same_json(calls[0].get('responseBody'), {'code': 'authentication'}) or calls[0].get('responseHeaders') != {'x-private-provider-canary': 'CHECKPOINT_PRIVATE_PROVIDER_AUTH_HEADER_STACK'}:
+        raise ValueError('Missing exact actual typed provider authentication refusal')
+    creation = provider.get('nativeFixtureCreation', {}); persisted = provider.get('persisted', {})
+    if creation.get('status') != 201 or creation.get('method') != 'POST' or creation.get('requestedPath') != '/todos' or persisted.get('id') != creation.get('body', {}).get('id') or persisted.get('owner_id') != ALIASES['alice'] or persisted.get('reminder_sent_at') is not None:
+        raise ValueError('Missing native enrolled boundary source/no sent marker')
+    first = provider.get('durableAfter', {}); restart = provider.get('restart', {}); durable = restart.get('durable', {})
+    if not harness.same_json(first, durable) or len(first.get('intents', [])) != 1 or len(first.get('claims', [])) != 1 or first.get('receipts') != [] or not harness.same_json(first.get('todo'), persisted):
+        raise ValueError('Missing actual unchanged native unknown intent/claim/source/receipt state')
+    intent, claim = first['intents'][0], first['claims'][0]; key = calls[0].get('body', {}).get('idempotency_key')
+    if not re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', str(key)) or key != calls[0].get('idempotencyKey') or intent.get('intent_id') != key or intent.get('source_entity_id') != persisted['id'] or intent.get('state') != 'outcome_unknown' or not harness.same_json(intent.get('payload'), calls[0]['body']) or claim.get('intent_id') != key or type(claim.get('invocations')) is not int or claim['invocations'] != 1 or type(claim.get('possible_dispatch')) is not int or claim['possible_dispatch'] != 1:
+        raise ValueError('Native provider dispatch is not the persisted uncertain intent')
+    if not harness.same_json(restart.get('outcome'), {'status': 'finished', 'selected': 1, 'attempted': 1, 'continued': False}) or not restart.get('statements') or instant(restart.get('at')) <= instant(creation.get('at')):
+        raise ValueError('Missing actual later native no-resend control')
+    validate_native_boundary_transactions(provider, capture['selectedBackend'], key)
+    provider_step = public_error(outcome['failures'][0], provider.get('operationalEvents', []), capture['binding'], 'RUNTIME_SERVICE_MISCONFIGURED')
+    return [{'variant_index': index, 'steps': [step]} for index, step in enumerate((database_step, provider_step))]
+
+
 def observations(case: dict, raw: list, clock: str | None = None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
+    if case['id'] == 'BOUNDARY-001': return boundary_observations(case, raw)
     if case['id'] == 'JOB-004': return maintenance_observations(case, raw)
     if case['id'] == 'CONFIG-003': return readiness_observations(case, raw)
     if case['id'] in ('CONFIG-001', 'CONFIG-002'): return preflight_observations(case, raw)
@@ -981,7 +1079,7 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
         if len(ids) != len(set(ids)) or set(ids) != set(SUPPORTED):
             raise ValueError('Missing/duplicate/foreign supported result')
         for item in output['results']:
-            if item['id'] in ('CONFIG-001', 'CONFIG-002', 'CONFIG-003') and not item.get('adapterFailure') and item['raw'][0].get('nativeReadiness' if item['id'] == 'CONFIG-003' else 'nativeStartup', {}).get('selectedBackend') != output['backend']:
+            if item['id'] in ('CONFIG-001', 'CONFIG-002', 'CONFIG-003', 'BOUNDARY-001') and not item.get('adapterFailure') and (item['raw'][0] if item['id'] == 'BOUNDARY-001' else item['raw'][0].get('nativeReadiness' if item['id'] == 'CONFIG-003' else 'nativeStartup', {})).get('selectedBackend') != output['backend']:
                 raise ValueError('Native preflight capture has foreign selected adapter lineage')
             observed[(output['backend'], item['id'])] = None if item.get('adapterFailure') is True else observations(cases[item['id']], item['scenarios'] if item['id'] == 'REL-001' else item['raw'], contract.get('clock'))
     for entry in report['results']:
@@ -1006,25 +1104,9 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
 def validate_partial_outputs(output: dict, cases: dict):
     """Integrity of retained causal probes, never application acceptance passes."""
     partial = output.get('partialEvidence')
-    ids = ('REL-003', 'BOUNDARY-001')
+    ids = ('REL-003',)
     if not isinstance(partial, list) or len(partial) != len(ids) or {item.get('id') for item in partial} != set(ids):
         raise ValueError('Missing/duplicate original partial probe inventory')
-    for item in partial:
-        if item.get('adapterFailure') is True: continue
-        case = cases[item['id']]
-        if item['id'] == 'BOUNDARY-001':
-            captures = [event for event in item['raw'] if 'boundaryVariants' in event]
-            if len(captures) != 1 or not harness.same_json(captures[0].get('specification'), {'fixtureVariants': case['fixtureVariants'], 'requestOrRun': case['requestOrRun']}):
-                raise ValueError('Changed original boundary variant inventory/operations')
-            variants = captures[0]['boundaryVariants']
-            if len(variants) != len(case['fixtureVariants']) or any(variant.get('variant_index') != index or variant.get('fixture_variant') != case['fixtureVariants'][index] for index, variant in enumerate(variants)):
-                raise ValueError('Missing/reordered original native boundary variant')
-            outage, provider = variants
-            if outage.get('healthyControl', {}).get('status') != 200 or outage.get('outage', {}).get('response', {}).get('status', 0) < 500:
-                raise ValueError('Missing healthy/outage actual HTTP causal control')
-            calls = provider.get('providerCalls', [])
-            if len(calls) != 1 or calls[0].get('responseStatus') != 401 or calls[0].get('authorizationPresent') is not True or not harness.same_json(provider.get('profiles'), {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}) or provider.get('nativeFixtureCreation', {}).get('status') != 201 or provider.get('nativeHostOutcome', {}).get('selected') != 1 or provider.get('nativeHostOutcome', {}).get('attempted') != 1:
-                raise ValueError('Missing actual native provider401/host execution/fixture/profile evidence')
 
 
 def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=ROOT):
@@ -1073,6 +1155,8 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
                 for event in raw:
                     if 'nativeReadiness' in event and not harness.same_json(event['nativeReadiness'].get('serviceMetadata'), expected_services):
                         raise ValueError('Raw readiness advisory service binding differs from generated artifacts')
+                    if 'boundaryVariants' in event and (event.get('sourceRevision') != expected_source_revision or not harness.same_json(event.get('jobMetadata'), expected_jobs)):
+                        raise ValueError('Raw native boundary differs from generated source/job binding')
                     if 'nativeStartup' in event and (not harness.same_json(event['nativeStartup'].get('configurationMetadata'), expected_configuration) or event['nativeStartup'].get('sourceRevision') != expected_source_revision):
                         raise ValueError('Raw preflight declarations/source differ from generated artifacts')
                     if 'reminderFixture' in event and not harness.same_json(event['reminderFixture'].get('jobMetadata'), expected_jobs):
@@ -1089,6 +1173,18 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
     apply_checkpoint(reconstructed, outputs, root)
     if not harness.same_json(reconstructed['results'], report['results']):
         raise ValueError('Ledger observations differ from raw observations')
+
+
+def verify_generated_local_modules(target: Path):
+    """Refuse omitted generated relative modules before any native startup."""
+    for path in target.rglob('*.ts'):
+        if 'node_modules' in path.relative_to(target).parts: continue
+        for specifier in re.findall(r'(?:from\s+|import\s*\()(["\'])(\.[^"\']+)\1', path.read_text()):
+            name = specifier[1]
+            resolved = path.parent/name
+            candidates = [resolved, resolved.with_suffix('.ts')] if resolved.suffix == '.js' else [resolved] if resolved.suffix else [resolved.with_suffix('.ts'), resolved/'index.ts']
+            if not any(candidate.is_file() for candidate in candidates):
+                raise ValueError('Missing generated relative runtime module: '+name)
 
 
 def main():
@@ -1172,6 +1268,7 @@ def main():
               '-keyout', str(output/'jwks-fixture-key.pem'), '-out', str(output/'jwks-fixture-cert.pem'),
               '-days', '2', '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1'], env=environment)
     tls_binding = {name: harness.digest(output/name) for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem')}
+    verify_generated_local_modules(target)
     instrumented_binding = hashes(project/'build', ('node_modules',))
     outputs = []
     for backend in harness.BACKENDS:
