@@ -25,7 +25,7 @@ SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'READ-001', 'PATCH-005', 'DELETE-001', 'LIST-001', 'LIST-002',
              'LIST-003', 'REL-001', 'DELETE-002', 'AUTH-002', 'AUTH-006',
              'AUTH-010', 'USER-001', 'AUTH-003', 'AUTH-004', 'AUTH-007', 'AUTH-008',
-             'AUTH-009', 'AUTH-011', 'JOB-004', 'JOB-001', 'JOB-002', 'JOB-003')
+             'AUTH-009', 'AUTH-011', 'JOB-004', 'JOB-001', 'JOB-002', 'JOB-003', 'REL-002', 'REL-004')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
@@ -506,9 +506,37 @@ def maintenance_observations(case: dict, raw: list):
     return [{'variant_index': 0, 'steps': [{'hardDeletedCount': len(before)-len(after), 'retainedCount': len(after), 'batchLimit': limit}]}]
 
 
+def relationship_observations(case: dict, raw: list):
+    if len(raw) != 1:
+        raise ValueError('Missing exact native persistence relationship operation capture')
+    capture = raw[0]
+    if not harness.same_json(capture.get('persistenceOperation'), case['operation']) or capture.get('accepted') is not False or capture.get('publicBoundaryObserved') is not True or capture.get('publicBoundary') != 'generated persistence.normalizePersistenceFailure':
+        raise ValueError('Missing exact refused persistence operation/native public normalizer')
+    before, after = capture.get('before', {}), capture.get('after', {})
+    if not isinstance(before.get('users'), list) or not isinstance(before.get('todos'), list) or not harness.same_json(before, after):
+        raise ValueError('Rejected relationship operation mutated persistence or lost observations')
+    statements = capture.get('statements', [])
+    if case['id'] == 'REL-002':
+        if any(row.get('id') in (ALIASES['t1'], '00000000-0000-4000-8000-000000000099') for row in before['users']+before['todos']) or not any(row.get('operation') == 'INSERT' and 'INSERT INTO todo (id, owner_id,' in row.get('sql', '') and row.get('relationshipRowIdentity') == ALIASES['t1'] and row.get('relationshipOwnerIdentity') == '00000000-0000-4000-8000-000000000099' for row in statements):
+            raise ValueError('Missing genuinely absent owner/orphan native INSERT')
+    else:
+        owners = [row for row in before['users'] if row.get('id') == ALIASES['alice']]
+        retained = [row for row in after['todos'] if row.get('id') == ALIASES['t1'] and row.get('owner_id') == ALIASES['alice']]
+        if len(owners) != 1 or owners[0].get('status') != 'disabled' or len(retained) != 1 or not any(row.get('operation') == 'DELETE' and 'DELETE FROM "user" WHERE id = ' in row.get('sql', '') and row.get('relationshipRowIdentity') == ALIASES['alice'] for row in statements):
+            raise ValueError('Missing exact disabled retained owner/restricted native DELETE')
+    public = capture.get('publicFailure')
+    if not isinstance(public, dict) or not isinstance(public.get('code'), str):
+        raise ValueError('Missing actual emitted native public failure result')
+    safe_surface = set(public) == {'status', 'code', 'message'} and public.get('status') == 409 and public.get('code') == 'relationship_conflict' and public.get('message') == 'The operation conflicts with a relationship.'
+    step = {'accepted': capture['accepted'], 'normalisedFailure': public['code'], 'rawDatabaseDetailsPublic': not safe_surface}
+    if case['id'] == 'REL-004': step['todoRowExists'] = bool(retained)
+    return [{'variant_index': 0, 'steps': [step]}]
+
+
 def observations(case: dict, raw: list, clock: str | None = None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
     if case['id'] == 'JOB-004': return maintenance_observations(case, raw)
+    if case['id'] in ('REL-002', 'REL-004'): return relationship_observations(case, raw)
     if case['id'] in ('JOB-001', 'JOB-002', 'JOB-003'): return reminder_observations(case, raw)
     if case['id'] == 'USER-001' and case.get('followUps'):
         if clock is None: raise ValueError('Authentication timeline requires original controlled clock')
@@ -823,7 +851,7 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
 def validate_partial_outputs(output: dict, cases: dict):
     """Integrity of retained causal probes, never application acceptance passes."""
     partial = output.get('partialEvidence')
-    ids = ('REL-002', 'REL-003', 'REL-004', 'CONFIG-001', 'CONFIG-002', 'BOUNDARY-001')
+    ids = ('REL-003', 'CONFIG-001', 'CONFIG-002', 'BOUNDARY-001')
     if not isinstance(partial, list) or len(partial) != len(ids) or {item.get('id') for item in partial} != set(ids):
         raise ValueError('Missing/duplicate original partial probe inventory')
     for item in partial:
