@@ -3,8 +3,9 @@ set -euo pipefail
 
 mode=${1:-}
 case "$mode" in
-  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate) ;;
-  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate' >&2; exit 2 ;;
+  temporal-page-containment) exec bash "$(dirname "$0")/temporal-page-probe-postgres.sh" ;;
+  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate|recovery-native-phase) ;;
+  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate|recovery-native-phase' >&2; exit 2 ;;
 esac
 for executable in initdb pg_ctl createdb postgres bun; do
   command -v "$executable" >/dev/null || { echo "Required executable: $executable" >&2; exit 1; }
@@ -105,6 +106,17 @@ elif [[ "$mode" == protected-lifecycle-credentials ]]; then
 elif [[ "$mode" == temporal-schema-gate ]]; then
   JADPO_TEMPORAL_SCHEMA_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test ./tests/runtime/temporal-schema-gate.test.ts
+elif [[ "$mode" == recovery-native-phase ]]; then
+  set +e
+  JADPO_READINESS_TEST_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
+    bun --no-install --env-file=/dev/null test ./tests/runtime/recovery-native-phase.test.ts
+  status=$?
+  set -e
+  cleanup
+  trap - EXIT
+  test ! -e "$cluster"
+  printf '{"kind":"recovery_phase_pg_cluster_cleanup","cluster_removed":true,"test_exit":%s}\n' "$status"
+  exit "$status"
 elif [[ "$mode" == readiness ]]; then
   # These fixture applications have incompatible User layouts. Keep their
   # schemas separate inside the same disposable test cluster.

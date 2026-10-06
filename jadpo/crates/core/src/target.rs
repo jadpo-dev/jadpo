@@ -10377,10 +10377,11 @@ export const temporal = Object.freeze({
         let result_path = ts_string(&format!("database.{result_name}"));
         let next_path = ts_string(&format!("database.{result_name}.next"));
         let operation = ts_string(&format!("query.{entity_name}.page"));
+        let decode_operation = ts_string(&format!("decode.{result_name}"));
         let page_size = self.expression(&page.limit);
         let after = self.expression(&page.after);
         format!(
-            "(await (async () => {{ const values = [{values}]; const pageRows = await persistence.query_page_rows({operation}, {}, {}, {}, {}, {}, values, ({after} !== undefined && {after} !== null)); const pageSize = {page_size}; const hasNext = pageRows.length > pageSize; const selected = pageRows.slice(0, pageSize); const items = selected.map((value: unknown, index: number) => {{ const row = expectObject(value, `database.{result_name}.items[${{index}}]`); return validate_{projection_name}({{ {projection_fields} }}, `database.{result_name}.items[${{index}}]`); }}); const last = selected[selected.length - 1] as Record<string, unknown> | undefined; const next = hasNext && last !== undefined ? validate_{cursor_name}({{ {cursor_fields} }}, {}) : null; return validate_{result_name}({{ items, next }}, {}); }})())",
+            "(await (async () => {{ const values = [{values}]; const pageRows = await persistence.query_page_rows({operation}, {}, {}, {}, {}, {}, values, ({after} !== undefined && {after} !== null)); const pageSize = {page_size}; try {{ const hasNext = pageRows.length > pageSize; const selected = pageRows.slice(0, pageSize); const items = selected.map((value: unknown, index: number) => {{ const row = expectObject(value, `database.{result_name}.items[${{index}}]`); return validate_{projection_name}({{ {projection_fields} }}, `database.{result_name}.items[${{index}}]`); }}); const last = selected[selected.length - 1] as Record<string, unknown> | undefined; const next = hasNext && last !== undefined ? validate_{cursor_name}({{ {cursor_fields} }}, {}) : null; return validate_{result_name}({{ items, next }}, {}); }} catch (error) {{ if (error instanceof PersistenceFault) throw error; throw new PersistenceFault({decode_operation}, \"data\", error); }} }})())",
             ts_string(entity_name),
             ts_string(&postgres_first_sql),
             ts_string(&sqlite_first_sql),

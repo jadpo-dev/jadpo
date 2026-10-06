@@ -99,6 +99,9 @@
     "tests/runtime/temporal-day-page.test.ts",
     "tests/runtime/temporal-host-accepted-contract.test.ts",
     "tests/runtime/temporal-host-contract.test.ts",
+    "tests/runtime/temporal-page-containment-probe.test.ts",
+    "tests/runtime/temporal-page-limit-order.test.ts",
+    "tests/runtime/temporal-page-read-boundary.test.ts",
     "tests/runtime/temporal-roundtrip.test.ts",
     "tests/runtime/temporal-schema-gate.test.ts",
     "tests/runtime/temporal-stored-corruption.test.ts",
@@ -109,7 +112,8 @@
     "tests/runtime/validation-config-time.test.ts",
     "tests/runtime/validation-fixtures-migrations.test.ts",
     "tests/runtime/validation-persistence.test.ts",
-    "tests/runtime/validation-unicode-length.test.ts"
+    "tests/runtime/validation-unicode-length.test.ts",
+    "tests/runtime/recovery-native-phase.test.ts"
   ],
   "postgres_suites": {
     "tests/runtime/persistence-postgres.test.ts": "persistence",
@@ -151,6 +155,8 @@
     "temporal-schema-gate",
     "temporal-day-page",
     "finite-witness",
-    "temporal-stored-corruption"
+    "temporal-stored-corruption",
+    "temporal-page-containment",
+    "recovery-native-phase"
   ]
 }
