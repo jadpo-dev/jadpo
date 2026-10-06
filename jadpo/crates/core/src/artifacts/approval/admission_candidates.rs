@@ -1,4 +1,5 @@
 //! A closed source-only anonymous literal-route candidate, never execution proof.
+mod finite_witness;
 use super::{contract_tokens, method_name, AnalyzedProject, Value};
 use jadpo_syntax::{Declaration, Expression, HttpMethod, LiteralKind, RouteSuccess, Statement};
 use serde_json::json;
@@ -9,8 +10,8 @@ pub(super) fn derive(path: &Path, project: &AnalyzedProject, deployment: &Value)
     let supported = deployment["status"] == "compiler_supported_expected_native_contract"
         && crate::target::first_party_authentication_supported(path, project);
     let mut routes = BTreeMap::new();
-    for source in &project.syntax.sources {
-        for declaration in &source.file.declarations {
+    for (source_index, source) in project.syntax.sources.iter().enumerate() {
+        for (declaration_index, declaration) in source.file.declarations.iter().enumerate() {
             let Declaration::Route(route) = declaration else {
                 continue;
             };
@@ -53,7 +54,7 @@ pub(super) fn derive(path: &Path, project: &AnalyzedProject, deployment: &Value)
                 && route.headers.is_empty()
                 && route.deadline.is_none()
                 && route.run.is_none();
-            let entry = if let Some((literal, body)) = literal.filter(|_| eligible) {
+            let mut entry = if let Some((literal, body)) = literal.filter(|_| eligible) {
                 json!({"status":"checked_plain_text_literal_route",
                     "facts":{"method":"GET","path":route.path,"output":"Text",
                         "literal_token":literal.text,"body_tokens":contract_tokens(source,body.range),
@@ -64,6 +65,12 @@ pub(super) fn derive(path: &Path, project: &AnalyzedProject, deployment: &Value)
                 json!({"status":"unsupported_analysis","facts":null,
                     "reason":"outside_closed_native_plain_text_literal_route_scope"})
             };
+            if entry["status"] == "checked_plain_text_literal_route" {
+                entry.as_object_mut().unwrap().insert(
+                    "conditional_source".into(),
+                    finite_witness::derive(path, project, source_index, declaration_index, route),
+                );
+            }
             routes.insert(key, entry);
         }
     }
@@ -85,6 +92,7 @@ pub(super) fn compare(before: Option<&Value>, after: &Value, route: &str) -> Opt
     }
     Some(
         json!({"status":"source_derived_anonymous_admission_candidate",
+        "conditional_witness":finite_witness::compare(before,after,old,new),
         "facts":{"actor":"unauthenticated_public_caller",
             "request":{"method":"GET","path":new["facts"]["path"],"credentials":"absent","authored_transport_values":"none"},
             "checked_literal_return":new["facts"],

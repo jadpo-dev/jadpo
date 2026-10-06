@@ -105,7 +105,8 @@
     "tests/runtime/validation-fixtures-migrations.test.ts",
     "tests/runtime/validation-persistence.test.ts",
     "tests/runtime/validation-unicode-length.test.ts",
-    "tests/runtime/temporal-day-page.test.ts"
+    "tests/runtime/temporal-day-page.test.ts",
+    "tests/runtime/approval-finite-witness.test.ts"
   ],
   "postgres_suites": {
     "tests/runtime/persistence-postgres.test.ts": "persistence",
@@ -145,6 +146,7 @@
     "temporal-roundtrip",
     "protected-lifecycle-credentials",
     "temporal-schema-gate",
-    "temporal-day-page"
+    "temporal-day-page",
+    "finite-witness"
   ]
 }

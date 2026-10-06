@@ -58,8 +58,31 @@ removal, authentication or actor-source contract changes, or after-only inspecti
 These rows use a separate stable identity domain and
 `compiler_checked_route_contract` certainty; they do not invent a data/service
 effect or execution witness. Before/after actor-source contracts are retained in
-both categories. Execution and input/data feasibility are not proved, and
-concrete counterexamples are not generated.
+both categories. Execution and general input/data feasibility are not proved.
+Concrete execution counterexamples are not generated; the closed conditional
+source witness below is separate.
+
+The existing plain-Text literal admission candidate can additionally carry an
+individual `conditional_witness`. Its status is
+`conditional_feasible_under_assumptions` only for an unchanged static GET whose
+unique source/declaration identity is selected by the native first-match rule
+in both snapshots. Every earlier GET template must be provably disjoint within
+the closed slash/whole-parameter matcher; parameter types do not imply dispatch
+fallthrough. The complete ordered source-token context may differ only by the
+selected route's `auth: none`, with identical compiler and registry provenance.
+Reserved health paths, unsupported templates, duplicate identities and changed
+paired contexts leave the finite rule `not_generated`.
+
+This finite request has no declared credentials, query, body or authored headers.
+Both initialized hosts must have valid configuration, healthy native database
+readiness and ordinary transport/resource boundaries that permit the request.
+Under those explicit assumptions, the checked credential requirement gives
+before-401 `authentication_required`; the anonymous route gives after-200 with
+the unchanged checked literal. This is conditional source inference for one
+request. Its execution remains `not_proved`, scenario-wide feasibility remains
+`not_analyzed`, runtime observations remain null and release authority remains
+false. Separately retained native runs test the rule and its environmental
+countercontrols; they are neither compiler authority nor a general solver.
 
 For comparison, `jadpo approval <project> --before <source-project>` checks both
 source states afresh. `--expected-before sha256:...` pins the baseline's

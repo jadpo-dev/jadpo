@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T20:52:41+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T21:09:51+01:00 · figures reflect the recorded roadmap.
 
-The golden integration passes all92 supporting checks and all88 migrated HTTP entries, now including reviewed seeded retry budgets and joint revision/outbox rollback controls. Full task acceptance remains open; the required concurrent contention trace is being implemented.
+Golden delivery continues in parallel. The fresh integrated checkpoint passes94 supported checks; whole-task and release gates remain open.
 
 ## At a glance
 
@@ -20,9 +20,9 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- Integrated both-adapter seeded original-budget and joint source/change/outbox controls with unchanged current public/schema/query/cancellation runtime, retaining explicit native versus injected qualifications.
-- Archived a fresh92-check report,180 safe raw files,660 unchanged source/tooling pins and72 actual compiler input pins; frozen49 diagnostics/formal88not_run remain separate.
-- Independently reviewed a finite conditional admission witness: own native SQLite9/503 and PostgreSQL9/513 passed, with162 actual baseline emitted files unchanged; selective integration and fresh fusion follow.
+- [Conditional dispatch witnesses](../../tests/validation/evidence/rm601-dispatch-witness-reviewed-fusion/report.json) now pass the integrated94-check gate, preserving current public retry and temporal schema behavior; all88 supporting HTTP cases pass.
+- [Initial PostgreSQL ownership controls](../../tests/validation/evidence/rm403-native-lifetime-grounding/initial-native-phase-controls/independent-review/review.json) independently confirm original10s expiry and native cleanup, with healthy and causal controls; selective integration is next.
+- [Stored temporal controls](../../tests/validation/evidence/rm504-after-ready-stored-corruption/independent-review/review.json) independently pass on both adapters and retain diagnosed precision/TEXT limits; a narrow Duration correction awaits review.
 
 ## Since the previous report
 
@@ -58,7 +58,7 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Continue parallel implementation of the assessed four-worker contention trace, initial PostgreSQL BEGIN/setup ownership controls and stored temporal corruption matrix. Integrate the reviewed conditional witness while preserving current native runtime leaves, then run the fresh combined gate.
+Select reviewed startup/stored controls, independently review the Duration correction and four-client contention trace, then run a fresh combined gate and continue remaining golden prerequisites.
 
 ## Input needed
 

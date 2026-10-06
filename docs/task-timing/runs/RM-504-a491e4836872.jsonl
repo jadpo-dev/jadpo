@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-504-a491e4836872", "task_id": "RM-504", "actor": "root-duration-storage-fallback-plan", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T20:00:01.448956+00:00", "phase": "planning"}
+{"at": "2026-10-06T20:01:04.271958+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm504-after-ready-stored-corruption/duration-storage-fallback-parent-assessment.json"}

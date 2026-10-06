@@ -3,8 +3,8 @@ set -euo pipefail
 
 mode=${1:-}
 case "$mode" in
-  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|protected-lifecycle-credentials|temporal-schema-gate) ;;
-  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|protected-lifecycle-credentials|temporal-schema-gate' >&2; exit 2 ;;
+  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|protected-lifecycle-credentials|temporal-schema-gate) ;;
+  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|protected-lifecycle-credentials|temporal-schema-gate' >&2; exit 2 ;;
 esac
 for executable in initdb pg_ctl createdb postgres bun; do
   command -v "$executable" >/dev/null || { echo "Required executable: $executable" >&2; exit 1; }
@@ -92,6 +92,10 @@ elif [[ "$mode" == temporal-day-page ]]; then
   JADPO_TEMPORAL_DAY_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     JADPO_TEMPORAL_DAY_POSTGRES_LOG="$cluster/server.log" \
     bun --no-install --env-file=/dev/null test ./tests/runtime/temporal-day-page.test.ts
+elif [[ "$mode" == finite-witness ]]; then
+  JADPO_FINITE_WITNESS_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
+    JADPO_FINITE_WITNESS_POSTGRES_LOG="$cluster/server.log" \
+    bun --no-install --env-file=/dev/null test ./tests/runtime/approval-finite-witness.test.ts
 elif [[ "$mode" == protected-lifecycle-credentials ]]; then
   JADPO_LIFECYCLE_CREDENTIAL_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test ./tests/runtime/protected-lifecycle-credentials.test.ts
