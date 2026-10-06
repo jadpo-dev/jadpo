@@ -531,6 +531,10 @@ def relationship_observations(case: dict, raw: list):
     if not isinstance(before.get('users'), list) or not isinstance(before.get('todos'), list) or not harness.same_json(before, after):
         raise ValueError('Rejected relationship operation mutated persistence or lost observations')
     statements = capture.get('statements', [])
+    original_sql = 'INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, $7)' if case['id'] == 'REL-002' else 'DELETE FROM "user" WHERE id = $1'
+    operation = 'INSERT' if case['id'] == 'REL-002' else 'DELETE'
+    if len(statements) != 1 or statements[0].get('operation') != operation or statements[0].get('sql') not in (original_sql, original_sql.replace('$', '?')):
+        raise ValueError('Relationship operation must be one exact original SQL statement with original bind ordinals')
     if case['id'] == 'REL-002':
         if any(row.get('id') in (ALIASES['t1'], '00000000-0000-4000-8000-000000000099') for row in before['users']+before['todos']) or not any(row.get('operation') == 'INSERT' and 'INSERT INTO todo (id, owner_id,' in row.get('sql', '') and row.get('relationshipRowIdentity') == ALIASES['t1'] and row.get('relationshipOwnerIdentity') == '00000000-0000-4000-8000-000000000099' for row in statements):
             raise ValueError('Missing genuinely absent owner/orphan native INSERT')
