@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-307-8c4c3f97bfd0", "task_id": "RM-307", "actor": "golden-worker-loop", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T06:15:07.998066+00:00", "phase": "planning"}
+{"at": "2026-10-06T06:15:08.545343+00:00", "phase": "verification", "note": "Independent COMMITCRASH setup correction plus OUTBOXROLLBACK: generated createTodo, revision hooks, checked intent enrollment and immutable page in same child owning transaction beforeSIGKILL/rollback."}
+{"at": "2026-10-06T06:17:46.917553+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm307-atomic-source-recovery/manifest.json"}

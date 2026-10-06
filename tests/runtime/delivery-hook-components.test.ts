@@ -751,19 +751,33 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
   }, 30_000);
   test("ASYNC-COMMIT-CRASH: SIGKILL after generated page COMMIT recovers the original durable intent and payload in a fresh worker", async () => {
     const f = await fixture(), marker = join(root, `commit-crash-${crypto.randomUUID()}.json`);
+    await clearScanTodos(); const source = todo();
     await provider(async (calls, endpoint) => {
-      const first = worker(f, endpoint, `const saved=await persistence.withOperationTime(at).transaction(async tx=>{await tx.tick_delivery_schedule(binding,900000,at);const handle=await tx.claim_delivery_activation(binding,at,profile);const page=await tx.select_delivery_intents(binding,proof,null);if(!await tx.stage_delivery_activation_page(handle,page.intents.map(i=>i.intentId),page.after))throw Error("stage refused");return page;});await Bun.write(${JSON.stringify(marker)},JSON.stringify(saved));await new Response(Bun.stdin).text();process.exit(0);`);
+      expect(await stored(source.id)).toEqual([]); expect(await revision(source.id)).toBeNull();
+      const first = worker(f, endpoint, `const saved=await persistence.withOperationTime(at).withPolicy({kind:"user",subject:${JSON.stringify(owner)},values:{user_id:${JSON.stringify(owner)}}},"Todo.create_todo").transaction(async tx=>{await tx.create_Todo(${JSON.stringify(source)});await tx.tick_delivery_schedule(binding,900000,at);const handle=await tx.claim_delivery_activation(binding,at,profile);const page=await tx.select_delivery_intents(binding,proof,null);if(!await tx.stage_delivery_activation_page(handle,page.intents.map(i=>i.intentId),page.after))throw Error("stage refused");return page;});await Bun.write(${JSON.stringify(marker)},JSON.stringify(saved));await new Response(Bun.stdin).text();process.exit(0);`);
       let page: any;
       try { page = await ready(marker); expect(calls).toHaveLength(0); expect(page.intents).toHaveLength(1); }
       finally { first.child.kill("SIGKILL"); }
       expect((await first.done)[2]).not.toBe(0);
       const original = await persistence.read_delivery_intent(page.intents[0].intentId);
-      expect(original.state).toBe("pending"); await expire();
+      expect(original.state).toBe("pending"); expect(original.sourceEntityId).toBe(source.id); expect(original.sourceRevision).toBe("1");
+      expect(await stored(source.id)).toHaveLength(1); expect(await revision(source.id)).toBe("1"); await expire();
       expect(await runWorker(f, endpoint)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
       expect(calls).toHaveLength(1); expect(calls[0].body).toEqual(original.payload);
       const completed = await persistence.read_delivery_intent(original.intentId);
       expect(completed.state).toBe("succeeded"); expect(completed.payloadVersion).toBe(original.payloadVersion);
-      expect(await intentRows(f.value.id)).toHaveLength(1);
+      expect(await intentRows(source.id)).toHaveLength(1);
+    });
+  }, 30_000);
+  test("ASYNC-OUTBOX-ROLLBACK: child source mutation, revision, checked outbox and page share one owning rollback", async () => {
+    const f = await fixture(); await clearScanTodos(); const source = todo();
+    await provider(async (calls, endpoint) => {
+      const failed = worker(f, endpoint, `try{await persistence.withOperationTime(at).withPolicy({kind:"user",subject:${JSON.stringify(owner)},values:{user_id:${JSON.stringify(owner)}}},"Todo.create_todo").transaction(async tx=>{await tx.create_Todo(${JSON.stringify(source)});await tx.tick_delivery_schedule(binding,900000,at);const handle=await tx.claim_delivery_activation(binding,at,profile);const page=await tx.select_delivery_intents(binding,proof,null);if(page.intents.length!==1)throw Error("unexpected fixture selection");if(!await tx.stage_delivery_activation_page(handle,page.intents.map(i=>i.intentId),page.after))throw Error("stage refused");throw Error("atomic rollback fixture");});throw Error("rollback was not observed");}catch(error){if(error.message!=="atomic rollback fixture")throw error;console.log(JSON.stringify({rolledBack:true}));}process.exit(0);`);
+      expect(await result(failed)).toEqual({ rolledBack: true }); expect(calls).toHaveLength(0);
+      expect(await stored(source.id)).toEqual([]); expect(await revision(source.id)).toBeNull(); expect(await intentRows(source.id)).toEqual([]);
+      expect(await activationRows()).toEqual([]);
+      expect(await runWorker(f, endpoint)).toEqual({ status: "finished", selected: 0, attempted: 0, continued: false });
+      expect(calls).toHaveLength(0); expect(await intentRows(source.id)).toEqual([]);
     });
   }, 30_000);
   test("ASYNC-LEASE-RECLAIM-FENCE: separate generated workers reclaim before possible dispatch and reject the old worker's checkpoint/outcome", async () => {
