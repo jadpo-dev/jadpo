@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-004", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
@@ -30,7 +30,7 @@ prototype.prepare = function(sql: string, ...options: unknown[]) {
   return new Proxy(statement, { get(target, property) {
     const member = Reflect.get(target, property, target);
     if (["all", "get", "run", "values"].includes(String(property))) return (...values: unknown[]) => {
-      recordStatement(sql); return member.apply(target, values);
+      recordStatement(sql, values); return member.apply(target, values);
     };
     return typeof member === "function" ? member.bind(target) : member;
   } });
@@ -39,6 +39,7 @@ if (backend === "sqlite") { Bun.env.SQLITE_PATH = join(project, "checkpoint.sqli
 else { if (!Bun.env.DATABASE_URL) throw new Error("Missing isolated PostgreSQL URL"); delete Bun.env.SQLITE_PATH; }
 const app = await import(pathToFileURL(join(project, "build/target/app.ts")).href);
 const routes = JSON.parse(readFileSync(join(project, "build/inventory/routes.json"), "utf8")).routes;
+const queryPlans = JSON.parse(readFileSync(join(project, "build/persistence/entities.json"), "utf8")).query_plans.filter((plan: any) => plan.entity === "Todo" && plan.strategy === "indexed_keyset_page");
 const db = backend === "sqlite" ? new Database(Bun.env.SQLITE_PATH, { strict: true }) : undefined;
 const pg = backend === "postgres" ? new SQL({ url: Bun.env.DATABASE_URL!, prepare: false }) : undefined;
 async function execute(sql: string, values: unknown[] = []) {
@@ -74,9 +75,15 @@ async function todoSnapshot(id: string) {
   const row = rows[0];
   return { ...row, due_at: persistedInstant(row.due_at), reminder_sent_at: persistedInstant(row.reminder_sent_at), created_at: persistedInstant(row.created_at), updated_at: persistedInstant(row.updated_at), deleted_at: persistedInstant(row.deleted_at) };
 }
-async function seedTodo(id: string, owner: string, dueAt: string | null = null) {
-  const createdAt = "2026-01-15T11:00:00Z";
-  await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, NULL)', [id, owner, "original fixture title", "open", dueAt === null ? null : pg ? dueAt : Date.parse(dueAt), pg ? createdAt : Date.parse(createdAt)]);
+async function seedTodo(id: string, owner: string, dueAt: string | null = null, options: { createdAt?: string; status?: string; deletedAt?: string } = {}) {
+  const createdAt = options.createdAt ?? "2026-01-15T11:00:00Z";
+  await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, $7)', [id, owner, "original fixture title", options.status ?? "open", dueAt === null ? null : pg ? dueAt : Date.parse(dueAt), pg ? createdAt : Date.parse(createdAt), options.deletedAt === undefined ? null : pg ? options.deletedAt : Date.parse(options.deletedAt)]);
+}
+async function captureCollectionFixture() {
+  const ids = await execute('SELECT id FROM todo ORDER BY id');
+  const rows = [];
+  for (const row of ids) rows.push(await todoSnapshot(row.id));
+  raw.push({ fixtureRows: rows, queryMetadata: queryPlans });
 }
 async function validateOutput(request: any, reply: any) {
   const route = routes.find((route: any) => route.method === request.method && new RegExp("^" + route.path.replace(/\{[^}]+\}/gu, "[^/]+") + "$", "u").test(request.path));
@@ -91,7 +98,7 @@ async function send(request: any) {
   const auth = Array.isArray(request.auth) ? request.auth : [request.auth];
   if (auth.includes("alice-session")) Object.assign(headers, { cookie: session.setCookie.split(";", 1)[0], origin: environment.BROWSER_ORIGIN, "x-jadpo-csrf": session.csrfToken });
   if (auth.includes("invalid-jwt") || auth.includes("invalid-bearer")) headers.authorization = "Bearer INVALID_CHECKPOINT_CREDENTIAL";
-  const path = request.path.replace("/todos/t2", `/todos/${t2}`).replace("/todos/t1", `/todos/${t1}`);
+  const path = request.path.replace("/todos/t2", `/todos/${t2}`).replace("/todos/t1", `/todos/${t1}`).replace("/users/alice/todos", `/users/${alice}/todos`);
   if (request.json !== undefined) headers["content-type"] = "application/json";
   const statements = beginSqlObservation();
   let response: Response;
@@ -102,7 +109,7 @@ async function send(request: any) {
     body = text.length ? JSON.parse(text) : null;
   } finally { endSqlObservation(); }
   const authenticationAttempts = authenticationAttemptCount();
-  const captured = { method: request.method, path, auth: request.auth ?? null, requestJson: request.json ?? null, at: new Date(clockNow).toISOString(), status: response!.status, body, statements, authenticationAttempts };
+  const captured = { method: request.method, path, requestedPath: request.requestedPath ?? request.path, auth: request.auth ?? null, requestJson: request.json ?? null, at: new Date(clockNow).toISOString(), status: response!.status, body, statements, authenticationAttempts };
   if (secrets.some(secret => JSON.stringify(captured).includes(secret))) throw new Error("Unsafe raw observation refused");
   raw.push(captured);
   return { status: response!.status, code: body?.error?.code, body, databaseQueries: statements.length, authenticationAttempts, writes: statements.filter(row => ["INSERT", "UPDATE", "DELETE", "REPLACE"].includes(row.operation)).length };
@@ -110,17 +117,61 @@ async function send(request: any) {
 const results: any[] = [];
 try {
   for (const case_ of contract.cases.filter((case_: any) => supported.includes(case_.id))) {
-    if (case_.fixtureVariants || case_.followUps) throw new Error("Unsupported scenario extension");
+    if ((case_.fixtureVariants && case_.id !== "REL-001") || case_.followUps) throw new Error("Unsupported scenario extension");
+    if (case_.id === "REL-001") {
+      const scenarios = [];
+      for (const [variant_index, fixture_variant] of case_.fixtureVariants.entries()) {
+        const start = raw.length;
+        try {
+          const count = ({ "alice zero todos": 0, "alice one todo": 1, "alice 100 todos": 100 } as Record<string, number>)[String(fixture_variant)];
+          if (count === undefined) throw new Error("Unsupported relationship fixture variant");
+          await reset();
+          for (let index = 0; index < count; index++) await seedTodo(`00000000-0000-4000-8000-${String(1000 + index).padStart(12, "0")}`, alice, null, { createdAt: new Date(clockNow - 500_000 + Math.floor(index / 2)).toISOString() });
+          await seedTodo(t2, bob, null, { createdAt: "2026-01-01T00:00:00Z" });
+          await seedTodo(t1, alice, null, { deletedAt: "2026-01-15T11:59:00Z" });
+          await captureCollectionFixture();
+          const reply = await send(case_.request); await validateOutput(case_.request, reply);
+          scenarios.push({ variant_index, fixture_variant, raw: raw.slice(start) });
+        } catch { scenarios.push({ variant_index, fixture_variant, adapterFailure: true, raw: raw.slice(start) }); }
+      }
+      results.push({ id: case_.id, scenarios });
+      continue;
+    }
     const start = raw.length;
     try {
     await reset();
-    if (case_.id.startsWith("PATCH-") || ["READ-001", "DELETE-001"].includes(case_.id)) {
+    if (case_.id.startsWith("PATCH-") || ["READ-001", "DELETE-001", "DELETE-002"].includes(case_.id)) {
       const id = case_.id === "PATCH-004" ? t2 : t1;
       await seedTodo(id, case_.id === "PATCH-004" ? bob : alice, ["PATCH-001", "PATCH-002", "PATCH-005"].includes(case_.id) ? "2026-02-01T00:00:00Z" : null);
       if (case_.id === "PATCH-005") await execute('UPDATE todo SET reminder_sent_at = $1 WHERE id = $2', [pg ? "2026-01-15T11:59:00Z" : Date.parse("2026-01-15T11:59:00Z"), id]);
+      if (case_.id === "DELETE-002") await execute('UPDATE todo SET deleted_at = $1 WHERE id = $2', [pg ? "2026-01-15T11:59:00Z" : Date.parse("2026-01-15T11:59:00Z"), id]);
       raw.push({ fixture: await todoSnapshot(id) });
     }
-    if (case_.id === "READ-002") {
+    if (["LIST-001", "LIST-002"].includes(case_.id)) {
+      for (let index = 0; index < 5; index++) await seedTodo(`00000000-0000-4000-8000-${String(100 + index).padStart(12, "0")}`, alice, null, { createdAt: case_.id === "LIST-001" ? "2026-01-15T11:00:00Z" : new Date(clockNow - 10000 + Math.floor(index / 2)).toISOString() });
+      if (case_.id === "LIST-001") {
+        await seedTodo(t2, bob); await seedTodo(t1, alice, null, { deletedAt: "2026-01-15T11:59:00Z" });
+      }
+      await captureCollectionFixture();
+    }
+    if (case_.id === "LIST-003") {
+      await seedTodo(t1, alice, "2026-01-30T00:00:00Z");
+      await seedTodo(t2, bob, "2026-01-30T00:00:00Z");
+      await seedTodo("00000000-0000-4000-8000-000000000023", alice, "2026-01-30T00:00:00Z", { status: "completed" });
+      await seedTodo("00000000-0000-4000-8000-000000000024", alice, "2026-02-02T00:00:00Z");
+      await seedTodo("00000000-0000-4000-8000-000000000025", alice);
+      await captureCollectionFixture();
+    }
+    if (case_.id === "LIST-002") {
+      const replies = [];
+      for (const request of case_.requests) {
+        let path = request.path;
+        if (path.includes("{first.next}")) path = path.replace("{first.next}", encodeURIComponent(JSON.stringify(replies[0].body.next)));
+        if (path.includes("{second.next}")) path = path.replace("{second.next}", encodeURIComponent(JSON.stringify(replies[1].body.next)));
+        replies.push(await send({ ...request, path, requestedPath: request.path }));
+      }
+      await send(case_.requests[0]);
+    } else if (case_.id === "READ-002") {
       const now = Date.now();
       await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)', [t2, bob, "private bob todo", "open", pg ? new Date(now).toISOString() : now]);
       for (const request of case_.requests) await send(request);
@@ -133,6 +184,7 @@ try {
         raw.push({ persistence: { id: reply.body.id, storedDueAt: rows[0].due_at } });
       }
       if (case_.id.startsWith("PATCH-")) raw.push({ persistence: await todoSnapshot(case_.id === "PATCH-004" ? t2 : t1) });
+      if (case_.id === "DELETE-002") raw.push({ persistence: await todoSnapshot(t1) });
       if (case_.id === "CREATE-001") raw.push({ persistence: await todoSnapshot(reply.body.id) });
       if (case_.id === "DELETE-001") {
         raw.push({ persistence: await todoSnapshot(t1) });

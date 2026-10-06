@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'tools'))
@@ -34,15 +35,22 @@ class CheckpointIntegrityTests(unittest.TestCase):
         contract = harness.read_contract(self.root)
         self.clock = contract['clock']
         self.cases = {case['id']: case for case in contract['cases']}
+        self.query_plans = [{'entity': 'Todo', 'strategy': 'indexed_keyset_page', 'fetch_limit': 'page_size_plus_one'}]
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id == 'REL-001':
+            return [{'variant_index': index, 'fixture_variant': variant,
+                     'raw': self.collection_raw(case_id, count)} for index, (variant, count) in enumerate(zip(case['fixtureVariants'], (0, 1, 100)))]
+        if case_id in ('LIST-001', 'LIST-002', 'LIST-003'):
+            return self.collection_raw(case_id)
         replies = []
         requests = case.get('requests', [case.get('request')])
         if case_id == 'DELETE-001': requests = [case['request'], {**case['request'], 'method': 'GET'}]
         for request in requests:
             replies.append({'method': request['method'], 'path': checkpoint.request_path(request['path']),
                             'auth': request.get('auth'), 'requestJson': request.get('json'),
+                            'requestedPath': request['path'],
                             'at': self.clock,
                             'status': 404 if case_id == 'READ-002' else 401,
                             'body': {'error': {'code': 'todo_not_found' if case_id == 'READ-002' else 'authentication_required', 'request_id': f'req_{len(replies)}'}},
@@ -55,11 +63,11 @@ class CheckpointIntegrityTests(unittest.TestCase):
             replies.append({'outputValidation': {'route': 'POST /todos' if case_id == 'CREATE-001' else 'GET /todos/{todo_id}', 'schema': 'TodoView', 'validator': 'validate_TodoView', 'accepted': True, 'validatedBody': deepcopy(replies[0]['body'])}})
             if case_id == 'CREATE-001': replies.append({'persistence': {'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice']}})
             else: replies.insert(0, {'fixture': {'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': None}})
-        if case_id.startswith('PATCH-') or case_id == 'DELETE-001':
+        if case_id.startswith('PATCH-') or case_id in ('DELETE-001', 'DELETE-002'):
             fixture = {'id': checkpoint.ALIASES['t2' if case_id == 'PATCH-004' else 't1'],
                        'owner_id': checkpoint.ALIASES['bob' if case_id == 'PATCH-004' else 'alice'],
                        'title': 'original fixture title', 'due_at': '2026-02-01T00:00:00.000Z' if case_id in ('PATCH-001', 'PATCH-002', 'PATCH-005') else None,
-                       'reminder_sent_at': self.clock if case_id == 'PATCH-005' else None, 'deleted_at': None}
+                       'reminder_sent_at': self.clock if case_id == 'PATCH-005' else None, 'deleted_at': self.clock if case_id == 'DELETE-002' else None}
             after = deepcopy(fixture)
             if case_id == 'PATCH-002': after['due_at'] = None
             if case_id == 'PATCH-005': after.update(due_at='2026-02-15T09:00:00Z', reminder_sent_at=None)
@@ -69,8 +77,38 @@ class CheckpointIntegrityTests(unittest.TestCase):
             else: replies.append({'persistence': after})
         return replies
 
+    def collection_raw(self, case_id, count=5):
+        case = self.cases[case_id]
+        rows = [{'id': f'00000000-0000-4000-8000-{100 + index:012}', 'owner_id': checkpoint.ALIASES['alice'],
+                 'title': 'synthetic fixture', 'status': 'open', 'due_at': '2026-01-30T00:00:00Z',
+                 'created_at': '2026-01-15T11:00:00Z', 'deleted_at': None} for index in range(count)]
+        visible = list(rows)
+        if case_id != 'LIST-002':
+            rows += [{'id': checkpoint.ALIASES['t2'], 'owner_id': checkpoint.ALIASES['bob'], 'created_at': self.clock, 'deleted_at': None},
+                     {'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice'], 'created_at': self.clock, 'deleted_at': self.clock}]
+        raw = [{'fixtureRows': rows, 'queryMetadata': deepcopy(self.query_plans)}]
+        if case_id == 'REL-001':
+            body = {'user_id': checkpoint.ALIASES['alice'], 'todos': [{'id': row['id']} for row in visible]}
+            raw.append({'method': 'GET', 'path': checkpoint.request_path(case['request']['path']), 'requestedPath': case['request']['path'], 'auth': case['request']['auth'], 'requestJson': None, 'at': self.clock, 'status': 200, 'body': body,
+                        'statements': [{'sql': 'SELECT id FROM "user" WHERE id = $1', 'operation': 'SELECT', 'numericParameters': {}},
+                                       {'sql': 'SELECT id FROM "todo" ORDER BY "created_at" ASC, "id" ASC LIMIT $4', 'operation': 'SELECT', 'numericParameters': {'4': 101}}], 'authenticationAttempts': 1})
+            raw.append({'outputValidation': {'route': 'GET /users/{user_id}/todos', 'schema': 'UserWithTodos', 'validator': 'validate_UserWithTodos', 'accepted': True, 'validatedBody': deepcopy(body)}})
+            return raw
+        descending = sorted(visible, key=lambda row: (row['created_at'], row['id']), reverse=True)
+        requests = [*case['requests'], case['requests'][0]] if case_id == 'LIST-002' else [case['request']]
+        for index, request in enumerate(requests):
+            page = descending[(index if index < 3 else 0)*2:((index if index < 3 else 0)+1)*2] if case_id in ('LIST-001', 'LIST-002') else descending
+            next_ = {'created_at': page[-1]['created_at'], 'id': page[-1]['id']} if page and index != 2 else None
+            body = {'items': [{'id': row['id'], 'status': row['status'], 'due_at': row['due_at']} for row in page], 'next': next_}
+            path = request['path']
+            for token, previous in (('{first.next}', 1), ('{second.next}', 2)):
+                if token in path: path = path.replace(token, quote(json.dumps(raw[previous]['body']['next'], separators=(',', ':')), safe="~()*!.'-"))
+            raw.append({'method': request['method'], 'path': path, 'requestedPath': request['path'], 'auth': request.get('auth'), 'requestJson': request.get('json'), 'at': self.clock, 'status': 200, 'body': body,
+                        'statements': [{'sql': 'SELECT id FROM "todo" ORDER BY "created_at" DESC, "id" DESC LIMIT $6', 'operation': 'SELECT', 'numericParameters': {'6': 3}}], 'authenticationAttempts': 1})
+        return raw
+
     def outputs(self):
-        return [{'backend': backend, 'results': [{'id': case_id, 'raw': self.raw(case_id)} for case_id in checkpoint.SUPPORTED]} for backend in harness.BACKENDS]
+        return [{'backend': backend, 'results': [{'id': case_id, 'scenarios' if case_id == 'REL-001' else 'raw': self.raw(case_id)} for case_id in checkpoint.SUPPORTED]} for backend in harness.BACKENDS]
 
     def test_all_inventory_entries_retained_and_selected_observations_do_not_infer_pass(self):
         report = harness.run_cases(self.root)
@@ -153,6 +191,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
             for generated, retained in (('persistence.ts', 'original-persistence.ts'), ('first-party-authentication.ts', 'original-authentication.ts'), ('app.ts', 'original-app.ts')):
                 (target/generated).write_text('synthetic instrumented')
                 (evidence/retained).write_text('synthetic original')
+            plan_path = evidence/'application/build/persistence/entities.json'; plan_path.parent.mkdir()
+            plan_path.write_text(json.dumps({'query_plans': self.query_plans}))
             outputs = self.outputs()
             for output in outputs: (evidence/f'{output["backend"]}-raw.json').write_text(json.dumps(output))
             report = harness.run_cases(self.root); checkpoint.apply_checkpoint(report, outputs, self.root)
@@ -173,6 +213,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
             entry = next(entry for entry in changed['results'] if entry['id'] == 'AUTH-001' and entry['backend'] == 'sqlite')
             entry['observations'][0]['steps'][0]['writes'] = 99
             with self.assertRaisesRegex(ValueError, 'differ from raw'):
+                checkpoint.validate_checkpoint(changed, evidence, dependencies, self.root)
+            changed = deepcopy(report)
+            raw_path = evidence/'sqlite-raw.json'
+            raw_output = json.loads(raw_path.read_text())
+            next(item for item in raw_output['results'] if item['id'] == 'LIST-001')['raw'][0]['queryMetadata'][0]['foreign'] = True
+            raw_path.write_text(json.dumps(raw_output))
+            changed['checkpoint']['raw_files']['sqlite-raw.json'] = harness.digest(raw_path)
+            with self.assertRaisesRegex(ValueError, 'query metadata differs'):
                 checkpoint.validate_checkpoint(changed, evidence, dependencies, self.root)
 
     def test_synthetic_fixture_still_rejects_passes_without_compiler_binding(self):
@@ -263,6 +311,87 @@ class CheckpointIntegrityTests(unittest.TestCase):
         raw = self.raw('DELETE-001'); raw[0], raw[1] = raw[1], raw[0]
         with self.assertRaisesRegex(ValueError, 'Reordered delete'):
             checkpoint.observations(self.cases['DELETE-001'], raw, self.clock)
+
+    def test_relationship_variants_all_required_ordered_and_isolated(self):
+        scenarios = self.raw('REL-001')
+        observed = checkpoint.observations(self.cases['REL-001'], scenarios, self.clock)
+        self.assertEqual([entry['variant_index'] for entry in observed], [0, 1, 2])
+        self.assertEqual([entry['steps'][0]['childLimit'] for entry in observed], [100, 100, 100])
+        for mutation in ('missing', 'order', 'name', 'fixture', 'failure'):
+            raw = deepcopy(scenarios)
+            if mutation == 'missing': raw.pop()
+            elif mutation == 'order': raw[0], raw[1] = raw[1], raw[0]
+            elif mutation == 'name': raw[0]['fixture_variant'] = 'foreign'
+            elif mutation == 'fixture': raw[2]['raw'][0]['fixtureRows'].pop(0)
+            else: raw[0]['adapterFailure'] = True
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                checkpoint.observations(self.cases['REL-001'], raw, self.clock)
+
+    def test_child_limit_query_budget_order_and_cross_parent_output_are_observed(self):
+        for mutation in ('limit', 'query', 'order', 'foreign', 'email'):
+            raw = self.raw('REL-001')
+            journal = raw[1]['raw']; reply = journal[1]
+            if mutation == 'limit': reply['statements'][1]['numericParameters']['4'] = 11
+            elif mutation == 'query': reply['statements'].append(deepcopy(reply['statements'][0]))
+            elif mutation == 'order': reply['statements'][1]['sql'] = reply['statements'][1]['sql'].replace('ASC', 'DESC')
+            elif mutation == 'foreign': reply['body']['todos'][0]['id'] = checkpoint.ALIASES['t2']
+            else: reply['body']['email'] = 'private@example.test'
+            # Keep the independent output-validator result consistent where the
+            # test is challenging collection semantics rather than validation.
+            journal[2]['outputValidation']['validatedBody'] = deepcopy(reply['body'])
+            observations = checkpoint.observations(self.cases['REL-001'], raw, self.clock)
+            with self.subTest(mutation=mutation):
+                self.assertTrue(harness.assess(self.cases['REL-001'], observations) or any(step.get('checkpoint_failures') for scenario in observations for step in scenario['steps']))
+
+    def test_cursor_request_templates_continuation_completeness_and_repeat_are_bound(self):
+        for mutation in ('path', 'template', 'duplicate', 'gap', 'repeat', 'missing'):
+            raw = self.raw('LIST-002')
+            if mutation == 'path': raw[2]['path'] = raw[1]['path']
+            elif mutation == 'template': raw[2]['requestedPath'] = 'foreign'
+            elif mutation == 'duplicate': raw[2]['body']['items'][0] = deepcopy(raw[1]['body']['items'][0])
+            elif mutation == 'gap': raw[3]['body']['items'] = []
+            elif mutation == 'repeat': raw[4]['body']['items'] = []
+            else: raw.pop()
+            with self.subTest(mutation=mutation):
+                if mutation in ('path', 'template', 'missing'):
+                    with self.assertRaises(ValueError): checkpoint.observations(self.cases['LIST-002'], raw, self.clock)
+                else:
+                    observations = checkpoint.observations(self.cases['LIST-002'], raw, self.clock)
+                    self.assertTrue(harness.assess(self.cases['LIST-002'], observations) or observations[0]['steps'][0].get('checkpoint_failures'))
+
+    def test_list_fixture_owner_deleted_order_and_filters_are_not_inferred(self):
+        for mutation in ('foreign', 'deleted', 'order', 'fixture'):
+            raw = self.raw('LIST-001')
+            if mutation == 'foreign': raw[1]['body']['items'][0]['id'] = checkpoint.ALIASES['t2']
+            elif mutation == 'deleted': raw[1]['body']['items'][0]['id'] = checkpoint.ALIASES['t1']
+            elif mutation == 'order': raw[1]['body']['items'].reverse()
+            else: raw[0]['fixtureRows'] = [row for row in raw[0]['fixtureRows'] if row['owner_id'] != checkpoint.ALIASES['bob']]
+            with self.subTest(mutation=mutation):
+                if mutation == 'fixture':
+                    with self.assertRaises(ValueError): checkpoint.observations(self.cases['LIST-001'], raw, self.clock)
+                else:
+                    observations = checkpoint.observations(self.cases['LIST-001'], raw, self.clock)
+                    self.assertTrue(harness.assess(self.cases['LIST-001'], observations) or observations[0]['steps'][0].get('checkpoint_failures'))
+        raw = self.raw('LIST-003'); raw[1]['body']['items'][0]['due_at'] = None
+        self.assertTrue(harness.assess(self.cases['LIST-003'], checkpoint.observations(self.cases['LIST-003'], raw, self.clock)))
+
+    def test_repeated_delete_requires_original_deleted_fixture_and_no_storage_change(self):
+        raw = self.raw('DELETE-002'); raw[-1]['persistence']['title'] = 'changed'
+        observations = checkpoint.observations(self.cases['DELETE-002'], raw, self.clock)
+        self.assertTrue(observations[0]['steps'][0]['checkpoint_failures'])
+        raw = self.raw('DELETE-002'); raw[0]['fixture']['deleted_at'] = None
+        with self.assertRaises(ValueError): checkpoint.observations(self.cases['DELETE-002'], raw, self.clock)
+
+    def test_cursor_duplicate_fails_case_even_when_frozen_summary_fields_match(self):
+        outputs = self.outputs()
+        raw = next(item for item in outputs[0]['results'] if item['id'] == 'LIST-002')['raw']
+        raw[3]['body']['items'].append(deepcopy(raw[1]['body']['items'][0]))
+        observations = checkpoint.observations(self.cases['LIST-002'], raw, self.clock)
+        self.assertFalse(harness.assess(self.cases['LIST-002'], observations))
+        report = harness.run_cases(self.root); checkpoint.apply_checkpoint(report, outputs, self.root)
+        entry = next(entry for entry in report['results'] if entry['id'] == 'LIST-002' and entry['backend'] == 'sqlite')
+        self.assertEqual(entry['status'], 'failed')
+        self.assertTrue(entry['failures'])
 
 
 if __name__ == '__main__': unittest.main()
