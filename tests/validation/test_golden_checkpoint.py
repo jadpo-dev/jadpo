@@ -239,7 +239,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def relationship_raw(self, case_id):
         before = {'users': [{'id': checkpoint.ALIASES[name], 'status': 'disabled' if name == 'alice' and case_id == 'REL-004' else 'active'} for name in ('alice', 'bob')], 'todos': [{'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice']}] if case_id == 'REL-004' else []}
-        return [{'persistenceOperation': self.cases[case_id]['operation'], 'accepted': False, 'publicBoundaryObserved': True, 'publicBoundary': 'generated persistence.normalizePersistenceFailure', 'publicFailure': {'status': 409, 'code': 'relationship_conflict', 'message': 'The operation conflicts with a relationship.'}, 'before': before, 'after': deepcopy(before), 'statements': [{'operation': 'INSERT' if case_id == 'REL-002' else 'DELETE', 'sql': 'INSERT INTO todo (id, owner_id, title) VALUES ($1,$2,$3)' if case_id == 'REL-002' else 'DELETE FROM "user" WHERE id = $1', 'relationshipRowIdentity': checkpoint.ALIASES['t1' if case_id == 'REL-002' else 'alice'], **({'relationshipOwnerIdentity': '00000000-0000-4000-8000-000000000099'} if case_id == 'REL-002' else {})}]}]
+        return [{'persistenceOperation': self.cases[case_id]['operation'], 'accepted': False, 'publicBoundaryObserved': True, 'publicBoundary': 'generated persistence.normalizePersistenceFailure', 'publicFailure': {'status': 409, 'code': 'relationship_conflict', 'message': 'The operation conflicts with a relationship.'}, 'before': before, 'after': deepcopy(before), 'statements': [{'operation': 'INSERT' if case_id == 'REL-002' else 'DELETE', 'sql': 'INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, $7)' if case_id == 'REL-002' else 'DELETE FROM "user" WHERE id = $1', 'relationshipRowIdentity': checkpoint.ALIASES['t1' if case_id == 'REL-002' else 'alice'], **({'relationshipOwnerIdentity': '00000000-0000-4000-8000-000000000099'} if case_id == 'REL-002' else {})}]}]
 
     def reminder_raw(self, case_id):
         """Deterministic protocol-only doubles; never establish application passes."""
@@ -806,7 +806,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         for case_id in ('REL-002', 'REL-004'):
             raw = self.relationship_raw(case_id)
             self.assertFalse(harness.assess(self.cases[case_id], checkpoint.observations(self.cases[case_id], raw)))
-            for mutation in ('operation', 'accepted', 'boundary', 'public_missing', 'sql', 'bind', 'mutated', 'fixture'):
+            for mutation in ('operation', 'accepted', 'boundary', 'public_missing', 'sql', 'bind', 'mutated', 'fixture', 'broadened', 'placeholder', 'duplicate'):
                 raw = self.relationship_raw(case_id); capture = raw[0]
                 if mutation == 'operation': capture['persistenceOperation'] = {}
                 elif mutation == 'accepted': capture['accepted'] = True
@@ -815,6 +815,9 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 elif mutation == 'sql': capture['statements'] = []
                 elif mutation == 'bind': capture['statements'][0]['relationshipRowIdentity'] = 'foreign'
                 elif mutation == 'mutated': capture['after']['todos'].append({'id': 'unexpected'})
+                elif mutation == 'broadened': capture['statements'][0]['sql'] += ' OR 1=1'
+                elif mutation == 'placeholder': capture['statements'][0]['sql'] = capture['statements'][0]['sql'].replace('$1', '$2')
+                elif mutation == 'duplicate': capture['statements'].append(deepcopy(capture['statements'][0]))
                 elif case_id == 'REL-002':
                     capture['before']['users'].append({'id': '00000000-0000-4000-8000-000000000099'}); capture['after'] = deepcopy(capture['before'])
                 else:
