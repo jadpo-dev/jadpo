@@ -3816,6 +3816,47 @@ export const temporal = Object.freeze({
                 );
             }
         }
+        // Physical declarations must be qualified before driver decoding can
+        // erase Instant precision or turn a non-integer Duration into text.
+        // This gate belongs to the existing initial/recovery schema owner.
+        for (name, entity) in self.schema_entities() {
+            let temporal_fields = entity
+                .fields
+                .iter()
+                .filter_map(|field| {
+                    let root = self.representation_root_for(&field.field_type);
+                    match root.as_str() {
+                        "Instant" | "Duration" => Some((field, root)),
+                        _ => None,
+                    }
+                })
+                .collect::<Vec<_>>();
+            if temporal_fields.is_empty() {
+                continue;
+            }
+            let table = sql_identifier(&snake_case(name));
+            let expected = temporal_fields
+                .iter()
+                .map(|(field, root)| {
+                    format!(
+                        "{{ name: {}, type: {}, precision: {}, required: {} }}",
+                        ts_string(&field.name.text),
+                        if root == "Instant" { 1184 } else { 20 },
+                        if root == "Instant" { 3 } else { -1 },
+                        !self.reference_is_nullable(&field.field_type),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            line(&mut output, "  {");
+            line(&mut output, &format!("    const expected = [{expected}];"));
+            line(&mut output, &format!("    if (schemaPostgres !== null) {{ const columns = await persistenceAsync(\"schema.temporal\", () => initialization.execute(schemaPostgres!.unsafe(\"SELECT a.attname AS name, a.atttypid::integer AS type, a.atttypmod AS precision, a.attnotnull AS required FROM pg_catalog.pg_attribute AS a WHERE a.attrelid = pg_catalog.to_regclass($1) AND a.attnum > 0 AND NOT a.attisdropped\", [{}])));", ts_string(&table)));
+            line(&mut output, "      if (expected.some(field => !columns.some((column: Record<string, unknown>) => column.name === field.name && column.type === field.type && column.precision === field.precision && column.required === field.required))) throw new PersistenceFault(\"schema.temporal\", \"data\", new Error(\"incompatible temporal column declaration\"));");
+            line(&mut output, &format!("    }} else {{ const columns = persistenceSync(\"schema.temporal\", () => sqlite!.prepare({}).all()) as Array<{{ name: string; type: string; notnull: number }}>;", ts_string(&format!("PRAGMA table_info({table})"))));
+            line(&mut output, "      if (expected.some(field => !columns.some(column => column.name === field.name && column.type.toUpperCase().includes(\"INT\") && Boolean(column.notnull) === field.required))) throw new PersistenceFault(\"schema.temporal\", \"data\", new Error(\"incompatible temporal column declaration\"));");
+            line(&mut output, "    }");
+            line(&mut output, "  }");
+        }
         if self.first_party_supported() {
             line(
                 &mut output,
