@@ -1561,6 +1561,261 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
     }
     // Deterministic mapping/bounds, not a statistical RNG-quality claim.
   });
+  test("seeded native mutation retries consume progressive unrounded waits and one original budget on both adapters", async () => {
+    // Finite reproducible consumer coverage, not production entropy quality.
+    // LCG(seed JADP): uint32(1664525*x+1013904223), divide by2^32.
+    const reference = [2932296559,3799187970,3242514809,3093640324,224605715,3118416982,1315286973,3843239416,4293990647,3149832682,2306500673,730408108,2882426907,3349622462,2367293189,1963609248,3290208127,1638285010,2439630857,412293588,2649078563,269772326,669075277,4224532552];
+    let seed = 0x4a414450, referenceIndex = 0;
+    const observedDraws: number[] = [], normalizedByRetry: number[][] = [[], []];
+    const originalRandom = Math.random, originalNow = performance.now, originalTimer = globalThis.setTimeout, originalLog = console.error;
+    const originalDateNow = Date.now;
+    const operationTime = "2026-10-04T08:00:00.000Z";
+    let logicalNow = 500, remaining = 1000, operationId = "", selectedWait: number | null = null, schedulerOverrun = 0;
+    let draws: number[] = [], actualWaits: number[] = [], waitStarts: number[] = [], waitSettlements: number[] = [], events: any[] = [];
+    let begins = 0, rollbackAcknowledgements = 0, commitAcknowledgements = 0;
+    let client: any, activePostgresTransaction: any = null;
+    const factory = persistenceModule.__controlQueryProbeClient;
+    const bind = (target: any, property: PropertyKey) => { const value = Reflect.get(target, property, target); return typeof value === "function" ? value.bind(target) : value; };
+    // Delegate to actual native transaction owner; no fake driver result.
+    if (sql !== null) {
+      const connection = new Proxy(sql, { get(target, property) {
+        if (property === "begin") return async (work: (tx: any) => Promise<any>) => {
+          begins++;
+          try { const result = await target.begin(async tx => { activePostgresTransaction = tx; try { return await work(tx); } finally { activePostgresTransaction = null; } }); commitAcknowledgements++; return result; }
+          catch (error) { rollbackAcknowledgements++; throw error; }
+        };
+        return bind(target, property);
+      } });
+      client = factory(connection, null);
+    } else {
+      const connection = new Proxy(sqlite!, { get(target, property) {
+        if (property === "exec") return (statement: string, ...args: any[]) => {
+          const result = target.exec(statement, ...args);
+          switch (statement.trim().toUpperCase()) { case "BEGIN IMMEDIATE": begins++; break; case "ROLLBACK": rollbackAcknowledgements++; break; case "COMMIT": commitAcknowledgements++; break; }
+          return result;
+        };
+        return bind(target, property);
+      } });
+      client = factory(null, connection);
+    }
+    const faultCause: any = new Error("listed transient after native mutation");
+    if (postgresUrl) faultCause.errno = "40001"; else faultCause.code = "SQLITE_BUSY";
+    let supplied: number[] = [], suppliedIndex = 0;
+    Math.random = () => {
+      if (selectedWait !== null) throw new Error("unattributed RNG draw before wait settlement");
+      let fraction: number;
+      if (operationId.startsWith("seeded-native-")) {
+        seed = (Math.imul(1664525, seed) + 1013904223) >>> 0;
+        expect(seed).toBe(reference[referenceIndex++]);
+        fraction = seed / 4294967296;
+        observedDraws.push(fraction);
+        normalizedByRetry[draws.length].push(fraction);
+      } else {
+        if (suppliedIndex >= supplied.length) throw new Error("unexpected progressive RNG draw");
+        fraction = supplied[suppliedIndex++];
+      }
+      draws.push(fraction);
+      selectedWait = fraction * Math.min(50 * (2 ** (draws.length - 1)), remaining - (logicalNow - 500));
+      return fraction;
+    };
+    performance.now = () => logicalNow;
+    // Wall time is separate; this does not qualify fresh TIME-D05 snapshots.
+    Date.now = () => 1791100800000;
+    globalThis.setTimeout = ((callback: (...args: any[]) => void, delay?: number, ...args: any[]) => {
+      if (selectedWait !== null) {
+        expect(delay).toBe(selectedWait);
+        actualWaits.push(delay!); waitStarts.push(logicalNow);
+        const wait = selectedWait; selectedWait = null;
+        return originalTimer(() => {
+          logicalNow += wait + schedulerOverrun;
+          waitSettlements.push(logicalNow);
+          callback(...args);
+        }, 0);
+      }
+      // Native deadline/background timers retain their actual scheduling.
+      return originalTimer(callback, delay, ...args);
+    }) as typeof setTimeout;
+    console.error = (...args: unknown[]) => {
+      if (typeof args[0] === "string") { try { const event = JSON.parse(args[0]); if (event.eventName === "transaction.attempt") { expect(event.operationId).toBe(operationId); events.push(event); } } catch (error) { if (!(error instanceof SyntaxError)) throw error; } }
+    };
+    try {
+      for (let index = 0; index < 17; index++) {
+        const seeded = index < 12, clamp = index === 12, overrun = index === 13, workExpiry = index === 14, largePair = index === 15, originalBudgetExpiry = index === 16;
+        remaining = seeded || largePair || originalBudgetExpiry ? 1000 : 40; operationId = seeded ? `seeded-native-${index}` : clamp ? "progressive-clamp" : overrun ? "progressive-overrun" : workExpiry ? "progressive-work-expiry" : largePair ? "progressive-large-pair" : "progressive-original-budget-expiry";
+        logicalNow = 500; selectedWait = null; schedulerOverrun = overrun ? 12 : originalBudgetExpiry ? 980 : 0;
+        supplied = [0.75, 0.5]; suppliedIndex = 0; draws = []; actualWaits = []; waitStarts = []; waitSettlements = []; events = [];
+        begins = 0; rollbackAcknowledgements = 0; commitAcknowledgements = 0;
+        const value = entry(operationId, null); let callbackAttempts = 0;
+        const originalStartedAt = logicalNow, originalDeadlineAt = logicalNow + remaining;
+        let result: any, terminalFault: any = null;
+        try {
+          result = await client.withOperationTime(operationTime).transaction(async (transaction: any) => {
+            callbackAttempts++;
+            // Previous native outer rollback completed before another BEGIN.
+            expect(await stored(value.id)).toEqual([]);
+            expect(await rows('SELECT revision FROM "__jadpo_changes" WHERE entity_id = $1', [value.id])).toEqual([]);
+            const created = await transaction.create_Entry(value);
+            const provisionalSource = activePostgresTransaction !== null ? Array.from(await activePostgresTransaction.unsafe('SELECT id FROM "entry" WHERE id = $1', [value.id])) : sqlite!.query('SELECT id FROM "entry" WHERE id = $1').all(value.id);
+            const provisionalChanges = activePostgresTransaction !== null ? Array.from(await activePostgresTransaction.unsafe('SELECT revision FROM "__jadpo_changes" WHERE entity_id = $1', [value.id])) : sqlite!.query('SELECT revision FROM "__jadpo_changes" WHERE entity_id = $1').all(value.id);
+            expect(provisionalSource).toEqual([{ id: value.id }]); expect(provisionalChanges.map((r: any) => Number(r.revision))).toEqual([1]);
+            if (callbackAttempts < 3) {
+              if (workExpiry) logicalNow += 41;
+              throw new persistenceModule.PersistenceFault("transaction.seeded_native_probe", "driver", faultCause);
+            }
+            return created;
+          }, { replayable: true, operationId, operation: "validation.seeded_native", startedAt: originalStartedAt, deadlineAt: originalBudgetExpiry ? null : originalDeadlineAt, signal: null });
+        } catch (error) { terminalFault = error; }
+        const successful = seeded || clamp || largePair;
+        const expectedDraws = seeded ? reference.slice(index * 2, index * 2 + 2).map(n => n / 4294967296) : workExpiry ? [] : overrun || originalBudgetExpiry ? [0.75] : [0.75, 0.5];
+        const expectedWaits = successful ? [expectedDraws[0] * Math.min(50, remaining), expectedDraws[1] * Math.min(100, remaining - expectedDraws[0] * Math.min(50, remaining))] : workExpiry ? [] : [0.75 * Math.min(50, remaining)];
+        originalLog(JSON.stringify({ kind: "seeded_native_progressive_budget", database: postgresUrl ? "postgres" : "sqlite", operationId, originalStartedAt, originalDeadlineAt, declaredDeadlineAt: originalBudgetExpiry ? null : originalDeadlineAt, draws, actualWaits, waitStarts, waitSettlements, separatelyAccountedSchedulerOverrunMs: schedulerOverrun, separatelyAccountedWorkMs: workExpiry ? 41 : 0, terminalNow: logicalNow, remainingMs: Math.max(0, originalDeadlineAt-logicalNow), callbackAttempts, begins, rollbackAcknowledgements, commitAcknowledgements, events, claim: "finite_seeded_consumer_native_rollback_not_entropy_quality_or_TIME_D05" }));
+        expect(draws).toEqual(expectedDraws); expect(actualWaits).toEqual(expectedWaits);
+        expect(selectedWait).toBeNull(); expect(originalStartedAt).toBe(500); expect(originalDeadlineAt).toBe(500 + remaining);
+        expect(waitStarts).toEqual(expectedWaits.map((_, i) => 500 + expectedWaits.slice(0, i).reduce((a, b) => a + b, 0)));
+        expect(waitSettlements).toEqual(expectedWaits.map((_, i) => 500 + expectedWaits.slice(0, i + 1).reduce((a, b) => a + b, 0) + schedulerOverrun));
+        expect(logicalNow).toBe(500 + expectedWaits.reduce((a, b) => a + b, 0) + schedulerOverrun + (workExpiry ? 41 : 0));
+        expect(events.map(e => e.operationId)).toEqual(Array(successful ? 3 : 1).fill(operationId));
+        expect(events.map(e => e.selectedDelayMs)).toEqual(successful ? [...expectedWaits.map(Math.round), null] : workExpiry ? [null] : expectedWaits.map(Math.round));
+        expect(events.map(e => e.elapsedMs)).toEqual(successful ? [0, 0, 0] : workExpiry ? [41] : [0]);
+        expect(events.map(e => e.retryScheduled)).toEqual(successful ? [true, true, false] : [false]);
+        expect([begins, rollbackAcknowledgements, commitAcknowledgements, callbackAttempts]).toEqual(successful ? [3, 2, 1, 3] : [1, 1, 0, 1]);
+        expect(events.map(e => [e.outcome, e.rollbackProven])).toEqual(successful ? [["no_commit", true], ["no_commit", true], ["committed", false]] : [["no_commit", true]]);
+        if (successful) {
+          expect(terminalFault).toBeNull(); expect(result).toEqual(value); expect(await stored(value.id)).toEqual([value]);
+          const revisions = await rows('SELECT revision, payload FROM "__jadpo_changes" WHERE entity_id = $1', [value.id]);
+          expect(revisions.map(r => Number(r.revision))).toEqual([1]); expect(JSON.parse(revisions[0].payload)).toEqual(value);
+        } else {
+          expect(terminalFault).toBeInstanceOf(persistenceModule.PersistenceFault); expect(terminalFault.deadlineExceeded).toBe(!originalBudgetExpiry); expect(terminalFault.transaction).toMatchObject({ outcome: "no_commit", rollbackProven: true, commitAcknowledged: false });
+          expect(await stored(value.id)).toEqual([]); expect(await rows('SELECT revision FROM "__jadpo_changes" WHERE entity_id = $1', [value.id])).toEqual([]);
+        }
+      }
+      expect(referenceIndex).toBe(24); expect(observedDraws).toEqual(reference.map(n => n / 4294967296));
+      const coverage = normalizedByRetry.map(samples => [0,1,2,3].map(quartile => samples.filter(value => value >= quartile / 4 && value < (quartile + 1) / 4).length));
+      expect(coverage).toEqual([[2,1,6,3], [3,2,3,4]]);
+      originalLog(JSON.stringify({ kind: "finite_seeded_draw_coverage", seed: "0x4a414450", draws: observedDraws, normalizedByRetry, quartileCountsByRetry: coverage, reachableCapsMs: [50,100], formulaCeiling250DynamicallyReached: false }));
+    } finally {
+      Math.random = originalRandom; performance.now = originalNow; globalThis.setTimeout = originalTimer; console.error = originalLog; Date.now = originalDateNow;
+    }
+    expect(Math.random).toBe(originalRandom); expect(performance.now).toBe(originalNow); expect(globalThis.setTimeout).toBe(originalTimer); expect(Date.now).toBe(originalDateNow); expect(console.error).toBe(originalLog);
+  });
+  test("private native retries jointly preserve contiguous source changes and one immutable intent per committed revision", async () => {
+    // Explicit compiler-private primitive composition; public creates and
+    // authored enqueue remain excluded. Rolled-back random IDs are not durable.
+    const value = entry("joint-native-revision-1", null);
+    const job = "validation_delivery", orderingKey = value.id;
+    const originalRandom = Math.random, originalLog = console.error;
+    const factory = persistenceModule.__controlQueryProbeClient;
+    const query = async (owner: any, statement: string, values: any[] = []) => sql !== null ? Array.from(await owner.unsafe(statement, values)) : owner.query(statement).all(...values);
+    const present = async (owner: any, table: string) => sql !== null ? (await query(owner, 'SELECT to_regclass($1) IS NOT NULL AS present', [`"${table}"`]))[0].present === true : (await query(owner, 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name = $1', [table])).length === 1;
+    const snapshot = async (owner: any) => {
+      const deliveriesPresent = await present(owner, "__jadpo_deliveries_v1"), keysPresent = await present(owner, "__jadpo_delivery_keys_v1");
+      return { source: await query(owner, 'SELECT * FROM "entry" WHERE id = $1', [value.id]), changes: await query(owner, 'SELECT *, CAST(revision AS TEXT) AS revision FROM "__jadpo_changes" WHERE entity_id = $1 ORDER BY "__jadpo_changes".revision', [value.id]), deliveriesPresent, keysPresent,
+        intents: deliveriesPresent ? await query(owner, 'SELECT *, CAST(key_sequence AS TEXT) AS key_sequence FROM "__jadpo_deliveries_v1" WHERE source_entity_id = $1 ORDER BY "__jadpo_deliveries_v1".key_sequence', [value.id]) : [],
+        keys: keysPresent ? await query(owner, 'SELECT *, CAST(next_sequence AS TEXT) AS next_sequence FROM "__jadpo_delivery_keys_v1" WHERE job = $1 AND ordering_key = $2', [job, orderingKey]) : [] };
+    };
+    // SQLite synchronous original methods permit an exact before-BEGIN view.
+    const sqliteSnapshot = () => {
+      const read = (statement: string, values: any[] = []) => sqlite!.query(statement).all(...values);
+      const has = (table: string) => read('SELECT name FROM sqlite_master WHERE type = \'table\' AND name = $1', [table]).length === 1;
+      const deliveriesPresent = has("__jadpo_deliveries_v1"), keysPresent = has("__jadpo_delivery_keys_v1");
+      return { source: read('SELECT * FROM "entry" WHERE id = $1', [value.id]), changes: read('SELECT *, CAST(revision AS TEXT) AS revision FROM "__jadpo_changes" WHERE entity_id = $1 ORDER BY "__jadpo_changes".revision', [value.id]), deliveriesPresent, keysPresent,
+        intents: deliveriesPresent ? read('SELECT *, CAST(key_sequence AS TEXT) AS key_sequence FROM "__jadpo_deliveries_v1" WHERE source_entity_id = $1 ORDER BY "__jadpo_deliveries_v1".key_sequence', [value.id]) : [],
+        keys: keysPresent ? read('SELECT *, CAST(next_sequence AS TEXT) AS next_sequence FROM "__jadpo_delivery_keys_v1" WHERE job = $1 AND ordering_key = $2', [job, orderingKey]) : [] };
+    };
+    const observer = sql ?? sqlite!;
+    let owner: any = null, client: any, beforeState: any = null;
+    let begins = 0, rollbacks = 0, commits = 0, operationId = "", callbackAttempts = 0;
+    let phases: string[] = [], events: any[] = [], beforeBeginStates: any[] = [];
+    const bind = (target: any, property: PropertyKey) => { const result = Reflect.get(target, property, target); return typeof result === "function" ? result.bind(target) : result; };
+    if (sql !== null) {
+      const connection = new Proxy(sql, { get(target, property) {
+        if (property === "begin") return async (work: (tx: any) => Promise<any>) => {
+          phases.push("before_begin"); const state = await snapshot(target); beforeBeginStates.push(state); expect(JSON.stringify(state)).toBe(JSON.stringify(beforeState));
+          begins++;
+          try {
+            const result = await target.begin(async tx => { owner = tx; try { return await work(tx); } finally { owner = null; } });
+            commits++; phases.push("commit_ack"); return result;
+          } catch (error) { rollbacks++; phases.push("rollback_ack"); throw error; }
+        };
+        return bind(target, property);
+      } });
+      client = factory(connection, null);
+    } else {
+      const connection = new Proxy(sqlite!, { get(target, property) {
+        if (property === "exec") return (statement: string, ...args: any[]) => {
+          const command = statement.trim().toUpperCase();
+          if (command === "BEGIN IMMEDIATE") { expect(target.inTransaction).toBe(false); phases.push("before_begin"); const state = sqliteSnapshot(); beforeBeginStates.push(state); expect(JSON.stringify(state)).toBe(JSON.stringify(beforeState)); }
+          const result = target.exec(statement, ...args);
+          if (command === "BEGIN IMMEDIATE") { begins++; owner = target; }
+          else if (command === "ROLLBACK") { rollbacks++; phases.push("rollback_ack"); owner = null; }
+          else if (command === "COMMIT") { commits++; phases.push("commit_ack"); owner = null; }
+          return result;
+        };
+        return bind(target, property);
+      } });
+      client = factory(null, connection);
+    }
+    const cause: any = new Error("listed joint abort after full provisional native set");
+    if (sql !== null) cause.errno = "40001"; else cause.code = "SQLITE_BUSY";
+    Math.random = () => 0;
+    console.error = (...args: unknown[]) => { if (typeof args[0] === "string") { try { const event = JSON.parse(args[0]); if (event.eventName === "transaction.attempt") events.push(event); } catch {} } };
+    try {
+      for (let revision = 1; revision <= 4; revision++) {
+        const updated = { ...value, label: `joint-native-revision-${revision}` };
+        beforeState = await snapshot(observer); begins = 0; rollbacks = 0; commits = 0; callbackAttempts = 0; phases = []; events = []; beforeBeginStates = [];
+        operationId = `joint-native-${revision}`;
+        const startedAt = performance.now(), options = Object.freeze({ replayable: true, operationId, operation: "validation.joint_native", startedAt, signal: null });
+        const provisionals: any[] = [];
+        const terminal = await client.withOperationTime(`2026-10-04T08:00:0${revision}.000Z`).transaction(async (transaction: any) => {
+          callbackAttempts++;
+          const changed = revision === 1 ? await transaction.create_Entry(updated) : await transaction.update_required_Entry_by_id_set_label(value.id, updated.label);
+          const actualChanges = await query(owner, 'SELECT CAST(revision AS TEXT) AS revision FROM "__jadpo_changes" WHERE entity_id = $1 ORDER BY "__jadpo_changes".revision', [value.id]);
+          const actualRevision = actualChanges.at(-1)!.revision;
+          expect(actualRevision).toBe(String(revision));
+          const spec = outboxSpec(updated, actualRevision);
+          let enrolled: any = null;
+          if (callbackAttempts === 1) enrolled = await transaction.enqueue_delivery_intent(spec);
+          else enrolled = await transaction.enqueue_delivery_intent(spec);
+          const provisional = await snapshot(owner); provisionals.push(provisional);
+          originalLog(JSON.stringify({ kind: "joint_native_provisional_before_abort", operationId, callbackAttempts, provisional }));
+          if (callbackAttempts === 1) {
+            expect(provisional.source).toEqual([updated]);
+            expect(provisional.changes.map((row: any) => row.revision)).toEqual(Array.from({ length: revision }, (_, i) => String(i + 1)));
+            expect(provisional.changes.slice(0, -1)).toEqual(beforeState.changes);
+            expect(JSON.parse(provisional.changes.at(-1)!.payload)).toEqual(updated);
+            expect(provisional.intents).toHaveLength(revision);
+            expect(provisional.intents.slice(0, -1)).toEqual(beforeState.intents);
+            const intent = provisional.intents.at(-1)!;
+            expect(intent).toMatchObject({ intent_id: enrolled.intentId, job, source_operation: spec.sourceOperation, source_entity: "Entry", source_entity_id: value.id, source_revision: actualRevision, ordering_key: orderingKey, key_sequence: actualRevision, payload_version: "1", state: "pending" });
+            expect(JSON.parse(intent.payload)).toEqual(spec.payload);
+            expect(provisional.keys).toEqual([{ job, ordering_key: orderingKey, next_sequence: actualRevision }]);
+            throw new persistenceModule.PersistenceFault("transaction.joint_native_probe", "driver", cause);
+          }
+          if (enrolled !== null) {
+            const duplicate = await transaction.enqueue_delivery_intent(spec);
+            expect(duplicate).toEqual(enrolled); expect(await snapshot(owner)).toEqual(provisional);
+          }
+          return { changed, enrolled };
+        }, options);
+        const durable = await snapshot(observer);
+        originalLog(JSON.stringify({ kind: "joint_native_source_change_outbox_retry", database: sql !== null ? "postgres" : "sqlite", operationId, originalStartedAt: startedAt, elapsedMs: performance.now() - startedAt, begins, rollbacks, commits, callbackAttempts, phases, events, beforeState, beforeBeginStates, provisionals, durable, rolledBackIntentId: provisionals[0]?.intents.at(-1)?.intent_id ?? null, committedIntentId: durable.intents.at(-1)?.intent_id ?? null, claim: "private_native_composition_no_public_create_or_rolledback_uuid_stability" }));
+        expect(options.startedAt).toBe(startedAt); expect(options.operationId).toBe(operationId);
+        expect([begins, rollbacks, commits, callbackAttempts]).toEqual([2, 1, 1, 2]);
+        expect(phases).toEqual(["before_begin", "rollback_ack", "before_begin", "commit_ack"]); expect(beforeBeginStates).toEqual([beforeState, beforeState]);
+        expect(events.map(event => [event.operationId, event.attempt, event.outcome, event.rollbackProven, event.selectedDelayMs])).toEqual([[operationId, 1, "no_commit", true, 0], [operationId, 2, "committed", false, null]]);
+        expect(durable.source).toEqual([updated]); expect(durable.changes.map((row: any) => row.revision)).toEqual(Array.from({ length: revision }, (_, i) => String(i + 1)));
+        expect(durable.changes.slice(0, -1)).toEqual(beforeState.changes); expect(JSON.parse(durable.changes.at(-1)!.payload)).toEqual(updated);
+        expect(durable.intents).toHaveLength(revision); expect(durable.intents.slice(0, -1)).toEqual(beforeState.intents);
+        expect(durable.intents.map((row: any) => row.source_revision)).toEqual(durable.changes.map((row: any) => row.revision));
+        expect(durable.intents.map((row: any) => row.key_sequence)).toEqual(Array.from({ length: revision }, (_, i) => String(i + 1)));
+        expect(durable.keys).toEqual([{ job, ordering_key: orderingKey, next_sequence: String(revision) }]);
+        expect(durable.intents.at(-1)!.intent_id).toBe(terminal.enrolled.intentId); expect(terminal.changed).toEqual(updated);
+        expect(durable.intents.at(-1)!).toMatchObject({ job, source_entity: "Entry", source_entity_id: value.id, source_revision: String(revision), ordering_key: orderingKey, payload_version: "1", state: "pending" });
+        expect(JSON.parse(durable.intents.at(-1)!.payload)).toEqual(outboxSpec(updated, String(revision)).payload);
+      }
+    } finally { Math.random = originalRandom; console.error = originalLog; }
+    expect(Math.random).toBe(originalRandom); expect(console.error).toBe(originalLog); expect(owner).toBeNull();
+  });
   test("retried updates retain a contiguous multi-revision change history on both adapters", async () => {
     const persistence = persistenceModule.persistence as any;
     const value = entry("contiguous-revisions");

@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-403-facd944d9360", "task_id": "RM-403", "actor": "scheduler-recovery-initial-phase-plan-review", "actor_kind": "agent", "category": "research", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T19:33:10.543686+00:00", "phase": "planning"}
+{"at": "2026-10-06T19:36:32.019298+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-native-lifetime-grounding/initial-phase-plan-independent-assessment/assessment.json"}

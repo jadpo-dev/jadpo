@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-504-4a5373eb85b7", "task_id": "RM-504", "actor": "root-stored-corruption-plan-assessment", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T19:44:18.601012+00:00", "phase": "planning"}
+{"at": "2026-10-06T19:45:15.150888+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm504-after-ready-stored-corruption/parent-plan-assessment.json"}

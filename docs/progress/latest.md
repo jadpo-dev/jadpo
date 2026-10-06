@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T20:28:03+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T20:52:41+01:00 · figures reflect the recorded roadmap.
 
-The reviewed golden integration passes all 92 supporting checks and all 88 migrated HTTP entries. Actual protected user retry, temporal declaration validation, day-range pages and native SQLite cancellation containment are now integrated; full tasks and frozen acceptance remain open.
+The golden integration passes all92 supporting checks and all88 migrated HTTP entries, now including reviewed seeded retry budgets and joint revision/outbox rollback controls. Full task acceptance remains open; the required concurrent contention trace is being implemented.
 
 ## At a glance
 
@@ -20,10 +20,9 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- Integrated independently reviewed actual emitted protected retry admission, retaining fresh user authority, service refusal, unknown-COMMIT containment and original cooperative budgets.
-- Integrated initial/recovery Instant/Duration schema validation and required-input half-open query pages; native 23/24/25-hour day controls and SQL-only boundary negatives passed independently.
-- Integrated the distinct native SQLite cancellation-boundary control with rollback/no replay and causal omitted-abort refusal.
-- Archived 180 safe raw gate files, 660 unchanged source/tooling pins and72 actual compiler input pins. Independently reviewed next jitter and joint outbox/revision controls; finite witness implementation continues in isolation.
+- Integrated both-adapter seeded original-budget and joint source/change/outbox controls with unchanged current public/schema/query/cancellation runtime, retaining explicit native versus injected qualifications.
+- Archived a fresh92-check report,180 safe raw files,660 unchanged source/tooling pins and72 actual compiler input pins; frozen49 diagnostics/formal88not_run remain separate.
+- Independently reviewed a finite conditional admission witness: own native SQLite9/503 and PostgreSQL9/513 passed, with162 actual baseline emitted files unchanged; selective integration and fresh fusion follow.
 
 ## Since the previous report
 
@@ -59,7 +58,7 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Continue parallel batches: fuse reviewed seeded jitter and joint source/change/outbox traces, finish the dispatch-closed conditional witness, and qualify remaining finite native readiness phases. Reconcile full task acceptance before recording completion.
+Continue parallel implementation of the assessed four-worker contention trace, initial PostgreSQL BEGIN/setup ownership controls and stored temporal corruption matrix. Integrate the reviewed conditional witness while preserving current native runtime leaves, then run the fresh combined gate.
 
 ## Input needed
 
