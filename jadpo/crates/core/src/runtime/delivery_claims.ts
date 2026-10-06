@@ -102,7 +102,7 @@ function createDeliveryClaimPrimitives(
     if (updated.length > 1) return invalid("delivery.claim_cardinality");
     return updated[0] ?? null;
   };
-  return {
+  const primitives = {
     async record_delivery_mail_no_effect(handle: DeliveryClaimHandle, outcome: DeliveryMailNoEffect): Promise<"retry_wait" | "failed" | "cancelled" | null> {
       requireTransaction();
       // Reference adapter result only, not proof that an arbitrary host actually
@@ -200,6 +200,45 @@ function createDeliveryClaimPrimitives(
         await setState(intentId, "cancelled");
         return "cancelled";
       });
+    },
+    async claim_delivery_resolved_replay(intentId: string, limits: DeliveryClaimLimits): Promise<DeliveryClaimHandle | null> {
+      requireTransaction(); checkedLimits(limits);
+      const intent = await lockIntent(intentId);
+      if (intent === null || intent.state !== "retry_wait") return null;
+      // A late allocation can enter retry_wait without any adapter evidence.
+      // Missing evidence refuses; never create it, reset state or refund limits.
+      for (const table of ["__jadpo_delivery_claims_v1", "__jadpo_delivery_attempts_v1"]) {
+        const present = await execute("delivery.replay.schema", isPostgres
+          ? 'SELECT to_regclass($1) IS NOT NULL AS present'
+          : "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=$1) AS present", [isPostgres ? `"${table}"` : table]);
+        if (present.length !== 1 || ![true, 1].includes(present[0].present)) return null;
+      }
+      const ledger = await readLedger(intentId);
+      const integer = (value: unknown): number | null => {
+        if (typeof value !== "number" && !(typeof value === "string" && /^(0|[1-9][0-9]*)$/u.test(value))) return null;
+        const parsed = Number(value); return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+      };
+      if (ledger === null || integer(ledger.possible_dispatch) !== 0 || integer(ledger.invocations) === null
+          || integer(ledger.invocations)! <= 0 || integer(ledger.invocations)! >= limits.maxInvocations
+          || typeof ledger.claim_id !== "string" || ledger.claim_id.length === 0) return null;
+      const instant = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value)) && new Date(Date.parse(value)).toISOString() === value;
+      const generation = (value: unknown): value is string => typeof value === "string" && /^[1-9][0-9]*$/u.test(value) && value.length <= 19 && BigInt(value) <= 9223372036854775807n;
+      if (!generation(ledger.generation) || integer(ledger.max_invocations) !== limits.maxInvocations
+          || integer(ledger.lifetime_ms) !== limits.lifetimeMs || integer(ledger.execution_ms) !== limits.executionMs || integer(ledger.lease_ms) !== limits.leaseMs
+          || !instant(ledger.first_claim_at) || !instant(ledger.lifetime_deadline) || !instant(ledger.execution_deadline) || !instant(ledger.lease_until)
+          || ledger.first_claim_at > ledger.execution_deadline || ledger.execution_deadline > ledger.lifetime_deadline || ledger.lease_until > ledger.execution_deadline) return null;
+      const now = await databaseNow();
+      if (ledger.lifetime_deadline <= now) return null;
+      const outcomes = await execute("delivery.replay.evidence", 'SELECT *, CAST("generation" AS TEXT) AS "generation" FROM "__jadpo_delivery_attempts_v1" WHERE "intent_id"=$1 ORDER BY "__jadpo_delivery_attempts_v1"."generation" DESC LIMIT 1', [intentId]);
+      if (outcomes.length !== 1) return null;
+      const attempt = outcomes[0], count = integer(attempt.provider_attempts);
+      if (!generation(attempt.generation) || attempt.generation !== ledger.generation || attempt.claim_id !== ledger.claim_id
+          || integer(attempt.invocation) !== integer(ledger.invocations) || attempt.failure_class !== "service_unavailable"
+          || count === null || count < 1 || count > 3 || !instant(attempt.observed_at) || !instant(attempt.retry_not_before)
+          || attempt.observed_at < ledger.first_claim_at || attempt.retry_not_before < attempt.observed_at || attempt.retry_not_before > now) return null;
+      // The key lock remains held through ordinary admission/allocation, which
+      // rechecks immutable profile, FIFO, backoff and fresh database clock.
+      return primitives.claim_delivery_intent(intentId, limits);
     },
     async claim_delivery_intent(intentId: string, limits: DeliveryClaimLimits): Promise<DeliveryClaimHandle | null> {
       requireTransaction(); checkedLimits(limits);
@@ -301,4 +340,5 @@ function createDeliveryClaimPrimitives(
       return updated.length === 1 && ledger.lease_until > after && ledger.execution_deadline > after && ledger.lifetime_deadline > after;
     },
   };
+  return primitives;
 }
