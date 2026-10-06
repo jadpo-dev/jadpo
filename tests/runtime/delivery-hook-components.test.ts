@@ -762,8 +762,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
     }
   });
-  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"]] as const)
-  test(`RM402 private authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
+  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"],["PATCH","attempt_exhausted"],["PATCH","elapsed"]] as const)
+  test.skipIf(mode === "elapsed" && sql === null)(`RM402 private authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
     const f = await fixture(), inspected = await inspectRetryApplication(true);
     await inspected.initializeApplication(authEnvironment);
     const host = inspected.authenticationHost(), now = Date.now();
@@ -786,7 +786,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     let heldWork: Promise<unknown> | null = null;
     if (sql) {
       await rows(`CREATE SEQUENCE "${sequence}"`);
-      await rows(`CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF nextval('"${sequence}"')=1 THEN RAISE EXCEPTION USING ERRCODE='40001', MESSAGE='private HTTP fixture abort'; END IF; RETURN NEW; END $$`);
+      await rows(`CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF nextval('"${sequence}"')${mode === "attempt_exhausted" ? ">=" : "="}1 THEN RAISE EXCEPTION USING ERRCODE='40001', MESSAGE='private HTTP fixture abort'; END IF; RETURN NEW; END $$`);
       await rows(`CREATE TRIGGER "${trigger}" BEFORE UPDATE OF title, deleted_at ON todo FOR EACH ROW EXECUTE FUNCTION "${fn}"()`);
       let ready!: () => void;
       const readyPromise = new Promise<void>(resolve => { ready = resolve; });
@@ -796,7 +796,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         held = holder; ready(); await guard;
       });
       await readyPromise;
-    } else { locker = new Database(sqlitePath); locker.exec("BEGIN EXCLUSIVE"); }
+    } else { locker = new Database(sqlitePath); locker.exec(mode === "attempt_exhausted" ? "BEGIN IMMEDIATE" : "BEGIN EXCLUSIVE"); }
     const operation = verb === "PATCH" ? "Todo.patch_todo" : "Todo.delete_todo";
     console.error = (...arguments_: any[]) => {
       let event: any;
@@ -804,12 +804,13 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       if (event?.eventName !== "transaction.attempt" || event.operation !== operation) return;
       events.push(event);
       if (event.attempt !== 1 || event.outcome !== "no_commit" || !event.retryScheduled) return;
-      if (locker) { locker.exec("ROLLBACK"); locker.close(); locker = null; }
+      if (locker && mode !== "attempt_exhausted") { locker.exec("ROLLBACK"); locker.close(); locker = null; }
       // External fixture state changes are native SQL after the proven aborted
       // business attempt. PG holds the real auth-table lock until COMMIT, so its
       // fresh lookup cannot overtake this change. No guard/body callback is edited.
       pendingMutation = (async () => {
         const change = async (statement: string, values: unknown[]) => sql ? held.unsafe(statement, values) : sqlite!.prepare(statement).all(...values);
+        if (mode === "elapsed") await change("SELECT pg_sleep($1)",[1.1]);
         if (mode === "inactive") await change('UPDATE "user" SET status=$1 WHERE id=$2', ["disabled",owner]);
         if (mode === "revoked") await change('DELETE FROM "__jadpo_auth_sessions" WHERE id=$1', [sessionId]);
         if (mode === "row_deleted") await change('UPDATE todo SET deleted_at=$1 WHERE id=$2', [dbInstant(Date.now()),f.value.id]);
@@ -820,11 +821,13 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       })().finally(releaseGuard);
     };
     const server = Bun.serve({hostname:"127.0.0.1",port:0,fetch:inspected.handleRequest});
+    const requestStarted = performance.now();
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}/todos/${f.value.id}`, {
         method:verb, headers:{cookie:`todo_session=${issued.credential}`,origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken,"content-type":"application/json"},
         ...(verb === "PATCH" ? {body:JSON.stringify({title:"HTTP retried exactly once",due_at:due})} : {}),
       });
+      if (locker && mode === "attempt_exhausted") { locker.exec("ROLLBACK"); locker.close(); locker = null; }
       await pendingMutation; await heldWork;
       expect(events[0]).toMatchObject({attempt:1,outcome:"no_commit",retryScheduled:true,commitAcknowledged:false});
       expect(events[0].retryableCause).toBe(sql ? "postgres_serialization" : "sqlite_busy");
@@ -853,7 +856,15 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
           // inferred. PG mutation sequence includes the fixture deletion only.
           expect(events).toHaveLength(1);
           expect(source.deleted_at).not.toBeNull(); // The external native fixture deletion only.
+        } else if (mode === "attempt_exhausted") {
+          expect(events).toHaveLength(3);
+          for (const [index,event] of events.entries()) {
+            expect(event).toMatchObject({attempt:index+1,outcome:"no_commit",commitAcknowledged:false,retryScheduled:index<2});
+            expect(event.operationId).toBe(events[0].operationId);
+          }
+          expect(source.deleted_at).toBeNull();
         } else { expect(events).toHaveLength(1); expect(source.deleted_at).toBeNull(); }
+        if (mode === "elapsed") { expect(performance.now()-requestStarted).toBeGreaterThanOrEqual(1_000); expect(performance.now()-requestStarted).toBeLessThan(3_000); }
         if (mode === "rebound") expect((await response.json()).error.code).toBe("authentication_unavailable");
         expect(source.title).toBe(f.value.title);
         expect(await revision(f.value.id)).toBe("1");
@@ -861,7 +872,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       }
       expect(JSON.parse(intents[0].payload)).toEqual(oldPayload);
       expect(String(intents[0].source_revision)).toBe("1");
-      if (sql) expect(Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value)).toBe(mode === "fresh" || mode === "row_deleted" ? 2 : 1);
+      if (sql) expect(Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value)).toBe(mode === "attempt_exhausted" ? 3 : mode === "fresh" || mode === "row_deleted" ? 2 : 1);
       const emitted = readFileSync(join(root,"app.ts"),"utf8");
       expect(emitted).not.toContain("allowOperationRetries(__operation, __authenticatedRetryCandidate)");
       expect(emitted).toContain("__operation = allowOperationRetries(__operation, false);");
