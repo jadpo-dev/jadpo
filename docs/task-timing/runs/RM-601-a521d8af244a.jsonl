@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-601-a521d8af244a", "task_id": "RM-601", "actor": "golden-adapters-independent-root-wire-collision-review", "actor_kind": "agent", "category": "fix", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T14:30:47.338972+00:00", "phase": "planning"}
+{"at": "2026-10-06T14:34:17.094274+00:00", "phase": "verification", "note": "Review only root-authored native wire dedup; fresh isolated compiler and actual two-causes both-adapter controls"}
+{"at": "2026-10-06T14:40:07.684881+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm601-independent-native-schema-collision-review/report.json"}

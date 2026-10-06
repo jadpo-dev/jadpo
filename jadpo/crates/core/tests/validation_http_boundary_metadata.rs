@@ -232,3 +232,49 @@ route POST /collision {auth:none input:Body output:Result action:fails Bad {reje
         "invalid_input"
     );
 }
+
+#[test]
+fn identical_native_envelopes_share_one_wire_schema_but_keep_both_conditions() {
+    let path = root().join("examples/golden-todo-migration");
+    let mut sources = jadpo_core::discover_sources(&path).unwrap();
+    let before = "failure UserDisabled {\n    kind: NotPermitted\n    code: \"user_disabled\"\n    message: \"This account is not available.\"\n}";
+    let after = "failure UserDisabled {\n    kind: Rejected\n    code: \"invalid_value\"\n    message: \"Request path value is invalid.\"\n}";
+    let source = sources
+        .iter_mut()
+        .find(|s| s.text.contains(before))
+        .unwrap();
+    source.text = source.text.replace(before, after);
+    let project = analyze_sources(sources).unwrap();
+    assert!(project
+        .syntax
+        .diagnostics()
+        .chain(project.semantics.diagnostics.iter())
+        .chain(project.typing.diagnostics.iter())
+        .chain(project.failures.diagnostics.iter())
+        .chain(project.entity_model.diagnostics.iter())
+        .chain(project.policy.diagnostics.iter())
+        .all(|d| d.severity != jadpo_diagnostics::Severity::Error));
+    let (routes, api, audit) = outputs(&path, &project);
+    let matching = failures(&routes, "GET /todos/{todo_id}")
+        .iter()
+        .filter(|f| f["code"] == "invalid_value" && f["http_status"] == 422)
+        .collect::<Vec<_>>();
+    assert_eq!(matching.len(), 2);
+    assert_ne!(matching[0]["condition"], matching[1]["condition"]);
+    let wire = schema(&api, "/todos/{todo_id}", "get", "422");
+    assert!(
+        wire.get("oneOf").is_none(),
+        "Identical native envelopes must not double-match oneOf"
+    );
+    assert_eq!(
+        wire["properties"]["error"]["properties"]["code"]["const"],
+        "invalid_value"
+    );
+    for fact in matching {
+        assert!(audit["http_boundary"]["failures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["code"] == fact["code"] && f["condition"] == fact["condition"]));
+    }
+}

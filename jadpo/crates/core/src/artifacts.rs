@@ -1186,7 +1186,14 @@ impl<'project> ArtifactModel<'project> {
                         }
                     }
                 }
-                references.extend(native.iter().map(|failure| failure.schema().to_string()));
+                // Distinct native conditions can emit identical wire bodies.
+                // Retain those conditions in the inventory/audit, but include
+                // their shared schema once so oneOf still accepts the body.
+                let mut native_schemas = BTreeSet::new();
+                references.extend(native.iter().filter_map(|failure| {
+                    let schema = failure.schema().to_string();
+                    native_schemas.insert(schema.clone()).then_some(schema)
+                }));
                 if status == 409 && relationships.may_fail
                     || status == 500
                     || status == 503 && !self.project.entity_model.entities.is_empty()
