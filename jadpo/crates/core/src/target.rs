@@ -10340,11 +10340,9 @@ export const temporal = Object.freeze({
             // same-named parameter: local bindings and shadowing are semantic
             // decisions already resolved by the type checker.
             let source = &self.project.semantics.node(name)?.source;
-            let inferred = self.project.typing.expressions.iter().find(|expression| {
-                expression.source == *source && expression.range == patch.range
-            })?;
-            let record = self.records.get(&inferred.type_name)?;
-            return Some(record.fields.iter().collect());
+            return crate::artifacts::operational_failures::checked_patch_fields(
+                self.project, source, patch.range,
+            );
         }
         None
     }

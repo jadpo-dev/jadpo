@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "task": "RM-601",
+  "scope": "Source-specific native relationship operational metadata parity; immutable candidate awaits consequential independent review",
+  "baseline": "d15bed0b6a683b237092e5ce6dec789cfc596ab9",
+  "branch": "codex/golden-failure-metadata",
+  "actual_model": "gpt-6.1-sol",
+  "actual_effort": "high",
+  "model_pin_verified_by_parent": true,
+  "timer": "RM-601-3ea2938bdfae",
+  "original_estimate_hours": [
+    1,
+    4
+  ],
+  "disposition": "scoped_implementation_verified_independent_review_pending",
+  "source_sha256": {
+    "jadpo/crates/core/src/artifacts.rs": "173d01a7f5c02e1ad980f48a455ccf8949278e03f3bb8b785ea6c9cc6aa6987f",
+    "jadpo/crates/core/src/artifacts/operational_failures.rs": "3c47870f51d821b43dbf9172b5a45472f12fd7c302dcec2a6d38137de0f3a443",
+    "jadpo/crates/core/src/target.rs": "8584d1a0b6dc78ac98e386833a16ebc336408f9e503731935ab0f386e07034bd",
+    "jadpo/crates/core/tests/validation_relationship_metadata.rs": "c620887b8f6eaff2d7e8cfc5f93c05a7ebdbf12e035fb1179bff35c902b74f5f",
+    "tests/runtime/relationship-conflicts.test.ts": "cdbc5d6a42162eccb9c4b4373a641ab1c99a36f948b54da56843b8ab8fed665f"
+  },
+  "changes": [
+    "One normalized-schema/checked-NodeId call closure derives route-specific static may-failure, including nested/inline/cyclic checked calls.",
+    "Outgoing reference CREATE/UPDATE, incoming referenced-key UPDATE with native default NO ACTION, restrictive DELETE and cascade closure; nullable SET NULL and logical lifecycle UPDATE distinguished.",
+    "Exact checked source/range patch field lookup shared with target; lexical shadowing remains checked.",
+    "Route inventory and global failure catalogue expose safe409 descriptor. Selective OpenAPI409 closed error schema retains declared Conflict alternative and constant message.",
+    "Explicit qualified/status/may_fail/conservative_possible/unresolved route facts. Unknown mapping has qualified:false/may_fail:null; generation is not qualification. Non-reference writes and queries remain precise false."
+  ],
+  "checks": [
+    {
+      "command": "cargo test --manifest-path jadpo/Cargo.toml -p jadpo-core --lib",
+      "result": "pass",
+      "tests": 104,
+      "failed": 0,
+      "log": "core-final.log"
+    },
+    {
+      "command": "cargo test --manifest-path jadpo/Cargo.toml -p jadpo-core --test validation_relationship_metadata --no-fail-fast",
+      "result": "pass",
+      "tests": 6,
+      "failed": 0,
+      "log": "metadata-integration-complete.log"
+    },
+    {
+      "command": "cargo build --manifest-path jadpo/Cargo.toml --bin jadpo",
+      "result": "pass",
+      "log": "fresh-cli-current.log"
+    },
+    {
+      "command": "bun test ./tests/runtime/relationship-conflicts.test.ts",
+      "adapter": "sqlite",
+      "result": "pass",
+      "tests": 6,
+      "assertions": 88,
+      "log": "sqlite-native-parity.log"
+    },
+    {
+      "command": "bun test ./tests/runtime/relationship-conflicts.test.ts",
+      "adapter": "postgres",
+      "result": "pass",
+      "tests": 6,
+      "assertions": 86,
+      "log": "postgres-native-parity.log",
+      "disposable_local_cluster": true
+    }
+  ],
+  "retained_attempts": [
+    {
+      "log": "metadata-first.log",
+      "result": "0pass6fail",
+      "cause": "Private fixture Conflict name collided with prelude; fixture path traversed one parent too far. Corrected test setup."
+    },
+    {
+      "log": "metadata-second.log",
+      "result": "4pass2fail",
+      "cause": "Private fixture used unsupported let rather than accepted var. Corrected setup."
+    },
+    {
+      "log": "metadata-third.log",
+      "result": "5pass1fail",
+      "cause": "Synthetic removal of all checked typing observations passed through whole artifact derivation, which reached pre-existing target checked-patch expect. Not a valid checked-source product failure; narrowed exact uncertainty probe to metadata rendering boundary, leaving target invariant intact."
+    },
+    {
+      "log": "metadata-final.log",
+      "result": "24libpass5integrationfiltered",
+      "cause": "Positional artifacts filter excluded integration tests; separate exact test-target command retained as actual verification."
+    },
+    {
+      "log": "native-parity-sandbox-attempt.json",
+      "result": "sqlite6pass;postgresnot_run",
+      "cause": "Default sandbox initdb exited1; prior PG5-test log not relabeled. Supported disposable host rerun executed current6 tests."
+    }
+  ],
+  "evidence_inventory": "tests/validation/evidence/rm601-relationship-metadata/inventory.json",
+  "evidence_inventory_sha256": "700888877a5659ad73137a5074e0b277778a16d9c030b6b6347f82d7e18f30aa",
+  "runtime_proof": [
+    "Actual generated orphan INSERT and HTTP409 match descriptor/OpenAPI; source remains absent.",
+    "Actual native restrictive owner DELETE retains owner/child, no authored hard-delete route added.",
+    "Fresh private generated parent-key and child-reference HTTP UPDATE409 retain both rows; unrelated note UPDATE200 succeeds.",
+    "Real unique/check/custom-trigger failures retain declared Conflict precedence, unknown COMMIT dominates, all eight unreadable normalizer controls refuse safely."
+  ],
+  "limitations": [
+    "Static may-outcome, not path/value feasibility, execution proof or authority. Checked branch union can be a conservative superset.",
+    "Unresolved route facts require rejection by any final qualification consumer; successful artifact generation alone is insufficient.",
+    "Target inline whole-record patch unsupported scope is unchanged; metadata availability is not target availability.",
+    "No runtime classifier, retry policy, frozen source/acceptance, role or public authority changes. Shared target helper rejects ambiguous/missing checked patch maps rather than choosing nominal parameter names.",
+    "No full supported integration gate duplicated. Parent independent fixed-commit review and fresh combined gate remain required.",
+    "No whole RM-601/RM-603/golden/release completion or closure."
+  ],
+  "private_material": "No keys/disposable DB bytes retained; text log/source evidence only.",
+  "timing": {
+    "outcome": "partial",
+    "active_minutes": 19.81,
+    "verification_minutes": 9.54,
+    "file": "docs/task-timing/runs/RM-601-3ea2938bdfae.jsonl",
+    "sha256": "8a7b44898ff0351a813182f4c602ffb4779c3934f45499daa6c7fec1d4175ee2"
+  }
+}

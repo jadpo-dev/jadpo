@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod approval;
 mod artifact_provenance;
+pub(crate) mod operational_failures;
 pub use approval::{
     approval_text, derive_approval_subject, derive_approval_subject_with_state_pin,
     derive_protected_attempt, validate_approval_export, validate_protected_attempt_export,
@@ -238,6 +239,7 @@ struct ArtifactModel<'project> {
     routes: Vec<RouteModel>,
     callables: Vec<CallableModel>,
     configurations: Vec<&'project ConfigDeclaration>,
+    relationships: operational_failures::RelationshipAnalysis,
 }
 
 #[derive(Clone)]
@@ -512,6 +514,7 @@ impl<'project> ArtifactModel<'project> {
             routes,
             callables,
             configurations,
+            relationships: operational_failures::RelationshipAnalysis::new(project),
         }
     }
 
@@ -659,6 +662,7 @@ impl<'project> ArtifactModel<'project> {
             .iter()
             .map(|route| {
                 let failures = self.route_failures(&route.key);
+                let relationships = self.relationships.route(&route.key);
                 let path_fields = route.path_fields.iter().map(|(name, field_type)| {
                     format!(
                         "{{\"name\":{},\"type\":{}}}",
@@ -676,7 +680,7 @@ impl<'project> ArtifactModel<'project> {
                     )
                 });
                 format!(
-                    "{{\"route\":{},\"method\":{},\"path\":{},\"auth\":{},\"path_fields\":{},\"query\":{},\"headers\":{},\"input\":{},\"output\":{},\"success\":{{\"kind\":{},\"http_status\":{}}},\"deadline_ms\":{},\"behavior\":{},\"callable\":{},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{}}}",
+                    "{{\"route\":{},\"method\":{},\"path\":{},\"auth\":{},\"path_fields\":{},\"query\":{},\"headers\":{},\"input\":{},\"output\":{},\"success\":{{\"kind\":{},\"http_status\":{}}},\"deadline_ms\":{},\"behavior\":{},\"callable\":{},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{},\"relationship_failure_analysis\":{}}}",
                     json_string(&route.key),
                     json_string(route.method),
                     json_string(&route.path),
@@ -716,7 +720,8 @@ impl<'project> ArtifactModel<'project> {
                             failure.http_status
                         )
                     })),
-                    bun_operational_failures_json()
+                    bun_operational_failures_json(relationships.may_fail),
+                    relationships.json()
                 )
             });
         format!("{{\"schema_version\":2,\"routes\":{}}}", json_array(routes))
@@ -770,7 +775,7 @@ impl<'project> ArtifactModel<'project> {
         });
         format!(
             "{{\"schema_version\":2,\"policy\":{{\"closed_public_payloads\":true,\"internal_context_disclosed\":false}},\"failures\":{},\"operational_boundary\":\"bun_http\",\"operational_failures\":{}}}",
-            json_array(contracts), bun_operational_failures_json()
+            json_array(contracts), bun_operational_failures_json(true)
         )
     }
 
@@ -1125,6 +1130,8 @@ impl<'project> ArtifactModel<'project> {
                     .or_default()
                     .push(failure.name);
             }
+            let relationships = self.relationships.route(&route.key);
+            if relationships.may_fail { failure_groups.entry(409).or_default(); }
             failure_groups.entry(500).or_default();
             if !self.project.entity_model.entities.is_empty() {
                 failure_groups.entry(503).or_default();
@@ -1139,7 +1146,8 @@ impl<'project> ArtifactModel<'project> {
                         )
                     })
                     .collect::<Vec<_>>();
-                if status == 500 || status == 503 && !self.project.entity_model.entities.is_empty()
+                if status == 409 && relationships.may_fail
+                    || status == 500 || status == 503 && !self.project.entity_model.entities.is_empty()
                 {
                     references.push(bun_operational_schema_json(status));
                 }
@@ -1152,6 +1160,7 @@ impl<'project> ArtifactModel<'project> {
                     "{}:{{\"description\":{},\"content\":{{\"application/json\":{{\"schema\":{}}}}}}}",
                     json_string(&status.to_string()),
                     json_string(&match status {
+                        409 if relationships.may_fail => "Bun relationship constraint conflict or declared failure".to_owned(),
                         500 => "Bun operational failure or declared failure; uncertain effects are not automatically retried".to_owned(),
                         503 if !self.project.entity_model.entities.is_empty() => "Bun storage unavailable or declared failure".to_owned(),
                         _ => names.join(" or "),
@@ -2284,19 +2293,23 @@ route POST /todos {
     }
 }
 
-fn bun_operational_failures_json() -> &'static str {
-    r#"[{"code":"internal_fault","http_status":500,"condition":"contained_runtime_defect"},{"code":"transaction_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the operation.","condition":"retryable_no_commit_not_retried_or_exhausted","automatic_retry":false},{"code":"read_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the read.","condition":"checked_query_only_operation_with_listed_structured_driver_cause","automatic_retry":false},{"code":"outcome_unknown","semantic_http_default":null,"http_status":500,"message":"The operation may have completed.","condition":"effect_may_have_occurred","automatic_retry":false}]"#
+fn bun_operational_failures_json(relationships: bool) -> String {
+    let base = r#"[{"code":"internal_fault","http_status":500,"condition":"contained_runtime_defect"},{"code":"transaction_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the operation.","condition":"retryable_no_commit_not_retried_or_exhausted","automatic_retry":false},{"code":"read_unavailable","semantic_http_default":503,"http_status":503,"message":"A temporary storage issue prevented the read.","condition":"checked_query_only_operation_with_listed_structured_driver_cause","automatic_retry":false},{"code":"outcome_unknown","semantic_http_default":null,"http_status":500,"message":"The operation may have completed.","condition":"effect_may_have_occurred","automatic_retry":false}]"#;
+    if relationships { format!("{},{}]", &base[..base.len()-1], operational_failures::RELATIONSHIP_FAILURE) }
+    else { base.to_owned() }
 }
 
 fn bun_operational_schema_json(status: u16) -> String {
-    let codes = if status == 503 {
+    let codes = if status == 409 {
+        vec!["relationship_conflict"]
+    } else if status == 503 {
         vec!["transaction_unavailable", "read_unavailable"]
     } else {
         vec!["internal_fault", "outcome_unknown"]
     };
     serde_json::json!({"type":"object","additionalProperties":false,"required":["error"],"properties":{
         "error":{"type":"object","additionalProperties":false,"required":["code","message","request_id"],"properties":{
-            "code":{"type":"string","enum":codes},"message":{"type":"string"},"request_id":{"type":"string"}
+            "code":{"type":"string","enum":codes},"message": if status == 409 { serde_json::json!({"type":"string","enum":["The operation conflicts with a relationship."]}) } else { serde_json::json!({"type":"string"}) },"request_id":{"type":"string"}
         }}
     }}).to_string()
 }
