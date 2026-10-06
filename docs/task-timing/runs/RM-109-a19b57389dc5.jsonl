@@ -1,0 +1,5 @@
+{"schema_version": 1, "run_id": "RM-109-a19b57389dc5", "task_id": "RM-109", "actor": "golden-browser-authority-timeline", "actor_kind": "agent", "category": "slice", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T06:37:53.993706+00:00", "phase": "planning"}
+{"at": "2026-10-06T06:40:36.332004+00:00", "phase": "paused", "note": "Prioritizing independent DELETE-002 chronology finding before auth source changes"}
+{"at": "2026-10-06T06:41:40.390265+00:00", "phase": "implementation", "note": "Resume four-case principal/authority/timeline window after isolated chronology correction"}
+{"at": "2026-10-06T06:46:51.207757+00:00", "phase": "verification", "note": "72 verification-contract tests pass; final fresh compiler and both-adapter request/timeline validation with positive native issuance control"}
+{"at": "2026-10-06T06:50:16.230496+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm109-auth-timeline-checkpoint.json"}
