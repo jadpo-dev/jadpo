@@ -1710,6 +1710,48 @@ export const temporal = Object.freeze({
         )
     }
 
+    /// Necessary private conformance candidate; never runtime replay permission.
+    /// Public activation still requires source-bound native authority evidence.
+    fn authenticated_route_retry_candidate(&self, route: &jadpo_syntax::RouteDeclaration) -> bool {
+        if route.public
+            || !self.first_party_supported()
+            || !self.project.policy.active
+            || !matches!(route.method, HttpMethod::Patch | HttpMethod::Delete)
+            || route.inline_action.is_some()
+        {
+            return false;
+        }
+        let Some(run) = route.run.as_ref() else {
+            return false;
+        };
+        if !run
+            .arguments
+            .iter()
+            .all(|a| matches!(a, Expression::Name(_) | Expression::Literal(_)))
+            || !run
+                .named_arguments
+                .iter()
+                .all(|a| matches!(a.value, Expression::Name(_) | Expression::Literal(_)))
+        {
+            return false;
+        }
+        let Some(name) = resolved_callable_name(&run.callee.path, &self.callables) else {
+            return false;
+        };
+        let type_names = self.types.keys().cloned().collect::<BTreeSet<_>>();
+        self.callables
+            .get(&name)
+            .is_some_and(|c| c.kind == jadpo_syntax::CallableKind::Action)
+            && self.callable_is_mutative(&name)
+            && callable_repeatability_with_creation(
+                &name,
+                &self.callables,
+                &type_names,
+                &mut BTreeSet::new(),
+                false,
+            )
+    }
+
     fn block_may_suspend(&self, block: &Block) -> bool {
         block_may_suspend(
             block,
@@ -8883,6 +8925,10 @@ export const temporal = Object.freeze({
                     output,
                     &format!("      checkedReadOnlyOperation = {read_only};"),
                 );
+                if !route.public {
+                    line(output, "      // Inert compiler-only candidate; the permission below remains closed.");
+                    line(output, &format!("      const __authenticatedRetryCandidate = {};", self.authenticated_route_retry_candidate(route)));
+                }
                 line(
                     output,
                     &format!(
@@ -12324,12 +12370,28 @@ fn callable_is_repeatable(
     type_names: &BTreeSet<String>,
     visiting: &mut BTreeSet<String>,
 ) -> bool {
+    callable_repeatability_with_creation(name, callables, type_names, visiting, true)
+}
+
+fn callable_repeatability_with_creation(
+    name: &str,
+    callables: &BTreeMap<String, &CallableDeclaration>,
+    type_names: &BTreeSet<String>,
+    visiting: &mut BTreeSet<String>,
+    creates_permitted: bool,
+) -> bool {
     if !visiting.insert(name.to_owned()) {
         return false;
     }
     let result = callables.get(name).is_some_and(|callable| {
         callable.policy.is_none()
-            && block_is_repeatable(&callable.body, callables, type_names, visiting)
+            && block_is_repeatable(
+                &callable.body,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            )
     });
     visiting.remove(name);
     result
@@ -12340,37 +12402,78 @@ fn block_is_repeatable(
     callables: &BTreeMap<String, &CallableDeclaration>,
     type_names: &BTreeSet<String>,
     visiting: &mut BTreeSet<String>,
+    creates_permitted: bool,
 ) -> bool {
     block.statements.iter().all(|statement| match statement {
-        Statement::Binding(statement) => {
-            expression_is_repeatable(&statement.value, callables, type_names, visiting)
-        }
-        Statement::Assignment(statement) => {
-            expression_is_repeatable(&statement.value, callables, type_names, visiting)
-        }
-        Statement::Return(statement) => {
-            expression_is_repeatable(&statement.value, callables, type_names, visiting)
-        }
-        Statement::Reject(statement) => {
-            fields_are_repeatable(&statement.values, callables, type_names, visiting)
-        }
+        Statement::Binding(statement) => expression_is_repeatable(
+            &statement.value,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
+        Statement::Assignment(statement) => expression_is_repeatable(
+            &statement.value,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
+        Statement::Return(statement) => expression_is_repeatable(
+            &statement.value,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
+        Statement::Reject(statement) => fields_are_repeatable(
+            &statement.values,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
         Statement::If(statement) => {
-            expression_is_repeatable(&statement.condition, callables, type_names, visiting)
-                && block_is_repeatable(&statement.then_block, callables, type_names, visiting)
-                && statement.else_block.as_ref().map_or(true, |block| {
-                    block_is_repeatable(block, callables, type_names, visiting)
-                })
+            expression_is_repeatable(
+                &statement.condition,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && block_is_repeatable(
+                &statement.then_block,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && statement.else_block.as_ref().map_or(true, |block| {
+                block_is_repeatable(block, callables, type_names, visiting, creates_permitted)
+            })
         }
         Statement::Match(statement) => {
-            expression_is_repeatable(&statement.subject, callables, type_names, visiting)
-                && statement
-                    .arms
-                    .iter()
-                    .all(|arm| block_is_repeatable(&arm.body, callables, type_names, visiting))
+            expression_is_repeatable(
+                &statement.subject,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && statement.arms.iter().all(|arm| {
+                block_is_repeatable(
+                    &arm.body,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
+            })
         }
-        Statement::Assert(statement) => {
-            expression_is_repeatable(&statement.condition, callables, type_names, visiting)
-        }
+        Statement::Assert(statement) => expression_is_repeatable(
+            &statement.condition,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
         Statement::AdvanceClock(_) | Statement::Unsupported(_) => false,
     })
 }
@@ -12380,10 +12483,17 @@ fn fields_are_repeatable(
     callables: &BTreeMap<String, &CallableDeclaration>,
     type_names: &BTreeSet<String>,
     visiting: &mut BTreeSet<String>,
+    creates_permitted: bool,
 ) -> bool {
-    fields
-        .iter()
-        .all(|field| expression_is_repeatable(&field.value, callables, type_names, visiting))
+    fields.iter().all(|field| {
+        expression_is_repeatable(
+            &field.value,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        )
+    })
 }
 
 fn rejection_is_repeatable(
@@ -12391,8 +12501,15 @@ fn rejection_is_repeatable(
     callables: &BTreeMap<String, &CallableDeclaration>,
     type_names: &BTreeSet<String>,
     visiting: &mut BTreeSet<String>,
+    creates_permitted: bool,
 ) -> bool {
-    fields_are_repeatable(&rejection.values, callables, type_names, visiting)
+    fields_are_repeatable(
+        &rejection.values,
+        callables,
+        type_names,
+        visiting,
+        creates_permitted,
+    )
 }
 
 fn expression_is_repeatable(
@@ -12400,23 +12517,37 @@ fn expression_is_repeatable(
     callables: &BTreeMap<String, &CallableDeclaration>,
     type_names: &BTreeSet<String>,
     visiting: &mut BTreeSet<String>,
+    creates_permitted: bool,
 ) -> bool {
     match expression {
         Expression::Literal(_) | Expression::Name(_) => true,
         Expression::Invocation(invocation) => {
             let arguments_are_repeatable = invocation.arguments.iter().all(|argument| {
-                expression_is_repeatable(argument, callables, type_names, visiting)
+                expression_is_repeatable(
+                    argument,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
             }) && fields_are_repeatable(
                 &invocation.named_arguments,
                 callables,
                 type_names,
                 visiting,
+                creates_permitted,
             );
             if !arguments_are_repeatable {
                 return false;
             }
             if let Some(callee) = resolved_callable_name(&invocation.callee.path, callables) {
-                return callable_is_repeatable(&callee, callables, type_names, visiting);
+                return callable_repeatability_with_creation(
+                    &callee,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                );
             }
             let authored = invocation
                 .callee
@@ -12430,98 +12561,235 @@ fn expression_is_repeatable(
                 || authored.starts_with("temporal.")
         }
         Expression::TestCall(_) | Expression::Missing(_) => false,
-        Expression::Object(object) => {
-            fields_are_repeatable(&object.fields, callables, type_names, visiting)
-        }
-        Expression::Construction(construction) => {
-            fields_are_repeatable(&construction.fields, callables, type_names, visiting)
-        }
+        Expression::Object(object) => fields_are_repeatable(
+            &object.fields,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
+        Expression::Construction(construction) => fields_are_repeatable(
+            &construction.fields,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
         Expression::Create(create) => {
-            fields_are_repeatable(&create.fields, callables, type_names, visiting)
+            creates_permitted
+                && fields_are_repeatable(
+                    &create.fields,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
                 && create.conflicts.iter().all(|binding| {
-                    rejection_is_repeatable(&binding.rejection, callables, type_names, visiting)
+                    rejection_is_repeatable(
+                        &binding.rejection,
+                        callables,
+                        type_names,
+                        visiting,
+                        creates_permitted,
+                    )
                 })
         }
         Expression::Query(query) => {
-            expression_is_repeatable(&query.value, callables, type_names, visiting)
-                && query.pagination.as_ref().map_or(true, |pagination| {
-                    expression_is_repeatable(&pagination.limit, callables, type_names, visiting)
-                        && expression_is_repeatable(
-                            &pagination.offset,
-                            callables,
-                            type_names,
-                            visiting,
-                        )
-                })
-                && query.page.as_ref().map_or(true, |page| {
-                    page.predicates.iter().all(|predicate| {
-                        expression_is_repeatable(&predicate.value, callables, type_names, visiting)
-                    }) && expression_is_repeatable(&page.after, callables, type_names, visiting)
-                        && expression_is_repeatable(&page.limit, callables, type_names, visiting)
-                })
-                && query.includes.iter().all(|include| {
+            expression_is_repeatable(
+                &query.value,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && query.pagination.as_ref().map_or(true, |pagination| {
+                expression_is_repeatable(
+                    &pagination.limit,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                ) && expression_is_repeatable(
+                    &pagination.offset,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
+            }) && query.page.as_ref().map_or(true, |page| {
+                page.predicates.iter().all(|predicate| {
                     expression_is_repeatable(
-                        &include.pagination.limit,
+                        &predicate.value,
                         callables,
                         type_names,
                         visiting,
-                    ) && expression_is_repeatable(
-                        &include.pagination.offset,
-                        callables,
-                        type_names,
-                        visiting,
+                        creates_permitted,
                     )
-                })
-                && query.missing.as_ref().map_or(true, |rejection| {
-                    rejection_is_repeatable(rejection, callables, type_names, visiting)
-                })
+                }) && expression_is_repeatable(
+                    &page.after,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                ) && expression_is_repeatable(
+                    &page.limit,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
+            }) && query.includes.iter().all(|include| {
+                expression_is_repeatable(
+                    &include.pagination.limit,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                ) && expression_is_repeatable(
+                    &include.pagination.offset,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
+            }) && query.missing.as_ref().map_or(true, |rejection| {
+                rejection_is_repeatable(
+                    rejection,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
+            })
         }
         Expression::Update(update) => {
-            expression_is_repeatable(&update.value, callables, type_names, visiting)
-                && fields_are_repeatable(&update.changes, callables, type_names, visiting)
-                && update.conditional_changes.iter().all(|change| {
-                    expression_is_repeatable(&change.change.value, callables, type_names, visiting)
-                })
-                && update.empty.as_ref().map_or(true, |rejection| {
-                    rejection_is_repeatable(rejection, callables, type_names, visiting)
-                })
-                && rejection_is_repeatable(&update.missing, callables, type_names, visiting)
-                && update.conflicts.iter().all(|binding| {
-                    rejection_is_repeatable(&binding.rejection, callables, type_names, visiting)
-                })
+            expression_is_repeatable(
+                &update.value,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && fields_are_repeatable(
+                &update.changes,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && update.conditional_changes.iter().all(|change| {
+                expression_is_repeatable(
+                    &change.change.value,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
+            }) && update.empty.as_ref().map_or(true, |rejection| {
+                rejection_is_repeatable(
+                    rejection,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
+            }) && rejection_is_repeatable(
+                &update.missing,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && update.conflicts.iter().all(|binding| {
+                rejection_is_repeatable(
+                    &binding.rejection,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
+            })
         }
         Expression::Delete(delete) => {
-            expression_is_repeatable(&delete.value, callables, type_names, visiting)
-                && rejection_is_repeatable(&delete.missing, callables, type_names, visiting)
-                && delete.conflicts.iter().all(|binding| {
-                    rejection_is_repeatable(&binding.rejection, callables, type_names, visiting)
-                })
+            expression_is_repeatable(
+                &delete.value,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && rejection_is_repeatable(
+                &delete.missing,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && delete.conflicts.iter().all(|binding| {
+                rejection_is_repeatable(
+                    &binding.rejection,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                )
+            })
         }
-        Expression::Attempt(attempt) => {
-            expression_is_repeatable(&attempt.value, callables, type_names, visiting)
-        }
+        Expression::Attempt(attempt) => expression_is_repeatable(
+            &attempt.value,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
         Expression::OutcomeMatch(outcome) => {
-            expression_is_repeatable(&outcome.subject, callables, type_names, visiting)
-                && outcome.arms.iter().all(|arm| match &arm.body {
-                    jadpo_syntax::OutcomeMatchArmBody::Value(value) => {
-                        expression_is_repeatable(value, callables, type_names, visiting)
-                    }
-                    jadpo_syntax::OutcomeMatchArmBody::Reject(rejection) => {
-                        rejection_is_repeatable(rejection, callables, type_names, visiting)
-                    }
-                    jadpo_syntax::OutcomeMatchArmBody::Propagate(_) => true,
-                })
+            expression_is_repeatable(
+                &outcome.subject,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && outcome.arms.iter().all(|arm| match &arm.body {
+                jadpo_syntax::OutcomeMatchArmBody::Value(value) => expression_is_repeatable(
+                    value,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                ),
+                jadpo_syntax::OutcomeMatchArmBody::Reject(rejection) => rejection_is_repeatable(
+                    rejection,
+                    callables,
+                    type_names,
+                    visiting,
+                    creates_permitted,
+                ),
+                jadpo_syntax::OutcomeMatchArmBody::Propagate(_) => true,
+            })
         }
-        Expression::Unary(unary) => {
-            expression_is_repeatable(&unary.value, callables, type_names, visiting)
-        }
+        Expression::Unary(unary) => expression_is_repeatable(
+            &unary.value,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
         Expression::Binary(binary) => {
-            expression_is_repeatable(&binary.left, callables, type_names, visiting)
-                && expression_is_repeatable(&binary.right, callables, type_names, visiting)
+            expression_is_repeatable(
+                &binary.left,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            ) && expression_is_repeatable(
+                &binary.right,
+                callables,
+                type_names,
+                visiting,
+                creates_permitted,
+            )
         }
-        Expression::Grouped(grouped) => {
-            expression_is_repeatable(&grouped.value, callables, type_names, visiting)
-        }
+        Expression::Grouped(grouped) => expression_is_repeatable(
+            &grouped.value,
+            callables,
+            type_names,
+            visiting,
+            creates_permitted,
+        ),
     }
 }
 
@@ -12701,6 +12969,217 @@ mod tests {
     use crate::{analyze_project, create_project, GeneratedArtifact};
     use std::fs;
     use std::path::Path;
+
+    #[test]
+    fn private_authenticated_retry_candidates_leave_every_public_permission_closed() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap();
+        let path = root.join("examples/golden-todo-migration");
+        let project = analyze_project(&path).unwrap();
+        let generator = super::TargetGenerator::new(&path, &project).unwrap();
+        let candidates = project
+            .syntax
+            .sources
+            .iter()
+            .flat_map(|s| s.file.declarations.iter())
+            .filter_map(|d| {
+                let jadpo_syntax::Declaration::Route(route) = d else {
+                    return None;
+                };
+                Some((
+                    format!("{} {}", super::method_name(route.method), route.path),
+                    generator.authenticated_route_retry_candidate(route),
+                ))
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(candidates["PATCH /todos/{todo_id}"], true);
+        assert_eq!(candidates["DELETE /todos/{todo_id}"], true);
+        assert_eq!(candidates["POST /todos"], false);
+        assert_eq!(candidates["GET /todos"], false);
+        let outputs = derive_target(&path, &project).unwrap();
+        let app = &outputs
+            .iter()
+            .find(|o| o.relative_path == "target/app.ts")
+            .unwrap()
+            .contents;
+        assert!(app.contains("const __authenticatedRetryCandidate = true;"));
+        assert!(!app.contains("allowOperationRetries(__operation, __authenticatedRetryCandidate)"));
+        assert!(app.contains("__operation = allowOperationRetries(__operation, false);"));
+        assert!(!app.contains("allowOperationRetries(__operation, true)"));
+        let route = project
+            .syntax
+            .sources
+            .iter()
+            .flat_map(|s| s.file.declarations.iter())
+            .find_map(|d| match d {
+                jadpo_syntax::Declaration::Route(r)
+                    if r.path == "/todos/{todo_id}"
+                        && r.method == jadpo_syntax::HttpMethod::Patch =>
+                {
+                    Some(r)
+                }
+                _ => None,
+            })
+            .unwrap();
+        // A fresh checked source rename must derive the same narrow candidates.
+        let renamed_sources = crate::discover_sources(&path)
+            .unwrap()
+            .into_iter()
+            .map(|mut source| {
+                source.text = source
+                    .text
+                    .replace("patch_todo", "revise_entry")
+                    .replace("delete_todo", "remove_entry");
+                source
+            })
+            .collect();
+        let renamed = crate::analyze_sources(renamed_sources).unwrap();
+        assert!(renamed
+            .syntax
+            .diagnostics()
+            .chain(renamed.semantics.diagnostics.iter())
+            .chain(renamed.typing.diagnostics.iter())
+            .chain(renamed.failures.diagnostics.iter())
+            .chain(renamed.policy.diagnostics.iter())
+            .all(|d| d.severity != jadpo_diagnostics::Severity::Error));
+        let renamed_generator = super::TargetGenerator::new(&path, &renamed).unwrap();
+        for route in renamed
+            .syntax
+            .sources
+            .iter()
+            .flat_map(|s| s.file.declarations.iter())
+            .filter_map(|d| match d {
+                jadpo_syntax::Declaration::Route(r)
+                    if matches!(
+                        r.method,
+                        jadpo_syntax::HttpMethod::Patch | jadpo_syntax::HttpMethod::Delete
+                    ) =>
+                {
+                    Some(r)
+                }
+                _ => None,
+            })
+        {
+            assert!(renamed_generator.authenticated_route_retry_candidate(route));
+        }
+        let mut public = route.clone();
+        public.public = true;
+        assert!(!generator.authenticated_route_retry_candidate(&public));
+        let mut wrong_method = route.clone();
+        wrong_method.method = jadpo_syntax::HttpMethod::Post;
+        assert!(!generator.authenticated_route_retry_candidate(&wrong_method));
+        let mut missing = route.clone();
+        missing.run = None;
+        assert!(!generator.authenticated_route_retry_candidate(&missing));
+        let mut invocation_argument = route.clone();
+        invocation_argument.run.as_mut().unwrap().arguments[0] =
+            jadpo_syntax::Expression::Attempt(jadpo_syntax::AttemptExpression {
+                value: Box::new(route.run.as_ref().unwrap().arguments[0].clone()),
+                range: route.range,
+            });
+        assert!(!generator.authenticated_route_retry_candidate(&invocation_argument));
+    }
+
+    #[test]
+    fn private_no_create_repeatability_preserves_policy_opaque_uuid_and_recursive_exclusions() {
+        use jadpo_syntax::*;
+        let source = r#"
+entity Item { id: Uuid identity title: Text }
+failure Missing { kind: NotFound code: "missing" }
+failure Conflicted { kind: Conflict code: "conflicted" }
+action make(id: Item.id) fails Conflicted -> Item {
+ return attempt create Item {
+ id: id
+ title: Item.title("created")
+ } conflict: Conflicted
+}
+action nested(id: Item.id) fails Conflicted -> Item { return attempt make(id) }
+action revise(id: Item.id) fails Missing, Conflicted -> Item {
+ return attempt update required Item { where: id == id set: { title: Item.title("patched") } missing: Missing conflict: Conflicted }
+}
+"#;
+        let project = crate::analyze_sources(vec![SourceFile::new(
+            "/retry-private/app.jadpo".into(),
+            source.into(),
+        )])
+        .unwrap();
+        assert!(
+            project
+                .syntax
+                .diagnostics()
+                .chain(project.semantics.diagnostics.iter())
+                .chain(project.typing.diagnostics.iter())
+                .chain(project.failures.diagnostics.iter())
+                .all(|d| d.severity != jadpo_diagnostics::Severity::Error),
+            "syntax={:?}, typing={:?}, failures={:?}, semantic={:?}",
+            project.syntax.diagnostics().collect::<Vec<_>>(),
+            project.typing.diagnostics,
+            project.failures.diagnostics,
+            project.semantics.diagnostics
+        );
+        let mut owned = project
+            .syntax
+            .sources
+            .iter()
+            .flat_map(|s| s.file.declarations.iter())
+            .filter_map(|d| match d {
+                Declaration::Callable(c) => Some((c.name.text.clone(), c.clone())),
+                _ => None,
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let types = ["Item.title".to_owned()].into_iter().collect();
+        let test = |owned: &std::collections::BTreeMap<String, CallableDeclaration>,
+                    name: &str,
+                    creates| {
+            let references = owned.iter().map(|(n, c)| (n.clone(), c)).collect();
+            super::callable_repeatability_with_creation(
+                name,
+                &references,
+                &types,
+                &mut std::collections::BTreeSet::new(),
+                creates,
+            )
+        };
+        assert!(test(&owned, "make", true));
+        assert!(!test(&owned, "make", false));
+        assert!(test(&owned, "nested", true));
+        assert!(!test(&owned, "nested", false));
+        assert!(test(&owned, "revise", true));
+        assert!(test(&owned, "revise", false));
+        for callee in ["Uuid.create", "opaque.dispatch", "Provider.send", "nested"] {
+            let original = owned["nested"].clone();
+            let mut changed = original.clone();
+            let Statement::Return(ret) = &mut changed.body.statements[0] else {
+                panic!()
+            };
+            let Expression::Attempt(attempt) = &mut ret.value else {
+                panic!()
+            };
+            let Expression::Invocation(invocation) = attempt.value.as_mut() else {
+                panic!()
+            };
+            invocation.callee.path = callee
+                .split('.')
+                .map(|text| Name {
+                    text: text.into(),
+                    range: invocation.callee.range,
+                })
+                .collect();
+            owned.insert("nested".into(), changed);
+            assert!(!test(&owned, "nested", false), "{callee}");
+            owned.insert("nested".into(), original);
+        }
+        owned.get_mut("revise").unwrap().policy = Some(PolicyDeclaration {
+            scope: None,
+            rules: vec![],
+            operations: vec![],
+            range: owned["revise"].range,
+        });
+        assert!(!test(&owned, "revise", true));
+        assert!(!test(&owned, "revise", false));
+    }
 
     #[test]
     fn checked_delivery_target_exports_inert_trusted_job_host() {

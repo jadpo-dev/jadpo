@@ -683,9 +683,17 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       }, async () => malformed ? Response.json({code:"authentication",private_detail:providerCanary+stackCanary},{status:401}) : Response.json({code:"authentication"},{status:401,headers:{"x-private-provider-canary":providerCanary+stackCanary}}));
     } finally {console.error=previousError;await host.stop();await restarted?.stop();}
   });
-  async function inspectRetryApplication() {
+  async function inspectRetryApplication(enableCandidate = false) {
     const sourcePath = join(root,"app.ts");
     let source = readFileSync(sourcePath,"utf8");
+    if (enableCandidate) {
+      // Counterfactual private conformance only: change this emitted closed
+      // admission bit, preserving every credential, policy, action and retry body.
+      const closed = "const __authenticatedRetryCandidate = true;\n      __operation = allowOperationRetries(__operation, false);";
+      const candidates = source.split(closed).length - 1;
+      expect(candidates).toBeGreaterThanOrEqual(2);
+      source = source.replaceAll(closed, "const __authenticatedRetryCandidate = true;\n      __operation = allowOperationRetries(__operation, __authenticatedRetryCandidate);");
+    }
     const names: string[] = [], values: unknown[] = [];
     for (const match of source.matchAll(/^import \{([^}]+)\} from "([^"]+)";\n/gm)) {
       const imported = await import(pathToFileURL(join(root,match[2])).href);
@@ -697,7 +705,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     source=source.replace(/^import \{[^}]+\} from "[^"]+";\n/gm,"")
       .replace(/\bexport /gu,"").replaceAll("import.meta.url",JSON.stringify(pathToFileURL(sourcePath).href)).replaceAll("import.meta.main","false");
     const javascript = new Bun.Transpiler({loader:"ts"}).transformSync(source)
-      + '\nreturn {initializeApplication, authenticationHost, createRetryAuthority, materializePrincipal, captureOperation, patch: Todo__patch_todo};';
+      + '\nreturn {initializeApplication, authenticationHost, createRetryAuthority, materializePrincipal, captureOperation, handleRequest, patch: Todo__patch_todo};';
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
     return await new AsyncFunction(...names,javascript)(...values);
   }
@@ -754,6 +762,104 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
     }
   });
+  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"]] as const)
+  test(`RM402 private authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
+    const f = await fixture(), inspected = await inspectRetryApplication(true);
+    await inspected.initializeApplication(authEnvironment);
+    const host = inspected.authenticationHost(), now = Date.now();
+    const issued = await host.issue("browser_session", owner, now + 3_600_000, now);
+    // Genuine freshly issued signed credential permits bounded first admission;
+    // the next transaction attempt must consult its durable session/authority.
+    const sessionId = JSON.parse(Buffer.from(issued.credential.split(".")[2], "base64url").toString())[3];
+    const oldIntent = (await scan(f.proof)).intents[0];
+    expect(oldIntent.sourceRevision).toBe("1");
+    const oldPayload = oldIntent.payload;
+    const due = new Date(Date.now() + 3_600_000).toISOString();
+    const events: any[] = [];
+    const previousError = console.error;
+    let locker: Database | null = null, held: any = null;
+    let releaseGuard = () => {}, pendingMutation: Promise<unknown> | null = null;
+    const suffix = crypto.randomUUID().replaceAll("-", ""), sequence = "http_retry_" + suffix;
+    const fn = "http_retry_fn_" + suffix, trigger = "http_retry_trigger_" + suffix;
+    let heldWork: Promise<unknown> | null = null;
+    if (sql) {
+      await rows(`CREATE SEQUENCE "${sequence}"`);
+      await rows(`CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF nextval('"${sequence}"')=1 THEN RAISE EXCEPTION USING ERRCODE='40001', MESSAGE='private HTTP fixture abort'; END IF; RETURN NEW; END $$`);
+      await rows(`CREATE TRIGGER "${trigger}" BEFORE UPDATE OF title, deleted_at ON todo FOR EACH ROW EXECUTE FUNCTION "${fn}"()`);
+      let ready!: () => void;
+      const readyPromise = new Promise<void>(resolve => { ready = resolve; });
+      const guard = new Promise<void>(resolve => { releaseGuard = resolve; });
+      heldWork = sql.begin(async (holder: any) => {
+        await holder.unsafe('LOCK TABLE "__jadpo_auth_sessions" IN ACCESS EXCLUSIVE MODE');
+        held = holder; ready(); await guard;
+      });
+      await readyPromise;
+    } else { locker = new Database(sqlitePath); locker.exec("BEGIN EXCLUSIVE"); }
+    const operation = verb === "PATCH" ? "Todo.patch_todo" : "Todo.delete_todo";
+    console.error = (...arguments_: any[]) => {
+      let event: any;
+      try { event = typeof arguments_[0] === "string" ? JSON.parse(arguments_[0]) : null; } catch { return; }
+      if (event?.eventName !== "transaction.attempt" || event.operation !== operation) return;
+      events.push(event);
+      if (event.attempt !== 1 || event.outcome !== "no_commit" || !event.retryScheduled) return;
+      if (locker) { locker.exec("ROLLBACK"); locker.close(); locker = null; }
+      // External fixture state changes are native SQL after the proven aborted
+      // business attempt. PG holds the real auth-table lock until COMMIT, so its
+      // fresh lookup cannot overtake this change. No guard/body callback is edited.
+      pendingMutation = (async () => {
+        const change = async (statement: string, values: unknown[]) => sql ? held.unsafe(statement, values) : sqlite!.prepare(statement).all(...values);
+        if (mode === "inactive") await change('UPDATE "user" SET status=$1 WHERE id=$2', ["disabled",owner]);
+        if (mode === "revoked") await change('DELETE FROM "__jadpo_auth_sessions" WHERE id=$1', [sessionId]);
+      })().finally(releaseGuard);
+    };
+    const server = Bun.serve({hostname:"127.0.0.1",port:0,fetch:inspected.handleRequest});
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/todos/${f.value.id}`, {
+        method:verb, headers:{cookie:`todo_session=${issued.credential}`,origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken,"content-type":"application/json"},
+        ...(verb === "PATCH" ? {body:JSON.stringify({title:"HTTP retried exactly once",due_at:due})} : {}),
+      });
+      await pendingMutation; await heldWork;
+      expect(events[0]).toMatchObject({attempt:1,outcome:"no_commit",retryScheduled:true,commitAcknowledged:false});
+      expect(events[0].retryableCause).toBe(sql ? "postgres_serialization" : "sqlite_busy");
+      if (sql) expect(events[0].rollbackProven).toBe(true);
+      const source = (await rows('SELECT * FROM todo WHERE id=$1',[f.value.id]))[0];
+      const intents = await rows('SELECT state,payload,source_revision FROM "__jadpo_deliveries_v1" WHERE source_entity_id=$1',[f.value.id]);
+      if (mode === "fresh") {
+        expect(response.status).toBe(verb === "PATCH" ? 200 : 204);
+        expect(events).toHaveLength(2);
+        expect(events[1]).toMatchObject({attempt:2,outcome:"committed",commitAcknowledged:true,retryScheduled:false});
+        expect(await revision(f.value.id)).toBe(verb === "PATCH" ? "2" : "1");
+        expect(intents).toHaveLength(1); expect(intents[0].state).toBe("pending");
+        // Source mutation preserves the immutable prior intent. The real checked
+        // next invocation must terminalize it before any provider dispatch.
+        expect(await app.prepareDeliveryInvocation(bindingIdentity, f.proof, oldIntent.intentId, new Date().toISOString(), {executionMs:60_000,leaseMs:40_000})).toBeNull();
+        expect((await persistence.read_delivery_intent(oldIntent.intentId)).state).toBe("cancelled");
+        expect(await rows('SELECT intent_id FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1',[oldIntent.intentId])).toHaveLength(0);
+        if (verb === "PATCH") { expect(source.title).toBe("HTTP retried exactly once"); expect(source.deleted_at).toBeNull(); }
+        else expect(source.deleted_at).not.toBeNull();
+      } else {
+        expect(response.status).toBe(mode === "inactive" ? 403 : 401);
+        expect(events).toHaveLength(1);
+        expect(source.title).toBe(f.value.title); expect(source.deleted_at).toBeNull();
+        expect(await revision(f.value.id)).toBe("1");
+        expect(intents).toHaveLength(1); expect(intents[0].state).toBe("pending");
+      }
+      expect(JSON.parse(intents[0].payload)).toEqual(oldPayload);
+      expect(String(intents[0].source_revision)).toBe("1");
+      if (sql) expect(Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value)).toBe(mode === "fresh" ? 2 : 1);
+      const emitted = readFileSync(join(root,"app.ts"),"utf8");
+      expect(emitted).not.toContain("allowOperationRetries(__operation, __authenticatedRetryCandidate)");
+      expect(emitted).toContain("__operation = allowOperationRetries(__operation, false);");
+      previousError(JSON.stringify({kind:"private_http_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,verb,mode,database:sql ? "postgres" : "sqlite",status:response.status,events,sourceRevision:await revision(f.value.id),intentState:(await persistence.read_delivery_intent(oldIntent.intentId)).state}));
+    } finally {
+      server.stop(true); console.error = previousError; releaseGuard();
+      if (locker) { locker.exec("ROLLBACK"); locker.close(); }
+      await pendingMutation; await heldWork;
+      if (sql) { await rows(`DROP TRIGGER IF EXISTS "${trigger}" ON todo`); await rows(`DROP FUNCTION IF EXISTS "${fn}"()`); await rows(`DROP SEQUENCE IF EXISTS "${sequence}"`); }
+      await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
+    }
+  });
+
   test("trusted closed job host uses a real service credential and captured wall clock; start and stop remain bounded native controls", async () => {
     const f = await fixture();
     const overdue = new Date(Date.now() - 60_000).toISOString();
