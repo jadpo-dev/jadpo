@@ -43,6 +43,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id in ('AUTH-009', 'AUTH-011'): return self.service_raw(case_id)
         if case_id in ('AUTH-003', 'AUTH-004', 'AUTH-007'): return self.jwt_raw(case_id)
         if case_id == 'AUTH-008': return self.cache_raw()
         if case_id == 'USER-001':
@@ -147,6 +148,29 @@ class CheckpointIntegrityTests(unittest.TestCase):
                    'statements': [], 'authenticationAttempts': 1, 'principals': [], 'credentialsIssued': 0, 'storageReads': [{'operation': 'session.get', 'outcome': 'faulted'}], 'faultConfiguration': {'sessionStorageUnavailable': True}}
         reply = deepcopy(control); reply.update(method='GET', path=case['request']['path'], status=200, body={'items': [], 'next': None}, principals=[self.principal()], storageReads=[], authorityQueries={'principal': [], 'credential': []})
         return [{'authenticationFixture': self.authentication_fixture('AUTH-008')}, {'cacheFaultControl': control}, reply]
+
+    def service_raw(self, case_id):
+        case = self.cases[case_id]
+        principal = {'kind': 'service', 'subject': 'reporting', 'authenticationStrength': 'primary', 'values': {'service_id': checkpoint.ALIASES['reporting']}}
+        service = {'id': checkpoint.ALIASES['reporting'], 'owner_id': checkpoint.ALIASES['alice'], 'name': 'reporting', 'status': 'active', 'disabled_at': None}
+        current = deepcopy(service)
+        if case_id == 'AUTH-011': current.update(status='disabled', disabled_at=self.clock)
+        credential = {'id': '00000000-0000-4000-8000-000000000042', 'service_id': service['id'], 'status': 'active', 'expires_at': '2026-01-15T12:05:00Z', 'revoked_at': None, 'privateMetadataRevoked': False}
+        statements = [{'operation': 'SELECT', 'sql': 'SELECT data FROM "__jadpo_auth_service_credentials" WHERE id = $1'}, {'operation': 'SELECT', 'sql': 'SELECT * FROM "service_credential" WHERE id = $1'}, {'operation': 'SELECT', 'sql': 'SELECT id FROM "service" WHERE "name" = $1'}]
+        fixture = {'issuedService': service, 'service': current, 'credential': credential, 'issuance': {'credentialsIssued': 1, 'authorityPrincipals': [principal], 'statements': [{'operation': 'INSERT', 'sql': 'INSERT INTO "service_credential" VALUES (?)'}]},
+                   'validityControl': {'completed': True, 'authorityPrincipals': [principal], 'statements': deepcopy(statements), 'at': self.clock}, 'at': self.clock,
+                   'specification': {'fixture': case['fixture'], 'request': case['request'], 'clock': self.clock}}
+        reply = {'method': 'POST', 'path': '/auth/exchange', 'auth': 'reporting-service-key', 'requestJson': None, 'at': self.clock, 'status': 200 if case_id == 'AUTH-009' else 403,
+                 'statements': statements, 'authenticationAttempts': 0, 'authorityPrincipals': [principal] if case_id == 'AUTH-009' else [], 'credentialsIssued': 1 if case_id == 'AUTH-009' else 0,
+                 'body': {'error': {'code': 'service_disabled'}}}
+        raw = [{'serviceFixture': fixture}, reply]
+        if case_id == 'AUTH-009':
+            token = {'sha256': 'a'*64, 'byteLength': 512, 'representation': 'jdx1'}
+            reply.update(body={'access_token': token, 'token_type': 'Bearer', 'expires_at': '2026-01-15T12:05:00Z'}, exchangeDisclosure={'incomingSecretInResponse': False, 'responseFields': ['access_token', 'token_type', 'expires_at'], 'returnedCredential': deepcopy(token)})
+            after = deepcopy(credential); after['revoked_at'] = self.clock
+            raw.append({'serviceRevocation': {'before': deepcopy(credential), 'after': after, 'statements': [{'operation': 'UPDATE', 'sql': 'UPDATE "service_credential" SET revoked_at = $1'}]}})
+            raw.append({'serviceRevokedControl': {'method': 'POST', 'path': '/auth/exchange', 'auth': 'reporting-service-key', 'requestJson': None, 'at': self.clock, 'status': 401, 'body': {'error': {'code': 'invalid_credentials'}}, 'authorityPrincipals': [], 'credentialsIssued': 0, 'statements': deepcopy(statements[:2])}})
+        return raw
 
     def user_timeline_raw(self):
         case = self.cases['USER-001']; fixture = self.authentication_fixture('USER-001')
@@ -294,10 +318,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
             original['target/app.ts'] = harness.digest(evidence/'original-app.ts')
             original['target/jwt-authentication.ts'] = harness.digest(evidence/'original-jwt-authentication.ts')
             for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem'): (evidence/name).write_text(self.tls_text)
+            for name in ('owner-mutation-source', 'owner-policy-projection'):
+                (evidence/name).mkdir(); (evidence/name/'synthetic.jadpo').write_text('synthetic partial probe; never executed')
+            (evidence/'owner-partial-probe.json').write_text('{"synthetic":true}')
             report['checkpoint'] = {'supported_ids': list(checkpoint.SUPPORTED), 'generated_original': original,
                                     'generated_instrumented': checkpoint.hashes(evidence/'application/build'),
                                     'raw_files': {f'{backend}-raw.json': harness.digest(evidence/f'{backend}-raw.json') for backend in harness.BACKENDS},
-                                    'dependency_files': checkpoint.hashes(jose), 'tls_fixture': {name: harness.digest(evidence/name) for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem')}}
+                                    'dependency_files': checkpoint.hashes(jose), 'tls_fixture': {name: harness.digest(evidence/name) for name in ('jwks-fixture-cert.pem', 'jwks-fixture-key.pem')},
+                                    'owner_partial_sources': {name: checkpoint.hashes(evidence/name) for name in ('owner-mutation-source', 'owner-policy-projection')}, 'owner_partial_probe_sha256': harness.digest(evidence/'owner-partial-probe.json')}
             checkpoint.validate_checkpoint(report, evidence, dependencies, self.root)
             for path in (target/'persistence.ts', evidence/'original-authentication.ts', evidence/'original-jwt-authentication.ts', evidence/'jwks-fixture-cert.pem', evidence/'sqlite-raw.json', jose/'package.json'):
                 previous = path.read_bytes(); path.write_bytes(previous+b'\n')
@@ -614,6 +642,53 @@ class CheckpointIntegrityTests(unittest.TestCase):
             elif mutation == 'status': raw[1]['cacheFaultControl']['status'] = 200
             else: raw[1], raw[2] = raw[2], raw[1]
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-008'], raw, self.clock)
+
+    def test_service_exchange_identity_disclosure_and_native_issuance_are_observed(self):
+        raw = self.raw('AUTH-009')
+        self.assertFalse(harness.assess(self.cases['AUTH-009'], checkpoint.observations(self.cases['AUTH-009'], raw, self.clock)))
+        raw[1]['exchangeDisclosure']['incomingSecretInResponse'] = True
+        self.assertTrue(harness.assess(self.cases['AUTH-009'], checkpoint.observations(self.cases['AUTH-009'], raw, self.clock)))
+        for mutation in ('principal', 'issued', 'disclosure', 'key', 'validity', 'private', 'order'):
+            raw = self.raw('AUTH-009')
+            if mutation == 'principal': raw[1]['authorityPrincipals'][0]['values']['service_id'] = checkpoint.ALIASES['alice']
+            elif mutation == 'issued': raw[1]['credentialsIssued'] = 0
+            elif mutation == 'disclosure': raw[1]['exchangeDisclosure']['returnedCredential']['sha256'] = 'unbound'
+            elif mutation == 'key': raw[0]['serviceFixture']['credential']['revoked_at'] = self.clock
+            elif mutation == 'validity': raw[0]['serviceFixture']['validityControl']['completed'] = False
+            elif mutation == 'private': raw[0]['serviceFixture']['credential']['privateMetadataRevoked'] = True
+            else: raw[0], raw[1] = raw[1], raw[0]
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-009'], raw, self.clock)
+
+    def test_service_revocation_control_uses_declared_post_state_and_refuses_stale_cache(self):
+        for mutation in ('missing', 'unchanged', 'principal', 'issuance', 'query', 'clock'):
+            raw = self.raw('AUTH-009')
+            if mutation == 'missing': raw.pop(2)
+            elif mutation == 'unchanged': raw[2]['serviceRevocation']['after']['revoked_at'] = None
+            elif mutation == 'principal': raw[3]['serviceRevokedControl']['authorityPrincipals'] = deepcopy(raw[1]['authorityPrincipals'])
+            elif mutation == 'issuance': raw[3]['serviceRevokedControl']['credentialsIssued'] = 1
+            elif mutation == 'query': raw[3]['serviceRevokedControl']['statements'] = []
+            else: raw[3]['serviceRevokedControl']['at'] = '2030-01-01T00:00:00Z'
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-009'], raw, self.clock)
+
+    def test_disabled_service_is_validly_issued_then_rejected_by_real_authority(self):
+        self.assertFalse(harness.assess(self.cases['AUTH-011'], checkpoint.observations(self.cases['AUTH-011'], self.raw('AUTH-011'), self.clock)))
+        for mutation in ('disabled', 'authority', 'issued', 'service', 'source'):
+            raw = self.raw('AUTH-011')
+            if mutation == 'disabled': raw[0]['serviceFixture']['service']['status'] = 'active'
+            elif mutation == 'authority': raw[1]['statements'] = []
+            elif mutation == 'issued': raw[1]['credentialsIssued'] = 1
+            elif mutation == 'service': raw[0]['serviceFixture']['credential']['service_id'] = checkpoint.ALIASES['bob']
+            else: raw[0]['serviceFixture']['specification']['fixture'] = []
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['AUTH-011'], raw, self.clock)
+
+    def test_relationship_partial_observations_never_promote_original_case_entries(self):
+        outputs = self.outputs()
+        for output in outputs:
+            output['partialEvidence'] = [{'id': case_id, 'raw': [{'accepted': False, 'fault': {'kind': 'constraint'}}]} for case_id in ('REL-002', 'REL-003', 'REL-004')]
+        report = harness.run_cases(self.root); checkpoint.apply_checkpoint(report, outputs, self.root)
+        for entry in report['results']:
+            if entry['id'] in ('REL-002', 'REL-003', 'REL-004'):
+                self.assertEqual(entry['status'], 'not_run'); self.assertNotIn('observations', entry)
 
     def test_cursor_duplicate_fails_case_even_when_frozen_summary_fields_match(self):
         outputs = self.outputs()

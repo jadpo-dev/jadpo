@@ -10,6 +10,9 @@ let credentialsIssued = 0;
 let sessionStorageUnavailable = false;
 let storageReads: { operation: string; outcome: string }[] = [];
 let jwtVerifications: unknown[] = [];
+let authorityPrincipals: unknown[] = [];
+export function recordResolvedAuthorityPrincipal(principal: any) { if (active) authorityPrincipals.push({ kind: principal.kind, subject: principal.subject, authenticationStrength: principal.authenticationStrength, values: { ...principal.values } }); }
+export function resolvedAuthorityPrincipals() { return authorityPrincipals; }
 export function setSessionStorageUnavailable(value: boolean) { sessionStorageUnavailable = value; }
 export function authenticationFaultConfiguration() { return { sessionStorageUnavailable }; }
 export function authenticationStorageReads() { return storageReads; }
@@ -30,7 +33,7 @@ export function recordAuthenticatedPrincipal(principal: any) {
 export function authenticatedPrincipals() { return principals; }
 export function recordCredentialIssued() { if (active) credentialsIssued++; }
 export function issuedCredentialCount() { return credentialsIssued; }
-export function beginSqlObservation() { active = []; authenticationAttempts = 0; principals = []; credentialsIssued = 0; storageReads = []; jwtVerifications = []; return active; }
+export function beginSqlObservation() { active = []; authenticationAttempts = 0; principals = []; credentialsIssued = 0; storageReads = []; jwtVerifications = []; authorityPrincipals = []; return active; }
 export function endSqlObservation() { active = undefined; }
 export function recordStatement(sql: string, parameters: unknown[] = []) {
   if (!active) return;
