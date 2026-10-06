@@ -330,19 +330,6 @@
       "hours": null,
       "planning": "planned"
     },
-    "RM-402": {
-      "id": "RM-402",
-      "epic": "E04",
-      "description": "Implement the accepted retry plan and broaden SQLite/PostgreSQL multi-process contention, nested rollback and failure-injection evidence; retain isolated clocks and contiguous change revisions.",
-      "state": "in progress",
-      "depends_on": "RM-401, RM-207 boundary-contract milestone",
-      "estimate": "1\u20134h (L)",
-      "hours": [
-        1.0,
-        4.0
-      ],
-      "planning": "planned"
-    },
     "RM-403": {
       "id": "RM-403",
       "epic": "E04",
@@ -1011,6 +998,10 @@
     }
   },
   "completed": {
+    "RM-402": {
+      "title": "2026-10-06 \u2014 RM-402 bounded retry implementation and native conformance",
+      "date": "2026-10-06"
+    },
     "RM-307": {
       "title": "2026-10-06 \u2014 RM-307 native scheduling and worker recovery",
       "date": "2026-10-06"
@@ -1113,30 +1104,31 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T21:40:17+01:00",
+  "captured_at": "2026-10-06T22:29:54+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "2b795d886e30a03b87aea566ec1d3f0728ee7b7b1148b813278872f15fe2d656",
-    "docs/implementation-history.md": "1782b2ee75b236b7a2e5d62a28beacd4fbeb6407e32aae71ea098a18e09f19d9",
+    "docs/implementation-roadmap.md": "5ce058bb2fc073643a70928d954dfd55700764305dd2e8aeda87efeb36aa6ad9",
+    "docs/implementation-history.md": "86e9cde46702cbaa5f907096668135633fd1921b9da1b2d43921f9760df51a56",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "06495ab4e13c8b6e85378a64bef5cbdb611c15a68ade5747291a49c2f1674716",
+    "docs/work-plans/golden-delivery-planning.md": "ffee28d9369ff7a200f47162b1892fe737df657ce1eaf8c9fe5dc1658d3fa208",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "Golden delivery continues in parallel. The fresh integrated checkpoint passes96 supported checks; whole-task and release gates remain open.",
+    "summary": "Accepted bounded retry implementation is complete on Bun with SQLite and PostgreSQL. Parallel golden delivery continues from the fresh98-check integrated checkpoint.",
     "delivered": [
-      "[Four-client retry controls and startup ownership](../../tests/validation/evidence/rm402-startup-duration-contention-reviewed-fusion/report.json) now pass the integrated96-check gate with all88 supporting HTTP cases; retry audit metadata correction remains.",
-      "[Stored Duration correction](../../tests/validation/evidence/rm504-duration-storage-fallback/independent-review/review.json) now rejects corrupted SQLTEXT ISO durations as contained data faults on the integrated native path.",
-      "[Temporal HOST review](../../tests/validation/evidence/rm504-host-time-claim-matrix/native-execution/independent-review/review.json) passes existing and bounded tests, reproduces five accepted failures and grounds targeted fixes."
+      "[Bounded retry completion](../../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/closure.json) now includes native four-process contention, fresh authority, unknown-COMMIT refusal and truthful audit metadata; all17 frozen cases preserved.",
+      "[Current integrated gate](../../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/report.json) passes98 supported checks and all88 supporting golden HTTP entries with673 source pins.",
+      "[HOST fixes and ordinary native probe controls](../../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/report.json) now pass; wider temporal containment and hard native lifetimes remain separate."
     ],
-    "next": "Independently review the retry metadata and temporal fixes, qualify ordinary readiness recovery, then fuse the reviewed leaves and continue remaining golden prerequisites.",
+    "next": "Review corrected CalendarDate page containment and supported implicit delivery-emission artifacts; execute six named hostile cases from the independently assessed plan and continue native readiness lifetime work.",
     "input_needed": "The previously asked database-binding successor and publication decisions remain unanswered; independent local delivery continues. See [the database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06)."
   },
   "changes": {
     "completed": [
       "RM-108",
-      "RM-307"
+      "RM-307",
+      "RM-402"
     ],
     "added_or_reopened": [],
     "removed_without_completion": []

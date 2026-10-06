@@ -1046,3 +1046,36 @@ if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
   },10000);
 
 }
+
+
+// Actual native main and PostgreSQL result transport; no replacement evaluator.
+describe("ordinary native PostgreSQL probe ownership", () => {
+  for (const mode of ["healthy", "hold", "keep-hold"]) {
+    const run = Bun.env.JADPO_READINESS_TEST_DATABASE_URL ? test : test.skip;
+    run(`actual native ordinary probe ${mode} preserves response and owner boundaries`, async () => {
+      const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null",
+        join(import.meta.dir, "fixtures/ordinary-owned-probe.ts"), mode], {
+        env: { PATH: Bun.env.PATH!, JADPO_READINESS_TEST_DATABASE_URL: Bun.env.JADPO_READINESS_TEST_DATABASE_URL!,
+          JADPO_READINESS_APPLICATION: generatedApplication }, stdout: "pipe", stderr: "pipe",
+      });
+      const watchdog = setTimeout(() => child.kill("SIGKILL"), 18000);
+      try {
+        const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+        if (exit !== 0) throw Error(`Native ordinary probe fixture failed: ${stdout}\n${stderr}`);
+        const proof = JSON.parse(stdout);
+        expect(proof.failure).toBeNull(); expect(proof.qualifiedNativeExecution).toBe(true);
+        expect(proof.watchdog).toBe(false); expect(proof.nativeExit).toBe(143);
+        expect(proof.backendRemaining).toBe(0); expect(proof.cleanupBeforeFixtureTeardown).toBe(true);
+        expect(proof.safeNativeOutput).toBe(true); expect(proof.protocolFailure).toBeNull();
+        if (mode !== "healthy") {
+          const responses = proof.observations.find((p: any) => p.phase === "first_http_joiners").responses;
+          expect(responses).toHaveLength(32);
+          expect(responses.every((r: any) => r.status === 503 && r.elapsedMs >= 900 && r.elapsedMs < 1600)).toBe(true);
+        }
+        expect(proof.downstreamClosed).toBe(proof.connections); expect(proof.upstreamClosed).toBe(proof.connections);
+        expect(proof.nativeProcesses).toHaveLength(2); expect(proof.formerPorts.every((p: any) => p.refused)).toBe(true);
+        console.log(stdout.trim());
+      } finally { clearTimeout(watchdog); if (child.exitCode === null) child.kill("SIGKILL"); await child.exited; }
+    }, 20000);
+  }
+});

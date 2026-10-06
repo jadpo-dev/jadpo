@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-403-a41ac4ee8585", "task_id": "RM-403", "actor": "root-recovery-phase-plan-assessment", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T21:15:19.875758+00:00", "phase": "planning"}
+{"at": "2026-10-06T21:15:43.281932+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-native-lifetime-grounding/recovery-native-phase-next-plan/parent-plan-assessment.json"}

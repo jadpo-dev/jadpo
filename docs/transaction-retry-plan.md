@@ -383,3 +383,17 @@ The [parent correction](../tests/validation/evidence/rm402-protected-retry-admis
 ### RM-402 current four-client checkpoint — 2026-10-06
 
 The [independent native contention review](../tests/validation/evidence/rm402-protected-retry-admission-plan/exit-matrix/many-client-contention-independent-review/review.json) closes the earlier required trace gap with four independent native processes, original budgets, cancellation and source/change/outbox conservation on both adapters. The [current96-check gate](../tests/validation/evidence/rm402-startup-duration-contention-reviewed-fusion/report.json) includes these exact controls. PostgreSQL40001 faults are native fixture injections; no naturalSSI/fairness claim. The [truthful audit-label plan](../tests/validation/evidence/rm402-protected-retry-admission-plan/full-contract-exit/retry-audit-correction-plan/parent-plan-assessment.json) remains mandatory before whole-task closure.
+
+### RM-402 accepted implementation complete — 2026-10-06
+
+The [full current closeout](../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/closure.json)
+satisfies the accepted runtime/control and truthful artifact agreement conditions.
+All17 frozen case expectations and27 backend entries are preserved; the canonical
+assurance status now links the implementation review. The required concurrent
+four-client native trace, independently reviewed metadata correction and fresh98/98
+source gate complete RM-402. The original cooperative active-statement contract,
+conservative effects/fresh authority/original budget and unknown COMMIT refusal
+remain unchanged. Native40001 injection is not spontaneous SSI; private create
+composition is not public create/provider replay. Native hard lifetime work remains
+RM-403. See [history](implementation-history.md#2026-10-06--rm-402-bounded-retry-implementation-and-native-conformance)
+for evidence and timing; this closes neither the formal golden nor release gate.

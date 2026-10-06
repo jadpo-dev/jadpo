@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-403-ad5cac8d7681", "task_id": "RM-403", "actor": "scheduler-recovery-native-lifetime-next-plan", "actor_kind": "agent", "category": "subsystem", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T21:10:01.834842+00:00", "phase": "planning"}
+{"at": "2026-10-06T21:13:44.083265+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-native-lifetime-grounding/recovery-native-phase-next-plan/plan.json"}

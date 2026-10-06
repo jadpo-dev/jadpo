@@ -355,7 +355,7 @@ pub fn analyze_entity_model(files: &[ParsedSyntax]) -> EntityModel {
                     postgres_isolation: "read_committed",
                     postgres_concurrency: "row_lock_or_checked_revision",
                     sqlite_isolation: "immediate_serialized",
-                    retry: "explicit_idempotent_only",
+                    retry: "compiler_guarded_bounded_default",
                 });
             }
         }

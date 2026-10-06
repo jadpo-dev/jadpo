@@ -35,6 +35,40 @@ or independent assurance gates are complete.
 | WASM-EXP1 and bounded follow-ups | Compilation-route, value/row transport and local host experiments; no default-target promotion | [Experiment results](wasm-experiment-results.md), [guest scans](wasm-guest-scans-results.md) |
 | Native/shared Rust and capability monitors | Bounded conformance, independent authority and single-pass monitor prototypes, with explicit trust/performance limits | [Shared Rust](shared-rust-conformance-results.md), [capability host](capability-host-results.md), [monitor](capability-monitor-results.md) |
 
+## 2026-10-06 — RM-402 bounded retry implementation and native conformance
+
+**Completed task:** RM-402
+
+The accepted bounded-default retry implementation is complete on the supported
+Bun SQLite/PostgreSQL profile. The [full closeout](../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/closure.json)
+reconciles twelve substantive requirements and preserves all17 frozen failure
+cases/27 backend entries. Compiler admission retains conservative transitive
+effect exclusions, fresh current user authority, one original attempt/time budget,
+outermost transaction ownership, acknowledged rollback before replay, and unknown
+COMMIT refusal. Native evidence covers source/change/outbox conservation, nested
+rollback, cancellation and four genuinely overlapping client processes with
+independent seeded bounded jitter.
+
+The [different-author reconciliation](../tests/validation/evidence/rm402-protected-retry-admission-plan/full-contract-exit/after-many-client/parent-full-contract-review.json)
+and [many-client review](../tests/validation/evidence/rm402-protected-retry-admission-plan/exit-matrix/many-client-contention-independent-review/review.json)
+qualify the runtime controls. The [audit correction review](../tests/validation/evidence/rm402-protected-retry-admission-plan/full-contract-exit/retry-audit-correction-native/independent-review/review.json)
+proves truthful global metadata, unchanged runtime bytes and coherent fresh-source
+forgery refusal. The [fresh98/98 gate](../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/report.json)
+verifies current source and all88 supporting HTTP results; its673 maintained pins,
+73 actual compiler inputs and186 safe raw members are retained.
+
+PostgreSQL40001 contention faults are native server fixture injections, not
+spontaneous SSI or fairness proof. Active statement deadlines remain cooperative;
+SQLite evidence does not establish synchronous preemption. Private fixed-input
+create composition grants no public create/provider replay or provider exactly-once.
+Native lifetime work remains RM-403; whole golden and protected release gates stay
+open. Earlier rejected closure drafts and failed gates remain unchanged.
+
+Timing: original1–4h estimate retained. Current closeout
+`RM-402-a0d6d3b5bcaa` and integration `META-GOLDEN-INTEGRATION-f6e091946a99`
+link the separately measured component reviews and preserved partial runs; partial
+session outcomes have not been rewritten as completions.
+
 ## 2026-10-06 — RM-307 native scheduling and worker recovery
 
 **Completed task:** RM-307

@@ -1536,11 +1536,12 @@ function componentOptions(components: Record<string, string>): Intl.DateTimeForm
   };
   const output: Record<string, string> = {};
   const mapping: Record<string, string> = { zone_name: "timeZoneName", hour_cycle: "hourCycle" };
+  const componentValues: Record<string, string> = { two_digit: "2-digit", long_offset: "longOffset", short_offset: "shortOffset", long_generic: "longGeneric", short_generic: "shortGeneric" };
   const entries = Object.entries(components);
   if (entries.length === 0) invalid("temporal.format.components", "at least one component");
   for (const [key, value] of entries) {
     if (allowed[key] === undefined || typeof value !== "string" || !allowed[key].includes(value)) invalid(`temporal.format.components.${key}`, allowed[key]?.join(" | ") ?? "known component");
-    output[mapping[key] ?? key] = value === "two_digit" ? "2-digit" : value.replaceAll("_", "-");
+    output[mapping[key] ?? key] = componentValues[value] ?? value;
   }
   return output as Intl.DateTimeFormatOptions;
 }
@@ -1567,6 +1568,7 @@ function friendly(value: Time, options: { relative_to: Instant; locale: Locale; 
   if (Math.abs(difference) < 60_000) {
     const language = locale.toLowerCase().split("-")[0];
     if (language === "en") return (difference <= 0 ? "just now" : "in under a minute") as PresentationText;
+    if (language === "fr" && difference > 0) return "dans moins d’une minute" as PresentationText;
     return (difference <= 0 ? naturalRelativeFormatter.format(0, "second") : relativeFormatter.format(1, "minute")) as PresentationText;
   }
   if (Math.abs(difference) < 3_600_000) return relativeFormatter.format(Math.ceil(difference / 60_000), "minute") as PresentationText;

@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-504-b668361ab943", "task_id": "RM-504", "actor": "scheduler-recovery-projection-probe-review", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T21:01:18.316682+00:00", "phase": "planning"}
+{"at": "2026-10-06T21:01:50.746996+00:00", "phase": "verification", "note": "Immutable dada560/cd9 packet captured,444 author files rehashed; own native both-adapter replay preserves required strict data classification failure."}
+{"at": "2026-10-06T21:03:42.757004+00:00", "phase": "review", "note": "Own native findings and causal controls verified, preserving intentional strict red and exact baseline compiler epoch; no product changes."}
+{"at": "2026-10-06T21:04:31.598955+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm504-page-projection-containment/independent-review/review.json"}

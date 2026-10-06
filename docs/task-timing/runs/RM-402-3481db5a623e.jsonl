@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-402-3481db5a623e", "task_id": "RM-402", "actor": "root-final-contract-reconciliation", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T20:43:31.322371+00:00", "phase": "planning"}
+{"at": "2026-10-06T20:44:15.395943+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm402-protected-retry-admission-plan/full-contract-exit/after-many-client/parent-full-contract-review.json"}

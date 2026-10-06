@@ -1143,3 +1143,17 @@ The [required query-page range review](../tests/validation/evidence/rm504-indepe
 ### RM-504 current stored and HOST checkpoint — 2026-10-06
 
 The [private Duration correction review](../tests/validation/evidence/rm504-duration-storage-fallback/independent-review/review.json) and [current96-check gate](../tests/validation/evidence/rm402-startup-duration-contention-reviewed-fusion/report.json) now refuse stored SQLite ISO Duration TEXT as contained data faults while preserving valid integer/canonical PostgreSQL representations and public ISOwire input. Original counterexamples remain archived. The [HOST independent review](../tests/validation/evidence/rm504-host-time-claim-matrix/native-execution/independent-review/review.json) passes original9/49 and bounded6/200 with five causal controls, but reproduces French future sub-minute wording and four accepted zone-name mapping failures. [Assessed follow-on plans](../tests/validation/evidence/rm504-host-time-claim-matrix/follow-on-plans/parent-plan-assessment.json) authorize narrow fixes and an existing CalendarDate projection native probe. These five diagnostic reds are separate from the96 gate. PGafter-ready microsecond narrowing, broader temporal decoding and unreported Intl runtime rulebytes remain unqualified.
+
+### HOST fixes and page projection containment — 2026-10-06
+
+The [HOST product review](../tests/validation/evidence/rm504-host-time-claim-matrix/product-fix-independent-review/review.json)
+and [current98 gate](../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/report.json)
+qualify the declared Intl component-option mapping and Frenchfuture subminute
+wording. Existing Duration/zone/threshold behavior is retained; effective locale
+variation was inconclusive and exact runtimeICU/timezone rule bytes remain unqualified.
+The [independent page probe](../tests/validation/evidence/rm504-page-projection-containment/independent-review/review.json)
+reproduces admitted impossible CalendarDate projections on both adapters returning
+safe500 with an uncontained ValidationError. The [assessed narrow fix](../tests/validation/evidence/rm504-page-projection-containment/follow-on-plan/parent-plan-assessment.json)
+is in different-author review, preserving original authored evaluation order and
+native storage faults outside the new data-decode catch. It is not selected in98;
+cursor/join/aggregate/other temporal corruption and PGprecision claims remain separate.

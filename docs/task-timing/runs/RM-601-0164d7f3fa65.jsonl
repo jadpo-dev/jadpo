@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-601-0164d7f3fa65", "task_id": "RM-601", "actor": "root-implicit-emission-plan", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T20:41:21.685110+00:00", "phase": "planning"}
+{"at": "2026-10-06T20:43:12.596973+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm601-implicit-delivery-emission-plan/plan.json"}

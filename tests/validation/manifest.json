@@ -60,6 +60,7 @@
   ],
   "runtime_suites": [
     "tests/runtime/approval-admission-candidate.test.ts",
+    "tests/runtime/approval-finite-witness.test.ts",
     "tests/runtime/authentication-selector.test.ts",
     "tests/runtime/configuration-preflight.test.ts",
     "tests/runtime/delivery-completion-representation.test.ts",
@@ -95,8 +96,12 @@
     "tests/runtime/service-authentication.test.ts",
     "tests/runtime/service-fakes.test.ts",
     "tests/runtime/startup-ownership.test.ts",
+    "tests/runtime/temporal-day-page.test.ts",
+    "tests/runtime/temporal-host-accepted-contract.test.ts",
+    "tests/runtime/temporal-host-contract.test.ts",
     "tests/runtime/temporal-roundtrip.test.ts",
     "tests/runtime/temporal-schema-gate.test.ts",
+    "tests/runtime/temporal-stored-corruption.test.ts",
     "tests/runtime/temporal.test.ts",
     "tests/runtime/validation-artifact-contracts.test.ts",
     "tests/runtime/validation-artifact-nullability.test.ts",
@@ -104,10 +109,7 @@
     "tests/runtime/validation-config-time.test.ts",
     "tests/runtime/validation-fixtures-migrations.test.ts",
     "tests/runtime/validation-persistence.test.ts",
-    "tests/runtime/validation-unicode-length.test.ts",
-    "tests/runtime/temporal-day-page.test.ts",
-    "tests/runtime/approval-finite-witness.test.ts",
-    "tests/runtime/temporal-stored-corruption.test.ts"
+    "tests/runtime/validation-unicode-length.test.ts"
   ],
   "postgres_suites": {
     "tests/runtime/persistence-postgres.test.ts": "persistence",

@@ -1,0 +1,5 @@
+{"schema_version": 1, "run_id": "RM-403-7e8226041f0e", "task_id": "RM-403", "actor": "root-ordinary-probe-native-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 1.5], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T20:59:01.233610+00:00", "phase": "planning"}
+{"at": "2026-10-06T21:05:19.007280+00:00", "phase": "verification", "note": "207 archive and top files verified; 73 archived actual compiler inputs equal Git506 after correcting archive-relative jadpo prefix; own fresh native24-file application byte parity. Running own original transport controls."}
+{"at": "2026-10-06T21:05:56.528834+00:00", "phase": "paused", "note": "Own six native controls running; switching to separate page containment plan assessment."}
+{"at": "2026-10-06T21:06:30.839995+00:00", "phase": "verification", "note": "Separate assessed page plan recorded; return to ordinary native controls."}
+{"at": "2026-10-06T21:08:40.014663+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-native-lifetime-grounding/ordinary-probe-native-controls/independent-review/review.json"}

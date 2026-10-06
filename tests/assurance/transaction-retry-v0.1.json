@@ -132,6 +132,7 @@
       "implementation_limit": "Bun 1.2.20 PostgreSQL cancellation did not interrupt a live query; SQLite calls are synchronous"
     }
   ],
-  "status": "RM-402-partial-active-call-interruption-request-deadline-provider-effect-semantics-and-independent-review-open",
-  "review": "tests/validation/rm401-rm207-independent-contract-review.json"
+  "status": "RM-402-complete-supported-Bun-cooperative-contract-SQLite-and-PostgreSQL",
+  "review": "tests/validation/rm401-rm207-independent-contract-review.json",
+  "implementation_review": "tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/closure.json"
 }

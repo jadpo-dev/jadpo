@@ -500,3 +500,16 @@ startup/deployment validation merely to make a deployment pass.
 ### RM-403 current native phase checkpoint — 2026-10-06
 
 The [independent initial phase review](../tests/validation/evidence/rm403-native-lifetime-grounding/initial-native-phase-controls/independent-review/review.json) and [current96-check gate](../tests/validation/evidence/rm402-startup-duration-contention-reviewed-fusion/report.json) integrate held native BEGIN/setup outcomes under original10s ownership, actual cleanup, healthy controls and causal refusals. The [assessed ordinary probe plan](../tests/validation/evidence/rm403-native-lifetime-grounding/ordinary-probe-phase-plan/independent-plan-assessment.json) is executing separately; native acknowledgement/client settlement/recovery and serving hard lifetimes remain open.
+
+### Ordinary native readiness probe review — 2026-10-06
+
+The [different-author native review](../tests/validation/evidence/rm403-native-lifetime-grounding/ordinary-probe-native-controls/independent-review/review.json)
+and [current98 gate](../tests/validation/evidence/rm402-audit-host-ordinary-reviewed-fusion/report.json)
+qualify actual Bun main/PostgreSQL result transport:32 callers receive bounded503,
+128 later joiners start no additional SQL, and releasing the original native ACK
+requires fresh initialization before readiness200. Backend SELECT1 completion is
+observed before its result is withheld. Keep-held cleanup is manual normalSIGTERM,
+not automatic native termination; observed zero CancelRequest proves no universal
+cancel behavior. The [assessed recovery phase plan](../tests/validation/evidence/rm403-native-lifetime-grounding/recovery-native-phase-next-plan/parent-plan-assessment.json)
+separately covers post-start BEGIN/setup qualification. Automatic native lifetimes,
+serving synchronousSQLite and the unresolved production binding remain open.
