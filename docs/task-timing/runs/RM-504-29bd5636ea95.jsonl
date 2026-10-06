@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-504-29bd5636ea95", "task_id": "RM-504", "actor": "startup_owner_review", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T18:21:20.256369+00:00", "phase": "planning"}
+{"at": "2026-10-06T18:26:48.144039+00:00", "phase": "verification", "note": "Actual catalog/native schema matrix and original failures retained; narrow source emitter unchanged while fixture cleanup controls strengthened"}
+{"at": "2026-10-06T18:34:47.203199+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm504-temporal-schema-gate/report.json"}
