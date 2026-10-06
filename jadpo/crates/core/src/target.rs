@@ -3574,7 +3574,7 @@ export const temporal = Object.freeze({
             &mut output,
             "async function initializePersistenceOnce(publish = true, setCancel?: (cancel: () => void) => void): Promise<boolean> {",
         );
-        line(&mut output, "const initialization = createInitializationControl(setCancel);");
+        line(&mut output, "const initialization = createInitializationControl(setCancel); const startupDeadlineAt = performance.now() + 10_000;");
         line(&mut output, "try {");
         line(
             &mut output,
@@ -3588,8 +3588,9 @@ export const temporal = Object.freeze({
             &mut output,
             "  if (sqlite !== null) persistenceSync(\"database.foreign_keys\", () => sqlite!.exec(\"PRAGMA foreign_keys = ON\"));",
         );
+        line(&mut output, "  const initializeSchema = async (schemaPostgres: SQL | null) => {");
         if self.has_derived_representations() {
-            line(&mut output, "  if (postgres !== null) await persistenceAsync(\"schema.change_log\", () => initialization.execute(postgres!`CREATE TABLE IF NOT EXISTS \"__jadpo_changes\" (\"change_id\" TEXT PRIMARY KEY, \"entity\" TEXT NOT NULL, \"entity_id\" TEXT NOT NULL, \"revision\" BIGINT NOT NULL, \"operation\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"created_at\" TIMESTAMPTZ NOT NULL, UNIQUE (\"entity\", \"entity_id\", \"revision\"))`));");
+            line(&mut output, "  if (schemaPostgres !== null) await persistenceAsync(\"schema.change_log\", () => initialization.execute(schemaPostgres!`CREATE TABLE IF NOT EXISTS \"__jadpo_changes\" (\"change_id\" TEXT PRIMARY KEY, \"entity\" TEXT NOT NULL, \"entity_id\" TEXT NOT NULL, \"revision\" BIGINT NOT NULL, \"operation\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"created_at\" TIMESTAMPTZ NOT NULL, UNIQUE (\"entity\", \"entity_id\", \"revision\"))`));");
             line(&mut output, "  else persistenceSync(\"schema.change_log\", () => sqlite!.exec('CREATE TABLE IF NOT EXISTS \"__jadpo_changes\" (\"change_id\" TEXT PRIMARY KEY, \"entity\" TEXT NOT NULL, \"entity_id\" TEXT NOT NULL, \"revision\" INTEGER NOT NULL, \"operation\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"created_at\" TEXT NOT NULL, UNIQUE (\"entity\", \"entity_id\", \"revision\"))'));");
         }
         for (name, entity) in self.schema_entities() {
@@ -3599,7 +3600,7 @@ export const temporal = Object.freeze({
             line(
                 &mut output,
                 &format!(
-                    "  if (postgres !== null) await persistenceAsync(\"schema.{name}\", () => initialization.execute(postgres!`CREATE TABLE IF NOT EXISTS {table} ({postgres_columns})`));"
+                    "  if (schemaPostgres !== null) await persistenceAsync(\"schema.{name}\", () => initialization.execute(schemaPostgres!`CREATE TABLE IF NOT EXISTS {table} ({postgres_columns})`));"
                 ),
             );
             line(
@@ -3615,7 +3616,7 @@ export const temporal = Object.freeze({
                 line(
                     &mut output,
                     &format!(
-                        "  if (postgres !== null) await persistenceAsync(\"schema.{name}.index\", () => initialization.execute(postgres!`{statement}`));"
+                        "  if (schemaPostgres !== null) await persistenceAsync(\"schema.{name}.index\", () => initialization.execute(schemaPostgres!`{statement}`));"
                     ),
                 );
                 line(
@@ -3628,17 +3629,19 @@ export const temporal = Object.freeze({
             }
         }
         if self.first_party_supported() {
-            line(&mut output, "  await initializeAuthenticationStorage(initialization);");
+            line(&mut output, "  await initializeAuthenticationStorage(initialization, schemaPostgres);");
         }
+        line(&mut output, "  }; if (publish && postgres !== null) { await persistenceAsync(\"schema.transaction\", () => postgres!.begin(async tx => { initialization.setBudget(tx as SQL, startupDeadlineAt); await initialization.execute(tx.unsafe(\"SELECT pg_advisory_xact_lock(hashtextextended('jadpo:native-schema-initialization:v1', 0))\")); await initializeSchema(tx as SQL); initialization.check(); })); initialization.check(); } else await initializeSchema(postgres);");
         line(&mut output, "  if (publish) { persistenceReady = true; persistenceProbeNeeded = false; persistenceDependencyUnavailableReported = false; persistenceStartupFaultReported = false; persistenceInitializationFatal = false; } return true;");
         line(&mut output, "} catch (error) {");
         line(&mut output, "  persistenceReady = false;");
+        line(&mut output, "  if (publish && initialization.expired) { persistenceInitializationFatal = true; if (!persistenceStartupFaultReported) { reportPersistenceStartupFault(error); persistenceStartupFaultReported = true; } return false; }");
         line(&mut output, "  if (initialization.cancelled && (error === initialization.reason || (error instanceof PersistenceFault && error.cause === initialization.reason) || (!(error instanceof PersistenceFault && error.kind === \"unknown\") && persistenceErrorCodes(error).includes(\"57014\")))) return false;");
         line(&mut output, "  const initializationContended = persistenceErrorCodes(error).some(code => code === \"SQLITE_BUSY\" || code.startsWith(\"SQLITE_BUSY_\") || code === \"SQLITE_LOCKED\" || code.startsWith(\"SQLITE_LOCKED_\"));");
         line(&mut output, "  if (isPersistenceAvailabilityFailure(error) || initializationContended) { if (!persistenceDependencyUnavailableReported) { reportPersistenceDependencyUnavailable(error); persistenceDependencyUnavailableReported = true; } }");
         line(&mut output, "  else { persistenceInitializationFatal = true; if (!persistenceStartupFaultReported) { reportPersistenceStartupFault(error); persistenceStartupFaultReported = true; } }");
         line(&mut output, "  return false;");
-        line(&mut output, "}");
+        line(&mut output, "} finally { initialization.dispose(); }");
         line(&mut output, "}");
         line(&mut output, "");
         if self.has_derived_representations() {

@@ -368,6 +368,92 @@ Mail remains advisory/unprobed and startup configuration/schema validation still
 precedes listener binding. These limits and the remaining golden P6/platform
 gates are not closed by the response-controller slice.
 
+**Native separation and aggregate cancellation continuation, 2026-10-06:**
+The [independent deployment-readiness review](../tests/validation/rm403-independent-deployment-readiness-review.json)
+approves explicit compiler-native loopback deployment listeners, application
+readiness-alias refusal, preserved authored health/liveness, and actual SQLite
+and PostgreSQL outage/recovery. The listener starts only with an explicit native
+port; no authored route gains deployment details. Exact CONFIG-003 collector
+verification remains separate from this mechanism review.
+
+The [independent aggregate-recovery review](../tests/validation/rm403-independent-recovery-cancellation-review.json)
+approves the compiler-private cancellation latch across PostgreSQL schema, index
+and authentication-storage stages. The existing one-second readiness response
+expiry cancels the current query on a best-effort basis, refuses later
+statements and late publication, and retains one native owner until actual
+settlement. Genuine late schema errors remain fatal. Independent SQLite21/944,
+PostgreSQL25/4971 and12 additional emitted-module controls pass. Actual held
+PostgreSQL DDL remains blocked after advisory cancellation and128 requests;
+actual lock release cannot publish that late candidate, and a fresh eligible
+recovery succeeds. The original failed hard-settlement expectation is retained.
+
+This advances recovery correctness without establishing an initial startup,
+synchronous SQLite or hard native lifetime bound.
+[Actual native lifetime grounding](../tests/validation/evidence/rm403-native-lifetime-grounding/manifest.json)
+shows PostgreSQL startup schema work blocked beyond three seconds despite its
+connection timeout. The pending required database-binding successor, remaining
+native/platform gates and final golden acceptance stay open.
+
+### RM-403 initial PostgreSQL schema budget slice — 2026-10-06
+
+**Plan and isolated candidate; independent implementation review required.**
+Select a ten-second aggregate initial schema/authentication initialization
+budget as a routine implementation policy. CONFIG-D10/P5 do not reserve this
+numeric choice to the human owner. The existing one-second readiness response
+budget stays separate. The [grounded options and healthy native comparison](../tests/validation/evidence/rm403-native-lifetime-grounding/structural-options.json)
+retain the prior permission inference as withdrawn and measure six local
+fresh/retained-schema starts at 76–143 ms; these are comparison measurements,
+not production calibration or hard lifetime qualification.
+
+The bounded first slice uses PostgreSQL's actual `SQL.begin` transaction owner
+for all initial entity/index/authentication DDL and authentication-schema
+validation. Pass that transaction client explicitly; never swap the global
+pool/storage owner. Before each statement, set transaction-local statement and
+lock timeouts from the remaining original monotonic budget, captured before
+driver open/acquisition. Refreshing a statement limit cannot reset the aggregate
+clock. `SQL.begin` can wait for pool acquisition before its callback, and no
+`SQL.before` hook is assumed to bound that earlier wait. Server limits are
+installed on the actual transaction client inside the callback. Check the same
+limit after native completion and before candidate
+publication; retain the native owner through transaction/rollback settlement.
+Timeout settings must reset with transaction completion and must not leak to
+ordinary pool requests. Recovery continues to use its existing single-flight,
+advisory cancellation and late-publication fences.
+
+Fatal configuration/schema validation still completes before the public
+application listener binds. Initial schema-budget expiry is a failed startup;
+it must not expose early application liveness or publish ready while fatal
+validation remains unresolved. Genuine late schema failures and unknown native
+outcomes retain their classifications. The candidate does not move schema work
+outside its database owner, admit authored callbacks, or change credential/time
+semantics. Concurrent native startup must retain coherent schema ownership;
+actual separate-process controls must check catalogue races and transaction
+rollback before this slice is qualified. A reproduced two-process fresh
+bootstrap failed with native 23505 at `pg_type_typname_nsp_index`; the candidate
+therefore admits initial bootstrap through one database-scoped transaction
+advisory guard under the same remaining server/monotonic budget. Its ownership
+ends with transaction settlement; it is not a session lock, a new global
+request timeout, or a broader recovery-transaction change.
+
+Required evidence includes actual held-DDL expiry without releasing the fixture
+lock, two sequential native lock waits under one cumulative budget, server
+initializer disappearance, no committed partial index, no public binds, healthy
+fresh/retained schema, fatal malformed schema and timeout-setting isolation.
+Maintain the existing cancelled/throwing-cancel/unknown 57014 and late-fatal
+recovery controls. The [slice plan and retained results](../tests/validation/evidence/rm403-postgres-startup-budget/plan.json)
+are bound to the isolated candidate, not a claim of integration or RM-403
+completion.
+
+This initial-only PostgreSQL slice does **not** establish prompt native pool
+acquisition or `SQL.begin` settlement: an overdue acquisition is refused when
+its callback arrives, and its ownership remains until actual settlement. The
+timeout-setup query and COMMIT/acknowledgement transport also need their own
+native lifetime qualification. SQLite constructor/query/recovery work remains
+synchronous; a whole-startup or whole-runtime hard lifetime requires isolated
+owned execution with termination acknowledgement, rather than another response
+race. Fatal-before-bind and those remaining limits apply to both Bun and Node
+application listener paths; no platform/cloud qualification is inferred.
+
 ## 7. Required evidence
 
 | Area | Required positive and adversarial evidence |

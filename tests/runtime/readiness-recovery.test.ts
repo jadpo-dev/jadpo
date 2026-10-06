@@ -772,6 +772,7 @@ describe("actual emitted aggregate initialization cancellation", () => {
         const timers = new Map<number, () => void>(); let sequence = 0;
         const sql = ((parts: TemplateStringsArray) => query(parts.join("?"))) as any;
         sql.unsafe = (statement: string) => query(statement);
+        sql.begin = async (work: (tx: unknown) => Promise<unknown>) => work(sql);
         const chosen = fixture.includes("first-party") ? 'CREATE TABLE IF NOT EXISTS "__jadpo_auth_sessions"' : 'CREATE INDEX IF NOT EXISTS "account_owner_email_idx"';
         const executed: string[] = [];
         function query(statement: string) {
@@ -826,7 +827,112 @@ describe("actual emitted aggregate initialization cancellation", () => {
   }
 });
 
+for(const adapter of ["sqlite",...(Bun.env.JADPO_READINESS_TEST_DATABASE_URL ? ["postgres"] : [])]) {
+  test(`native ${adapter} malformed authentication schema remains fatal before public bind`, async () => {
+    const reserve = () => {const server=Bun.serve({hostname:"127.0.0.1",port:0,fetch:()=>new Response()});const port=server.port;server.stop(true);return port;};
+    const port=reserve(),deploymentPort=reserveDeploymentPort(port),database="jadpo_startup_fatal_"+crypto.randomUUID().replaceAll("-","");
+    const path=join(root,database+".sqlite");
+    const url=adapter === "postgres" ? new URL(Bun.env.JADPO_READINESS_TEST_DATABASE_URL!) : null;
+    const control=url ? new SQL({url:url.href,prepare:false}) : null;
+    let probe:SQL|null=null,child:ReturnType<typeof Bun.spawn>|null=null;
+    try {
+      if(control&&url){await control.unsafe(`CREATE DATABASE "${database}"`);url.pathname="/"+database;probe=new SQL({url:url.href,prepare:false});await probe.unsafe('CREATE TABLE "__jadpo_auth_sessions" ("id" TEXT PRIMARY KEY)');}
+      else {const sqlite=new Database(path,{create:true});sqlite.exec('CREATE TABLE "__jadpo_auth_sessions" ("id" TEXT PRIMARY KEY)');sqlite.close();}
+      const secret=Buffer.alloc(32,7).toString("base64url");
+      child=Bun.spawn([process.execPath,"--no-install","--env-file=/dev/null",generatedAuthApplication],{env:{PATH:Bun.env.PATH!,AUTH_SIGNING_KEY:secret,AUTH_PREVIOUS_SIGNING_KEY:Buffer.alloc(32,8).toString("base64url"),BROWSER_ORIGIN:"https://example.test",PORT:String(port),JADPO_DEPLOYMENT_PORT:String(deploymentPort),...(url?{DATABASE_URL:url.href}:{SQLITE_PATH:path})},stdout:"pipe",stderr:"pipe"});
+      const exit=await Promise.race([child.exited,Bun.sleep(3_000).then(()=>null)]);
+      expect(exit).toBe(1);const stderr=await new Response(child.stderr).text(),stdout=await new Response(child.stdout).text();child=null;
+      expect(stderr).toContain("RUNTIME_STARTUP_FAILED");expect(stderr).not.toContain(secret);expect(stdout).not.toContain("runtime.ready");expect(stdout).not.toContain("runtime.live");
+      for(const [listener,pathname] of [[port,"/health/live"],[deploymentPort,"/health/ready"]] as const) await expect(fetch(`http://127.0.0.1:${listener}${pathname}`,{signal:AbortSignal.timeout(100)})).rejects.toBeDefined();
+      if(probe)expect((await probe.unsafe("SELECT to_regclass('public.user') AS entity"))[0].entity).toBeNull();
+    } finally {if(child){child.kill("SIGKILL");await child.exited;}await probe?.close();if(control){await control.unsafe(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(()=>{});await control.close();}}
+  });
+}
+
 if (Bun.env.JADPO_READINESS_TEST_DATABASE_URL) {
+  test("two native PostgreSQL startups share a fresh schema without a catalogue race", async () => {
+    const control=new SQL({url:Bun.env.JADPO_READINESS_TEST_DATABASE_URL!,prepare:false});
+    const database="jadpo_startup_"+crypto.randomUUID().replaceAll("-","");
+    const url=new URL(Bun.env.JADPO_READINESS_TEST_DATABASE_URL!);url.pathname="/"+database;
+    const children:ReturnType<typeof Bun.spawn>[]=[],ports:number[]=[];
+    const reserve = () => {const server=Bun.serve({hostname:"127.0.0.1",port:0,fetch:()=>new Response()});const port=server.port;server.stop(true);return port;};
+    try {
+      await control.unsafe(`CREATE DATABASE "${database}"`);
+      for(let i=0;i<2;i++) {
+        const port=reserve(),deploymentPort=reserveDeploymentPort(port);ports.push(deploymentPort);
+        children.push(Bun.spawn([process.execPath,"--no-install","--env-file=/dev/null",generatedApplication],{env:{PATH:Bun.env.PATH!,DATABASE_URL:url.href,PORT:String(port),JADPO_DEPLOYMENT_PORT:String(deploymentPort),JADPO_DEBUG_TARGET_STACKS:Bun.env.JADPO_STARTUP_RACE_DEBUG === "1" ? "1" : "0"},stdout:"pipe",stderr:"pipe"}));
+      }
+      const started=performance.now();let ready:number[]=Array(2).fill(0);
+      while(performance.now()-started<5_000 && ready.some(status=>status!==200) && children.every(child=>child.exitCode===null)) {
+        ready=await Promise.all(ports.map(async port=>{try{return(await fetch(`http://127.0.0.1:${port}/health/ready`,{signal:AbortSignal.timeout(100)})).status;}catch{return 0;}}));await Bun.sleep(10);
+      }
+      for(const child of children) {if(child.exitCode===null)child.kill("SIGTERM");await child.exited;}
+      const logs=await Promise.all(children.map(child=>new Response(child.stderr).text()));
+      console.log(JSON.stringify({case:"native_concurrent_initial_schema",ready,exitCodes:children.map(child=>child.exitCode),startupFailures:logs.map(log=>log.includes("RUNTIME_STARTUP_FAILED")),nativeCodes:logs.map(log=>["23505","42P07","42710","42P01"].filter(code=>log.includes(code))),pgTypeUnique:logs.some(log=>log.includes("pg_type_typname_nsp_index"))}));
+      expect(ready).toEqual([200,200]);expect(logs.every(log=>!log.includes("RUNTIME_STARTUP_FAILED"))).toBe(true);
+    } finally {for(const child of children)if(child.exitCode===null){child.kill("SIGKILL");await child.exited;}await control.unsafe(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(()=>{});await control.close();}
+  },10_000);
+
+  test("initial PostgreSQL budget settings stay within the actual schema transaction", async () => {
+    const source = readFileSync(join(dirname(generatedApplication), "persistence.ts"), "utf8")
+      .replace(/^import .+;\n/gm, "").replace(/\bexport /gu, "")
+      .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(join(dirname(generatedApplication), "persistence.ts")).href));
+    const javascript = new Bun.Transpiler({loader:"ts"}).transformSync(source) + '\nreturn {connection: postgres, ready: persistenceReady, fatal: persistenceInitializationFatal};';
+    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+    const emitted = await new AsyncFunction("SQL", "Database", "Bun", javascript)(SQL,Database,{env:{DATABASE_URL:Bun.env.JADPO_READINESS_TEST_DATABASE_URL!}});
+    try {
+      expect(emitted.ready).toBe(true);expect(emitted.fatal).toBe(false);
+      const connection=await emitted.connection.reserve();
+      try {
+        const settings=await connection.unsafe("SELECT current_setting('statement_timeout') AS statement_timeout,current_setting('lock_timeout') AS lock_timeout");
+        expect(settings[0]).toMatchObject({statement_timeout:"0",lock_timeout:"0"});
+      } finally {connection.release();}
+    } finally {await emitted.connection.close();}
+  });
+
+  for(const variant of ["held","cumulative","admission"] as const) test(`initial PostgreSQL ${variant} schema budget ends actual DDL before public listeners bind`, async () => {
+    const cumulative=variant === "cumulative",admission=variant === "admission";
+    const databaseUrl = Bun.env.JADPO_READINESS_TEST_DATABASE_URL!;
+    const control = new SQL({url:databaseUrl,prepare:false,max:3});
+    let locker:any=null,secondLocker:any=null,child:ReturnType<typeof Bun.spawn>|null=null;
+    const reserve = () => {const server=Bun.serve({hostname:"127.0.0.1",port:0,fetch:()=>new Response()});const port=server.port;server.stop(true);return port;};
+    const port=reserve(),deploymentPort=reserveDeploymentPort(port);
+    const reachable = async (listener:number,path:string) => {try{return(await fetch(`http://127.0.0.1:${listener}${path}`,{signal:AbortSignal.timeout(100)})).status;}catch{return null;}};
+    try {
+      await control.unsafe('CREATE TABLE IF NOT EXISTS "account" ("id" TEXT NOT NULL PRIMARY KEY, "handle" TEXT NOT NULL UNIQUE, "tenant" TEXT NOT NULL, "owner_email" TEXT NOT NULL, UNIQUE("tenant","owner_email"))');
+      await control.unsafe('DROP INDEX IF EXISTS "account_owner_email_idx"');
+      locker=await control.reserve();await locker.unsafe("BEGIN");
+      if(admission)await locker.unsafe("SELECT pg_advisory_xact_lock(hashtextextended('jadpo:native-schema-initialization:v1',0))");
+      else await locker.unsafe('LOCK TABLE "account" IN ACCESS EXCLUSIVE MODE');
+      if(cumulative) {
+        await control.unsafe('DROP INDEX IF EXISTS "user_group_idx"');
+        secondLocker=await control.reserve();await secondLocker.unsafe("BEGIN");await secondLocker.unsafe('LOCK TABLE "user" IN ACCESS EXCLUSIVE MODE');
+      }
+      const started=performance.now();
+      child=Bun.spawn([process.execPath,"--no-install","--env-file=/dev/null",generatedApplication],{env:{PATH:Bun.env.PATH!,DATABASE_URL:databaseUrl,PORT:String(port),JADPO_DEPLOYMENT_PORT:String(deploymentPort)},stdout:"pipe",stderr:"pipe"});
+      let backend:number|null=null,everBound=false,secondWait=false;
+      while(performance.now()-started<14_000 && child.exitCode===null) {
+        if(cumulative && locker && performance.now()-started>=5_000) {await locker.unsafe("ROLLBACK");locker.release();locker=null;}
+        const waiting=await control.unsafe("SELECT pid, query FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND (query LIKE '%account_owner_email_idx%' OR query LIKE '%user_group_idx%' OR query LIKE '%jadpo:native-schema-initialization:v1%')");
+        if(waiting.length===1) {backend=Number(waiting[0].pid);secondWait ||= String(waiting[0].query).includes('user_group_idx');}
+        everBound ||= (await reachable(port,"/health/live"))!==null || (await reachable(deploymentPort,"/health/ready"))!==null;
+        await Bun.sleep(50);
+      }
+      expect(backend).not.toBeNull();expect(child.exitCode).not.toBeNull();if(cumulative)expect(secondWait).toBe(true);
+      const elapsed=performance.now()-started;
+      expect(await child.exited).toBe(1);expect(elapsed).toBeGreaterThan(9_500);expect(elapsed).toBeLessThan(13_000);expect(everBound).toBe(false);
+      const stderr=await new Response(child.stderr).text();child=null;
+      expect(stderr).toContain("RUNTIME_STARTUP_FAILED");expect(stderr).not.toContain(databaseUrl);
+      expect(await control.unsafe("SELECT pid FROM pg_stat_activity WHERE pid=$1",[backend])).toHaveLength(0);
+      // The blocker remains held: the initializer ended without fixture release.
+      expect(await control.unsafe("SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname='account_owner_email_idx'")).toHaveLength(0);
+      if(cumulative)expect(await control.unsafe("SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname='user_group_idx'")).toHaveLength(0);
+      if(locker){await locker.unsafe("ROLLBACK");locker.release();locker=null;}
+      if(secondLocker){await secondLocker.unsafe("ROLLBACK");secondLocker.release();secondLocker=null;}
+      console.log(JSON.stringify({case:"actual_postgres_startup_schema_budget",variant,cumulative,secondWait,elapsedMs:Math.round(elapsed),applicationBound:everBound,nativeInitializerRemaining:0,indexCommitted:false}));
+    } finally {if(child){child.kill("SIGKILL");await child.exited;}if(locker){await locker.unsafe("ROLLBACK").catch(()=>{});locker.release();}if(secondLocker){await secondLocker.unsafe("ROLLBACK").catch(()=>{});secondLocker.release();}await control.close();}
+  },20_000);
+
   test("actual generated PostgreSQL recovery retains a held native DDL lifetime after advisory cancellation", async () => {
     const databaseUrl = Bun.env.JADPO_READINESS_TEST_DATABASE_URL!;
     const control = new SQL({ url: databaseUrl, prepare: false, max: 2 });
