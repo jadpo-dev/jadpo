@@ -43,6 +43,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id in ('CONFIG-001', 'CONFIG-002'): return self.preflight_raw(case_id)
+        if case_id == 'CONFIG-003': return self.readiness_raw()
         if case_id in ('REL-002', 'REL-004'): return self.relationship_raw(case_id)
         if case_id in ('JOB-001', 'JOB-002', 'JOB-003'): return self.reminder_raw(case_id)
         if case_id == 'JOB-004': return self.maintenance_raw()
@@ -237,6 +239,27 @@ class CheckpointIntegrityTests(unittest.TestCase):
                         'statements': [{'sql': 'SELECT id FROM "todo" ORDER BY "created_at" DESC, "id" DESC LIMIT $6', 'operation': 'SELECT', 'numericParameters': {'6': 3}}], 'authenticationAttempts': 1})
         return raw
 
+    def readiness_raw(self):
+        phases = []
+        for index, (label, status) in enumerate((('healthy_control', 200), ('database_unavailable', 503), ('recovered_control', 200))):
+            ready = {'status': 'ready' if status == 200 else 'not_ready', 'checks': {'database': 'available' if status == 200 else 'unavailable'}, 'advisories': {}}
+            responses = []
+            for plane, path in [('deployment', '/health/ready'), ('deployment', '/health'), ('application', '/health/ready'), ('application', '/health'), ('application', '/health/live')]:
+                code, body = (status, deepcopy(ready)) if plane == 'deployment' else (200, {'status': 'healthy'}) if path == '/health/live' else (404, {'error': {'code': 'not_found'}})
+                responses.append({'plane': plane, 'path': path, 'origin': 'http://127.0.0.1:'+str(30002 if plane == 'deployment' else 30001), 'method': 'GET', 'status': code, 'body': body})
+            phases.append({'label': label, 'at': f'2026-01-15T12:00:{index:02}Z', 'applicationPort': 30001, 'deploymentPort': 30002, 'responses': responses, 'direct': {'callable': 'handleDeploymentRequest', 'path': '/health/ready', 'status': status, 'body': deepcopy(ready)}, 'processExitCalls': [], 'statements': [{'operation': 'PRAGMA', 'sql': 'PRAGMA schema_version'}]})
+        request = {'method': 'GET', 'path': '/todos', 'auth': 'alice-session', 'status': 200, 'authenticationAttempts': 1, 'statements': [{'operation': 'SELECT', 'sql': 'SELECT id FROM todo'}]}
+        return [{'nativeReadiness': {'specification': self.cases['CONFIG-003']['fixture'], 'selectedBackend': 'sqlite', 'deploymentCallable': 'createDeploymentServer', 'hostname': '127.0.0.1', 'applicationPort': 30001, 'deploymentPort': 30002, 'phases': phases, 'healthyControl': deepcopy(request), 'recovery': deepcopy(request), 'outage': {'mode': 'actual separate-connection SQLite exclusive lock', 'lockAcquireStatements': [{'operation': 'BEGIN', 'sql': 'BEGIN EXCLUSIVE'}], 'lockReleaseStatements': [{'operation': 'ROLLBACK', 'sql': 'ROLLBACK'}], 'triggeringRequest': {**request, 'status': 500}}}}]
+
+    def preflight_raw(self, case_id):
+        case = self.cases[case_id]
+        fields = [{'configuration': 'TodoConfiguration', 'name': name, 'binding': binding} for name, binding in [('mail_api_key', 'MAIL_API_KEY'), ('database_url', 'DATABASE_URL'), ('oidc_issuer', 'OIDC_ISSUER')]]
+        diagnostics = [{'schemaVersion': 1, 'kind': 'configuration_diagnostic', 'code': 'config_required' if value == '<missing>' else 'config_invalid', 'declaration': 'TodoConfiguration.'+binding.lower()} for binding, value in reversed(list(case['environment'].items()))]
+        observer = {'kind': 'checkpoint_startup_observation', 'exitCode': 1, 'listenerStarts': 0, 'listenerAttempts': 0, 'driverInitializations': 0}
+        original = {'label': 'original_environment', 'originalEnvironment': case['environment'], 'exitCode': 1, 'jsonEvents': [observer, *diagnostics, {'kind': 'operational_log_event', 'classification': 'RUNTIME_STARTUP_FAILED', 'sourceRevision': 'synthetic_revision', 'attributes': {}}], 'outputSha256': 'a'*64, 'outputBytes': 100, 'credentialTextDisclosed': False}
+        healthy = {'label': 'healthy_control', 'originalEnvironment': {}, 'exitCode': 1, 'jsonEvents': [{**observer, 'driverInitializations': 1}], 'outputSha256': 'b'*64, 'outputBytes': 200, 'credentialTextDisclosed': False}
+        return [{'nativeStartup': {'specification': case['environment'], 'selectedBackend': 'sqlite', 'sourceRevision': 'synthetic_revision', 'configurationMetadata': {'fields': fields}, 'probes': [healthy, original]}}]
+
     def relationship_raw(self, case_id):
         before = {'users': [{'id': checkpoint.ALIASES[name], 'status': 'disabled' if name == 'alice' and case_id == 'REL-004' else 'active'} for name in ('alice', 'bob')], 'todos': [{'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice']}] if case_id == 'REL-004' else []}
         return [{'persistenceOperation': self.cases[case_id]['operation'], 'accepted': False, 'publicBoundaryObserved': True, 'publicBoundary': 'generated persistence.normalizePersistenceFailure', 'publicFailure': {'status': 409, 'code': 'relationship_conflict', 'message': 'The operation conflicts with a relationship.'}, 'before': before, 'after': deepcopy(before), 'statements': [{'operation': 'INSERT' if case_id == 'REL-002' else 'DELETE', 'sql': 'INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, $7)' if case_id == 'REL-002' else 'DELETE FROM "user" WHERE id = $1', 'relationshipRowIdentity': checkpoint.ALIASES['t1' if case_id == 'REL-002' else 'alice'], **({'relationshipOwnerIdentity': '00000000-0000-4000-8000-000000000099'} if case_id == 'REL-002' else {})}]}]
@@ -302,7 +325,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
         return [{'maintenanceFixture': {'before': before, 'metadata': metadata, 'sourceRevision': 'synthetic_revision', 'specification': {'fixture': case['fixture'], 'run': case['run']}}}, {'nativeMaintenance': {'callable': 'runLifecycleMaintenance', 'at': case['run']['at'], 'statements': statements, 'auditEvents': [event], 'after': deepcopy([before[0], before[2]])}}]
 
     def outputs(self):
-        return [{'backend': backend, 'results': [{'id': case_id, 'scenarios' if case_id == 'REL-001' else 'raw': self.raw(case_id)} for case_id in checkpoint.SUPPORTED]} for backend in harness.BACKENDS]
+        outputs = [{'backend': backend, 'results': [{'id': case_id, 'scenarios' if case_id == 'REL-001' else 'raw': self.raw(case_id)} for case_id in checkpoint.SUPPORTED]} for backend in harness.BACKENDS]
+        for output in outputs:
+            for result in output['results']:
+                if result['id'] in ('CONFIG-001', 'CONFIG-002'): result['raw'][0]['nativeStartup']['selectedBackend'] = output['backend']
+                if result['id'] == 'CONFIG-003':
+                    capture = result['raw'][0]['nativeReadiness']; capture['selectedBackend'] = output['backend']
+                    if output['backend'] == 'postgres': capture['outage'].update(mode='actual isolated PostgreSQL stopped', stoppedCode=0, restartedCode=0)
+        return outputs
 
     def test_all_inventory_entries_retained_and_selected_observations_do_not_infer_pass(self):
         report = harness.run_cases(self.root)
@@ -391,6 +421,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
             failure_path.write_text(json.dumps({'failures': [{'failure': 'UserDisabled', 'code': 'user_disabled'}]}))
             (failure_path.parent/'lifecycle-maintenance.json').write_text(json.dumps(self.maintenance_raw()[0]['maintenanceFixture']['metadata']))
             (failure_path.parent/'jobs.json').write_text(json.dumps(self.reminder_raw('JOB-001')[0]['reminderFixture']['jobMetadata']))
+            (failure_path.parent/'configuration.json').write_text(json.dumps(self.preflight_raw('CONFIG-001')[0]['nativeStartup']['configurationMetadata']))
             (evidence/'application/build/app.meta.json').write_text(json.dumps({'source_revision': 'synthetic_revision'}))
             outputs = self.outputs()
             for output in outputs: (evidence/f'{output["backend"]}-raw.json').write_text(json.dumps(output))
@@ -859,6 +890,68 @@ class CheckpointIntegrityTests(unittest.TestCase):
             path.write_bytes(previous)
         self.assertEqual(harness.read_contract(self.root), frozen)
 
+    def test_original_preflight_negative_cases_require_specific_native_diagnostics_before_driver_or_listen(self):
+        for case_id in ('CONFIG-001', 'CONFIG-002'):
+            self.assertFalse(harness.assess(self.cases[case_id], checkpoint.observations(self.cases[case_id], self.preflight_raw(case_id))))
+            for mutation in ('environment', 'missing_original', 'control_order', 'driver', 'listen_attempt', 'listener', 'boolean_counter', 'diagnostic', 'duplicate', 'public_debug', 'declaration', 'binding', 'source_revision', 'output_digest'):
+                raw = self.preflight_raw(case_id); startup = raw[0]['nativeStartup']; original = startup['probes'][1]; observer = original['jsonEvents'][0]
+                diagnostic = next(event for event in original['jsonEvents'] if event.get('kind') == 'configuration_diagnostic')
+                if mutation == 'environment': startup['specification'] = {}
+                elif mutation == 'missing_original': startup['probes'].pop()
+                elif mutation == 'control_order': startup['probes'].reverse()
+                elif mutation == 'driver': observer['driverInitializations'] = 1
+                elif mutation == 'listen_attempt': observer['listenerAttempts'] = 1
+                elif mutation == 'listener': observer['listenerStarts'] = 1
+                elif mutation == 'boolean_counter': observer['driverInitializations'] = False
+                elif mutation == 'diagnostic': diagnostic['code'] = 'generic_startup_fault'
+                elif mutation == 'duplicate': original['jsonEvents'].append(deepcopy(diagnostic))
+                elif mutation == 'public_debug': diagnostic['debug'] = 'private-canary'
+                elif mutation == 'declaration': diagnostic['declaration'] = 'Foreign.value'
+                elif mutation == 'binding': startup['configurationMetadata']['fields'] = []
+                elif mutation == 'source_revision': startup['sourceRevision'] = 'foreign'
+                else: original['outputSha256'] = 'foreign'
+                with self.subTest(case=case_id, mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases[case_id], raw)
+            for mutation in ('exit_zero', 'disclosure'):
+                raw = self.preflight_raw(case_id); original = raw[0]['nativeStartup']['probes'][1]
+                if mutation == 'exit_zero': original['exitCode'] = original['jsonEvents'][0]['exitCode'] = 0
+                else: original['credentialTextDisclosed'] = True
+                self.assertTrue(harness.assess(self.cases[case_id], checkpoint.observations(self.cases[case_id], raw)))
+        outputs = self.outputs(); next(item for item in outputs[0]['results'] if item['id'] == 'CONFIG-001')['raw'][0]['nativeStartup']['selectedBackend'] = 'postgres'
+        with self.assertRaisesRegex(ValueError, 'adapter lineage'): checkpoint.apply_checkpoint(harness.run_cases(self.root), outputs, self.root)
+
+    def test_readiness_case_requires_real_distinct_listeners_outage_recovery_and_liveness_controls(self):
+        case = self.cases['CONFIG-003']
+        self.assertFalse(harness.assess(case, checkpoint.observations(case, self.readiness_raw())))
+        for mutation in ('fixture', 'listener_alias', 'hostname', 'callable', 'phase_order', 'phase_missing', 'port_drift', 'origin', 'path', 'direct', 'alias_body', 'private_ready_body', 'physical_probe', 'healthy_request', 'recovery_request', 'outage_request', 'lock_acquire', 'lock_release', 'app_ready', 'live_status', 'clock', 'missing_exit_observer'):
+            raw = self.readiness_raw(); capture = raw[0]['nativeReadiness']; phase = capture['phases'][1]
+            if mutation == 'fixture': capture['specification'] = []
+            elif mutation == 'listener_alias': capture['deploymentPort'] = capture['applicationPort']
+            elif mutation == 'hostname': capture['hostname'] = '0.0.0.0'
+            elif mutation == 'callable': capture['deploymentCallable'] = 'harness readiness'
+            elif mutation == 'phase_order': capture['phases'].reverse()
+            elif mutation == 'phase_missing': capture['phases'].pop()
+            elif mutation == 'port_drift': phase['deploymentPort'] = 30003
+            elif mutation == 'origin': phase['responses'][0]['origin'] = 'http://127.0.0.1:30001'
+            elif mutation == 'path': phase['responses'][0]['path'] = '/todos'
+            elif mutation == 'direct': phase['direct']['status'] = 200
+            elif mutation == 'alias_body': phase['responses'][1]['body']['checks'] = {}
+            elif mutation == 'private_ready_body':
+                for response in phase['responses'][:2]: response['body']['private'] = 'raw-driver-canary'
+                phase['direct']['body']['private'] = 'raw-driver-canary'
+            elif mutation == 'physical_probe': phase['statements'] = []
+            elif mutation == 'healthy_request': capture['healthyControl']['status'] = 500
+            elif mutation == 'recovery_request': capture['recovery']['statements'] = []
+            elif mutation == 'outage_request': capture['outage']['triggeringRequest']['status'] = 200
+            elif mutation == 'lock_acquire': capture['outage']['lockAcquireStatements'] = []
+            elif mutation == 'lock_release': capture['outage']['lockReleaseStatements'] = []
+            elif mutation == 'app_ready': phase['responses'][2]['status'] = 503
+            elif mutation == 'live_status': phase['responses'][4]['status'] = 503
+            elif mutation == 'clock': phase['at'] = capture['phases'][0]['at']
+            else: phase.pop('processExitCalls')
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(case, raw)
+        raw = self.readiness_raw(); raw[0]['nativeReadiness']['phases'][1]['processExitCalls'] = [1]
+        self.assertTrue(harness.assess(case, checkpoint.observations(case, raw)))
+
     def test_native_reminder_observations_require_exact_identity_receipt_clock_authority_and_controls(self):
         accepted, _ = harness.accepted_job001_contract(self.root)
         cases = {case['id']: case for case in accepted['cases']}
@@ -968,28 +1061,17 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def partial_outputs_fixture(self):
         output = {'partialEvidence': [{'id': case_id, 'adapterFailure': True, 'raw': []} for case_id in ('REL-003',)]}
-        for case_id in ('CONFIG-001', 'CONFIG-002'):
-            environment = self.cases[case_id]['environment']
-            probes = [{'label': label, 'originalEnvironment': overrides, 'exitCode': 1, 'jsonEvents': [{'kind': 'checkpoint_startup_observation', 'exitCode': 1, 'listenerStarts': 0}], 'outputSha256': 'a'*64, 'outputBytes': 120, 'credentialTextDisclosed': False} for label, overrides in (('healthy_control', {}), ('original_environment', environment))]
-            output['partialEvidence'].append({'id': case_id, 'raw': [{'nativeStartup': {'specification': environment, 'probes': probes}}]})
         case = self.cases['BOUNDARY-001']
         variants = [{'variant_index': 0, 'fixture_variant': case['fixtureVariants'][0], 'healthyControl': {'status': 200}, 'outage': {'response': {'status': 500}}}, {'variant_index': 1, 'fixture_variant': case['fixtureVariants'][1], 'providerCalls': [{'responseStatus': 401, 'authorizationPresent': True}], 'profiles': {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}, 'nativeFixtureCreation': {'status': 201}, 'nativeHostOutcome': {'selected': 1, 'attempted': 1}}]
         output['partialEvidence'].append({'id': 'BOUNDARY-001', 'raw': [{'boundaryVariants': variants, 'specification': {'fixtureVariants': case['fixtureVariants'], 'requestOrRun': case['requestOrRun']}}]})
         return output
 
-    def test_partial_startup_and_boundary_inventory_and_causal_controls_are_bound(self):
+    def test_partial_boundary_inventory_and_causal_controls_are_bound(self):
         checkpoint.validate_partial_outputs(self.partial_outputs_fixture(), self.cases)
-        for mutation in ('missing_id', 'duplicate_id', 'environment', 'control_order', 'exit', 'observer', 'output_digest', 'missing_variant', 'variant_order', 'healthy', 'outage', 'provider_uncalled', 'provider_status', 'profile', 'native_creation', 'native_selection'):
-            output = self.partial_outputs_fixture()
-            config = next(item for item in output['partialEvidence'] if item['id'] == 'CONFIG-001')['raw'][0]['nativeStartup']
-            boundary = output['partialEvidence'][-1]['raw'][0]['boundaryVariants']
+        for mutation in ('missing_id', 'duplicate_id', 'missing_variant', 'variant_order', 'healthy', 'outage', 'provider_uncalled', 'provider_status', 'profile', 'native_creation', 'native_selection'):
+            output = self.partial_outputs_fixture(); boundary = output['partialEvidence'][-1]['raw'][0]['boundaryVariants']
             if mutation == 'missing_id': output['partialEvidence'].pop()
-            elif mutation == 'duplicate_id': output['partialEvidence'][-1]['id'] = 'REL-002'
-            elif mutation == 'environment': config['specification'] = {}
-            elif mutation == 'control_order': config['probes'].reverse()
-            elif mutation == 'exit': config['probes'][1]['exitCode'] = '1'
-            elif mutation == 'observer': config['probes'][1]['jsonEvents'] = []
-            elif mutation == 'output_digest': config['probes'][1]['outputSha256'] = 'foreign'
+            elif mutation == 'duplicate_id': output['partialEvidence'][-1]['id'] = 'REL-003'
             elif mutation == 'missing_variant': boundary.pop()
             elif mutation == 'variant_order': boundary.reverse()
             elif mutation == 'healthy': boundary[0]['healthyControl']['status'] = 500

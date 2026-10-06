@@ -25,7 +25,7 @@ SUPPORTED = ('AUTH-001', 'AUTH-005', 'AUTH-012', 'PUBLIC-001', 'CREATE-002',
              'READ-001', 'PATCH-005', 'DELETE-001', 'LIST-001', 'LIST-002',
              'LIST-003', 'REL-001', 'DELETE-002', 'AUTH-002', 'AUTH-006',
              'AUTH-010', 'USER-001', 'AUTH-003', 'AUTH-004', 'AUTH-007', 'AUTH-008',
-             'AUTH-009', 'AUTH-011', 'JOB-004', 'JOB-001', 'JOB-002', 'JOB-003', 'REL-002', 'REL-004')
+             'AUTH-009', 'AUTH-011', 'JOB-004', 'JOB-001', 'JOB-002', 'JOB-003', 'REL-002', 'REL-004', 'CONFIG-001', 'CONFIG-002', 'CONFIG-003')
 ALIASES = {'alice': '00000000-0000-4000-8000-000000000001',
            'bob': '00000000-0000-4000-8000-000000000002',
            't1': '00000000-0000-4000-8000-000000000021',
@@ -552,9 +552,100 @@ def relationship_observations(case: dict, raw: list):
     return [{'variant_index': 0, 'steps': [step]}]
 
 
+def preflight_observations(case: dict, raw: list):
+    if len(raw) != 1 or 'nativeStartup' not in raw[0]:
+        raise ValueError('Missing exact native preflight capture')
+    startup = raw[0]['nativeStartup']; probes = startup.get('probes', [])
+    if not harness.same_json(startup.get('specification'), case['environment']) or startup.get('selectedBackend') not in harness.BACKENDS or len(probes) != 2 or [probe.get('label') for probe in probes] != ['healthy_control', 'original_environment']:
+        raise ValueError('Changed exact original preflight environment/control inventory')
+    for probe, overrides in zip(probes, ({}, case['environment'])):
+        if not harness.same_json(probe.get('originalEnvironment'), overrides) or type(probe.get('exitCode')) is not int or type(probe.get('credentialTextDisclosed')) is not bool or not re.fullmatch('[a-f0-9]{64}', str(probe.get('outputSha256'))) or type(probe.get('outputBytes')) is not int or not isinstance(probe.get('jsonEvents'), list):
+            raise ValueError('Incomplete actual native preflight output/exit/nondisclosure')
+    original = probes[1]; events = original['jsonEvents']
+    observers = [event for event in events if event.get('kind') == 'checkpoint_startup_observation']
+    if len(observers) != 1 or observers[0].get('exitCode') != original['exitCode'] or any(type(observers[0].get(key)) is not int or observers[0][key] != 0 for key in ('listenerStarts', 'listenerAttempts', 'driverInitializations')):
+        raise ValueError('Preflight failure reached native driver or listener initialization')
+    faults = [event for event in events if event.get('kind') == 'operational_log_event' and event.get('classification') == 'RUNTIME_STARTUP_FAILED']
+    if len(faults) != 1 or faults[0].get('sourceRevision') != startup.get('sourceRevision') or faults[0].get('attributes') != {}:
+        raise ValueError('Missing safe source-bound native preflight startup disposition')
+    diagnostics = [event for event in events if event.get('kind') == 'configuration_diagnostic']
+    if any(set(diagnostic) != {'schemaVersion', 'kind', 'code', 'declaration'} or diagnostic.get('schemaVersion') != 1 for diagnostic in diagnostics):
+        raise ValueError('Unexpected native preflight diagnostic public fields')
+    fields = startup.get('configurationMetadata', {}).get('fields', [])
+    # Present actual diagnosed declarations in original environment order via
+    # emitted binding metadata; native diagnostic emission order stays in raw.
+    ordered = []
+    for binding in case['environment']:
+        matches = [field for field in fields if field.get('binding') == binding]
+        if len(matches) != 1: raise ValueError('Missing emitted declaration/environment binding')
+        field = matches[0]; declaration = field['configuration']+'.'+field['name']
+        matches = [diagnostic for diagnostic in diagnostics if diagnostic.get('declaration') == declaration]
+        expected_code = 'config_required' if case['environment'][binding] == '<missing>' else 'config_invalid'
+        if len(matches) != 1 or matches[0].get('code') != expected_code:
+            raise ValueError('Missing exact native diagnostic for original environment field')
+        ordered.append(matches[0])
+    if len(diagnostics) != len(ordered): raise ValueError('Foreign/duplicate native preflight diagnostic')
+    step = {'exitNonZero': original['exitCode'] != 0}
+    if case['id'] == 'CONFIG-001': step.update(listenerStarted=observers[0]['listenerStarts'] != 0, diagnosticCode=ordered[0]['code'], secretValueDisclosed=original['credentialTextDisclosed'])
+    else: step.update(diagnosticDeclarations=[diagnostic['declaration'] for diagnostic in ordered], credentialTextDisclosed=original['credentialTextDisclosed'])
+    return [{'variant_index': 0, 'steps': [step]}]
+
+
+def readiness_observations(case: dict, raw: list):
+    if len(raw) != 1 or 'nativeReadiness' not in raw[0]:
+        raise ValueError('Missing exact native readiness listener capture')
+    capture = raw[0]['nativeReadiness']
+    if not harness.same_json(capture.get('specification'), case['fixture']) or capture.get('selectedBackend') not in harness.BACKENDS or capture.get('deploymentCallable') != 'createDeploymentServer' or capture.get('hostname') != '127.0.0.1':
+        raise ValueError('Changed original started-application/native deployment boundary')
+    ports = [capture.get(key) for key in ('applicationPort', 'deploymentPort')]
+    if any(type(port) is not int or not 0 < port <= 65535 for port in ports) or len(set(ports)) != 2:
+        raise ValueError('Missing distinct actual application/deployment listeners')
+    phases = capture.get('phases', [])
+    if [phase.get('label') for phase in phases] != ['healthy_control', 'database_unavailable', 'recovered_control']:
+        raise ValueError('Missing/reordered actual healthy/outage/recovery controls')
+    inventory = [('deployment', '/health/ready'), ('deployment', '/health'), ('application', '/health/ready'), ('application', '/health'), ('application', '/health/live')]
+    for phase in phases:
+        responses = phase.get('responses', [])
+        if phase.get('applicationPort') != ports[0] or phase.get('deploymentPort') != ports[1] or [(response.get('plane'), response.get('path')) for response in responses] != inventory or not isinstance(phase.get('processExitCalls'), list) or not isinstance(phase.get('statements'), list) or not phase['statements']:
+            raise ValueError('Missing native listener identity/path/exit/physical-probe observations')
+        for response in responses:
+            port = ports[1 if response['plane'] == 'deployment' else 0]
+            if response.get('origin') != f'http://127.0.0.1:{port}' or response.get('method') != 'GET' or type(response.get('status')) is not int or not isinstance(response.get('body'), dict):
+                raise ValueError('Response differs from actual native listener origin/method')
+        direct = phase.get('direct', {})
+        if direct.get('callable') != 'handleDeploymentRequest' or direct.get('path') != '/health/ready' or direct.get('status') != responses[0]['status'] or not harness.same_json(direct.get('body'), responses[0]['body']) or not harness.same_json(responses[0]['body'], responses[1]['body']) or responses[0]['status'] != responses[1]['status']:
+            raise ValueError('Real deployment listener/alias/direct native handler disagree')
+        body = responses[0]['body']
+        if set(body) != {'status', 'checks', 'advisories'} or body['checks'] != {'database': 'available' if responses[0]['status'] == 200 else 'unavailable'} or body['status'] != ('ready' if responses[0]['status'] == 200 else 'not_ready'):
+            raise ValueError('Missing native deployment database readiness disposition')
+    if any(phases[index]['responses'][0]['status'] != 200 for index in (0, 2)) or not instant(phases[0].get('at')) < instant(phases[1].get('at')) < instant(phases[2].get('at')):
+        raise ValueError('Missing chronological healthy and actual recovered deployment controls')
+    for key in ('healthyControl', 'recovery'):
+        request = capture.get(key, {})
+        if request.get('status') != 200 or request.get('method') != 'GET' or request.get('path') != '/todos' or request.get('auth') != 'alice-session' or request.get('authenticationAttempts') != 1 or not request.get('statements'):
+            raise ValueError('Missing actual authenticated healthy/recovery persistence request')
+    outage = capture.get('outage', {})
+    if outage.get('triggeringRequest', {}).get('status', 0) < 500:
+        raise ValueError('Missing actual native persistence outage causal request')
+    if capture['selectedBackend'] == 'sqlite':
+        if outage.get('mode') != 'actual separate-connection SQLite exclusive lock' or [row.get('sql') for row in outage.get('lockAcquireStatements', [])] != ['BEGIN EXCLUSIVE'] or [row.get('sql') for row in outage.get('lockReleaseStatements', [])] != ['ROLLBACK']:
+            raise ValueError('Missing real SQLite lock acquisition/restoration')
+    elif outage.get('mode') != 'actual isolated PostgreSQL stopped' or outage.get('stoppedCode') != 0 or outage.get('restartedCode') != 0:
+        raise ValueError('Missing actual isolated PostgreSQL outage/restoration')
+    unavailable = phases[1]['responses']
+    application_ready = [response for phase in phases for response in phase['responses'][2:4]]
+    if any(response['status'] != 404 or response['body'].get('error', {}).get('code') != 'not_found' for response in application_ready):
+        raise ValueError('Compiler deployment readiness alias leaked onto application router')
+    if any(phase['responses'][4]['status'] != unavailable[4]['status'] for phase in phases):
+        raise ValueError('Native application liveness changed during dependency outage')
+    return [{'variant_index': 0, 'steps': [{'readyStatus': unavailable[0]['status'], 'readyPlane': unavailable[0]['plane'], 'readyOnApplicationRouter': any(response['status'] != 404 for response in application_ready), 'liveStatus': unavailable[4]['status'], 'restartRequested': any(phase['processExitCalls'] for phase in phases)}]}]
+
+
 def observations(case: dict, raw: list, clock: str | None = None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
     if case['id'] == 'JOB-004': return maintenance_observations(case, raw)
+    if case['id'] == 'CONFIG-003': return readiness_observations(case, raw)
+    if case['id'] in ('CONFIG-001', 'CONFIG-002'): return preflight_observations(case, raw)
     if case['id'] in ('REL-002', 'REL-004'): return relationship_observations(case, raw)
     if case['id'] in ('JOB-001', 'JOB-002', 'JOB-003'): return reminder_observations(case, raw)
     if case['id'] == 'USER-001' and case.get('followUps'):
@@ -847,6 +938,8 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
         if len(ids) != len(set(ids)) or set(ids) != set(SUPPORTED):
             raise ValueError('Missing/duplicate/foreign supported result')
         for item in output['results']:
+            if item['id'] in ('CONFIG-001', 'CONFIG-002', 'CONFIG-003') and not item.get('adapterFailure') and item['raw'][0].get('nativeReadiness' if item['id'] == 'CONFIG-003' else 'nativeStartup', {}).get('selectedBackend') != output['backend']:
+                raise ValueError('Native preflight capture has foreign selected adapter lineage')
             observed[(output['backend'], item['id'])] = None if item.get('adapterFailure') is True else observations(cases[item['id']], item['scenarios'] if item['id'] == 'REL-001' else item['raw'], contract.get('clock'))
     for entry in report['results']:
         key = (entry['backend'], entry['id'])
@@ -870,26 +963,13 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
 def validate_partial_outputs(output: dict, cases: dict):
     """Integrity of retained causal probes, never application acceptance passes."""
     partial = output.get('partialEvidence')
-    ids = ('REL-003', 'CONFIG-001', 'CONFIG-002', 'BOUNDARY-001')
+    ids = ('REL-003', 'BOUNDARY-001')
     if not isinstance(partial, list) or len(partial) != len(ids) or {item.get('id') for item in partial} != set(ids):
         raise ValueError('Missing/duplicate original partial probe inventory')
     for item in partial:
         if item.get('adapterFailure') is True: continue
         case = cases[item['id']]
-        if item['id'].startswith('CONFIG-'):
-            startup = [event['nativeStartup'] for event in item['raw'] if 'nativeStartup' in event]
-            if len(startup) != 1 or not harness.same_json(startup[0].get('specification'), case['environment']):
-                raise ValueError('Changed original configuration probe environment')
-            probes = startup[0].get('probes', [])
-            if len(probes) != 2 or [probe.get('label') for probe in probes] != ['healthy_control', 'original_environment']:
-                raise ValueError('Missing/reordered actual startup control')
-            for probe, overrides in zip(probes, ({}, case['environment'])):
-                if not harness.same_json(probe.get('originalEnvironment'), overrides) or type(probe.get('exitCode')) is not int or type(probe.get('credentialTextDisclosed')) is not bool or not isinstance(probe.get('jsonEvents'), list) or not re.fullmatch('[a-f0-9]{64}', str(probe.get('outputSha256'))) or type(probe.get('outputBytes')) is not int:
-                    raise ValueError('Incomplete native startup output/exit/disclosure observation')
-                observers = [event for event in probe['jsonEvents'] if event.get('kind') == 'checkpoint_startup_observation']
-                if not probe['credentialTextDisclosed'] and (len(observers) != 1 or observers[0].get('exitCode') != probe['exitCode'] or type(observers[0].get('listenerStarts')) is not int):
-                    raise ValueError('Missing native listener-boundary observation')
-        elif item['id'] == 'BOUNDARY-001':
+        if item['id'] == 'BOUNDARY-001':
             captures = [event for event in item['raw'] if 'boundaryVariants' in event]
             if len(captures) != 1 or not harness.same_json(captures[0].get('specification'), {'fixtureVariants': case['fixtureVariants'], 'requestOrRun': case['requestOrRun']}):
                 raise ValueError('Changed original boundary variant inventory/operations')
@@ -941,11 +1021,14 @@ def validate_checkpoint(report: dict, evidence: Path, dependencies: Path, root=R
     expected_maintenance = json.loads((evidence/'application/build/audit/lifecycle-maintenance.json').read_text())
     expected_source_revision = json.loads((evidence/'application/build/app.meta.json').read_text())['source_revision']
     expected_jobs = json.loads((evidence/'application/build/audit/jobs.json').read_text())
+    expected_configuration = json.loads((evidence/'application/build/audit/configuration.json').read_text())
     for output in outputs:
         for item in output['results']:
             journals = [scenario['raw'] for scenario in item['scenarios']] if item['id'] == 'REL-001' else [item['raw']]
             for raw in journals:
                 for event in raw:
+                    if 'nativeStartup' in event and (not harness.same_json(event['nativeStartup'].get('configurationMetadata'), expected_configuration) or event['nativeStartup'].get('sourceRevision') != expected_source_revision):
+                        raise ValueError('Raw preflight declarations/source differ from generated artifacts')
                     if 'reminderFixture' in event and not harness.same_json(event['reminderFixture'].get('jobMetadata'), expected_jobs):
                         raise ValueError('Raw reminder binding differs from generated artifact')
                     if 'maintenanceFixture' in event and (not harness.same_json(event['maintenanceFixture'].get('metadata'), expected_maintenance) or event['maintenanceFixture'].get('sourceRevision') != expected_source_revision):
@@ -996,6 +1079,8 @@ def main():
     target = project/'build/target'
     original = (target/'persistence.ts').read_text()
     declaration = 'import { SQL } from "bun";'
+    sqlite_declaration = 'import { Database } from "bun:sqlite";'
+    if original.count(sqlite_declaration) != 1: raise ValueError('Generated SQLite instrumentation import changed')
     if original.count(declaration) != 1:
         raise ValueError('Generated SQL instrumentation import changed')
     (output/'original-persistence.ts').write_text(original)
@@ -1003,7 +1088,7 @@ def main():
     if original.count(storage_entry) != 1:
         raise ValueError('Generated native session storage observation boundary changed')
     (target/'persistence.ts').write_text('import { observeAuthenticationStorageRead } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';\n' + original.replace(declaration,
-        'import { SQL } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';').replace(storage_entry, storage_entry+'\n    observeAuthenticationStorageRead();') + '\nexport { persistenceSync, persistenceAsync };\n')
+        'import { SQL } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';').replace(sqlite_declaration, 'import { Database } from ' + json.dumps(str(ROOT/'tools/golden_sql_observer.ts')) + ';').replace(storage_entry, storage_entry+'\n    observeAuthenticationStorageRead();') + '\nexport { persistenceSync, persistenceAsync };\n')
     authentication = (target/'first-party-authentication.ts').read_text()
     entry = 'async authenticate(request: Request, freshAuthority: boolean, operationNow: number, mutates = false): Promise<AuthPrincipal> {'
     if authentication.count(entry) != 1:

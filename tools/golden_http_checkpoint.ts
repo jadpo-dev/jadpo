@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications, resolvedAuthorityPrincipals } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004", "JOB-001", "JOB-002", "JOB-003", "REL-002", "REL-004"];
-const partial = ["REL-003", "CONFIG-001", "CONFIG-002", "BOUNDARY-001"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004", "JOB-001", "JOB-002", "JOB-003", "REL-002", "REL-004", "CONFIG-001", "CONFIG-002", "CONFIG-003"];
+const partial = ["REL-003", "BOUNDARY-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
@@ -308,7 +308,7 @@ async function startupProbe(case_: any) {
   const probes = [];
   for (const label of ["healthy_control", "original_environment"]) {
     const overrides = label === "healthy_control" ? {} : case_.environment;
-    const env = { ...Bun.env, ...environment, ...(pg ? { DATABASE_URL: Bun.env.DATABASE_URL } : {}), PORT: "0", JADPO_DEBUG_TARGET_STACKS: "0" };
+    const env = { ...Bun.env, ...environment, PORT: "0", JADPO_DEBUG_TARGET_STACKS: "1" };
     for (const [key, value] of Object.entries(overrides)) if (value === "<missing>") delete env[key]; else env[key] = String(value);
     const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "--preload", join(import.meta.dir, "golden_startup_observer.ts"), join(project, "build/target/app.ts")], { env, stdout: "pipe", stderr: "pipe" });
     const timeout = setTimeout(() => child.kill(), 10_000);
@@ -320,11 +320,66 @@ async function startupProbe(case_: any) {
     const jsonEvents = [];
     // Never retain arbitrary startup exception/stack text, even for partials.
     for (const line of text.split("\n")) {
-      try { const parsed = JSON.parse(line); if (!disclosed && ["operational_log_event", "checkpoint_startup_observation"].includes(parsed.kind)) jsonEvents.push(parsed); } catch {}
+      try { const parsed = JSON.parse(line); if (!disclosed && ["configuration_diagnostic", "operational_log_event", "checkpoint_startup_observation"].includes(parsed.kind)) jsonEvents.push(parsed); } catch {}
     }
     probes.push({ label, originalEnvironment: overrides, exitCode, jsonEvents, outputSha256: stringDigest(text), outputBytes: Buffer.byteLength(text), credentialTextDisclosed: disclosed });
   }
-  raw.push({ nativeStartup: { specification: case_.environment, probes } });
+  raw.push({ nativeStartup: { specification: case_.environment, selectedBackend: backend, sourceRevision: JSON.parse(readFileSync(join(project, "build/app.meta.json"), "utf8")).source_revision, configurationMetadata: JSON.parse(readFileSync(join(project, "build/audit/configuration.json"), "utf8")), probes } });
+}
+async function readinessProbe(case_: any) {
+  // Public native listeners operate on the checked migrated application.
+  // Canonical main's unresolved datastore URI startup is retained separately.
+  const application = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.handleRequest });
+  const deployment = app.createDeploymentServer(0);
+  const phases: any[] = [];
+  const nativeExit = process.exit; const exits: number[] = [];
+  process.exit = ((code?: number) => { exits.push(code ?? 0); return nativeExit(code); }) as typeof process.exit;
+  async function sample(label: string) {
+    const statements = beginSqlObservation();
+    const responses: any[] = [];
+    try {
+      for (const [plane, origin, path] of [["deployment", deployment.url.origin, "/health/ready"], ["deployment", deployment.url.origin, "/health"], ["application", application.url.origin, "/health/ready"], ["application", application.url.origin, "/health"], ["application", application.url.origin, "/health/live"]]) {
+        const response = await fetch(origin + path);
+        responses.push({ plane, origin, path, method: "GET", status: response.status, body: await response.json() });
+      }
+      const direct = await app.handleDeploymentRequest(new Request("http://deployment.test/health/ready"));
+      phases.push({ label, at: new Date(clockNow).toISOString(), responses, direct: { callable: "handleDeploymentRequest", path: "/health/ready", status: direct.status, body: await direct.json() }, statements, processExitCalls: exits.slice(), applicationPort: application.port, deploymentPort: deployment.port });
+    } finally { endSqlObservation(); }
+  }
+  let outage: any;
+  try {
+    await send({ method: "GET", path: "/todos", auth: "alice-session" }, "readinessHealthy");
+    const healthy = raw.pop().readinessHealthy;
+    await sample("healthy_control");
+    if (pg) {
+      const data = Bun.env.GOLDEN_POSTGRES_DATA;
+      if (!data) throw new Error("Missing isolated PostgreSQL provenance");
+      const stopped = Bun.spawn(["pg_ctl", "-D", data, "-m", "immediate", "-w", "stop"], { stdout: "pipe", stderr: "pipe" });
+      const stoppedCode = await stopped.exited;
+      try {
+        await send({ method: "GET", path: "/todos", auth: "alice-session" }, "readinessInvalidation");
+        outage = { mode: "actual isolated PostgreSQL stopped", stoppedCode, triggeringRequest: raw.pop().readinessInvalidation };
+        clockNow += 5_000; await Bun.sleep(1_100); await sample("database_unavailable");
+      } finally {
+        const restarted = Bun.spawn(["pg_ctl", "-D", data, "-l", join(data, "../restored-server.log"), "-o", `-h 127.0.0.1 -p ${Bun.env.GOLDEN_POSTGRES_PORT} -k ${Bun.env.GOLDEN_POSTGRES_SOCKET}`, "-w", "start"], { stdout: "pipe", stderr: "pipe" });
+        outage.restartedCode = await restarted.exited;
+        if (outage.restartedCode !== 0) throw new Error("Isolated PostgreSQL readiness restoration failed");
+      }
+    } else {
+      const acquire = beginSqlObservation(); try { db!.exec("BEGIN EXCLUSIVE"); } finally { endSqlObservation(); }
+      try {
+        await send({ method: "GET", path: "/todos", auth: "alice-session" }, "readinessInvalidation");
+        outage = { mode: "actual separate-connection SQLite exclusive lock", lockAcquireStatements: acquire, triggeringRequest: raw.pop().readinessInvalidation };
+        clockNow += 5_000; await Bun.sleep(1_100); await sample("database_unavailable");
+      } finally { const release = beginSqlObservation(); try { db!.exec("ROLLBACK"); } finally { endSqlObservation(); if (outage) outage.lockReleaseStatements = release; } }
+    }
+    // Native successful authenticated persistence clears the outage before the
+    // deployment gate probes again. Both listeners retain their actual ports.
+    clockNow += 5_000; await Bun.sleep(1_100); await sample("recovered_control");
+    await send({ method: "GET", path: "/todos", auth: "alice-session" }, "readinessRecovery");
+    const recovery = raw.pop().readinessRecovery;
+    raw.push({ nativeReadiness: { specification: case_.fixture, selectedBackend: backend, deploymentCallable: "createDeploymentServer", hostname: deployment.hostname, applicationPort: application.port, deploymentPort: deployment.port, phases, healthyControl: healthy, outage, recovery, canonicalMainStartup: "Separate original CONFIG startup controls retained; whole canonical URI startup remains open." } });
+  } finally { process.exit = nativeExit; application.stop(true); deployment.stop(true); }
 }
 async function boundaryProbe(case_: any) {
   const variants = [];
@@ -552,7 +607,8 @@ try {
     await reset(case_);
     if (["JOB-001", "JOB-002", "JOB-003"].includes(case_.id)) { await reminderProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
     if (case_.id === "JOB-004") { await maintenanceProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
-    if (["CONFIG-001", "CONFIG-002"].includes(case_.id)) { await startupProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_exact_native_configuration_diagnostics_missing" }); continue; }
+    if (["CONFIG-001", "CONFIG-002"].includes(case_.id)) { await startupProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
+    if (case_.id === "CONFIG-003") { await readinessProbe(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue; }
     if (case_.id === "BOUNDARY-001") { await boundaryProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_native_provider_boundary_request_id_missing" }); continue; }
     if (["AUTH-009", "AUTH-011"].includes(case_.id)) await prepareServiceFixture(case_);
     if (["REL-002", "REL-004"].includes(case_.id)) {
