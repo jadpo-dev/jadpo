@@ -441,6 +441,21 @@ def reminder_observations(case: dict, raw: list):
         marks = [index for index, row in enumerate(statements) if row.get('operation') == 'UPDATE' and 'UPDATE "todo" SET "reminder_sent_at"' in row.get('sql', '')]
         if len(inserts) != 1 or len(reads) != 1 or len(marks) != 1 or not inserts[0] < reads[0] < marks[0] or not any(row.get('operation') == 'BEGIN' for row in statements[:inserts[0]]) or not any(row.get('operation') == 'COMMIT' for row in statements[marks[0]+1:]) or not any(row.get('operation') == 'SELECT' and 'JOIN "reminder_service_membership"' in row.get('sql', '') and '"expires_at" >' in row['sql'] for row in statements):
             raise ValueError('Missing causal native authority/receipt insertion/read/sent-mark/commit sequence')
+        # The receipt and source marker must share their owning transaction;
+        # earlier activation/later cleanup transactions cannot substitute.
+        if any(not isinstance(statement.get('sql'), str) or statement.get('operation') != (re.match(r'^\s*([a-z]+)', statement['sql'], re.I)[1].upper() if re.match(r'^\s*([a-z]+)', statement['sql'], re.I) else 'UNKNOWN') for statement in statements):
+            raise ValueError('Reminder statement operation differs from actual SQL')
+        controls = [(index, statement['operation']) for index, statement in enumerate(statements) if statement['operation'] in ('BEGIN', 'COMMIT', 'ROLLBACK')]
+        preceding = [(index, operation) for index, operation in controls if index < inserts[0]]
+        following = [(index, operation) for index, operation in controls if index > marks[0]]
+        if not preceding or not following or preceding[-1][1] != 'BEGIN' or following[0][1] != 'COMMIT':
+            raise ValueError('Reminder completion lost its owning successful BEGIN/COMMIT bracket')
+        begin, commit = preceding[-1][0], following[0][0]
+        if any(begin < index < commit for index, _ in controls):
+            raise ValueError('Reminder receipt/read/marker split transactions or rolled back')
+        mark = statements[marks[0]]
+        if not re.fullmatch(r'UPDATE "todo" SET "reminder_sent_at" = [?$]1, "updated_at" = [?$]2 WHERE "id" = [?$]3 AND "reminder_sent_at" IS NULL RETURNING \*', mark['sql']) or mark.get('reminderRowIdentity') != row['id']:
+            raise ValueError('Reminder source marker lost exact identity predicate/bind')
         return {'mailCalls': len(calls), 'recipient': 'alice.email', 'idempotencyKey': 'persisted reminder_intent.id', 'reminderSentAtPresent': row['reminder_sent_at'] is not None, 'idempotencyKeyEqualsBodyAndHeader': call['body']['idempotency_key'] == call['idempotencyKey'] == identity, 'reminderSentAtSource': 'compiler receipt observation time', 'sentMarkMatchesCurrentScheduleRevision': intent['source_revision'] == schedule['schedule_revision']}
     if case['id'] == 'JOB-001':
         return [{'variant_index': 0, 'steps': [completed(original)]}]
