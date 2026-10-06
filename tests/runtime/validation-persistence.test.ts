@@ -1660,6 +1660,9 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
       'import { pathToFileURL } from "node:url";',
       'Math.random = () => 0;',
       'const app = await import(pathToFileURL(Bun.env.JADPO_VALIDATION_APP_MODULE!).href);',
+      'console.log(JSON.stringify({ transportFixturePhase: "startup_complete" }));',
+      'if (await Bun.stdin.text() !== "armed\\n") throw new Error("transport fixture was not armed");',
+      'console.log(JSON.stringify({ transportFixturePhase: "business_started" }));',
       'const input = JSON.parse(Bun.env.JADPO_VALIDATION_INPUT!);',
       'const read = Bun.env.JADPO_VALIDATION_FAULT === "after_read";',
       'const response = await app.handleRequest(new Request("https://persistence.test" + (read ? "/lookup" : "/entries"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(read ? { id: input.id } : input) }));',
@@ -1667,6 +1670,9 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
     ].join("\n");
     async function runThroughProxy(input: ReturnType<typeof entry>, fault: "before_begin" | "after_commit" | "after_read") {
       const sockets: Socket[] = [];
+      const phaseTrace: string[] = [];
+      let armed = false;
+      let startupCompletions = 0;
       let beginForwarded = false;
       let commitForwarded = false;
       let responseDropped = false;
@@ -1676,14 +1682,18 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
         sockets.push(downstream, upstream);
         downstream.on("data", (chunk: Buffer) => {
           const query = chunk.toString("utf8").toUpperCase();
-          if (fault === "before_begin" && !beginForwarded && query.includes("BEGIN\0")) beginForwarded = true;
-          if (fault === "after_commit" && query.includes("COMMIT\0")) commitForwarded = true;
-          if (fault === "after_read" && query.includes("SELECT ") && query.includes('FROM "ENTRY"')) readsForwarded++;
+          if (query.includes("BEGIN\0")) phaseTrace.push(armed ? "business_begin" : "startup_begin");
+          if (query.includes("COMMIT\0")) phaseTrace.push(armed ? "business_commit" : "startup_commit");
+          if (query.includes("SELECT ") && query.includes('FROM "ENTRY"')) phaseTrace.push(armed ? "business_read" : "startup_read");
+          if (armed && fault === "before_begin" && !beginForwarded && query.includes("BEGIN\0")) beginForwarded = true;
+          if (armed && fault === "after_commit" && query.includes("COMMIT\0")) commitForwarded = true;
+          if (armed && fault === "after_read" && query.includes("SELECT ") && query.includes('FROM "ENTRY"')) readsForwarded++;
           upstream.write(chunk);
         });
         upstream.on("data", (chunk: Buffer) => {
           if ((fault === "before_begin" && beginForwarded || fault === "after_commit" && commitForwarded || fault === "after_read" && readsForwarded > 0) && !responseDropped) {
             responseDropped = true;
+            phaseTrace.push("business_response_dropped");
             downstream.destroy();
             upstream.destroy();
           } else {
@@ -1711,25 +1721,74 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
               JADPO_VALIDATION_INPUT: JSON.stringify(input),
               JADPO_VALIDATION_FAULT: fault,
             },
+            stdin: "pipe",
             stdout: "pipe",
             stderr: "pipe",
           },
         );
+        // The generated module awaits native schema initialization at import.
+        // Arm only after its child observation, then acknowledge over stdin;
+        // the child cannot start the business request before this acknowledgement.
+        const stdoutPromise = (async () => {
+          let stdout = "";
+          let pending = "";
+          const decoder = new TextDecoder();
+          for await (const chunk of child.stdout) {
+            const text = decoder.decode(chunk, { stream: true });
+            stdout += text;
+            pending += text;
+            let newline: number;
+            while ((newline = pending.indexOf("\n")) !== -1) {
+              const line = pending.slice(0, newline);
+              pending = pending.slice(newline + 1);
+              if (line === JSON.stringify({ transportFixturePhase: "startup_complete" })) {
+                startupCompletions++;
+                if (startupCompletions !== 1) throw new Error("duplicate transport startup observation");
+                phaseTrace.push("startup_complete");
+                armed = true;
+                phaseTrace.push("parent_armed");
+                phaseTrace.push("business_allowed");
+                child.stdin.write("armed\n");
+                await child.stdin.end();
+              }
+            }
+          }
+          return stdout + decoder.decode();
+        })();
         const [exitCode, stdout, stderr] = await Promise.all([
           child.exited,
-          new Response(child.stdout).text(),
+          stdoutPromise,
           new Response(child.stderr).text(),
         ]);
-        return { exitCode, stdout, stderr, beginForwarded, commitForwarded, responseDropped, readsForwarded };
+        return { exitCode, stdout, stderr, phaseTrace, startupCompletions, beginForwarded, commitForwarded, responseDropped, readsForwarded };
       } finally {
         for (const socket of sockets) socket.destroy();
         await new Promise<void>((resolve) => proxy.close(() => resolve()));
       }
     }
 
+    function expectStartupIsolated(result: Awaited<ReturnType<typeof runThroughProxy>>) {
+      expect(result.startupCompletions, result.stderr).toBe(1);
+      const startupComplete = result.phaseTrace.indexOf("startup_complete");
+      const armed = result.phaseTrace.indexOf("parent_armed");
+      const businessAllowed = result.phaseTrace.indexOf("business_allowed");
+      const childPhases = result.stdout.split("\n").flatMap((line) => {
+        try { const value = JSON.parse(line); return value.transportFixturePhase ? [value.transportFixturePhase] : []; }
+        catch { return []; }
+      });
+      expect(childPhases).toEqual(["startup_complete", "business_started"]);
+      expect(result.phaseTrace.slice(0, startupComplete)).toEqual(["startup_begin", "startup_commit"]);
+      expect(armed).toBe(startupComplete + 1);
+      expect(businessAllowed).toBe(armed + 1);
+      expect(result.phaseTrace.indexOf("business_response_dropped")).toBeGreaterThan(businessAllowed);
+      expect(result.phaseTrace.slice(armed + 1)).not.toContain("startup_begin");
+      expect(result.phaseTrace.slice(armed + 1)).not.toContain("startup_commit");
+    }
+
     const before = entry("proxy-pre-begin-retry");
     const beforeResult = await runThroughProxy(before, "before_begin");
     expect(beforeResult.exitCode, beforeResult.stderr).toBe(0);
+    expectStartupIsolated(beforeResult);
     expect(beforeResult.beginForwarded).toBe(true);
     expect(beforeResult.responseDropped).toBe(true);
     expect(JSON.parse(beforeResult.stdout.trim().split("\n").at(-1)!).status).toBe(200);
@@ -1748,6 +1807,7 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
     const after = entry("proxy-post-commit-unknown");
     const afterResult = await runThroughProxy(after, "after_commit");
     expect(afterResult.exitCode, afterResult.stderr).toBe(0);
+    expectStartupIsolated(afterResult);
     expect(afterResult.commitForwarded).toBe(true);
     expect(afterResult.responseDropped).toBe(true);
     const response = JSON.parse(afterResult.stdout.trim().split("\n").at(-1)!);
@@ -1765,6 +1825,7 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
 
     const readResult = await runThroughProxy(after, "after_read");
     expect(readResult.exitCode, readResult.stderr).toBe(0);
+    expectStartupIsolated(readResult);
     expect(readResult.responseDropped).toBe(true);
     expect(readResult.readsForwarded).toBe(1);
     const readResponse = JSON.parse(readResult.stdout.trim().split("\n").at(-1)!);
@@ -1772,6 +1833,17 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
     expect(readResponse.body.error.code).toBe("read_unavailable");
     expect(readResult.stderr).not.toContain('"eventName":"transaction.attempt"');
     expect(await stored(after.id)).toEqual([after]);
+    console.log(JSON.stringify({
+      transportFixture: "native-startup-parent-arm",
+      probes: [beforeResult, afterResult, readResult].map((result, index) => ({
+        fault: ["before_begin", "after_commit", "after_read"][index],
+        phaseTrace: result.phaseTrace,
+        startupCompletions: result.startupCompletions,
+        status: JSON.parse(result.stdout.trim().split("\n").at(-1)!).status,
+        responseDropped: result.responseDropped,
+        readsForwarded: result.readsForwarded,
+      })),
+    }));
   });
   test("PostgreSQL structured serialization abort identifies the statement phase", async () => {
     if (!postgresUrl) return;
