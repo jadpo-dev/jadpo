@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-601-370d133fc605", "task_id": "RM-601", "actor": "scheduler-recovery-transaction-audit-plan", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T20:27:44.748968+00:00", "phase": "planning"}
+{"at": "2026-10-06T20:29:21.253218+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm402-protected-retry-admission-plan/full-contract-exit/retry-audit-correction-plan/plan.json"}

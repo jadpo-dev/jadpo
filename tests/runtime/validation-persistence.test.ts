@@ -1,11 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { Database, constants } from "bun:sqlite";
 import { SQL } from "bun";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection, createServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { nativeContentionSnapshot, runNativeContentionWave } from "./fixtures/transaction-contention-worker";
 
 // Only the dedicated verifier-owned disposable database may select PostgreSQL.
 // Ambient application connection strings are never consumed by this suite.
@@ -132,7 +133,9 @@ const build = Bun.spawnSync([compiler, "build", root], { stdout: "pipe", stderr:
 if (build.exitCode !== 0) throw new Error(`Persistence contract failed to build:\n${build.stdout}\n${build.stderr}`);
 // Expose the actual generated client only in this disposable test output for
 // deterministic control-query fault injection; no production seam is emitted.
+if (Bun.env.JADPO_CONTENTION_CAPTURE) cpSync(join(root, "build"), join(Bun.env.JADPO_CONTENTION_CAPTURE, "pristine-build"), { recursive: true });
 const persistencePath = join(root, "build/target/persistence.ts");
+const nativeContentionPristinePersistence = readFileSync(persistencePath, "utf8");
 writeFileSync(persistencePath, readFileSync(persistencePath, "utf8") + "\nexport const __controlQueryProbeClient = createPersistenceClient;\n");
 const app = await import(pathToFileURL(join(root, "build/target/app.ts")).href);
 const persistenceModule = await import(pathToFileURL(join(root, "build/target/persistence.ts")).href);
@@ -1816,6 +1819,23 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
     } finally { Math.random = originalRandom; console.error = originalLog; }
     expect(Math.random).toBe(originalRandom); expect(console.error).toBe(originalLog); expect(owner).toBeNull();
   });
+  for (const wave of ["success", "expiry", "cancel"] as const) {
+    test(`four independent seeded native worker retries preserve ${wave} contention and one original budget`, async () => {
+      const value = entry(`many-native-${wave}`, null);
+      await persistenceModule.persistence.withOperationTime("2026-10-04T08:00:00.000Z").transaction(async (tx: any) => {
+        await tx.create_Entry(value);
+        await tx.enqueue_delivery_intent({ ...outboxSpec(value), job: "validation_contention_baseline" });
+      });
+      const baseline = await nativeContentionSnapshot(sql ?? sqlite!, postgresUrl !== undefined, value.id);
+      expect(baseline.source).toEqual([value]); expect(baseline.changes).toHaveLength(1);
+      expect(baseline.intents).toHaveLength(1); expect(baseline.keys).toHaveLength(1);
+      const report = await runNativeContentionWave({ module: persistencePath, pristine: nativeContentionPristinePersistence, pg: postgresUrl !== undefined, observer: sql ?? sqlite!, sourceId: value.id, wave, gate: 973020 + ["success", "expiry", "cancel"].indexOf(wave), baseline });
+      expect(new Set(report.workerPIDs).size).toBe(4); expect(report.watchdog).toBe(false);
+      expect(report.nativeOwnersClosed).toBe(true); expect(report.results).toHaveLength(4);
+      expect(report.results.every((r: any) => r.attemptCalls <= 3)).toBe(true);
+      expect(report.durable.changes).toHaveLength(wave === "success" ? 5 : 1);
+    }, 15000);
+  }
   test("retried updates retain a contiguous multi-revision change history on both adapters", async () => {
     const persistence = persistenceModule.persistence as any;
     const value = entry("contiguous-revisions");

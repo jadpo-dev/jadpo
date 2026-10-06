@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T21:09:51+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T21:40:17+01:00 · figures reflect the recorded roadmap.
 
-Golden delivery continues in parallel. The fresh integrated checkpoint passes94 supported checks; whole-task and release gates remain open.
+Golden delivery continues in parallel. The fresh integrated checkpoint passes96 supported checks; whole-task and release gates remain open.
 
 ## At a glance
 
@@ -20,9 +20,9 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 
 ## Delivered
 
-- [Conditional dispatch witnesses](../../tests/validation/evidence/rm601-dispatch-witness-reviewed-fusion/report.json) now pass the integrated94-check gate, preserving current public retry and temporal schema behavior; all88 supporting HTTP cases pass.
-- [Initial PostgreSQL ownership controls](../../tests/validation/evidence/rm403-native-lifetime-grounding/initial-native-phase-controls/independent-review/review.json) independently confirm original10s expiry and native cleanup, with healthy and causal controls; selective integration is next.
-- [Stored temporal controls](../../tests/validation/evidence/rm504-after-ready-stored-corruption/independent-review/review.json) independently pass on both adapters and retain diagnosed precision/TEXT limits; a narrow Duration correction awaits review.
+- [Four-client retry controls and startup ownership](../../tests/validation/evidence/rm402-startup-duration-contention-reviewed-fusion/report.json) now pass the integrated96-check gate with all88 supporting HTTP cases; retry audit metadata correction remains.
+- [Stored Duration correction](../../tests/validation/evidence/rm504-duration-storage-fallback/independent-review/review.json) now rejects corrupted SQLTEXT ISO durations as contained data faults on the integrated native path.
+- [Temporal HOST review](../../tests/validation/evidence/rm504-host-time-claim-matrix/native-execution/independent-review/review.json) passes existing and bounded tests, reproduces five accepted failures and grounds targeted fixes.
 
 ## Since the previous report
 
@@ -58,10 +58,10 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Select reviewed startup/stored controls, independently review the Duration correction and four-client contention trace, then run a fresh combined gate and continue remaining golden prerequisites.
+Independently review the retry metadata and temporal fixes, qualify ordinary readiness recovery, then fuse the reviewed leaves and continue remaining golden prerequisites.
 
 ## Input needed
 
-The previously asked required database-binding successor and publication checkpoint decisions remain unanswered; independent local delivery continues. See [the concrete database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06).
+The previously asked database-binding successor and publication decisions remain unanswered; independent local delivery continues. See [the database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06).
 
 [Roadmap](../implementation-roadmap.md) · [Completed evidence](../implementation-history.md) · [Estimate basis](../task-timing/README.md) · [Reporting rules](README.md)

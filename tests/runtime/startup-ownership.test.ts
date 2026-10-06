@@ -252,3 +252,18 @@ test.skipIf(!postgres)("actual initial PostgreSQL COMMIT acknowledgement stall i
   if(exit !== 0) throw Error(`Native owned COMMIT fixture failed: ${stdout}\n${stderr}`);
   expect(exit).toBe(0); expect(stderr).toBe(""); const proof = JSON.parse(stdout); expect(proof.expiryObserved).toBe(false); expect(proof.backendRemaining).toBe(0); expect(proof.clientCloseObserved).toBe(true); expect(proof.terminationExit).toBe(1); expect(proof.startupFaultReported).toBe(true); expect(proof.connections).toBeGreaterThan(0); expect(proof.closedConnections).toBe(proof.connections); expect(proof.allBackendsRemaining).toBe(0); console.log(stdout.trim());
 }, 20000);
+
+for (const phase of ["begin", "setup"] as const) test.skipIf(!postgres)(`actual initial PostgreSQL ${phase} result acknowledgement stall retains original native owner`, async () => {
+  const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", resolve("tests/runtime/fixtures/startup-owned-phase.ts"), phase, "hold"], {
+    env: { PATH: Bun.env.PATH ?? "", JADPO_STARTUP_OWNER_DATABASE_URL: postgres!, JADPO_STARTUP_OWNER_APP: join(generated, "app.ts") }, stdout: "pipe", stderr: "pipe",
+  });
+  const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  if (exit !== 0) throw Error(`Native owned ${phase} fixture failed: ${stdout}\n${stderr}`);
+  const proof = JSON.parse(stdout);
+  expect(stderr).toBe(""); expect(proof.phase).toBe(phase); expect(proof.qualifiedExecutedResult).toBe(true);
+  expect(proof.laterExecutions).toBe(0); expect(proof.expiryObserved).toBe(false); expect(proof.terminationExit).toBe(1);
+  expect(proof.listenerStarts).toBe(0); expect(proof.network.bindings).toBe(0); expect(proof.network.polls).toBeGreaterThan(0);
+  expect(proof.closedConnections).toBe(proof.connections); expect(proof.closedUpstreams).toBe(proof.connections);
+  expect(proof.allBackendsRemaining).toBe(0); expect(proof.nativeProcessesRemaining).toBe(0); expect(proof.schemaObjects).toBe(0);
+  expect(proof.safeStartupFaults).toBe(1); expect(proof.publishedReady).toBe(false); console.log(stdout.trim());
+}, 20000);

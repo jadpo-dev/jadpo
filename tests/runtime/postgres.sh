@@ -3,8 +3,8 @@ set -euo pipefail
 
 mode=${1:-}
 case "$mode" in
-  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|protected-lifecycle-credentials|temporal-schema-gate) ;;
-  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|protected-lifecycle-credentials|temporal-schema-gate' >&2; exit 2 ;;
+  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate) ;;
+  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate' >&2; exit 2 ;;
 esac
 for executable in initdb pg_ctl createdb postgres bun; do
   command -v "$executable" >/dev/null || { echo "Required executable: $executable" >&2; exit 1; }
@@ -30,7 +30,7 @@ if ! pg_ctl -D "$cluster/data" -l "$cluster/server.log" -o "-h 127.0.0.1 -p $por
 fi
 createdb -h 127.0.0.1 -p "$port" -U jadpo_auth_test jadpo_auth_test_runtime
 cd "$repository"
-unset JADPO_POLICY_RUNTIME_DATABASE_URL DATABASE_URL SQLITE_PATH JADPO_AUTH_TEST_DATABASE_URL JADPO_SERVICE_AUTH_DATABASE_URL JADPO_GOLDEN_SERVICE_DATABASE_URL JADPO_JWT_AUTH_DATABASE_URL JADPO_READINESS_TEST_DATABASE_URL JADPO_READINESS_AUTH_DATABASE_URL JADPO_READINESS_RECOVERY_DATABASE_URL JADPO_READINESS_CONTROL_DATABASE_URL JADPO_VALIDATION_PERSISTENCE_DATABASE_URL JADPO_VALIDATION_AUTH_POLICY_DATABASE_URL JADPO_ENTITY_DOSSIER_DATABASE_URL JADPO_LIFECYCLE_DATABASE_URL JADPO_DELIVERY_HOOK_DATABASE_URL JADPO_DEBUG_TARGET_STACKS JADPO_CONFIG_PREFLIGHT_DATABASE_URL JADPO_DEPLOYMENT_READINESS_DATABASE_URL JADPO_DEPLOYMENT_PORT JADPO_STARTUP_OWNER_DATABASE_URL JADPO_PROTECTED_RETRY_DATABASE_URL JADPO_TEMPORAL_ROUNDTRIP_DATABASE_URL JADPO_TEMPORAL_DAY_DATABASE_URL JADPO_TEMPORAL_DAY_POSTGRES_LOG JADPO_LIFECYCLE_CREDENTIAL_DATABASE_URL JADPO_TEMPORAL_SCHEMA_DATABASE_URL
+unset JADPO_FINITE_WITNESS_DATABASE_URL JADPO_FINITE_WITNESS_POSTGRES_LOG JADPO_POLICY_RUNTIME_DATABASE_URL DATABASE_URL SQLITE_PATH JADPO_AUTH_TEST_DATABASE_URL JADPO_SERVICE_AUTH_DATABASE_URL JADPO_GOLDEN_SERVICE_DATABASE_URL JADPO_JWT_AUTH_DATABASE_URL JADPO_READINESS_TEST_DATABASE_URL JADPO_READINESS_AUTH_DATABASE_URL JADPO_READINESS_RECOVERY_DATABASE_URL JADPO_READINESS_CONTROL_DATABASE_URL JADPO_VALIDATION_PERSISTENCE_DATABASE_URL JADPO_VALIDATION_AUTH_POLICY_DATABASE_URL JADPO_ENTITY_DOSSIER_DATABASE_URL JADPO_LIFECYCLE_DATABASE_URL JADPO_DELIVERY_HOOK_DATABASE_URL JADPO_DEBUG_TARGET_STACKS JADPO_CONFIG_PREFLIGHT_DATABASE_URL JADPO_DEPLOYMENT_READINESS_DATABASE_URL JADPO_DEPLOYMENT_PORT JADPO_STARTUP_OWNER_DATABASE_URL JADPO_PROTECTED_RETRY_DATABASE_URL JADPO_TEMPORAL_ROUNDTRIP_DATABASE_URL JADPO_TEMPORAL_DAY_DATABASE_URL JADPO_TEMPORAL_DAY_POSTGRES_LOG JADPO_LIFECYCLE_CREDENTIAL_DATABASE_URL JADPO_TEMPORAL_SCHEMA_DATABASE_URL JADPO_TEMPORAL_STORED_DATABASE_URL JADPO_CONTENTION_CAPTURE JADPO_CONTENTION_OMIT
 if [[ "$mode" == authentication ]]; then
   JADPO_AUTH_TEST_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test ./tests/runtime/first-party-authentication.test.ts
@@ -85,6 +85,9 @@ elif [[ "$mode" == startup-ownership ]]; then
 elif [[ "$mode" == protected-retry ]]; then
   JADPO_PROTECTED_RETRY_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test ./tests/runtime/protected-retry-controls.test.ts
+elif [[ "$mode" == temporal-stored-corruption ]]; then
+  JADPO_TEMPORAL_STORED_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
+    bun --no-install --env-file=/dev/null test ./tests/runtime/temporal-stored-corruption.test.ts
 elif [[ "$mode" == temporal-roundtrip ]]; then
   JADPO_TEMPORAL_ROUNDTRIP_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test ./tests/runtime/temporal-roundtrip.test.ts

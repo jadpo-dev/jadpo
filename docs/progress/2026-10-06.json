@@ -1113,25 +1113,25 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T21:09:51+01:00",
+  "captured_at": "2026-10-06T21:40:17+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "5deb357c0fdd0e6f409cc9e5a64f68beefe39865b7ab5f099f97218f24f5c4a7",
+    "docs/implementation-roadmap.md": "2b795d886e30a03b87aea566ec1d3f0728ee7b7b1148b813278872f15fe2d656",
     "docs/implementation-history.md": "1782b2ee75b236b7a2e5d62a28beacd4fbeb6407e32aae71ea098a18e09f19d9",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "31a5b09433a310ef167b0e0b28194d686ca9d7b264e2f5d8554c01f9e0da0484",
+    "docs/work-plans/golden-delivery-planning.md": "06495ab4e13c8b6e85378a64bef5cbdb611c15a68ade5747291a49c2f1674716",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "Golden delivery continues in parallel. The fresh integrated checkpoint passes94 supported checks; whole-task and release gates remain open.",
+    "summary": "Golden delivery continues in parallel. The fresh integrated checkpoint passes96 supported checks; whole-task and release gates remain open.",
     "delivered": [
-      "[Conditional dispatch witnesses](../../tests/validation/evidence/rm601-dispatch-witness-reviewed-fusion/report.json) now pass the integrated94-check gate, preserving current public retry and temporal schema behavior; all88 supporting HTTP cases pass.",
-      "[Initial PostgreSQL ownership controls](../../tests/validation/evidence/rm403-native-lifetime-grounding/initial-native-phase-controls/independent-review/review.json) independently confirm original10s expiry and native cleanup, with healthy and causal controls; selective integration is next.",
-      "[Stored temporal controls](../../tests/validation/evidence/rm504-after-ready-stored-corruption/independent-review/review.json) independently pass on both adapters and retain diagnosed precision/TEXT limits; a narrow Duration correction awaits review."
+      "[Four-client retry controls and startup ownership](../../tests/validation/evidence/rm402-startup-duration-contention-reviewed-fusion/report.json) now pass the integrated96-check gate with all88 supporting HTTP cases; retry audit metadata correction remains.",
+      "[Stored Duration correction](../../tests/validation/evidence/rm504-duration-storage-fallback/independent-review/review.json) now rejects corrupted SQLTEXT ISO durations as contained data faults on the integrated native path.",
+      "[Temporal HOST review](../../tests/validation/evidence/rm504-host-time-claim-matrix/native-execution/independent-review/review.json) passes existing and bounded tests, reproduces five accepted failures and grounds targeted fixes."
     ],
-    "next": "Select reviewed startup/stored controls, independently review the Duration correction and four-client contention trace, then run a fresh combined gate and continue remaining golden prerequisites.",
-    "input_needed": "The previously asked required database-binding successor and publication checkpoint decisions remain unanswered; independent local delivery continues. See [the concrete database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06)."
+    "next": "Independently review the retry metadata and temporal fixes, qualify ordinary readiness recovery, then fuse the reviewed leaves and continue remaining golden prerequisites.",
+    "input_needed": "The previously asked database-binding successor and publication decisions remain unanswered; independent local delivery continues. See [the database options](../work-plans/golden-delivery-planning.md#pending-database-binding-decision--2026-10-06)."
   },
   "changes": {
     "completed": [

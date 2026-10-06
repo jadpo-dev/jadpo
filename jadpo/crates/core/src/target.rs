@@ -1466,7 +1466,7 @@ function decodeDatabaseDuration(value: unknown, path: string): Duration {
     if (Number.isSafeInteger(milliseconds)) return durationFromMilliseconds(milliseconds);
     return invalid(path, "portable Duration range");
   }
-  return validateDuration(value, path);
+  return invalid(path, "stored Duration integer milliseconds");
 }
 
 function decodeDatabaseTime(value: unknown, path: string): Time {

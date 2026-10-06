@@ -106,7 +106,8 @@
     "tests/runtime/validation-persistence.test.ts",
     "tests/runtime/validation-unicode-length.test.ts",
     "tests/runtime/temporal-day-page.test.ts",
-    "tests/runtime/approval-finite-witness.test.ts"
+    "tests/runtime/approval-finite-witness.test.ts",
+    "tests/runtime/temporal-stored-corruption.test.ts"
   ],
   "postgres_suites": {
     "tests/runtime/persistence-postgres.test.ts": "persistence",
@@ -147,6 +148,7 @@
     "protected-lifecycle-credentials",
     "temporal-schema-gate",
     "temporal-day-page",
-    "finite-witness"
+    "finite-witness",
+    "temporal-stored-corruption"
   ]
 }

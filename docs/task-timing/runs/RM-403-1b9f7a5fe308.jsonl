@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-403-1b9f7a5fe308", "task_id": "RM-403", "actor": "startup_owner_review", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T20:22:07.914302+00:00", "phase": "planning"}
+{"at": "2026-10-06T20:28:00.351899+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-native-lifetime-grounding/ordinary-probe-phase-plan/independent-plan-assessment.json"}

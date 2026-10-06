@@ -496,3 +496,7 @@ Return to the owner before adding a new source kind, implicit overlay, live
 reload mode, general secret sink, hosted secret SDK, configuration package
 dependency, or cloud-specific deployment contract. Do not weaken automatic
 startup/deployment validation merely to make a deployment pass.
+
+### RM-403 current native phase checkpoint — 2026-10-06
+
+The [independent initial phase review](../tests/validation/evidence/rm403-native-lifetime-grounding/initial-native-phase-controls/independent-review/review.json) and [current96-check gate](../tests/validation/evidence/rm402-startup-duration-contention-reviewed-fusion/report.json) integrate held native BEGIN/setup outcomes under original10s ownership, actual cleanup, healthy controls and causal refusals. The [assessed ordinary probe plan](../tests/validation/evidence/rm403-native-lifetime-grounding/ordinary-probe-phase-plan/independent-plan-assessment.json) is executing separately; native acknowledgement/client settlement/recovery and serving hard lifetimes remain open.
