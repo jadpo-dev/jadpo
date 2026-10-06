@@ -1,0 +1,53 @@
+entity TemporalRecord {
+    id: Uuid identity
+    instant: Instant
+    calendar_date: CalendarDate
+    elapsed: Duration
+    resolved: Time
+    optional_instant: Instant?
+}
+
+input SaveTemporal {
+    id: TemporalRecord.id
+    instant: TemporalRecord.instant
+    calendar_date: TemporalRecord.calendar_date
+    elapsed: TemporalRecord.elapsed
+    resolved: TemporalRecord.resolved
+    optional_instant: TemporalRecord.optional_instant
+}
+
+input FindTemporal { id: TemporalRecord.id }
+input FindTemporalInstant { instant: TemporalRecord.instant }
+
+failure TemporalConflict { kind: Conflict code: "temporal_conflict" }
+failure TemporalMissing { kind: NotFound code: "temporal_missing" }
+
+action save_temporal(input: SaveTemporal) -> TemporalRecord fails TemporalConflict {
+    return attempt create TemporalRecord {
+        id: input.id
+        instant: input.instant
+        calendar_date: input.calendar_date
+        elapsed: input.elapsed
+        resolved: input.resolved
+        optional_instant: input.optional_instant
+    } conflict: TemporalConflict
+}
+
+action find_temporal(input: FindTemporal) -> TemporalRecord fails TemporalMissing {
+    return attempt query required TemporalRecord {
+        where: id == input.id
+        missing: TemporalMissing
+    }
+}
+
+action find_temporal_instant(input: FindTemporalInstant) -> List<TemporalRecord> {
+    return attempt query many TemporalRecord {
+        where: instant == input.instant
+        order_by: id asc
+        limit: 10 offset: 0
+    }
+}
+
+route POST /temporal/create { auth: none input: SaveTemporal output: TemporalRecord run: save_temporal(input) }
+route POST /temporal/find { auth: none input: FindTemporal output: TemporalRecord run: find_temporal(input) }
+route POST /temporal/equal { auth: none input: FindTemporalInstant output: List<TemporalRecord> run: find_temporal_instant(input) }

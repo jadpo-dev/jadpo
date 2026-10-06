@@ -1461,6 +1461,11 @@ function decodeDatabaseCalendarDate(value: unknown, path: string): CalendarDate 
 
 function decodeDatabaseDuration(value: unknown, path: string): Duration {
   if (typeof value === "number" && Number.isSafeInteger(value)) return durationFromMilliseconds(value);
+  if (typeof value === "string" && /^(?:0|-?[1-9]\d*)$/u.test(value)) {
+    const milliseconds = Number(value);
+    if (Number.isSafeInteger(milliseconds)) return durationFromMilliseconds(milliseconds);
+    return invalid(path, "portable Duration range");
+  }
   return validateDuration(value, path);
 }
 
