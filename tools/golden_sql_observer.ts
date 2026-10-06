@@ -6,7 +6,7 @@ let driverInitializations = 0;
 export function driverInitializationCount() { return driverInitializations; }
 export const Database: typeof NativeDatabase = new Proxy(NativeDatabase, { construct(target, arguments_) { driverInitializations++; return Reflect.construct(target, arguments_); } });
 
-export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string; maintenanceRowIdentity?: string; reminderRowIdentity?: string; relationshipRowIdentity?: string; relationshipOwnerIdentity?: string; todoOwnerIdentities?: Record<string, string> };
+export type StatementObservation = { sql: string; operation: string; numericParameters: Record<string, number>; maintenanceCutoff?: string; maintenanceRowIdentity?: string; reminderRowIdentity?: string; relationshipRowIdentity?: string; relationshipOwnerIdentity?: string; todoOwnerIdentities?: Record<string, string>; deliveryIntentIdentity?: string; deliveryOutcomeState?: string };
 let active: StatementObservation[] | undefined;
 let authenticationAttempts = 0;
 let principals: unknown[] = [];
@@ -66,7 +66,13 @@ export function recordStatement(sql: string, parameters: unknown[] = []) {
   const relationshipRowIdentity = (relationshipInsert || relationshipDelete) && fixtureUuid(parameters[0]) ? parameters[0] : undefined;
   const relationshipOwnerIdentity = relationshipInsert && fixtureUuid(parameters[1]) ? parameters[1] : undefined;
   const todoOwnerIdentities = /^SELECT "id" AS "id",.* FROM "todo" WHERE "owner_id" = [?$]1 AND /u.test(safe) ? Object.fromEntries([0, 6].flatMap(index => fixtureUuid(parameters[index]) ? [[String(index + 1), parameters[index]]] : [])) : undefined;
-  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters, ...(maintenanceCutoff ? { maintenanceCutoff } : {}), ...(maintenanceRowIdentity ? { maintenanceRowIdentity } : {}), ...(relationshipRowIdentity ? { relationshipRowIdentity } : {}), ...(relationshipOwnerIdentity ? { relationshipOwnerIdentity } : {}), ...(reminderRowIdentity ? { reminderRowIdentity } : {}), ...(todoOwnerIdentities ? { todoOwnerIdentities } : {}) });
+  // Only these native dispatch/completion operations expose a safe intent UUID.
+  const dispatch = /^UPDATE "__jadpo_delivery_claims_v1" SET "possible_dispatch" = 1 WHERE "intent_id" = [$]1 /u.test(safe);
+  const completion = /^WITH "outcome_clock" AS MATERIALIZED /u.test(safe) && safe.includes('UPDATE "__jadpo_deliveries_v1" SET "state" = $1 WHERE "intent_id" = $2');
+  const identity = parameters[dispatch ? 0 : 1];
+  const deliveryIntentIdentity = (dispatch || completion) && fixtureUuid(identity) ? identity : undefined;
+  const deliveryOutcomeState = completion && parameters[0] === "outcome_unknown" ? parameters[0] : undefined;
+  active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN", numericParameters, ...(maintenanceCutoff ? { maintenanceCutoff } : {}), ...(maintenanceRowIdentity ? { maintenanceRowIdentity } : {}), ...(relationshipRowIdentity ? { relationshipRowIdentity } : {}), ...(relationshipOwnerIdentity ? { relationshipOwnerIdentity } : {}), ...(reminderRowIdentity ? { reminderRowIdentity } : {}), ...(todoOwnerIdentities ? { todoOwnerIdentities } : {}), ...(deliveryIntentIdentity ? { deliveryIntentIdentity } : {}), ...(deliveryOutcomeState ? { deliveryOutcomeState } : {}) });
 }
 function observeConnection(connection: any): any {
   return new Proxy(connection, {

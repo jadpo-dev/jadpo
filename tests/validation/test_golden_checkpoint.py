@@ -45,6 +45,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         case = self.cases[case_id]
         if case_id in ('CONFIG-001', 'CONFIG-002'): return self.preflight_raw(case_id)
         if case_id == 'CONFIG-003': return self.readiness_raw()
+        if case_id == 'BOUNDARY-001': return self.boundary_raw()
         if case_id in ('REL-002', 'REL-004'): return self.relationship_raw(case_id)
         if case_id in ('JOB-001', 'JOB-002', 'JOB-003'): return self.reminder_raw(case_id)
         if case_id == 'JOB-004': return self.maintenance_raw()
@@ -253,6 +254,20 @@ class CheckpointIntegrityTests(unittest.TestCase):
         phases[2]['statements'] = [{'operation': 'CREATE', 'sql': 'CREATE TABLE IF NOT EXISTS "todo" (id TEXT)'}, {'operation': 'SELECT', 'sql': 'SELECT sessions.id, sessions.data, sessions.revoked FROM "__jadpo_auth_sessions" AS sessions LIMIT 0'}]
         return [{'nativeReadiness': {'serviceMetadata': {'effects': [{'service': 'ReminderMail'}]}, 'specification': self.cases['CONFIG-003']['fixture'], 'selectedBackend': 'sqlite', 'deploymentCallable': 'createDeploymentServer', 'hostname': '127.0.0.1', 'applicationPort': 30001, 'deploymentPort': 30002, 'phases': phases, 'healthyControl': deepcopy(request), 'recovery': {**deepcopy(request), 'at': phases[2]['at']}, 'outage': {'startedAt': phases[0]['at'], 'restoredAt': phases[1]['at'], 'mode': 'actual separate-connection SQLite exclusive lock', 'lockAcquireStatements': [{'operation': 'BEGIN', 'sql': 'BEGIN EXCLUSIVE'}], 'lockReleaseStatements': [{'operation': 'ROLLBACK', 'sql': 'ROLLBACK'}], 'triggeringRequest': {**request, 'status': 500}}}}]
 
+    def boundary_raw(self):
+        case = self.cases['BOUNDARY-001']; readiness = self.readiness_raw()[0]['nativeReadiness']
+        healthy = deepcopy(readiness['healthyControl']); healthy['operationalEvents'] = []
+        request_id = '00000000-0000-4000-8000-000000000077'; intent_id = '00000000-0000-4000-8000-000000000078'
+        def fault(http=False): return {'error': {'code': 'internal_fault', 'message': 'An internal error occurred.', 'request_id': ('req_' if http else '')+request_id}}
+        def event(http=False): return {'schemaVersion': 1, 'kind': 'operational_log_event', 'eventName': 'operation.failed', 'classification': 'RUNTIME_UNHANDLED_FAULT' if http else 'RUNTIME_SERVICE_MISCONFIGURED', 'requestId': ('req_' if http else '')+request_id, 'traceId': None, 'semanticOperationId': 'route:GET:/todos' if http else 'job.overdue_reminders.delivery.reminder_v1', 'sourceRevision': 'synthetic_revision', 'attributes': {}}
+        failed = deepcopy(readiness['outage']['triggeringRequest']); failed.update(body=fault(True), operationalEvents=[event(True)])
+        database = {'variant_index': 0, 'fixture_variant': case['fixtureVariants'][0], 'healthyControl': healthy, 'outage': {'mode': 'actual separate-connection SQLite exclusive lock', 'response': failed, 'lockAcquireStatements': [{'sql': 'BEGIN EXCLUSIVE'}], 'lockReleaseStatements': [{'sql': 'ROLLBACK'}]}}
+        payload = {'idempotency_key': intent_id, 'to': 'alice@example.test', 'from': 'todos@example.test', 'todo_title': 'synthetic boundary', 'due_at': '2026-01-14T12:00:00Z'}
+        row = {'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice'], 'reminder_sent_at': None}
+        state = {'intents': [{'intent_id': intent_id, 'source_entity_id': row['id'], 'source_revision': 1, 'state': 'outcome_unknown', 'payload': payload}], 'claims': [{'intent_id': intent_id, 'invocations': 1, 'possible_dispatch': 1}], 'receipts': [], 'todo': row}
+        provider = {'variant_index': 1, 'fixture_variant': case['fixtureVariants'][1], 'providerCalls': [{'method': 'POST', 'path': '/v1/messages', 'body': payload, 'idempotencyKey': intent_id, 'authorizationPresent': True, 'responseStatus': 401, 'responseBody': {'code': 'authentication'}, 'responseHeaders': {'x-private-provider-canary': 'CHECKPOINT_PRIVATE_PROVIDER_AUTH_HEADER_STACK'}}], 'profiles': {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}, 'nativeFixtureCreation': {'status': 201, 'method': 'POST', 'requestedPath': '/todos', 'body': {'id': row['id']}, 'at': '2026-01-13T12:00:00Z'}, 'nativeHostOutcome': {'status': 'finished', 'selected': 1, 'attempted': 1, 'continued': False, 'failures': [fault()]}, 'nativeHostThrown': None, 'operationalEvents': [{'schemaVersion': 1, 'kind': 'operational_log_event', 'eventName': 'service.attempt', 'operationId': request_id, 'attempt': 1, 'elapsedMs': 1, 'outcome': 'misconfigured', 'retryScheduled': False, 'retryDelayMs': None}, event()], 'statements': [{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'UPDATE', 'sql': checkpoint.native_boundary_delivery_sql('sqlite')[0], 'deliveryIntentIdentity': intent_id}, {'operation': 'COMMIT', 'sql': 'COMMIT'}, {'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'WITH', 'sql': checkpoint.native_boundary_delivery_sql('sqlite')[1], 'deliveryIntentIdentity': intent_id, 'deliveryOutcomeState': 'outcome_unknown'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}], 'persisted': row, 'durableAfter': state, 'restart': {'at': '2026-01-15T12:15:00Z', 'outcome': {'status': 'finished', 'selected': 1, 'attempted': 1, 'continued': False}, 'statements': [{'operation': 'SELECT', 'sql': 'SELECT 1'}], 'durable': deepcopy(state)}}
+        return [{'boundaryVariants': [database, provider], 'selectedBackend': 'sqlite', 'sourceRevision': 'synthetic_revision', 'binding': 'job.overdue_reminders.delivery.reminder_v1', 'jobMetadata': self.reminder_raw('JOB-001')[0]['reminderFixture']['jobMetadata'], 'specification': {'fixtureVariants': case['fixtureVariants'], 'requestOrRun': case['requestOrRun']}}]
+
     def preflight_raw(self, case_id):
         case = self.cases[case_id]
         fields = [{'configuration': 'TodoConfiguration', 'name': name, 'binding': binding} for name, binding in [('mail_api_key', 'MAIL_API_KEY'), ('database_url', 'DATABASE_URL'), ('oidc_issuer', 'OIDC_ISSUER')]]
@@ -331,6 +346,17 @@ class CheckpointIntegrityTests(unittest.TestCase):
         for output in outputs:
             for result in output['results']:
                 if result['id'] in ('CONFIG-001', 'CONFIG-002'): result['raw'][0]['nativeStartup']['selectedBackend'] = output['backend']
+                if result['id'] == 'BOUNDARY-001':
+                    cap = result['raw'][0]; cap['selectedBackend'] = output['backend']
+                    for statement in cap['boundaryVariants'][1]['statements']:
+                        if statement['operation'] in ('UPDATE', 'WITH'):
+                            statement['sql'] = checkpoint.native_boundary_delivery_sql(output['backend'])[statement['operation'] == 'WITH']
+                    if output['backend'] == 'postgres':
+                        database = cap['boundaryVariants'][0]; database['outage'].update(mode='actual isolated PostgreSQL server stopped', stoppedCode=0)
+                        for request in (database['healthyControl'], database['outage']['response']):
+                            sql = request['statements'][0]['sql']
+                            for index in range(1, 8): sql = sql.replace('?'+str(index), '$'+str(index)+('::TEXT' if index == 2 else '::TIMESTAMPTZ(3)' if index == 3 else '::text' if index in (4, 5) else ''))
+                            request['statements'][0]['sql'] = sql
                 if result['id'] == 'CONFIG-003':
                     capture = result['raw'][0]['nativeReadiness']; capture['selectedBackend'] = output['backend']
                     if output['backend'] == 'postgres':
@@ -1118,28 +1144,68 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(case, raw)
 
     def partial_outputs_fixture(self):
-        output = {'partialEvidence': [{'id': case_id, 'adapterFailure': True, 'raw': []} for case_id in ('REL-003',)]}
-        case = self.cases['BOUNDARY-001']
-        variants = [{'variant_index': 0, 'fixture_variant': case['fixtureVariants'][0], 'healthyControl': {'status': 200}, 'outage': {'response': {'status': 500}}}, {'variant_index': 1, 'fixture_variant': case['fixtureVariants'][1], 'providerCalls': [{'responseStatus': 401, 'authorizationPresent': True}], 'profiles': {'activation': {'executionMs': 60000, 'leaseMs': 40000}, 'delivery': {'executionMs': 60000, 'leaseMs': 40000}}, 'nativeFixtureCreation': {'status': 201}, 'nativeHostOutcome': {'selected': 1, 'attempted': 1}}]
-        output['partialEvidence'].append({'id': 'BOUNDARY-001', 'raw': [{'boundaryVariants': variants, 'specification': {'fixtureVariants': case['fixtureVariants'], 'requestOrRun': case['requestOrRun']}}]})
-        return output
+        return {'partialEvidence': [{'id': 'REL-003', 'adapterFailure': True, 'raw': []}]}
 
-    def test_partial_boundary_inventory_and_causal_controls_are_bound(self):
+    def test_partial_inventory_preserves_exact_remaining_original_owner_case(self):
         checkpoint.validate_partial_outputs(self.partial_outputs_fixture(), self.cases)
-        for mutation in ('missing_id', 'duplicate_id', 'missing_variant', 'variant_order', 'healthy', 'outage', 'provider_uncalled', 'provider_status', 'profile', 'native_creation', 'native_selection'):
-            output = self.partial_outputs_fixture(); boundary = output['partialEvidence'][-1]['raw'][0]['boundaryVariants']
-            if mutation == 'missing_id': output['partialEvidence'].pop()
-            elif mutation == 'duplicate_id': output['partialEvidence'][-1]['id'] = 'REL-003'
-            elif mutation == 'missing_variant': boundary.pop()
-            elif mutation == 'variant_order': boundary.reverse()
-            elif mutation == 'healthy': boundary[0]['healthyControl']['status'] = 500
-            elif mutation == 'outage': boundary[0]['outage']['response']['status'] = 200
-            elif mutation == 'provider_uncalled': boundary[1]['providerCalls'] = []
-            elif mutation == 'provider_status': boundary[1]['providerCalls'][0]['responseStatus'] = 202
-            elif mutation == 'profile': boundary[1]['profiles']['activation']['executionMs'] = 1
-            elif mutation == 'native_creation': boundary[1]['nativeFixtureCreation']['status'] = 400
-            elif mutation == 'native_selection': boundary[1]['nativeHostOutcome']['selected'] = 0
+        for mutation in ('missing', 'duplicate', 'foreign'):
+            output = self.partial_outputs_fixture()
+            if mutation == 'missing': output['partialEvidence'] = []
+            elif mutation == 'duplicate': output['partialEvidence'].append(deepcopy(output['partialEvidence'][0]))
+            else: output['partialEvidence'][0]['id'] = 'BOUNDARY-001'
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.validate_partial_outputs(output, self.cases)
+
+    def test_generated_relative_modules_must_exist_before_native_startup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory); (target/'app.ts').write_text('import { initialize } from "./initialization-control.js";')
+            with self.assertRaisesRegex(ValueError, 'Missing generated relative runtime module'): checkpoint.verify_generated_local_modules(target)
+            (target/'initialization-control.ts').write_text('export const initialize = true;')
+            checkpoint.verify_generated_local_modules(target)
+
+    def test_native_boundary_requires_both_original_variants_exact_envelope_event_and_no_resend(self):
+        case = self.cases['BOUNDARY-001']
+        for mutation in ('missing_variant', 'variant_order', 'missing_id', 'extra_error', 'event_id', 'event_source', 'event_operation', 'event_secret', 'typed_body', 'provider_path', 'uncalled', 'native_host', 'sent_marker', 'receipt', 'state', 'intent_key', 'source_identity', 'claim_dispatch', 'resend', 'changed_after', 'foreign_http', 'foreign_sql', 'owner_bind', 'profile'):
+            raw = self.boundary_raw(); cap = raw[0]; database, provider = cap['boundaryVariants']
+            if mutation == 'missing_variant': cap['boundaryVariants'].pop()
+            elif mutation == 'variant_order': cap['boundaryVariants'].reverse()
+            elif mutation == 'missing_id': provider['nativeHostOutcome']['failures'][0]['error'].pop('request_id')
+            elif mutation == 'extra_error': provider['nativeHostOutcome']['failures'][0]['error']['private'] = 'canary'
+            elif mutation == 'event_id': provider['operationalEvents'][-1]['requestId'] = 'foreign'
+            elif mutation == 'event_source': provider['operationalEvents'][-1]['sourceRevision'] = 'foreign'
+            elif mutation == 'event_operation': provider['operationalEvents'][-1]['semanticOperationId'] = 'foreign'
+            elif mutation == 'event_secret': provider['operationalEvents'][0]['credential'] = 'canary'
+            elif mutation == 'typed_body': provider['providerCalls'][0]['responseBody']['private'] = 'canary'
+            elif mutation == 'provider_path': provider['providerCalls'][0]['path'] = '/foreign'
+            elif mutation == 'uncalled': provider['providerCalls'] = []
+            elif mutation == 'native_host': provider['nativeHostOutcome']['attempted'] = 0
+            elif mutation == 'sent_marker': provider['persisted']['reminder_sent_at'] = '2026-01-15T12:00:00Z'
+            elif mutation == 'receipt': provider['durableAfter']['receipts'].append({'intent_id': 'foreign'})
+            elif mutation == 'state': provider['durableAfter']['intents'][0]['state'] = 'completed'
+            elif mutation == 'intent_key': provider['providerCalls'][0]['idempotencyKey'] = 'foreign'
+            elif mutation == 'source_identity': provider['durableAfter']['intents'][0]['source_entity_id'] = checkpoint.ALIASES['bob']
+            elif mutation == 'claim_dispatch': provider['durableAfter']['claims'][0]['possible_dispatch'] = 2
+            elif mutation == 'resend': provider['providerCalls'].append(deepcopy(provider['providerCalls'][0]))
+            elif mutation == 'changed_after': provider['restart']['durable']['intents'][0]['state'] = 'completed'
+            elif mutation == 'foreign_http': database['outage']['response']['path'] = '/auth/exchange'
+            elif mutation == 'foreign_sql': database['outage']['response']['statements'][0]['sql'] = 'SELECT 1'
+            elif mutation == 'owner_bind': database['outage']['response']['statements'][0]['todoOwnerIdentities']['7'] = checkpoint.ALIASES['bob']
+            else: provider['profiles']['delivery']['executionMs'] = 1
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(case, raw)
+
+    def test_boundary_native_dispatch_and_unknown_completion_require_owning_commits_and_identity(self):
+        for mutation in ('no_begin', 'late_begin', 'no_commit', 'rollback', 'broad_predicate', 'identity', 'state', 'duplicate', 'collapsed', 'resend_sql'):
+            raw = self.boundary_raw(); provider = raw[0]['boundaryVariants'][1]; rows = provider['statements']
+            if mutation == 'no_begin': rows.pop(3)
+            elif mutation == 'late_begin': rows[3], rows[4] = rows[4], rows[3]
+            elif mutation == 'no_commit': rows.pop(5)
+            elif mutation == 'rollback': rows[5] = {'operation': 'ROLLBACK', 'sql': 'ROLLBACK'}
+            elif mutation == 'broad_predicate': rows[4]['sql'] = rows[4]['sql'].replace('WHERE "intent_id" = $2 AND', 'WHERE 1=1 AND')
+            elif mutation == 'identity': rows[4]['deliveryIntentIdentity'] = checkpoint.ALIASES['bob']
+            elif mutation == 'state': rows[4]['deliveryOutcomeState'] = 'succeeded'
+            elif mutation == 'duplicate': rows.append(deepcopy(rows[4]))
+            elif mutation == 'collapsed': rows[2:4] = []
+            else: provider['restart']['statements'].append(deepcopy(rows[1]))
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['BOUNDARY-001'], raw)
 
     def test_cursor_duplicate_fails_case_even_when_frozen_summary_fields_match(self):
         outputs = self.outputs()
