@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-603-6d452c2bee65", "task_id": "RM-603", "actor": "relationship_metadata_review", "actor_kind": "agent", "category": "fix", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T10:59:58.949070+00:00", "phase": "planning"}
+{"at": "2026-10-06T11:03:20.754543+00:00", "phase": "verification", "note": "Narrow strict root/ancestor lstat guard implemented; actual symlink/OS alias and native positive controls running."}
+{"at": "2026-10-06T11:06:37.659835+00:00", "phase": "review", "note": "Focused native controls pass; strict selected/ancestor path handling and preservation self-reviewed. Independent successor review remains pending."}
+{"at": "2026-10-06T11:06:37.739936+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm603-local-approval-symlink-correction/checkpoint.json"}

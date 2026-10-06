@@ -1,18 +1,5 @@
 {
   "tasks": {
-    "RM-108": {
-      "id": "RM-108",
-      "epic": "E01",
-      "description": "Compose the reminder job and reviewed mail service with golden queries/actions; implement deterministic clock, provider failure and duplicate-delivery cases.",
-      "state": "in progress",
-      "depends_on": "RM-105, RM-106, RM-107, RM-304, RM-307",
-      "estimate": "1\u20134h (L)",
-      "hours": [
-        1.0,
-        4.0
-      ],
-      "planning": "planned"
-    },
     "RM-109": {
       "id": "RM-109",
       "epic": "E01",
@@ -280,19 +267,6 @@
       "description": "Implement compiler-owned job/event declarations, transactional outbox and durable delivery state; prove atomic enqueue and restart-safe identity/version tracking.",
       "state": "in progress",
       "depends_on": "RM-305",
-      "estimate": "2\u20138h (N)",
-      "hours": [
-        2.0,
-        8.0
-      ],
-      "planning": "planned"
-    },
-    "RM-307": {
-      "id": "RM-307",
-      "epic": "E03",
-      "description": "Implement scheduling and worker execution with bounded selection, retries, cancellation and replay; pass duplicate/crash/exhaustion tests with controlled clocks.",
-      "state": "in progress",
-      "depends_on": "RM-306, RM-304",
       "estimate": "2\u20138h (N)",
       "hours": [
         2.0,
@@ -1037,6 +1011,14 @@
     }
   },
   "completed": {
+    "RM-307": {
+      "title": "2026-10-06 \u2014 RM-307 native scheduling and worker recovery",
+      "date": "2026-10-06"
+    },
+    "RM-108": {
+      "title": "2026-10-06 \u2014 RM-108 golden reminder and hourly maintenance integration",
+      "date": "2026-10-06"
+    },
     "RM-304": {
       "title": "2026-10-04 \u2014 RM-304 checked authored service fakes",
       "date": "2026-10-04"
@@ -1131,28 +1113,31 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T12:00:11+01:00",
+  "captured_at": "2026-10-06T16:04:32+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "9a748d1aed6e9391cbea3059f607141fcaedeeac457e4f7de97ff61abf0aa342",
-    "docs/implementation-history.md": "3719a84aae5f217b59f3196b2fb757b3b3d632f24a3e2d3da00f0092545db4f6",
+    "docs/implementation-roadmap.md": "864b7d53fb5fdf2a5a31c70acc1c6b15740f4e4e623f23e92a8d0286a0cf6689",
+    "docs/implementation-history.md": "1782b2ee75b236b7a2e5d62a28beacd4fbeb6407e32aae71ea098a18e09f19d9",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "75d9df125494e64a3fadc7e25d326c941739af52d419aa11c798331cf040cd7f",
+    "docs/work-plans/golden-delivery-planning.md": "79b5b94fbb6e881414ba26fdf603d8ae3733b337519eef64054f761b6ae2acf9",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "All 44 original golden Todo cases now have independent supporting observations on both databases: 88 passed. Required artifact agreement and technical acceptance prerequisites continue in the parallel delivery loop.",
+    "summary": "Reminder integration (RM-108) and native scheduling/worker recovery (RM-307) are complete after independent review and a fresh 76-check supported gate. Full golden Todo acceptance remains open while the parallel loop continues.",
     "delivered": [
-      "Fresh independent native collection passes88/0/0 across44 original IDs,94 scenarios and100 steps;101 protocol checks pass and24 coherently rebound evidence controls are refused. These are supporting observations, with final golden acceptance open. [Review](../../tests/validation/rm109-independent-complete44-review.json).",
-      "Exact protected owner-change refusal and native relationship-conflict artifact metadata have scoped independent approval; aliases remain unverified and no protected release authority is granted. [Current checkpoint](../work-plans/golden-delivery-planning.md#exact-protected-owner-change-artifact-review).",
-      "Local runtime/ICU/JWT provenance has independent controls and an exact complete44 remeasurement. Database/native rule-byte and cross-host qualification remain open. [Provenance review](../../tests/validation/rm504-independent-local-runtime-provenance-review.json)."
+      "Checked reminder delivery and scan use the accepted separate 60s/40s profiles; hourly 500-row maintenance now has durable UTC singleton/restart/rollback/unknown-COMMIT behavior on both databases. [Completion](../../tests/validation/rm108-rm307-completion-reconciliation.json).",
+      "All 18 frozen worker recovery obligations are independently reconciled; the current supported gate passes 76/76 including actual native SQLite/PostgreSQL delivery suites. Prior red gates remain retained. [History](../implementation-history.md#2026-10-06--rm-307-native-scheduling-and-worker-recovery).",
+      "All 44 original golden IDs have 88 independent supporting observations; signed bearer/JWT private retry controls and local nonrelease approval corrections have scoped reviews. The formal golden and protected release gates remain open. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint)."
     ],
-    "next": "Reconcile16 actual HTTP authentication/parser responses with native route/OpenAPI/failure artifacts, independently review private authenticated retries and local approval verification, then run fresh combined exact-source supported verification. Native lifetime and canonical database transport gates remain open.",
-    "input_needed": "Public push, PR and checked merge of fe966ef remain pending after automatic review rejected publication. A separate concrete PostgreSQL/SQLite database URI successor is pending because required golden DATABASE_URL conflicts with absent-URL SQLite selection. Both delivery lanes continue independent work."
+    "next": "Continue three parallel lanes: correct operational/native/domain error-schema collisions, qualify owned native startup lifetime, and independently review the fresh User.disable_user retry controls before integration. Root integrates reviewed slices and reruns required combined checks; no batch checkpoint ends the authorized loop.",
+    "input_needed": "Earlier publication approval for fixed fe966ef and canonical PostgreSQL/SQLite database URI successor questions remain unanswered. The accepted separate 60s/40s delivery and scan profiles require no further approval; independent work continues."
   },
   "changes": {
-    "completed": [],
+    "completed": [
+      "RM-108",
+      "RM-307"
+    ],
     "added_or_reopened": [],
     "removed_without_completion": []
   }

@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-603-7a5266d38466", "task_id": "RM-603", "actor": "01a10f20-b464-7543-925c-171de6c52598", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T14:26:50.426786+00:00", "phase": "planning"}
+{"at": "2026-10-06T14:28:42.706739+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm603-reviewed-working-integration/report.json"}

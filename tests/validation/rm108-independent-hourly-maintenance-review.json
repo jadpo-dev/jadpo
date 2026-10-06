@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-108",
+  "reviewer": "golden_worker_closure_audit",
+  "kind": "independent_consequential_hourly_maintenance_review",
+  "baseCommit": "febd45f778090c524c2dd36c5b8b8a7b9fdb4226",
+  "candidate": "Exact captured working source pins, not a subsequently invented Git commit.",
+  "capture": "/private/tmp/jadpo-hourly-maintenance-independent",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "batchPinBasis": "Retained inherited actual verified Sol/high fits consequential maintenance authority and transaction semantics review.",
+  "timer": "RM-108-1baf922f572e",
+  "originalEstimateHours": [
+    1,
+    4
+  ],
+  "disposition": "approved_scoped_hourly_maintenance_integration",
+  "blockingFindings": [],
+  "taskComplete": false,
+  "releaseEquivalent": false,
+  "sourcePins": {
+    "jadpo/crates/core/src/target.rs": "7cf4503d88138aeb88044114cf303a4fe1e43b33fffced8344b3952029e0e43f",
+    "jadpo/crates/core/src/runtime/lifecycle_maintenance_schedule.ts": "19360f7414a1f62e2fa89ba517e843d8dd99d65c780e29d608a0a35bb5f4b8a2",
+    "tests/runtime/lifecycle-maintenance-scheduling.test.ts": "dcb362564a64d3281da192c49e46318af0f66d2f890d7e57fc6b962c306cc9a3",
+    "tests/runtime/fixtures/lifecycle-maintenance-worker.ts": "89a4ea29ab2a013cdc43dd3bb5c0551a1d6455926fa4b9b091dc4f53a86f4f40",
+    "tests/runtime/postgres.sh": "8740934da1889fb6770126c4f972621ae20194d1eb934f8df8845a0fc2a54959",
+    "tests/validation/manifest.json": "4b284b731a99edb2c46b4c48e0a8f44a9e2913e1b16b82c1e7ac0a60cc52f86a"
+  },
+  "reviewerOwnedCompiler": {
+    "path": "/private/tmp/jadpo-hourly-maintenance-independent/owned-target/debug/jadpo",
+    "sha256": "e4f42e4208b9dfd594716fefd3c0aae4f4d1b34aec0c38e3fbad5e25dde64e80",
+    "freshBuildSource": "Reviewer-owned immutable candidate capture",
+    "generatedModulesRewritten": false
+  },
+  "independentExecution": {
+    "unalteredSQLite": {
+      "passed": 4,
+      "failed": 0,
+      "assertions": 28,
+      "log": "sqlite-author-tests-corrected.log"
+    },
+    "unalteredPostgreSQL": {
+      "passed": 4,
+      "failed": 0,
+      "assertions": 26,
+      "log": "postgres-author-tests.log"
+    },
+    "strengthenedSQLite": {
+      "passed": 10,
+      "failed": 0,
+      "assertions": 56,
+      "substantiveCases": 8,
+      "backendSpecificEarlyReturns": 2,
+      "log": "sqlite-strengthened-final.log"
+    },
+    "strengthenedPostgreSQL": {
+      "passed": 10,
+      "failed": 0,
+      "assertions": 57,
+      "substantiveCases": 8,
+      "backendSpecificEarlyReturns": 2,
+      "log": "postgres-strengthened-complete.log"
+    },
+    "nativeAuthoredHelperBypass": {
+      "cases": 3,
+      "exitEach": 1,
+      "diagnostic": "semantic.unknown_callee",
+      "report": "authored-boundary-probes/report.json"
+    },
+    "fullGateRepeated": false
+  },
+  "approvedBehavior": [
+    {
+      "area": "Scope and authority",
+      "references": [
+        "jadpo/crates/core/src/target.rs:lifecycle_maintenance",
+        "jadpo/crates/core/src/target.rs:scheduled_retention_purge generation",
+        "jadpo/crates/core/src/target.rs:main initialization"
+      ],
+      "finding": "Only actual checked entity purge clauses emit scheduler methods/metadata. Compiler native maintenance authority remains clause/config/timestamp/entity bound, with final selected-ID predicate recheck and500 bound; no service principal, ordinary policy grant, source-authored callable or worker proof grants purge. Native main starts this dedicated host after configuration/authentication initialization. Three real compiler calls to native helpers refuse. No reminder profile/authority is borrowed."
+    },
+    {
+      "area": "Hourly UTC schedule",
+      "finding": "Host immediate pulse plus subsequent UTC hour-boundary timer; durable per-clause completed occurrence caps host-future time using fresh native database time, coalesces missed hours and skips same/older hours. Observed501 expired rows consume500 in one occurrence, only1 in later occurrence, and live/young rows survive. Independent future-clock pulse caps to actual current database hour; corrupt portable timestamp refuses with byte-exact durable state preservation. Controlled native timer test observes UTC delay arithmetic, duplicate callback no extra purge, stop clearing pending timer and retained callback no rescheduling/effect."
+    },
+    {
+      "area": "Database singleton and crash",
+      "finding": "Native database transaction locks schedule row through nested purge savepoint and outer owning COMMIT. Process-local running flag is an optimization. Both actual separate-process contender/crash tests see501 rows while original holds uncommitted500 deletion; SIGKILL removes only uncommitted work, contender/recovery commits500 and fresh restart skips retained same hour with final row preserved. No lease expiry releases a live transaction."
+    },
+    {
+      "area": "Known failure and cleanup",
+      "finding": "Real foreign-key refusal rolls complete selected purge batch back within savepoint, retaining acknowledged failed occurrence so removing restriction cannot trigger same-hour retry; next hour retries. Injected native SQLite rollback-to-savepoint cleanup failure poisons transaction; whole outer native rollback leaves original rows and no occurrence acknowledgment, then clean same-hour attempt can succeed. Native PostgreSQL held schedule-row lock reaches generated deadline/server statement timeout; actual observed no_commit/rollbackProven and unchanged occurrence permit next clean same-hour attempt."
+    },
+    {
+      "area": "Unknown COMMIT acknowledgement",
+      "finding": "SQLite actual native COMMIT applies before injected IOERR; generated commit evidence remains unknown/unacknowledged,500 rows and occurrence are committed, same-hour call skips and later hour may delete final row. Actual PostgreSQL loopback proxy is armed only after child module startup; native business BEGIN/COMMIT each forwarded once, then actual COMMIT response is dropped. Generated transaction.commit unknown/rollbackProvenfalse/commitAcknowledgedfalse; independent direct DB reads prove500 deletion plus hour marker persisted, and fresh direct worker skips same hour. No automatic retry or inferred rolled_back result."
+    },
+    {
+      "area": "Safe audit and static metadata",
+      "finding": "Original one-shot runLifecycleMaintenance behavior preserved, schedule result does not publish until outer COMMIT acknowledges. Unknown owning transaction yields unknown audit, successful savepoint rollback plus acknowledged failed occurrence yields rolled_back purge audit with committedCount0. Static maintenance schedule metadata describes UTC/singleton/retry authority without claiming runtime conformance. Existing original one-shot JOB004 independent verification remains separate."
+    }
+  ],
+  "retainedReviewerFailures": [
+    "Initial build used integration cwd with owned target; this artifact is not the qualified compiler. Corrected fresh build from exact reviewer-owned capture produced qualified owned compiler; both logs retained.",
+    "Initial lifecycle directory build combined incompatible independently registered fixtures, generating duplicate declarations; ensuing SQLite import failed missing generated module. Correct actual single170_lifecycle_initial_values fixture build succeeds. Original build/import logs retained.",
+    "First corruption control left deliberate bad completed_for in fixture state, so native beforeEach correctly refused subsequent cases before resetting. Corrected reviewer fixture restores corrupt state after byte-preservation assertion; original both-adapter5pass6fail logs and original control source retained. No product defect imputed.",
+    "First transport handshake contained literal newline escaping and used Bun FileSink.end(data), which does not write that data. Several retained8/1 and9/1 transport runs failed before business phase. Corrected explicit stdin.write followed by stdin.end; actual transport/unknown control then passed. Original control sources/logs retained.",
+    "Initial authored helper probe used unsupported bare expression statement, producing syntax.expected_statement. Corrected var assignment probes reach actual semantic.unknown_callee. First source retained; first stdout was overwritten during correction and is not claimed retained as original raw JSON."
+  ],
+  "limits": [
+    "Scoped exact captured candidate review only; root fresh supported combined source gate is still required before whole RM108 closure and --require-golden remains separate complete golden gate.",
+    "Actual runtime tests use maintained checked lifecycle fixture on real native adapters; no claim that unresolved canonical database URI bootstrap or public HTTP retry gates are resolved.",
+    "Ten-second host budget is existing admission/server mechanics; native SQLite synchronous preemption, universal hard request/COMMIT settlement or deployment availability is not claimed.",
+    "Stop clears future timer wakes, does not await or assert cancellation/rollback of already-running SQL; durable owning transaction continues to enforce singleton. Native process crash behavior is separately exercised.",
+    "No production/deployment/publication/real-mail activity, full operator UI or general event/subscriber successor introduced.",
+    "Backend-specific control bodies early-return on other adapter; counts explicitly separate8 substantive cases from2 early-return tests. SQLite final exercised logic predates corrections confined to its unexecuted PostgreSQL transport branch; final reviewer source preserves actual qualified PostgreSQL branch.",
+    "Capture/source tests restored to exact six authored pins after reviewer instrumentation; generated modules/schema never rewritten. Root later changes need new source binding/review."
+  ],
+  "evidenceDirectory": "tests/validation/evidence/golden-loop-hourly-maintenance-independent",
+  "evidenceInventorySha256": "15932223e227ada957dbca5938d047e5d37589b3aa7a9103100c9ed5977c0925",
+  "createdAt": "2026-10-06T14:41:27.923758+00:00",
+  "writeScope": "Own report/raw evidence/timer only; no owning product/docs/task markers edited.",
+  "timing": {
+    "run": "RM-108-1baf922f572e",
+    "outcome": "partial",
+    "closed": true
+  }
+}

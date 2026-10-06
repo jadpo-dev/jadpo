@@ -2600,7 +2600,14 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
       expect(route.operational_failures.find((f: any) => f.code === "read_unavailable"))
         .toMatchObject({ http_status: 503, automatic_retry: false });
       const audit = JSON.parse(readFileSync(join(root, "build/audit/failures.json"), "utf8"));
-      expect(audit.operational_failures).toEqual(route.operational_failures);
+      // The global built-in registry includes native relationship conflict;
+      // this read/Entry-only route has no checked foreign-key mutation edge.
+      expect(route.operational_failures.some((failure: any) => failure.code === "relationship_conflict")).toBe(false);
+      expect(audit.operational_failures).toEqual([...route.operational_failures, {
+        code: "relationship_conflict", http_status: 409,
+        message: "The operation conflicts with a relationship.",
+        automatic_retry: false, condition: "checked_reachable_native_foreign_key_constraint",
+      }]);
       const api = JSON.parse(readFileSync(join(root, "build/openapi/openapi.json"), "utf8"));
       expect(api.paths["/lookup"].post.responses["503"].content["application/json"].schema.properties.error.properties.code.enum)
         .toContain("read_unavailable");
@@ -2671,7 +2678,14 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
       expect(route.operational_failures.find((f: any) => f.code === "outcome_unknown")).toMatchObject({http_status:500,semantic_http_default:null,automatic_retry:false});
       expect(route.operational_failures.find((f: any) => f.code === "transaction_unavailable")).toMatchObject({http_status:503,semantic_http_default:503,automatic_retry:false});
       const audit = JSON.parse(readFileSync(join(root,"build/audit/failures.json"),"utf8"));
-      expect(audit.operational_failures).toEqual(route.operational_failures);
+      // The global built-in registry includes native relationship conflict;
+      // this read/Entry-only route has no checked foreign-key mutation edge.
+      expect(route.operational_failures.some((failure: any) => failure.code === "relationship_conflict")).toBe(false);
+      expect(audit.operational_failures).toEqual([...route.operational_failures, {
+        code: "relationship_conflict", http_status: 409,
+        message: "The operation conflicts with a relationship.",
+        automatic_retry: false, condition: "checked_reachable_native_foreign_key_constraint",
+      }]);
       const api = JSON.parse(readFileSync(join(root,"build/openapi/openapi.json"),"utf8"));
       expect(api.paths["/entries"].post.responses["500"].content["application/json"].schema.properties.error.properties.code.enum).toContain("outcome_unknown");
       expect(api.paths["/entries"].post.responses["503"].content["application/json"].schema.properties.error.properties.code.enum).toContain("transaction_unavailable");

@@ -396,7 +396,7 @@ native/platform gates and final golden acceptance stay open.
 
 ### RM-403 initial PostgreSQL schema budget slice — 2026-10-06
 
-**Scoped independent implementation review approved; combined gate running.**
+**Scoped independent implementation review approved; fresh combined gate pending.**
 The [independent startup-budget review](../tests/validation/rm403-independent-postgres-startup-budget-review.json) approves immutable `80ed094` within the limitations below.
 Select a ten-second aggregate initial schema/authentication initialization
 budget as a routine implementation policy. CONFIG-D10/P5 do not reserve this

@@ -3,8 +3,8 @@ set -euo pipefail
 
 mode=${1:-}
 case "$mode" in
-  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|entity-dossier|lifecycle|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness) ;;
-  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|entity-dossier|lifecycle|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness' >&2; exit 2 ;;
+  authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|entity-dossier|lifecycle|lifecycle-maintenance|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness) ;;
+  *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|entity-dossier|lifecycle|lifecycle-maintenance|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness' >&2; exit 2 ;;
 esac
 for executable in initdb pg_ctl createdb postgres bun; do
   command -v "$executable" >/dev/null || { echo "Required executable: $executable" >&2; exit 1; }
@@ -59,6 +59,9 @@ elif [[ "$mode" == validation-auth-policy ]]; then
 elif [[ "$mode" == entity-dossier ]]; then
   JADPO_ENTITY_DOSSIER_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test ./tests/runtime/entity-dossier.test.ts
+elif [[ "$mode" == lifecycle-maintenance ]]; then
+  JADPO_LIFECYCLE_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
+    bun --no-install --env-file=/dev/null test ./tests/runtime/lifecycle-maintenance-scheduling.test.ts
 elif [[ "$mode" == lifecycle ]]; then
   JADPO_LIFECYCLE_DATABASE_URL="postgres://jadpo_auth_test@127.0.0.1:$port/jadpo_auth_test_runtime" \
     bun --no-install --env-file=/dev/null test ./tests/runtime/entity-lifecycle.test.ts

@@ -33,6 +33,73 @@ completion or a genuine blocker affecting every remaining independent lane.
 Conditional successors, production mail/deployment and external assurance remain
 outside this loop. No persistent Goal is active or newly created.
 
+**Resumed working checkpoint, 2026-10-06:** Reviewed working source extends
+`febd45f`, with exact final pins recorded below. Nineteen of the selected 29 tasks
+are complete; ten remain open, including RM-306's generic event scope beyond its
+completed golden job milestone. The
+[exact closure audit](../../tests/validation/rm306-rm307-rm108-independent-closure-audit.json)
+reconciles all 18 frozen ASYNC IDs and finds no missing RM-307 implementation
+trace. The fresh 76-check maintained both-adapter gate now passes; RM-307 is closed in history.
+RM-306's golden scheduled-job/outbox milestone is satisfied;
+its accepted generic event-binding requirement remains open.
+
+The audit identified the accepted 1h maintenance schedule as a genuine RM-108
+gap. The [new local checkpoint](../../tests/validation/evidence/rm108-hourly-maintenance/report.json)
+implements clause-bound UTC hourly activation, transactional singleton ownership,
+durable occurrence coalescing and next-schedule handling of acknowledged purge
+rollback. Actual SQLite scheduling 4/0/28, existing lifecycle 13/0/97,
+core units/contracts 385/0 and Python validation 101/0 pass. A separate native
+host is killed before commit and safely reclaimed; a committed occurrence
+survives process restart. The [independent consequential review](../../tests/validation/rm108-independent-hourly-maintenance-review.json)
+approves the exact six source pins: both adapters pass the original four controls,
+and eight substantive strengthened controls cover singleton crash recovery,
+known rollback, unknown COMMIT acknowledgement and hour coalescing. All 40
+retained evidence members were independently rehashed. The [fresh 76-check supported gate](../../tests/validation/evidence/rm108-rm307-combined-completion/supported-gate-report.json)
+passes both maintenance suites and reminder/worker checks. RM-108 and RM-307
+are closed by the [final reconciliation](../../tests/validation/rm108-rm307-completion-reconciliation.json)
+and [history](../implementation-history.md#2026-10-06--rm-108-golden-reminder-and-hourly-maintenance-integration).
+Full golden acceptance remains separate.
+
+The [local approval correction review](../../tests/validation/rm603-independent-local-approval-strict-review.json)
+approves the exact04a935 strict-root correction. Its maintained verifier is now
+prepared in this working tree and passes 22/0/141 against the current native
+compiler. All results remain local-test/nonrelease; no protected production
+issuer or whole RM-603 success is inferred. The
+[native error schema correction](../../tests/validation/evidence/rm601-native-schema-collision-correction/report.json)
+is retained on the HTTP writer: a valid generated 422 envelope previously matched
+two identical `oneOf` alternatives and was rejected. Root deduplication retains
+both cause facts and passes 71 focused contracts plus actual loopback HTTP
+before/after proof. Its different-author correction review is approved. Root's
+[independent original-metadata execution](../../tests/validation/evidence/rm601-root-independent-http-boundary/report.json)
+passes all 88 supporting entries, registers 128 actual HTTP statuses, matches
+42 closed error envelopes and passes ten native listener controls. A separate
+reproduced declared-domain/native relationship-conflict collision still needs
+its narrow correction and review. The quick gate
+retains a localhost watch refusal and an unclassified missing-Bun protocol exit;
+neither is relabelled as a green full gate.
+
+The [unknown-COMMIT source review](../../tests/validation/rm402-private-http-unknown-root-source-review.json)
+finds no blocking source issue and verifies all 11 declared author evidence hashes,
+and independent actual PostgreSQL replay now passes in the 76-check supported gate. Public authenticated
+retry stays closed. Subagents and escalation approval review were interrupted by
+account usage limits; the earlier rejected escalation was not executed. A fresh
+account read now permits ordinary usage at1% consumed, so all three authorised
+parallel lanes resumed and normal approval-reviewed full verification was
+accepted and passed. Preserve the original rejection; no review was bypassed. Native hard
+lifetime, required canonical database URI and complete protected approval gates
+remain open. The earlier publication and database-binding questions are still
+unanswered; the existing60s/40s delivery and scan approvals remain accepted.
+Interrupted timer tails are explicitly unknown, with originals retained; no
+unobserved 3h gap is counted as active implementation. The first resumed full
+gate retained 56 passing checks before two stale persistence assertions equated
+global error facts with a route's reachable facts. Strict corrected assertions
+retain the global relationship-conflict fact and reject it on those unrelated
+routes; all 84 persistence tests now pass on both SQLite and PostgreSQL. A fresh
+supported full gate passes all 76 checks on the corrected working source.
+Private signed bearer and JWT controls have scoped independent two-adapter
+approval; User.disable_user controls are next for independent review. Native
+startup/lifetime and remaining operational schema overlaps continue in parallel.
+
 The current window starts at merged `ef83d48` (PR #3; required hosted67/67 and
 supporting16/0/72 pass). Actual `gpt-6.1-sol/high` was reverified from this chat's
 latest turn-context metadata, matching the pin for coupled worker recovery,
@@ -204,7 +271,7 @@ at Rust diagnostic discovery: the environment name `JADPO_DEPLOYMENT_PORT`
 was misclassified as a public diagnostic. The preserved red ran one passing
 step and one failing step; no later checks ran. Local correction `6e10061`
 excludes the environment name, retains real diagnostic discovery, and passes
-26 catalogue checks plus six discovery checks. Its [new combined gate](../../build/validation/20261006T095412-14973/report.json) passes22 preceding checks, then stops at a missing `configuration-preflight.ts` in the compiler-owned selective delivery fixture copy. No product failure is inferred from an unavailable module. Separate one-line copy correction `7b055f9` passes its actual generated-host control and is next for integration; both gate failures remain retained.
+26 catalogue checks plus six discovery checks. Its [new combined gate](../../build/validation/20261006T095412-14973/report.json) passes 22 preceding checks, then stops at a missing `configuration-preflight.ts` in the compiler-owned selective delivery fixture copy. No product failure is inferred from an unavailable module. Separate one-line copy correction `7b055f9` passes its actual generated-host control and is next for integration; both gate failures remain retained.
 
 [Retained review verification](../../tests/validation/evidence/golden-loop-integration-inventory/scoped-review-retention-verification.json)
 checks all manifest hashes and archived members while excluding private fixture
@@ -341,7 +408,7 @@ assignment. Its supplied row/from/to labels remain unverified, the attempt remai
 unexecuted, and release authority is false. The exact REL-003 collector now has
 [independent native review](../../tests/validation/rm109-independent-complete44-review.json):
 a fresh owned compiler and actual SQLite/PostgreSQL collection pass all88 supporting
-entries across the original44 IDs,94 scenarios and100 steps. All101 protocol tests
+entries across the original 44 IDs,94 scenarios and100 steps. All101 protocol tests
 pass;24 coherently rebound actual full-validator controls are refused and two
 unchanged controls accepted. The safe retained archive preserves generated bytes,
 source inputs and raw observations; disposable private keys and database resources
@@ -458,7 +525,7 @@ original golden source separately if the owner accepts a successor.
 
 The frozen pre-DATA-007 source remains comparative pressure evidence; its legacy
 spellings are explicitly superseded in its README. Full technical acceptance
-must execute all original44 case IDs against the complete accepted checked
+must execute all original 44 case IDs against the complete accepted checked
 successor, with original/repaired-toolchain results retained separately and
 route/OpenAPI/policy/query audit agreement. This clarifies scope without treating
 the supporting eighteen-ID checkpoint as full golden execution or relaxing the required
@@ -1099,7 +1166,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-104 | Short; runtime primitive exists, authored integration missing | Generated SQLite/PostgreSQL HTTP evidence and independent runtime/security review recorded in history | planned | complete |
 | RM-105 | Short; checked keyset-page lowering and both-adapter plan evidence | RM-101, RM-204, RM-102; accepted URL-encoded JSON cursor and supported-database pagination | planned | complete |
 | RM-107 | Short; bounded route implemented and both database adapters exercised | RM-101/RM-102 complete; owner resolved email output while preserving policy | planned | done |
-| RM-108 | Decision-dependent composition; scoped owner choices accepted | RM-105–107 and RM-304 complete; RM-307 unfinished. Owner accepted 3 scheduled invocations / 1 hour, narrow reminder-service authority and exact self-disable repair. Owner approved golden-only 60s execution / renewable 40s lease on 2026-10-06; checked worker and recovery gates remain. Fresh full gate passes 61/61; self-disable correction independently approved. Checked bindings/admission/completion remain | planned | in_progress |
+| RM-108 | Reviewed reminder and hourly maintenance composition | Owner-selected profiles, independent consequential review and fresh both-adapter 76-check supported gate satisfy acceptance; completion recorded in history, full golden gate separate | planned | complete |
 | RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol; 44 original IDs independently reviewed across SQLite/PostgreSQL, all88 supporting entries pass across94 scenarios/100 steps. Exact REL-003 compiler-only refusal collector approved; required native HTTP failure artifact parity and fresh combined verification continue. Original red gates retained. Full accepted-successor execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
 | RM-110 | Short; integration evidence, not another feature | RM-109, RM-504, RM-505, RM-603 | planned | queued |
 | RM-204 | Decision; public query/header decoding contract | Compiler/runtime/OpenAPI/formatter agreement and independent runtime/security review recorded in history | planned | complete |
@@ -1111,8 +1178,8 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-303 | Decision-dependent provider adapter | [Generated HTTP adapter, 19 tests/90 assertions, 59/59 supported checks and approved independent review](../implementation-history.md#2026-10-03--rm-303-checked-provider-adapter) | planned | complete |
 | RM-304 | Short after service contract | [History](../implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes); independent correction review and fresh supported gate pass; malformed host-map seams excluded | planned | complete |
 | RM-305 | Decision; independently reviewed ASYNC-001 semantic freeze complete | [History](../implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract); 18 traces remain contract-only, with implementation in RM-306/RM-307 | planned | complete |
-| RM-306 | Decision-dependent outbox/compiler subsystem | Static/read/hook/current-issuer/paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage corrections independently approved. Final65/65 supported gate: normal SQLite51/442 and PG50/448; renamed representation52/458 and51/464. Owner resumed the parallel plan, actual6.1-sol/high; closed native scheduler assembly now passes6 focused tests per adapter with independent correction review. Native activation renewal and strict duration correction independently reviewed; 18 traces and public execution remain open. Golden per-delivery and singleton-scan60s/40s profiles separately approved; mandatory separate inputs/runtime gates remain. [Resume point and limits](#rm-301307108--services-durable-jobs-and-reminders) | planned | in_progress |
-| RM-307 | Decision-dependent worker subsystem | RM-306 native-component milestone, RM-304; separate-process component traces started; complete checked-worker18-trace conformance remains | planned | in_progress |
+| RM-306 | Decision-dependent outbox/compiler subsystem | Independent exact 18 audit conditionally satisfies golden checked-job/outbox milestone after current combined gate. Preserve accepted generic event-binding scope as open; no invented event DSL or transfer into RM-309. Separate 60s/40s delivery and scan profiles accepted and evidenced | planned | in_progress |
+| RM-307 | Reviewed worker subsystem | All 18 frozen checked native recovery IDs reconciled; fresh maintained SQLite/PostgreSQL delivery suites pass in 76-check gate; completion recorded in history | planned | complete |
 | RM-401 | Decision; bounded retries enabled by default | Contract frozen after phase probe and independent correction re-review; [completion evidence](../implementation-history.md#2026-10-02--rm-401-bounded-retry-contract) | planned | complete |
 | RM-402 | Short after retry/failure decisions | RM-401, reviewed RM-207 boundary-contract milestone; scoped corrections/native LOCKED/jitter/revision and private fresh-authority hook review approved; public authenticated activation remains closed; historical supported gate61/61; [current TX checkpoint and limits](../transaction-retry-plan.md#rm-402-reviewed-adapter-checkpoint--2026-10-04) | planned | in_progress |
 | RM-403 | Short staged; CONFIG-P5 separates liveness and bounded dependency readiness | Scoped recovery/startup-lock, PostgreSQL auth-session, real connection-loss/32-way recovery and asynchronous response-deadline evidence independently approved. Response controller passes six deterministic groups, ten independent emitted-module probes and14-case live readiness. [CONFIG-P5](../configuration-plan.md#config-p5--liveness-and-readiness) retains synchronous/native/startup/platform gates; mail advisory/unprobed; actual6.1-sol/high | planned | in_progress |
@@ -1737,6 +1804,25 @@ Persist terminal state safely; full operator UI remains RM-308 outside scope.
 Re-estimate after one recoverable job slice. Luna Extra High implementation;
 Sol High independent recovery review.
 
+**RM-108 hourly maintenance short plan, 2026-10-06:** The exact
+[febd45f closure audit](../../tests/validation/rm306-rm307-rm108-independent-closure-audit.json)
+finds the accepted 1h singleton purge schedule absent. Implement a trusted-host
+pulse over the existing checked purge clause, with UTC hourly coalescing and one
+durable occurrence row per clause. Keep the occurrence lock, bounded purge and
+acknowledgement in the same database transaction; no expiring lease may authorize
+a competing purge while an old transaction is live. A nested savepoint rolls back
+a known purge failure while the outer transaction records that occurrence, so
+`next_schedule` never becomes minute-by-minute retry. A killed uncommitted
+transaction leaves no acknowledgement; a restart may safely reclaim it. Commit
+uncertainty stays unknown and the durable occurrence decides subsequent admission.
+The native entry point polls the hourly schedule and admits only generated
+clause-bound physical purge, never an authored callable or service principal.
+Keep 500-row selection and existing audit/retention predicates unchanged. Qualify
+same-hour duplicates, UTC boundaries, restart, overlap, failed savepoint and bound
+500 on both adapters and with separate processes. Review and full current-source
+gate remain pending; actual retained batch pin gpt-6.1-sol/high. This is ordinary
+contract conformance work, not a new verification campaign or task closure.
+
 **RM-108 — L.** Compose named Todo queries/actions with reviewed ReminderMail
 for overdue reminders (15m). Retention purge (1h) activates the clause-bound
 generated maintenance worker accepted in RM-205, never an authored Todo action
@@ -2065,7 +2151,7 @@ composition. Then implement AST/type/formatter/audit positives and negatives wit
 explicit unresolved runtime labels before lowering. Runtime completion still
 requires short transactional enqueue/admission, committed possible-dispatch before
 HTTP, private version/fence/revision completion, singleton coalescing/continuation,
-all18 ASYNC traces and golden acceptance on both adapters. Main timer:
+all 18 ASYNC traces and golden acceptance on both adapters. Main timer:
 `RM-306-4eae95d58b42`, actual6.1-sol/high; field review continues separately.
 
 **Delivery-binding static contract refinement, 2026-10-05:** the independent
@@ -2218,7 +2304,7 @@ unimplemented/unproved; numeric fields remain unset, execution_profile:null and
 runtime_lowering_supported:false; build stays JADPO_TARGET_JOB_NOT_IMPLEMENTED.
 Accepted scheduled3/1h and provider3/30s are separate contract facts, not a complete
 execution profile. Both-adapter pre-limit >500/continuation, hooks/admission/races,
-all18 ASYNC traces and full golden gates remain future executable requirements.
+all 18 ASYNC traces and full golden gates remain future executable requirements.
 
 **Closed descriptor stage checkpoint, 2026-10-05:** the independent
 [refinement disposition](../../tests/validation/rm306-independent-delivery-binding-static-refinement-review.json)
@@ -2430,7 +2516,7 @@ static model; this refinement is not guard removal or worker approval.
 **Guarded typed prerequisite checkpoint:** the independent
 [refinement disposition](../../tests/validation/rm306-independent-typed-binding-refinement-review.json)
 approves TBP-01–03 at recipe level, with no remaining plan findings or additional
-owner decision for faithful comprehensive static implementation. All18 recorded
+owner decision for faithful comprehensive static implementation. All 18 recorded
 context/contract pins matched before this checkpoint integration; the reviewed
 refinement region remains unchanged. This is not implementation/guard/runtime
 approval. Common nominal schedule checks now run
@@ -2738,7 +2824,7 @@ and correctly got no change; a subsequent adapter probe incorrectly assumed Bun
 SQL.prototype existed. These red fixtures were corrected without adding policy
 or rewriting generated code. Initial Rust closure lifetime errors were corrected
 before component success. Independent authority review remains pending;
-actual selection/intent/fence/dispatch/receipt completion, all18
+actual selection/intent/fence/dispatch/receipt completion, all 18
 generated traces and44 complete-golden cases remain open. Continue those eligible
 integration pieces under the same6.1-sol/high pin; no numeric profile is assumed.
 
@@ -3996,7 +4082,7 @@ These source-grounded refinements govern the next selection. See the [shared gat
 - Confirm mutative browser route requires exact configured origin AND session-bound proof; a bearer request must not be misclassified as browser. Existing broad first-party suite contains mutative GET coverage; confirm it applies to the same generic transport logic and record its scope rather than adding an unnecessary golden GET mutation.
 - Check review findings against exact changed boundaries; retain independent review gaps if any, rather than inferring that any RM-102 review covers all future changes.
 - During an authorized execution pass, run only missing/fresh evidence needed: generated fixture build per `tests/runtime/README.md`, `bun --no-install test tests/runtime/golden-protected-route.test.ts`, relevant first-party/startup suites, then required gate if code changes. A documentation-only audit can cite the existing fresh 52-step report without rerunning all tests.
-- Close only RM-103 after all clauses have evidence. Update current-state pending-origin/CSRF wording in migration README and obligation mapping without changing original44 case execution status. Historical logs remain historical.
+- Close only RM-103 after all clauses have evidence. Update current-state pending-origin/CSRF wording in migration README and obligation mapping without changing original 44 case execution status. Historical logs remain historical.
 
 **Boundaries:** no new production origin, CSRF relaxation, login mechanism, full44 golden claim or automatic RM-104 execution.
 

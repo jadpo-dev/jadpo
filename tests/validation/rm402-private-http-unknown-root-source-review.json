@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-402",
+  "kind": "root_source_and_retained_evidence_review",
+  "reviewedCommit": "439d31f0aab7e8b626199eb31341ea8a037f9231",
+  "reviewer": "01a10f20-b464-7543-925c-171de6c52598",
+  "authorDistinct": true,
+  "sourceReview": "no blocking source finding in runtime-only private fault-injection checkpoint",
+  "evidenceReview": "All11 declared author evidence members independently hash-verified; original setup failures preserved.",
+  "causality": [
+    "Fault proxy remains unarmed until fresh native child initialization is acknowledged.",
+    "COMMIT classifier reads frontend Q/P SQL command frames; bound title ending commit is not a trigger.",
+    "Actual server CommandComplete COMMIT is observed and withheld; socket destruction models lost acknowledgement.",
+    "Assertions require delivered500 outcome_unknown, one unknown native attempt/no retry and direct committed source/schedule revision2 with immutable prior intent retained."
+  ],
+  "actualReviewerExecution": {
+    "freshSupportedGate": "build/validation/20261006T154753-54712/report.json",
+    "scope": "Both native maintained delivery-hook suites passed; enclosing supported gate finished76/76 with separate full golden/release gates open.",
+    "PostgreSQL": {
+      "passed": 113,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 1513
+    },
+    "specificUnknownCommit": {
+      "observed": true,
+      "nativeCommitsForwarded": 1,
+      "actualCommitAcknowledgementObservedAndDropped": true,
+      "httpStatus": 500,
+      "operationOutcome": "unknown",
+      "commitAcknowledged": false,
+      "rollbackProven": false,
+      "retryScheduled": false,
+      "sourceRevision": "2",
+      "priorIntentState": "pending"
+    },
+    "sourceSha256": "51809e67e906106ab7fd4f6479097e1046a3026c8fd34349bc111a9b2510acf4",
+    "logs": [
+      {
+        "path": "tests/validation/evidence/rm402-private-http-unknown-root-integration/23-delivery-hook-components.log",
+        "sha256": "ad471a63527120b7dc4582e96ae63e7634bece1862a45e2aaa2a67e484967f73"
+      },
+      {
+        "path": "tests/validation/evidence/rm402-private-http-unknown-root-integration/62-postgres-delivery-hook-components.log",
+        "sha256": "6113db756866ee3d4c7943ca33324e606b404e73a9167602adef9e324eb6cec3"
+      }
+    ],
+    "SQLite": {
+      "passed": 109,
+      "skipped": 6,
+      "failed": 0,
+      "assertions": 1479
+    }
+  },
+  "disposition": "approved_scoped_test_only_unknown_COMMIT_leaf_after_independent_actual_native_execution; public activation and whole task held",
+  "sourcePin": "51809e67e906106ab7fd4f6479097e1046a3026c8fd34349bc111a9b2510acf4",
+  "releaseEquivalent": false,
+  "originalReviewerAttempt": "not_run: original approval-review account quota failure retained; changed ordinary usage state permitted subsequent normal approval-reviewed native execution."
+}

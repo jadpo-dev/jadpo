@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    "RM-108",
+    "RM-307"
+  ],
+  "kind": "integration_owner_final_acceptance_reconciliation",
+  "baseCommit": "febd45f778090c524c2dd36c5b8b8a7b9fdb4226",
+  "candidate": "Exact working-source pins below; subsequent local Git commit preserves these bytes.",
+  "status": "completed_scoped_tasks",
+  "supportedGate": {
+    "report": "tests/validation/evidence/rm108-rm307-combined-completion/supported-gate-report.json",
+    "status": "supported_checks_passed_with_open_gates",
+    "passedSteps": 76,
+    "failedSteps": 0,
+    "requireGolden": false
+  },
+  "sourcePins": {
+    "jadpo/crates/core/src/target.rs": "7cf4503d88138aeb88044114cf303a4fe1e43b33fffced8344b3952029e0e43f",
+    "jadpo/crates/core/src/runtime/lifecycle_maintenance_schedule.ts": "19360f7414a1f62e2fa89ba517e843d8dd99d65c780e29d608a0a35bb5f4b8a2",
+    "tests/runtime/delivery-hook-components.test.ts": "51809e67e906106ab7fd4f6479097e1046a3026c8fd34349bc111a9b2510acf4",
+    "tests/runtime/lifecycle-maintenance-scheduling.test.ts": "dcb362564a64d3281da192c49e46318af0f66d2f890d7e57fc6b962c306cc9a3",
+    "tests/runtime/fixtures/lifecycle-maintenance-worker.ts": "89a4ea29ab2a013cdc43dd3bb5c0551a1d6455926fa4b9b091dc4f53a86f4f40",
+    "tests/runtime/postgres.sh": "8740934da1889fb6770126c4f972621ae20194d1eb934f8df8845a0fc2a54959",
+    "tests/runtime/validation-persistence.test.ts": "3d620029cf736d05cc7d234d7e345d154a11a1b4aa5c612f60c39fd8b44d344d",
+    "tests/validation/manifest.json": "4b284b731a99edb2c46b4c48e0a8f44a9e2913e1b16b82c1e7ac0a60cc52f86a",
+    "tools/task-time.py": "ae2170887e6d9da9a7ddcbd5a5086dacbcecea0d1257bc0b73269768911096f1",
+    "tests/validation/test_task_timing.py": "18519a8026a27afc8784acc10c4943fb3c2ac9b8998459a75c370962930350e8",
+    "tools/local_approval_verifier.ts": "ea3cc5c26fb85d4eab4ff960c4e3c99bf0e505482d09347b8a9fc0eb9820b020",
+    "tests/runtime/local-approval-verifier.test.ts": "8ab0a2f4a38fa8ab390400af22368e5c66f18d30f392e790a8312baf48ebf5fc"
+  },
+  "reviews": {
+    "exact18WorkerObligations": {
+      "path": "tests/validation/rm306-rm307-rm108-independent-closure-audit.json",
+      "sha256": "5eb2f63ebe16ebc2557ad8c3a90ce249c66dff3d265becc17b7a25a86587fb83",
+      "frozenIds": 18,
+      "missing": [],
+      "extra": []
+    },
+    "hourlyMaintenance": {
+      "path": "tests/validation/rm108-independent-hourly-maintenance-review.json",
+      "sha256": "06c8a34ce56356095384349ef3855c690f7904e8b3df1881b74f8b548cc5d30f",
+      "sourcePinsStillMatch": true,
+      "safeMembersRehashed": 40,
+      "disposition": "approved_scoped_hourly_maintenance_integration"
+    }
+  },
+  "nativeDeliverySuites": {
+    "SQLite": {
+      "passed": 109,
+      "skipped": 6,
+      "failed": 0,
+      "assertions": 1479
+    },
+    "PostgreSQL": {
+      "passed": 113,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 1513
+    }
+  },
+  "maintenanceSuites": {
+    "SQLite": {
+      "passed": 4,
+      "failed": 0,
+      "assertions": 28
+    },
+    "PostgreSQL": {
+      "passed": 4,
+      "failed": 0,
+      "assertions": 26
+    }
+  },
+  "reminderProfiles": {
+    "delivery": {
+      "executionMs": 60000,
+      "renewableLeaseMs": 40000
+    },
+    "singletonScan": {
+      "executionMs": 60000,
+      "renewableLeaseMs": 40000
+    }
+  },
+  "taskAcceptance": {
+    "RM-307": "Exact18 frozen duplicate/crash/retry/cancel/exhaustion/replay obligations reconciled with independently reviewed native checked execution; fresh maintained both-adapter gate now passes. Required RM306 golden scheduled-job/outbox milestone satisfied; its whole generic-event task stays open.",
+    "RM-108": "Reviewed checked reminder/service/query/action integration and frozen JOB successor cases retained; separate approved execution/lease profiles evidenced. Previously missing hourly500-row singleton purge is implemented, independently approved and fresh both-adapter gate passed."
+  },
+  "limits": [
+    "Whole RM306 generic event-binding remains open; no authored successor grammar invented or scope moved.",
+    "Full golden application/RM109, native hard lifetime/RM402/RM403, canonical database URI/bootstrap and protected production issuer remain open.",
+    "Supporting88 observations and ordinary gate do not satisfy --require-golden; original source still49diagnostics, formal88entries not_run. No release-equivalent or production500-mail throughput claim.",
+    "No deployment, publication, real mail or public authenticated retry activation."
+  ],
+  "releaseEquivalent": false,
+  "timers": [
+    "RM-108-6ab44948d03f",
+    "RM-108-997644b3d9a4",
+    "RM-108-1baf922f572e",
+    "RM-307-ca77d1f04cde"
+  ],
+  "evidenceInventory": [
+    {
+      "path": "tests/validation/evidence/rm108-rm307-combined-completion/archive-members.json",
+      "sha256": "04d0844cc418190e09604d7c27d02272c041f56953d8991099d3e4c893eefa5d",
+      "bytes": 12642
+    },
+    {
+      "path": "tests/validation/evidence/rm108-rm307-combined-completion/jadpo-root-validation-persistence-registry-correction-postgres.log",
+      "sha256": "fcba9c500e2c6344e91951988ce440392fe5f75658a269ff1e11ee91b6ed638a",
+      "bytes": 33590
+    },
+    {
+      "path": "tests/validation/evidence/rm108-rm307-combined-completion/jadpo-root-validation-persistence-registry-correction-sqlite.log",
+      "sha256": "d73a5fdfc1f53f1db135e536329dd9afbf6cb98fad9b4f6305735bdfb74a0a74",
+      "bytes": 34819
+    },
+    {
+      "path": "tests/validation/evidence/rm108-rm307-combined-completion/prior-persistence-red-report.json",
+      "sha256": "2d82e4df4f282ff938c6949a9bdeb76a1e0d84e97de9b7537c5842777f4b2c2d",
+      "bytes": 22502
+    },
+    {
+      "path": "tests/validation/evidence/rm108-rm307-combined-completion/prior-persistence-red.log",
+      "sha256": "8434e745a656624c2ab828c4328f28d4dacfe4e3264aa6bff35153eab039117f",
+      "bytes": 39322
+    },
+    {
+      "path": "tests/validation/evidence/rm108-rm307-combined-completion/supported-gate-logs.tar.gz",
+      "sha256": "46a440f347ab986c18a530ac71e5de361c7d303bf40c78853eda58f3f242dd3d",
+      "bytes": 126096
+    },
+    {
+      "path": "tests/validation/evidence/rm108-rm307-combined-completion/supported-gate-report.json",
+      "sha256": "7f98fe06bb723e3c37ea7edeeabf7d115c281a151f20ee136f42504270c2ad8b",
+      "bytes": 77522
+    },
+    {
+      "path": "tests/validation/evidence/rm108-rm307-combined-completion/supported-gate.log",
+      "sha256": "b3ab12ef6c27cddca65b841bc763d2cfc73c28166083a3caafe49ee330b257bf",
+      "bytes": 4507
+    }
+  ]
+}

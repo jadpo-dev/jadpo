@@ -77,7 +77,9 @@
     "tests/runtime/jadpo-seed.test.ts",
     "tests/runtime/jwt-authentication.test.ts",
     "tests/runtime/jwt-integration.test.ts",
+    "tests/runtime/lifecycle-maintenance-scheduling.test.ts",
     "tests/runtime/liveness-contract.test.ts",
+    "tests/runtime/local-approval-verifier.test.ts",
     "tests/runtime/outcome-sequencing.test.ts",
     "tests/runtime/persistence-seed.test.ts",
     "tests/runtime/policy-runtime.test.ts",
@@ -126,6 +128,7 @@
     "lifecycle",
     "relationship-conflicts",
     "configuration-preflight",
-    "deployment-readiness"
+    "deployment-readiness",
+    "lifecycle-maintenance"
   ]
 }

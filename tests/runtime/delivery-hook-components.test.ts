@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createConnection, createServer, type Socket, type AddressInfo } from "node:net";
 
 // Generated runtime evidence: every execution module/schema is untouched output
 // of full target derivation over the canonical checked golden source and binding.
@@ -762,12 +763,14 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
     }
   });
-  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"],["PATCH","attempt_exhausted"],["PATCH","elapsed"],["PATCH","cancelled"]] as const)
+  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"],["PATCH","attempt_exhausted"],["PATCH","elapsed"],["PATCH","cancelled"],["PATCH","api_fresh"],["PATCH","api_revoked"]] as const)
   test.skipIf((mode === "elapsed" || mode === "cancelled") && sql === null)(`RM402 private authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
     const f = await fixture(), inspected = await inspectRetryApplication(true);
     await inspected.initializeApplication(authEnvironment);
     const host = inspected.authenticationHost(), now = Date.now();
-    const issued = await host.issue("browser_session", owner, now + 3_600_000, now);
+    const strategy = mode === "api_fresh" || mode === "api_revoked" ? "api_bearer" : "browser_session";
+    const fresh = mode === "fresh" || mode === "api_fresh";
+    const issued = await host.issue(strategy, owner, now + 3_600_000, now);
     // Genuine freshly issued signed credential permits bounded first admission;
     // the next transaction attempt must consult its durable session/authority.
     const sessionId = JSON.parse(Buffer.from(issued.credential.split(".")[2], "base64url").toString())[3];
@@ -825,7 +828,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
           await change("SELECT pg_sleep($1)",[.05]);
         }
         if (mode === "inactive") await change('UPDATE "user" SET status=$1 WHERE id=$2', ["disabled",owner]);
-        if (mode === "revoked") await change('DELETE FROM "__jadpo_auth_sessions" WHERE id=$1', [sessionId]);
+        if (mode === "revoked" || mode === "api_revoked") await change('DELETE FROM "__jadpo_auth_sessions" WHERE id=$1', [sessionId]);
         if (mode === "row_deleted") await change('UPDATE todo SET deleted_at=$1 WHERE id=$2', [dbInstant(Date.now()),f.value.id]);
         if (mode === "rebound") {
           await change('UPDATE "user" SET authentication_subject=$1 WHERE id=$2', ["old-subject-"+owner,owner]);
@@ -841,7 +844,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const requestStarted = performance.now();
     try {
       const delivered = await fetch(`http://127.0.0.1:${server.port}/todos/${f.value.id}`, {
-        method:verb, signal:clientAbort.signal, headers:{cookie:`todo_session=${issued.credential}`,origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken,"content-type":"application/json"},
+        method:verb, signal:clientAbort.signal, headers:{...(strategy === "browser_session" ? {cookie:`todo_session=${issued.credential}`} : {authorization:`Bearer ${issued.credential}`}),origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken,"content-type":"application/json"},
         ...(verb === "PATCH" ? {body:JSON.stringify({title:"HTTP retried exactly once",due_at:due})} : {}),
       }).catch(error => { if (mode === "cancelled" && error.name === "AbortError") return null; throw error; });
       const response = mode === "cancelled" ? await serverWork! : delivered!;
@@ -853,7 +856,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       if (sql) expect(events[0].rollbackProven).toBe(true);
       const source = (await rows('SELECT * FROM todo WHERE id=$1',[f.value.id]))[0];
       const intents = await rows('SELECT state,payload,source_revision FROM "__jadpo_deliveries_v1" WHERE source_entity_id=$1',[f.value.id]);
-      if (mode === "fresh") {
+      if (fresh) {
         expect(response.status).toBe(verb === "PATCH" ? 200 : 204);
         expect(events).toHaveLength(2);
         expect(events[1].operationId).toBe(events[0].operationId);
@@ -868,7 +871,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         if (verb === "PATCH") { expect(source.title).toBe("HTTP retried exactly once"); expect(source.deleted_at).toBeNull(); }
         else expect(source.deleted_at).not.toBeNull();
       } else {
-        expect(response.status).toBe(mode === "inactive" ? 403 : mode === "revoked" ? 401 : mode === "row_deleted" ? 404 : 503);
+        expect(response.status).toBe(mode === "inactive" ? 403 : mode === "revoked" || mode === "api_revoked" ? 401 : mode === "row_deleted" ? 404 : 503);
         if (mode === "row_deleted") {
           // The second transaction returns a declared domain refusal. Native
           // audit emits persistence evidence only, so no second fault event is
@@ -891,11 +894,11 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       }
       expect(JSON.parse(intents[0].payload)).toEqual(oldPayload);
       expect(String(intents[0].source_revision)).toBe("1");
-      if (sql) expect(Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value)).toBe(mode === "attempt_exhausted" ? 3 : mode === "fresh" || mode === "row_deleted" ? 2 : 1);
+      if (sql) expect(Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value)).toBe(mode === "attempt_exhausted" ? 3 : fresh || mode === "row_deleted" ? 2 : 1);
       const emitted = readFileSync(join(root,"app.ts"),"utf8");
       expect(emitted).not.toContain("allowOperationRetries(__operation, __authenticatedRetryCandidate)");
       expect(emitted).toContain("__operation = allowOperationRetries(__operation, false);");
-      previousError(JSON.stringify({kind:"private_http_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,verb,mode,database:sql ? "postgres" : "sqlite",clientOutcome:mode === "cancelled" ? "AbortError" : "delivered",serverRequestAborted:serverRequest!.signal.aborted,blockedCredentialQueryObserved,status:response.status,events,sourceRevision:await revision(f.value.id),intentState:(await persistence.read_delivery_intent(oldIntent.intentId)).state}));
+      previousError(JSON.stringify({kind:"private_http_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,verb,mode,strategy,database:sql ? "postgres" : "sqlite",clientOutcome:mode === "cancelled" ? "AbortError" : "delivered",serverRequestAborted:serverRequest!.signal.aborted,blockedCredentialQueryObserved,status:response.status,events,sourceRevision:await revision(f.value.id),intentState:(await persistence.read_delivery_intent(oldIntent.intentId)).state}));
     } finally {
       server.stop(true); console.error = previousError; releaseGuard();
       if (locker) { locker.exec("ROLLBACK"); locker.close(); }
@@ -908,6 +911,103 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       }
     }
   });
+
+  test.skipIf(sql === null)("RM402 private authenticated HTTP native lost COMMIT acknowledgement never retries acknowledged source work", async () => {
+    const f = await fixture(), inspected = await inspectRetryApplication(true);
+    await inspected.initializeApplication(authEnvironment);
+    const issued = await inspected.authenticationHost().issue("browser_session",owner,Date.now()+3_600_000,Date.now());
+    const oldIntent = (await scan(f.proof)).intents[0];
+    const direct = new URL(postgresUrl!), sockets: Socket[] = [];
+    let armed = false, commitsForwarded = 0, commitAcknowledgementObserved = false, responseDropped = false;
+    const proxy = createServer(downstream => {
+      const upstream = createConnection({host:direct.hostname,port:Number(direct.port||5432)});
+      sockets.push(downstream,upstream);
+      let awaitingCommit = false, responseBuffer = Buffer.alloc(0), requestBuffer = Buffer.alloc(0);
+      downstream.on("data",chunk=>{
+        if (armed && (requestBuffer.length>0 || chunk[0]!==0)) {
+          requestBuffer=Buffer.concat([requestBuffer,chunk]);let offset=0;
+          while(offset+5<=requestBuffer.length) {
+            const length=requestBuffer.readInt32BE(offset+1);
+            if(length<4||length>16_777_216)throw Error("invalid fixture PG frontend frame");
+            if(offset+1+length>requestBuffer.length)break;
+            const tag=requestBuffer[offset],payload=requestBuffer.subarray(offset+5,offset+1+length);
+            const sqlText=tag===81 ? payload.subarray(0,payload.indexOf(0)).toString("utf8") : tag===80 ? payload.subarray(payload.indexOf(0)+1,payload.indexOf(0,payload.indexOf(0)+1)).toString("utf8") : "";
+            if(sqlText.trim().replace(/;$/u,"").toUpperCase()==="COMMIT") {commitsForwarded++;awaitingCommit=true;responseBuffer=Buffer.alloc(0);}
+            offset+=1+length;
+          }
+          requestBuffer=requestBuffer.subarray(offset);
+        }
+        upstream.write(chunk);
+      });
+      upstream.on("data",chunk=>{
+        if (awaitingCommit && !responseDropped) {
+          // Preserve real PostgreSQL message framing. Withhold every byte after
+          // the COMMIT query until its native CommandComplete has been seen.
+          responseBuffer = Buffer.concat([responseBuffer,chunk]);
+          let offset=0;
+          while (offset+5<=responseBuffer.length) {
+            const length=responseBuffer.readInt32BE(offset+1);
+            if (length<4 || length>16_777_216) throw Error("invalid fixture PG frame");
+            if (offset+1+length>responseBuffer.length) break;
+            const tag=responseBuffer[offset],payload=responseBuffer.subarray(offset+5,offset+1+length).toString("utf8");
+            if (tag===67 && payload==="COMMIT\0") {
+              commitAcknowledgementObserved=true;responseDropped=true;
+              downstream.destroy();upstream.destroy();return;
+            }
+            offset+=1+length;
+          }
+          return;
+        }
+        downstream.write(chunk);
+      });
+      downstream.on("error",()=>{});upstream.on("error",()=>{});
+      downstream.on("close",()=>upstream.destroy());upstream.on("close",()=>downstream.destroy());
+    });
+    await new Promise<void>(resolve=>proxy.listen(0,"127.0.0.1",resolve));
+    const proxyUrl = new URL(postgresUrl!);proxyUrl.port=String((proxy.address() as AddressInfo).port);
+    const readyPath = join(root,"retry-unknown-ready-"+crypto.randomUUID()+".json");
+    const due = new Date(Date.now()+3_600_000).toISOString();
+    // Reuse the exact private factory: imported modules and every emitted
+    // auth/policy/action/retry body are preserved, selected admission bit only.
+    const childScript = `import {readFileSync} from "node:fs";import {join} from "node:path";import {pathToFileURL} from "node:url";
+      const root=${JSON.stringify(root)};
+      const expect=value=>({toBeGreaterThanOrEqual:n=>{if(!(value>=n))throw Error("private candidate unavailable");}});
+      const inspected=await (${inspectRetryApplication.toString()})(true);
+      await inspected.initializeApplication(${JSON.stringify(authEnvironment)});
+      await Bun.write(${JSON.stringify(readyPath)},JSON.stringify({initialized:true}));
+      const admission=await Bun.stdin.stream().getReader().read();if(admission.done||new TextDecoder().decode(admission.value).trim()!=="ARMED")throw Error("missing post-initialization admission");
+      const server=Bun.serve({hostname:"127.0.0.1",port:0,fetch:inspected.handleRequest});
+      const response=await fetch("http://127.0.0.1:"+server.port+${JSON.stringify('/todos/'+f.value.id)},{method:"PATCH",headers:{cookie:"todo_session="+Bun.env.JADPO_RETRY_BROWSER_KEY,origin:${JSON.stringify(authEnvironment.BROWSER_ORIGIN)},"x-jadpo-csrf":Bun.env.JADPO_RETRY_CSRF,"content-type":"application/json"},body:JSON.stringify({title:"native unknown HTTP commit",due_at:${JSON.stringify(due)}})});
+      console.log(JSON.stringify({status:response.status,body:await response.json()}));server.stop(true);process.exit(0);`;
+    let child: ReturnType<typeof Bun.spawn> | null = null;
+    try {
+      child = Bun.spawn([process.execPath,"--no-install","--env-file=/dev/null","-e",childScript],{env:{...Bun.env,DATABASE_URL:proxyUrl.toString(),SQLITE_PATH:"",JADPO_RETRY_BROWSER_KEY:issued.credential,JADPO_RETRY_CSRF:issued.csrfToken},stdin:"pipe",stdout:"pipe",stderr:"pipe"});
+      const out = new Response(child.stdout).text(),err = new Response(child.stderr).text();
+      const initializationDeadline=performance.now()+10_000;
+      while (!existsSync(readyPath) && performance.now()<initializationDeadline && child.exitCode===null) await Bun.sleep(5);
+      if (!existsSync(readyPath)) { child.kill();throw Error("child failed initial readiness: "+await err); }
+      console.error(JSON.stringify({kind:"private_http_unknown_setup",initialized:true,armed:false}));
+      expect(JSON.parse(readFileSync(readyPath,"utf8"))).toEqual({initialized:true});
+      expect(commitsForwarded).toBe(0);expect(responseDropped).toBe(false);
+      armed=true;child.stdin.write("ARMED\n");child.stdin.end();
+      const settled = await Promise.race([child.exited.then(()=>true),Bun.sleep(3_000).then(()=>false)]);
+      if(!settled){child.kill();throw Error(JSON.stringify({fixtureTransportTimeout:true,commitsForwarded,commitAcknowledgementObserved,responseDropped}));}
+      const [stdout,stderr,exit] = await Promise.all([out,err,child.exited]);
+      expect(exit,stderr).toBe(0);
+      const result=JSON.parse(stdout);
+      expect(result.status).toBe(500);expect(result.body.error.code).toBe("outcome_unknown");
+      expect(commitsForwarded).toBe(1);expect(commitAcknowledgementObserved).toBe(true);expect(responseDropped).toBe(true);
+      const events=stderr.split("\n").flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}}).filter(event=>event.eventName==="transaction.attempt"&&event.operation==="Todo.patch_todo");
+      expect(events).toHaveLength(1);expect(events[0]).toMatchObject({attempt:1,phase:"commit",outcome:"unknown",commitAcknowledged:false,retryScheduled:false});
+      expect((await stored(f.value.id))[0].title).toBe("native unknown HTTP commit");expect(await revision(f.value.id)).toBe("2");
+      const retained = await persistence.read_delivery_intent(oldIntent.intentId);
+      expect(retained.state).toBe("pending");expect(retained.payload).toEqual(oldIntent.payload);expect(retained.sourceRevision).toBe("1");
+      console.error(JSON.stringify({kind:"private_http_retry_unknown_commit",modifiedAdmissionBit:true,releasedPublicRetry:false,initializedBeforeArmed:true,commitsForwarded,commitAcknowledgementObserved,responseDropped,status:result.status,events,sourceRevision:"2",intentState:retained.state}));
+    } finally {
+      if(child?.exitCode===null)child.kill();for(const socket of sockets)socket.destroy();
+      await new Promise<void>(resolve=>proxy.close(()=>resolve()));rmSync(readyPath,{force:true});
+    }
+  },15_000);
 
   test("trusted closed job host uses a real service credential and captured wall clock; start and stop remain bounded native controls", async () => {
     const f = await fixture();

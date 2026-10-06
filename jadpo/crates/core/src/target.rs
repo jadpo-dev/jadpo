@@ -1059,9 +1059,11 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
         if !self.has_lifecycle_purges() {
             return;
         }
+        line(output, "export async function runLifecycleMaintenance(): Promise<void> { return lifecycleMaintenance(false); }");
+        line(output, "export async function runScheduledLifecycleMaintenance(): Promise<void> { return lifecycleMaintenance(true); }");
         line(
             output,
-            "export async function runLifecycleMaintenance(): Promise<void> {",
+            "async function lifecycleMaintenance(scheduled: boolean): Promise<void> {",
         );
         line(
             output,
@@ -1085,20 +1087,41 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
                 continue;
             }
             let retention_field = &binding.path[1].text;
-            line(output, "  {");
+            line(output, "  await (async () => {");
             line(output, "    const selected: { count: number; tokens: readonly string[] } = { count: 0, tokens: [] };");
             line(output, &format!("    const retentionMs = durationMilliseconds(configuration.{retention_field}, {});", ts_string(&format!("config.{retention_field}"))));
             line(output, "    if (retentionMs <= 0) throw new Error(\"Retention duration must be positive\");");
+            line(output, "    let scheduledRollback = false;");
             line(output, "    try {");
-            line(output, &format!("      const result = await rootPersistence.withOperationTime(attemptNow).retention_purge_{name}((count, tokens) => {{ selected.count = count; selected.tokens = tokens; }});"));
+            line(output, "      const onSelected = (count: number, tokens: readonly string[]) => { selected.count = count; selected.tokens = tokens; };");
+            line(output, "      const maintenancePersistence = rootPersistence.withOperationTime(attemptNow);");
+            line(output, &format!("      const occurrence = scheduled ? await maintenancePersistence.withDeadline(performance.now() + 10_000).scheduled_retention_purge_{name}(onSelected) : null;"));
+            line(
+                output,
+                "      if (scheduled && occurrence === null) return;",
+            );
+            line(output, "      if (occurrence?.outcome === \"rolled_back\") { scheduledRollback = true; throw occurrence.error; }");
+            line(output, &format!("      const result = scheduled ? occurrence!.result : await maintenancePersistence.retention_purge_{name}(onSelected);"));
             line(output, &format!("      console.error(JSON.stringify({{ schemaVersion: 1, kind: \"maintenance_audit\", eventName: \"retention.purge.batch\", operation: {}, entity: {}, clause: {}, sourceRevision: {}, retentionBinding: {}, attemptNow, selectedCount: selected.count, committedCount: result.committedCount, rowIdentityTokens: result.rowIdentityTokens, bound: 500, outcome: \"committed\" }}));", ts_string(&format!("retention_purge({name})")), ts_string(name), ts_string(&format!("{name}.lifecycle.purge")), ts_string(&self.source_revision()), ts_string(&format!("config.{retention_field}"))));
             line(output, "    } catch (error) {");
-            line(output, "      const rolledBack = error instanceof PersistenceFault && error.transaction?.outcome === \"no_commit\" && error.transaction.rollbackProven;");
+            line(output, "      const rolledBack = scheduledRollback || error instanceof PersistenceFault && error.transaction?.outcome === \"no_commit\" && error.transaction.rollbackProven;");
             line(output, &format!("      console.error(JSON.stringify({{ schemaVersion: 1, kind: \"maintenance_audit\", eventName: \"retention.purge.batch\", operation: {}, entity: {}, clause: {}, sourceRevision: {}, retentionBinding: {}, attemptNow, selectedCount: selected.count, committedCount: rolledBack ? 0 : null, rowIdentityTokens: selected.tokens, bound: 500, outcome: rolledBack ? \"rolled_back\" : \"unknown\" }}));", ts_string(&format!("retention_purge({name})")), ts_string(name), ts_string(&format!("{name}.lifecycle.purge")), ts_string(&self.source_revision()), ts_string(&format!("config.{retention_field}"))));
             line(output, "      throw error;");
             line(output, "    }");
-            line(output, "  }");
+            line(output, "  })();");
         }
+        line(output, "}");
+        line(
+            output,
+            "export function startLifecycleMaintenance(): () => void {",
+        );
+        line(output, "  let stopped = false; let running = false; let timer: ReturnType<typeof setTimeout> | null = null;");
+        line(output, "  const pulse = async () => { if (stopped || running) return; running = true; try { await runScheduledLifecycleMaintenance(); } catch { console.error(JSON.stringify({ schemaVersion: 1, kind: \"maintenance_audit\", eventName: \"retention.schedule.failure\", outcome: \"failed\" })); } finally { running = false; } };");
+        line(output, "  const wake = () => { if (stopped) return; timer = setTimeout(wake, 3_600_000 - (Date.now() % 3_600_000)); void pulse(); }; wake();");
+        line(
+            output,
+            "  return () => { stopped = true; if (timer !== null) clearTimeout(timer); };",
+        );
         line(output, "}");
         line(output, "");
     }
@@ -1496,7 +1519,13 @@ export const temporal = Object.freeze({
         self.validators_parts(&mut output, false);
         self.configuration_runtime(&mut output);
         line(&mut output, "if (Bun.main === decodeURIComponent(new URL(\"./app.ts\", import.meta.url).pathname)) { try { loadConfiguration(Bun.env); } catch (error) { reportConfigurationDiagnostics(error); console.error(JSON.stringify({ schemaVersion: 1, kind: \"operational_log_event\", eventName: \"operation.failed\", classification: \"RUNTIME_STARTUP_FAILED\", requestId: \"startup\", traceId: null, semanticOperationId: \"runtime:start\", sourceRevision:");
-        line(&mut output, &format!("{}, attributes: {{}} }})); process.exit(1); }} }}", ts_string(&self.source_revision())));
+        line(
+            &mut output,
+            &format!(
+                "{}, attributes: {{}} }})); process.exit(1); }} }}",
+                ts_string(&self.source_revision())
+            ),
+        );
         output
     }
 
@@ -3376,7 +3405,10 @@ export const temporal = Object.freeze({
             "export type TransactionOutcome = \"no_commit\" | \"committed\" | \"unknown\";",
         );
         line(&mut output, "export type RetryableCause = \"sqlite_busy\" | \"sqlite_locked\" | \"postgres_connection\" | \"postgres_serialization\" | \"postgres_deadlock\" | \"delivery_schema_busy\" | null;");
-        line(&mut output, "const deliverySchemaRefusals = new WeakSet<object>();");
+        line(
+            &mut output,
+            "const deliverySchemaRefusals = new WeakSet<object>();",
+        );
         line(&mut output, "function isDeliverySchemaRefusal(error: unknown): boolean { const seen = new Set<object>(); let current = error; for (let depth = 0; depth < 8 && typeof current === \"object\" && current !== null && !seen.has(current); depth++) { if (deliverySchemaRefusals.has(current)) return true; seen.add(current); current = (current as { cause?: unknown }).cause; } return false; }");
         line(&mut output, "export type TransactionEvidence = Readonly<{ phase: TransactionPhase; database: \"sqlite\" | \"postgres\"; outcome: TransactionOutcome; retryableCause: RetryableCause; rollbackProven: boolean; commitAcknowledged: boolean }>;");
         line(&mut output, "class RequestDeadlineFault extends Error { readonly code = \"JADPO_REQUEST_DEADLINE\"; constructor() { super(\"declared operation deadline exceeded\"); this.name = \"RequestDeadlineFault\"; } }");
@@ -3496,7 +3528,10 @@ export const temporal = Object.freeze({
             "function retryablePersistenceCause(error: unknown): RetryableCause {",
         );
         line(&mut output, "  const codes = persistenceErrorCodes(error);");
-        line(&mut output, "  if (isDeliverySchemaRefusal(error)) return \"delivery_schema_busy\";");
+        line(
+            &mut output,
+            "  if (isDeliverySchemaRefusal(error)) return \"delivery_schema_busy\";",
+        );
         line(
             &mut output,
             "  if (codes.some(code => code === \"SQLITE_BUSY\")) return \"sqlite_busy\";",
@@ -3630,7 +3665,10 @@ export const temporal = Object.freeze({
             &mut output,
             "  if (sqlite !== null) persistenceSync(\"database.foreign_keys\", () => sqlite!.exec(\"PRAGMA foreign_keys = ON\"));",
         );
-        line(&mut output, "  const initializeSchema = async (schemaPostgres: SQL | null) => {");
+        line(
+            &mut output,
+            "  const initializeSchema = async (schemaPostgres: SQL | null) => {",
+        );
         if self.has_derived_representations() {
             line(&mut output, "  if (schemaPostgres !== null) await persistenceAsync(\"schema.change_log\", () => initialization.execute(schemaPostgres!`CREATE TABLE IF NOT EXISTS \"__jadpo_changes\" (\"change_id\" TEXT PRIMARY KEY, \"entity\" TEXT NOT NULL, \"entity_id\" TEXT NOT NULL, \"revision\" BIGINT NOT NULL, \"operation\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"created_at\" TIMESTAMPTZ NOT NULL, UNIQUE (\"entity\", \"entity_id\", \"revision\"))`));");
             line(&mut output, "  else persistenceSync(\"schema.change_log\", () => sqlite!.exec('CREATE TABLE IF NOT EXISTS \"__jadpo_changes\" (\"change_id\" TEXT PRIMARY KEY, \"entity\" TEXT NOT NULL, \"entity_id\" TEXT NOT NULL, \"revision\" INTEGER NOT NULL, \"operation\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"created_at\" TEXT NOT NULL, UNIQUE (\"entity\", \"entity_id\", \"revision\"))'));");
@@ -3671,7 +3709,10 @@ export const temporal = Object.freeze({
             }
         }
         if self.first_party_supported() {
-            line(&mut output, "  await initializeAuthenticationStorage(initialization, schemaPostgres);");
+            line(
+                &mut output,
+                "  await initializeAuthenticationStorage(initialization, schemaPostgres);",
+            );
         }
         line(&mut output, "  }; if (publish && postgres !== null) { await persistenceAsync(\"schema.transaction\", () => postgres!.begin(async tx => { initialization.setBudget(tx as SQL, startupDeadlineAt); await initialization.execute(tx.unsafe(\"SELECT pg_advisory_xact_lock(hashtextextended('jadpo:native-schema-initialization:v1', 0))\")); await initializeSchema(tx as SQL); initialization.check(); })); initialization.check(); } else await initializeSchema(postgres);");
         line(&mut output, "  if (publish) { persistenceReady = true; persistenceProbeNeeded = false; persistenceDependencyUnavailableReported = false; persistenceStartupFaultReported = false; persistenceInitializationFatal = false; } return true;");
@@ -3868,6 +3909,9 @@ export const temporal = Object.freeze({
             "// __JADPO_BOUND_DELIVERY_METHODS__",
             &(self.delivery_selection_methods() + &self.delivery_invocation_methods()),
         ));
+        if self.has_lifecycle_purges() {
+            output.push_str(include_str!("runtime/lifecycle_maintenance_schedule.ts"));
+        }
         line(&mut output, "const client = {");
         line(&mut output, "  ...deliveryOutbox,");
         self.delivery_authority_methods(&mut output);
@@ -4010,7 +4054,10 @@ export const temporal = Object.freeze({
         line(&mut output, "    while (true) {");
         line(&mut output, "      const attemptOperationTime = attempt === 0 ? operationTime : retryOptions.refreshOperationTime?.() ?? operationTime;");
         line(&mut output, "      let attemptPolicy = policy;");
-        line(&mut output, "      if (attempt > 0 && retryOptions.refreshPolicyPrincipal !== undefined) {");
+        line(
+            &mut output,
+            "      if (attempt > 0 && retryOptions.refreshPolicyPrincipal !== undefined) {",
+        );
         line(&mut output, "        const authorityDeadline = Math.min(retryOptions.startedAt + 1000, retryOptions.deadlineAt ?? Infinity); const checkAuthorityLimit = () => { if (retryOptions.signal?.aborted || performance.now() >= authorityDeadline) { const cause = retryOptions.signal?.aborted ? new Error(\"operation cancelled\") : persistenceDeadlineFault(\"transaction.retry_authority\", requestDeadlineAt); throw transactionFault(\"transaction.retry_authority\", cause, { phase: \"begin\", database: postgres !== null ? \"postgres\" : \"sqlite\", outcome: \"no_commit\", retryableCause: null, rollbackProven: false, commitAcknowledged: false }); } };");
         line(&mut output, "        checkAuthorityLimit(); const freshPrincipal = await retryOptions.refreshPolicyPrincipal(attemptOperationTime); checkAuthorityLimit(); attemptPolicy = Object.freeze({ ...policy, principal: freshPrincipal });");
         line(&mut output, "      }");
@@ -4143,6 +4190,10 @@ export const temporal = Object.freeze({
                 "DELETE FROM {table} WHERE {identity_column} = ?2 AND ({}) RETURNING {identity_column}",
                 predicate("?1")
             );
+            line(&mut output, &format!("  async scheduled_retention_purge_{name}(onSelected: (count: number, rowIdentityTokens: readonly string[]) => void) {{"));
+            line(&mut output, &format!("    if (!transactional) return client.transaction((transaction: any) => transaction.scheduled_retention_purge_{name}(onSelected));"));
+            line(&mut output, &format!("    return runScheduledMaintenance({}, operationTime, () => client.transaction((transaction: any) => transaction.retention_purge_{name}(onSelected)));", ts_string(&format!("{name}.lifecycle.purge:{}:config.{retention_field}", purge.from.text))));
+            line(&mut output, "  },");
             line(
                 &mut output,
                 &format!("  async retention_purge_{name}(onSelected: (count: number, rowIdentityTokens: readonly string[]) => void): Promise<{{ committedCount: number; rowIdentityTokens: readonly string[] }}> {{"),
@@ -6776,7 +6827,17 @@ export const temporal = Object.freeze({
                     "order_by": [purge.from.text, identity],
                     "batch_limit": 500,
                     "transaction": "select_and_final_predicate_recheck_and_delete",
-                    "audit_event": "retention.purge.batch"
+                    "audit_event": "retention.purge.batch",
+                    "schedule": {
+                        "interval_ms": 3_600_000,
+                        "timezone": "UTC",
+                        "missed_occurrences": "latest_only",
+                        "singleton": "database_transaction_lock_through_commit",
+                        "retry": "next_schedule_after_acknowledged_rollback",
+                        "durable_occurrence": "atomic_with_purge_or_proven_savepoint_rollback",
+                        "source_callable": false,
+                        "runtime_conformance": "not_certified_by_static_audit"
+                    }
                 }))
             })
             .collect::<Vec<_>>();
@@ -8728,7 +8789,10 @@ export const temporal = Object.freeze({
             line(output, "}");
         }
         line(output, "// Native deployment plane; this entry is unreachable from authored routes and application listeners.");
-        line(output, "export async function handleDeploymentRequest(request: Request): Promise<Response> {");
+        line(
+            output,
+            "export async function handleDeploymentRequest(request: Request): Promise<Response> {",
+        );
         line(output, "  const requestId = `req_${crypto.randomUUID()}`; try { const url = new URL(request.url); if (request.method !== \"GET\" || (url.pathname !== \"/health/ready\" && url.pathname !== \"/health\")) return json(404, errorEnvelope(\"not_found\", \"Not found.\", requestId), requestId);");
         if self.has_entities() {
             line(output, &format!("    const ready = await refreshDatabaseReadiness(); return json(ready ? 200 : 503, {{ status: ready ? \"ready\" : \"not_ready\", checks: {{ database: ready ? \"available\" : \"unavailable\" }}, advisories: {readiness_advisories} }}, requestId);"));
@@ -8894,10 +8958,16 @@ export const temporal = Object.freeze({
                                 &mut BTreeSet::new(),
                             )
                         });
-                    line(output, "      const authentication = firstPartyAuthentication;");
+                    line(
+                        output,
+                        "      const authentication = firstPartyAuthentication;",
+                    );
                     line(output, "      const credentialRequest = new Request(request.url, { method: request.method, headers: new Headers(request.headers), signal: request.signal });");
                     line(output, &format!("      const authenticated = await authentication.authenticate(credentialRequest, {}, Date.parse(__operation.now), {mutates});", route.fresh_authority));
-                    line(output, "      const current_principal = materializePrincipal(authenticated);");
+                    line(
+                        output,
+                        "      const current_principal = materializePrincipal(authenticated);",
+                    );
                     line(output, &format!("      const refreshAuthority = createRetryAuthority(authentication, credentialRequest, authenticated, {mutates});"));
                     line(output, "      __operation = Object.freeze({ ...__operation, principal: authenticated, refreshAuthority });");
                 }
@@ -8927,7 +8997,13 @@ export const temporal = Object.freeze({
                 );
                 if !route.public {
                     line(output, "      // Inert compiler-only candidate; the permission below remains closed.");
-                    line(output, &format!("      const __authenticatedRetryCandidate = {};", self.authenticated_route_retry_candidate(route)));
+                    line(
+                        output,
+                        &format!(
+                            "      const __authenticatedRetryCandidate = {};",
+                            self.authenticated_route_retry_candidate(route)
+                        ),
+                    );
                 }
                 line(
                     output,
@@ -9099,7 +9175,10 @@ export const temporal = Object.freeze({
                         &format!("      let input: {};", self.ts_type(input)),
                     );
                     line(output, "      let body: unknown;");
-                    line(output, "      try { body = await request.json(); } catch (error) {");
+                    line(
+                        output,
+                        "      try { body = await request.json(); } catch (error) {",
+                    );
                     line(output, "        if (error instanceof SyntaxError) return json(400, errorEnvelope(\"invalid_request\", \"Request JSON syntax is invalid.\", requestId), requestId);");
                     line(output, "        throw error;");
                     line(output, "      }");
@@ -9300,6 +9379,9 @@ export const temporal = Object.freeze({
         if self.first_party_supported() {
             line(output, "    await initializeAuthentication();");
         }
+        if self.has_lifecycle_purges() {
+            line(output, "    startLifecycleMaintenance();");
+        }
         if self.has_route_headers() {
             line(
                 output,
@@ -9308,7 +9390,10 @@ export const temporal = Object.freeze({
         } else {
             line(output, "    Bun.serve({ port, fetch: handleRequest });");
         }
-        line(output, "    if (deploymentPort !== null) createDeploymentServer(deploymentPort);");
+        line(
+            output,
+            "    if (deploymentPort !== null) createDeploymentServer(deploymentPort);",
+        );
         line(output, "    console.log(JSON.stringify({");
         line(output, "      schemaVersion: 1,");
         line(output, "      kind: \"operational_log_event\",");
@@ -13259,7 +13344,10 @@ action revise(id: Item.id) fails Missing, Conflicted -> Item {
             // Every execution module/schema is untouched full-target output.
             for (name, path) in [
                 ("persistence.ts", "target/persistence.ts"),
-                ("configuration-preflight.ts", "target/configuration-preflight.ts"),
+                (
+                    "configuration-preflight.ts",
+                    "target/configuration-preflight.ts",
+                ),
                 ("app.ts", "target/app.ts"),
                 ("authentication.ts", "target/authentication.ts"),
                 (

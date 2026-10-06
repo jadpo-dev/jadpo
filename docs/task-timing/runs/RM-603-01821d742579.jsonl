@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-603-01821d742579", "task_id": "RM-603", "actor": "relationship_metadata_review", "actor_kind": "agent", "category": "subsystem", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T10:34:47.790119+00:00", "phase": "planning"}
+{"at": "2026-10-06T10:40:14.427753+00:00", "phase": "verification", "note": "Initial bounded local verifier and AP fixtures implemented; actual native/compiler/signature tests now running."}
+{"at": "2026-10-06T10:48:10.750733+00:00", "phase": "review", "note": "All current native and cryptographic controls passed; reviewing exact trust boundary, evidence pins and local-only limitations."}
+{"at": "2026-10-06T10:50:28.464263+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm603-local-approval/checkpoint.json"}

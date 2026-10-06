@@ -174,6 +174,13 @@ or transcript content.
    estimates. Overlapping agents contribute agent-hours; elapsed project time
    is the union of intervals, not the sum. Do not pool human and agent hours.
 
+Historical closeout annotations may repeat `finished` with the same outcome.
+The recorder retains those events and their latest evidence, but the first
+finish ends the measured run. Later annotation intervals appear separately as
+`post_close_annotation_minutes`; they add no active or elapsed task time.
+A later work phase or different completion outcome is an error, not an implicit
+reopened session. Start a fresh run for additional work.
+
 ## Learn from the records
 
 After five fully measured task completions in a comparable category, compare

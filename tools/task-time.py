@@ -28,11 +28,20 @@ def summarize(events):
     first, last = events[0], events[-1]
     seconds = {phase: 0.0 for phase in PHASES}
     unknown_seconds = 0.0
+    closed_event = next((event for event in events if event['phase'] == 'finished'), None)
+    post_close_seconds = 0.0
     for previous, current in zip(events, events[1:]):
         delta = (datetime.fromisoformat(current['at']) -
                  datetime.fromisoformat(previous['at'])).total_seconds()
         if delta < 0:
             raise ValueError('Clock moved backwards; retain and investigate this record')
+        if previous['phase'] == 'finished':
+            # Retained historical records may append a late closeout annotation.
+            # It cannot reopen work, change its outcome or add active time.
+            if current['phase'] != 'finished' or current.get('outcome') != closed_event.get('outcome'):
+                raise ValueError('A closed run cannot resume or change outcome; retain and investigate this record')
+            post_close_seconds += delta
+            continue
         if current.get('unobserved_gap'):
             unknown_seconds += delta
         else:
@@ -43,7 +52,7 @@ def summarize(events):
         'actor': first['actor'], 'actor_kind': first['actor_kind'],
         'category': first['category'], 'estimate_hours': first['estimate_hours'],
         'model': first.get('model'), 'reasoning': first.get('reasoning'),
-        'started_at': first['at'], 'finished_at': last['at'] if closed else None,
+        'started_at': first['at'], 'finished_at': closed_event['at'] if closed else None,
         'outcome': last.get('outcome', 'open'),
         'active_minutes': round(sum(seconds[p] for p in ACTIVE) / 60, 2),
         'verification_minutes': round(seconds['verification'] / 60, 2),
@@ -54,6 +63,7 @@ def summarize(events):
         'unclosed_phase': None if closed else last['phase'],
         'unclosed_since': None if closed else last['at'],
         'evidence': last.get('evidence'),
+        'post_close_annotation_minutes': round(post_close_seconds / 60, 2),
     }
 
 

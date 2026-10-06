@@ -35,6 +35,61 @@ or independent assurance gates are complete.
 | WASM-EXP1 and bounded follow-ups | Compilation-route, value/row transport and local host experiments; no default-target promotion | [Experiment results](wasm-experiment-results.md), [guest scans](wasm-guest-scans-results.md) |
 | Native/shared Rust and capability monitors | Bounded conformance, independent authority and single-pass monitor prototypes, with explicit trust/performance limits | [Shared Rust](shared-rust-conformance-results.md), [capability host](capability-host-results.md), [monitor](capability-monitor-results.md) |
 
+## 2026-10-06 — RM-307 native scheduling and worker recovery
+
+**Completed task:** RM-307
+
+The checked generated worker and singleton scheduler now satisfy all 18 frozen
+ASYNC recovery obligations on SQLite and PostgreSQL. Independent reviews cover
+atomic enrollment, immutable delivery identity/version, fenced leases, bounded
+coalesced selection, FIFO, crash/reclaim, cancellation, cumulative retry and
+exhaustion, unknown effects and separately authorized replay. The
+[exact closure audit](../tests/validation/rm306-rm307-rm108-independent-closure-audit.json)
+finds no missing or extra obligation. Its remaining current-source condition is
+met by the [76-check supported gate](../tests/validation/evidence/rm108-rm307-combined-completion/supported-gate-report.json),
+including actual maintained delivery suites: SQLite 109 pass / 6 backend skips,
+PostgreSQL 113 pass / 1 backend skip, with zero failures.
+
+The required RM-306 golden scheduled-job/outbox milestone is satisfied; its
+accepted generic event-binding requirement remains open. This closes worker
+conformance, without claiming a full operator UI, production provider,
+universal hard native preemption or complete golden acceptance. The
+[completion reconciliation](../tests/validation/rm108-rm307-completion-reconciliation.json)
+binds final source pins and retains earlier failed gates and consequential
+reviews. Original forecast 2–8h remains; all prior RM-307 runs stay in the timing
+recorder, including the interrupted audit's explicitly unknown interval.
+
+## 2026-10-06 — RM-108 golden reminder and hourly maintenance integration
+
+**Completed task:** RM-108
+
+The golden reminder composes the reviewed service, queries/actions and native
+worker with the separately approved 60-second execution and renewable
+40-second lease profiles for each delivery and singleton scan. Existing frozen
+JOB successor, provider-failure and duplicate-delivery evidence is reconciled
+with the completed worker milestone. The missing hourly maintenance behavior
+now activates only checked purge clauses, using UTC hour coalescing, a durable
+occurrence held by a database transaction through commit, a 500-row bound and
+next-schedule handling of acknowledged purge rollback.
+
+The [independent maintenance review](../tests/validation/rm108-independent-hourly-maintenance-review.json)
+approves exact captured source and actual two-adapter singleton crash/restart,
+known rollback, unknown COMMIT reconciliation, clock and native authority
+controls. Eight strengthened substantive controls supplement the four original
+tests on each adapter. The fresh [76-check supported gate](../tests/validation/evidence/rm108-rm307-combined-completion/supported-gate-report.json)
+passes both maintained maintenance suites and existing reminder/service/job
+checks. [Final reconciliation](../tests/validation/rm108-rm307-completion-reconciliation.json)
+records exact pins and limits; original failures remain available.
+
+RM-109's full golden acceptance, native hard lifetime, canonical database
+bootstrap and protected production approval remain open. No production mail,
+publication or 500-mail throughput guarantee is claimed. Original forecast
+1–4h remains. Current implementation, independent review and closeout are
+recorded in [RM-108-997644b3d9a4](task-timing/runs/RM-108-997644b3d9a4.jsonl),
+[RM-108-1baf922f572e](task-timing/runs/RM-108-1baf922f572e.jsonl) and
+[RM-108-6ab44948d03f](task-timing/runs/RM-108-6ab44948d03f.jsonl), retaining actual
+gpt-6.1-sol/high and earlier partial runs.
+
 ## 2026-10-04 — RM-304 checked authored service fakes
 
 **Completed task:** RM-304

@@ -1,0 +1,31 @@
+{
+  "scope": "Independent actual native private HTTP cancellation while fresh credential query blocks; no public activation",
+  "reviewed_commit": "b2a5a1c51db68ad47d4bae90904707dce4f18ae1",
+  "product_unchanged_from_approved_f273": true,
+  "test_sha256": "2d2be18646563fc295a8a9be082f9c72b84dce73f8a7c84ba990cfcf16517755",
+  "actual_native_postgres": {
+    "passed": 1,
+    "failed": 0,
+    "assertions": 22,
+    "native_credential_lock_waiter_observed": true,
+    "real_client_outcome": "AbortError",
+    "server_request_signal_aborted": true,
+    "handler_result_status_undelivered": 503,
+    "business_attempt_events": 1,
+    "first_outcome": "no_commit",
+    "later_business_mutation": false,
+    "source_schedule_intent_unchanged": true
+  },
+  "findings": [],
+  "approval": "scoped private native transport conformance",
+  "limits": [
+    "Native handler503 is undelivered; client observes disconnect only",
+    "SQLite async authority-wait cancellation is not claimed",
+    "Unknown COMMIT, other uncovered native phases and wholeRM402 remain open"
+  ],
+  "files": {
+    "jadpo-root-private-http-cancellation-postgres.sh": "adfa3927f10e7cd87cd94464ad83ec8811b7b766559adcff75e8c5f42889a7fb",
+    "jadpo-root-private-http-cancellation-postgres.log": "994e865e36929a20f780c349c52eee6ac1ac5cfc248ada4c673e4b7d0e7e39c6",
+    "exact-test-source.ts": "2d2be18646563fc295a8a9be082f9c72b84dce73f8a7c84ba990cfcf16517755"
+  }
+}
