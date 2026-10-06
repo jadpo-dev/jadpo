@@ -321,6 +321,16 @@ fn mixed_jobs_are_an_explicit_complete_audit_union_with_private_outcomes_separat
         .unwrap();
     let plain = rows.iter().find(|r| r["job"] == "plain_job").unwrap();
     assert!(plain.get("delivery").is_none());
+    assert_eq!(plain["runtime_lowering_supported"], false);
+    assert_eq!(plain["durable_failure_dispositions"], "pending_checked_worker_binding");
+    assert_eq!(plain["execution_profile"], Value::Null);
+    assert_eq!(delivery["runtime_lowering_supported"], true);
+    assert_eq!(delivery["binding_matches_source_job"], true);
+    assert_eq!(delivery["runtime_conformance"], "not_certified_by_static_audit");
+    assert_eq!(delivery["durable_failure_dispositions"], "emitted_checked_delivery_protocol");
+    assert_eq!(delivery["execution_profile"], Value::Null);
+    assert_eq!(delivery["delivery"]["live_authority_established"], false);
+    assert_eq!(delivery["delivery"]["obligations"]["runtime_supported"], false);
     assert_eq!(
         delivery["delivery"],
         project.delivery_model().bindings()[0].source_facts()
@@ -595,4 +605,43 @@ fn incomplete_export_cannot_hide_authored_delivery_or_ordinary_schedule_rows() {
     let mut missing_failure = mixed;
     missing_failure.failures.jobs.clear();
     assert!(derive_approval_subject(&root(), &missing_failure, None, None, None).is_err());
+}
+
+fn job_audit(project: &AnalyzedProject) -> Value {
+    let artifacts = derive_artifacts(&root(), project);
+    serde_json::from_str(&artifacts.iter().find(|artifact| artifact.relative_path == "audit/jobs.json").unwrap().contents).unwrap()
+}
+
+#[test]
+fn canonical_and_checked_renamed_delivery_audits_match_emitted_lowering_without_execution_claims() {
+    let canonical = jadpo_core::analyze_project(&root().join("examples/golden-todo-migration")).unwrap();
+    let renamed = analyze(&FIXTURE.replace("overdue_reminders", "renamed_reminders"), &[]);
+    for (project, name) in [(&canonical, "overdue_reminders"), (&renamed, "renamed_reminders")] {
+        assert!(errors(project).is_empty());
+        let target = derive_target(&root(), project).expect("checked exact source should emit closed native host");
+        assert!(target.iter().any(|artifact| artifact.relative_path == "target/app.ts" && artifact.contents.contains("createDeliveryJobHost")));
+        let audit = job_audit(project); assert_eq!(audit["scope"], "checked_nonexecuting_schedule_entries");
+        let row = audit["jobs"].as_array().unwrap().iter().find(|row| row["job"] == name).unwrap();
+        assert_eq!(row["runtime_lowering_supported"], true);
+        assert_eq!(row["binding_matches_source_job"], true);
+        assert_eq!(row["durable_failure_dispositions"], "emitted_checked_delivery_protocol");
+        assert_eq!(row["runtime_conformance"], "not_certified_by_static_audit");
+        assert_eq!(row["execution_profile"], Value::Null);
+        assert_eq!(row["delivery"]["execution_profile"], Value::Null);
+        assert_eq!(row["delivery"]["live_authority_established"], false);
+        assert_eq!(row["delivery"]["obligations"]["runtime_supported"], false);
+    }
+}
+
+#[test]
+fn an_analyzed_binding_cannot_certify_a_changed_job_ast_in_audit_or_target() {
+    let mut project = analyze(FIXTURE, &[]); checked(&project);
+    let original = project.delivery_model().bindings()[0].source_facts();
+    let job = project.syntax.sources.iter_mut().flat_map(|source| source.file.declarations.iter_mut()).find_map(|declaration| match declaration { jadpo_syntax::Declaration::Job(job) if job.name.text == "overdue_reminders" => Some(job), _ => None }).unwrap();
+    job.every.text = "1m".to_owned();
+    // The whole artifact boundary already refuses stale checked projects;
+    // it must not publish even a partially supported audit row.
+    assert_eq!(project.delivery_model().bindings()[0].source_facts(), original);
+    assert!(std::panic::catch_unwind(|| derive_artifacts(&root(), &project)).is_err());
+    assert!(derive_target(&root(), &project).is_err());
 }
