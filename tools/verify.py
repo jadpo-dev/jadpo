@@ -71,6 +71,12 @@ def verification_environment():
     return environment
 
 
+def runtime_suite_command(name):
+    # A bare relative argument is a Bun discovery filter; an explicit path
+    # selects just the registered suite, rather than retained evidence copies.
+    return ['bun', '--no-install', f'--env-file={os.devnull}', 'test', './' + name]
+
+
 def collect_golden_case_report(output, environment):
     """Retain the reviewed protocol inventory separately from supported passes.
 
@@ -155,7 +161,7 @@ def main():
         step('authored-tests', [str(COMPILER), 'test', 'examples/test-fixtures'])
         step('jwt-explicit-dependency-install', [sys.executable, 'tools/install-jwt-dependency.py'])
         for name in manifest['runtime_suites']:
-            step(Path(name).name.removesuffix('.test.ts'), ['bun', '--no-install', f'--env-file={os.devnull}', 'test', name])
+            step(Path(name).name.removesuffix('.test.ts'), runtime_suite_command(name))
         for mode in [*manifest['postgres_suites'].values(), *manifest['additional_postgres_modes']]:
             if args.profile == 'full':
                 step('postgres-' + mode, ['bash', 'tests/runtime/postgres.sh', mode])

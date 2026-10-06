@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -102,6 +103,31 @@ class VerificationEnvironmentTests(unittest.TestCase):
             self.assertEqual(environment['JADPO_BIN'], str(verify.COMPILER))
             self.assertEqual(environment['RETAINED_VERIFICATION_CONTROL'], 'retained')
             self.assertEqual(verify.os.environ['JADPO_DELIVERY_HOOK_DATABASE_URL'], canaries['JADPO_DELIVERY_HOOK_DATABASE_URL'])
+
+
+class RuntimeSelectionTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('bun'), 'Bun is required for actual file-selection evidence')
+    def test_registered_suites_do_not_execute_same_named_retained_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('first', 'second'):
+                path = root / f'tests/runtime/{name}.test.ts'
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('import { test, expect } from "bun:test";\n'
+                                f'test("registered_{name}", () => expect(true).toBe(true));\n')
+                retained = root / f'tests/validation/evidence/source/tests/runtime/{name}.test.ts'
+                retained.parent.mkdir(parents=True, exist_ok=True)
+                retained.write_text('throw new Error("retained_snapshot_must_not_execute");\n')
+            with patch.object(verify, 'ROOT', root):
+                for name in ('first', 'second'):
+                    log = root / f'{name}.log'
+                    code = verify.execute(verify.runtime_suite_command(f'tests/runtime/{name}.test.ts'),
+                                          log, verify.verification_environment(), timeout=30)
+                    self.assertEqual(code, 0, log.read_text())
+                    self.assertIn(f'registered_{name}', log.read_text())
+                    self.assertNotIn('retained_snapshot_must_not_execute', log.read_text())
+                    other = 'second' if name == 'first' else 'first'
+                    self.assertNotIn(f'registered_{other}', log.read_text())
 
 
 class GoldenCaseIntegrationTests(unittest.TestCase):
