@@ -557,6 +557,24 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     try { await work(calls, endpoint); }
     finally { setReferenceMailEndpointForTesting(null); server.stop(true); if (previous === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previous; }
   }
+  function worker(f: Awaited<ReturnType<typeof fixture>>, endpoint: string, body: string) {
+    const code = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});adapter.setReferenceMailEndpointForTesting(${JSON.stringify(endpoint)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const binding=${JSON.stringify(bindingIdentity)},profile=${JSON.stringify(profile)},at=${JSON.stringify(scanTime)};${body}`;
+    const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", code], { env: { ...Bun.env, NODE_ENV: "test", DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    const done = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+    return { child, done };
+  }
+  async function result(running: ReturnType<typeof worker>) {
+    const [out, err, exit] = await running.done; expect(exit, err).toBe(0);
+    return JSON.parse(out.trim().split("\n").at(-1)!);
+  }
+  async function ready(marker: string) {
+    for (let attempt = 0; attempt < 500; attempt++) {
+      if (existsSync(marker)) { try { return JSON.parse(readFileSync(marker, "utf8")); } catch {} }
+      await Bun.sleep(20);
+    }
+    throw new Error("generated worker did not reach the durable checkpoint");
+  }
+  const runWorker = (f: Awaited<ReturnType<typeof fixture>>, endpoint: string) => result(worker(f, endpoint, 'console.log(JSON.stringify(await app.runDeliveryScheduleActivation(binding,proof,profile,at)));process.exit(0);'));
   test("generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick", async () => {
     const f = await fixture();
     await provider(async calls => {
@@ -714,6 +732,75 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect((await stored(later.id))[0].reminder_sent_at).toBeNull(); expect(await intentRows(later.id)).toEqual([]);
     });
   }, 30_000);
+  test("ASYNC-COMMIT-CRASH: SIGKILL after generated page COMMIT recovers the original durable intent and payload in a fresh worker", async () => {
+    const f = await fixture(), marker = join(root, `commit-crash-${crypto.randomUUID()}.json`);
+    await provider(async (calls, endpoint) => {
+      const first = worker(f, endpoint, `const saved=await persistence.withOperationTime(at).transaction(async tx=>{await tx.tick_delivery_schedule(binding,900000,at);const handle=await tx.claim_delivery_activation(binding,at,profile);const page=await tx.select_delivery_intents(binding,proof,null);if(!await tx.stage_delivery_activation_page(handle,page.intents.map(i=>i.intentId),page.after))throw Error("stage refused");return page;});await Bun.write(${JSON.stringify(marker)},JSON.stringify(saved));await new Response(Bun.stdin).text();process.exit(0);`);
+      let page: any;
+      try { page = await ready(marker); expect(calls).toHaveLength(0); expect(page.intents).toHaveLength(1); }
+      finally { first.child.kill("SIGKILL"); }
+      expect((await first.done)[2]).not.toBe(0);
+      const original = await persistence.read_delivery_intent(page.intents[0].intentId);
+      expect(original.state).toBe("pending"); await expire();
+      expect(await runWorker(f, endpoint)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1); expect(calls[0].body).toEqual(original.payload);
+      const completed = await persistence.read_delivery_intent(original.intentId);
+      expect(completed.state).toBe("succeeded"); expect(completed.payloadVersion).toBe(original.payloadVersion);
+      expect(await intentRows(f.value.id)).toHaveLength(1);
+    });
+  }, 30_000);
+  test("ASYNC-LEASE-RECLAIM-FENCE: separate generated workers reclaim before possible dispatch and reject the old worker's checkpoint/outcome", async () => {
+    const f = await fixture(), intent = await staged(f), marker = join(root, `claim-ready-${crypto.randomUUID()}.json`);
+    await provider(async (calls, endpoint) => {
+      const first = worker(f, endpoint, `const handle=await persistence.transaction(tx=>tx.claim_delivery_intent(${JSON.stringify(intent.intentId)},{maxInvocations:3,lifetimeMs:3600000,...profile}));await Bun.write(${JSON.stringify(marker)},JSON.stringify(handle));await new Response(Bun.stdin).text();const stale=await persistence.transaction(async tx=>({checkpoint:await tx.checkpoint_delivery_dispatch(handle),renewed:await tx.renew_delivery_claim(handle),outcome:await tx.record_delivery_unknown(handle)}));console.log(JSON.stringify(stale));process.exit(0);`);
+      try {
+        const old = await ready(marker); expect(old.generation).toBe("1"); expect(calls).toHaveLength(0);
+        await rows('UPDATE "__jadpo_delivery_claims_v1" SET lease_until=$1 WHERE intent_id=$2', ["2000-01-01T00:00:00.000Z", intent.intentId]); await expire();
+        expect(await runWorker(f, endpoint)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+        expect(calls).toHaveLength(1);
+        const current = (await rows('SELECT CAST(generation AS TEXT) AS generation,invocations FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intent.intentId]))[0];
+        expect(current.generation).toBe("2"); expect(Number(current.invocations)).toBe(2);
+        first.child.stdin.end(); expect(await result(first)).toEqual({ checkpoint: false, renewed: null, outcome: false });
+        expect((await persistence.read_delivery_intent(intent.intentId)).state).toBe("succeeded"); expect(calls).toHaveLength(1);
+      } finally { first.child.kill(); await first.done; }
+    });
+  }, 30_000);
+  test("ASYNC-STALE-WORKER-AFTER-DISPATCH and ASYNC-UNKNOWN-NO-REPLAY: stale receipt cannot acknowledge after a separate worker contains the possible effect", async () => {
+    const f = await fixture(), intent = await staged(f), marker = join(root, `receipt-ready-${crypto.randomUUID()}.json`);
+    await provider(async (calls, endpoint) => {
+      const first = worker(f, endpoint, `const token=await app.prepareDeliveryInvocation(binding,proof,${JSON.stringify(intent.intentId)},at,profile);if(token===null)throw Error("admission refused");const receipt=await app.dispatchDeliveryInvocation(token);await Bun.write(${JSON.stringify(marker)},JSON.stringify({receipt:true}));await new Response(Bun.stdin).text();console.log(JSON.stringify({completed:await app.completeDeliveryInvocation(receipt)}));process.exit(0);`);
+      try {
+        expect(await ready(marker)).toEqual({ receipt: true }); expect(calls).toHaveLength(1);
+        await rows('UPDATE "__jadpo_delivery_claims_v1" SET lease_until=$1 WHERE intent_id=$2', ["2000-01-01T00:00:00.000Z", intent.intentId]); await expire();
+        expect(await runWorker(f, endpoint)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+        expect((await persistence.read_delivery_intent(intent.intentId)).state).toBe("outcome_unknown");
+        first.child.stdin.end(); expect(await result(first)).toEqual({ completed: false });
+        const saved = await persistence.read_delivery_intent(intent.intentId);
+        expect(saved.state).toBe("outcome_unknown"); expect(saved.payload).toEqual(intent.payload);
+        expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+        expect(await rows('SELECT * FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [intent.intentId])).toEqual([]);
+        // A later interval and a fresh process must retain the same unknown ID.
+        await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, "2026-10-08T08:15:00.000Z"));
+        expect(await runWorker(f, endpoint)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+        expect(calls).toHaveLength(1); expect(await intentRows(f.value.id)).toHaveLength(1);
+        expect((await persistence.read_delivery_intent(intent.intentId)).state).toBe("outcome_unknown");
+      } finally { first.child.kill(); await first.done; }
+    });
+  }, 30_000);
+  test("ASYNC-BOUNDED-CONTINUATION: generated500-row activation commits its cursor and a fresh process completes501 stable rows without duplicate effects", async () => {
+    const f = await fixture();
+    await client.transaction(async (tx: any) => { for (let i = 0; i < 500; i++) await tx.create_Todo(todo()); });
+    await provider(async (calls, endpoint) => {
+      expect(await runWorker(f, endpoint)).toEqual({ status: "finished", selected: 500, attempted: 500, continued: true });
+      expect(calls).toHaveLength(500);
+      const continued = (await activationRows())[0]; expect(continued.activation_id).toBeNull(); expect(continued.cursor).not.toBeNull(); expect(continued.continuation_for).not.toBeNull();
+      expect(await runWorker(f, endpoint)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(501); expect(new Set(calls.map(call => call.body.idempotency_key)).size).toBe(501);
+      expect(calls.every(call => call.page.intentIds.length <= 500)).toBe(true);
+      expect((await activationRows())[0].cursor).toBeNull();
+      const sent = await rows('SELECT COUNT(*) AS n FROM todo WHERE reminder_sent_at IS NOT NULL'); expect(Number(sent[0].n)).toBe(501);
+    });
+  }, 90_000);
 });
 
 describe(`committed admission and adapter-origin outcome components (${sql ? "postgres" : "sqlite"})`, () => {
