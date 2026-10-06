@@ -270,7 +270,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 row = deepcopy(source or prepared[0]); row['reminder_sent_at'] = at
                 identity = '00000000-0000-4000-8000-000000000999'
                 body = {'to': 'alice@example.test', 'todo_title': row['title'], 'due_at': row['due_at'], 'idempotency_key': identity}
-                result.update(calls=[{'method': 'POST', 'path': '/v1/messages', 'body': body, 'idempotencyKey': identity, 'authorizationCorrect': True, 'at': at, 'responseStatus': 202}], intents=[{'intent_id': identity, 'source_entity_id': row['id'], 'source_revision': '1', 'state': 'succeeded', 'payload': deepcopy(body)}], receipts=[{'intent_id': identity, 'accepted_at': at, 'observed_at': at}], after=[row], schedules=[{'source_entity': 'Todo', 'source_entity_id': row['id'], 'schedule_revision': '1'}], statements=[{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'SELECT', 'sql': 'SELECT t."id" AS source_id FROM "todo" WHERE "deleted_at" IS NULL AND t."due_at" IS NOT NULL AND t."reminder_sent_at" IS NULL ORDER BY t."due_at" ASC, t."id" ASC LIMIT 500'}, {'operation': 'SELECT', 'sql': 'SELECT c FROM "service_credential" JOIN "reminder_service_membership" ON 1=1 WHERE "expires_at" > $1'}, {'operation': 'INSERT', 'sql': 'INSERT INTO "__jadpo_delivery_mail_receipts_v1"'}, {'operation': 'SELECT', 'sql': 'SELECT observed_at FROM "__jadpo_delivery_mail_receipts_v1"'}, {'operation': 'UPDATE', 'sql': 'UPDATE "todo" SET "reminder_sent_at" = $1'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}])
+                result.update(calls=[{'method': 'POST', 'path': '/v1/messages', 'body': body, 'idempotencyKey': identity, 'authorizationCorrect': True, 'at': at, 'responseStatus': 202}], intents=[{'intent_id': identity, 'source_entity_id': row['id'], 'source_revision': '1', 'state': 'succeeded', 'payload': deepcopy(body)}], receipts=[{'intent_id': identity, 'accepted_at': at, 'observed_at': at}], after=[row], schedules=[{'source_entity': 'Todo', 'source_entity_id': row['id'], 'schedule_revision': '1'}], statements=[{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'SELECT', 'sql': 'SELECT t."id" AS source_id FROM "todo" WHERE "deleted_at" IS NULL AND t."due_at" IS NOT NULL AND t."reminder_sent_at" IS NULL ORDER BY t."due_at" ASC, t."id" ASC LIMIT 500'}, {'operation': 'SELECT', 'sql': 'SELECT c FROM "service_credential" JOIN "reminder_service_membership" ON 1=1 WHERE "expires_at" > $1'}, {'operation': 'INSERT', 'sql': 'INSERT INTO "__jadpo_delivery_mail_receipts_v1"'}, {'operation': 'SELECT', 'sql': 'SELECT observed_at FROM "__jadpo_delivery_mail_receipts_v1"'}, {'operation': 'UPDATE', 'sql': 'UPDATE "todo" SET "reminder_sent_at" = $1, "updated_at" = $2 WHERE "id" = $3 AND "reminder_sent_at" IS NULL RETURNING *', 'reminderRowIdentity': row['id']}, {'operation': 'COMMIT', 'sql': 'COMMIT'}])
             return result
         raw = [{'reminderFixture': fixture}]
         if case_id == 'JOB-001': raw.append({'nativeReminderRun': run('original_run', case['run']['at'], 1)})
@@ -941,6 +941,30 @@ class CheckpointIntegrityTests(unittest.TestCase):
             elif mutation == 'entity_foreign': audit['entity'] = 'User'
 
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['JOB-004'], raw, self.clock)
+
+    def test_reminder_receipt_and_identity_scoped_marker_share_exact_successful_transaction(self):
+        accepted, _ = harness.accepted_job001_contract(self.root)
+        case = next(case for case in accepted['cases'] if case['id'] == 'JOB-001')
+        for mutation in ('none', 'begin_missing', 'commit_missing', 'commit_rollback', 'split', 'bulk_marker', 'foreign_bind', 'missing_bind', 'sql_operation_disagrees'):
+            raw = self.reminder_raw('JOB-001'); run = raw[1]['nativeReminderRun']
+            # Earlier activation and later cleanup commits must never replace
+            # the transaction owning the durable receipt and source marker.
+            prefix = [{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'SELECT', 'sql': 'SELECT 1'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}]
+            suffix = deepcopy(prefix)
+            statements = run['statements']
+            if mutation == 'begin_missing': statements.pop(0)
+            elif mutation == 'commit_missing': statements.pop()
+            elif mutation == 'commit_rollback': statements[-1] = {'operation': 'ROLLBACK', 'sql': 'ROLLBACK'}
+            elif mutation == 'split': statements[5:5] = [{'operation': 'COMMIT', 'sql': 'COMMIT'}, {'operation': 'BEGIN', 'sql': 'BEGIN'}]
+            elif mutation == 'bulk_marker': statements[5]['sql'] = statements[5]['sql'].replace('WHERE "id" = $3 AND ', 'WHERE ')
+            elif mutation == 'foreign_bind': statements[5]['reminderRowIdentity'] = checkpoint.ALIASES['bob']
+            elif mutation == 'missing_bind': statements[5].pop('reminderRowIdentity')
+            elif mutation == 'sql_operation_disagrees': statements[0]['sql'] = 'ROLLBACK'
+            run['statements'] = prefix + statements + suffix
+            if mutation == 'none':
+                self.assertFalse(harness.assess(case, checkpoint.observations(case, raw)))
+            else:
+                with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(case, raw)
 
     def partial_outputs_fixture(self):
         output = {'partialEvidence': [{'id': case_id, 'adapterFailure': True, 'raw': []} for case_id in ('REL-003',)]}
