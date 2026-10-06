@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct DeliveryAuthorityCandidate {
     application: String,
+    strategy: String,
     validator: String,
     credential_identity: String,
     credential_principal: String,
@@ -31,6 +32,7 @@ impl DeliveryAuthorityCandidate {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         application: String,
+        strategy: String,
         validator: String,
         credential_identity: String,
         credential_principal: String,
@@ -52,6 +54,7 @@ impl DeliveryAuthorityCandidate {
     ) -> Self {
         Self {
             application,
+            strategy,
             validator,
             credential_identity,
             credential_principal,
@@ -95,6 +98,7 @@ impl DeliveryAuthorityCandidate {
 /// Borrowed lowering identities, obtainable from a finished opaque binding.
 /// This carries no mutable candidate, live authority or ordinary policy grant.
 pub(crate) struct DeliveryAuthorityLowering<'a> {
+    pub(crate) strategy: &'a str,
     pub(crate) validator: &'a str,
     pub(crate) credential_identity: &'a str,
     pub(crate) credential_principal: &'a str,
@@ -312,6 +316,7 @@ impl DeliveryPhaseCandidate {
     pub(crate) fn authority_for_lowering(&self) -> DeliveryAuthorityLowering<'_> {
         let a = &self.authority;
         DeliveryAuthorityLowering {
+            strategy: &a.strategy,
             validator: &a.validator,
             credential_identity: &a.credential_identity,
             credential_principal: &a.credential_principal,

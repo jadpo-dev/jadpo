@@ -487,6 +487,7 @@ impl Context<'_> {
         Some((
             DeliveryAuthorityCandidate::new(
                 application.name.text.clone(),
+                strategy_name.text.clone(),
                 validator_identity,
                 joined(&binding.identity.path),
                 joined(&binding.principal.path),

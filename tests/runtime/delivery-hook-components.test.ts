@@ -629,6 +629,60 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(row.execution_deadline < ledger.execution_deadline).toBe(true);
     });
   });
+  test("trusted closed job host uses a real service credential and captured wall clock; start and stop remain bounded native controls", async () => {
+    const f = await fixture();
+    const overdue = new Date(Date.now() - 60_000).toISOString();
+    await rows('UPDATE todo SET due_at=$1 WHERE id=$2', [sql ? overdue : Date.parse(overdue), f.value.id]);
+    const activation = { executionMs: 60_000, leaseMs: 40_000 }, delivery = { executionMs: 60_000, leaseMs: 40_000 };
+    const host = app.createDeliveryJobHost(bindingIdentity, f.issued.credential, activation, delivery);
+    expect(Reflect.ownKeys(host).sort()).toEqual(["runOnce", "start", "stop"]);
+    await provider(async calls => {
+      expect(await host.start()).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1); expect(calls[0].body.due_at).toBe(overdue);
+      expect((await host.runOnce()).status).toBe("idle"); expect(calls).toHaveLength(1);
+      expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+      await host.stop(); expect(() => host.runOnce()).toThrow(); await expect(host.start()).rejects.toBeDefined();
+    });
+  });
+  test("closed job host accepts no callback/clock/profile default and provider API secret cannot replace the service credential", async () => {
+    const f = await fixture();
+    await provider(async calls => {
+      expect(() => app.createDeliveryJobHost("foreign-binding", f.issued.credential, profile, profile)).toThrow();
+      for (const credential of ["", null, {}, () => {}]) expect(() => app.createDeliveryJobHost(bindingIdentity, credential, profile, profile)).toThrow();
+      for (const value of [undefined, null, {}, { executionMs: 10, leaseMs: 20 }, { ...profile, callback: () => {} }]) {
+        expect(() => app.createDeliveryJobHost(bindingIdentity, f.issued.credential, value, profile)).toThrow();
+        expect(() => app.createDeliveryJobHost(bindingIdentity, f.issued.credential, profile, value)).toThrow();
+      }
+      const wrong = app.createDeliveryJobHost(bindingIdentity, authEnvironment.MAIL_API_KEY, profile, profile);
+      await expect(wrong.runOnce()).rejects.toMatchObject({ code: "invalid_credentials" });
+      const revoked = app.createDeliveryJobHost(bindingIdentity, f.issued.credential, profile, profile);
+      await f.host.revokeServiceCredential("api_bearer", f.issued.credentialId, Date.now());
+      await expect(revoked.runOnce()).rejects.toMatchObject({ code: "invalid_credentials" });
+      expect(calls).toHaveLength(0); expect(await activationRows()).toEqual([]); expect(await enrollmentRowsIfPresent(f.value.id)).toEqual([]);
+    });
+  });
+  test("trusted job host snapshots both profiles, coalesces overlap and waits for an in-flight receipt before stop", async () => {
+    const f = await fixture(), overdue = new Date(Date.now() - 60_000).toISOString();
+    await rows('UPDATE todo SET due_at=$1 WHERE id=$2', [sql ? overdue : Date.parse(overdue), f.value.id]);
+    const activation = { executionMs: 60_000, leaseMs: 40_000 }, delivery = { executionMs: 60_000, leaseMs: 40_000 };
+    const host = app.createDeliveryJobHost(bindingIdentity, f.issued.credential, activation, delivery);
+    activation.executionMs = delivery.executionMs = 0; activation.leaseMs = delivery.leaseMs = 0;
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; }), released = new Promise<void>(resolve => { release = resolve; });
+    await provider(async calls => {
+      const first = host.runOnce(), second = host.runOnce(); expect(first).toBe(second);
+      try {
+        await entered; expect(calls).toHaveLength(1);
+        const current = (await activationRows())[0]; expect(Number(current.lease_ms)).toBe(40_000);
+        const claim = (await rows('SELECT execution_ms,lease_ms FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [calls[0].body.idempotency_key]))[0];
+        expect(Number(claim.execution_ms)).toBe(60_000); expect(Number(claim.lease_ms)).toBe(40_000);
+        let stopped = false; const stopping = host.stop().then(() => { stopped = true; });
+        await Promise.resolve(); expect(stopped).toBe(false); expect(() => host.runOnce()).toThrow();
+        release(); expect((await first).status).toBe("finished"); await stopping; expect(stopped).toBe(true);
+        expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull(); expect(calls).toHaveLength(1);
+      } finally { release(); await first; }
+    }, async () => { enter(); await released; });
+  });
   test("owning page COMMIT failure leaves no intent/activation and cannot dispatch", async () => {
     const f = await fixture();
     await rows('CREATE TABLE rm306_activation_parent (id TEXT PRIMARY KEY)');
