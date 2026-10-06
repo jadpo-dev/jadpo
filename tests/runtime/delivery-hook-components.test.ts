@@ -762,8 +762,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
     }
   });
-  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"],["PATCH","attempt_exhausted"],["PATCH","elapsed"]] as const)
-  test.skipIf(mode === "elapsed" && sql === null)(`RM402 private authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
+  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"],["PATCH","attempt_exhausted"],["PATCH","elapsed"],["PATCH","cancelled"]] as const)
+  test.skipIf((mode === "elapsed" || mode === "cancelled") && sql === null)(`RM402 private authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
     const f = await fixture(), inspected = await inspectRetryApplication(true);
     await inspected.initializeApplication(authEnvironment);
     const host = inspected.authenticationHost(), now = Date.now();
@@ -778,6 +778,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const oldPayload = oldIntent.payload;
     const due = new Date(Date.now() + 3_600_000).toISOString();
     const events: any[] = [];
+    const clientAbort = new AbortController();
+    let serverRequest: Request | null = null, serverWork: Promise<Response> | null = null, serverAbortObserved = false, blockedCredentialQueryObserved = false;
     const previousError = console.error;
     let locker: Database | null = null, held: any = null;
     let releaseGuard = () => {}, pendingMutation: Promise<unknown> | null = null;
@@ -811,6 +813,17 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       pendingMutation = (async () => {
         const change = async (statement: string, values: unknown[]) => sql ? held.unsafe(statement, values) : sqlite!.prepare(statement).all(...values);
         if (mode === "elapsed") await change("SELECT pg_sleep($1)",[1.1]);
+        if (mode === "cancelled") {
+          const observationDeadline = performance.now()+500;
+          while (performance.now()<observationDeadline) {
+            const waiting = await held.unsafe("SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%__jadpo_auth_sessions%' AND state='active'");
+            if (waiting.length>0) { blockedCredentialQueryObserved = true; break; }
+            await Bun.sleep(5);
+          }
+          expect(blockedCredentialQueryObserved).toBe(true);
+          clientAbort.abort(); // Actual disconnect only after native waiter proof.
+          await change("SELECT pg_sleep($1)",[.05]);
+        }
         if (mode === "inactive") await change('UPDATE "user" SET status=$1 WHERE id=$2', ["disabled",owner]);
         if (mode === "revoked") await change('DELETE FROM "__jadpo_auth_sessions" WHERE id=$1', [sessionId]);
         if (mode === "row_deleted") await change('UPDATE todo SET deleted_at=$1 WHERE id=$2', [dbInstant(Date.now()),f.value.id]);
@@ -820,13 +833,19 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         }
       })().finally(releaseGuard);
     };
-    const server = Bun.serve({hostname:"127.0.0.1",port:0,fetch:inspected.handleRequest});
+    const server = Bun.serve({hostname:"127.0.0.1",port:0,fetch(request) {
+      serverRequest = request;
+      request.signal.addEventListener("abort",()=>{ serverAbortObserved = true; });
+      serverWork = inspected.handleRequest(request); return serverWork;
+    }});
     const requestStarted = performance.now();
     try {
-      const response = await fetch(`http://127.0.0.1:${server.port}/todos/${f.value.id}`, {
-        method:verb, headers:{cookie:`todo_session=${issued.credential}`,origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken,"content-type":"application/json"},
+      const delivered = await fetch(`http://127.0.0.1:${server.port}/todos/${f.value.id}`, {
+        method:verb, signal:clientAbort.signal, headers:{cookie:`todo_session=${issued.credential}`,origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken,"content-type":"application/json"},
         ...(verb === "PATCH" ? {body:JSON.stringify({title:"HTTP retried exactly once",due_at:due})} : {}),
-      });
+      }).catch(error => { if (mode === "cancelled" && error.name === "AbortError") return null; throw error; });
+      const response = mode === "cancelled" ? await serverWork! : delivered!;
+      if (mode === "cancelled") { expect(delivered).toBeNull(); expect(blockedCredentialQueryObserved).toBe(true); expect(serverAbortObserved).toBe(true); expect(serverRequest!.signal.aborted).toBe(true); }
       if (locker && mode === "attempt_exhausted") { locker.exec("ROLLBACK"); locker.close(); locker = null; }
       await pendingMutation; await heldWork;
       expect(events[0]).toMatchObject({attempt:1,outcome:"no_commit",retryScheduled:true,commitAcknowledged:false});
@@ -876,7 +895,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       const emitted = readFileSync(join(root,"app.ts"),"utf8");
       expect(emitted).not.toContain("allowOperationRetries(__operation, __authenticatedRetryCandidate)");
       expect(emitted).toContain("__operation = allowOperationRetries(__operation, false);");
-      previousError(JSON.stringify({kind:"private_http_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,verb,mode,database:sql ? "postgres" : "sqlite",status:response.status,events,sourceRevision:await revision(f.value.id),intentState:(await persistence.read_delivery_intent(oldIntent.intentId)).state}));
+      previousError(JSON.stringify({kind:"private_http_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,verb,mode,database:sql ? "postgres" : "sqlite",clientOutcome:mode === "cancelled" ? "AbortError" : "delivered",serverRequestAborted:serverRequest!.signal.aborted,blockedCredentialQueryObserved,status:response.status,events,sourceRevision:await revision(f.value.id),intentState:(await persistence.read_delivery_intent(oldIntent.intentId)).state}));
     } finally {
       server.stop(true); console.error = previousError; releaseGuard();
       if (locker) { locker.exec("ROLLBACK"); locker.close(); }
