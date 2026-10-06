@@ -198,17 +198,28 @@ exec python3 "$TEST_RUNTIME_SERVER"
         &server,
         r#"import os
 import socket
+import selectors
+import json
 
-server = socket.socket()
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind(("127.0.0.1", int(os.environ["PORT"])))
-server.listen()
+selector = selectors.DefaultSelector()
+for plane, binding in [("application", "PORT"), ("deployment", "JADPO_DEPLOYMENT_PORT")]:
+    server = socket.socket()
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", int(os.environ[binding])))
+    server.listen()
+    selector.register(server, selectors.EVENT_READ, plane)
 while True:
-    connection, _ = server.accept()
-    connection.recv(4096)
-    body = b'{"ready":true}'
-    connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body)
-    connection.close()
+    for key, _ in selector.select():
+        connection, _ = key.fileobj.accept()
+        request = connection.recv(4096)
+        path = request.split(b" ")[1].decode()
+        with open(os.path.join(os.path.dirname(__file__), "deployment-probes.jsonl"), "a") as output:
+            output.write(json.dumps({"plane": key.data, "path": path, "port": key.fileobj.getsockname()[1]}) + "\n")
+        ready = key.data == "deployment" and path == "/health/ready"
+        body = b'{"status":"ready"}' if ready else b'{"error":{"code":"not_found"}}'
+        status = b"200 OK" if ready else b"404 Not Found"
+        connection.sendall(b"HTTP/1.1 " + status + b"\r\nContent-Type: application/json\r\nContent-Length: " + str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body)
+        connection.close()
 "#,
     )
     .expect("fake readiness server should be written");
@@ -286,6 +297,12 @@ fn dev_restores_the_ready_runtime_when_a_candidate_fails_startup() {
 
     let ready = session.wait_for("runtime_ready", 1);
     assert_eq!(ready["stale"], false);
+    for line in fs::read_to_string(root.join("deployment-probes.jsonl")).expect("deployment probe trace should exist").lines() {
+        let probe: Value = serde_json::from_str(line).expect("probe should be structured");
+        assert_eq!(probe["plane"], "deployment");
+        assert_eq!(probe["path"], "/health/ready");
+        assert_ne!(probe["port"], port);
+    }
     fs::write(&source, "type BrokenCandidate = Text {}\n")
         .expect("failing candidate should be written");
     session.wait_for("runtime_failed", 2);

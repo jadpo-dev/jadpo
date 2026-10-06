@@ -63,6 +63,7 @@
     "tests/runtime/configuration-preflight.test.ts",
     "tests/runtime/delivery-completion-representation.test.ts",
     "tests/runtime/delivery-hook-components.test.ts",
+    "tests/runtime/deployment-readiness.test.ts",
     "tests/runtime/entity-dossier.test.ts",
     "tests/runtime/entity-lifecycle.test.ts",
     "tests/runtime/field-contracts.test.ts",
@@ -124,6 +125,7 @@
     "entity-dossier",
     "lifecycle",
     "relationship-conflicts",
-    "configuration-preflight"
+    "configuration-preflight",
+    "deployment-readiness"
   ]
 }

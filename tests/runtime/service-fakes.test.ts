@@ -93,7 +93,7 @@ test("reports the declared mail advisory as unprobed without provider egress", a
     throw new Error("readiness attempted mail fetch");
   }) as typeof fetch;
   try {
-    const response = await app.handleRequest(new Request("https://jadpo.test/health/ready"));
+    const response = await app.handleDeploymentRequest(new Request("https://jadpo.test/health/ready"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       status: "ready",

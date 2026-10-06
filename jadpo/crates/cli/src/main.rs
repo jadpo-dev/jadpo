@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::sync::{
@@ -1350,6 +1350,10 @@ fn run_watch(project: &Path, json: bool) -> Result<(), Diagnostic> {
 fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
     let shutdown = install_shutdown_handler()?;
     let port = dev_port()?;
+    let deployment_port = TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|listener| listener.local_addr())
+        .map(|address| address.port())
+        .map_err(|_| Diagnostic::error("CLI_DEV_BUN_START_FAILED"))?;
     let mut sequence = 0_u64;
     let mut revision = 0_u64;
     let mut runtime: Option<Child> = None;
@@ -1483,8 +1487,8 @@ fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
                         Some(&success.output),
                     )?;
 
-                    match start_bun_runtime(project, port, json, &local_environment) {
-                        Ok(mut child) => match wait_until_ready(&mut child, port) {
+                    match start_bun_runtime(project, port, deployment_port, json, &local_environment) {
+                        Ok(mut child) => match wait_until_ready(&mut child, deployment_port) {
                             Ok(()) => {
                                 if let Some(rollback) = rollback.as_ref() {
                                     if let Err(diagnostic) = discard_runtime_rollback(rollback) {
@@ -1533,6 +1537,7 @@ fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
                                         project,
                                         json,
                                         port,
+                                        deployment_port,
                                         &mut sequence,
                                         revision,
                                         &mut runtime,
@@ -1564,6 +1569,7 @@ fn run_dev(project: &Path, json: bool) -> Result<(), Diagnostic> {
                                     project,
                                     json,
                                     port,
+                                    deployment_port,
                                     &mut sequence,
                                     revision,
                                     &mut runtime,
@@ -1715,6 +1721,7 @@ fn parse_dev_port(value: &str) -> Result<u16, Diagnostic> {
 fn start_bun_runtime(
     project: &Path,
     port: u16,
+    deployment_port: u16,
     json: bool,
     configuration: &BTreeMap<String, String>,
 ) -> Result<Child, Diagnostic> {
@@ -1735,6 +1742,7 @@ fn start_bun_runtime(
         .current_dir(project_root)
         .env("PORT", port.to_string())
         .envs(configuration)
+        .env("JADPO_DEPLOYMENT_PORT", deployment_port.to_string())
         .stdin(Stdio::null())
         .stderr(Stdio::inherit());
     if json {
@@ -1782,7 +1790,7 @@ fn healthcheck_ready(port: u16) -> bool {
     let _ = stream.set_read_timeout(timeout);
     let _ = stream.set_write_timeout(timeout);
     if stream
-        .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .write_all(b"GET /health/ready HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
         .is_err()
     {
         return false;
@@ -1856,6 +1864,7 @@ fn rollback_runtime(
     project: &Path,
     json: bool,
     port: u16,
+    deployment_port: u16,
     sequence: &mut u64,
     revision: u64,
     runtime: &mut Option<Child>,
@@ -1883,8 +1892,8 @@ fn rollback_runtime(
     )?;
     restore_runtime_rollback(rollback)?;
 
-    let result = start_bun_runtime(project, port, json, configuration).and_then(|mut child| {
-        if let Err(diagnostic) = wait_until_ready(&mut child, port) {
+    let result = start_bun_runtime(project, port, deployment_port, json, configuration).and_then(|mut child| {
+        if let Err(diagnostic) = wait_until_ready(&mut child, deployment_port) {
             stop_runtime(&mut child);
             return Err(diagnostic);
         }
@@ -2379,7 +2388,7 @@ mod tests {
     }
 
     #[test]
-    fn runnable_build_includes_the_compiler_health_route() {
+    fn runnable_build_separates_public_liveness_from_native_deployment_readiness() {
         let root = std::env::temp_dir().join(format!("jadpo-cli-no-routes-{}", std::process::id()));
         if root.exists() {
             fs::remove_dir_all(&root).expect("stale fixture should be removable");
@@ -2393,7 +2402,11 @@ mod tests {
             .expect("generated target should be readable");
 
         assert!(target.contains("url.pathname === \"/health\""));
-        assert!(target.contains("{ ready: true }"));
+        assert!(target.contains("export async function handleDeploymentRequest"));
+        let application = target.split("export async function handleRequest").nth(1).expect("application handler should exist");
+        assert!(application.contains("url.pathname === \"/health/live\""));
+        assert!(application.contains("url.pathname === \"/health\") return json(404"));
+        assert!(!application.contains("refreshDatabaseReadiness()"));
         fs::remove_dir_all(root).expect("fixture should be removable");
     }
 

@@ -1,0 +1,5 @@
+{"schema_version": 1, "run_id": "RM-403-480930145bb6", "task_id": "RM-403", "actor": "scheduler-deployment-readiness", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T08:07:15.564796+00:00", "phase": "planning"}
+{"at": "2026-10-06T08:07:46.400866+00:00", "phase": "paused", "note": "Priority relationship-only registration leaf to unblock current combined gate"}
+{"at": "2026-10-06T08:08:23.257300+00:00", "phase": "implementation", "note": "Resume deployment-only readiness/native listeners and dev probe"}
+{"at": "2026-10-06T08:16:16.180127+00:00", "phase": "verification", "note": "Actual native deployment separation both adapters; preservation of async outage recovery, direct/Bun/Node credential controls, dev rollback probe trace"}
+{"at": "2026-10-06T08:22:41.793765+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-deployment-readiness/manifest.json"}
