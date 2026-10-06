@@ -2,6 +2,7 @@
 from copy import deepcopy
 import json
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -14,7 +15,23 @@ import golden_checkpoint as checkpoint
 
 class CheckpointIntegrityTests(unittest.TestCase):
     def setUp(self):
-        self.cases = {case['id']: case for case in harness.read_contract(ROOT)['cases']}
+        temporary = tempfile.TemporaryDirectory(prefix='jadpo-synthetic-checkpoint-')
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        # Protocol tests run before compiler-build in the supported verifier.
+        # This fake binary is only a digest fixture; it is never executed and
+        # cannot establish real application behaviour. Production validation
+        # still rejects passing observations when a compiler binding is absent.
+        for name in (harness.ACCEPTANCE, harness.OBLIGATIONS, 'tools/golden_cases.py',
+                     'tools/golden_checkpoint.py', 'tools/golden_http_checkpoint.ts',
+                     'tools/golden_sql_observer.ts'):
+            destination = self.root/name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT/name, destination)
+        self.compiler = self.root/'jadpo/target/debug/jadpo'
+        self.compiler.parent.mkdir(parents=True)
+        self.compiler.write_text('synthetic compiler digest fixture; never executable')
+        self.cases = {case['id']: case for case in harness.read_contract(self.root)['cases']}
 
     def raw(self, case_id):
         case = self.cases[case_id]
@@ -34,8 +51,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
         return [{'backend': backend, 'results': [{'id': case_id, 'raw': self.raw(case_id)} for case_id in checkpoint.SUPPORTED]} for backend in harness.BACKENDS]
 
     def test_all_inventory_entries_retained_and_selected_observations_do_not_infer_pass(self):
-        report = harness.run_cases(ROOT)
-        checkpoint.apply_checkpoint(report, self.outputs(), ROOT)
+        report = harness.run_cases(self.root)
+        checkpoint.apply_checkpoint(report, self.outputs(), self.root)
         self.assertEqual(len(report['results']), 88)
         self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 72)
         self.assertEqual(report['status'], 'failed')
@@ -49,7 +66,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
             elif mutation == 'foreign': outputs[0]['results'][0]['id'] = 'AUTH-002'
             else: outputs[1]['backend'] = 'sqlite'
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
-                checkpoint.apply_checkpoint(harness.run_cases(ROOT), outputs, ROOT)
+                checkpoint.apply_checkpoint(harness.run_cases(self.root), outputs, self.root)
 
     def test_statement_and_auth_counts_are_derived_from_raw_instrumentation(self):
         raw = self.raw('AUTH-001')
@@ -98,8 +115,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
     def test_adapter_failure_keeps_case_failed_and_later_cases_present(self):
         outputs = self.outputs()
         outputs[0]['results'][0] = {'id': 'AUTH-001', 'adapterFailure': True, 'raw': []}
-        report = harness.run_cases(ROOT)
-        checkpoint.apply_checkpoint(report, outputs, ROOT)
+        report = harness.run_cases(self.root)
+        checkpoint.apply_checkpoint(report, outputs, self.root)
         entry = next(entry for entry in report['results'] if entry['id'] == 'AUTH-001' and entry['backend'] == 'sqlite')
         self.assertEqual(entry['status'], 'failed')
         self.assertNotIn('observations', entry)
@@ -116,7 +133,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 (evidence/retained).write_text('synthetic original')
             outputs = self.outputs()
             for output in outputs: (evidence/f'{output["backend"]}-raw.json').write_text(json.dumps(output))
-            report = harness.run_cases(ROOT); checkpoint.apply_checkpoint(report, outputs, ROOT)
+            report = harness.run_cases(self.root); checkpoint.apply_checkpoint(report, outputs, self.root)
             original = checkpoint.hashes(evidence/'application/build')
             original['target/persistence.ts'] = harness.digest(evidence/'original-persistence.ts')
             original['target/first-party-authentication.ts'] = harness.digest(evidence/'original-authentication.ts')
@@ -124,16 +141,24 @@ class CheckpointIntegrityTests(unittest.TestCase):
                                     'generated_instrumented': checkpoint.hashes(evidence/'application/build'),
                                     'raw_files': {f'{backend}-raw.json': harness.digest(evidence/f'{backend}-raw.json') for backend in harness.BACKENDS},
                                     'dependency_files': checkpoint.hashes(jose)}
-            checkpoint.validate_checkpoint(report, evidence, dependencies)
+            checkpoint.validate_checkpoint(report, evidence, dependencies, self.root)
             for path in (target/'persistence.ts', evidence/'original-authentication.ts', evidence/'sqlite-raw.json', jose/'package.json'):
                 previous = path.read_bytes(); path.write_bytes(previous+b'\n')
-                with self.subTest(path=path.name), self.assertRaises(ValueError): checkpoint.validate_checkpoint(report, evidence, dependencies)
+                with self.subTest(path=path.name), self.assertRaises(ValueError): checkpoint.validate_checkpoint(report, evidence, dependencies, self.root)
                 path.write_bytes(previous)
             changed = deepcopy(report)
             entry = next(entry for entry in changed['results'] if entry['id'] == 'AUTH-001' and entry['backend'] == 'sqlite')
             entry['observations'][0]['steps'][0]['writes'] = 99
             with self.assertRaisesRegex(ValueError, 'differ from raw'):
-                checkpoint.validate_checkpoint(changed, evidence, dependencies)
+                checkpoint.validate_checkpoint(changed, evidence, dependencies, self.root)
+
+    def test_synthetic_fixture_still_rejects_passes_without_compiler_binding(self):
+        self.compiler.unlink()
+        report = harness.run_cases(self.root)
+        self.assertIsNone(report['provenance']['compiler_sha256'])
+        self.assertTrue(all(entry['status'] == 'not_run' for entry in report['results']))
+        with self.assertRaisesRegex(ValueError, 'Passing label lacks complete matching observations'):
+            checkpoint.apply_checkpoint(report, self.outputs(), self.root)
 
 
 if __name__ == '__main__': unittest.main()
