@@ -238,10 +238,10 @@ class CheckpointIntegrityTests(unittest.TestCase):
     def maintenance_raw(self):
         case = self.cases['JOB-004']
         before = [{'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': '2025-12-17T12:00:00Z'}, {'id': checkpoint.ALIASES['t2'], 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': '2025-12-15T12:00:00Z'}, {'id': '00000000-0000-4000-8000-000000000023', 'owner_id': checkpoint.ALIASES['alice'], 'deleted_at': None}]
-        metadata = {'capabilities': [{'audit_event': 'retention.purge.batch', 'batch_limit': 500, 'clause': 'Todo.lifecycle.purge', 'effect': 'retention_purge(Todo)', 'retention_binding': 'config.soft_delete_retention', 'source_callable': False}]}
+        metadata = {'capabilities': [{'entity': 'Todo', 'audit_event': 'retention.purge.batch', 'batch_limit': 500, 'clause': 'Todo.lifecycle.purge', 'effect': 'retention_purge(Todo)', 'retention_binding': 'config.soft_delete_retention', 'source_callable': False}]}
         token = hashlib.sha256(('Todo:'+checkpoint.ALIASES['t2']).encode()).hexdigest()[:16]
-        event = {'sourceRevision': 'synthetic_revision', 'kind': 'maintenance_audit', 'eventName': 'retention.purge.batch', 'clause': 'Todo.lifecycle.purge', 'operation': 'retention_purge(Todo)', 'retentionBinding': 'config.soft_delete_retention', 'outcome': 'committed', 'selectedCount': 1, 'committedCount': 1, 'attemptNow': case['run']['at'], 'rowIdentityTokens': [token], 'bound': 500}
-        statements = [{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'SELECT', 'sql': 'SELECT "id", "deleted_at" FROM "todo" WHERE "deleted_at" IS NOT NULL AND "deleted_at" <= $1 ORDER BY "deleted_at" ASC, "id" ASC LIMIT 500', 'maintenanceCutoff': '2025-12-16T12:00:00Z'}, {'operation': 'DELETE', 'sql': 'DELETE FROM "todo" WHERE "deleted_at" IS NOT NULL AND "deleted_at" <= $1', 'maintenanceCutoff': '2025-12-16T12:00:00Z'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}]
+        event = {'entity': 'Todo', 'sourceRevision': 'synthetic_revision', 'kind': 'maintenance_audit', 'eventName': 'retention.purge.batch', 'clause': 'Todo.lifecycle.purge', 'operation': 'retention_purge(Todo)', 'retentionBinding': 'config.soft_delete_retention', 'outcome': 'committed', 'selectedCount': 1, 'committedCount': 1, 'attemptNow': case['run']['at'], 'rowIdentityTokens': [token], 'bound': 500}
+        statements = [{'operation': 'BEGIN', 'sql': 'BEGIN'}, {'operation': 'SELECT', 'sql': 'SELECT "id", "deleted_at" FROM "todo" WHERE "deleted_at" IS NOT NULL AND "deleted_at" <= $1 ORDER BY "deleted_at" ASC, "id" ASC LIMIT 500', 'maintenanceCutoff': '2025-12-16T12:00:00Z'}, {'operation': 'DELETE', 'sql': 'DELETE FROM "todo" WHERE "id" = $2 AND ("deleted_at" IS NOT NULL AND "deleted_at" <= $1)', 'maintenanceRowIdentity': checkpoint.ALIASES['t2'], 'maintenanceCutoff': '2025-12-16T12:00:00Z'}, {'operation': 'COMMIT', 'sql': 'COMMIT'}]
         return [{'maintenanceFixture': {'before': before, 'metadata': metadata, 'sourceRevision': 'synthetic_revision', 'specification': {'fixture': case['fixture'], 'run': case['run']}}}, {'nativeMaintenance': {'callable': 'runLifecycleMaintenance', 'at': case['run']['at'], 'statements': statements, 'auditEvents': [event], 'after': deepcopy([before[0], before[2]])}}]
 
     def outputs(self):
@@ -747,7 +747,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
     def test_native_maintenance_requires_original_retention_rows_audit_cutoff_and_predicate(self):
         raw = self.maintenance_raw()
         self.assertFalse(harness.assess(self.cases['JOB-004'], checkpoint.observations(self.cases['JOB-004'], raw, self.clock)))
-        for mutation in ('missing', 'order', 'young_date', 'expired_date', 'active_date', 'retained_identity', 'retained_state', 'audit_count', 'audit_token', 'audit_clause', 'audit_clock', 'cutoff', 'predicate', 'limit', 'commit', 'authority', 'source_revision'):
+        for mutation in ('missing', 'order', 'young_date', 'expired_date', 'active_date', 'retained_identity', 'retained_state', 'audit_count', 'audit_token', 'audit_clause', 'audit_clock', 'cutoff', 'predicate', 'limit', 'commit', 'authority', 'source_revision', 'begin_missing', 'begin_after_delete', 'begin_after_commit', 'bulk_delete', 'foreign_bind', 'entity_missing', 'entity_foreign'):
             raw = self.maintenance_raw(); fixture = raw[0]['maintenanceFixture']; run = raw[1]['nativeMaintenance']; audit = run['auditEvents'][0]
             if mutation == 'missing': raw.pop()
             elif mutation == 'order': raw.reverse()
@@ -766,6 +766,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
             elif mutation == 'commit': run['statements'].pop()
             elif mutation == 'authority': fixture['metadata']['capabilities'][0]['source_callable'] = True
             elif mutation == 'source_revision': audit['sourceRevision'] = 'foreign'
+            elif mutation == 'begin_missing': run['statements'].pop(0)
+            elif mutation == 'begin_after_delete': run['statements'].insert(2, run['statements'].pop(0))
+            elif mutation == 'begin_after_commit': run['statements'].append(run['statements'].pop(0))
+            elif mutation == 'bulk_delete': run['statements'][2]['sql'] = run['statements'][2]['sql'].replace('"id" = $2 AND (', '(')
+            elif mutation == 'foreign_bind': run['statements'][2]['maintenanceRowIdentity'] = checkpoint.ALIASES['t1']
+            elif mutation == 'entity_missing': audit.pop('entity')
+            elif mutation == 'entity_foreign': audit['entity'] = 'User'
+
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases['JOB-004'], raw, self.clock)
 
     def partial_outputs_fixture(self):
