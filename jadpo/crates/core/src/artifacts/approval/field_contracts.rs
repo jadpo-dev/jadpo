@@ -3,6 +3,7 @@ use super::{canonical_bytes, contract_tokens, digest, AnalyzedProject, Value};
 use jadpo_syntax::*;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
+mod lexical;
 
 fn path(names: &[Name]) -> String {
     names
@@ -415,6 +416,7 @@ struct Walker<'a, 'b> {
     source: &'a ParsedSyntax,
     owner: Value,
     rows: BTreeMap<String, Value>,
+    lexical: lexical::Links,
 }
 
 impl Walker<'_, '_> {
@@ -437,7 +439,11 @@ impl Walker<'_, '_> {
     }
 
     fn expr(&self, expression: &Expression) -> Value {
-        self.context.expression(self.source, expression)
+        let mut value = self.context.expression(self.source, expression);
+        if let Expression::Name(name) = expression {
+            value["source_binding_use"] = self.lexical.expression(name);
+        }
+        value
     }
 
     fn type_ref(&self, reference: &TypeReference) -> Value {
@@ -1003,7 +1009,9 @@ pub(super) fn derive(project: &AnalyzedProject, facts: &mut BTreeMap<String, Val
                 }
                 _ => continue,
             };
+            let lexical = lexical::Links::derive(declaration, &owner);
             let mut walker = Walker {
+                lexical,
                 context: &context,
                 source,
                 owner,
