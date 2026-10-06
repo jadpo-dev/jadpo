@@ -82,7 +82,7 @@ impl TargetGenerator<'_> {
             output,
             "  const context = Object.freeze({ ...base, deadlineAt: invocation.deadlineAt });",
         );
-        line(output, "  let outcome: any;");
+        line(output, "  let outcome: any, publicFailure: Readonly<JsonObject> | null = null;");
         line(output, "  try {");
         line(output, "    assertOperationDeadline(context);");
         line(
@@ -111,6 +111,13 @@ impl TargetGenerator<'_> {
             "    outcome = { kind: \"accepted\", receipt, observedAt: new Date().toISOString() }; ",
         );
         line(output, "  } catch (error) {");
+        // Contained operational fault views do not alter durable certainty.
+        // Unexpected/provider-auth bodies remain adapter-classified, never copied.
+        line(output, "    if (error instanceof ServiceAdapterFault && [\"misconfigured\", \"outcome_unknown\"].includes(error.kind)) {");
+        line(output, "      const unknown = error.kind === \"outcome_unknown\";");
+        line(output, "      publicFailure = Object.freeze({ error: Object.freeze({ code: unknown ? \"outcome_unknown\" : \"internal_fault\", message: unknown ? \"The operation may have completed.\" : \"An internal error occurred.\", request_id: context.operationId }) });");
+        line(output, &format!("      reportRuntimeFault(unknown ? \"RUNTIME_OUTCOME_UNKNOWN\" : \"RUNTIME_SERVICE_MISCONFIGURED\", invocation.binding, {}, context.operationId, error);", ts_string(&self.source_revision())));
+        line(output, "    }");
         // Only exact checked adapter / declared failures establish no effect.
         // No raw error text or arbitrary caller classification enters storage.
         line(output, "    let noEffect: string | null = error instanceof RequestDeadlineFault || error instanceof ServiceAdapterFault && [\"unavailable\", \"deadline_exceeded\"].includes(error.kind) ? \"service_unavailable\" : null;");
@@ -140,7 +147,7 @@ impl TargetGenerator<'_> {
         line(output, "    const retryDelayMs = noEffect === \"service_unavailable\" ? Math.floor(Math.random() * Math.min(30_000, 1000 * 2 ** invocation.prepared.handle.invocation)) : 0;");
         line(output, "    outcome = noEffect === null ? { kind: \"unknown\" } : { kind: \"no_effect\", value: { failureClass: noEffect, providerAttempts: context.serviceAttemptBudget.attemptsUsed, retryDelayMs } };");
         line(output, "  }");
-        line(output, "  const receiptToken = Object.freeze({}); deliveryOutcomes.set(receiptToken, { invocation, outcome }); return receiptToken;");
+        line(output, "  const receiptToken = Object.freeze({}); deliveryOutcomes.set(receiptToken, { invocation, outcome, publicFailure }); return receiptToken;");
         line(output, "}");
         line(
             output,

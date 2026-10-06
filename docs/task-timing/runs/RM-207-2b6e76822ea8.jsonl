@@ -1,0 +1,5 @@
+{"schema_version": 1, "run_id": "RM-207-2b6e76822ea8", "task_id": "RM-207", "actor": "scheduler-job-boundary", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T08:53:26.685218+00:00", "phase": "planning"}
+{"at": "2026-10-06T08:56:21.712876+00:00", "phase": "paused", "note": "Prioritise actual generated component fixture missing preflight module import"}
+{"at": "2026-10-06T08:57:29.436780+00:00", "phase": "implementation", "note": "Resume boundary after isolated fixture repair"}
+{"at": "2026-10-06T08:59:03.123719+00:00", "phase": "verification", "note": "Actual generated typed and malformed provider401 safe-envelope, durableunknown/noresend bothadapter tests"}
+{"at": "2026-10-06T09:01:57.316650+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm207-job-safe-boundary/manifest.json"}

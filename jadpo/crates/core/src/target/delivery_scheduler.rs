@@ -79,17 +79,17 @@ impl TargetGenerator<'_> {
         line(output, "  if (staged === null) return Object.freeze({ status: \"idle\", selected: 0, attempted: 0, continued: false });");
         line(output, "  let handle = staged.handle, deadlineAt = started + staged.remainingMs;");
         line(output, "  const executionDeadlineAt = started + staged.executionRemainingMs;");
-        line(output, "  let attempted = 0;");
+        line(output, "  let attempted = 0; const failures: Readonly<JsonObject>[] = []; const publicFailures = () => failures.length === 0 ? {} : { failures: Object.freeze([...failures]) };");
         line(output, "  for (const intentId of staged.page.intentIds) {");
-        line(output, "    if (performance.now() >= deadlineAt) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true });");
+        line(output, "    if (performance.now() >= deadlineAt) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true, ...publicFailures() });");
         // Renew only the same still-live activation, outside provider I/O. The
         // acknowledged renewal transaction precedes each intent admission; the
         // provider stays bounded by this lease and the immutable execution cap.
         line(output, "    const renewalStarted = performance.now();");
         line(output, "    const renewed = await rootPersistence.transaction(async (tx: any) => { readCurrentDeliveryCredentialProof(proof); const next = await tx.renew_delivery_activation(handle); if (next === null) return null; const now = await tx.delivery_activation_clock(); readCurrentDeliveryCredentialProof(proof); return { handle: next, remainingMs: Math.min(Date.parse(next.leaseUntil), Date.parse(next.executionDeadline)) - Date.parse(now) }; });");
-        line(output, "    if (renewed === null) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true });");
+        line(output, "    if (renewed === null) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true, ...publicFailures() });");
         line(output, "    handle = renewed.handle; deadlineAt = Math.min(executionDeadlineAt, renewalStarted + renewed.remainingMs);");
-        line(output, "    if (performance.now() >= deadlineAt) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true });");
+        line(output, "    if (performance.now() >= deadlineAt) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true, ...publicFailures() });");
         line(output, "    const token = await prepareDeliveryInvocation(binding, proof, intentId, operationTime, deliveryProfile);");
         line(output, "    if (token !== null) {");
         // The closed lexical WeakMap is compiler-owned, not another public
@@ -99,16 +99,17 @@ impl TargetGenerator<'_> {
             output,
             "      const outcome = await dispatchDeliveryInvocation(token);",
         );
+        line(output, "      const publicFailure = deliveryOutcomes.get(outcome)?.publicFailure; if (publicFailure !== null && publicFailure !== undefined) failures.push(publicFailure);");
         line(
             output,
             "      const completed = await completeDeliveryInvocation(outcome);",
         );
-        line(output, "      if (completed === false || completed === null) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true });");
+        line(output, "      if (completed === false || completed === null) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true, ...publicFailures() });");
         line(output, "    }");
         line(output, "    attempted++;");
         line(output, "  }");
         line(output, "  const finished = await rootPersistence.transaction((tx: any) => tx.finish_delivery_activation(handle));");
-        line(output, "  return Object.freeze({ status: finished ? \"finished\" : \"partial\", selected: staged.page.intentIds.length, attempted, continued: !finished || staged.page.after !== null });");
+        line(output, "  return Object.freeze({ status: finished ? \"finished\" : \"partial\", selected: staged.page.intentIds.length, attempted, continued: !finished || staged.page.after !== null, ...publicFailures() });");
         line(output, "}");
         // Trusted native provisioning is distinct from ordinary authored calls:
         // raw service credential stays lexical, resolves through the checked
