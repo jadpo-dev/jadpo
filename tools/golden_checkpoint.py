@@ -320,6 +320,55 @@ def observed_order(statement: dict):
     return ['created_at '+match[1].lower(), 'id '+match[2].lower()] if match else []
 
 
+def native_patch_fixture(case: dict, raw: list):
+    creations = [item for item in raw if 'fixtureCreation' in item]
+    enrollments = [item for item in raw if 'fixtureEnrollment' in item]
+    fixtures = [item for item in raw if 'fixture' in item]
+    replies = [item for item in raw if 'method' in item]
+    retained = [item for item in raw if 'persistence' in item]
+    if len(creations) != 1 or len(enrollments) != 1 or len(fixtures) != 1 or len(replies) != 1 or len(retained) != 1 or not raw.index(creations[0]) < raw.index(enrollments[0]) < raw.index(fixtures[0]) < raw.index(replies[0]) < raw.index(retained[0]):
+        raise ValueError('Missing/reordered real native-created patch fixture')
+    creation = creations[0]['fixtureCreation']; capture = enrollments[0]['fixtureEnrollment']
+    body = creation.get('body', {}); identity = body.get('id')
+    if creation.get('method') != 'POST' or creation.get('path') != '/todos' or creation.get('auth') != 'alice-session' or creation.get('status') != 201 or instant(creation.get('at')) != '2026-01-15T11:00:00Z' or not harness.same_json(creation.get('requestJson'), {'title': 'original fixture title', 'due_at': '2026-02-01T00:00:00Z'}) or not isinstance(identity, str) or not re.fullmatch('[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}', identity):
+        raise ValueError('Changed actual native fixture creation request/clock/identity')
+    validate_auth_observation(creation)
+    if capture.get('logicalAlias') != 't1' or capture.get('validator') != 'validate_TodoView' or not harness.same_json(capture.get('validatedBody'), body) or not any(row.get('operation') == 'INSERT' and 'INTO "todo"' in row.get('sql', '') for row in creation['statements']) or not any(row.get('operation') == 'INSERT' and 'INTO "__jadpo_delivery_schedules_v1"' in row.get('sql', '') for row in creation['statements']) or not any(row.get('operation') == 'COMMIT' for row in creation['statements']):
+        raise ValueError('Missing actual generated validated Todo creation/schedule transaction')
+    expected_principal = {'kind': 'user', 'subject': 'alice', 'authenticationStrength': 'primary', 'values': {'user_id': ALIASES['alice']}}
+    if creation.get('principals') != [expected_principal] or creation.get('authenticationAttempts') != 1 or creation.get('credentialsIssued') != 0:
+        raise ValueError('Native fixture creation did not authenticate original Alice principal')
+    statements = creation['statements']
+    todo_insert = next(index for index, row in enumerate(statements) if row.get('operation') == 'INSERT' and 'INTO "todo"' in row.get('sql', ''))
+    schedule_insert = next(index for index, row in enumerate(statements) if row.get('operation') == 'INSERT' and 'INTO "__jadpo_delivery_schedules_v1"' in row.get('sql', ''))
+    begin = [index for index, row in enumerate(statements) if row.get('operation') == 'BEGIN']
+    commit = [index for index, row in enumerate(statements) if row.get('operation') == 'COMMIT']
+    if not begin or not commit or not begin[0] < todo_insert < schedule_insert < commit[-1]:
+        raise ValueError('Native fixture creation/schedule observations escaped ordered source transaction')
+    before, after = capture.get('before', {}), capture.get('after', {})
+    if before.get('id') != identity or before.get('owner_id') != ALIASES['alice'] or before.get('status') != 'open' or before.get('deleted_at') is not None or before.get('reminder_sent_at') is not None or any(not harness.same_json(before.get(field), body.get(field)) for field in ('id', 'title', 'status', 'due_at', 'created_at', 'updated_at')):
+        raise ValueError('Native-created authoritative row differs from validated output')
+    expected = deepcopy(before)
+    setup = capture.get('setupStatements')
+    if case['id'] == 'PATCH-005':
+        expected['reminder_sent_at'] = '2026-01-15T11:59:00.000Z'
+        if not isinstance(setup, list) or len(setup) != 1 or setup[0].get('operation') != 'UPDATE' or not re.search(r'UPDATE todo SET reminder_sent_at =', setup[0].get('sql', '')):
+            raise ValueError('Missing explicit fixture-only prior-reminder setup')
+    elif setup != []:
+        raise ValueError('Unexpected native patch fixture setup mutation')
+    if not harness.same_json(after, expected) or not harness.same_json(fixtures[0]['fixture'], after):
+        raise ValueError('Fixture setup changed native identity/state outside recorded prior reminder')
+    issuance = capture.get('requestCredentialIssuance', {})
+    if issuance.get('strategy') != 'browser_session' or issuance.get('credentialsIssued') != 1 or instant(issuance.get('at')) != '2026-01-15T12:00:00Z' or not isinstance(issuance.get('expires'), str) or instant(issuance['expires']) <= instant(issuance['at']) or not any(row.get('operation') == 'INSERT' and 'INTO "__jadpo_auth_sessions"' in row.get('sql', '') for row in issuance.get('statements', [])):
+        raise ValueError('Missing real current-clock credential issuance after historical fixture creation')
+    enrollment = {'source_entity': 'Todo', 'source_entity_id': identity, 'schedule_revision': '1'}
+    if not harness.same_json(capture.get('enrollment'), enrollment) or not harness.same_json(capture.get('enrollmentAfterSetup'), enrollment):
+        raise ValueError('Missing native schedule identity or setup altered checked revision')
+    if not harness.same_json(retained[0].get('enrollmentAfterPrimary'), {**enrollment, 'schedule_revision': '2'}) or sum(row.get('operation') == 'UPDATE' and '"__jadpo_delivery_schedules_v1"' in row.get('sql', '') for row in replies[0]['statements']) != 1:
+        raise ValueError('Due patch did not advance native checked schedule revision')
+    return identity
+
+
 def observations(case: dict, raw: list, clock: str | None = None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
     if case['id'] == 'USER-001' and case.get('followUps'):
@@ -340,6 +389,7 @@ def observations(case: dict, raw: list, clock: str | None = None) -> list:
         return result
     if case['id'] not in SUPPORTED or case.get('fixtureVariants') or case.get('followUps'):
         raise ValueError('Unsupported case/scenario')
+    native_identity = native_patch_fixture(case, raw) if case['id'] in ('PATCH-002', 'PATCH-005') else None
     expected_requests = case.get('requests', [case.get('request')])
     if case['id'] == 'DELETE-001':
         expected_requests = [case['request'], {**case['request'], 'method': 'GET'}]
@@ -350,6 +400,7 @@ def observations(case: dict, raw: list, clock: str | None = None) -> list:
         raise ValueError('Missing request observation')
     for index, (request, reply) in enumerate(zip(expected_requests, replies)):
         path = request_path(request['path'])
+        if native_identity is not None: path = path.replace(ALIASES['t1'], native_identity)
         if case['id'] == 'LIST-002':
             for token, previous in (('{first.next}', 0), ('{second.next}', 1)):
                 if token in path:
@@ -505,7 +556,7 @@ def observations(case: dict, raw: list, clock: str | None = None) -> list:
         if case['id'].startswith('PATCH-'):
             before = [item['fixture'] for item in raw if 'fixture' in item]
             after = [item['persistence'] for item in raw if 'persistence' in item]
-            todo_id = ALIASES['t2' if case['id'] == 'PATCH-004' else 't1']
+            todo_id = native_identity or ALIASES['t2' if case['id'] == 'PATCH-004' else 't1']
             if len(before) != 1 or len(after) != 1 or before[0].get('id') != todo_id or after[0].get('id') != todo_id:
                 raise ValueError('Missing or foreign patch fixture/persistence observation')
             if before[0].get('owner_id') != ALIASES['bob' if case['id'] == 'PATCH-004' else 'alice']:
