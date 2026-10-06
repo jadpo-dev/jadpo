@@ -452,9 +452,14 @@ route POST /edit {auth:none input:Request output:Child run:edit(input.id,input.p
         // This probes the metadata boundary only: corrupted typed projects do
         // not satisfy the target's separate checked lowering invariant.
         project.typing.expressions.clear();
-        let routes: serde_json::Value =
-            serde_json::from_str(&super::super::ArtifactModel::new(&project).routes_json())
-                .unwrap();
+        let routes: serde_json::Value = serde_json::from_str(
+            &super::super::ArtifactModel::new(
+                std::path::Path::new("operational-test.jadpo"),
+                &project,
+            )
+            .routes_json(),
+        )
+        .unwrap();
         let fact = &routes["routes"][0]["relationship_failure_analysis"];
         assert_eq!(fact["qualified"], false);
         assert_eq!(fact["status"], "unresolved_checked_mapping");
@@ -468,9 +473,14 @@ route POST /edit {auth:none input:Request output:Child run:edit(input.id,input.p
         )])
         .unwrap();
         unrelated.typing.expressions.clear();
-        let routes: serde_json::Value =
-            serde_json::from_str(&super::super::ArtifactModel::new(&unrelated).routes_json())
-                .unwrap();
+        let routes: serde_json::Value = serde_json::from_str(
+            &super::super::ArtifactModel::new(
+                std::path::Path::new("operational-test.jadpo"),
+                &unrelated,
+            )
+            .routes_json(),
+        )
+        .unwrap();
         let fact = &routes["routes"][0]["relationship_failure_analysis"];
         assert_eq!(fact["qualified"], true);
         assert_eq!(fact["may_fail"], false);

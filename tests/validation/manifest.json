@@ -74,6 +74,7 @@
     "tests/runtime/golden-protected-route.test.ts",
     "tests/runtime/golden-service-credentials.test.ts",
     "tests/runtime/golden-todo-routes.test.ts",
+    "tests/runtime/http-boundary-metadata.test.ts",
     "tests/runtime/jadpo-seed.test.ts",
     "tests/runtime/jwt-authentication.test.ts",
     "tests/runtime/jwt-integration.test.ts",

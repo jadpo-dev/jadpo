@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "task": "RM-601",
+  "reviewer": "golden_worker_closure_audit",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-601-86bb09b505ec",
+  "status": "approved_scoped_operational500503_artifact_correction",
+  "findings": [],
+  "task_closed": false,
+  "release_equivalent": false,
+  "public_activation": false,
+  "pin": {
+    "candidate": "c8c770a51047079028074e18df5e6cb7b25b2dd5",
+    "base": "4b346a8ca6529d8471f2228cca310ce7d34a8816",
+    "before_compiler": "/private/tmp/jadpo-operational409-4b346-independent/compilers/after-jadpo",
+    "before_compiler_sha256": "44e901c6b10c3f84b87f8082d0fbcdaaaa71799f5e876d053093e32e86a63f77",
+    "after_compiler": "/private/tmp/jadpo-operational500503-c8-independent/compilers/after-jadpo",
+    "after_compiler_sha256": "ae7037c63d26d57147f626011d4e598be1506ebf188edda7d97e8274c8825c1f",
+    "source_sha256": {
+      "jadpo/crates/core/src/artifacts.rs": "3ba1c69d84b13b12a24392361ad5b6f8ca7e48376abd927adaeb3a01d27fb8da",
+      "jadpo/crates/core/tests/validation_http_boundary_metadata.rs": "09e430e00d39eee51dfefc755748cedd823b1a9e78871c310829e80306029bbc"
+    }
+  },
+  "independent_results": {
+    "maintained_metadata_contracts": {
+      "pass": 9,
+      "fail": 0
+    },
+    "native_projects": 12,
+    "genuine_loopback_HTTP_requests": 72,
+    "before_after_runtime_byte_preservation_pairs": 6,
+    "after_native_negative_controls_rejected": 60,
+    "databases": [
+      "sqlite",
+      "postgres"
+    ],
+    "generated_modules_untouched": true,
+    "SQL_driver_instrumentation": false
+  },
+  "proof": [
+    "Distinct, identical and omitted-static-message declared500/503 responses physically execute unchanged emitted route. Each before broad-native oneOf matches2/refuses; after exact code/message native pairing plus true-overlap exclusion matches1/accepts.",
+    "Real SQLite exclusive-lock write refusal and real PostgreSQL table-lock blocked insert cancelled by pg_cancel_backend return native transaction_unavailable503. Actual missing Entry table checked query returns native internal_fault500. All physical native responses remain1/accept both revisions.",
+    "Exactly one successful Entry row after blocked write on each disposable database; request_id correlates with actual X-Request-ID error response header.",
+    "All six before/after pairs have exactly equal generated target file bytes and equal domain component schemas. Distinct authored static messages keep exact direct domain references; no runtime or authored/domain contract changes.",
+    "After native error schemas reject private arbitrary messages, extra outer/error fields, numeric request_id and other-code safe message:60 substantive negative checks.",
+    "Source safe code/message pairs match emitted native handler literals for internal_fault/outcome_unknown/read_unavailable/transaction_unavailable. Existing code enum preserved; contained internal fault audit now carries actual safe static message.",
+    "No live uncommitted bare-entity registration successor read as this candidate evidence."
+  ],
+  "author_evidence": {
+    "report_sha256": "d511cbf9b17d6d6cb42b57bd4aa9f3b02d9b4a342b717fe2b1e971fdff87a0e9",
+    "archive_sha256": "deb7f504b7ed30362c6ed2eddbe82186f5fc78581a44da7b0e0514cdc884bb58",
+    "members_rehashed": 255
+  },
+  "preserved_reviewer_red": {
+    "file": "independent-native-summary-first-red.log",
+    "reason": "Reviewer first omitted-static-message before count expectation1 was wrong: old broad native schema makes2/refuse. Corrected oracle only, preserved first script/error/raw record, reused completed native evidence and executed remaining3 omitted-message projects."
+  },
+  "limits": [
+    "Artifact-only correction approval; bare-entity503 registration leaf is separately pending and no wider runtime/whole-task closure inferred.",
+    "Native physical cases qualify actual lock503 and contained missing-table500; outcome_unknown/read_unavailable message pairing source-reviewed, not newly injected native effects claimed here.",
+    "Parent owns fresh supported combined-source gate before broader release/golden claims."
+  ],
+  "evidence_inventory": "tests/validation/evidence/rm601-independent-operational500503-c8/inventory.json",
+  "timing": {
+    "active_minutes": 6.14,
+    "verification_minutes": 3.64,
+    "outcome": "partial"
+  }
+}

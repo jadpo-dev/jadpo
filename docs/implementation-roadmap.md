@@ -105,27 +105,28 @@ ownership/workspaces; otherwise keep one writer per checkout.
 
 | Queue / owner | Next observable checkpoint | Unlocks / gate |
 |---|---|---|
-| 1A · compiler/runtime writer | **RM-306** — advance from reviewed bounded activation renewal to generated crash/reclaim checkpoints, retaining commit-before-provider boundaries on both database adapters. | Native assembly and renewal have scoped independent correction review and a fresh 67/67 supported gate; full RM-306 acceptance remains open. The owner separately approved60s/40s for individual deliveries and the whole singleton scan; checked public worker/runtime gates remain. |
-| 1B · independent harness writer | **RM-109 preparation** — expand the reviewed thirty-one-ID real HTTP checkpoint in a separate worktree, retaining original IDs and raw observations. | Preparation can overlap RM-306; full acceptance execution and task closure still require RM-108, RM-402, RM-403 and the other listed prerequisites. |
-| 2 · compiler/runtime writer | **RM-307** — connect scheduler and worker recovery, then execute the 18 frozen duplicate/crash/retry/exhaustion traces with controlled clocks and separate worker processes. | Depends on RM-306 and the completed RM-304; enables RM-108 and RM-505. Contract-only traces do not satisfy runtime acceptance. |
-| 3 · compiler/runtime writer | **RM-402 / RM-403** — finish transaction hard-bound/replay qualification and readiness hard-bound/platform evidence before final golden acceptance. | Scoped evidence exists; remaining acceptance and independent review stay open. These changes share runtime files and are integrated sequentially. |
-| 4 · application integration owner | **RM-108**, then **RM-109 execution** — compose the checked reminder worker and run the prepared SQLite/PostgreSQL harness, retaining every original case result. | Reminder activation needs the owner-selected execution/lease profile and RM-307; RM-109 closure also needs RM-402/RM-403. |
-| 5 · integration owner | **RM-504, RM-505 and RM-603**, then **RM-110** — finish residual database/hostile/attestation evidence and run the final exact-source technical golden gate. | RM-603 requires RM-601's canonical artifact; technical completion leaves external assurance separate. |
+| 1A · compiler/runtime writer | **RM-402 / RM-403** — qualify native startup and request/recovery lifetime limits, preserving fresh authority and unknown-outcome containment. | Existing private retry controls and startup supervision design have scoped independent approval; required product bounds remain open. Shared runtime changes are integrated sequentially. |
+| 1B · compiler artifact writer | **RM-601** — finish route/OpenAPI/audit agreement and remaining exact behavioural export facts. | Reviewed auth/parser/422/409 corrections are being integrated; native500/503 overlap and inline-entity503 registration corrections retain separate review and fresh combined gates. |
+| 2 · independent reviewer | Review immutable runtime/artifact leaves with actual two-adapter evidence and negative controls. | Consequential approval qualifies only the reviewed source pins and scope; earlier supported reports remain prior epochs after source changes. |
+| 3 · application integration owner | **RM-109 execution** — reconcile all44 original cases with satisfied prerequisites and exact generated contracts. | All88 supporting case/backend entries pass; frozen formal source diagnostics, native lifetime and approval/database gates remain separate. |
+| 4 · integration owner | **RM-504, RM-505 and RM-603**, then **RM-110** — finish residual database/hostile/attestation evidence and the final exact-source technical gate. | RM-603 requires RM-601's canonical artifact; technical completion leaves external assurance separate. |
 
 **Satisfied prerequisites:** [RM-303 provider adapter](implementation-history.md#2026-10-03--rm-303-checked-provider-adapter),
-[RM-304 service fakes](implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes)
-and [RM-305 durable contract](implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract)
-resolve through history. RM-106 is also complete. They remain dependency facts,
-not scheduled remaining work.
+[RM-304 service fakes](implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes),
+[RM-305 durable contract](implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract),
+[RM-307 recovery](implementation-history.md#2026-10-06--rm-307-native-scheduling-and-worker-recovery)
+and [RM-108 reminder/hourly maintenance](implementation-history.md#2026-10-06--rm-108-golden-reminder-and-hourly-maintenance-integration)
+resolve through history. RM-106 is also complete. RM-306's golden checked
+scheduled-job/outbox milestone is satisfied; its accepted generic event-binding
+scope remains open without inventing a grammar or moving it into RM-309.
 
-The remaining critical path is **RM-306 → RM-307 → RM-108 → RM-109 → RM-110**,
-with RM-402/RM-403/RM-504/RM-505/RM-601/RM-603 supplying required gates.
-The [current delivery window](work-plans/roadmap-assessment.md#current-parallel-delivery-window--2026-10-06)
-defines isolated ownership; the [owning golden plan](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders)
-records the implementation checkpoints, approved per-delivery profile and separate activation gate. One writer owns
-shared compiler/runtime files; the independent harness writer owns only test and
-result-protocol preparation. The integration owner merges changes and updates
-shared roadmap, timing and evidence records after combined validation.
+The remaining golden critical path is **native lifetime and exact artifact gates
+→ RM-109 → RM-110**, with RM-402/RM-403/RM-504/RM-505/RM-601/RM-603 supplying
+required evidence. The [current delivery checkpoint](work-plans/golden-delivery-planning.md#checkpoint)
+records isolated ownership, the accepted60s execution/renewable40s lease for both
+individual delivery and whole scan, immutable reviews and source-bound combined
+validation. Runtime and compiler artifact writers have separate worktrees; the
+integration owner merges reviewed changes and maintains shared records.
 
 RM-201, RM-210, RM-503 and RM-601 remain valid independent work, but should not
 displace this queue while the golden Todo milestone is the selected priority.

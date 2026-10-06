@@ -763,17 +763,45 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
     }
   });
-  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"],["PATCH","attempt_exhausted"],["PATCH","elapsed"],["PATCH","cancelled"],["PATCH","api_fresh"],["PATCH","api_revoked"]] as const)
+  for (const [verb, mode] of [["PATCH","fresh"],["DELETE","fresh"],["PATCH","inactive"],["PATCH","revoked"],["PATCH","row_deleted"],["PATCH","rebound"],["PATCH","attempt_exhausted"],["PATCH","elapsed"],["PATCH","cancelled"],["PATCH","api_fresh"],["PATCH","api_revoked"],["PATCH","jwt_fresh"],["PATCH","jwt_inactive"]] as const)
   test.skipIf((mode === "elapsed" || mode === "cancelled") && sql === null)(`RM402 private authenticated HTTP ${verb} ${mode} uses the native current-authority retry boundary`, async () => {
     const f = await fixture(), inspected = await inspectRetryApplication(true);
     await inspected.initializeApplication(authEnvironment);
-    const host = inspected.authenticationHost(), now = Date.now();
-    const strategy = mode === "api_fresh" || mode === "api_revoked" ? "api_bearer" : "browser_session";
-    const fresh = mode === "fresh" || mode === "api_fresh";
-    const issued = await host.issue(strategy, owner, now + 3_600_000, now);
+    let host = inspected.authenticationHost(); const now = Date.now();
+    const jwt = mode === "jwt_fresh" || mode === "jwt_inactive";
+    const strategy = mode === "api_fresh" || mode === "api_revoked" || jwt ? "api_bearer" : "browser_session";
+    const fresh = mode === "fresh" || mode === "api_fresh" || mode === "jwt_fresh";
+    const previousFetch = globalThis.fetch, providerCalls: string[] = [];
+    let issued: {credential:string;csrfToken:string};
+    if (jwt) {
+      // Real RSA signature + untouched generated issuer/JWKS verifier. Only the
+      // external HTTPS provider documents are fixture-owned; HTTP stays native.
+      const {SignJWT,generateKeyPair,exportJWK} = await import(pathToFileURL(join(dependency,"jose/dist/webapi/index.js")).href);
+      const keys = await generateKeyPair("RS256",{modulusLength:2048,extractable:true});
+      const publicKey = {...await exportJWK(keys.publicKey),kid:"retry-jwt",alg:"RS256",use:"sig"};
+      const issuer = authEnvironment.OIDC_ISSUER, discovery = issuer+"/.well-known/openid-configuration", jwksUri = issuer+"/jwks";
+      globalThis.fetch = (async (input:RequestInfo|URL,init?:RequestInit) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (url!==discovery && url!==jwksUri) return previousFetch(input,init);
+        providerCalls.push(url);
+        if(init?.redirect!=="error" || init?.credentials!=="omit") throw new Error("JWT provider request policy changed");
+        return Response.json(url===discovery ? {issuer,jwks_uri:jwksUri} : {keys:[publicKey]});
+      }) as typeof fetch;
+      const seconds = Math.floor(now/1000);
+      issued = {credential:await new SignJWT({iss:issuer,aud:authEnvironment.OIDC_AUDIENCE,sub:owner,iat:seconds,exp:seconds+120}).setProtectedHeader({alg:"RS256",kid:"retry-jwt",typ:"JWT"}).sign(keys.privateKey),csrfToken:""};
+    } else issued = await host.issue(strategy, owner, now + 3_600_000, now);
+    // The native verifier captures its provider fetch at initialization. Publish
+    // this private app only after the fixture external boundary is installed.
+    if (jwt) { await inspected.initializeApplication(authEnvironment); host = inspected.authenticationHost(); }
+    if (strategy === "api_bearer") {
+      try {
+        const selected = await host.authenticate(new Request("https://todo.example.invalid/todos/"+f.value.id,{method:"PATCH",headers:{authorization:`Bearer ${issued.credential}`}}),false,now,true);
+        expect(selected).toMatchObject({kind:"user",subject:owner,authenticationStrength:"primary",values:{user_id:owner}});
+      } catch (error) { globalThis.fetch = previousFetch; throw error; }
+    }
     // Genuine freshly issued signed credential permits bounded first admission;
     // the next transaction attempt must consult its durable session/authority.
-    const sessionId = JSON.parse(Buffer.from(issued.credential.split(".")[2], "base64url").toString())[3];
+    const sessionId = jwt ? null : JSON.parse(Buffer.from(issued.credential.split(".")[2], "base64url").toString())[3];
     const replacementUser = mode === "rebound" ? crypto.randomUUID() : null;
     if (replacementUser) await rows('INSERT INTO "user" (id,authentication_subject,email,status,created_at,disabled_at) VALUES ($1,$2,$3,$4,$5,$6)', [replacementUser,replacementUser,`${replacementUser}@example.invalid`,"active",dbInstant(now),null]);
     const oldIntent = (await scan(f.proof)).intents[0];
@@ -782,7 +810,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const due = new Date(Date.now() + 3_600_000).toISOString();
     const events: any[] = [];
     const clientAbort = new AbortController();
-    let serverRequest: Request | null = null, serverWork: Promise<Response> | null = null, serverAbortObserved = false, blockedCredentialQueryObserved = false;
+    let serverRequest: Request | null = null, serverWork: Promise<Response> | null = null, serverAbortObserved = false, blockedCredentialQueryObserved = false, blockedJwtAuthorityQueryObserved = false;
     const previousError = console.error;
     let locker: Database | null = null, held: any = null;
     let releaseGuard = () => {}, pendingMutation: Promise<unknown> | null = null;
@@ -801,7 +829,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         held = holder; ready(); await guard;
       });
       await readyPromise;
-    } else { locker = new Database(sqlitePath); locker.exec(mode === "attempt_exhausted" ? "BEGIN IMMEDIATE" : "BEGIN EXCLUSIVE"); }
+    } else { locker = new Database(sqlitePath); locker.exec(mode === "attempt_exhausted" || jwt ? "BEGIN IMMEDIATE" : "BEGIN EXCLUSIVE"); }
     const operation = verb === "PATCH" ? "Todo.patch_todo" : "Todo.delete_todo";
     console.error = (...arguments_: any[]) => {
       let event: any;
@@ -815,10 +843,24 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       // fresh lookup cannot overtake this change. No guard/body callback is edited.
       pendingMutation = (async () => {
         const change = async (statement: string, values: unknown[]) => sql ? held.unsafe(statement, values) : sqlite!.prepare(statement).all(...values);
+        if (jwt && sql) {
+          await change('LOCK TABLE "user" IN ACCESS EXCLUSIVE MODE',[]);
+          const deadline = performance.now()+500;
+          while(performance.now()<deadline) {
+            // Activity query/state are cached within this owning transaction.
+            // Refresh them before requiring the actual native Lock waiter.
+            await held.unsafe("SELECT pg_stat_clear_snapshot()");
+            const waiting = await held.unsafe("SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM \"user\"%' AND state='active'");
+            if(waiting.length>0) { blockedJwtAuthorityQueryObserved = true; break; }
+            await Bun.sleep(5);
+          }
+          expect(blockedJwtAuthorityQueryObserved).toBe(true);
+        }
         if (mode === "elapsed") await change("SELECT pg_sleep($1)",[1.1]);
         if (mode === "cancelled") {
           const observationDeadline = performance.now()+500;
           while (performance.now()<observationDeadline) {
+            await held.unsafe("SELECT pg_stat_clear_snapshot()");
             const waiting = await held.unsafe("SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%__jadpo_auth_sessions%' AND state='active'");
             if (waiting.length>0) { blockedCredentialQueryObserved = true; break; }
             await Bun.sleep(5);
@@ -827,7 +869,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
           clientAbort.abort(); // Actual disconnect only after native waiter proof.
           await change("SELECT pg_sleep($1)",[.05]);
         }
-        if (mode === "inactive") await change('UPDATE "user" SET status=$1 WHERE id=$2', ["disabled",owner]);
+        if (mode === "inactive" || mode === "jwt_inactive") await change('UPDATE "user" SET status=$1 WHERE id=$2', ["disabled",owner]);
         if (mode === "revoked" || mode === "api_revoked") await change('DELETE FROM "__jadpo_auth_sessions" WHERE id=$1', [sessionId]);
         if (mode === "row_deleted") await change('UPDATE todo SET deleted_at=$1 WHERE id=$2', [dbInstant(Date.now()),f.value.id]);
         if (mode === "rebound") {
@@ -835,6 +877,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
           await change('UPDATE "user" SET authentication_subject=$1 WHERE id=$2', [owner,replacementUser]);
         }
       })().finally(releaseGuard);
+      // Keep the original rejection for the awaited assertion, while observing
+      // it immediately so it cannot escape into the following test.
+      void pendingMutation.catch(() => {});
     };
     const server = Bun.serve({hostname:"127.0.0.1",port:0,fetch(request) {
       serverRequest = request;
@@ -871,7 +916,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         if (verb === "PATCH") { expect(source.title).toBe("HTTP retried exactly once"); expect(source.deleted_at).toBeNull(); }
         else expect(source.deleted_at).not.toBeNull();
       } else {
-        expect(response.status).toBe(mode === "inactive" ? 403 : mode === "revoked" || mode === "api_revoked" ? 401 : mode === "row_deleted" ? 404 : 503);
+        expect(response.status).toBe(mode === "inactive" || mode === "jwt_inactive" ? 403 : mode === "revoked" || mode === "api_revoked" ? 401 : mode === "row_deleted" ? 404 : 503);
         if (mode === "row_deleted") {
           // The second transaction returns a declared domain refusal. Native
           // audit emits persistence evidence only, so no second fault event is
@@ -895,21 +940,145 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(JSON.parse(intents[0].payload)).toEqual(oldPayload);
       expect(String(intents[0].source_revision)).toBe("1");
       if (sql) expect(Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value)).toBe(mode === "attempt_exhausted" ? 3 : fresh || mode === "row_deleted" ? 2 : 1);
+      if(jwt) expect(providerCalls).toEqual([authEnvironment.OIDC_ISSUER+"/.well-known/openid-configuration",authEnvironment.OIDC_ISSUER+"/jwks"]);
       const emitted = readFileSync(join(root,"app.ts"),"utf8");
       expect(emitted).not.toContain("allowOperationRetries(__operation, __authenticatedRetryCandidate)");
       expect(emitted).toContain("__operation = allowOperationRetries(__operation, false);");
-      previousError(JSON.stringify({kind:"private_http_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,verb,mode,strategy,database:sql ? "postgres" : "sqlite",clientOutcome:mode === "cancelled" ? "AbortError" : "delivered",serverRequestAborted:serverRequest!.signal.aborted,blockedCredentialQueryObserved,status:response.status,events,sourceRevision:await revision(f.value.id),intentState:(await persistence.read_delivery_intent(oldIntent.intentId)).state}));
+      previousError(JSON.stringify({kind:"private_http_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,verb,mode,strategy,proofMode:jwt ? "jwt" : "signed",providerCalls,database:sql ? "postgres" : "sqlite",clientOutcome:mode === "cancelled" ? "AbortError" : "delivered",serverRequestAborted:serverRequest!.signal.aborted,blockedCredentialQueryObserved,blockedJwtAuthorityQueryObserved,status:response.status,events,sourceRevision:await revision(f.value.id),intentState:(await persistence.read_delivery_intent(oldIntent.intentId)).state}));
     } finally {
-      server.stop(true); console.error = previousError; releaseGuard();
+      server.stop(true); console.error = previousError; globalThis.fetch = previousFetch; releaseGuard();
       if (locker) { locker.exec("ROLLBACK"); locker.close(); }
-      await pendingMutation; await heldWork;
+      const fixtureSettlements = await Promise.allSettled([pendingMutation, heldWork]);
       if (sql) { await rows(`DROP TRIGGER IF EXISTS "${trigger}" ON todo`); await rows(`DROP FUNCTION IF EXISTS "${fn}"()`); await rows(`DROP SEQUENCE IF EXISTS "${sequence}"`); }
       await rows('UPDATE "user" SET status=$1 WHERE id=$2',["active",owner]);
       if (replacementUser) {
         await rows('DELETE FROM "user" WHERE id=$1',[replacementUser]);
         await rows('UPDATE "user" SET authentication_subject=$1 WHERE id=$2',[owner,owner]);
       }
+      const fixtureFailure = fixtureSettlements.find(result => result.status === "rejected");
+      if (fixtureFailure?.status === "rejected") throw fixtureFailure.reason;
     }
+  });
+
+  for (const mode of ["fresh","inactive","revoked"] as const)
+  test(`RM402 private authenticated HTTP User.disable_user ${mode} preserves fresh authority and lifecycle`, async () => {
+    const f = await fixture(), inspected = await inspectRetryApplication(true);
+    await inspected.initializeApplication(authEnvironment);
+    const host = inspected.authenticationHost(), now = Date.now();
+    const issued = await host.issue("browser_session",owner,now+3_600_000,now);
+    const sessionId = JSON.parse(Buffer.from(issued.credential.split(".")[2],"base64url").toString())[3];
+    const initialUser = (await rows('SELECT status,disabled_at FROM "user" WHERE id=$1',[owner]))[0];
+    const oldIntent = (await scan(f.proof)).intents[0];
+    const initialTodo = await rows('SELECT * FROM todo WHERE id=$1',[f.value.id]);
+    const initialSchedule = await revision(f.value.id);
+    const initialIntent = await rows('SELECT * FROM "__jadpo_deliveries_v1" WHERE intent_id=$1',[oldIntent.intentId]);
+    const events: any[] = [], previousError = console.error;
+    const suffix = crypto.randomUUID().replaceAll("-",""), sequence = "disable_retry_"+suffix, fn = "disable_retry_fn_"+suffix, trigger = "disable_retry_trigger_"+suffix;
+    let locker: Database|null = null, held: any = null, heldWork: Promise<unknown>|null = null, pendingMutation: Promise<unknown>|null = null;
+    let releaseGuard = () => {}, blockedCredentialQueryObserved = false;
+    if(sql) {
+      await rows(`CREATE SEQUENCE "${sequence}"`);
+      await rows(`CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF nextval('"${sequence}"')=1 THEN RAISE EXCEPTION USING ERRCODE='40001', MESSAGE='private disable fixture abort'; END IF; RETURN NEW; END $$`);
+      await rows(`CREATE TRIGGER "${trigger}" BEFORE UPDATE OF status, disabled_at ON "user" FOR EACH ROW EXECUTE FUNCTION "${fn}"()`);
+      let ready!: () => void;
+      const readyPromise = new Promise<void>(resolve => {ready=resolve;});
+      const guard = new Promise<void>(resolve => {releaseGuard=resolve;});
+      heldWork = sql.begin(async (holder:any) => {held=holder;ready();await guard;});
+      await readyPromise;
+    } else {locker=new Database(sqlitePath);locker.exec("BEGIN IMMEDIATE");}
+    console.error = (...arguments_:any[]) => {
+      let event:any;try {event=typeof arguments_[0]==="string" ? JSON.parse(arguments_[0]) : null;} catch {return;}
+      if(event?.eventName!=="transaction.attempt" || event.operation!=="User.disable_user") return;
+      events.push(event);
+      if(event.attempt!==1 || event.outcome!=="no_commit" || !event.retryScheduled) return;
+      if(locker) {locker.exec("ROLLBACK");locker.close();locker=null;}
+      pendingMutation=(async () => {
+        const change=async(statement:string,values:unknown[]) => sql ? held.unsafe(statement,values) : sqlite!.prepare(statement).all(...values);
+        // Initial auth:fresh admission has completed. Lock only after the proven
+        // abort; require the next real credential query to be waiting before
+        // applying current authority changes in this native fixture transaction.
+        if(sql) {
+          await change('LOCK TABLE "__jadpo_auth_sessions" IN ACCESS EXCLUSIVE MODE',[]);
+          const deadline=performance.now()+500;
+          while(performance.now()<deadline) {
+            await held.unsafe("SELECT pg_stat_clear_snapshot()");
+            const waiting=await held.unsafe("SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%__jadpo_auth_sessions%' AND state='active'");
+            if(waiting.length>0) {blockedCredentialQueryObserved=true;break;}
+            await Bun.sleep(5);
+          }
+          expect(blockedCredentialQueryObserved).toBe(true);
+        }
+        if(mode==="inactive") await change('UPDATE "user" SET status=$1 WHERE id=$2',["disabled",owner]);
+        if(mode==="revoked") await change('DELETE FROM "__jadpo_auth_sessions" WHERE id=$1',[sessionId]);
+      })().finally(releaseGuard);
+      void pendingMutation.catch(() => {});
+    };
+    const server=Bun.serve({hostname:"127.0.0.1",port:0,fetch:inspected.handleRequest});
+    try {
+      const response=await fetch(`http://127.0.0.1:${server.port}/users/${owner}`,{method:"DELETE",headers:{cookie:`todo_session=${issued.credential}`,origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken}});
+      await pendingMutation;await heldWork;
+      expect(events[0]).toMatchObject({attempt:1,outcome:"no_commit",retryScheduled:true,commitAcknowledged:false});
+      expect(events[0].retryableCause).toBe(sql ? "postgres_serialization" : "sqlite_busy");
+      if(sql) expect(events[0].rollbackProven).toBe(true);
+      const user=(await rows('SELECT status,disabled_at FROM "user" WHERE id=$1',[owner]))[0];
+      if(mode==="fresh") {
+        expect(response.status).toBe(204);expect(events).toHaveLength(2);
+        expect(events[1]).toMatchObject({attempt:2,outcome:"committed",commitAcknowledged:true,retryScheduled:false});
+        expect(events[1].operationId).toBe(events[0].operationId);
+        expect(user.status).toBe("disabled");expect(user.disabled_at).not.toBeNull();
+        // The committed lifecycle revokes subsequent admission through the same
+        // genuine credential, without a second business write or hard deletion.
+        const again=await fetch(`http://127.0.0.1:${server.port}/users/${owner}`,{method:"DELETE",headers:{cookie:`todo_session=${issued.credential}`,origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken}});
+        expect(again.status).toBe(403);expect(events).toHaveLength(2);
+      } else {
+        expect(response.status).toBe(mode==="inactive" ? 403 : 401);expect(events).toHaveLength(1);
+        expect(user.status).toBe(mode==="inactive" ? "disabled" : initialUser.status);
+        expect(user.disabled_at).toEqual(initialUser.disabled_at); // external fixture status only
+      }
+      expect(await rows('SELECT * FROM todo WHERE id=$1',[f.value.id])).toEqual(initialTodo);
+      expect(await revision(f.value.id)).toBe(initialSchedule);
+      expect(await rows('SELECT * FROM "__jadpo_deliveries_v1" WHERE intent_id=$1',[oldIntent.intentId])).toEqual(initialIntent);
+      // Claims are lazy. A clean owning run must accept absent storage as zero,
+      // rather than depending on unrelated earlier worker invocations.
+      const claimsRelation = sql ? (await rows("SELECT to_regclass('__jadpo_delivery_claims_v1') AS relation"))[0].relation : (await rows("SELECT name FROM sqlite_master WHERE type='table' AND name='__jadpo_delivery_claims_v1'"))[0]?.name;
+      expect(claimsRelation ? await rows('SELECT intent_id FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1',[oldIntent.intentId]) : []).toHaveLength(0);
+      if(sql) expect(Number((await rows(`SELECT last_value FROM "${sequence}"`))[0].last_value)).toBe(mode==="fresh" || mode==="inactive" ? 2 : 1);
+      const emitted=readFileSync(join(root,"app.ts"),"utf8");
+      const route=emitted.split('semanticOperationId = "route:DELETE:/users/{user_id}";')[1].split('semanticOperationId =')[0];
+      expect(route).toContain("const __authenticatedRetryCandidate = true;");
+      expect(route).toContain("__operation = allowOperationRetries(__operation, false);");
+      previousError(JSON.stringify({kind:"private_user_lifecycle_retry_conformance",modifiedAdmissionBit:true,releasedPublicRetry:false,mode,database:sql ? "postgres" : "sqlite",blockedCredentialQueryObserved,status:response.status,events,userStatus:user.status,disabledAt:user.disabled_at,sourceRevision:initialSchedule,immutableIntentUnchanged:true}));
+    } finally {
+      server.stop(true);console.error=previousError;releaseGuard();
+      if(locker) {locker.exec("ROLLBACK");locker.close();}
+      const fixtureSettlements=await Promise.allSettled([pendingMutation,heldWork]);
+      if(sql) {await rows(`DROP TRIGGER IF EXISTS "${trigger}" ON "user"`);await rows(`DROP FUNCTION IF EXISTS "${fn}"()`);await rows(`DROP SEQUENCE IF EXISTS "${sequence}"`);}
+      await rows('UPDATE "user" SET status=$1,disabled_at=$2 WHERE id=$3',[initialUser.status,initialUser.disabled_at,owner]);
+      const fixtureFailure=fixtureSettlements.find(result=>result.status==="rejected");
+      if(fixtureFailure?.status==="rejected") throw fixtureFailure.reason;
+    }
+  });
+
+  test("RM402 private authenticated HTTP User.disable_user refuses another user's lifecycle", async () => {
+    const f=await fixture(),inspected=await inspectRetryApplication(true);
+    await inspected.initializeApplication(authEnvironment);
+    const now=Date.now(),other=crypto.randomUUID();
+    const issued=await inspected.authenticationHost().issue("browser_session",owner,now+3_600_000,now);
+    await rows('INSERT INTO "user" (id,authentication_subject,email,status,created_at,disabled_at) VALUES ($1,$2,$3,$4,$5,$6)',[other,other,other+"@example.invalid","active",dbInstant(now),null]);
+    const before=await rows('SELECT id,status,disabled_at FROM "user" WHERE id IN ($1,$2) ORDER BY id',[owner,other]);
+    const priorError=console.error,events:any[]=[];
+    console.error=(...arguments_:any[]) => {try {const event=JSON.parse(arguments_[0]);if(event?.eventName==="transaction.attempt" && event.operation==="User.disable_user") events.push(event);} catch {}};
+    const server=Bun.serve({hostname:"127.0.0.1",port:0,fetch:inspected.handleRequest});
+    try {
+      const response=await fetch(`http://127.0.0.1:${server.port}/users/${other}`,{method:"DELETE",headers:{cookie:`todo_session=${issued.credential}`,origin:authEnvironment.BROWSER_ORIGIN,"x-jadpo-csrf":issued.csrfToken}});
+      // Row policy deliberately hides a foreign User from the required update;
+      // the authored missing branch preserves the declared safe404 envelope.
+      expect(response.status).toBe(404);expect((await response.json()).error.code).toBe("user_not_found");
+      expect(await rows('SELECT id,status,disabled_at FROM "user" WHERE id IN ($1,$2) ORDER BY id',[owner,other])).toEqual(before);
+      expect(events).toHaveLength(0); // declared policy refusal, no persistence-fault audit inferred
+      expect(await revision(f.value.id)).toBe("1");
+      priorError(JSON.stringify({kind:"private_user_lifecycle_role_refusal",modifiedAdmissionBit:true,releasedPublicRetry:false,database:sql ? "postgres" : "sqlite",status:response.status,ownerAndTargetUnchanged:true,events}));
+    } finally {server.stop(true);console.error=priorError;await rows('DELETE FROM "user" WHERE id=$1',[other]);}
   });
 
   test.skipIf(sql === null)("RM402 private authenticated HTTP native lost COMMIT acknowledgement never retries acknowledged source work", async () => {

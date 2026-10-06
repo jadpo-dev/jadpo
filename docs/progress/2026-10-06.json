@@ -1113,24 +1113,24 @@
   "reopened_or_conflicting_ids": [],
   "schema_version": 1,
   "date": "2026-10-06",
-  "captured_at": "2026-10-06T16:04:32+01:00",
+  "captured_at": "2026-10-06T16:58:46+01:00",
   "sources": {
-    "docs/implementation-roadmap.md": "864b7d53fb5fdf2a5a31c70acc1c6b15740f4e4e623f23e92a8d0286a0cf6689",
+    "docs/implementation-roadmap.md": "540e3ef988435e567cb0880a1df4024f9f1b1f9dbabcd404d3427261d87268be",
     "docs/implementation-history.md": "1782b2ee75b236b7a2e5d62a28beacd4fbeb6407e32aae71ea098a18e09f19d9",
     "docs/work-plans/developer-console-mcp.md": "6b761944716ddf2d5e18a9d1826b3ef07c12bd40f00284f7891844966a8986bb",
     "docs/work-plans/documentation-hygiene.md": "30ed652fdf59597bdecac627ed158bd6812059781f00d30467300a9cec3db1da",
-    "docs/work-plans/golden-delivery-planning.md": "79b5b94fbb6e881414ba26fdf603d8ae3733b337519eef64054f761b6ae2acf9",
+    "docs/work-plans/golden-delivery-planning.md": "5d723ce646e01453ca9bc0222b1897dc5c27eda8e720223be2cffe872d48e11f",
     "docs/work-plans/roadmap-assessment.md": "53a5514a21cbb76e804e47907a261d95af499ce5644dd8fb4e02413b837af14e"
   },
   "previous_date": "2026-10-05",
   "notes": {
-    "summary": "Reminder integration (RM-108) and native scheduling/worker recovery (RM-307) are complete after independent review and a fresh 76-check supported gate. Full golden Todo acceptance remains open while the parallel loop continues.",
+    "summary": "Reminder/hourly maintenance and worker recovery are complete. The reviewed authentication/HTTP artifact checkpoint now passes all77 full supported checks; formal golden acceptance remains open while parallel delivery continues.",
     "delivered": [
       "Checked reminder delivery and scan use the accepted separate 60s/40s profiles; hourly 500-row maintenance now has durable UTC singleton/restart/rollback/unknown-COMMIT behavior on both databases. [Completion](../../tests/validation/rm108-rm307-completion-reconciliation.json).",
-      "All 18 frozen worker recovery obligations are independently reconciled; the current supported gate passes 76/76 including actual native SQLite/PostgreSQL delivery suites. Prior red gates remain retained. [History](../implementation-history.md#2026-10-06--rm-307-native-scheduling-and-worker-recovery).",
+      "All18 frozen worker recovery obligations are independently reconciled. The current reviewed HTTP/authentication checkpoint passes77/77 supported checks and88 supporting golden observations; formal49 diagnostics/88not-run remain explicit. [Fresh gate](../../tests/validation/evidence/rm601-root-integrated-boundary/report.json).",
       "All 44 original golden IDs have 88 independent supporting observations; signed bearer/JWT private retry controls and local nonrelease approval corrections have scoped reviews. The formal golden and protected release gates remain open. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint)."
     ],
-    "next": "Continue three parallel lanes: correct operational/native/domain error-schema collisions, qualify owned native startup lifetime, and independently review the fresh User.disable_user retry controls before integration. Root integrates reviewed slices and reruns required combined checks; no batch checkpoint ends the authorized loop.",
+    "next": "Independently review fixed initial startup supervision, source-only lexical binding links and corrected durable local approval consumption; integrate approved sources and obtain a fresh required full gate. Whole request/recovery limits and final golden/approval/datastore gates remain.",
     "input_needed": "Earlier publication approval for fixed fe966ef and canonical PostgreSQL/SQLite database URI successor questions remain unanswered. The accepted separate 60s/40s delivery and scan profiles require no further approval; independent work continues."
   },
   "changes": {

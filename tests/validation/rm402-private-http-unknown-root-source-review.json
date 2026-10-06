@@ -5,7 +5,7 @@
   "reviewedCommit": "439d31f0aab7e8b626199eb31341ea8a037f9231",
   "reviewer": "01a10f20-b464-7543-925c-171de6c52598",
   "authorDistinct": true,
-  "sourceReview": "no blocking source finding in runtime-only private fault-injection checkpoint",
+  "sourceReview": "No blocking source finding in exact439 unknown-COMMIT test. Whole integration file51809 additionally contained preliminary signed controls; those are qualified separately, not attributed to439.",
   "evidenceReview": "All11 declared author evidence members independently hash-verified; original setup failures preserved.",
   "causality": [
     "Fault proxy remains unarmed until fresh native child initialization is acknowledged.",
@@ -55,5 +55,16 @@
   "disposition": "approved_scoped_test_only_unknown_COMMIT_leaf_after_independent_actual_native_execution; public activation and whole task held",
   "sourcePin": "51809e67e906106ab7fd4f6479097e1046a3026c8fd34349bc111a9b2510acf4",
   "releaseEquivalent": false,
-  "originalReviewerAttempt": "not_run: original approval-review account quota failure retained; changed ordinary usage state permitted subsequent normal approval-reviewed native execution."
+  "originalReviewerAttempt": "not_run: original approval-review account quota failure retained; changed ordinary usage state permitted subsequent normal approval-reviewed native execution.",
+  "sourcePinQualification": {
+    "originalSourcePinMeaning": "51809e67 identifies actual full integration working file, not immutable439 whole file; preliminary signed controls were present when root copied mutable writer source.",
+    "immutable439WholeFileSha256": "bd37612b52e8c0849e4ffed496f45cad29498d30a758451fd82d9610963757f2",
+    "workingSourceSha256": "51809e67e906106ab7fd4f6479097e1046a3026c8fd34349bc111a9b2510acf4",
+    "unknownCOMMITTestBytesExactlyMatch439": true,
+    "unknownCOMMITTestSha256": "583216725dddebd354fccb8cc685eb64197e27a930accee365c3c41c04cbed08",
+    "nextExactReviewedWholeFileCommit": "f009cda",
+    "nextExactReviewedWholeFileSha256": "90d8e95f317e8697054adbe65514905f00ed7e6ddba787142cdd4252addf47c7",
+    "originalMisboundRecord": "tests/validation/evidence/rm402-private-http-unknown-root-integration/original-misbound-working-source-review.json",
+    "noHistoricalExecutionSubstitution": true
+  }
 }

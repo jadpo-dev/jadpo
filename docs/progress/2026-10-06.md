@@ -1,8 +1,8 @@
 # Jadpo daily progress — 2026-10-06
 
-Updated 2026-10-06T16:04:32+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-06T16:58:46+01:00 · figures reflect the recorded roadmap.
 
-Reminder integration (RM-108) and native scheduling/worker recovery (RM-307) are complete after independent review and a fresh 76-check supported gate. Full golden Todo acceptance remains open while the parallel loop continues.
+Reminder/hourly maintenance and worker recovery are complete. The reviewed authentication/HTTP artifact checkpoint now passes all77 full supported checks; formal golden acceptance remains open while parallel delivery continues.
 
 ## At a glance
 
@@ -21,7 +21,7 @@ Completed counts cover the reorganised roadmap, not all earlier development. Old
 ## Delivered
 
 - Checked reminder delivery and scan use the accepted separate 60s/40s profiles; hourly 500-row maintenance now has durable UTC singleton/restart/rollback/unknown-COMMIT behavior on both databases. [Completion](../../tests/validation/rm108-rm307-completion-reconciliation.json).
-- All 18 frozen worker recovery obligations are independently reconciled; the current supported gate passes 76/76 including actual native SQLite/PostgreSQL delivery suites. Prior red gates remain retained. [History](../implementation-history.md#2026-10-06--rm-307-native-scheduling-and-worker-recovery).
+- All18 frozen worker recovery obligations are independently reconciled. The current reviewed HTTP/authentication checkpoint passes77/77 supported checks and88 supporting golden observations; formal49 diagnostics/88not-run remain explicit. [Fresh gate](../../tests/validation/evidence/rm601-root-integrated-boundary/report.json).
 - All 44 original golden IDs have 88 independent supporting observations; signed bearer/JWT private retry controls and local nonrelease approval corrections have scoped reviews. The formal golden and protected release gates remain open. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
 
 ## Since the previous report
@@ -58,7 +58,7 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Continue three parallel lanes: correct operational/native/domain error-schema collisions, qualify owned native startup lifetime, and independently review the fresh User.disable_user retry controls before integration. Root integrates reviewed slices and reruns required combined checks; no batch checkpoint ends the authorized loop.
+Independently review fixed initial startup supervision, source-only lexical binding links and corrected durable local approval consumption; integrate approved sources and obtain a fresh required full gate. Whole request/recovery limits and final golden/approval/datastore gates remain.
 
 ## Input needed
 

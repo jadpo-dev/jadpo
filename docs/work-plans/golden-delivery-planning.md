@@ -33,8 +33,9 @@ completion or a genuine blocker affecting every remaining independent lane.
 Conditional successors, production mail/deployment and external assurance remain
 outside this loop. No persistent Goal is active or newly created.
 
-**Resumed working checkpoint, 2026-10-06:** Reviewed working source extends
-`febd45f`, with exact final pins recorded below. Nineteen of the selected 29 tasks
+**Resumed working checkpoint, 2026-10-06:** The prior integrated local checkpoint is
+`1dd1e7705884bb4c4f1095102624063afc7578c8`; current reviewed changes extend it,
+with exact source pins and fresh verification recorded below. Nineteen of the selected 29 tasks
 are complete; ten remain open, including RM-306's generic event scope beyond its
 completed golden job milestone. The
 [exact closure audit](../../tests/validation/rm306-rm307-rm108-independent-closure-audit.json)
@@ -72,9 +73,12 @@ both cause facts and passes 71 focused contracts plus actual loopback HTTP
 before/after proof. Its different-author correction review is approved. Root's
 [independent original-metadata execution](../../tests/validation/evidence/rm601-root-independent-http-boundary/report.json)
 passes all 88 supporting entries, registers 128 actual HTTP statuses, matches
-42 closed error envelopes and passes ten native listener controls. A separate
-reproduced declared-domain/native relationship-conflict collision still needs
-its narrow correction and review. The quick gate
+42 closed error envelopes and passes ten native listener controls. The independently reviewed declared-domain/native409 correction is now
+prepared in the integration tree; [actual two-adapter review](../../tests/validation/rm601-independent-operational409-review.json)
+qualifies48 loopback responses including absent-message and native-FK controls.
+The later native500/503 code/message correction is awaiting its own independent
+review; bare inline-identity entity503 metadata registration is being corrected
+in a separate writer slice. No whole artifact-task completion is inferred. The quick gate
 retains a localhost watch refusal and an unclassified missing-Bun protocol exit;
 neither is relabelled as a green full gate.
 
@@ -96,9 +100,32 @@ global error facts with a route's reachable facts. Strict corrected assertions
 retain the global relationship-conflict fact and reject it on those unrelated
 routes; all 84 persistence tests now pass on both SQLite and PostgreSQL. A fresh
 supported full gate passes all 76 checks on the corrected working source.
-Private signed bearer and JWT controls have scoped independent two-adapter
-approval; User.disable_user controls are next for independent review. Native
-startup/lifetime and remaining operational schema overlaps continue in parallel.
+Private signed bearer, JWT and User.disable_user controls have scoped independent
+two-adapter approval. Root corrected an earlier mutable-source provenance label:
+the original full suite used preliminary signed controls alongside the exact
+unknown-COMMIT test; the original misbound report and source diff are retained.
+The current source is exact reviewed f009 plus the [independently reviewed PostgreSQL fixture correction](../../tests/validation/rm402-independent-pg-polling-review.json).
+Actual snapshot observations distinguish cached idle/query text from the native
+Lock waiter; polling clears the statistics snapshot within the existing500ms
+limit, and cleanup rethrows original failures after restoring state. Forced
+Todo and User fixture failures still fail without contaminating later tests.
+The [fresh combined native suites](../../tests/validation/evidence/rm402-root-selected-auth-integration/report.json)
+pass SQLite115/6 backend skips/1569 assertions and PostgreSQL119/1 backend skip/1618.
+Public authenticated retry remains closed; hard native request lifetime remains
+open. The [independent startup design review](../../tests/validation/rm403-independent-startup-owner-design-review.json)
+approves bounded implementation of compiler-owned native child supervision;
+product implementation and its independent evidence remain in progress.
+
+The independently reviewed500/503 wire pairing and actual persistent-record503
+registration corrections are now included with all preceding boundary and
+private-authentication corrections. The [fresh combined77-check full supported gate](../../tests/validation/evidence/rm601-root-integrated-boundary/report.json)
+passes every registered check, including both native databases and supporting88/0/0
+HTTP observations. Frozen source49 diagnostics and formal88 not-run entries remain
+separate. Startup supervision, new lexical binding links and corrected local
+SQLite approval consumption are isolated follow-ons pending their own review and
+fresh integration. Independent ledger review found omitted temporary schema
+validation; the corrected main/temporary schema candidate remains unapproved.
+No production issuer or protected filesystem authority is inferred.
 
 The current window starts at merged `ef83d48` (PR #3; required hosted67/67 and
 supporting16/0/72 pass). Actual `gpt-6.1-sol/high` was reverified from this chat's

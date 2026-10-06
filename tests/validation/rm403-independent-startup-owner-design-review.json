@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "task": "RM-403",
+  "reviewer": "golden_worker_closure_audit",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-403-7c4412ba13c4",
+  "candidate_commit": "1e9e2c44e2a00ff47d0b577b61cc700b71b10f44",
+  "status": "design_and_native_prerequisite_approved_for_bounded_implementation",
+  "scope": "Review fixed compiler-owned initial native startup supervision design and native capability grounding; no product implementation or activation.",
+  "approved_product_activation": false,
+  "task_closed": false,
+  "release_equivalent": false,
+  "native_results": {
+    "generated_child": {
+      "policy_ms": 10000,
+      "actual_exit_ack_ms": 10007.17175,
+      "exit": 137,
+      "commits_forwarded": 1,
+      "commit_ack_observed": true,
+      "schema_committed": true,
+      "exact_client_socket_closed": true,
+      "backend_remaining": 0,
+      "listener_bind_attempts": 0,
+      "published_ready": false,
+      "startup_safe_fault_event": false
+    },
+    "pool_close_negative": {
+      "exit": 1,
+      "actual_observation_ms": 5002.491542,
+      "committed_rows": 1,
+      "close_entered": true,
+      "close_settled": false,
+      "transaction_settled": false,
+      "exact_client_socket_closed": false
+    },
+    "causal_ipc_budget": {
+      "cases": 2,
+      "prompt_continuation_allowed": true,
+      "late_continuation_refused": true,
+      "actual_exited_acknowledged": true
+    },
+    "cross_process_clock_negative": {
+      "exit": 1,
+      "closed_native_ipc": true,
+      "absolute_clock_domain_assumption_valid": false
+    }
+  },
+  "independent_generation": [
+    {
+      "path": "examples/persistence-seed/build/target/app.ts",
+      "author_sha256": "3b4792d73507fbc38accb7ea98ffb1e6d016406b3c40f8bb65708455c635d477",
+      "independent_sha256": "3b4792d73507fbc38accb7ea98ffb1e6d016406b3c40f8bb65708455c635d477",
+      "identical": true
+    },
+    {
+      "path": "examples/persistence-seed/build/target/persistence.ts",
+      "author_sha256": "fa2dc68c357a872225c6304b230cd8a42a3f1c5edd1b79146a2157a6eb76664d",
+      "independent_sha256": "fa2dc68c357a872225c6304b230cd8a42a3f1c5edd1b79146a2157a6eb76664d",
+      "identical": true
+    },
+    {
+      "path": "examples/persistence-seed/build/sql/postgres/schema.sql",
+      "author_sha256": "e078d18c72fb444ab8349a68a1e1746fd8a5c008ce2b74c95ceedbc5ab2d3789",
+      "independent_sha256": "e078d18c72fb444ab8349a68a1e1746fd8a5c008ce2b74c95ceedbc5ab2d3789",
+      "identical": true
+    }
+  ],
+  "author_safe_members_rehashed": 18,
+  "implementation_conditions": [
+    {
+      "requirement": "Exact native main identity via normalized emitted app path against Bun.main/argv, preserving supported realpath/symlink and imported/library paths. startup_owner.import.meta.main is false as dependency.",
+      "writer_response": "Explicitly agreed; actual main/library/symlink controls promised before activation."
+    },
+    {
+      "requirement": "First ESM dependency parent top-level await holds until healthy/failing child actual exited, then parent exits; no fallthrough to app/persistence siblings. Child dependency awaits exact OWNED IPC before evaluating persistence.",
+      "writer_response": "Explicitly agreed; actual ESM constructor/import-order controls promised before activation."
+    },
+    {
+      "requirement": "Bounded safe handling of child stdout/stderr; do not blindly relay raw static-import/native/config failure text before app main catch. Cover nondisclosure during static import and parent safe startup failure event.",
+      "writer_response": "Sent before implementation; remains required product review condition."
+    },
+    {
+      "requirement": "Owner/source/exact-shape/phase IPC validation including wrong/stale/extra/replay packets, late continue and lost channel; no env-only bypass. Native causal duration retained from BOOT and parent BOOT-receipt remaining, never absolute cross-process clocks or CONTINUE resets.",
+      "writer_response": "Fixed plan requires; product evidence remains pending."
+    },
+    {
+      "requirement": "Both Bun and Node application/deployment bind branches gated by actual validated/fatal initialization + parent CONTINUE + immediate child immutable deadline check. Existing remaining PostgreSQL server budget only; no global owner swap/recovery reset.",
+      "writer_response": "Fixed plan requires; product evidence remains pending."
+    }
+  ],
+  "conclusions": [
+    "Pinned Bun1.2.20 actual acknowledged process exit is a viable measured initial COMMIT-phase owner primitive. Native pool close is disproven as a prompt ownership primitive in this exact stall.",
+    "Unknown COMMIT acknowledgement does not imply rollback: actual server schema is committed, child has no acknowledgement and is killed before any bind/ready publication.",
+    "Causal duration cap is conservative: child BOOT clock precedes parent receiving BOOT; BOOT+parent-remaining-at-receipt cannot extend the original parent deadline, unlike an assumed shared absolute clock domain.",
+    "Fixture termination and simple IPC controls establish native capability only. No generated source supervisor or closed production handshake yet exists in this leaf."
+  ],
+  "limits": [
+    "Progressing host scheduler and measured exit overhead; actual10007.17ms is not an exact10s realtime/platform guarantee.",
+    "Initial-only COMMIT transport slice excludes native request/recovery/SQLite synchronous lifetime and cloud/platform/parent-death qualification.",
+    "Future compiler product and combined supported gate require independent exact-source review; this report authorizes bounded implementation direction only."
+  ],
+  "evidence_inventory": "tests/validation/evidence/rm403-independent-startup-owner-1e9/inventory.json",
+  "timing": {
+    "active_minutes": 4.93,
+    "verification_minutes": 1.83,
+    "outcome": "partial"
+  }
+}
