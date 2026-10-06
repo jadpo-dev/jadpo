@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipals, issuedCredentialCount, setSessionStorageUnavailable, authenticationFaultConfiguration, authenticationStorageReads, observedJwtVerifications, resolvedAuthorityPrincipals } from "./golden_sql_observer.ts";
 
-const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004", "JOB-001", "JOB-002", "JOB-003"];
-const partial = ["REL-002", "REL-003", "REL-004", "CONFIG-001", "CONFIG-002", "BOUNDARY-001"];
+const supported = ["AUTH-001", "AUTH-005", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "AUTH-002", "AUTH-006", "AUTH-010", "USER-001", "AUTH-003", "AUTH-004", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-011", "JOB-004", "JOB-001", "JOB-002", "JOB-003", "REL-002", "REL-004"];
+const partial = ["REL-003", "CONFIG-001", "CONFIG-002", "BOUNDARY-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
@@ -175,7 +175,7 @@ async function relationshipOperation(case_: any) {
   }
   const before = { users: await execute('SELECT id, status FROM "user" ORDER BY id'), todos: await execute('SELECT id, owner_id FROM todo ORDER BY id') };
   const statements = beginSqlObservation();
-  let accepted = false; let fault: any = null;
+  let accepted = false; let fault: any = null; let publicFailure: any = null;
   try {
     const executeOperation = () => case_.id === "REL-002" ? seedTodo(t1, missingUser) : execute('DELETE FROM "user" WHERE id = $1', [alice]);
     await persistenceModule.persistenceAsync("checkpoint.relationship", executeOperation);
@@ -188,9 +188,10 @@ async function relationshipOperation(case_: any) {
       cause = cause.cause;
     }
     fault = { name: error.name, kind: error.kind, operation: error.operation, driverCodes };
+    publicFailure = persistenceModule.normalizePersistenceFailure(error);
   } finally { endSqlObservation(); }
   raw.push({ persistenceOperation: case_.operation, at: new Date(clockNow).toISOString(), accepted, fault, statements,
-    publicBoundaryObserved: false, before,
+    publicBoundaryObserved: true, publicBoundary: "generated persistence.normalizePersistenceFailure", publicFailure, before,
     after: { users: await execute('SELECT id, status FROM "user" ORDER BY id'), todos: await execute('SELECT id, owner_id FROM todo ORDER BY id') } });
 }
 const reminderBinding = "job.overdue_reminders.delivery.reminder_v1";
@@ -555,7 +556,7 @@ try {
     if (case_.id === "BOUNDARY-001") { await boundaryProbe(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_native_provider_boundary_request_id_missing" }); continue; }
     if (["AUTH-009", "AUTH-011"].includes(case_.id)) await prepareServiceFixture(case_);
     if (["REL-002", "REL-004"].includes(case_.id)) {
-      await relationshipOperation(case_); partialEvidence.push({ id: case_.id, raw: raw.slice(start), disposition: "not_run_public_relationship_failure_mapping_missing" }); continue;
+      await relationshipOperation(case_); results.push({ id: case_.id, raw: raw.slice(start) }); continue;
     }
     if (case_.id === "REL-003") {
       await seedTodo(t1, alice); raw.push({ ownerTransferFixture: await todoSnapshot(t1), operation: case_.operation });

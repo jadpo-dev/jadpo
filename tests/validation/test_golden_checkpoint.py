@@ -43,6 +43,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id in ('REL-002', 'REL-004'): return self.relationship_raw(case_id)
         if case_id in ('JOB-001', 'JOB-002', 'JOB-003'): return self.reminder_raw(case_id)
         if case_id == 'JOB-004': return self.maintenance_raw()
         if case_id in ('AUTH-009', 'AUTH-011'): return self.service_raw(case_id)
@@ -235,6 +236,10 @@ class CheckpointIntegrityTests(unittest.TestCase):
             raw.append({'method': request['method'], 'path': path, 'requestedPath': request['path'], 'auth': request.get('auth'), 'requestJson': request.get('json'), 'at': self.clock, 'status': 200, 'body': body,
                         'statements': [{'sql': 'SELECT id FROM "todo" ORDER BY "created_at" DESC, "id" DESC LIMIT $6', 'operation': 'SELECT', 'numericParameters': {'6': 3}}], 'authenticationAttempts': 1})
         return raw
+
+    def relationship_raw(self, case_id):
+        before = {'users': [{'id': checkpoint.ALIASES[name], 'status': 'disabled' if name == 'alice' and case_id == 'REL-004' else 'active'} for name in ('alice', 'bob')], 'todos': [{'id': checkpoint.ALIASES['t1'], 'owner_id': checkpoint.ALIASES['alice']}] if case_id == 'REL-004' else []}
+        return [{'persistenceOperation': self.cases[case_id]['operation'], 'accepted': False, 'publicBoundaryObserved': True, 'publicBoundary': 'generated persistence.normalizePersistenceFailure', 'publicFailure': {'status': 409, 'code': 'relationship_conflict', 'message': 'The operation conflicts with a relationship.'}, 'before': before, 'after': deepcopy(before), 'statements': [{'operation': 'INSERT' if case_id == 'REL-002' else 'DELETE', 'sql': 'INSERT INTO todo (id, owner_id, title) VALUES ($1,$2,$3)' if case_id == 'REL-002' else 'DELETE FROM "user" WHERE id = $1', 'relationshipRowIdentity': checkpoint.ALIASES['t1' if case_id == 'REL-002' else 'alice'], **({'relationshipOwnerIdentity': '00000000-0000-4000-8000-000000000099'} if case_id == 'REL-002' else {})}]}]
 
     def reminder_raw(self, case_id):
         """Deterministic protocol-only doubles; never establish application passes."""
@@ -791,11 +796,38 @@ class CheckpointIntegrityTests(unittest.TestCase):
     def test_relationship_partial_observations_never_promote_original_case_entries(self):
         outputs = self.outputs()
         for output in outputs:
-            output['partialEvidence'] = [{'id': case_id, 'raw': [{'accepted': False, 'fault': {'kind': 'constraint'}}]} for case_id in ('REL-002', 'REL-003', 'REL-004')]
+            output['partialEvidence'] = [{'id': case_id, 'raw': [{'accepted': False, 'fault': {'kind': 'constraint'}}]} for case_id in ('REL-003',)]
         report = harness.run_cases(self.root); checkpoint.apply_checkpoint(report, outputs, self.root)
         for entry in report['results']:
-            if entry['id'] in ('REL-002', 'REL-003', 'REL-004'):
+            if entry['id'] == 'REL-003':
                 self.assertEqual(entry['status'], 'not_run'); self.assertNotIn('observations', entry)
+
+    def test_relationship_acceptance_requires_native_public_normalizer_and_exact_original_sql_identity(self):
+        for case_id in ('REL-002', 'REL-004'):
+            raw = self.relationship_raw(case_id)
+            self.assertFalse(harness.assess(self.cases[case_id], checkpoint.observations(self.cases[case_id], raw)))
+            for mutation in ('operation', 'accepted', 'boundary', 'public_missing', 'sql', 'bind', 'mutated', 'fixture'):
+                raw = self.relationship_raw(case_id); capture = raw[0]
+                if mutation == 'operation': capture['persistenceOperation'] = {}
+                elif mutation == 'accepted': capture['accepted'] = True
+                elif mutation == 'boundary': capture['publicBoundary'] = 'harness mapping'
+                elif mutation == 'public_missing': capture['publicFailure'] = None
+                elif mutation == 'sql': capture['statements'] = []
+                elif mutation == 'bind': capture['statements'][0]['relationshipRowIdentity'] = 'foreign'
+                elif mutation == 'mutated': capture['after']['todos'].append({'id': 'unexpected'})
+                elif case_id == 'REL-002':
+                    capture['before']['users'].append({'id': '00000000-0000-4000-8000-000000000099'}); capture['after'] = deepcopy(capture['before'])
+                else:
+                    capture['before']['users'][0]['status'] = 'active'; capture['after'] = deepcopy(capture['before'])
+                with self.subTest(case=case_id, mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(self.cases[case_id], raw)
+            for mutation in ('backend_details', 'foreign_code', 'foreign_message', 'foreign_status'):
+                raw = self.relationship_raw(case_id); public = raw[0]['publicFailure']
+                if mutation == 'backend_details': public['constraint'] = 'private_constraint'
+                elif mutation == 'foreign_code': public['code'] = '23503'
+                elif mutation == 'foreign_message': public['message'] = 'FOREIGN KEY constraint failed'
+                else: public['status'] = 500
+                with self.subTest(case=case_id, mutation=mutation):
+                    self.assertTrue(harness.assess(self.cases[case_id], checkpoint.observations(self.cases[case_id], raw)))
 
     def test_approved_job001_overlay_is_explicit_exact_and_preserves_other43_originals(self):
         frozen = harness.read_contract(self.root)
@@ -932,7 +964,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 with self.subTest(mutation=mutation), self.assertRaises(ValueError): checkpoint.observations(case, raw)
 
     def partial_outputs_fixture(self):
-        output = {'partialEvidence': [{'id': case_id, 'adapterFailure': True, 'raw': []} for case_id in ('REL-002', 'REL-003', 'REL-004')]}
+        output = {'partialEvidence': [{'id': case_id, 'adapterFailure': True, 'raw': []} for case_id in ('REL-003',)]}
         for case_id in ('CONFIG-001', 'CONFIG-002'):
             environment = self.cases[case_id]['environment']
             probes = [{'label': label, 'originalEnvironment': overrides, 'exitCode': 1, 'jsonEvents': [{'kind': 'checkpoint_startup_observation', 'exitCode': 1, 'listenerStarts': 0}], 'outputSha256': 'a'*64, 'outputBytes': 120, 'credentialTextDisclosed': False} for label, overrides in (('healthy_control', {}), ('original_environment', environment))]
@@ -946,7 +978,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         checkpoint.validate_partial_outputs(self.partial_outputs_fixture(), self.cases)
         for mutation in ('missing_id', 'duplicate_id', 'environment', 'control_order', 'exit', 'observer', 'output_digest', 'missing_variant', 'variant_order', 'healthy', 'outage', 'provider_uncalled', 'provider_status', 'profile', 'native_creation', 'native_selection'):
             output = self.partial_outputs_fixture()
-            config = output['partialEvidence'][3]['raw'][0]['nativeStartup']
+            config = next(item for item in output['partialEvidence'] if item['id'] == 'CONFIG-001')['raw'][0]['nativeStartup']
             boundary = output['partialEvidence'][-1]['raw'][0]['boundaryVariants']
             if mutation == 'missing_id': output['partialEvidence'].pop()
             elif mutation == 'duplicate_id': output['partialEvidence'][-1]['id'] = 'REL-002'
