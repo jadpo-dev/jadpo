@@ -105,5 +105,27 @@ impl TargetGenerator<'_> {
         line(output, "  const finished = await rootPersistence.transaction((tx: any) => tx.finish_delivery_activation(handle));");
         line(output, "  return Object.freeze({ status: finished ? \"finished\" : \"partial\", selected: staged.page.intentIds.length, attempted, continued: !finished || staged.page.after !== null });");
         line(output, "}");
+        // Trusted native provisioning is distinct from ordinary authored calls:
+        // raw service credential stays lexical, resolves through the checked
+        // authentication host each run, and never substitutes provider secrets.
+        // No callback, synthetic principal, authored operation clock or profile
+        // default can enter this closed binding host.
+        line(output, "export function createDeliveryJobHost(binding: string, credential: string, activationProfile: Readonly<{ executionMs: number; leaseMs: number }>, deliveryProfile: Readonly<{ executionMs: number; leaseMs: number }>) {");
+        line(output, "  let strategy: string, intervalMs: number; switch (binding) {");
+        for binding in self.project.delivery_model().bindings() {
+            let strategy = binding.authority_for_lowering().strategy;
+            line(output, &format!("    case {}: strategy = {}; intervalMs = {}; break;", ts_string(binding.binding_identity()), ts_string(strategy), binding.schedule().interval_ms));
+        }
+        line(output, "    default: throw new AuthenticationFault(\"authority_invariant\", 500);");
+        line(output, "  }");
+        line(output, "  if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0) invalid(\"delivery.interval\", \"a portable positive interval\");");
+        line(output, "  if (typeof credential !== \"string\" || credential.length === 0) throw new AuthenticationFault(\"invalid_credentials\", 401);");
+        line(output, "  const checkedProfile = (name: string, value: Readonly<{ executionMs: number; leaseMs: number }>) => { if (value === null || typeof value !== \"object\" || Reflect.ownKeys(value).sort().join(\",\") !== \"executionMs,leaseMs\") invalid(`delivery.${name}Profile`, \"an explicit finite execution/lease profile\"); const copy = Object.freeze({ executionMs: value.executionMs, leaseMs: value.leaseMs }); if (!Number.isSafeInteger(copy.executionMs) || !Number.isSafeInteger(copy.leaseMs) || copy.leaseMs <= 0 || copy.executionMs < copy.leaseMs) invalid(`delivery.${name}Profile`, \"an explicit finite execution/lease profile\"); return copy; };");
+        line(output, "  activationProfile = checkedProfile(\"activation\", activationProfile); deliveryProfile = checkedProfile(\"delivery\", deliveryProfile);");
+        line(output, "  let running: Promise<any> | null = null, timer: ReturnType<typeof setTimeout> | null = null, started = false, stopped = false;");
+        line(output, "  const runOnce = () => { if (stopped) invalid(\"delivery.host\", \"a live host\"); if (running !== null) return running; const work = (async () => { const at = captureOperation(null, null, undefined, false).now; const proof = await authenticationHost().prepareDeliveryCredential(strategy, credential, Date.parse(at)); return runDeliveryScheduleActivation(binding, proof, activationProfile, deliveryProfile, at); })(); running = work; void work.finally(() => { if (running === work) running = null; }).catch(() => {}); return work; };");
+        line(output, "  const schedule = (continued: boolean) => { if (stopped) return; const now = Date.now(); const dueAt = continued ? now : (Math.floor(now / intervalMs) + 1) * intervalMs; timer = setTimeout(async () => { timer = null; if (stopped) return; if (Date.now() < dueAt) { schedule(false); return; } try { const outcome = await runOnce(); schedule(outcome.status === \"finished\" && outcome.continued); } catch (error) { console.error(JSON.stringify({ schemaVersion: 1, kind: \"operational_log_event\", eventName: \"delivery.activation_failed\", binding, code: error instanceof AuthenticationFault ? error.code : \"job_fault\" })); schedule(false); } }, Math.min(2_147_483_647, Math.max(0, dueAt - now))); };");
+        line(output, "  return Object.freeze({ runOnce, async start() { if (started || stopped) invalid(\"delivery.host\", \"one start before stop\"); started = true; try { const outcome = await runOnce(); schedule(outcome.status === \"finished\" && outcome.continued); return outcome; } catch (error) { started = false; throw error; } }, async stop() { stopped = true; if (timer !== null) clearTimeout(timer); timer = null; if (running !== null) await running; } });");
+        line(output, "}");
     }
 }

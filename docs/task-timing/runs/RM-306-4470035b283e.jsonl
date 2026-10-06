@@ -1,0 +1,6 @@
+{"schema_version": 1, "run_id": "RM-306-4470035b283e", "task_id": "RM-306", "actor": "golden-worker-loop", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T06:29:59.422745+00:00", "phase": "planning"}
+{"at": "2026-10-06T06:31:47.597565+00:00", "phase": "verification", "note": "Trusted closed native job-host foundation: exact checked binding + rawworker servicekey + explicit frozen profiles, fresh issuer proof each run, compiler captured UTC only, no callbacks/principal minting/providersecret reuse. Full target JOB refusal retained until independent qualification."}
+{"at": "2026-10-06T06:36:36.266131+00:00", "phase": "implementation", "note": "Correct checked strategy identity and strengthen host lifecycle probes; original negative logs retained"}
+{"at": "2026-10-06T06:37:12.761209+00:00", "phase": "verification", "note": "Focused and full generated host probes on both disposable adapters"}
+{"at": "2026-10-06T06:38:08.365496+00:00", "phase": "review", "note": "Both focused and full adapter runs passed; immutable host foundation review before authored lowering"}
+{"at": "2026-10-06T06:39:44.619291+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm306-trusted-job-host/manifest.json"}
