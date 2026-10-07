@@ -28,7 +28,7 @@ impl TargetGenerator<'_> {
         if self.project.delivery_model().bindings().is_empty() {
             return output;
         }
-        line(&mut output,"async record_delivery_acceptance_proof(binding: string, evidence: unknown) { requireTransaction(); const accepted = readCurrentDeliveryAcceptedEvidence(evidence); if (accepted.invocation.binding !== binding) return fault(\"delivery.acceptance.binding\"); switch (binding) {");
+        line(&mut output,"async record_delivery_acceptance_proof(binding: string, evidence: unknown) { requireTransaction(); registerDeliveryPrecommitGuard(() => readCurrentDeliveryAcceptedEvidence(evidence)); const accepted = readCurrentDeliveryAcceptedEvidence(evidence); if (accepted.invocation.binding !== binding) return fault(\"delivery.acceptance.binding\"); switch (binding) {");
         for binding in self.project.delivery_model().bindings() {
             let selection = &binding.descriptor().selection;
             let table = sql_identifier(&snake_case(&selection.entity.text));
@@ -58,7 +58,7 @@ impl TargetGenerator<'_> {
             "  default: return fault(\"delivery.acceptance.binding\"); } },",
         );
         line(&mut output,"async reconcile_delivery_receipt(binding: string, grant: unknown, profile: Readonly<{executionMs:number;leaseMs:number}>, intentId: string) {");
-        line(&mut output,"  requireTransaction(); readCurrentDeliveryReceiptReconciliationGrant(grant); if (operationTime === null) return fault(\"delivery.operation_time\"); const intent = await client.read_delivery_intent(intentId); readCurrentDeliveryReceiptReconciliationGrant(grant); if (intent === null) return false; switch (binding) {");
+        line(&mut output,"  requireTransaction(); registerDeliveryPrecommitGuard(() => readCurrentDeliveryReceiptReconciliationGrant(grant)); readCurrentDeliveryReceiptReconciliationGrant(grant); if (operationTime === null) return fault(\"delivery.operation_time\"); const intent = await client.read_delivery_intent(intentId); readCurrentDeliveryReceiptReconciliationGrant(grant); if (intent === null) return false; switch (binding) {");
         for binding in self.project.delivery_model().bindings() {
             let d = binding.descriptor();
             let selection = &d.selection;

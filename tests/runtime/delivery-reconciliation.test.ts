@@ -207,13 +207,13 @@ function worker(f:any,body:string,databaseURL=pg??''){
  children.push(child);return{child,done:Promise.all([new Response(child.stdout).text(),new Response(child.stderr).text(),child.exited])};
 }
 async function finish(w:ReturnType<typeof worker>){const[out,err,exit]=await w.done;expect(exit,err).toBe(0);expect(await gone(w.child.pid)).toBe(true);return JSON.parse(out.trim().split('\n').at(-1)!);}
-async function journalAckProxy(holdAck=false){
+async function journalAckProxy(holdAck=false,boundary:'commit'|'reset'='commit'){
  if(!pg)return null;
  const direct=new URL(pg),sockets:Socket[]=[],connections:any[]=[];
  let armed=false,dropped=false,commits=0;let releaseAck:(()=>void)|null=null;
  const server=createServer(down=>{
   const up=createConnection({host:direct.hostname,port:Number(direct.port||5432)});
-  sockets.push(down,up);const state={connection:connections.length+1,pid:null as number|null,awaitingCommit:false,commandComplete:false,readyIdle:false,frontendCommits:0,closed:false,proofInsertSeen:false,insertAcknowledged:false,insertReadyTransaction:false};connections.push(state);
+  sockets.push(down,up);const state={connection:connections.length+1,pid:null as number|null,awaitingCommit:false,commandComplete:false,readyIdle:false,frontendCommits:0,timeoutResets:0,closed:false,proofInsertSeen:false,insertAcknowledged:false,insertReadyTransaction:false};connections.push(state);
   let front=Buffer.alloc(0),back=Buffer.alloc(0),held=Buffer.alloc(0);
   down.on('data',chunk=>{
    if(armed){front=Buffer.concat([front,chunk]);let offset=0;
@@ -222,7 +222,7 @@ async function journalAckProxy(holdAck=false){
      if(tag===81)text=payload.subarray(0,payload.indexOf(0)).toString();
      if(tag===80){const first=payload.indexOf(0);text=payload.subarray(first+1,payload.indexOf(0,first+1)).toString();}
      if(text.includes('INSERT INTO \"__jadpo_delivery_acceptance_proofs_v1\"'))state.proofInsertSeen=true;
-     if(text.trim().replace(/;$/u,'').toUpperCase()==='COMMIT'){commits++;state.frontendCommits++;state.awaitingCommit=true;held=Buffer.alloc(0);}
+     const selected=text.trim().replace(/;$/u,'').toUpperCase();if(selected==='COMMIT'){commits++;state.frontendCommits++;}if(selected==='SET LOCAL STATEMENT_TIMEOUT = 0')state.timeoutResets++;if((boundary==='commit'&&selected==='COMMIT')||(boundary==='reset'&&selected==='SET LOCAL STATEMENT_TIMEOUT = 0')){state.awaitingCommit=true;held=Buffer.alloc(0);}
      offset+=1+length;
     }front=front.subarray(offset);
    }up.write(chunk);
@@ -235,8 +235,8 @@ async function journalAckProxy(holdAck=false){
     if(tag===75&&payload.length===8)state.pid=payload.readInt32BE(0); // actual BackendKeyData, secret never captured
     if(state.proofInsertSeen&&tag===67&&payload.toString()==='INSERT 0 1\0')state.insertAcknowledged=true;
     if(state.insertAcknowledged&&!state.awaitingCommit&&tag===90&&payload.toString()==='T')state.insertReadyTransaction=true;
-    if(state.awaitingCommit&&tag===67&&payload.toString()==='COMMIT\0')state.commandComplete=true;
-    if(state.awaitingCommit&&state.commandComplete&&tag===90&&payload.toString()==='I')state.readyIdle=true;
+    if(state.awaitingCommit&&tag===67&&payload.toString()===(boundary==='commit'?'COMMIT\0':'SET\0'))state.commandComplete=true;
+    if(state.awaitingCommit&&state.commandComplete&&tag===90&&payload.toString()===(boundary==='commit'?'I':'T'))state.readyIdle=true;
     offset+=1+length;
    }back=back.subarray(offset);
    if(state.awaitingCommit&&!dropped){
@@ -246,7 +246,7 @@ async function journalAckProxy(holdAck=false){
   down.on('error',()=>{});up.on('error',()=>{});down.on('close',()=>{up.destroy();state.closed=true;});up.on('close',()=>down.destroy());
  });
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const port=(server.address()as AddressInfo).port;const url=new URL(pg);url.port=String(port);
- return{url:url.toString(),port,arm(){expect(commits).toBe(0);expect(dropped).toBe(false);armed=true;},held(){return releaseAck!==null;},release(){if(!releaseAck)throw Error('actual COMMIT acknowledgment not held');const release=releaseAck;releaseAck=null;release();},proof(){return{armed,dropped,commits,connections,holdAck}},async close(){for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));expect(await portClosed(port)).toBe(true);expect(connections.every(c=>c.closed)).toBe(true);}};
+ return{url:url.toString(),port,arm(){expect(commits).toBe(0);expect(dropped).toBe(false);armed=true;},held(){return releaseAck!==null;},release(){if(!releaseAck)throw Error('actual COMMIT acknowledgment not held');const release=releaseAck;releaseAck=null;release();},proof(){return{armed,dropped,commits,connections,holdAck,boundary}},async close(){for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));expect(await portClosed(port)).toBe(true);expect(connections.every(c=>c.closed)).toBe(true);}};
 }
 
 test('journal COMMIT ACK uncertainty keeps genuine committed proof and permits only terminal resolution in a distinct worker',async()=>{
@@ -392,3 +392,34 @@ test('accepted proof storage work consumes the original lease and cannot refund 
   console.log('RECONCILE02_PRODUCER_EXPIRY '+JSON.stringify({database:pg?'postgres':'sqlite',elapsedMs:performance.now()-started,provisional,fault:{name:error.name,kind:error.kind,transaction:error.transaction},proofCount:0,providerCalls:1,qualification:pg?'actual AFTER accepted202 proof INSERT trigger waits pg_sleep beyond original1500ms lease; native statement budget cancels and rollback discards proof':'test-only same-writer observer lets real proof INSERT run in transaction then blocks synchronously1800ms; cooperative boundary refuses and rolls back, no hard preemption claim'}));
  }finally{Database.prototype.prepare=prepare;if(pg){if(control!=='omit-proof-delay')await rows('DROP TRIGGER reconcile_proof_delay ON "__jadpo_delivery_acceptance_proofs_v1"');await rows('DROP FUNCTION reconcile_proof_delay()');}const port=server.port;server.stop(true);expect(await portClosed(port)).toBe(true);}
 },15000);
+
+for(const cut of ['withdrawal','reinitialization'])test.skipIf(!pg)(`purpose ${cut} during genuine timeout reset ACK refuses before reconciliation COMMIT`,async()=>{await acceptedFixture(async(f,calls)=>{const before=await snapshot(f);
+ let publication:any=null,wire:any=null;
+ if(pg){
+  const proxy=await journalAckProxy(true,'reset'),readyMarker=join(root,crypto.randomUUID()+'.ready'),cutMarker=join(root,crypto.randomUUID()+'.cut');let current:ReturnType<typeof worker>|null=null;
+  try{
+   current=worker(f,`const host=app.authenticationHost(),grant=host.issueDeliveryReceiptReconciliationGrant(),reconciler=app.createDeliveryReceiptReconciler(binding,grant,profile);require('node:fs').writeFileSync(${JSON.stringify(readyMarker)},'ready');let pending;for await(const chunk of process.stdin){const command=chunk.toString().trim();if(command==='GO'){pending=reconciler.reconcile(${JSON.stringify(f.intent.intentId)}).then(value=>({value,fault:null}),error=>({value:null,fault:{name:error.name,kind:error.kind}}));}if(command==='CUT'){${control==='omit-postcommit-cut'?'':cut==='withdrawal'?'host.revokeDeliveryReceiptReconciliationGrant(grant);':'await app.initializeApplication('+JSON.stringify(configuration)+');'}require('node:fs').writeFileSync(${JSON.stringify(cutMarker)},'cut');break;}}const result=await pending;console.log(JSON.stringify({pid:process.pid,...result}));process.exit(0);`,proxy!.url);
+   expect(await waitFor(async()=>{try{return readFileSync(readyMarker,'utf8')==='ready';}catch{return false;}})).toBe(true);proxy!.arm();current.child.stdin.write('GO\n');current.child.stdin.flush();
+   expect(await waitFor(async()=>proxy!.held())).toBe(true);const committed=await snapshot(f);expect(committed).toEqual(before);expect(await receiptRows(f.intent.intentId)).toEqual([]);
+   current.child.stdin.write('CUT\n');current.child.stdin.flush();expect(await waitFor(async()=>{try{return readFileSync(cutMarker,'utf8')==='cut';}catch{return false;}})).toBe(true);proxy!.release();publication=await finish(current);expect(publication.value).toBeNull();expect(publication.fault.name).toBe('AuthenticationFault');wire=proxy!.proof();console.log('RECONCILE02_RESET_OBSERVATION '+JSON.stringify({cut,publication,wire,settled:await snapshot(f),receipts:await receiptRows(f.intent.intentId)}));expect(wire.commits).toBe(0);expect(wire.connections.filter((c:any)=>c.commandComplete&&c.readyIdle&&c.timeoutResets===1&&c.frontendCommits===0)).toHaveLength(1);expect(await snapshot(f)).toEqual(committed);
+  }finally{if(current&&!(await gone(current.child.pid))){current.child.kill('SIGKILL');await current.done;}await proxy!.close();rmSync(readyMarker,{force:true});rmSync(cutMarker,{force:true});}
+ }
+ const committed=await snapshot(f);expect(committed).toEqual(before);expect(await receiptRows(f.intent.intentId)).toEqual([]);
+ expect(await app.createDeliveryReceiptReconciler(binding,app.authenticationHost().issueDeliveryReceiptReconciliationGrant(),profile).reconcile(f.intent.intentId)).toBe(true);expect((await snapshot(f)).intent.state).toBe('succeeded');expect(calls).toHaveLength(1);
+ console.log('RECONCILE02_RESET_CUT '+JSON.stringify({database:pg?'postgres':'sqlite',cut,publication,wire,durableState:'rolled_back_before_commit',receiptCount:0,providerCalls:calls.length,qualification:pg?'same-PID native SET LOCAL C/ReadyForQuery T held after work; genuine purpose cut before COMMIT then release; owned TX must roll back':'actual SQLite COMMIT completes before synchronous observer purpose cut; post-await publication refuses, no wire uncertainty claim'}));
+});},20000);
+
+
+async function receiptRows(id:string){const exists=pg?(await rows("SELECT to_regclass('\"__jadpo_delivery_mail_receipts_v1\"') relation"))[0].relation!==null:(await rows("SELECT name FROM sqlite_master WHERE name='__jadpo_delivery_mail_receipts_v1'")).length>0;return exists?await rows('SELECT * FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1',[id]):[];}
+
+test.skipIf(!pg)('genuine producer owner reinitialization during timeout reset ACK rolls back proof before COMMIT',async()=>{
+ await ensureProofFixture();const f=await seed(),calls:any[]=[],proxy=await journalAckProxy(true,'reset'),cutMarker=join(root,crypto.randomUUID()+'.producer-cut');let current:ReturnType<typeof worker>|null=null;
+ const server=Bun.serve({hostname:'127.0.0.1',port:0,async fetch(request){const body=await request.json();calls.push(body);proxy!.arm();return Response.json({accepted_at:at},{status:202,headers:{'Idempotency-Key':body.idempotency_key}});}});
+ try{
+  current=worker(f,`adapter.setReferenceMailEndpointForTesting(${JSON.stringify(`http://127.0.0.1:${server.port}`)});const proof=await app.authenticationHost().prepareDeliveryCredential('api_bearer',process.env.RECONCILE_WORKER_KEY,Date.now());const token=await app.prepareDeliveryInvocation(binding,proof,${JSON.stringify(f.intent.intentId)},at,profile);const pending=app.dispatchDeliveryInvocation(token).then(value=>({outcomeIssued:value!==null,fault:null}),error=>({outcomeIssued:false,fault:{name:error.name,kind:error.kind}}));for await(const chunk of process.stdin){if(chunk.toString().trim()==='CUT'){await app.initializeApplication(${JSON.stringify(configuration)});require('node:fs').writeFileSync(${JSON.stringify(cutMarker)},'cut');break;}}console.log(JSON.stringify({pid:process.pid,...await pending}));process.exit(0);`,proxy!.url);
+  expect(await waitFor(async()=>proxy!.held())).toBe(true);expect(proxy!.proof().commits).toBe(0);expect((await snapshot(f)).proof).toEqual([]);current.child.stdin.write('CUT\n');current.child.stdin.flush();expect(await waitFor(async()=>{try{return readFileSync(cutMarker,'utf8')==='cut';}catch{return false;}})).toBe(true);proxy!.release();const publication=await finish(current),wire=proxy!.proof(),settled=await snapshot(f);
+  console.log('RECONCILE02_PRODUCER_RESET '+JSON.stringify({publication,wire,settled,qualification:'actual checked adapter202 and proof INSERT C/T; same-PID timeout reset C/T held; actual application reinitialization invalidates original opaque owner before any COMMIT'}));
+  expect(publication.outcomeIssued).toBe(false);expect(publication.fault.name).toBe('AuthenticationFault');expect(wire.commits).toBe(0);expect(wire.connections.filter((c:any)=>c.proofInsertSeen&&c.insertAcknowledged&&c.insertReadyTransaction&&c.commandComplete&&c.readyIdle&&c.timeoutResets===1&&c.frontendCommits===0)).toHaveLength(1);expect(settled.proof).toEqual([]);expect(settled.intent.state).toBe('running');expect(Number(settled.claim[0].possible_dispatch)).toBe(1);expect(calls).toEqual([f.intent.payload]);
+  await Bun.sleep(1600);expect(await app.prepareDeliveryInvocation(binding,f.proof,f.intent.intentId,at,profile)).toBeNull();expect(await app.createDeliveryReceiptReconciler(binding,app.authenticationHost().issueDeliveryReceiptReconciliationGrant(),profile).reconcile(f.intent.intentId)).toBe(false);expect((await snapshot(f)).intent.state).toBe('outcome_unknown');expect(calls).toHaveLength(1);
+ }finally{if(current&&!(await gone(current.child.pid))){current.child.kill('SIGKILL');await current.done;}await proxy!.close();const port=server.port;server.stop(true);expect(await portClosed(port)).toBe(true);rmSync(cutMarker,{force:true});}
+},20000);
