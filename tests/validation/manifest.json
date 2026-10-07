@@ -113,11 +113,14 @@
     "tests/runtime/validation-fixtures-migrations.test.ts",
     "tests/runtime/validation-persistence.test.ts",
     "tests/runtime/validation-unicode-length.test.ts",
-    "tests/runtime/recovery-native-phase.test.ts"
+    "tests/runtime/recovery-native-phase.test.ts",
+    "tests/runtime/receipt-completion-ack-probes.test.ts",
+    "tests/runtime/temporal-point-sqlite-product.test.ts"
   ],
   "postgres_suites": {
     "tests/runtime/persistence-postgres.test.ts": "persistence",
-    "tests/runtime/golden-todo-postgres.test.ts": "golden-todo-routes"
+    "tests/runtime/golden-todo-postgres.test.ts": "golden-todo-routes",
+    "tests/runtime/temporal-instant-point-product.test.ts": "temporal-instant-point"
   },
   "remaining_gates": [
     "Golden todo syntax migration and all 44 integrated behavioural cases",
@@ -157,6 +160,7 @@
     "finite-witness",
     "temporal-stored-corruption",
     "temporal-page-containment",
-    "recovery-native-phase"
+    "recovery-native-phase",
+    "receipt-completion-ack"
   ]
 }

@@ -3,6 +3,8 @@ set -euo pipefail
 
 mode=${1:-}
 case "$mode" in
+  temporal-instant-point) exec bash "$(dirname "$0")/temporal-instant-point-postgres.sh" ;;
+  receipt-completion-ack) exec bash "$(dirname "$0")/receipt-completion-ack-postgres.sh" ;;
   temporal-page-containment) exec bash "$(dirname "$0")/temporal-page-probe-postgres.sh" ;;
   authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate|recovery-native-phase) ;;
   *) echo 'Usage: bash tests/runtime/postgres.sh authentication|service-authentication|golden-service-credentials|golden-todo-routes|jwt-authentication|persistence|readiness|validation-persistence|validation-auth-policy|policy-runtime|entity-dossier|lifecycle|lifecycle-maintenance|startup-ownership|delivery-hook-components|delivery-completion-representation|relationship-conflicts|configuration-preflight|deployment-readiness|protected-retry|temporal-roundtrip|temporal-day-page|finite-witness|temporal-stored-corruption|protected-lifecycle-credentials|temporal-schema-gate|recovery-native-phase' >&2; exit 2 ;;
