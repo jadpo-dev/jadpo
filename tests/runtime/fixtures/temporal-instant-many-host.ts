@@ -1,0 +1,70 @@
+import { expect } from 'bun:test';
+import { SQL } from 'bun';
+import { Database } from 'bun:sqlite';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const [project, raw] = Bun.argv.slice(2), c = JSON.parse(raw);
+const url = Bun.env.JADPO_INSTANT_MANY_DATABASE_URL;
+const pg = Boolean(url), database = join(project, 'many.sqlite');
+if (url) { const u = new URL(url); if (u.hostname !== '127.0.0.1' || u.pathname !== '/jadpo_auth_test_runtime') throw Error('Disposable native database required'); }
+const observer = await import(pathToFileURL(join(project, 'build/target/many-observer.ts')).href);
+const inspector = pg ? new SQL({url, prepare:false}) : new Database(database);
+const exec = async (sql:string, parameters:any[] = []) => pg ? (inspector as SQL).unsafe(sql, parameters) : (inspector as Database).prepare(sql).all(...parameters);
+const alice='11111111-1111-4111-8111-111111111111', bob='22222222-2222-4222-8222-222222222222', scope='33333333-3333-4333-8333-333333333333', foreign='44444444-4444-4444-8444-444444444444', membership='55555555-5555-4555-8555-555555555555';
+const ids=['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777','88888888-8888-4888-8888-888888888888'];
+const aligned='2026-10-25T00:30:00.123Z', millis=1792888200123;
+const observations:any[]=[], events:any[]=[], faults:any[]=[];
+let failure:any=null, baseline:any=null, baselineResponse:any=null, credential='', server:any, deployment:any, app:any, ports:any={}, pids:number[]=[], originalSettings:any=null, session:any=null, selectedPid:number|null=null;
+const oldError=console.error;
+console.error=(...args:any[])=>{for(const arg of args){if(arg instanceof Error)faults.push({name:arg.name,constructor:arg.constructor.name,kind:(arg as any).kind,operation:(arg as any).operation});else if(typeof arg==='string'){try{const v=JSON.parse(arg);if(v.kind==='operational_log_event')events.push(v);}catch{oldError(arg);}}}};
+const snapshot=async()=>observer.nativeForm(await exec(pg?'SELECT "id","scope_id","bucket","instant"::text AS "instant",pg_typeof("instant")::text AS "instant_type","optional_instant"::text AS "optional_instant",pg_typeof("optional_instant")::text AS "optional_type","jadpo_probe_carrier_instant" FROM "timed_record" ORDER BY "id"':'SELECT *,typeof("instant") AS "instant_type",typeof("optional_instant") AS "optional_type" FROM "timed_record" ORDER BY "id"'));
+const request=async(missing=false)=>{const response=await fetch(`http://127.0.0.1:${server.port}/timed/find`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+credential},body:JSON.stringify({bucket:missing?'absent':'chosen'}),signal:AbortSignal.timeout(5000)});return {status:response.status,body:await response.json()};};
+const ready=async()=>{const r=await fetch(`http://127.0.0.1:${deployment.port}/health/ready`);expect(r.status).toBe(200);return {status:r.status,body:await r.json()};};
+const selectedIds=(hidden:number[]=[])=>{let list=ids.filter((_,index)=>!hidden.includes(index));if(c.desc)list.reverse();return c.unbounded?list:list.slice(c.offset??0,(c.offset??0)+(c.limit??10));};
+try {
+  if(pg){session=(await exec("SELECT current_setting('TimeZone') AS zone,current_setting('DateStyle') AS style"))[0];originalSettings=observer.nativeForm(await exec("SELECT setconfig FROM pg_db_role_setting WHERE setdatabase=(SELECT oid FROM pg_database WHERE datname=current_database()) AND setrole=0"));await exec("ALTER DATABASE jadpo_auth_test_runtime SET TimeZone TO 'UTC'");await exec("ALTER DATABASE jadpo_auth_test_runtime SET DateStyle TO 'ISO, MDY'");await exec('DROP TABLE IF EXISTS "timed_record"');}
+  if(pg){Bun.env.DATABASE_URL=url;delete Bun.env.SQLITE_PATH;}else{delete Bun.env.DATABASE_URL;Bun.env.SQLITE_PATH=database;}
+  delete Bun.env.JADPO_DEBUG_TARGET_STACKS;
+  app=await import(pathToFileURL(join(project,'build/target/app.ts')).href);
+  for(const table of ['timed_record','timed_membership','timed_scope','note','__jadpo_auth_sessions','__jadpo_auth_service_credentials','user'])await exec(`DELETE FROM "${table}"`);
+  await exec('INSERT INTO "user" ("id","authentication_subject","enabled") VALUES ($1,$2,true),($3,$4,true)',[alice,'alice',bob,'bob']);
+  await exec('INSERT INTO "timed_scope" ("id","owner_id") VALUES ($1,$2),($3,$2)',[scope,bob,foreign]);
+  await exec('INSERT INTO "timed_membership" ("id","scope_id","user_id","role") VALUES ($1,$2,$3,$4)',[membership,scope,alice,'reader']);
+  for(const id of ids)await exec('INSERT INTO "timed_record" VALUES ($1,$2,$3,$4,NULL,$5)',[id,scope,'chosen',pg?aligned:millis,'authored-alias-kept']);
+  await app.initializeApplication({AUTH_SIGNING_KEY:Buffer.alloc(32,43).toString('base64url'),AUTH_PREVIOUS_SIGNING_KEY:Buffer.alloc(32,44).toString('base64url'),BROWSER_ORIGIN:'https://many.test'});
+  const now=Date.now();credential=(await app.authenticationHost().issue('api_bearer','alice',now+60000,now)).credential;
+  server=Bun.serve({hostname:'127.0.0.1',port:0,fetch:app.handleRequest});deployment=app.createDeploymentServer(0);ports={application:server.port,deployment:deployment.port};
+  observer.configure({});const journal=observer.beginObservation();Bun.env.JADPO_DEBUG_TARGET_STACKS='1';baselineResponse=await request();delete Bun.env.JADPO_DEBUG_TARGET_STACKS;observer.endObservation();
+  expect(baselineResponse.status).toBe(200);expect(baselineResponse.body.map((r:any)=>r.id)).toEqual(selectedIds());for(const row of baselineResponse.body)expect(row.instant).toBe(aligned);
+  baseline=await snapshot();const business=journal.trace.filter((x:any)=>/^SELECT /u.test(x.sql)&&x.sql.includes('FROM "timed_record"'));expect(business).toHaveLength(1);
+  if(pg){expect(business[0].rows[0].jadpo_probe_timezone).toBe('UTC');expect(business[0].rows[0].jadpo_probe_datestyle).toBe('ISO, MDY');selectedPid=business[0].rows[0].jadpo_probe_backend_pid;expect(Number.isInteger(selectedPid)).toBe(true);pids=(await exec('SELECT pid FROM pg_stat_activity WHERE datname=current_database()')).map((x:any)=>x.pid);}
+  observations.push({phase:'initialized',readiness:await ready(),response:baselineResponse,baseline,journal,credentialQualification:'actual native opaque credential issue; generated validation/authority; credential bytes omitted',versions:{bun:Bun.version,icu:process.versions.icu,tz:process.versions.tz??null,postgres:pg?(await exec('SHOW server_version'))[0].server_version:null}});
+  const field=c.field??'instant';expect(['instant','optional_instant']).toContain(field);const mutatedIndex=c.index??0;
+  if(!c.omit){if(pg){const type=c.type??'timestamptz(6)';expect(['timestamptz(6)','text']).toContain(type);await exec(`ALTER TABLE "timed_record" ALTER COLUMN "${field}" TYPE ${type} USING "${field}"::${type}`);await exec(`UPDATE "timed_record" SET "${field}"=$1::${type} WHERE "id"=$2`,[c.value??null,ids[mutatedIndex]]);}else{if(c.bypassCheck)await exec('PRAGMA ignore_check_constraints=ON');try{await exec(`UPDATE "timed_record" SET "${field}"=$1 WHERE "id"=$2`,[c.value??null,ids[mutatedIndex]]);}finally{await exec('PRAGMA ignore_check_constraints=OFF');expect((await exec('PRAGMA ignore_check_constraints'))[0].ignore_check_constraints).toBe(0);}}}
+  const hidden:number[]=c.hiddenOnly?[0,1,2]:c.mixed?[mutatedIndex]:[];for(const index of hidden)await exec('UPDATE "timed_record" SET "scope_id"=$1 WHERE "id"=$2',[foreign,ids[index]]);
+  const before=await snapshot();const column=pg?observer.nativeForm(await exec("SELECT a.attname AS name,a.atttypid::integer AS oid,a.atttypmod AS precision,a.attnotnull AS required FROM pg_attribute a WHERE a.attrelid='timed_record'::regclass AND a.attname=$1",[field])):observer.nativeForm(await exec('PRAGMA table_info(timed_record)'));
+  expect(before.map((r:any)=>r.id)).toEqual(ids);if(pg){expect(column[0].oid).toBe(c.omit?1184:c.type==='text'?25:1184);expect(column[0].precision).toBe(c.omit?3:c.type==='text'?-1:6);}observations.push({phase:'physical_mutation',before,column,field,fixtureMutation:!c.omit,hidden,checkedSchemaBypassDiagnostic:Boolean(c.bypassCheck)});
+  observer.configure(c,c.revoke?async()=>{await exec('DELETE FROM "timed_membership" WHERE "id"=$1',[membership]);observations.push({phase:'fixture_authority_revoked_after_native_read',membership:await exec('SELECT * FROM "timed_membership"')});}:null);
+  const ei=events.length,fi=faults.length,typed=observer.beginObservation();Bun.env.JADPO_DEBUG_TARGET_STACKS='1';let response:any;try{response=await request(c.missing);}finally{delete Bun.env.JADPO_DEBUG_TARGET_STACKS;observer.endObservation();}
+  const actualEvents=events.slice(ei),actualFaults=faults.slice(fi);observations.push({phase:'typed_query',response,journal:typed,events:actualEvents,faults:actualFaults});expect(await snapshot()).toEqual(before);
+  const queries=typed.trace.filter((x:any)=>/^SELECT /u.test(x.sql)&&x.sql.includes('FROM "timed_record"'));expect(queries).toHaveLength(1);expect(queries[0].parameters[0]).toBe(c.missing?'absent':'chosen');expect(typed.trace.every((x:any)=>/^\s*SELECT /u.test(x.sql))).toBe(true);
+  expect(queries[0].sql).toContain(`ORDER BY "id" ${c.desc?'DESC':'ASC'}`);if(c.unbounded){expect(queries[0].sql).not.toContain(' LIMIT ');}else{expect(queries[0].parameters.slice(1,3)).toEqual([c.limit??10,c.offset??0]);expect(queries[0].sql).toContain(' LIMIT ');expect(queries[0].sql).toContain(' OFFSET ');}
+  const rawStage=typed.stages.find((s:any)=>s.name==='raw_before_policy'),visibleStage=typed.stages.find((s:any)=>s.name==='visible_after_policy');expect(rawStage).toBeDefined();expect(visibleStage).toBeDefined();
+  for(const row of rawStage.rows){expect(row.keys).toEqual(['id','scope_id','bucket','instant','optional_instant','jadpo_probe_carrier_instant']);const original=queries[0].rows.find((x:any)=>x.id===row.value.id);for(const key of row.keys)expect(row.value[key]).toEqual(original[key]);}
+  for(const row of visibleStage.rows)expect(rawStage.rows.map((r:any)=>r.identity)).toContain(row.identity);
+  const scopeQueries=typed.trace.filter((x:any)=>x.sql.startsWith('SELECT 1 FROM \"timed_scope\"')),memberQueries=typed.trace.filter((x:any)=>x.sql.startsWith('SELECT 1 FROM \"timed_membership\"'));expect(scopeQueries).toHaveLength(rawStage.rows.length);expect(memberQueries).toHaveLength(rawStage.rows.length*2);for(const q of [...scopeQueries,...memberQueries])expect(q.parameters).toEqual([scope,alice]);
+  const decoded=typed.stages.filter((s:any)=>s.name==='selected_decode');for(const row of decoded)expect(visibleStage.rows.map((r:any)=>r.identity)).toContain(row.rows[0].identity);
+  if(c.fault){expect(response.status).toBe(500);expect(response.body).toEqual({error:{code:'internal_fault',message:'An internal error occurred.',request_id:expect.stringMatching(/^req_[0-9a-f-]{36}$/u)}});expect(actualFaults).toEqual([{name:'PersistenceFault',constructor:'PersistenceFault',kind:'data',operation:'decode.TimedRecord'}]);expect(actualEvents).toHaveLength(1);expect(actualEvents[0]).toMatchObject({requestId:response.body.error.request_id,eventName:'operation.failed'});expect(JSON.stringify(response.body)+JSON.stringify(actualEvents)).not.toContain('private-invalid');}
+  else{expect(response.status).toBe(200);expect(response.body.map((r:any)=>r.id)).toEqual(c.revoke||c.missing?[]:selectedIds(hidden));expect(actualEvents).toEqual([]);expect(actualFaults).toEqual([]);for(const row of response.body)expect(row[field]).toBe(row.id===ids[mutatedIndex]&&!c.omit?(c.output??null):(field==='instant'?aligned:null));expect(decoded).toHaveLength(response.body.length);}
+  if(c.hiddenOnly||c.revoke||c.missing)expect(decoded).toHaveLength(0);
+} catch(error) { failure={name:(error as any).name,message:(error as any).message}; }
+finally {
+  try {if(baseline){if(pg&&selectedPid!==null)observations.push({phase:'native_session_restored',evidence:await observer.restoreNativeSession(session.zone,session.style,selectedPid)});observer.configure({});if(pg)for(const field of ['instant','optional_instant'])await exec(`ALTER TABLE "timed_record" ALTER COLUMN "${field}" TYPE timestamptz(3) USING '2026-10-25T00:30:00.123Z'::timestamptz`);else await exec('PRAGMA ignore_check_constraints=ON');
+    try{for(const row of baseline)for(const field of ['instant','optional_instant'])await exec(`UPDATE "timed_record" SET "${field}"=$1${pg?'::timestamptz':''},"scope_id"=$2 WHERE "id"=$3`,[row[field],scope,row.id]);}finally{if(!pg)await exec('PRAGMA ignore_check_constraints=OFF');}
+    await exec('INSERT INTO "timed_membership" VALUES ($1,$2,$3,$4) ON CONFLICT ("id") DO NOTHING',[membership,scope,alice,'reader']);expect(await snapshot()).toEqual(baseline);const restored=await request();expect(restored).toEqual(baselineResponse);observations.push({phase:'restored',physical:await snapshot(),response:restored,readiness:await ready(),checkBypassDisabled:pg?null:(await exec('PRAGMA ignore_check_constraints'))[0].ignore_check_constraints===0});}
+    if(pg&&originalSettings!==null){for(const name of ['TimeZone','DateStyle'])await exec(`ALTER DATABASE jadpo_auth_test_runtime RESET ${name}`);for(const setting of originalSettings.flatMap((x:any)=>x.setconfig??[])){const i=setting.indexOf('='),name=setting.slice(0,i),value=setting.slice(i+1);if(['TimeZone','DateStyle'].some(n=>n.toLowerCase()===name.toLowerCase()))await exec(`ALTER DATABASE jadpo_auth_test_runtime SET ${name} TO '${value.replaceAll("'","''")}'`);}expect(observer.nativeForm(await exec("SELECT setconfig FROM pg_db_role_setting WHERE setdatabase=(SELECT oid FROM pg_database WHERE datname=current_database()) AND setrole=0"))).toEqual(originalSettings);observations.push({phase:'settings_restored',originalSettings});}
+  } catch(error) { failure??={name:'cleanup',message:(error as any).message}; }
+  server?.stop(true);deployment?.stop(true);if(pg)await (inspector as SQL).close();else (inspector as Database).close();console.error=oldError;credential='';
+}
+await Bun.write(Bun.stdout,JSON.stringify({kind:'native_original_many_instant',engine:pg?'postgres':'sqlite',case:c,observations,failure,ports,ownedPostgresPids:pids})+'\n');process.exit(failure?1:0);
