@@ -228,13 +228,15 @@ impl Scan {
             }
             Expression::Query(value) => {
                 // The predicate field is an entity field Name, not a lexical
-                // expression. Only ordinary point-query RHS values are linked.
-                if matches!(
+                // expression. Ordinary point and many-query RHS values use the
+                // outer environment; pagination remains checked literals only.
+                let ordinary_point = matches!(
                     value.cardinality,
                     QueryCardinality::Optional | QueryCardinality::Required
-                ) && value.page.is_none()
+                ) && value.pagination.is_none();
+                if (ordinary_point || value.cardinality == QueryCardinality::Many)
+                    && value.page.is_none()
                     && value.includes.is_empty()
-                    && value.pagination.is_none()
                 {
                     self.expr(&value.value);
                 }

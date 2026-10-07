@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-403-21986c4f510c", "task_id": "RM-403", "actor": "root-intrinsic-owner-independent-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 1.5], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-07T00:34:41.456976+00:00", "phase": "planning"}
+{"at": "2026-10-07T00:36:33.809573+00:00", "phase": "verification", "note": "Independent exact3-leaf/134safe/74primary review; own native four cases and causal replays"}
+{"at": "2026-10-07T00:37:30.730799+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-native-lifetime-grounding/ordinary-reserved-owner-design/connection-intrinsic-probe/independent-review/review.json"}

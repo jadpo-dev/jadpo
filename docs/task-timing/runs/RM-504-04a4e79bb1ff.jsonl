@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-504-04a4e79bb1ff", "task_id": "RM-504", "actor": "root-many-product-assessment", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-07T00:17:58.310412+00:00", "phase": "planning"}
+{"at": "2026-10-07T00:18:31.331213+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm504-after-ready-stored-corruption/residual-precision-plan/ordinary-many-product-plan/parent-assessment.json"}

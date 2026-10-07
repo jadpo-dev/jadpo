@@ -15,7 +15,7 @@ const cases:any[]=[
  {label:'portable negative Duration boundary',field:'elapsed',value:'-9007199254740991',positive:true},
  {label:'Instant year10000',field:'instant',value:pg?'10000-01-01 00:00:00+00':253402300800000},
  {label:'impossible CalendarDate',field:'calendar_date',value:'2026-02-30',storageRefusal:!!pg},
- ...(pg?[{label:'CalendarDate year10000',field:'calendar_date',value:'10000-01-01'},{label:'diagnostic after-ready PostgreSQL six-digit precision',field:'instant',value:'2026-10-25 00:30:00.123456+00',mode:'precision-diagnostic'}]:[]),
+ ...(pg?[{label:'CalendarDate year10000',field:'calendar_date',value:'10000-01-01'},{label:'after-ready PostgreSQL six-digit precision refused',field:'instant',value:'2026-10-25 00:30:00.123456+00',mode:'precision-fault'}]:[]),
  {label:'Time unknown zone',field:'resolved',value:JSON.stringify({instant:'2026-10-25T00:30:00.123Z',zone:'canary_private'})},
  {label:'Time extra field',field:'resolved',value:JSON.stringify({instant:'2026-10-25T00:30:00.123Z',zone:'Europe/London',canary_private:'private payload'})},
  {label:'Time zoneless instant',field:'resolved',value:JSON.stringify({instant:'2026-10-25T00:30:00.123',zone:'Europe/London'})},

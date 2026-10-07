@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-403-668ee06aa345", "task_id": "RM-403", "actor": "root", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T23:50:04.828684+00:00", "phase": "planning"}
+{"at": "2026-10-06T23:50:23.744074+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm403-native-lifetime-grounding/ordinary-reserved-owner-design/backend-ack-probe/independent-review/review.json"}
