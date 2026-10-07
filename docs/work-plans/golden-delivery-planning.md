@@ -25,6 +25,14 @@ candidate has independent transaction/effect review.
 
 ## Checkpoint
 
+### RM-109 planning-only closure audit — 2026-10-07
+
+The [source-bound audit and finite window](../../tests/validation/evidence/golden-loop-rm109-closure-audit/plan.json) rehashes all 713 current maintained inputs and 80 actual compiler inputs while the parent full gate runs. It preserves the completed 108/703/77 checkpoint as historical 88 supporting passes, with 49 frozen pressure-source diagnostics and 88 formal `not_run` entries. All 44 original IDs, 94 backend/variant scenarios and 100 ordered steps remain mapped; only the exact accepted JOB-001 UUID successor replaces an expectation, and REL-003 remains a compiler-only refused assignment with supplied-unverified aliases. No current-gate pass or whole-task closure is inferred.
+
+The next eligible tooling slice validates every classified application HTTP response against the actual generated OpenAPI on the existing single checkpoint run. It validates service exchange before credential redaction and refuses unknown observation locations, missing status/schema, ambiguous routes and closed-envelope drift. A second bounded slice checks existing route/callable/auth/policy/query agreement, initially for list and UserWithTodos paths; missing compiler linkage remains explicit. Both plans are prepared for parent assessment; implementation has not started. Final authoritative accepted-successor integration is conditional on exact technical prerequisites, with the original frozen comparison retained. RM-108 and RM-402 are complete; the RM-306 checked golden milestone suffices without generic event-binding implementation. Existing database-binding/publication questions are not repeated or answered by this audit.
+
+Planning pin remains gpt-6.1-sol/high, timer `RM-109-0e3d61f3658f`, original task forecast 1–4h and bounded audit forecast 0.5–1.5h. The [owning feasibility record](../../tests/validation/rm109-final-gate-feasibility.json) retains prior epochs and links this additive audit. Root 713 source, frozen contracts, authority/defaults and final gate activation were unchanged.
+
 **Active parallel delivery loop, 2026-10-06:** the owner explicitly confirmed
 repeated implementation batches through technical golden Todo completion. A
 merged PR or partial slice is a checkpoint, not a stopping quota. Continue

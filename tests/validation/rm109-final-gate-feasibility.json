@@ -2752,5 +2752,16 @@
       }
     }
   ],
-  "no_changes": "Frozen44 acceptance bytes unchanged. Supporting tooling/decoder changed; no compiler/runtime implementation, public registration or require-golden activation in this leaf."
+  "no_changes": "Frozen44 acceptance bytes unchanged. Supporting tooling/decoder changed; no compiler/runtime implementation, public registration or require-golden activation in this leaf.",
+  "current_closure_audit": {
+    "scope": "Planning-only current713/80 closure audit; old feasibility epochs retained unchanged",
+    "plan": "tests/validation/evidence/golden-loop-rm109-closure-audit/plan.json",
+    "planSHA256": "3e77551e57595381ddd0e461ca8e3514f69bc46e49302b0ed02f2794c9481384",
+    "inputPins": "tests/validation/evidence/golden-loop-rm109-closure-audit/input-pins.json",
+    "caseMap": "tests/validation/evidence/golden-loop-rm109-closure-audit/case-closure-map.json",
+    "nextEligible": "GOLDEN-AGREEMENT-HTTP tooling slice after parent assessment; finalgate remains blocked on exacttechnical prerequisites",
+    "timer": "RM-109-0e3d61f3658f",
+    "taskComplete": false,
+    "releaseEquivalent": false
+  }
 }
