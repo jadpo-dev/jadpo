@@ -22,6 +22,7 @@ mod first_party;
 mod liveness;
 mod many_instant;
 mod point_instant;
+mod page_instant;
 
 const JWT_PACKAGE: &str = include_str!("runtime/jwt/package.json");
 const JWT_LOCK: &str = include_str!("runtime/jwt/bun.lock");
@@ -1078,6 +1079,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
             } else {
                 ", decodePointInstant"
             };
+            let page_import = if self.page_instant_entities().is_empty() { "" } else { ", decodePageInstant" };
             let delivery_import = if self.project.delivery_model().bindings().is_empty() {
                 ""
             } else {
@@ -1086,7 +1088,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
             line(
                 &mut output,
                 &format!(
-                    "import {{ persistence as rootPersistence, PersistenceFault, PolicyFault, normalizePersistenceFailure, isPersistenceReady as databaseIsReady, isPersistenceInitializationFatal as persistenceInitializationFatal, refreshPersistenceReadiness as refreshDatabaseReadiness{isolated_test_import}{lifecycle_import}{delivery_import}{point_import} }} from \"./persistence.ts\";"
+                    "import {{ persistence as rootPersistence, PersistenceFault, PolicyFault, normalizePersistenceFailure, isPersistenceReady as databaseIsReady, isPersistenceInitializationFatal as persistenceInitializationFatal, refreshPersistenceReadiness as refreshDatabaseReadiness{isolated_test_import}{lifecycle_import}{delivery_import}{point_import}{page_import} }} from \"./persistence.ts\";"
                 ),
             );
             if self.project.delivery_model().bindings().is_empty() {
@@ -4028,8 +4030,11 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         self.first_party_storage(&mut output);
         self.persistence_policy_runtime(&mut output);
-        if !self.instant_storage_entities().is_empty() {
+        if !self.instant_storage_entities().is_empty() || !self.page_instant_entities().is_empty() {
             output.push_str(include_str!("runtime/point_instant_storage.ts"));
+        }
+        if !self.page_instant_entities().is_empty() {
+            output.push_str(include_str!("runtime/page_instant_storage.ts"));
         }
         output.push_str(include_str!("runtime/delivery_claims.ts"));
         if !self.project.delivery_model().bindings().is_empty() {
@@ -4310,10 +4315,17 @@ export const temporal = Object.freeze({
         line(&mut output, "  did_change(value: unknown): boolean {");
         line(&mut output, "    return typeof value === \"object\" && value !== null && semanticChanges.get(value) === true;");
         line(&mut output, "  },");
-        line(&mut output, "  async query_page_rows(operation: string, entity: string, postgresFirstSql: string, sqliteFirstSql: string, postgresAfterSql: string, sqliteAfterSql: string, values: ReadonlyArray<Readonly<{ value: unknown; kind: string }>>, hasCursor: boolean): Promise<unknown[]> {");
+        let page_descriptors_argument = if self.page_instant_entities().is_empty() { "" } else { ", instantDescriptors: readonly PointInstantDescriptor[] | null = null" };
+        line(&mut output, &format!("  async query_page_rows(operation: string, entity: string, postgresFirstSql: string, sqliteFirstSql: string, postgresAfterSql: string, sqliteAfterSql: string, values: ReadonlyArray<Readonly<{{ value: unknown; kind: string }}>>, hasCursor: boolean{page_descriptors_argument}): Promise<unknown[]> {{"));
         line(&mut output, "    const postgresValues = values.map(item => persistenceValue(item.value, item.kind, true));");
         line(&mut output, "    const sqliteValues = values.map(item => persistenceValue(item.value, item.kind, false));");
-        line(&mut output, "    return policyReadRows(operation, entity, hasCursor ? postgresAfterSql : postgresFirstSql, hasCursor ? sqliteAfterSql : sqliteFirstSql, postgresValues, sqliteValues);");
+        if self.page_instant_entities().is_empty() {
+            line(&mut output, "    return policyReadRows(operation, entity, hasCursor ? postgresAfterSql : postgresFirstSql, hasCursor ? sqliteAfterSql : sqliteFirstSql, postgresValues, sqliteValues);");
+        } else {
+            line(&mut output, "    const rows = await policyReadRows(operation, entity, hasCursor ? postgresAfterSql : postgresFirstSql, hasCursor ? sqliteAfterSql : sqliteFirstSql, postgresValues, sqliteValues);");
+            line(&mut output, "    if (instantDescriptors !== null) capturePointInstants(rows, entity, postgres !== null, instantDescriptors);");
+            line(&mut output, "    return rows;");
+        }
         line(&mut output, "  },");
         line(
             &mut output,
@@ -10092,7 +10104,7 @@ export const temporal = Object.freeze({
                     .collect::<Vec<_>>()
                     .join(".");
                 if let Some(page) = &query.page {
-                    self.query_page_expression(page, &name)
+                    self.query_page_expression(page, &name, query.includes.is_empty())
                 } else if query.includes.len() > 1 {
                     self.multi_include_expression(query, &name)
                 } else if let Some(include) = query.includes.first() {
@@ -10442,12 +10454,21 @@ export const temporal = Object.freeze({
         }
     }
 
-    fn query_page_expression(&self, page: &jadpo_syntax::QueryPage, entity_name: &str) -> String {
-        let postgres_first_sql =
+    fn query_page_expression(&self, page: &jadpo_syntax::QueryPage, entity_name: &str, ordinary: bool) -> String {
+        let mut postgres_first_sql =
             self.query_page_sql(entity_name, page, SqlDialect::Postgres, false);
-        let postgres_after_sql = self.query_page_sql(entity_name, page, SqlDialect::Postgres, true);
+        let mut postgres_after_sql = self.query_page_sql(entity_name, page, SqlDialect::Postgres, true);
         let sqlite_first_sql = self.query_page_sql(entity_name, page, SqlDialect::Sqlite, false);
         let sqlite_after_sql = self.query_page_sql(entity_name, page, SqlDialect::Sqlite, true);
+        let descriptors = if ordinary { self.page_instant_descriptors(page, entity_name) } else { Vec::new() };
+        let instant_fields: BTreeSet<&str> = descriptors.iter().map(|(field,_,_,_)|field.as_str()).collect();
+        if !descriptors.is_empty() {
+            postgres_first_sql = self.point_instant_projection_sql(&postgres_first_sql, &descriptors);
+            postgres_after_sql = self.point_instant_projection_sql(&postgres_after_sql, &descriptors);
+        }
+        let descriptor_argument = if descriptors.is_empty() { String::new() } else {
+            format!(", [{}]", descriptors.iter().map(|(field,value,kind,nullable)|format!("[{}, {}, {}, {}]", ts_string(field), ts_string(value), ts_string(kind), nullable)).collect::<Vec<_>>().join(", "))
+        };
         let values = self.query_page_values(entity_name, page);
         let projection_name = type_name(&page.projection);
         let result_name = type_name(&page.result);
@@ -10474,8 +10495,9 @@ export const temporal = Object.freeze({
                     "`database.{result_name}.items[${{index}}].{}`",
                     field.name.text
                 );
-                let decoded =
-                    self.database_decode_expression(&entity_field.field_type, &raw, &path);
+                let decoded = if instant_fields.contains(field.name.text.as_str()) {
+                    self.page_instant_decode(entity_field, entity_name, "row", &path, &format!("decode.{result_name}"))
+                } else { self.database_decode_expression(&entity_field.field_type, &raw, &path) };
                 format!("{}: {decoded}", field.name.text)
             })
             .collect::<Vec<_>>()
@@ -10491,8 +10513,9 @@ export const temporal = Object.freeze({
                     .expect("checked cursor field exists on page entity");
                 let raw = format!("last[{}]", ts_string(&field.text));
                 let path = ts_string(&format!("database.{result_name}.next.{}", field.text));
-                let decoded =
-                    self.database_decode_expression(&entity_field.field_type, &raw, &path);
+                let decoded = if instant_fields.contains(field.text.as_str()) {
+                    self.page_instant_decode(entity_field, entity_name, "last", &path, &format!("decode.{result_name}"))
+                } else { self.database_decode_expression(&entity_field.field_type, &raw, &path) };
                 format!("{}: {decoded}", field.text)
             })
             .collect::<Vec<_>>()
@@ -10504,7 +10527,7 @@ export const temporal = Object.freeze({
         let page_size = self.expression(&page.limit);
         let after = self.expression(&page.after);
         format!(
-            "(await (async () => {{ const values = [{values}]; const pageRows = await persistence.query_page_rows({operation}, {}, {}, {}, {}, {}, values, ({after} !== undefined && {after} !== null)); const pageSize = {page_size}; try {{ const hasNext = pageRows.length > pageSize; const selected = pageRows.slice(0, pageSize); const items = selected.map((value: unknown, index: number) => {{ const row = expectObject(value, `database.{result_name}.items[${{index}}]`); return validate_{projection_name}({{ {projection_fields} }}, `database.{result_name}.items[${{index}}]`); }}); const last = selected[selected.length - 1] as Record<string, unknown> | undefined; const next = hasNext && last !== undefined ? validate_{cursor_name}({{ {cursor_fields} }}, {}) : null; return validate_{result_name}({{ items, next }}, {}); }} catch (error) {{ if (error instanceof PersistenceFault) throw error; throw new PersistenceFault({decode_operation}, \"data\", error); }} }})())",
+            "(await (async () => {{ const values = [{values}]; const pageRows = await persistence.query_page_rows({operation}, {}, {}, {}, {}, {}, values, ({after} !== undefined && {after} !== null){descriptor_argument}); const pageSize = {page_size}; try {{ const hasNext = pageRows.length > pageSize; const selected = pageRows.slice(0, pageSize); const items = selected.map((value: unknown, index: number) => {{ const row = expectObject(value, `database.{result_name}.items[${{index}}]`); return validate_{projection_name}({{ {projection_fields} }}, `database.{result_name}.items[${{index}}]`); }}); const last = selected[selected.length - 1] as Record<string, unknown> | undefined; const next = hasNext && last !== undefined ? validate_{cursor_name}({{ {cursor_fields} }}, {}) : null; return validate_{result_name}({{ items, next }}, {}); }} catch (error) {{ if (error instanceof PersistenceFault) throw error; throw new PersistenceFault({decode_operation}, \"data\", error); }} }})())",
             ts_string(entity_name),
             ts_string(&postgres_first_sql),
             ts_string(&sqlite_first_sql),
