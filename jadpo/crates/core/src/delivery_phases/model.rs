@@ -124,7 +124,9 @@ enum Phase {
     Selection,
     Admission,
     Dispatch,
+    AcceptanceProof,
     Completion,
+    Reconciliation,
 }
 impl Phase {
     fn name(self) -> &'static str {
@@ -132,6 +134,8 @@ impl Phase {
             Self::Selection => "selection",
             Self::Admission => "admission",
             Self::Dispatch => "dispatch",
+            Self::AcceptanceProof => "acceptance_proof",
+            Self::Reconciliation => "reconciliation",
             Self::Completion => "completion",
         }
     }
@@ -173,6 +177,18 @@ enum Requirement {
     StillUnsent,
     CompilerObservationTimeOnly,
     CompletionTransaction,
+    OpaqueCheckedAdapterAcceptedProof,
+    InsertOnlyCanonicalProofSchema,
+    ImmutableBindingContractAndClaimProfile,
+    LiveOriginalFenceAtProofInsertAndPrecommitObservation,
+    ProofOutsideProviderRetryCatch,
+    ProofCommitAcknowledgedBeforePublication,
+    MissingProofUnknownNoBackfill,
+    PrivilegedPurposeCurrentOwner,
+    ExactDurableAcceptedProof,
+    ExpiredProofTerminalOnly,
+    NoInvocationBudgetReset,
+    ReconciliationTransaction,
 }
 impl Requirement {
     fn name(self) -> &'static str {
@@ -217,6 +233,26 @@ impl Requirement {
             Self::StillUnsent => "todo_still_unsent",
             Self::CompilerObservationTimeOnly => "compiler_receipt_observation_time_only",
             Self::CompletionTransaction => "same_completion_transaction",
+            Self::OpaqueCheckedAdapterAcceptedProof => "opaque_checked_adapter_accepted_proof",
+            Self::InsertOnlyCanonicalProofSchema => "insert_only_canonical_proof_schema",
+            Self::ImmutableBindingContractAndClaimProfile => {
+                "immutable_binding_contract_claim_payload_profile"
+            }
+            Self::LiveOriginalFenceAtProofInsertAndPrecommitObservation => "live_original_fence_at_proof_insert_and_precommit_observation",
+            Self::ProofOutsideProviderRetryCatch => "proof_storage_outside_provider_retry_catch",
+            Self::ProofCommitAcknowledgedBeforePublication => {
+                "proof_commit_acknowledged_before_publication"
+            }
+            Self::MissingProofUnknownNoBackfill => "missing_or_uncertain_proof_unknown_no_backfill",
+            Self::PrivilegedPurposeCurrentOwner => {
+                "privileged_reconciliation_purpose_current_owner"
+            }
+            Self::ExactDurableAcceptedProof => "exact_durable_genuine_accepted_proof",
+            Self::ExpiredProofTerminalOnly => "elapsed_original_caps_terminal_bookkeeping_only",
+            Self::NoInvocationBudgetReset => "no_new_invocation_renewal_budget_reset",
+            Self::ReconciliationTransaction => {
+                "receipt_state_matching_revision_sent_atomic_reconciliation"
+            }
         }
     }
 }
@@ -224,6 +260,7 @@ impl Requirement {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 // Canonical target-name order; never allocation or authored source order.
 enum PrivateTarget {
+    AcceptedProof,
     Fence,
     InvocationBudget,
     Receipt,
@@ -238,6 +275,7 @@ impl PrivateTarget {
             Self::Receipt => "receipt",
             Self::ScheduleRevision => "todo_schedule_revision",
             Self::InvocationBudget => "invocation_budget",
+            Self::AcceptedProof => "accepted_proof",
         }
     }
 }
@@ -297,7 +335,7 @@ pub struct DeliveryPhaseCandidate {
     job: String,
     binding: String,
     authority: DeliveryAuthorityCandidate,
-    rows: [PhaseRow; 4],
+    rows: [PhaseRow; 6],
     open: (String, String),
     order: [String; 2],
     selection: String,
@@ -556,10 +594,35 @@ impl DeliveryPhaseCandidate {
                 ],
             },
             PhaseRow {
+                phase: Phase::AcceptanceProof,
+                reads: [identity.clone()].into_iter().collect(),
+                predicates: BTreeSet::new(),
+                writes: BTreeSet::new(),
+                private_reads: [
+                    PrivateTarget::Intent,
+                    PrivateTarget::Fence,
+                    PrivateTarget::InvocationBudget,
+                ]
+                .into_iter()
+                .collect(),
+                private_writes: [PrivateTarget::AcceptedProof].into_iter().collect(),
+                invokes: None,
+                requirements: vec![
+                    Requirement::OpaqueCheckedAdapterAcceptedProof,
+                    Requirement::InsertOnlyCanonicalProofSchema,
+                    Requirement::ImmutableBindingContractAndClaimProfile,
+                    Requirement::LiveOriginalFenceAtProofInsertAndPrecommitObservation,
+                    Requirement::ProofOutsideProviderRetryCatch,
+                    Requirement::ProofCommitAcknowledgedBeforePublication,
+                    Requirement::MissingProofUnknownNoBackfill,
+                    Requirement::AdmittedAuthorityOnly,
+                ],
+            },
+            PhaseRow {
                 phase: Phase::Completion,
                 reads: [identity.clone(), sent.clone()].into_iter().collect(),
                 predicates: BTreeSet::new(),
-                writes: [sent].into_iter().collect(),
+                writes: [sent.clone()].into_iter().collect(),
                 private_reads: [
                     PrivateTarget::Intent,
                     PrivateTarget::Fence,
@@ -580,6 +643,39 @@ impl DeliveryPhaseCandidate {
                     Requirement::StillUnsent,
                     Requirement::CompilerObservationTimeOnly,
                     Requirement::CompletionTransaction,
+                ],
+            },
+            PhaseRow {
+                phase: Phase::Reconciliation,
+                reads: [identity.clone(), sent.clone()].into_iter().collect(),
+                predicates: BTreeSet::new(),
+                writes: [sent].into_iter().collect(),
+                private_reads: [
+                    PrivateTarget::AcceptedProof,
+                    PrivateTarget::Intent,
+                    PrivateTarget::Fence,
+                    PrivateTarget::InvocationBudget,
+                    PrivateTarget::Receipt,
+                    PrivateTarget::ScheduleRevision,
+                ]
+                .into_iter()
+                .collect(),
+                private_writes: [PrivateTarget::Intent, PrivateTarget::Receipt]
+                    .into_iter()
+                    .collect(),
+                invokes: None,
+                requirements: vec![
+                    Requirement::PrivilegedPurposeCurrentOwner,
+                    Requirement::ExactDurableAcceptedProof,
+                    Requirement::ImmutableBindingContractAndClaimProfile,
+                    Requirement::ExpiredProofTerminalOnly,
+                    Requirement::NoInvocationBudgetReset,
+                    Requirement::MissingProofUnknownNoBackfill,
+                    Requirement::OriginalRevisionEqualsCurrent,
+                    Requirement::StillUnsent,
+                    Requirement::CompilerObservationTimeOnly,
+                    Requirement::AdmittedAuthorityOnly,
+                    Requirement::ReconciliationTransaction,
                 ],
             },
         ];
@@ -675,7 +771,7 @@ impl DeliveryPhaseCandidate {
     // No checked-authority label: the opaque core binding owns that context.
     pub(crate) fn obligation_source_facts(&self) -> Value {
         let authority = self.authority.facts();
-        json!({"job": self.job, "binding": self.binding,
+        json!({"contract_version":2, "job": self.job, "binding": self.binding,
             "authority": authority, "selection": self.selection, "completion": self.completion,
             "operation": self.operation, "open": {"field": self.open.0, "variant": self.open.1},
             "order": self.order, "limit": 500, "payload_version": "reminder.v1",

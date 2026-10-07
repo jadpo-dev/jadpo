@@ -320,10 +320,16 @@ fn closed_phase_candidates_have_exact_scoped_targets_and_unproved_requirements()
             json!("ReminderMail.send_overdue_reminder"), vec!["admitted_authority_only_no_extra_live_cut",
                 "consume_shared_admitted_budget_without_reset",
                 "frozen_provider_attempts_timeout_egress_outcomes", "no_transaction_across_provider_io", "no_automatic_unknown_replay"]),
+        ("acceptance_proof", sorted(&["Todo.id"]), json!([]), json!([]),
+            private(&["revision_intent","claim_fence","invocation_budget"]), private(&["accepted_proof"]), json!(null),
+            vec!["opaque_checked_adapter_accepted_proof","insert_only_canonical_proof_schema","immutable_binding_contract_claim_payload_profile","live_original_fence_at_proof_insert_and_precommit_observation","proof_storage_outside_provider_retry_catch","proof_commit_acknowledged_before_publication","missing_or_uncertain_proof_unknown_no_backfill","admitted_authority_only_no_extra_live_cut"]),
         ("completion", sorted(&["Todo.id", "Todo.reminder_sent_at"]), json!([]), json!(["Todo.reminder_sent_at"]),
             private(&["revision_intent", "claim_fence", "receipt", "todo_schedule_revision"]), private(&["revision_intent", "receipt"]), json!(null),
             vec!["exact_key_validated_receipt", "retain_receipt_on_original_intent", "current_fencing_generation",
                 "original_schedule_revision_equals_current", "todo_still_unsent", "compiler_receipt_observation_time_only", "same_completion_transaction"]),
+        ("reconciliation", sorted(&["Todo.id", "Todo.reminder_sent_at"]), json!([]), json!(["Todo.reminder_sent_at"]),
+            private(&["accepted_proof","revision_intent","claim_fence","invocation_budget","receipt","todo_schedule_revision"]),private(&["revision_intent","receipt"]),json!(null),
+            vec!["privileged_reconciliation_purpose_current_owner","exact_durable_genuine_accepted_proof","immutable_binding_contract_claim_payload_profile","elapsed_original_caps_terminal_bookkeeping_only","no_new_invocation_renewal_budget_reset","missing_or_uncertain_proof_unknown_no_backfill","original_schedule_revision_equals_current","todo_still_unsent","compiler_receipt_observation_time_only","admitted_authority_only_no_extra_live_cut","receipt_state_matching_revision_sent_atomic_reconciliation"]),
     ].into_iter().map(|(phase, read_targets, predicate_targets, write_targets, private_read_targets, private_write_targets, invoke_target, requirements)| {
         json!({"job": "overdue_reminders", "binding": binding, "phase": phase, "authority": authority,
             "read_targets": read_targets, "predicate_targets": predicate_targets, "write_targets": write_targets,
@@ -334,7 +340,7 @@ fn closed_phase_candidates_have_exact_scoped_targets_and_unproved_requirements()
     assert_eq!(
         facts,
         json!({
-            "status": "incomplete_nonexecuting_candidate", "job": "overdue_reminders", "binding": binding,
+            "contract_version":2, "status": "incomplete_nonexecuting_candidate", "job": "overdue_reminders", "binding": binding,
             "authority": authority, "selection": "reminder_candidates", "completion": "reminder_sent",
             "operation": "ReminderMail.send_overdue_reminder",
             "open": {"field": "Todo.status", "variant": "TodoStatus.open"},
@@ -403,8 +409,15 @@ fn individual_live_predicates_and_shared_dispatch_budget_are_bound_and_unproved(
                 expected_live_predicates(&binding, row["phase"].as_str().unwrap())
             );
         }
-        assert_eq!(rows[3]["predicate_targets"], json!([]));
-        assert_eq!(rows[3]["write_targets"], json!(["Todo.reminder_sent_at"]));
+        let completion = rows
+            .iter()
+            .find(|row| row["phase"] == "completion")
+            .unwrap();
+        assert_eq!(completion["predicate_targets"], json!([]));
+        assert_eq!(
+            completion["write_targets"],
+            json!(["Todo.reminder_sent_at"])
+        );
     }
 }
 

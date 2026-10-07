@@ -15,6 +15,7 @@ use std::path::Path;
 mod delivery_authority;
 mod delivery_hooks;
 mod delivery_invocation;
+mod delivery_reconciliation;
 mod delivery_scheduler;
 mod delivery_selection;
 mod first_party;
@@ -156,7 +157,7 @@ pub fn derive_target(
     if generator.first_party_supported() {
         outputs.push(GeneratedArtifact {
             relative_path: "target/first-party-authentication.ts",
-            contents: include_str!("runtime/first_party_authentication.ts").to_owned(),
+            contents: generator.first_party_authentication_runtime(),
         });
         if generator.has_jwt() {
             outputs.extend([
@@ -1104,7 +1105,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
                 let delivery_reader = if self.project.delivery_model().bindings().is_empty() {
                     ""
                 } else {
-                    ", readDeliveryCredentialProof, readDeliveryOperatorGrant"
+                    ", readDeliveryCredentialProof, readDeliveryOperatorGrant, readDeliveryReceiptReconciliationGrant, readDeliveryAcceptedEvidenceOwner"
                 };
                 line(&mut output, &format!("import {{ createFirstPartyAuthentication{delivery_reader} }} from \"./first-party-authentication.ts\";"));
                 if self.has_jwt() {
@@ -1126,6 +1127,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
         self.first_party_application(&mut output);
         self.delivery_selection_bridges(&mut output);
         self.delivery_invocation_bridges(&mut output);
+        self.delivery_reconciliation_bridges(&mut output);
         self.delivery_scheduler_bridges(&mut output);
         self.failure_contracts(&mut output);
         self.invoke_authorization_runtime(&mut output);
@@ -3367,7 +3369,7 @@ export const temporal = Object.freeze({
         if !self.project.delivery_model().bindings().is_empty() {
             line(
                 &mut output,
-                "import { readCurrentDeliveryCredentialProof, readCurrentDeliveryOperatorGrant, readDeliverySelectionSender, validateDeliveryPayload, validateDeliverySelectionCursor } from \"./app.ts\";",
+                "import { readCurrentDeliveryCredentialProof, readCurrentDeliveryOperatorGrant, readCurrentDeliveryReceiptReconciliationGrant, readCurrentDeliveryAcceptedEvidence, readDeliverySelectionSender, validateDeliveryPayload, validateDeliverySelectionCursor } from \"./app.ts\";",
             );
         }
         line(&mut output, "let persistenceReady = false;");
@@ -4029,6 +4031,9 @@ export const temporal = Object.freeze({
             output.push_str(include_str!("runtime/point_instant_storage.ts"));
         }
         output.push_str(include_str!("runtime/delivery_claims.ts"));
+        if !self.project.delivery_model().bindings().is_empty() {
+            output.push_str(include_str!("runtime/delivery_acceptance_proofs.ts"));
+        }
         output.push_str(include_str!("runtime/delivery_scheduler.ts"));
         line(&mut output, "function createPersistenceClient(postgres: SQL | null, sqlite: Database | null, transactional = false, transactionState: { nextSavepoint: number; active: boolean; poisoned?: boolean } = { nextSavepoint: 0, active: false }, policy: PolicyRequest = emptyPolicyRequest, operationTime: string | null = null, signal: AbortSignal | null = null, deadlineAt: number | null = null, requestDeadlineAt: number | null = deadlineAt) {");
         line(&mut output, "const assertTransactionActive = (): void => { if (!transactional) return; if (sqlite !== null && sqlite.inTransaction !== true) { transactionState.active = false; transactionState.poisoned = true; } if (!transactionState.active || transactionState.poisoned) throw new PersistenceFault(\"transaction.inactive\", \"driver\", new Error(\"transaction capability expired\")); };");
@@ -4104,8 +4109,8 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         output.push_str(&include_str!("runtime/delivery_outbox.ts").replace(
             "// __JADPO_BOUND_DELIVERY_METHODS__",
-            &(self.delivery_selection_methods() + &self.delivery_invocation_methods()),
-        ));
+            &(self.delivery_selection_methods() + &self.delivery_invocation_methods() + &self.delivery_reconciliation_methods()),
+        ).replace("// __JADPO_ACCEPTANCE_PROOFS__\n", if self.project.delivery_model().bindings().is_empty() { "" } else { "  const acceptanceProofs = createDeliveryAcceptanceProofPrimitives(execute, requireTransaction, postgres !== null);\n" }));
         if self.has_lifecycle_purges() {
             output.push_str(include_str!("runtime/lifecycle_maintenance_schedule.ts"));
         }

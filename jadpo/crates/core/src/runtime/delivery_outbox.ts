@@ -137,6 +137,7 @@ const deliveryOutbox = (() => {
       return publicRecord(rows[0]);
     });
   };
+// __JADPO_ACCEPTANCE_PROOFS__
   return {
     // __JADPO_BOUND_DELIVERY_METHODS__
     ...createDeliveryClaimPrimitives(execute, requireTransaction, postgres !== null, work => client.transaction(() => work())),

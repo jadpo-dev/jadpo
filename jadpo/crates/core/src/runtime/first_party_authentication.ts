@@ -25,6 +25,21 @@ const deliveryCredentialProofs = new WeakMap<object, DeliveryIssuer & { facts: D
 // Privileged native operator provenance is separate from worker credentials.
 // Only the selected current host/storage owner may mint or read these grants.
 const deliveryOperatorGrants = new WeakMap<object, DeliveryIssuer>();
+// __JADPO_RECONCILIATION_AUTHORITY_START__
+// Accepted-proof reconciliation is a separate privileged purpose. Worker and
+// known-no-effect replay provenance can never substitute for this grant.
+const deliveryReceiptReconciliationGrants = new WeakMap<object, DeliveryIssuer>();
+export function readDeliveryAcceptedEvidenceOwner(storage: AuthenticationStorage, selectedHost: unknown): void {
+  const issuer = typeof selectedHost === "object" && selectedHost !== null ? deliveryCredentialHosts.get(selectedHost) : undefined;
+  if (issuer === undefined || issuer.storage !== storage || !issuer.owner.active) return invalid();
+}
+export function readDeliveryReceiptReconciliationGrant(grant: unknown, storage: AuthenticationStorage, selectedHost: unknown): void {
+  const record = typeof grant === "object" && grant !== null ? deliveryReceiptReconciliationGrants.get(grant) : undefined;
+  const issuer = typeof selectedHost === "object" && selectedHost !== null ? deliveryCredentialHosts.get(selectedHost) : undefined;
+  if (record === undefined || issuer === undefined || record.storage !== storage || issuer.storage !== storage
+      || record.owner !== issuer.owner || !record.owner.active) return invalid();
+}
+// __JADPO_RECONCILIATION_AUTHORITY_END__
 export function readDeliveryOperatorGrant(grant: unknown, storage: AuthenticationStorage, selectedHost: unknown): void {
   const record = typeof grant === "object" && grant !== null ? deliveryOperatorGrants.get(grant) : undefined;
   const issuer = typeof selectedHost === "object" && selectedHost !== null ? deliveryCredentialHosts.get(selectedHost) : undefined;
@@ -327,6 +342,18 @@ export async function createFirstPartyAuthentication(
       readDeliveryOperatorGrant(grant, storage, host);
       deliveryOperatorGrants.delete(grant as object);
     },
+// __JADPO_RECONCILIATION_AUTHORITY_START__
+    issueDeliveryReceiptReconciliationGrant(): object {
+      if (!deliveryProofOwner.active) return invalid();
+      const grant = Object.freeze({});
+      deliveryReceiptReconciliationGrants.set(grant, { storage, owner: deliveryProofOwner });
+      return grant;
+    },
+    revokeDeliveryReceiptReconciliationGrant(grant: unknown): void {
+      readDeliveryReceiptReconciliationGrant(grant, storage, host);
+      deliveryReceiptReconciliationGrants.delete(grant as object);
+    },
+// __JADPO_RECONCILIATION_AUTHORITY_END__
     async exchangeServiceCredential(strategyName: string, credential: string, operationNow: number) {
       const now = milliseconds(operationNow);
       const direct = config(strategyName, "service", "api_key");
