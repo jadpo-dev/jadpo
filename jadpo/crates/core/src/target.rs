@@ -15,10 +15,12 @@ use std::path::Path;
 mod delivery_authority;
 mod delivery_hooks;
 mod delivery_invocation;
+mod delivery_reconciliation;
 mod delivery_scheduler;
 mod delivery_selection;
 mod first_party;
 mod liveness;
+mod many_instant;
 mod point_instant;
 
 const JWT_PACKAGE: &str = include_str!("runtime/jwt/package.json");
@@ -156,7 +158,7 @@ pub fn derive_target(
     if generator.first_party_supported() {
         outputs.push(GeneratedArtifact {
             relative_path: "target/first-party-authentication.ts",
-            contents: include_str!("runtime/first_party_authentication.ts").to_owned(),
+            contents: generator.first_party_authentication_runtime(),
         });
         if generator.has_jwt() {
             outputs.extend([
@@ -1071,7 +1073,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
             // Finished delivery bindings need a read-only app -> persistence
             // cycle for current issuer provenance. Keep both names as live
             // imports, never sample the uninitialized persistence export.
-            let point_import = if self.point_instant_entities().is_empty() {
+            let point_import = if self.instant_storage_entities().is_empty() {
                 ""
             } else {
                 ", decodePointInstant"
@@ -1104,7 +1106,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
                 let delivery_reader = if self.project.delivery_model().bindings().is_empty() {
                     ""
                 } else {
-                    ", readDeliveryCredentialProof, readDeliveryOperatorGrant"
+                    ", readDeliveryCredentialProof, readDeliveryOperatorGrant, readDeliveryReceiptReconciliationGrant, readDeliveryAcceptedEvidenceOwner"
                 };
                 line(&mut output, &format!("import {{ createFirstPartyAuthentication{delivery_reader} }} from \"./first-party-authentication.ts\";"));
                 if self.has_jwt() {
@@ -1126,6 +1128,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
         self.first_party_application(&mut output);
         self.delivery_selection_bridges(&mut output);
         self.delivery_invocation_bridges(&mut output);
+        self.delivery_reconciliation_bridges(&mut output);
         self.delivery_scheduler_bridges(&mut output);
         self.failure_contracts(&mut output);
         self.invoke_authorization_runtime(&mut output);
@@ -3367,7 +3370,7 @@ export const temporal = Object.freeze({
         if !self.project.delivery_model().bindings().is_empty() {
             line(
                 &mut output,
-                "import { readCurrentDeliveryCredentialProof, readCurrentDeliveryOperatorGrant, readDeliverySelectionSender, validateDeliveryPayload, validateDeliverySelectionCursor } from \"./app.ts\";",
+                "import { readCurrentDeliveryCredentialProof, readCurrentDeliveryOperatorGrant, readCurrentDeliveryReceiptReconciliationGrant, readCurrentDeliveryAcceptedEvidence, readDeliverySelectionSender, validateDeliveryPayload, validateDeliverySelectionCursor } from \"./app.ts\";",
             );
         }
         line(&mut output, "let persistenceReady = false;");
@@ -4025,12 +4028,21 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         self.first_party_storage(&mut output);
         self.persistence_policy_runtime(&mut output);
-        if !self.point_instant_entities().is_empty() {
+        if !self.instant_storage_entities().is_empty() {
             output.push_str(include_str!("runtime/point_instant_storage.ts"));
         }
         output.push_str(include_str!("runtime/delivery_claims.ts"));
+        if !self.project.delivery_model().bindings().is_empty() {
+            output.push_str(include_str!("runtime/delivery_acceptance_proofs.ts"));
+        }
         output.push_str(include_str!("runtime/delivery_scheduler.ts"));
+        if !self.project.delivery_model().bindings().is_empty() {
+            line(&mut output, "const deliveryTransactionPrecommitGuards = new WeakMap<object, Set<() => void>>();");
+        }
         line(&mut output, "function createPersistenceClient(postgres: SQL | null, sqlite: Database | null, transactional = false, transactionState: { nextSavepoint: number; active: boolean; poisoned?: boolean } = { nextSavepoint: 0, active: false }, policy: PolicyRequest = emptyPolicyRequest, operationTime: string | null = null, signal: AbortSignal | null = null, deadlineAt: number | null = null, requestDeadlineAt: number | null = deadlineAt) {");
+        if !self.project.delivery_model().bindings().is_empty() {
+            line(&mut output, "  const registerDeliveryPrecommitGuard = (guard: () => void) => { if (!transactional) throw new PersistenceFault(\"delivery.transaction_required\", \"driver\", new Error(\"transaction required\")); assertTransactionActive(); guard(); let guards = deliveryTransactionPrecommitGuards.get(transactionState); if (guards === undefined) { guards = new Set(); deliveryTransactionPrecommitGuards.set(transactionState, guards); } guards.add(guard); };");
+        }
         line(&mut output, "const assertTransactionActive = (): void => { if (!transactional) return; if (sqlite !== null && sqlite.inTransaction !== true) { transactionState.active = false; transactionState.poisoned = true; } if (!transactionState.active || transactionState.poisoned) throw new PersistenceFault(\"transaction.inactive\", \"driver\", new Error(\"transaction capability expired\")); };");
         line(&mut output, "const persistenceAsync = async <T>(operation: string, execute: () => Promise<T>): Promise<T> => {");
         line(&mut output, "  assertTransactionActive();");
@@ -4104,8 +4116,8 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         output.push_str(&include_str!("runtime/delivery_outbox.ts").replace(
             "// __JADPO_BOUND_DELIVERY_METHODS__",
-            &(self.delivery_selection_methods() + &self.delivery_invocation_methods()),
-        ));
+            &(self.delivery_selection_methods() + &self.delivery_invocation_methods() + &self.delivery_reconciliation_methods()),
+        ).replace("// __JADPO_ACCEPTANCE_PROOFS__\n", if self.project.delivery_model().bindings().is_empty() { "" } else { "  const acceptanceProofs = createDeliveryAcceptanceProofPrimitives(execute, requireTransaction, postgres !== null);\n" }));
         if self.has_lifecycle_purges() {
             output.push_str(include_str!("runtime/lifecycle_maintenance_schedule.ts"));
         }
@@ -4186,7 +4198,7 @@ export const temporal = Object.freeze({
         line(&mut output, "          if (attemptDeadlineAt !== null) { const remaining = attemptDeadlineAt - performance.now(); if (remaining <= 0) throw persistenceDeadlineFault(\"transaction.statement\", requestDeadlineAt); await persistenceAsyncWithSignal(\"transaction.timeout.setup\", () => tx.unsafe(\"SELECT set_config('statement_timeout', $1, true)\", [String(Math.min(Math.ceil(remaining), 2147483647))]), attemptSignal, attemptDeadlineAt, requestDeadlineAt); }");
         line(
             &mut output,
-            "          const result = await work(createPersistenceClient(tx as SQL, null, true, attemptState, attemptPolicy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); attemptState.active = false; const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit; if (attemptDeadlineAt !== null) await persistenceAsyncWithSignal(\"transaction.timeout.reset\", () => tx.unsafe(\"SET LOCAL statement_timeout = 0\"), attemptSignal, attemptDeadlineAt, requestDeadlineAt); const afterResetLimit = checkAttemptLimit(\"transaction.statement\"); if (afterResetLimit !== null) throw afterResetLimit; callbackState = \"returned\"; return result;",
+            &if self.project.delivery_model().bindings().is_empty() { "          const result = await work(createPersistenceClient(tx as SQL, null, true, attemptState, attemptPolicy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); attemptState.active = false; const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit; if (attemptDeadlineAt !== null) await persistenceAsyncWithSignal(\"transaction.timeout.reset\", () => tx.unsafe(\"SET LOCAL statement_timeout = 0\"), attemptSignal, attemptDeadlineAt, requestDeadlineAt); const afterResetLimit = checkAttemptLimit(\"transaction.statement\"); if (afterResetLimit !== null) throw afterResetLimit; callbackState = \"returned\"; return result;".to_owned() } else { "          const result = await work(createPersistenceClient(tx as SQL, null, true, attemptState, attemptPolicy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); attemptState.active = false; const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit; if (attemptDeadlineAt !== null) await persistenceAsyncWithSignal(\"transaction.timeout.reset\", () => tx.unsafe(\"SET LOCAL statement_timeout = 0\"), attemptSignal, attemptDeadlineAt, requestDeadlineAt); const afterResetLimit = checkAttemptLimit(\"transaction.statement\"); if (afterResetLimit !== null) throw afterResetLimit; callbackState = \"returned\"; return result;".replace("if (afterResetLimit !== null) throw afterResetLimit;", "if (afterResetLimit !== null) throw afterResetLimit; for (const guard of deliveryTransactionPrecommitGuards.get(attemptState) ?? []) guard();") },
         );
         line(
             &mut output,
@@ -4231,7 +4243,7 @@ export const temporal = Object.freeze({
         line(&mut output, "      try {");
         line(
             &mut output,
-            "        try { result = await work(createPersistenceClient(null, sqlite, true, attemptState, attemptPolicy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); } finally { attemptState.active = false; } const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit;",
+            &if self.project.delivery_model().bindings().is_empty() { "        try { result = await work(createPersistenceClient(null, sqlite, true, attemptState, attemptPolicy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); } finally { attemptState.active = false; } const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit;".to_owned() } else { "        try { result = await work(createPersistenceClient(null, sqlite, true, attemptState, attemptPolicy, attemptOperationTime, attemptSignal, attemptDeadlineAt, requestDeadlineAt)); if ((attemptState as { poisoned?: boolean }).poisoned) throw new PersistenceFault(\"transaction.poisoned\", \"driver\", new Error(\"transaction recovery unproved\")); } finally { attemptState.active = false; } const callbackLimit = checkAttemptLimit(\"transaction.statement\"); if (callbackLimit !== null) throw callbackLimit;".replace("if (callbackLimit !== null) throw callbackLimit;", "if (callbackLimit !== null) throw callbackLimit; for (const guard of deliveryTransactionPrecommitGuards.get(attemptState) ?? []) guard();") },
         );
         line(&mut output, "      } catch (error) {");
         line(&mut output, "        try { sqlite!.exec(\"ROLLBACK\"); }");
@@ -4698,6 +4710,12 @@ export const temporal = Object.freeze({
                     ),
                 );
                 line(&mut output, "  },");
+                let many_enabled = self.many_instant_entities().contains(name);
+                let many_argument = if many_enabled {
+                    ", instantContext = false"
+                } else {
+                    ""
+                };
                 for order in &entity.fields {
                     for (direction, sql_direction) in [("asc", "ASC"), ("desc", "DESC")] {
                         let postgres_sql = self.select_many_sql(
@@ -4719,7 +4737,7 @@ export const temporal = Object.freeze({
                         line(
                             &mut output,
                             &format!(
-                                "  async query_many_{name}_by_{field_name}_order_by_{}_{direction}(value: unknown): Promise<unknown[]> {{",
+                                "  async query_many_{name}_by_{field_name}_order_by_{}_{direction}(value: unknown{many_argument}): Promise<unknown[]> {{",
                                 order.name.text
                             ),
                         );
@@ -4729,10 +4747,26 @@ export const temporal = Object.freeze({
                                 "    const rows = await policyReadRows({}, {}, {}, {}, [persistenceValue(value, {value_kind}, true)], [persistenceValue(value, {value_kind}, false)]);",
                                 ts_string(&format!("query.{name}.{field_name}")),
                                 ts_string(name),
-                                ts_string(&postgres_sql),
+                                if many_enabled { format!("(instantContext ? {} : {})", ts_string(&self.point_instant_projection_sql(&postgres_sql, &descriptors)), ts_string(&postgres_sql)) } else { ts_string(&postgres_sql) },
                                 ts_string(&sqlite_sql)
                             ),
                         );
+                        if many_enabled {
+                            let descriptor_literal = descriptors
+                                .iter()
+                                .map(|(field, value, kind, nullable)| {
+                                    format!(
+                                        "[{}, {}, {}, {}]",
+                                        ts_string(field),
+                                        ts_string(value),
+                                        ts_string(kind),
+                                        nullable
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            line(&mut output, &format!("    if (instantContext) capturePointInstants(rows, {}, postgres !== null, [{descriptor_literal}]);", ts_string(name)));
+                        }
                         line(
                             &mut output,
                             &format!(
@@ -4761,7 +4795,7 @@ export const temporal = Object.freeze({
                         line(
                             &mut output,
                             &format!(
-                                "  async query_many_{name}_by_{field_name}_order_by_{}_{direction}_paginated(value: unknown, limit: unknown, offset: unknown): Promise<unknown[]> {{",
+                                "  async query_many_{name}_by_{field_name}_order_by_{}_{direction}_paginated(value: unknown, limit: unknown, offset: unknown{many_argument}): Promise<unknown[]> {{",
                                 order.name.text
                             ),
                         );
@@ -4771,10 +4805,26 @@ export const temporal = Object.freeze({
                                 "    const rows = await policyReadRows({}, {}, {}, {}, [persistenceValue(value, {value_kind}, true), limit, offset], [persistenceValue(value, {value_kind}, false), limit, offset]);",
                                 ts_string(&format!("query.{name}.{field_name}")),
                                 ts_string(name),
-                                ts_string(&postgres_sql),
+                                if many_enabled { format!("(instantContext ? {} : {})", ts_string(&self.point_instant_projection_sql(&postgres_sql, &descriptors)), ts_string(&postgres_sql)) } else { ts_string(&postgres_sql) },
                                 ts_string(&sqlite_sql)
                             ),
                         );
+                        if many_enabled {
+                            let descriptor_literal = descriptors
+                                .iter()
+                                .map(|(field, value, kind, nullable)| {
+                                    format!(
+                                        "[{}, {}, {}, {}]",
+                                        ts_string(field),
+                                        ts_string(value),
+                                        ts_string(kind),
+                                        nullable
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            line(&mut output, &format!("    if (instantContext) capturePointInstants(rows, {}, postgres !== null, [{descriptor_literal}]);", ts_string(name)));
+                        }
                         line(
                             &mut output,
                             &format!(
@@ -8404,7 +8454,7 @@ export const temporal = Object.freeze({
         }
 
         for (name, declaration) in &self.records {
-            let point_enabled = database_decoders && self.point_instant_entities().contains(name);
+            let point_enabled = database_decoders && self.instant_storage_entities().contains(name);
             let point_parameter = if point_enabled {
                 ", pointContext = false"
             } else {
@@ -10224,9 +10274,11 @@ export const temporal = Object.freeze({
                             },
                         );
                         format!(
-                            "(await persistence.query_many_{name}_by_{}_order_by_{}_{direction}{suffix}({arguments})).map((value: unknown, index: number) => validate_{name}(value, `database.{name}[${{index}}]`))",
+                            "(await persistence.query_many_{name}_by_{}_order_by_{}_{direction}{suffix}({arguments}{})).map((value: unknown, index: number) => validate_{name}(value, `database.{name}[${{index}}]`{}))",
                             query.field.text,
                             order.field.text,
+                            if self.many_instant_entities().contains(&name) { ", true" } else { "" },
+                            if self.many_instant_entities().contains(&name) { ", true" } else { "" },
                         )
                     }
                 }

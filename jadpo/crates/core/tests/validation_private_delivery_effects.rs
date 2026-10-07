@@ -55,7 +55,7 @@ fn typed_dispatch_edge_and_completion_targets_have_separate_conditional_effects(
         d["classification"],
         "compiler_checked_conditional_private_dispatch_may_effect"
     );
-    assert_eq!(d["contract_version"], 1);
+    assert_eq!(d["contract_version"], 2);
     assert_eq!(d["invoke_target"], "ReminderMail.send_overdue_reminder");
     assert_eq!(
         d["witness"]["edge"],
@@ -78,7 +78,12 @@ fn typed_dispatch_edge_and_completion_targets_have_separate_conditional_effects(
         c["witness"]["private_node"],
         format!("{BINDING}.completion")
     );
-    for phase in ["dispatch", "completion"] {
+    for phase in [
+        "dispatch",
+        "completion",
+        "acceptance_proof",
+        "reconciliation",
+    ] {
         let r = row(&s, phase);
         assert_eq!(
             r["conditions"]["status"],
@@ -134,7 +139,7 @@ fn typed_dispatch_edge_and_completion_targets_have_separate_conditional_effects(
             .as_array()
             .unwrap()
             .len(),
-        2
+        4
     );
 }
 #[test]
@@ -197,7 +202,7 @@ fn job_phase_scenarios_compare_contract_changes_without_feasibility_or_http_recl
             .collect::<Vec<_>>()
     };
     let rows = only(&after);
-    assert_eq!(rows.len(), 2);
+    assert_eq!(rows.len(), 4);
     for row in rows {
         assert_eq!(row["job"], "overdue_reminders");
         assert_eq!(row["status"], "after_only_without_baseline");
@@ -208,7 +213,7 @@ fn job_phase_scenarios_compare_contract_changes_without_feasibility_or_http_recl
     assert!(only(&subject(&p, Some(&p))).is_empty());
     let q = project(&[("every 15m", "every 10m")]);
     let changed = subject(&q, Some(&p));
-    assert_eq!(only(&changed).len(), 2);
+    assert_eq!(only(&changed).len(), 4);
     assert_eq!(
         changed["canonical"]["before"]["graph"],
         changed["canonical"]["after"]["graph"]
@@ -220,7 +225,7 @@ fn job_phase_scenarios_compare_contract_changes_without_feasibility_or_http_recl
         &project(&[("overdue_reminders", "due_notifications")]),
         Some(&p),
     );
-    assert_eq!(only(&renamed).len(), 4);
+    assert_eq!(only(&renamed).len(), 8);
     let field = subject(
         &project(&[("reminder_sent_at", "reminder_recorded_at")]),
         Some(&p),
@@ -277,7 +282,14 @@ fn hash(value: &Value) -> String {
 fn mutate(value: &mut Value, mode: &str) {
     match value {
         Value::Object(map) => {
-            if mode == "dispatch" || mode == "completion" {
+            if [
+                "dispatch",
+                "completion",
+                "acceptance_proof",
+                "reconciliation",
+            ]
+            .contains(&mode)
+            {
                 map.remove(&id(BINDING, mode));
             }
             if mode == "authority"
@@ -287,6 +299,12 @@ fn mutate(value: &mut Value, mode: &str) {
                     .is_some_and(|s| s.starts_with("compiler_checked_conditional_private_"))
             {
                 map.insert("live_authority_established".into(), json!(true));
+            }
+            if mode == "profile" && map.contains_key("execution_profile") {
+                map.insert(
+                    "execution_profile".into(),
+                    json!({"executionMs":60000,"leaseMs":40000}),
+                );
             }
             for v in map.values_mut() {
                 mutate(v, mode);
@@ -305,6 +323,20 @@ fn mutate(value: &mut Value, mode: &str) {
             if mode == "fence" {
                 a.retain(|v| v != "current_fencing_generation");
             }
+            let requirement = match mode {
+                "opaque-proof" => Some("opaque_checked_adapter_accepted_proof"),
+                "proof-schema" => Some("insert_only_canonical_proof_schema"),
+                "proof-fence" => Some("live_original_fence_at_proof_insert_and_precommit_observation"),
+                "proof-ack" => Some("proof_commit_acknowledged_before_publication"),
+                "proof-catch" => Some("proof_storage_outside_provider_retry_catch"),
+                "proof-purpose" => Some("privileged_reconciliation_purpose_current_owner"),
+                "terminal-only" => Some("elapsed_original_caps_terminal_bookkeeping_only"),
+                _ => None,
+            };
+            if let Some(name) = requirement {
+                a.retain(|v| v != name);
+            }
+
             for v in a {
                 mutate(v, mode);
             }
@@ -354,16 +386,33 @@ fn coherent_all_copy_omissions_and_authority_forgery_fail_actual_fresh_export_co
     for mode in [
         "dispatch",
         "completion",
+        "acceptance_proof",
+        "reconciliation",
         "budget",
         "fence",
         "authority",
         "receipt",
         "admission-cut",
+        "opaque-proof",
+        "proof-schema",
+        "proof-fence",
+        "proof-ack",
+        "proof-catch",
+        "proof-purpose",
+        "terminal-only",
+        "profile",
     ] {
         let mut forged = original.clone();
         mutate(&mut forged["canonical"]["after"], mode);
         mutate(&mut forged["canonical"]["scenarios"], mode);
-        if mode == "dispatch" || mode == "completion" {
+        if [
+            "dispatch",
+            "completion",
+            "acceptance_proof",
+            "reconciliation",
+        ]
+        .contains(&mode)
+        {
             forged["canonical"]["scenarios"]
                 .as_array_mut()
                 .unwrap()
@@ -417,9 +466,101 @@ fn mixed_ordinary_job_has_no_private_effect_and_text_keeps_exact_canonical_rows(
         .is_empty());
     assert_eq!(
         s["canonical"]["after"]["impact"]["jobs"]["private_phase_contract_version"],
-        1
+        2
     );
     let raw = s.to_string();
     let text = jadpo_core::approval_text(&raw);
     assert!(validate_approval_export(&raw, text.lines().last().unwrap()).is_ok());
+}
+
+#[test]
+fn actual_proof_and_terminal_reconciliation_nodes_have_exact_required_conditions() {
+    let s = subject(&project(&[]), None);
+    let state = &s["canonical"]["after"];
+    let a = row(&s, "acceptance_proof");
+    let r = row(&s, "reconciliation");
+    assert_eq!(
+        a["witness"]["private_node"],
+        format!("{BINDING}.acceptance_proof")
+    );
+    assert_eq!(a["public_write_targets"], json!([]));
+    assert_eq!(
+        a["private_write_targets"],
+        json!([format!("{BINDING}.accepted_proof")])
+    );
+    assert_eq!(
+        a["conditions"]["acceptance_proof_phase"]["unproved_requirements"],
+        json!([
+            "opaque_checked_adapter_accepted_proof",
+            "insert_only_canonical_proof_schema",
+            "immutable_binding_contract_claim_payload_profile",
+            "live_original_fence_at_proof_insert_and_precommit_observation",
+            "proof_storage_outside_provider_retry_catch",
+            "proof_commit_acknowledged_before_publication",
+            "missing_or_uncertain_proof_unknown_no_backfill",
+            "admitted_authority_only_no_extra_live_cut"
+        ])
+    );
+    assert_eq!(
+        r["witness"]["private_node"],
+        format!("{BINDING}.reconciliation")
+    );
+    assert_eq!(r["public_write_targets"], json!(["Todo.reminder_sent_at"]));
+    assert_eq!(
+        r["private_write_targets"],
+        json!([
+            format!("{BINDING}.receipt"),
+            format!("{BINDING}.revision_intent")
+        ])
+    );
+    assert_eq!(
+        r["conditions"]["reconciliation_phase"]["unproved_requirements"],
+        json!([
+            "privileged_reconciliation_purpose_current_owner",
+            "exact_durable_genuine_accepted_proof",
+            "immutable_binding_contract_claim_payload_profile",
+            "elapsed_original_caps_terminal_bookkeeping_only",
+            "no_new_invocation_renewal_budget_reset",
+            "missing_or_uncertain_proof_unknown_no_backfill",
+            "original_schedule_revision_equals_current",
+            "todo_still_unsent",
+            "compiler_receipt_observation_time_only",
+            "admitted_authority_only_no_extra_live_cut",
+            "receipt_state_matching_revision_sent_atomic_reconciliation"
+        ])
+    );
+    for selected in ["acceptance_proof", "reconciliation"] {
+        assert_eq!(
+            state["impact"]["writes"]["private_phase_facts"]["overdue_reminders"]
+                [id(BINDING, selected)],
+            *row(&s, selected)
+        );
+        assert!(
+            state["impact"]["external_effects"]["private_phase_facts"]["overdue_reminders"]
+                .get(id(BINDING, selected))
+                .is_none()
+        );
+        assert_eq!(
+            row(&s, selected)["reconciliation_contract"]["provider_lookup"],
+            false
+        );
+        assert_eq!(
+            row(&s, selected)["reconciliation_contract"]["new_invocation"],
+            false
+        );
+    }
+    let renamed = subject(
+        &project(&[
+            ("overdue_reminders", "due_notifications"),
+            ("reminder_sent_at", "recorded_at"),
+        ]),
+        None,
+    );
+    assert_eq!(
+        renamed["canonical"]["after"]["facts"][id(
+            "job.due_notifications.delivery.reminder_v1",
+            "reconciliation"
+        )]["public_write_targets"],
+        json!(["Todo.recorded_at"])
+    );
 }

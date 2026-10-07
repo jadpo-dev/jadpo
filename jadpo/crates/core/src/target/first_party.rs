@@ -1,6 +1,25 @@
 use super::*;
 
 impl TargetGenerator<'_> {
+    pub(super) fn first_party_authentication_runtime(&self) -> String {
+        let mut output = String::new();
+        let mut rest = include_str!("../runtime/first_party_authentication.ts");
+        let start = "// __JADPO_RECONCILIATION_AUTHORITY_START__\n";
+        let end = "// __JADPO_RECONCILIATION_AUTHORITY_END__\n";
+        while let Some((before, after)) = rest.split_once(start) {
+            output.push_str(before);
+            let (section, suffix) = after
+                .split_once(end)
+                .expect("closed native reconciliation section");
+            if !self.project.delivery_model().bindings().is_empty() {
+                output.push_str(section);
+            }
+            rest = suffix;
+        }
+        output.push_str(rest);
+        output
+    }
+
     fn authentication_authority_fields<'a>(
         &'a self,
         resolution: &jadpo_syntax::AuthenticationResolutionDeclaration,
@@ -452,6 +471,7 @@ impl TargetGenerator<'_> {
             line(output, "// Native read-only worker bridge: the selected issuer is this private current host, never a caller-provided principal, callback or setter.");
             line(output, "export function readCurrentDeliveryCredentialProof(proof: unknown) { return readDeliveryCredentialProof(proof, authenticationStorage, firstPartyAuthentication); }");
             line(output, "export function readCurrentDeliveryOperatorGrant(grant: unknown) { return readDeliveryOperatorGrant(grant, authenticationStorage, firstPartyAuthentication); }");
+            line(output, "export function readCurrentDeliveryReceiptReconciliationGrant(grant: unknown) { return readDeliveryReceiptReconciliationGrant(grant, authenticationStorage, firstPartyAuthentication); }");
         }
     }
 

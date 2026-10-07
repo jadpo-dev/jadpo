@@ -3,6 +3,8 @@ set -euo pipefail
 
 mode=${1:-}
 case "$mode" in
+  delivery-reconciliation) exec bash "$(dirname "$0")/delivery-reconciliation-postgres.sh" ;;
+  temporal-instant-many) exec bash "$(dirname "$0")/temporal-instant-many-product-postgres.sh" ;;
   temporal-instant-point) exec bash "$(dirname "$0")/temporal-instant-point-postgres.sh" ;;
   receipt-completion-ack) exec bash "$(dirname "$0")/receipt-completion-ack-postgres.sh" ;;
   temporal-page-containment) exec bash "$(dirname "$0")/temporal-page-probe-postgres.sh" ;;

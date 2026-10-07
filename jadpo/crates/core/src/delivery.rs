@@ -74,6 +74,11 @@ impl CheckedReminderDeliveryBinding {
                 "max_elapsed_ms":effect.max_elapsed_ms,"jitter":effect.jitter,"proxy_allowed":effect.proxy_allowed,
                 "redirects_allowed":effect.redirects_allowed,"outcomes":effect.outcomes,"mappings":effect.outcome_mappings,
                 "schema_parity":serde_json::from_str::<serde_json::Value>(&effect.schema_parity_json()).expect("checked parity JSON")},
+            "reconciliation_contract":{"version":1,"proof_schema_version":1,"proof_table":"__jadpo_delivery_acceptance_proofs_v1",
+                "proof_issuer":"actual_checked_adapter_success_only","proof_producer":"insert_only_original_live_fence",
+                "consumer":"separate_current_native_operator_purpose","terminal_only_after_elapsed_original_caps":true,
+                "provider_lookup":false,"new_invocation":false,"budget_reset":false,"absence_inference":false,
+                "runtime_conformance":"not_established","live_authority_established":false},
             "execution_profile":null,"runtime_lowering_supported":true,"live_authority_established":false})
     }
 }
@@ -392,14 +397,17 @@ mod tests {
         let original = crate::analyze_sources(sources).unwrap();
         assert_eq!(original.delivery_model().bindings().len(), 1);
         // Recreate the exact pre-finish graph from the already checked pipeline:
-        // only its two terminal compiler-private nodes are removed. No source
+        // only its four terminal compiler-private nodes are removed. No source
         // diagnostics are cleared to manufacture a successful fixture.
         for mutation in 0..10 {
             let mut graph = original.semantics.clone();
             graph.nodes.retain(|node| {
                 !matches!(
                     node.kind,
-                    NodeKind::DeliverySelection | NodeKind::DeliveryCompletion
+                    NodeKind::DeliverySelection
+                        | NodeKind::DeliveryCompletion
+                        | NodeKind::DeliveryAcceptanceProof
+                        | NodeKind::DeliveryReconciliation
                 )
             });
             let before = graph.nodes.clone();

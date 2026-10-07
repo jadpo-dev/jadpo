@@ -28,27 +28,15 @@ pub(super) fn derive(
             .iter()
             .find(|edge| edge.phase() == "dispatch" && edge.kind() == "invoke")
             .expect("finished binding owns an exact dispatch invoke edge");
-        let completion = graph
-            .nodes()
-            .iter()
-            .find(|node| node.kind() == NodeKind::DeliveryCompletion)
-            .expect("finished binding owns a typed completion node");
-        let public_writes: Vec<_> = graph
-            .edges()
-            .iter()
-            .filter(|edge| edge.phase() == "completion" && edge.kind() == "write")
-            .map(|edge| edge.target_identity())
-            .collect();
-        let private_writes: Vec<_> = graph
-            .edges()
-            .iter()
-            .filter(|edge| edge.phase() == "completion" && edge.kind() == "private_write")
-            .map(|edge| edge.target_identity())
-            .collect();
-        for selected_phase in ["dispatch", "completion"] {
+        for (selected_phase, node_kind) in [
+            ("dispatch", None),
+            ("completion", Some(NodeKind::DeliveryCompletion)),
+            ("acceptance_proof", Some(NodeKind::DeliveryAcceptanceProof)),
+            ("reconciliation", Some(NodeKind::DeliveryReconciliation)),
+        ] {
             let id = format!("private_delivery_effect:{name}:{selected_phase}");
             let mut row = json!({
-                "contract_version":1,"job":job,"binding":name,"phase":selected_phase,
+                "contract_version":2,"job":job,"binding":name,"phase":selected_phase,
                 "schedule_contract":source["schedule"],
                 "payload_version":source["obligations"]["payload_version"],
                 "ordinary_call_path":false,
@@ -68,16 +56,41 @@ pub(super) fn derive(
                 path = json!([job, name, invoke.target_identity()]);
                 kind = "external_service";
             } else {
-                row["classification"] =
-                    json!("compiler_checked_conditional_private_completion_may_effect");
-                row["public_write_targets"] = json!(public_writes);
-                row["private_write_targets"] = json!(private_writes);
-                row["witness"] = json!({"private_node":completion.identity(),"edges":graph.edges().iter()
-                    .filter(|edge|edge.phase()=="completion" && matches!(edge.kind(),"write"|"private_write"))
+                let node = graph
+                    .nodes()
+                    .iter()
+                    .find(|node| Some(node.kind()) == node_kind)
+                    .expect("finished binding owns typed private phase node");
+                row["classification"] = json!(format!(
+                    "compiler_checked_conditional_private_{selected_phase}_may_effect"
+                ));
+                row["public_write_targets"] = json!(graph
+                    .edges()
+                    .iter()
+                    .filter(|edge| edge.phase() == selected_phase && edge.kind() == "write")
+                    .map(|edge| edge.target_identity())
+                    .collect::<Vec<_>>());
+                row["private_write_targets"] = json!(graph
+                    .edges()
+                    .iter()
+                    .filter(|edge| edge.phase() == selected_phase && edge.kind() == "private_write")
+                    .map(|edge| edge.target_identity())
+                    .collect::<Vec<_>>());
+                row["witness"] = json!({"private_node":node.identity(),"edges":graph.edges().iter()
+                    .filter(|edge|edge.phase()==selected_phase && matches!(edge.kind(),"write"|"private_write"))
                     .map(|edge|json!({"phase":edge.phase(),"kind":edge.kind(),"target":edge.target_identity()})).collect::<Vec<_>>()});
-                row["conditions"]["completion_phase"] = phase(&source, "completion").clone();
-                path = json!([job, completion.identity()]);
-                kind = "delivery_completion";
+                row["conditions"][format!("{selected_phase}_phase")] =
+                    phase(&source, selected_phase).clone();
+                if selected_phase != "completion" {
+                    row["reconciliation_contract"] = source["reconciliation_contract"].clone();
+                }
+                path = json!([job, node.identity()]);
+                kind = match selected_phase {
+                    "completion" => "delivery_completion",
+                    "acceptance_proof" => "delivery_acceptance_proof",
+                    "reconciliation" => "delivery_reconciliation",
+                    _ => unreachable!(),
+                };
             }
             let effect = json!({"kind":kind,"path":path,"path_kind":"checked_binding_private_delivery_effect",
                 "ordinary_call_path":false,"classification":row["classification"],"contract":row});
@@ -102,7 +115,8 @@ pub(super) fn projection(rows: &Rows, selected_phase: &str) -> Value {
             job,
             effects
                 .iter()
-                .filter(|(_, row)| row["phase"] == selected_phase)
+                .filter(|(_, row)| row["phase"] == selected_phase
+                    || selected_phase == "private_writes" && row["phase"] != "dispatch")
                 .collect::<BTreeMap<_, _>>()
         ))
         .collect::<BTreeMap<_, _>>())

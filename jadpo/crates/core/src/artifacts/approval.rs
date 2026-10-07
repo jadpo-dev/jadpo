@@ -867,10 +867,10 @@ fn snapshot(path: &Path, project: &AnalyzedProject) -> Result<Value, String> {
     impact.get_mut("external_effects").expect("checked external impact")["private_phase_facts"] =
         implicit_delivery_phase_effects::projection(&private_effects, "dispatch");
     impact.get_mut("writes").expect("checked write impact")["private_phase_facts"] =
-        implicit_delivery_phase_effects::projection(&private_effects, "completion");
+        implicit_delivery_phase_effects::projection(&private_effects, "private_writes");
     for category in ["jobs", "external_effects", "writes"] {
         let value = impact.get_mut(category).expect("checked private effect projection");
-        value["private_phase_contract_version"] = json!(1);
+        value["private_phase_contract_version"] = json!(2);
         value["private_phase_supported_subset"] = json!(if private_effects.is_empty() { "absent" } else { "present" });
     }
     impact.insert("retries",json!({"status":"compiler_checked_contract_only","facts":audit(model.transaction_audit_json()),"runtime_conformance":"not_established"}));

@@ -77,6 +77,8 @@ pub enum NodeKind {
     // finish. They are not authored callables, types or generic policy grants.
     DeliverySelection,
     DeliveryCompletion,
+    DeliveryAcceptanceProof,
+    DeliveryReconciliation,
 }
 
 impl NodeKind {
@@ -130,6 +132,8 @@ impl NodeKind {
             Self::ServiceOperation => "service_operation",
             Self::DeliverySelection => "delivery_selection",
             Self::DeliveryCompletion => "delivery_completion",
+            Self::DeliveryAcceptanceProof => "delivery_acceptance_proof",
+            Self::DeliveryReconciliation => "delivery_reconciliation",
         }
     }
 
@@ -199,6 +203,8 @@ impl NodeKind {
             Self::ServiceOperation => "external service operation",
             Self::DeliverySelection => "compiler-private delivery selection",
             Self::DeliveryCompletion => "compiler-private delivery completion",
+            Self::DeliveryAcceptanceProof => "compiler-private delivery acceptance proof",
+            Self::DeliveryReconciliation => "compiler-private delivery receipt reconciliation",
         }
     }
 }

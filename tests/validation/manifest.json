@@ -115,7 +115,9 @@
     "tests/runtime/validation-unicode-length.test.ts",
     "tests/runtime/recovery-native-phase.test.ts",
     "tests/runtime/receipt-completion-ack-probes.test.ts",
-    "tests/runtime/temporal-point-sqlite-product.test.ts"
+    "tests/runtime/temporal-point-sqlite-product.test.ts",
+    "tests/runtime/temporal-instant-many-product.test.ts",
+    "tests/runtime/delivery-reconciliation.test.ts"
   ],
   "postgres_suites": {
     "tests/runtime/persistence-postgres.test.ts": "persistence",
@@ -161,6 +163,8 @@
     "temporal-stored-corruption",
     "temporal-page-containment",
     "recovery-native-phase",
-    "receipt-completion-ack"
+    "receipt-completion-ack",
+    "temporal-instant-many",
+    "delivery-reconciliation"
   ]
 }

@@ -11,6 +11,22 @@ fn variant(path: &str) -> &str {
 }
 
 impl TargetGenerator<'_> {
+    pub(super) fn delivery_acceptance_contract(
+        &self,
+        binding: &crate::CheckedReminderDeliveryBinding,
+    ) -> String {
+        use sha2::{Digest, Sha256};
+        let facts = serde_json::json!({"binding": binding.source_facts(), "reconciliation_contract_version": 1});
+        let digest = format!(
+            "{:x}",
+            Sha256::digest(serde_json::to_vec(&facts).expect("checked binding JSON"))
+        );
+        let effect = binding.service_effect_for_lowering();
+        serde_json::to_string(&serde_json::json!({"binding":binding.binding_identity(), "digest":digest,
+            "serviceVersion":effect.import_version, "serviceDigest":effect.import_sha256,
+            "operation":format!("{}.{}",effect.service,effect.operation), "job":binding.schedule().job, "sourceEntity":binding.descriptor().selection.entity.text, "sourceOperation":format!("{}.selection",binding.binding_identity()), "payloadVersion":"reminder.v1"})).expect("checked proof contract")
+    }
+
     pub(super) fn delivery_invocation_bridges(&self, output: &mut String) {
         if self.project.delivery_model().bindings().is_empty() {
             return;
@@ -25,6 +41,11 @@ impl TargetGenerator<'_> {
             output,
             "const deliveryOutcomes = new WeakMap<object, any>();",
         );
+        line(
+            output,
+            "const deliveryAcceptedEvidence = new WeakMap<object, any>();",
+        );
+        line(output, "export function readCurrentDeliveryAcceptedEvidence(token: unknown) { const record = typeof token === \"object\" && token !== null ? deliveryAcceptedEvidence.get(token) : undefined; if (record === undefined || record.owner !== firstPartyAuthentication || record.generation !== authenticationInitialization || record.storage !== rootPersistence) throw new AuthenticationFault(\"invalid_credentials\", 401); readDeliveryAcceptedEvidenceOwner(authenticationStorage, firstPartyAuthentication); return record.facts; }");
         line(output, "async function prepareDeliveryInvocationInternal(binding: string, proof: unknown, intentId: string, at: unknown, profile: Readonly<{ executionMs: number; leaseMs: number }>, operatorGrant: unknown | null) {");
         line(
             output,
@@ -63,7 +84,7 @@ impl TargetGenerator<'_> {
         // databaseRemainingMs was sampled under the authoritative database
         // clock. Subtract the ENTIRE monotonic admission elapsed time; a slow
         // COMMIT can never extend a database lease by assuming host UTC agrees.
-        line(output, "  deliveryInvocations.set(token, { binding, prepared, credential, deadlineAt: started + prepared.databaseRemainingMs, operatorGrant, proof, used: false });");
+        line(output, "  deliveryInvocations.set(token, { binding, prepared, credential, deadlineAt: started + prepared.databaseRemainingMs, operatorGrant, proof, profile: Object.freeze({ ...profile }), owner: firstPartyAuthentication, generation: authenticationInitialization, used: false });");
         line(output, "  return token;");
         line(output, "}");
         line(output, "export function prepareDeliveryInvocation(binding: string, proof: unknown, intentId: string, at: unknown, profile: Readonly<{ executionMs: number; leaseMs: number }>) { return prepareDeliveryInvocationInternal(binding, proof, intentId, at, profile, null); }");
@@ -82,7 +103,10 @@ impl TargetGenerator<'_> {
             output,
             "  const context = Object.freeze({ ...base, deadlineAt: invocation.deadlineAt });",
         );
-        line(output, "  let outcome: any, publicFailure: Readonly<JsonObject> | null = null;");
+        line(
+            output,
+            "  let outcome: any, publicFailure: Readonly<JsonObject> | null = null;",
+        );
         line(output, "  try {");
         line(output, "    assertOperationDeadline(context);");
         line(
@@ -114,7 +138,10 @@ impl TargetGenerator<'_> {
         // Contained operational fault views do not alter durable certainty.
         // Unexpected/provider-auth bodies remain adapter-classified, never copied.
         line(output, "    if (error instanceof ServiceAdapterFault && [\"misconfigured\", \"outcome_unknown\"].includes(error.kind)) {");
-        line(output, "      const unknown = error.kind === \"outcome_unknown\";");
+        line(
+            output,
+            "      const unknown = error.kind === \"outcome_unknown\";",
+        );
         line(output, "      publicFailure = Object.freeze({ error: Object.freeze({ code: unknown ? \"outcome_unknown\" : \"internal_fault\", message: unknown ? \"The operation may have completed.\" : \"An internal error occurred.\", request_id: context.operationId }) });");
         line(output, &format!("      reportRuntimeFault(unknown ? \"RUNTIME_OUTCOME_UNKNOWN\" : \"RUNTIME_SERVICE_MISCONFIGURED\", invocation.binding, {}, context.operationId, error);", ts_string(&self.source_revision())));
         line(output, "    }");
@@ -146,6 +173,12 @@ impl TargetGenerator<'_> {
         line(output, "    } }");
         line(output, "    const retryDelayMs = noEffect === \"service_unavailable\" ? Math.floor(Math.random() * Math.min(30_000, 1000 * 2 ** invocation.prepared.handle.invocation)) : 0;");
         line(output, "    outcome = noEffect === null ? { kind: \"unknown\" } : { kind: \"no_effect\", value: { failureClass: noEffect, providerAttempts: context.serviceAttemptBudget.attemptsUsed, retryDelayMs } };");
+        line(output, "  }");
+        // Storage failures are deliberately outside the provider classification
+        // catch. No journal error can refund dispatch or authorize a resend.
+        line(output, "  if (outcome.kind === \"accepted\") {");
+        line(output, "    const evidence = Object.freeze({}); const facts = Object.freeze({ invocation: Object.freeze({ binding: invocation.binding, prepared: Object.freeze({ ...invocation.prepared, handle: Object.freeze({ ...invocation.prepared.handle }) }), profile: invocation.profile, deadlineAt: invocation.deadlineAt }), outcome: Object.freeze({ kind: outcome.kind, receipt: Object.freeze({ accepted_at: outcome.receipt.accepted_at }), observedAt: outcome.observedAt }), payload: invocation.prepared.payloadBytes }); deliveryAcceptedEvidence.set(evidence, { facts, owner: invocation.owner, generation: invocation.generation, storage: rootPersistence });");
+        line(output, "    try { readCurrentDeliveryAcceptedEvidence(evidence); await rootPersistence.withDeadline(invocation.deadlineAt).withOperationTime(outcome.observedAt).transaction((tx: any) => tx.record_delivery_acceptance_proof(invocation.binding, evidence)); readCurrentDeliveryAcceptedEvidence(evidence); assertOperationDeadline(context); } finally { deliveryAcceptedEvidence.delete(evidence); }");
         line(output, "  }");
         line(output, "  const receiptToken = Object.freeze({}); deliveryOutcomes.set(receiptToken, { invocation, outcome, publicFailure }); return receiptToken;");
         line(output, "}");
@@ -253,7 +286,7 @@ impl TargetGenerator<'_> {
                 &mut output,
                 "        readCurrentDeliveryCredentialProof(proof); if (operatorGrant !== null) readCurrentDeliveryOperatorGrant(operatorGrant);",
             );
-            line(&mut output, "        return Object.freeze({ handle, payload, sourceEntityId: intent.sourceEntityId, sourceRevision: intent.sourceRevision, databaseRemainingMs });");
+            line(&mut output, "        return Object.freeze({ handle, payload, payloadBytes: canonicalPayload(payload), sourceEntityId: intent.sourceEntityId, sourceRevision: intent.sourceRevision, databaseRemainingMs });");
             line(&mut output, "      }");
         }
         line(
