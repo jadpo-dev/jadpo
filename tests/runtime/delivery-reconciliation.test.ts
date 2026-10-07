@@ -1,5 +1,5 @@
 import {afterAll, expect, test} from "bun:test";
-import {cpSync, mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, readFileSync} from "node:fs";
+import {cpSync, mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, readFileSync, existsSync} from "node:fs";
 import {Database} from "bun:sqlite";
 import {SQL} from "bun";
 import {tmpdir} from "node:os";
@@ -14,10 +14,14 @@ cpSync(join(repository,"examples/golden-todo-migration"),root,{recursive:true});
 writeFileSync(join(root,".git"),"isolated checked import root\n");
 mkdirSync(join(root,"tests/assurance"),{recursive:true});
 cpSync(join(repository,"tests/assurance/service-reference-mail-v0.1.json"),join(root,"tests/assurance/service-reference-mail-v0.1.json"));
-const build=Bun.spawnSync([Bun.env.JADPO_BIN!,"build",root],{env:{...Bun.env,DATABASE_URL:"",SQLITE_PATH:""},stdout:"pipe",stderr:"pipe"});
+const compiler=Bun.env.JADPO_BIN??join(repository,"jadpo/target/debug/jadpo");
+if(!existsSync(compiler))throw Error("Build the compiler or set JADPO_BIN before native reconciliation tests");
+const build=Bun.spawnSync([compiler,"build",root],{env:{...Bun.env,DATABASE_URL:"",SQLITE_PATH:""},stdout:"pipe",stderr:"pipe"});
 if(build.exitCode!==0)throw Error(new TextDecoder().decode(build.stderr));
 const target=join(root,"build/target");
-symlinkSync(Bun.env.JADPO_JWT_DEPENDENCIES!,join(target,"node_modules"),"dir");
+const dependency=Bun.env.JADPO_JWT_DEPENDENCIES??join(repository,"build/validation/jwt-dependencies/node_modules");
+if(!existsSync(join(dependency,"jose/package.json")))throw Error("Install the compiler-pinned JWT dependency before native reconciliation tests");
+symlinkSync(dependency,join(target,"node_modules"),"dir");
 const pg=Bun.env.JADPO_RECONCILIATION_DATABASE_URL;
 if(pg){const url=new URL(pg);if(url.hostname!=="127.0.0.1"||!url.pathname.startsWith("/jadpo_auth_test_"))throw Error("disposable local PostgreSQL required");}
 Bun.env.DATABASE_URL=pg??"";Bun.env.SQLITE_PATH=join(root,"native.sqlite");Bun.env.NODE_ENV="test";
