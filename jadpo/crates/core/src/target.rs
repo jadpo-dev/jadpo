@@ -19,6 +19,7 @@ mod delivery_scheduler;
 mod delivery_selection;
 mod first_party;
 mod liveness;
+mod many_instant;
 mod point_instant;
 
 const JWT_PACKAGE: &str = include_str!("runtime/jwt/package.json");
@@ -1071,7 +1072,7 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
             // Finished delivery bindings need a read-only app -> persistence
             // cycle for current issuer provenance. Keep both names as live
             // imports, never sample the uninitialized persistence export.
-            let point_import = if self.point_instant_entities().is_empty() {
+            let point_import = if self.instant_storage_entities().is_empty() {
                 ""
             } else {
                 ", decodePointInstant"
@@ -4025,7 +4026,7 @@ export const temporal = Object.freeze({
         line(&mut output, "");
         self.first_party_storage(&mut output);
         self.persistence_policy_runtime(&mut output);
-        if !self.point_instant_entities().is_empty() {
+        if !self.instant_storage_entities().is_empty() {
             output.push_str(include_str!("runtime/point_instant_storage.ts"));
         }
         output.push_str(include_str!("runtime/delivery_claims.ts"));
@@ -4698,6 +4699,12 @@ export const temporal = Object.freeze({
                     ),
                 );
                 line(&mut output, "  },");
+                let many_enabled = self.many_instant_entities().contains(name);
+                let many_argument = if many_enabled {
+                    ", instantContext = false"
+                } else {
+                    ""
+                };
                 for order in &entity.fields {
                     for (direction, sql_direction) in [("asc", "ASC"), ("desc", "DESC")] {
                         let postgres_sql = self.select_many_sql(
@@ -4719,7 +4726,7 @@ export const temporal = Object.freeze({
                         line(
                             &mut output,
                             &format!(
-                                "  async query_many_{name}_by_{field_name}_order_by_{}_{direction}(value: unknown): Promise<unknown[]> {{",
+                                "  async query_many_{name}_by_{field_name}_order_by_{}_{direction}(value: unknown{many_argument}): Promise<unknown[]> {{",
                                 order.name.text
                             ),
                         );
@@ -4729,10 +4736,26 @@ export const temporal = Object.freeze({
                                 "    const rows = await policyReadRows({}, {}, {}, {}, [persistenceValue(value, {value_kind}, true)], [persistenceValue(value, {value_kind}, false)]);",
                                 ts_string(&format!("query.{name}.{field_name}")),
                                 ts_string(name),
-                                ts_string(&postgres_sql),
+                                if many_enabled { format!("(instantContext ? {} : {})", ts_string(&self.point_instant_projection_sql(&postgres_sql, &descriptors)), ts_string(&postgres_sql)) } else { ts_string(&postgres_sql) },
                                 ts_string(&sqlite_sql)
                             ),
                         );
+                        if many_enabled {
+                            let descriptor_literal = descriptors
+                                .iter()
+                                .map(|(field, value, kind, nullable)| {
+                                    format!(
+                                        "[{}, {}, {}, {}]",
+                                        ts_string(field),
+                                        ts_string(value),
+                                        ts_string(kind),
+                                        nullable
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            line(&mut output, &format!("    if (instantContext) capturePointInstants(rows, {}, postgres !== null, [{descriptor_literal}]);", ts_string(name)));
+                        }
                         line(
                             &mut output,
                             &format!(
@@ -4761,7 +4784,7 @@ export const temporal = Object.freeze({
                         line(
                             &mut output,
                             &format!(
-                                "  async query_many_{name}_by_{field_name}_order_by_{}_{direction}_paginated(value: unknown, limit: unknown, offset: unknown): Promise<unknown[]> {{",
+                                "  async query_many_{name}_by_{field_name}_order_by_{}_{direction}_paginated(value: unknown, limit: unknown, offset: unknown{many_argument}): Promise<unknown[]> {{",
                                 order.name.text
                             ),
                         );
@@ -4771,10 +4794,26 @@ export const temporal = Object.freeze({
                                 "    const rows = await policyReadRows({}, {}, {}, {}, [persistenceValue(value, {value_kind}, true), limit, offset], [persistenceValue(value, {value_kind}, false), limit, offset]);",
                                 ts_string(&format!("query.{name}.{field_name}")),
                                 ts_string(name),
-                                ts_string(&postgres_sql),
+                                if many_enabled { format!("(instantContext ? {} : {})", ts_string(&self.point_instant_projection_sql(&postgres_sql, &descriptors)), ts_string(&postgres_sql)) } else { ts_string(&postgres_sql) },
                                 ts_string(&sqlite_sql)
                             ),
                         );
+                        if many_enabled {
+                            let descriptor_literal = descriptors
+                                .iter()
+                                .map(|(field, value, kind, nullable)| {
+                                    format!(
+                                        "[{}, {}, {}, {}]",
+                                        ts_string(field),
+                                        ts_string(value),
+                                        ts_string(kind),
+                                        nullable
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            line(&mut output, &format!("    if (instantContext) capturePointInstants(rows, {}, postgres !== null, [{descriptor_literal}]);", ts_string(name)));
+                        }
                         line(
                             &mut output,
                             &format!(
@@ -8404,7 +8443,7 @@ export const temporal = Object.freeze({
         }
 
         for (name, declaration) in &self.records {
-            let point_enabled = database_decoders && self.point_instant_entities().contains(name);
+            let point_enabled = database_decoders && self.instant_storage_entities().contains(name);
             let point_parameter = if point_enabled {
                 ", pointContext = false"
             } else {
@@ -10224,9 +10263,11 @@ export const temporal = Object.freeze({
                             },
                         );
                         format!(
-                            "(await persistence.query_many_{name}_by_{}_order_by_{}_{direction}{suffix}({arguments})).map((value: unknown, index: number) => validate_{name}(value, `database.{name}[${{index}}]`))",
+                            "(await persistence.query_many_{name}_by_{}_order_by_{}_{direction}{suffix}({arguments}{})).map((value: unknown, index: number) => validate_{name}(value, `database.{name}[${{index}}]`{}))",
                             query.field.text,
                             order.field.text,
+                            if self.many_instant_entities().contains(&name) { ", true" } else { "" },
+                            if self.many_instant_entities().contains(&name) { ", true" } else { "" },
                         )
                     }
                 }
