@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "RM-601-9f7aa8083318", "task_id": "RM-601", "actor": "scheduler-recovery-many-registration-review", "actor_kind": "agent", "category": "fix", "estimate_hours": [0.1, 0.25], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-07T01:08:22.386959+00:00", "phase": "planning"}
+{"at": "2026-10-07T01:09:42.865400+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm207504-reviewed-many-reconciliation-fusion/many-registration-independent-review/review.json"}
