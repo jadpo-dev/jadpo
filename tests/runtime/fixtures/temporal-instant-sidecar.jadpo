@@ -1,0 +1,175 @@
+application AuthenticatedApplication {
+    authentication {
+        principal: Principal
+        revocation {
+            mode: bounded
+            maximum_delay: 5m
+        }
+    }
+}
+
+config AuthenticationConfiguration {
+    signing_key: Text {
+        binding: "AUTH_SIGNING_KEY"
+        secret: true
+    }
+    previous_signing_key: Text {
+        binding: "AUTH_PREVIOUS_SIGNING_KEY"
+        secret: true
+    }
+    browser_origin: Url {
+        binding: "BROWSER_ORIGIN"
+    }
+}
+
+principal Principal {
+    user {
+        subject: Text
+        user_id: Uuid
+    }
+    service {
+        subject: Text
+        service_id: Uuid
+    }
+}
+
+entity User {
+    id: Uuid identity
+    authentication_subject: Text unique
+    enabled: Bool
+}
+
+failure UserDisabled {
+    kind: Rejected
+    code: "user_disabled"
+    message: "This user is disabled."
+}
+
+authentication browser_session {
+    transport { cookie: "__Host-jadpo_session" }
+    validators {
+        signed_user {
+            mode: signed
+            principal: user
+            secret: config.signing_key
+            previous_secret: config.previous_signing_key
+            audience: "first-party-browser"
+            origin: config.browser_origin
+        }
+    }
+    resolution user {
+        authority: User.authentication_subject
+        active: enabled == true
+        mappings {
+            authentication_subject -> Principal.user.subject
+            id -> Principal.user.user_id
+        }
+        inactive: UserDisabled
+    }
+}
+
+authentication api_bearer {
+    transport { bearer: authorization_header }
+    validators {
+        opaque_user {
+            mode: opaque
+            principal: user
+            secret: config.signing_key
+            previous_secret: config.previous_signing_key
+            audience: "first-party-api"
+        }
+    }
+    resolution user {
+        authority: User.authentication_subject
+        active: enabled == true
+        mappings {
+            authentication_subject -> Principal.user.subject
+            id -> Principal.user.user_id
+        }
+        inactive: UserDisabled
+    }
+}
+
+output CurrentIdentity { id: Uuid }
+query current_identity() -> CurrentIdentity {
+    policy { Access.authenticated: [invoke] }
+    match principal {
+        Principal.user { subject, user_id } => { return CurrentIdentity { id: user_id } }
+        Principal.service { subject, service_id } => { return CurrentIdentity { id: service_id } }
+    }
+}
+
+query user_identity(principal: Principal.user) -> CurrentIdentity {
+    policy { Access.authenticated: [invoke] }
+    return CurrentIdentity { id: principal.user_id }
+}
+
+query service_identity(principal: Principal.service) -> CurrentIdentity {
+    policy { Access.authenticated: [invoke] }
+    return CurrentIdentity { id: principal.service_id }
+}
+
+route GET /identity { output: CurrentIdentity run: current_identity() }
+route GET /fresh-identity { auth: fresh output: CurrentIdentity run: current_identity() }
+route GET /user-identity { output: CurrentIdentity run: user_identity(current_principal.user) }
+route GET /service-identity { output: CurrentIdentity run: service_identity(current_principal.service) }
+
+input IdentityRequest { label: Text }
+action accept_identity(input: IdentityRequest) -> CurrentIdentity { policy { Access.authenticated: [invoke] } return current_identity() }
+route POST /identity { input: IdentityRequest output: CurrentIdentity run: accept_identity(input) }
+
+enum NoteRole { owner }
+failure NoteConflict { kind: Conflict code: "note_conflict" message: "Note conflict." }
+failure NoteMissing { kind: NotFound code: "note_missing" message: "Note not found." }
+input NoteLookup { id: Note.id }
+input NoteChange { id: Note.id title: Note.title }
+output NoteSummary { id: Note.id title: Note.title }
+entity Note {
+    id: Uuid identity
+    owner_id: User.id { role: NoteRole.owner immutable: true }
+    title: Text
+    policy { NoteRole.owner: [read, update] }
+
+    query summary(input: NoteLookup) freshness: authoritative fails NoteMissing -> NoteSummary {
+        var note = attempt query required Note { where: id == input.id missing: NoteMissing }
+        return NoteSummary { id: note.id title: note.title }
+    }
+    action rename(input: NoteChange) fails NoteMissing, NoteConflict -> NoteSummary {
+        var note = attempt update required Note { where: id == input.id set: { title: input.title } missing: NoteMissing conflict: NoteConflict }
+        return NoteSummary { id: note.id title: note.title }
+    }
+}
+route POST /notes/read { input: NoteLookup output: NoteSummary run: Note.summary(input) }
+route POST /notes/rename { input: NoteChange output: NoteSummary run: Note.rename(input) }
+
+// Tests-only native protected point fixture; no product language extension.
+enum TimedRole { owner reader }
+entity TimedScope {
+ id: Uuid identity
+ owner_id: User.id { role: TimedRole.owner immutable: true }
+ policy { TimedRole.owner: [read] TimedRole.reader: [read] }
+}
+entity TimedMembership {
+ id: Uuid identity
+ scope_id: TimedScope.id
+ user_id: User.id
+ role: TimedRole
+ membership { scope: scope_id member: user_id role: role }
+ policy { TimedRole.owner: [create, read, update, delete] }
+}
+failure TimedMissing { kind: NotFound code: "timed_missing" message: "Timed record not found." }
+input TimedLookup { bucket: TimedRecord.bucket }
+entity TimedRecord {
+ id: Uuid identity
+ scope_id: TimedScope.id { immutable: true }
+ bucket: Text
+ instant: Instant
+ optional_instant: Instant?
+ jadpo_probe_carrier_instant: Text
+ policy { TimedRole.owner: [read] TimedRole.reader: [read] }
+ query find(input: TimedLookup) freshness: authoritative fails TimedMissing -> TimedRecord {
+  var record = attempt query required TimedRecord { where: bucket == input.bucket missing: TimedMissing }
+  return record
+ }
+}
+route POST /timed/find { input: TimedLookup output: TimedRecord run: TimedRecord.find(input) }

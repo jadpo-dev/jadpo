@@ -174,7 +174,7 @@ test("PostgreSQL keyset pages preserve scope and use the composite index", async
   expect(relationshipPlan.postgres_first_sql).toContain('ORDER BY "created_at" ASC, "id" ASC');
   expect(relationshipPlan.postgres_first_sql.split(" FROM ")[0]).not.toContain('"owner_id"');
   const targetSource = readFileSync(join(project, "build/target/app.ts"), "utf8");
-  expect(targetSource).toContain("persistence.query_required_User_by_id(user_id)");
+  expect(targetSource).toContain("persistence.query_required_User_by_id(user_id, true)");
   expect(targetSource).toContain('persistence.query_page_rows("query.Todo.page"');
 
   const browserIssuedAt = Date.now();
