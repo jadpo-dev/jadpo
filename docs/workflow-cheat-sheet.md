@@ -61,12 +61,15 @@ Use $adaptive-delivery to implement [task ID].
 Use $adaptive-delivery to review [task ID] and report findings.
 ```
 
-At startup and each substantive stage change, adaptive delivery checks actual
-model/effort against the lowest sufficient recommendation. A stronger model or
-higher effort than needed also triggers a pause. It records the next stage and
-reason, asks you to switch, and waits; it does not work through other tasks while
-waiting. Unknown settings require confirmation. Planning/completion states stay
-separate from model deferral, and it does not automatically change your model.
+At batch entry, adaptive delivery checks actual model/effort against the lowest
+sufficient setting for the hardest expected work in that bounded batch. It
+retains that pin through ordinary planning, implementation, verification and
+self-review transitions. It reassesses at a batch boundary, material scope
+change or evidence that the pin is insufficient. A mismatch in either direction
+at entry requires a switch or scoped override; unknown entry settings require
+confirmation. A later incomplete metadata reading alone does not invalidate an
+established pin. Planning/completion states stay separate from model deferral;
+recommendations do not automatically change your model.
 
 After switching, say **“Continue”** to retain the scope and resume deferred work.
 **“Use this model anyway for [scope]”** is an explicit routing override. “Continue”
@@ -76,6 +79,21 @@ pause even when ordinary task questions permit independent work.
 Loops ask about blockers once and continue independent work where possible.
 Add **“stop at the first question”** if you prefer. Planning and implementation
 are separate: a planning loop never starts implementation by itself.
+
+**Continue authorised parallel delivery**
+
+```text
+Continue the golden Todo plan in parallel. Use separate worktrees, one owner for shared compiler/runtime changes, and independent harness work where dependencies allow. Verify and integrate through PRs.
+```
+
+Normal chat prompts are enough; you do not need to manage branches or invoke a
+skill explicitly. Parallel agents, other-chat messages and publishing require
+their own authorisation. Before assigning work, check whether another delivery
+chat already owns the same scope. Give an independent lane its own worktree and
+bounded ownership; a second chat is not a second writer on the same checkout.
+An ordinary loop runs within the current turn. Request a Goal explicitly when
+you want its outcome to persist across turns; a saved plan alone does not resume
+work.
 
 A planning Goal produces saved documents in ordinary task execution. Native
 Plan mode does not itself trigger automatic Goal continuation; the host must
