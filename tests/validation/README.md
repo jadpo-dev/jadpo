@@ -53,6 +53,14 @@ uses the same full command on pushes to `main` and PRs and retains reports even
 on failure. Feature-branch pushes do not create a duplicate full validation run.
 CI pins [Bun 1.4.2](https://github.com/oven-sh/bun/releases/tag/bun-v1.4.2)
 and preflights `Intl` support for `America/Coyhaique` before compiler validation.
+The CI job has a provisional 90-minute outer allowance. The expanded delivery
+checkout's retained local 119- and 121-step runs recorded approximately 44 and
+50 minutes of summed commands, exceeding the previous 25-minute job allowance.
+Those observations are not a Linux runtime forecast. The larger job allowance
+leaves every native test deadline, required check and golden acceptance gate
+unchanged; reassess it using hosted results for the expanded source revision.
+GitHub's [job timeout setting](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes)
+controls cancellation of the whole job.
 The earlier [Linux run](https://github.com/richardwillars/jadpo/actions/runs/37387499754)
 passed candidate-contract validation but stopped when Bun 1.2.20 rejected that
 canonical zone during authored tests. Bun 1.4's [official compatibility notes](https://github.com/oven-sh/bun/issues/28792)

@@ -1,0 +1,76 @@
+{
+  "scope": "Unattended integration workflow; no runtime writer changes",
+  "baseline": "ef83d48e92e771986dc43aca0c20249805add34b",
+  "actual_model": "gpt-6.1-sol",
+  "actual_effort": "high",
+  "batch_pin_reason": "Retained bounded integration qualification pin; expanded runtime evidence reviewed read-only while active writer preserves ownership.",
+  "observed_local_expanded_runs": [
+    {
+      "path": "/private/tmp/jadpo-parallel-integration2/tests/validation/evidence/rm504-sqlite-ascii-affinity/closure.json",
+      "sha256": "9c336e74478920567925fbc2b0caacbb931475fcdf6368820f60ddd0b7ffa20d",
+      "source_parent_commit": "4f8d66bd",
+      "supported_steps": 119,
+      "command_seconds_sum": 2647.278,
+      "counts": {
+        "passed": 88,
+        "failed": 0,
+        "not_run": 0
+      },
+      "release_equivalent": false
+    },
+    {
+      "path": "/private/tmp/jadpo-parallel-integration2/tests/validation/evidence/rm504-page-instant-declarations/closure.json",
+      "sha256": "44ca9839283ba257984ba6b54fe756488f3b9d07a386ff0a750684630d243d69",
+      "source_parent_commit": "8898c41d",
+      "supported_steps": 121,
+      "command_seconds_sum": 2996.118,
+      "counts": {
+        "passed": 88,
+        "failed": 0,
+        "not_run": 0
+      },
+      "release_equivalent": false
+    }
+  ],
+  "timing_qualification": "Summed local commands, not elapsed wall time or Linux forecast; observed checkout is separate from this main-based candidate.",
+  "checks": {
+    "local_document_links": 13,
+    "workflow_delta": "Only outer timeout 25 to90 plus explanatory comments; trigger/job/permissions/commands unchanged",
+    "yaml_parse": "Ruby YAML passed",
+    "candidate_contract": {
+      "cases": 44,
+      "proof_fixtures": 39,
+      "approval_fixtures": 12,
+      "comprehension_questions": 12,
+      "local_links": 1067,
+      "status": "passed"
+    },
+    "diff_whitespace": "passed",
+    "self_review": "Only 3 intended workflow/documentation files plus this review and own timing record; no compiler, runtime, manifest, dependency or frozen contract changes."
+  },
+  "outer_timeout_minutes": 90,
+  "native_deadlines_changed": false,
+  "independent_runtime_worktree_touched": false,
+  "active_delivery_chat": "Estimate remaining golden tado work",
+  "continuation": "Runtime loop retains sole writer ownership; this independent lane checks its own PR and preserves a transferable patch.",
+  "original_meta_start_error": "Lowercase META identifier rejected before start; no timing interval invented.",
+  "hosted_check": "Required before merging; see resulting pull request for exact-head results.",
+  "expanded_branch_archive_audit": {
+    "revision": "8898c41d",
+    "base": "ef83d48e92e771986dc43aca0c20249805add34b",
+    "blob_count": 9325,
+    "uncompressed_blob_bytes": 1957788293,
+    "blobs_over_100MiB": 0,
+    "blobs_over_50MiB": [
+      {
+        "bytes": 66380699,
+        "path": "tests/validation/evidence/rm504-after-ready-sqlite-instant-kind/integration-native.tar.gz"
+      },
+      {
+        "bytes": 58776677,
+        "path": "tests/validation/evidence/rm504-sqlite-ascii-affinity/integration-native.tar.gz"
+      }
+    ],
+    "qualification": "Metadata-only audit of committed wider branch; uncommitted page packets and transport/compression limits unassessed. No active writer files changed, moved or published."
+  }
+}

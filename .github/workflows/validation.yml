@@ -21,7 +21,9 @@ concurrency:
 jobs:
   supported-language:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    # Recent expanded local gates recorded 44–50 minutes of command execution.
+    # This outer allowance is provisional; native test deadlines stay unchanged.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
