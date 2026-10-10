@@ -1234,3 +1234,30 @@ converted or run as a successor. Documentation checks passed: 26 scoped local
 links, 25 unique planned event cases, all-plan collection (84 active tasks),
 candidate grammar excluded from executable grammar extraction and affected diff
 whitespace. No product tests were run and no roadmap task is closed by this pass.
+
+## Post-E01 language documentation and owner review — 2026-10-10
+
+Richard requested a review of every part of the language after E01 is complete:
+first prepare clean documentation with examples as attractive webpages, then
+walk through the list together and capture feedback on functionality and syntax.
+The active E02 rows RM-224/RM-225 own this additional scope. This is intake, not
+an implementation plan, and does not extend the selected 29-task golden loop.
+
+| Task | Planning state | Execution readiness | Next assessment |
+|---|---|---|---|
+| RM-224 | needs planning | queued until E01's RM-110 closes | Inventory current grammar, compiler/runtime support, library boundaries and authoritative specifications; map every area to a review page, choose a maintainable local renderer and estimate content/example verification work. |
+| RM-225 | needs planning | queued until RM-224 supplies the review reference | Agree the walkthrough order with Richard and use a page index to retain pending/reviewed/needs-revision states, reviewed versions, feedback and decision/follow-up links. |
+
+This differs from RM-222's successor-syntax decision and E10's public-site
+research: the deliverable explains the whole language as it exists, including
+clearly labelled unfinished or proposed parts, for the owner's review. Reuse
+the canonical documentation; review pages must link to semantic owners rather
+than become a conflicting specification. Check runnable examples against the
+recorded compiler and appropriate runtime evidence. Candidate syntax needs
+explicit labels, not invented compile-pass claims. Review feedback can inform
+RM-222/RM-223, RM-216 and other owning tasks without automatically authorising
+their implementation. Local page presentation is selected for this review;
+renderer choice is deferred to planning, and public deployment remains separate.
+Agent effort and Richard's review time are unestimated until the inventory and
+session format are known. No language change, page implementation, automation,
+public launch or task completion is recorded by this intake.
