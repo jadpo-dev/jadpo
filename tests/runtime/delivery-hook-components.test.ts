@@ -605,6 +605,34 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     expect(schedule.activation_id).toBeNull();
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
+  test("generated worker keeps interval identity in UTC across the London daylight-saving fallback", async () => {
+    const f = await fixture();
+    const firstLocalOneThirty = "2026-10-25T00:31:02.003Z";
+    const secondLocalOneThirty = "2026-10-25T01:31:02.003Z";
+    const londonClock = (at: string) => new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).format(new Date(at));
+    expect(londonClock(firstLocalOneThirty)).toBe("01:31");
+    expect(londonClock(secondLocalOneThirty)).toBe("01:31");
+    expect(Date.parse(secondLocalOneThirty) - Date.parse(firstLocalOneThirty)).toBe(3_600_000);
+
+    await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, firstLocalOneThirty));
+    expect((await activationRows())[0].pending_for).toBe("2026-10-25T00:30:00.000Z");
+
+    await provider(async calls => {
+      expect(await activate(f.proof, secondLocalOneThirty)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1);
+      expect(calls[0].scheduledFor).toBe("2026-10-25T01:30:00.000Z");
+      expect(calls[0].operationTime).toBe(secondLocalOneThirty);
+      expect(await activate(f.proof, secondLocalOneThirty)).toEqual({ status: "idle", selected: 0, attempted: 0, continued: false });
+      expect(calls).toHaveLength(1);
+    });
+
+    const schedule = (await activationRows())[0];
+    expect(schedule.last_tick).toBe("2026-10-25T01:30:00.000Z");
+    expect(schedule.pending_for).toBeNull();
+    expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+  });
   test("a fresh generated worker reclaims the original staged page after a pre-dispatch checkpoint fault", async () => {
     const f = await fixture();
     // Initialize native claim storage with an unrelated test-owned sentinel so
