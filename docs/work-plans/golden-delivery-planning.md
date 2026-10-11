@@ -843,7 +843,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-304 | Short after service contract | [History](../implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes); independent correction review and fresh supported gate pass; malformed host-map seams excluded | planned | complete |
 | RM-305 | Decision; independently reviewed ASYNC-001 semantic freeze complete | [History](../implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract); 18 traces remain contract-only, with implementation in RM-306/RM-307 | planned | complete |
 | RM-306 | Decision-dependent outbox/compiler subsystem | Static/read/hook/current-issuer/paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage foundation are independently approved. Six generated worker traces now pass together on SQLite71/1 skip/834 assertions and PostgreSQL70/1 skip/755 assertions. Bounded packets cover pre-dispatch reclaim, downtime coalescing, DST fallback and 500+1 continuation across clean worker-process exits; the latest [continuation packet](../../tests/validation/evidence/rm306-bounded-continuation-20261011/README.md) is independently approved. The fresh supported verifier passes68/68; Golden HTTP remains70/0/18 and all88 frozen backend entries remain not_run. Public job lowering, production singleton activation-profile selection, the complete18-trace matrix and RM-306 acceptance remain open. Golden per-delivery60s/40s is approved. [Resume point and limits](#rm-301307108--services-durable-jobs-and-reminders) | planned | in_progress |
-| RM-307 | Decision-dependent worker subsystem | RM-306 remains open; bounded approved packets cover atomic enqueue, downtime/overlap coalescing, UTC/DST behavior, bounded continuation, resolved replay and stale-worker recovery. The full 18-case trace-to-evidence reconciliation and RM-307 acceptance remain open; see the [latest overlap checkpoint](../../tests/validation/evidence/rm307-overlap-followup-20261011/README.md) | planned | in_progress |
+| RM-307 | Decision-dependent worker subsystem | RM-306 remains open. Bounded approved evidence covers atomic enqueue, duplicate identity, downtime/overlap coalescing, UTC/DST behavior, bounded continuation, resolved replay, unsupported version, pending cancellation (including generated cancellation from known-no-effect `retry_wait`), successful-receipt cancellation after dispatch, succeeded-key release, and native per-key `outcome_unknown`. The 18-case evidence inventory below identifies six partial branches; RM-307 acceptance remains open. | planned | in_progress |
 | RM-401 | Decision; bounded retries enabled by default | Contract frozen after phase probe and independent correction re-review; [completion evidence](../implementation-history.md#2026-10-02--rm-401-bounded-retry-contract) | planned | complete |
 | RM-402 | Short after retry/failure decisions | RM-401, reviewed RM-207 boundary-contract milestone; scoped corrections/native LOCKED/jitter/revision review approved; fresh supported gate61/61; [current TX checkpoint and limits](../transaction-retry-plan.md#rm-402-reviewed-adapter-checkpoint--2026-10-04) | planned | in_progress |
 | RM-403 | Short staged; CONFIG-P5 separates liveness and bounded dependency readiness | Scoped recovery/startup-lock, PostgreSQL auth-session, real connection-loss/32-way recovery and asynchronous response-deadline evidence independently approved. Response controller passes six deterministic groups, ten independent emitted-module probes and14-case live readiness. [CONFIG-P5](../configuration-plan.md#config-p5--liveness-and-readiness) retains synchronous/native/startup/platform gates; mail advisory/unprobed; actual6.1-sol/high | planned | in_progress |
@@ -4322,3 +4322,80 @@ retry-wait and after-dispatch cancellation, and races remain uncovered. Other
 traces, RM-306/RM-307/RM-108 and Golden Todo acceptance remain open. Timer
 `RM-307-f4b67f77b8bf` records 4.20 active minutes (1.77 verification, 0.21
 review wait) under `gpt-6.1-sol/high` and the original 0.5–2h estimate.
+
+
+**RM-307 in-flight cancellation and succeeded-key release, 2026-10-11:** test
+commit `17ee6327348adcbced5f015b657cdcb18d96a8a9` adds generated evidence for
+successful receipt after cancellation and same-key release after `succeeded`.
+Cancellation is requested during possible dispatch, the receipt commits the
+first intent as succeeded, and the next UTC tick dispatches its same-key
+successor. Focused SQLite passes 1/0/0/24; default/derived suites pass
+SQLite 80/2/1020 and 81/2/1038, PostgreSQL 80/1/951 and 81/1/969. Independent
+review approved both bounded branches after seven pin checks and fresh reruns.
+The [source-bound packet](../../tests/validation/evidence/rm307-cancel-after-dispatch-20261011/README.md)
+retains the report and logs. Known-no-effect/unknown receipts after in-flight
+cancellation and key release after cancelled/failed remain open. Timer
+[`RM-307-8b955bf4798a`](../task-timing/runs/RM-307-8b955bf4798a.jsonl) records
+this verified slice as partial at `gpt-6.1-sol/high`.
+
+**RM-307 cancellation from known-no-effect retry, 2026-10-11:** corrected test
+commit `536c81ffa736348f3f1638f0371217f97d562181` proves that a generated
+provider attempt stores `retry_wait` with the original payload/version, then
+trusted cancellation makes it terminal before the next claim. A later UTC
+activation makes no provider request and preserves claim, attempt, cancellation,
+source-intent and reminder-marker state. Focused SQLite passes 1/0/0/21;
+default/derived suites pass SQLite 81/2/1041 and 82/2/1059, PostgreSQL
+81/1/972 and 82/1/990. The first candidate received a P2 for missing full-body
+equality; the corrected candidate asserts all retry bodies and persisted retry
+payload/version. Independent re-review closed the finding and approved the
+bounded trace after 18 pin checks and five fresh reruns. The [source-bound
+packet](../../tests/validation/evidence/rm307-cancel-retry-20261011/README.md)
+retains both review rounds. Timer
+[`RM-307-d4850fe34441`](../task-timing/runs/RM-307-d4850fe34441.jsonl) records
+6.67 active minutes including 4.16 verification minutes at `gpt-6.1-sol/high`;
+the slice is partial because RM-307 remains open.
+
+## RM-307 frozen trace evidence inventory — 2026-10-11
+
+This is an evidence map for the unchanged 18-case frozen contract at
+[`async-contract-v0.1-candidate.json`](../../tests/assurance/async-contract-v0.1-candidate.json).
+“Bounded evidence” means an independently approved packet supports the named
+case's current trace; it does not establish full RM-306/RM-307 or Golden
+acceptance. “Partial” means the nearby assertion does not yet exercise all
+branches or integration boundaries required by that row. The current inventory
+has 12 cases with approved bounded evidence and six partial cases; do not turn
+these counts into a claim that RM-307 is complete.
+
+| Frozen trace | Current evidence | Remaining boundary |
+|---|---|---|
+| `ASYNC-OUTBOX-ROLLBACK` | Approved [atomic-enqueue packet](../../tests/validation/evidence/rm307-atomic-enqueue-20261011/README.md). | Transaction rollback branch only. |
+| `ASYNC-COMMIT-CRASH` | Approved [atomic-enqueue packet](../../tests/validation/evidence/rm307-atomic-enqueue-20261011/README.md) plus fresh-process recovery. | Process exit before in-memory wakeup; not power loss or host restart. |
+| `ASYNC-DUPLICATE-ENQUEUE` | Approved [duplicate identity packet](../../tests/validation/evidence/rm307-duplicate-enqueue-20261011/README.md). | Concurrent scans are in one process; SQLite serializes writers, so independent-process writer contention is outside the claim. |
+| `ASYNC-LEASE-RECLAIM-FENCE` | Native fenced pre-dispatch reclaim assertions run in the reviewed validation-persistence suite; generated recovery evidence is in the [RM-306 pre-dispatch packet](../../tests/validation/evidence/rm306-predispatch-reclaim-integrated-20261011/README.md). | Needs a case-bound independent review tying the precise stale-handle/generation assertions to this frozen row and generated worker boundary. |
+| `ASYNC-STALE-WORKER-AFTER-DISPATCH` | Approved fresh-process no-resend recovery in the [RM-306 crash packet](../../tests/validation/evidence/rm306-process-crash-recovery/README.md); native expired possible-dispatch/FIFO assertions also run in validation-persistence. | Uses process death and fixture lease expiry; no production elapsed-time/host-clock claim. |
+| `ASYNC-PER-KEY-ORDER` | Approved [native per-key packet](../../tests/validation/evidence/rm307-per-key-order-20261011/README.md). | Exercises `outcome_unknown` but not the alternate `retry_wait` K/K/J branch or full generated dispatch. |
+| `ASYNC-KEY-RELEASE-AFTER-KNOWN-TERMINAL` | Approved [in-flight cancellation packet](../../tests/validation/evidence/rm307-cancel-after-dispatch-20261011/README.md) proves release after a succeeded receipt. | Same-key release after `cancelled` and after `failed` with proven no effect still need explicit cases. |
+| `ASYNC-UNKNOWN-NO-REPLAY` | Approved [RM-306 crash packet](../../tests/validation/evidence/rm306-process-crash-recovery/README.md) shows `outcome_unknown` after restart with no second provider request; the [native replay packet](../../tests/validation/evidence/rm307-native-replay-20261011/README.md) refuses unresolved unknown replay. | Bounded process-crash/native-replay evidence; no broader external-provider or deployment claim. |
+| `ASYNC-COALESCE-DOWNTIME` | Approved [UTC downtime packet](../../tests/validation/evidence/rm306-utc-downtime-20261011/README.md). | One eligible source row and simulated timestamps; no elapsed outage soak. |
+| `ASYNC-COALESCE-OVERLAP` | Approved [overlap/follow-up packet](../../tests/validation/evidence/rm307-overlap-followup-20261011/README.md). | One bounded generated overlap trace; no deployment soak. |
+| `ASYNC-BOUNDED-CONTINUATION` | Approved [501-row continuation packet](../../tests/validation/evidence/rm306-bounded-continuation-20261011/README.md). | Clean child exits between pages; not a crash/power-loss test. |
+| `ASYNC-CANCEL-PENDING` | Approved [pending cancellation packet](../../tests/validation/evidence/rm307-cancel-pending-20261011/README.md) and approved generated known-no-effect `retry_wait` supplement (source `536c81f`) in the [supplemental packet](../../tests/validation/evidence/rm307-cancel-retry-20261011/README.md). | Native trusted cancellation only; no public route/authorization or claim/cancel race. |
+| `ASYNC-CANCEL-AFTER-DISPATCH` | Approved [in-flight cancellation packet](../../tests/validation/evidence/rm307-cancel-after-dispatch-20261011/README.md) proves cancellation remains requested and a successful receipt is retained. | The known-no-effect and `outcome_unknown` receipt branches after cancellation remain uncovered. |
+| `ASYNC-RETRY-KNOWN-NO-EFFECT` | Direct adapter retry evidence and approved [resolved replay packet](../../tests/validation/evidence/rm307-native-replay-20261011/README.md) preserve one ID/payload and the remaining invocation/lifetime budget. | Needs an explicit generated scheduled retry after `retry_not_before`, with same-ID/payload and bounded jitter/budget assertions. |
+| `ASYNC-RETRY-EXHAUSTION` | Native invocation/lifetime exhaustion and transient adapter-attempt evidence run in the reviewed persistence/component suites. | Needs a case-bound generated terminal failed/dead-letter record and proof later activations cannot reset exhausted budget or dispatch. |
+| `ASYNC-REPLAY-RESOLVED-INTENT` | Approved [native resolved-replay packet](../../tests/validation/evidence/rm307-native-replay-20261011/README.md). | Bounded known-no-effect replay path; does not close operator UI or full RM-308. |
+| `ASYNC-UNSUPPORTED-PAYLOAD-VERSION` | Approved [unsupported-version packet](../../tests/validation/evidence/rm307-unsupported-payload-version-20261011/README.md). | Injected future payload version in the current runtime; no historical-binary upgrade claim. |
+| `ASYNC-UTC-INTERVAL` | Approved [London DST fallback packet](../../tests/validation/evidence/rm306-utc-dst-fallback-20261011/README.md). | Explicit two-instant generated trace; no elapsed DST/deployment soak. |
+
+The next worker slice is the generated scheduled retry after `retry_not_before`
+and same-key `retry_wait` ordering branch. The latest full verifier report,
+[`20261011T072214-44400`](../../build/validation/20261011T072214-44400/report.json),
+records 68/68 supported checks passed. The full Golden application still has 49
+compile diagnostics and behavioural evidence is `not_run`; its HTTP checkpoint
+records 70 passed, 0 failed and 18 `not_run`, while the frozen backend protocol
+records 0 passed, 0 failed and 88 `not_run`. `release_equivalent` is false.
+That report predates the latest RM-307 test-only supplements and does not close
+Golden acceptance. After the six partial trace rows are closed with source-bound
+reviews, RM-306's selected production activation profile and acceptance gates,
+RM-108's checked worker/clock/crash/duplicate integration, and the remaining
+Golden HTTP cases remain.
