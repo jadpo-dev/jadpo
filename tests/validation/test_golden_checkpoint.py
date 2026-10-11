@@ -1326,6 +1326,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('private response field', private_output))
         due_written = deepcopy(raw); due_written[1]['statements'][3]['sql'] = due_written[1]['statements'][3]['sql'].replace('ELSE "due_at" END', 'ELSE NULL END')
         mutations.append(('SQL does not preserve omitted due field', due_written))
+        mismatched_presence = deepcopy(raw); mismatched_presence[1]['statements'][3]['sql'] = mismatched_presence[1]['statements'][3]['sql'].replace('"reminder_sent_at" = CASE WHEN ?5', '"reminder_sent_at" = CASE WHEN ?6')
+        mutations.append(('due and reminder use different presence flags', mismatched_presence))
         missing_owner = deepcopy(raw); missing_owner[1]['statements'][3]['sql'] = missing_owner[1]['statements'][3]['sql'].replace(' AND (("todo"."owner_id" = ?9))', '')
         mutations.append(('update owner predicate absent', missing_owner))
         missing_deleted = deepcopy(raw); missing_deleted[1]['statements'][3]['sql'] = missing_deleted[1]['statements'][3]['sql'].replace(' AND ("deleted_at" IS NULL)', '')
@@ -1338,7 +1340,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('wrong request path', wrong_path))
         wrong_status = deepcopy(raw); wrong_status[1]['status'] = 204
         mutations.append(('wrong response status', wrong_status))
-        self.assertEqual(len(mutations), 17)
+        self.assertEqual(len(mutations), 18)
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'PATCH-001|Foreign request observation'):
                 checkpoint.observations(case, changed)
