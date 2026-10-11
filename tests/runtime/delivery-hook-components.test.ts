@@ -881,6 +881,82 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     expect(schedule.activation_id).toBeNull();
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
+  test("generated worker retains one latest follow-up when UTC ticks overlap an in-flight delivery", async () => {
+    const f = await fixture();
+    let signalProvider!: () => void, releaseProvider!: () => void;
+    const providerEntered = new Promise<void>(resolve => { signalProvider = resolve; });
+    const heldProvider = new Promise<void>(resolve => { releaseProvider = resolve; });
+    let providerRequests = 0;
+    const settleWithin = async <T>(promise: Promise<T>, ms: number) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<{ settled: false }>(resolve => { timer = setTimeout(() => resolve({ settled: false }), ms); });
+      try { return await Promise.race([promise.then(value => ({ settled: true as const, value })), deadline]); }
+      finally { clearTimeout(timer!); }
+    };
+
+    await provider(async calls => {
+      const firstRun = activate(f.proof, scanTime).then(
+        result => ({ ok: true as const, result }),
+        error => ({ ok: false as const, error }),
+      );
+      try {
+        const entered = await settleWithin(providerEntered, 15_000);
+        if (!entered.settled) throw new Error("overlapping worker did not reach the provider within 15 seconds");
+        const during = (await activationRows())[0];
+        expect(during.activation_id).not.toBeNull();
+        expect(during.pending_for).toBeNull();
+
+        // Advance the Todo revision while its first immutable intent is in
+        // flight, then send several host ticks before that activation finishes.
+        await patch(f.value.id, { due_at: dueB });
+        for (const at of ["2026-10-08T08:15:00.000Z", "2026-10-08T08:30:00.000Z", "2026-10-08T08:45:00.000Z"]) {
+          await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, at));
+        }
+        const overlapped = (await activationRows())[0];
+        expect(overlapped.activation_id).toBe(during.activation_id);
+        expect(overlapped.pending_for).toBe("2026-10-08T08:45:00.000Z");
+        expect(overlapped.last_tick).toBe("2026-10-08T08:45:00.000Z");
+        expect(await activationRows()).toHaveLength(1);
+      } finally {
+        releaseProvider();
+      }
+
+      const firstRunResult = await settleWithin(firstRun, 15_000);
+      if (!firstRunResult.settled) throw new Error("overlapping worker did not finish within 15 seconds after provider release");
+      if (!firstRunResult.value.ok) throw firstRunResult.value.error;
+      expect(firstRunResult.value.result).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1);
+      expect((await persistence.read_delivery_intent(calls[0].body.idempotency_key)).state).toBe("succeeded");
+      expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+
+      const followup = await activate(f.proof, "2026-10-08T08:46:00.000Z");
+      expect(followup).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(2);
+      expect(calls[0].scheduledFor).toBe("2026-10-08T08:00:00.000Z");
+      expect(calls[1].scheduledFor).toBe("2026-10-08T08:45:00.000Z");
+      expect(calls[1].operationTime).toBe("2026-10-08T08:46:00.000Z");
+      expect(calls[1].body.idempotency_key).not.toBe(calls[0].body.idempotency_key);
+      expect(calls[1].body.due_at).toBe(dueB);
+    }, async () => {
+      providerRequests++;
+      if (providerRequests === 1) {
+        signalProvider();
+        await heldProvider;
+      }
+    });
+
+    const intentRowsByRevision = await rows('SELECT intent_id FROM "__jadpo_deliveries_v1" WHERE source_entity_id=$1 ORDER BY source_revision', [f.value.id]);
+    const [firstIntent, secondIntent] = await Promise.all(intentRowsByRevision.map((row: any) => persistence.read_delivery_intent(row.intent_id)));
+    expect(intentRowsByRevision).toHaveLength(2);
+    expect([firstIntent.sourceRevision, secondIntent.sourceRevision]).toEqual(["1", "2"]);
+    expect([firstIntent.state, secondIntent.state]).toEqual(["succeeded", "succeeded"]);
+    expect([firstIntent.payload.due_at, secondIntent.payload.due_at]).toEqual([dueA, dueB]);
+    expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+    const schedule = (await activationRows())[0];
+    expect(schedule.activation_id).toBeNull();
+    expect(schedule.pending_for).toBeNull();
+    expect(schedule.last_tick).toBe("2026-10-08T08:45:00.000Z");
+  }, 45_000);
   test("generated worker keeps interval identity in UTC across the London daylight-saving fallback", async () => {
     const f = await fixture();
     const firstLocalOneThirty = "2026-10-25T00:31:02.003Z";
