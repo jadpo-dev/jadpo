@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { SQL } from "bun";
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1698,9 +1698,46 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const stagedPage = JSON.parse(stagedActivation.page);
     expect(stagedPage).toEqual({ intentIds: [intentId], after: null });
 
-    const staleA = await persistence.transaction((tx: any) => tx.claim_delivery_intent(intentId, {
-      maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile,
-    }));
+    const claimLimits = { maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile };
+    const staleAHandlePath = join(root, "lease-reclaim-a-handle.json");
+    const staleAReadyPath = join(root, "lease-reclaim-a-ready");
+    const staleAContinuePath = join(root, "lease-reclaim-a-continue");
+    const staleAResultPath = join(root, "lease-reclaim-a-result.json");
+    const staleAAckContinuePath = join(root, "lease-reclaim-a-ack-continue");
+    const staleAAckResultPath = join(root, "lease-reclaim-a-ack-result.json");
+    const claimWorkerSource = `const {persistence}=await import(${JSON.stringify(pathToFileURL(join(root, "persistence.ts")).href)});
+      const handle=await persistence.transaction((tx)=>tx.claim_delivery_intent(${JSON.stringify(intentId)},${JSON.stringify(claimLimits)}));
+      if(handle===null) throw new Error("generated persistence claim returned null");
+      if(process.env.CLAIM_HOLD=== "1") {
+        const fs=await import("node:fs"); fs.writeFileSync(process.env.CLAIM_HANDLE_PATH,JSON.stringify(handle)); fs.writeFileSync(process.env.CLAIM_READY_PATH,"ready");
+        const started=Date.now(); while(!fs.existsSync(process.env.CLAIM_CONTINUE_PATH)) { if(Date.now()-started>15000) throw new Error("stale claim process timed out"); await Bun.sleep(5); }
+        const checkpoint=await persistence.transaction((tx)=>tx.checkpoint_delivery_dispatch(handle));
+        fs.writeFileSync(process.env.CLAIM_RESULT_PATH,JSON.stringify({checkpoint,handle}));
+        const ackStarted=Date.now(); while(!fs.existsSync(process.env.CLAIM_ACK_CONTINUE_PATH)) { if(Date.now()-ackStarted>15000) throw new Error("stale acknowledgement process timed out"); await Bun.sleep(5); }
+        const acknowledged=await persistence.transaction((tx)=>tx.acknowledge_delivery_mail(handle,{accepted_at:${JSON.stringify(instant)}}));
+        fs.writeFileSync(process.env.CLAIM_ACK_RESULT_PATH,JSON.stringify({acknowledged,handle}));
+      }
+      console.log(JSON.stringify(handle)); process.exit(0);`;
+    const claimWorkerEnv = { ...Bun.env, NODE_ENV: "test", DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath };
+    let processA: ReturnType<typeof Bun.spawn> | undefined;
+    let processB: ReturnType<typeof Bun.spawn> | undefined;
+    let deliveryChild: ReturnType<typeof Bun.spawn> | undefined;
+    let server: ReturnType<typeof Bun.serve> | undefined;
+    let releaseProvider = () => {};
+    try {
+    processA = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", claimWorkerSource], {
+      env: { ...claimWorkerEnv, CLAIM_HOLD: "1", CLAIM_HANDLE_PATH: staleAHandlePath, CLAIM_READY_PATH: staleAReadyPath,
+        CLAIM_CONTINUE_PATH: staleAContinuePath, CLAIM_RESULT_PATH: staleAResultPath,
+        CLAIM_ACK_CONTINUE_PATH: staleAAckContinuePath, CLAIM_ACK_RESULT_PATH: staleAAckResultPath }, stdout: "pipe", stderr: "pipe",
+    });
+    const processACapture = Promise.all([new Response(processA.stdout).text(), new Response(processA.stderr).text(), processA.exited] as const);
+    const waitForFile = async (path: string, label: string) => {
+      const deadline = Date.now() + 15_000;
+      while (!existsSync(path) && Date.now() < deadline) await Bun.sleep(5);
+      if (!existsSync(path)) throw new Error(`${label} did not appear within 15 seconds`);
+    };
+    await waitForFile(staleAReadyPath, "worker A claim handle");
+    const staleA = JSON.parse(readFileSync(staleAHandlePath, "utf8"));
     expect(staleA).toMatchObject({ intentId, generation: "1", invocation: 1 });
     expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
     const firstClaim = (await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0];
@@ -1713,9 +1750,13 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     // Worker B is represented by a second real generated-persistence claim.
     // Its pre-dispatch state leaves A's checkpoint fence observable before a
     // later generated worker takes the final invocation.
-    const replacementB = await persistence.transaction((tx: any) => tx.claim_delivery_intent(intentId, {
-      maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile,
-    }));
+    processB = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", claimWorkerSource], {
+      env: { ...claimWorkerEnv, CLAIM_HOLD: "0" }, stdout: "pipe", stderr: "pipe",
+    });
+    const processBResult = await Promise.all([new Response(processB.stdout).text(), new Response(processB.stderr).text(), processB.exited] as const);
+    const [processBOut, processBErr, processBExit] = processBResult;
+    expect(processBExit, processBErr).toBe(0);
+    const replacementB = JSON.parse(processBOut.trim().split(/\r?\n/u).at(-1)!);
     expect(replacementB).toMatchObject({ intentId, generation: "2", invocation: 2 });
     expect(replacementB.claimId).not.toBe(staleA.claimId);
     expect(replacementB.firstClaimAt).toBe(staleA.firstClaimAt);
@@ -1728,14 +1769,17 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     expect(preDispatchB.execution_deadline).toBe(replacementB.executionDeadline);
     expect(preDispatchB.lease_until).toBe(replacementB.leaseUntil);
     expect((await persistence.read_delivery_intent(intentId)).payload).toEqual(originalIntent.payload);
-    expect(await persistence.transaction((tx: any) => tx.checkpoint_delivery_dispatch(staleA))).toBe(false);
+    writeFileSync(staleAContinuePath, "continue");
+    await waitForFile(staleAResultPath, "worker A stale checkpoint result");
+    const staleAResult = JSON.parse(readFileSync(staleAResultPath, "utf8"));
+    expect(staleAResult).toEqual({ checkpoint: false, handle: staleA });
     expect((await rows(claimQuery, [intentId]))[0]).toEqual(preDispatchB);
 
-    let providerEntered!: () => void, releaseProvider!: () => void;
+    let providerEntered!: () => void;
     const providerReached = new Promise<void>(resolve => { providerEntered = resolve; });
     const heldProviderResponse = new Promise<void>(resolve => { releaseProvider = resolve; });
     const calls: Array<{ intentId: string; payload: any; page: any; activationGeneration: string; claimGeneration: string; invocations: number; possibleDispatch: number }> = [];
-    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+    server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
       const payload = await request.json() as { idempotency_key: string };
       const activation = (await activationRows())[0];
       const claim = (await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [payload.idempotency_key]))[0];
@@ -1752,14 +1796,12 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(activationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(scanTime)});
       console.log(JSON.stringify(result)); process.exit(0);`;
     const childEnv = { ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
-      COMPONENT_WORKER_KEY: f.issued.credential, COMPONENT_ENDPOINT: `http://127.0.0.1:${server.port}/`,
+      COMPONENT_WORKER_KEY: f.issued.credential, COMPONENT_ENDPOINT: `http://127.0.0.1:${server!.port}/`,
       DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath };
-    let child: ReturnType<typeof Bun.spawn> | undefined;
-    try {
       // Expire B's claim and leave the activation expired for generated worker C.
       await rows('UPDATE "__jadpo_delivery_claims_v1" SET lease_until=$1 WHERE intent_id=$2', ["2000-01-01T00:00:00.000Z", intentId]);
-      child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
-      const capture = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited] as const);
+      deliveryChild = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+      const capture = Promise.all([new Response(deliveryChild.stdout).text(), new Response(deliveryChild.stderr).text(), deliveryChild.exited] as const);
       let timer: ReturnType<typeof setTimeout>;
       const deadline = new Promise<{ entered: false }>(resolve => { timer = setTimeout(() => resolve({ entered: false }), 15_000); });
       let reached: { entered: false } | { entered: true };
@@ -1791,8 +1833,12 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(inFlightClaim.claim_id).not.toBe(staleA.claimId);
       expect(inFlightClaim.claim_id).not.toBe(replacementB.claimId);
       const receiptQuery = 'SELECT intent_id, claim_id, CAST(generation AS TEXT) AS generation, payload_version, accepted_at, observed_at FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1';
-      expect(await persistence.transaction((tx: any) => tx.acknowledge_delivery_mail(staleA, { accepted_at: instant }))).toBe(false);
-      expect(await persistence.transaction((tx: any) => tx.checkpoint_delivery_dispatch(staleA))).toBe(false);
+      writeFileSync(staleAAckContinuePath, "continue");
+      await waitForFile(staleAAckResultPath, "worker A stale acknowledgement result");
+      expect(JSON.parse(readFileSync(staleAAckResultPath, "utf8"))).toEqual({ acknowledged: false, handle: staleA });
+      const [processAOut, processAErr, processAExit] = await processACapture;
+      expect(processAExit, processAErr).toBe(0);
+      expect(JSON.parse(processAOut.trim().split(/\r?\n/u).at(-1)!)).toEqual(staleA);
       expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
       expect((await rows('SELECT intent_id FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [intentId]))).toEqual([]);
       expect((await rows(claimQuery, [intentId]))[0]).toEqual(inFlightClaim);
@@ -1803,7 +1849,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       let result: { settled: false } | { settled: true; value: readonly [string, string, number] };
       try { result = await Promise.race([capture.then(value => ({ settled: true as const, value })), completionDeadline]); }
       finally { clearTimeout(completionTimer!); }
-      if (!result.settled) { child.kill("SIGKILL"); throw new Error("stale-claim recovery worker exceeded its 15-second completion bound"); }
+      if (!result.settled) { deliveryChild!.kill("SIGKILL"); throw new Error("stale-claim recovery worker exceeded its 15-second completion bound"); }
       const [stdout, stderr, exitCode] = result.value;
       expect(exitCode, stderr).toBe(0);
       expect(JSON.parse(stdout.trim().split(/\r?\n/u).at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
@@ -1824,9 +1870,13 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(finished.activation_id).toBeNull(); expect(finished.page).toBeNull();
       expect(String(finished.generation)).toBe(calls[0].activationGeneration);
     } finally {
+      if (processA && processA.exitCode === null) processA.kill("SIGKILL");
+      if (processA) await processA.exited;
+      if (processB && processB.exitCode === null) processB.kill("SIGKILL");
+      if (processB) await processB.exited;
       releaseProvider();
-      if (child !== undefined) { child.kill("SIGKILL"); await child.exited; }
-      server.stop(true);
+      if (deliveryChild !== undefined) { deliveryChild.kill("SIGKILL"); await deliveryChild.exited; }
+      server?.stop(true);
     }
   }, 45_000);
   test("a fresh generated worker reclaims the original staged page after a pre-dispatch checkpoint fault", async () => {
