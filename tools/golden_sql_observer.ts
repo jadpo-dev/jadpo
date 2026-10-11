@@ -6,6 +6,8 @@ export type StatementObservation = { sql: string; operation: string };
 let active: StatementObservation[] | undefined;
 let authenticationAttempts = 0;
 let authenticatedPrincipal: { kind: "user" | "service"; subject: string; identityId: string } | undefined;
+let captureTodoLimitBindings = false;
+let todoLimitBindings: number[] = [];
 export function recordAuthenticationAttempt() { if (active) authenticationAttempts++; }
 export function authenticationAttemptCount() { return authenticationAttempts; }
 export function recordAuthenticatedPrincipal(principal: any) {
@@ -17,25 +19,46 @@ export function recordAuthenticatedPrincipal(principal: any) {
   }
 }
 export function authenticatedPrincipalObservation() { return authenticatedPrincipal ?? null; }
-export function beginSqlObservation() { active = []; authenticationAttempts = 0; authenticatedPrincipal = undefined; return active; }
+export function beginSqlObservation(captureTodoLimit = false) {
+  active = [];
+  authenticationAttempts = 0;
+  authenticatedPrincipal = undefined;
+  captureTodoLimitBindings = captureTodoLimit;
+  todoLimitBindings = [];
+  return active;
+}
 export function endSqlObservation() { active = undefined; }
-export function recordStatement(sql: string) {
+export function todoLimitBindingObservation() { return [...todoLimitBindings]; }
+export function recordStatement(sql: string, values: unknown[] = []) {
   if (!active) return;
   // Never retain bind values or literal credentials in observation evidence.
   const safe = sql.replace(/'(?:''|[^'])*'/gu, "'<literal>'");
   active.push({ sql: safe, operation: /^\s*([a-z]+)/iu.exec(safe)?.[1].toUpperCase() ?? "UNKNOWN" });
+  if (captureTodoLimitBindings && /\bfrom\s+"?todo"?\b/iu.test(safe)) {
+    const limit = /\blimit\s+(\$(\d+)|\?(\d*)|(\d+))/iu.exec(safe);
+    if (limit) {
+      let boundValues = values;
+      if (boundValues.length === 1 && Array.isArray(boundValues[0])) boundValues = boundValues[0];
+      const parameterIndex = limit[2] ? Number(limit[2]) - 1
+        : limit[3] ? Number(limit[3]) - 1
+        : limit[4] ? -1
+        : [...safe.slice(0, limit.index).matchAll(/\$\d+|\?\d*/gu)].length;
+      const value = parameterIndex === -1 ? Number(limit[4]) : boundValues[parameterIndex];
+      if (Number.isSafeInteger(value) && value > 0) todoLimitBindings.push(value);
+    }
+  }
 }
 function observeConnection(connection: any): any {
   return new Proxy(connection, {
     apply(target, receiver, arguments_) {
       const strings = arguments_[0];
       if (!Array.isArray(strings)) throw new Error("Unsupported SQL dispatch");
-      recordStatement(strings.join("?"));
+      recordStatement(strings.join("?"), arguments_.slice(1));
       return Reflect.apply(target, target, arguments_);
     },
     get(target, property) {
       if (property === "unsafe") return (sql: string, ...values: unknown[]) => {
-        recordStatement(sql);
+        recordStatement(sql, values);
         return target.unsafe(sql, ...values);
       };
       if (property === "begin") return async (...arguments_: any[]) => {

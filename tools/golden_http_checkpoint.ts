@@ -5,7 +5,7 @@ import { SQL } from "bun";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation } from "./golden_sql_observer.ts";
+import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation, todoLimitBindingObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
 const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
@@ -20,7 +20,7 @@ prototype.prepare = function(sql: string, ...options: unknown[]) {
   return new Proxy(statement, { get(target, property) {
     const member = Reflect.get(target, property, target);
     if (["all", "get", "run", "values"].includes(String(property))) return (...values: unknown[]) => {
-      recordStatement(sql); return member.apply(target, values);
+      recordStatement(sql, values); return member.apply(target, values);
     };
     return typeof member === "function" ? member.bind(target) : member;
   } });
@@ -208,7 +208,7 @@ async function issueBobJwtForAmbiguity() {
     audience: verified.payload.aud, subject: verified.payload.sub,
     issuedAt: (verified.payload.iat ?? 0) * 1000, expiresAt: (verified.payload.exp ?? 0) * 1000 } };
 }
-async function send(request: any, resolveAliceUserPath = false) {
+async function send(request: any, resolveAliceUserPath = false, captureTodoLimit = false) {
   const headers: Record<string, string> = {};
   const auth = Array.isArray(request.auth) ? request.auth : [request.auth];
   if (auth.includes("alice-session")) Object.assign(headers, { cookie: session.setCookie.split(";", 1)[0], origin: environment.BROWSER_ORIGIN, "x-jadpo-csrf": session.csrfToken });
@@ -233,7 +233,7 @@ async function send(request: any, resolveAliceUserPath = false) {
   const routedPath = auth.includes("alice-jwt") || auth.includes("alice-bounded-bearer") || resolveAliceUserPath
     ? path.replace("/users/alice", `/users/${alice}`) : path;
   if (request.json !== undefined) headers["content-type"] = "application/json";
-  const statements = beginSqlObservation();
+  const statements = beginSqlObservation(captureTodoLimit);
   let response: Response;
   let body: any;
   let serviceExchange: any;
@@ -255,8 +255,10 @@ async function send(request: any, resolveAliceUserPath = false) {
   } finally { endSqlObservation(); }
   const authenticationAttempts = authenticationAttemptCount();
   const principal = authenticatedPrincipalObservation();
+  const todoLimitBindings = captureTodoLimit ? todoLimitBindingObservation() : undefined;
   const captured = { method: request.method, path: routedPath, auth: request.auth ?? null, requestJson: request.json ?? null, requestStartedAt, responseCompletedAt, status: response!.status, body, statements, authenticationAttempts,
     ...(principal ? { principal } : {}),
+    ...(todoLimitBindings ? { todoLimitBindings } : {}),
     ...(serviceExchange ? { serviceExchange } : {}) };
   if (secrets.some(secret => JSON.stringify(captured).includes(secret))) throw new Error("Unsafe raw observation refused");
   raw.push(captured);
@@ -450,7 +452,7 @@ try {
           createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at),
           deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at),
         })) } });
-        await send(case_.request, true);
+        await send(case_.request, true, true);
       }
     } else if (case_.id === "READ-001") {
       const now = Date.now();

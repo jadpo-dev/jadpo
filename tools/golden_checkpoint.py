@@ -498,6 +498,8 @@ def rel_001_observation(case, raw):
                 or has_top_level_sql_keyword(predicates, 'or') or ordered is None or bounded is None
                 or statements.index(user_reads[0]) > statements.index(todo_reads[0])):
             raise ValueError(f'REL-001 response {index} lacks scoped, ordered, bounded child SQL')
+        if reply.get('todoLimitBindings') != [101]:
+            raise ValueError(f'REL-001 response {index} did not bind the 100-row cap plus one lookahead row')
         observations.append({'variant_index': index, 'steps': [{
             'status': 200, 'outputSchema': 'UserWithTodos', 'databaseQueries': len(statements),
             'childLimit': 100, 'childOrder': ['created_at asc', 'id asc'],

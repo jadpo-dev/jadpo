@@ -70,6 +70,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
                             'responseCompletedAt': 1768478400000 + index, 'status': 200,
                             'body': {'user_id': alice, 'todos': items}, 'authenticationAttempts': 1,
                             'principal': {'kind': 'user', 'subject': 'alice', 'identityId': alice},
+                            'todoLimitBindings': [101],
                             'statements': [
                                 {'sql': 'SELECT "id" FROM "user" WHERE "id" = ? AND ("status" = \'<literal>\') LIMIT 2', 'operation': 'SELECT'},
                                 {'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "created_at", "updated_at" FROM "todo" WHERE "owner_id" = ?1 AND "deleted_at" IS NULL AND ("deleted_at" IS NULL) ORDER BY "created_at" ASC, "id" ASC LIMIT ?4', 'operation': 'SELECT'}]})
@@ -1243,6 +1244,10 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('child order changed', reversed_rows))
         no_limit = deepcopy(raw); no_limit[5]['statements'][1]['sql'] = no_limit[5]['statements'][1]['sql'].replace(' LIMIT ?4', '')
         mutations.append(('child SQL unbounded', no_limit))
+        wrong_limit = deepcopy(raw); wrong_limit[5]['todoLimitBindings'] = [201]
+        mutations.append(('child SQL bound exceeds cap and lookahead', wrong_limit))
+        missing_limit_binding = deepcopy(raw); del missing_limit_binding[5]['todoLimitBindings']
+        mutations.append(('child SQL bound not observed', missing_limit_binding))
         no_order = deepcopy(raw); no_order[5]['statements'][1]['sql'] = no_order[5]['statements'][1]['sql'].replace(' ORDER BY "created_at" ASC, "id" ASC', '')
         mutations.append(('child SQL order missing', no_order))
         extra_query = deepcopy(raw); extra_query[3]['statements'].append({'sql': 'SELECT id FROM todo', 'operation': 'SELECT'})
