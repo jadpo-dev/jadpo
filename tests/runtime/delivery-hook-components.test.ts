@@ -559,7 +559,9 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
     expect(writerExitCode, writerErr).toBe(73); // Deliberate hard exit after COMMIT, before any worker wakeup.
     expect(new Date((await stored(value.id))[0].due_at as any).toISOString()).toBe(dueB);
     expect(await revision(value.id)).toBe("2");
-    expect(await intentRows(value.id)).toHaveLength(1);
+    const committedIntents = await intentRows(value.id);
+    expect(committedIntents).toHaveLength(1);
+    const committedIntentId = committedIntents[0].intent_id;
 
     const recoverySource = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const page=await persistence.withOperationTime(${JSON.stringify(scanTime)}).transaction(tx=>tx.select_delivery_intents(${JSON.stringify(bindingIdentity)},proof));console.log(JSON.stringify(page));process.exit(0);`;
     const recovery = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", recoverySource], {
@@ -575,6 +577,7 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
     expect(exit, err).toBe(0);
     const recovered = JSON.parse(out).intents;
     expect(recovered).toHaveLength(1);
+    expect(recovered[0].intentId).toBe(committedIntentId);
     expect(recovered[0]).toMatchObject({ sourceEntityId: value.id, sourceRevision: "2", payload: { due_at: dueB } });
     expect(recovered[0].payload.idempotency_key).toBe(recovered[0].intentId);
     expect(await intentRows(value.id)).toHaveLength(1);
