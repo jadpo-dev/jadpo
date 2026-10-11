@@ -17,6 +17,7 @@ mod delivery_invocation;
 mod delivery_scheduler;
 mod delivery_selection;
 mod first_party;
+mod job_runtime;
 mod liveness;
 
 const JWT_PACKAGE: &str = include_str!("runtime/jwt/package.json");
@@ -65,6 +66,12 @@ pub fn derive_target(
         outputs.push(GeneratedArtifact {
             relative_path: "target/authentication.ts",
             contents: generator.authentication_target(),
+        });
+    }
+    if !project.delivery_model().bindings().is_empty() {
+        outputs.push(GeneratedArtifact {
+            relative_path: "target/jobs.ts",
+            contents: generator.scheduled_jobs_target(),
         });
     }
     if generator.has_service_operations() {
@@ -353,14 +360,29 @@ impl<'project> TargetGenerator<'project> {
                         authentication_strategies.push(declaration);
                     }
                     Declaration::Job(job) => {
-                        let mut diagnostic = Diagnostic::error("JADPO_TARGET_JOB_NOT_IMPLEMENTED")
-                            .with_fact(DiagnosticFact::Name(job.name.text.clone()));
-                        diagnostic.primary = Some(SourceSpan {
-                            source: source.source_name.clone(),
-                            start: job.range.start,
-                            end: job.range.end,
+                        let checked_delivery = job.delivery.as_ref().is_some_and(|descriptor| {
+                            project
+                                .delivery_model()
+                                .bindings()
+                                .iter()
+                                .filter(|binding| {
+                                    binding.schedule().job == job.name.text
+                                        && binding.descriptor() == descriptor
+                                })
+                                .count()
+                                == 1
                         });
-                        return Err(diagnostic);
+                        if !checked_delivery {
+                            let mut diagnostic =
+                                Diagnostic::error("JADPO_TARGET_JOB_NOT_IMPLEMENTED")
+                                    .with_fact(DiagnosticFact::Name(job.name.text.clone()));
+                            diagnostic.primary = Some(SourceSpan {
+                                source: source.source_name.clone(),
+                                start: job.range.start,
+                                end: job.range.end,
+                            });
+                            return Err(diagnostic);
+                        }
                     }
                     Declaration::Route(_) => {}
                 }
@@ -12637,7 +12659,7 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn delivery_schedule_hook_components_keep_full_execution_disabled() {
+    fn delivery_schedule_job_components_render_host_invoked_worker() {
         use super::{SqlDialect, TargetGenerator};
         use jadpo_syntax::{Declaration, SourceFile};
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -12690,13 +12712,29 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(project.delivery_model().bindings().len(), 1);
-        assert_eq!(
-            derive_target(root, &project).unwrap_err().code,
-            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
-        );
-        // Inspect the actual production persistence renderer on the complete
-        // checked source. Do not remove declarations, clear errors, alter hooks,
-        // or turn this component sink into a publicly executable job target.
+        // Derive the full public target from the complete checked source. The
+        // host entrypoint remains manual and requires explicit finite profiles.
+        let target = derive_target(root, &project).unwrap();
+        let target_file = |path: &str| {
+            &target
+                .iter()
+                .find(|artifact| artifact.relative_path == path)
+                .unwrap_or_else(|| panic!("missing generated artifact {path}"))
+                .contents
+        };
+        let jobs = target_file("target/jobs.ts");
+        assert!(jobs.contains("name: \"overdue_reminders\", intervalMs: 900000"));
+        assert!(jobs.contains("concurrency: \"singleton\", retryWakeup: \"next_schedule\""));
+        assert!(jobs.contains("workerCredential: string, activationProfile: ScheduledJobProfile, deliveryProfile: ScheduledJobProfile, operationTime: string"));
+        assert!(jobs
+            .contains("prepareDeliveryCredential(\"api_bearer\", workerCredential, Date.now())"));
+        assert!(jobs.contains("runDeliveryScheduleActivation(\"job.overdue_reminders.delivery.reminder_v1\", proof, activationProfile, deliveryProfile, operationTime)"));
+        assert!(!jobs.contains("setInterval"));
+        assert!(!jobs.contains("executionMs: 120000"));
+        assert!(!jobs.contains("executionMs: 60000"));
+        let app = target_file("target/app.ts");
+        // Inspect the actual production persistence renderer on the same
+        // complete checked source that now yields the public job target.
         let mut generator = TargetGenerator {
             project: &project,
             types: Default::default(),
@@ -12761,10 +12799,7 @@ mod tests {
         );
         assert!(persistence.contains("if (changed !== null && hasOwn(patchValue, \"due_at\"))"));
         assert!(persistence.contains("async update_required_Todo_by_id_patch_title_and_status_and_due_at_set_reminder_sent_at"));
-        assert_eq!(
-            derive_target(root, &project).unwrap_err().code,
-            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
-        );
+        assert_eq!(target_file("target/jobs.ts"), jobs);
         if let Some(sink) = std::env::var_os("JADPO_DELIVERY_HOOK_COMPONENT_OUTPUT") {
             let sink = std::path::PathBuf::from(sink);
             assert!(
@@ -12772,9 +12807,9 @@ mod tests {
                 "test-owned component directory required"
             );
             fs::write(sink.join("persistence.ts"), persistence).unwrap();
-            // Unmodified actual app/auth renderers for native credential handoff
-            // components. This still does not bypass public job derivation.
-            fs::write(sink.join("app.ts"), generator.generate()).unwrap();
+            // Use the public target's exact outputs for the app and jobs entrypoint.
+            fs::write(sink.join("app.ts"), app).unwrap();
+            fs::write(sink.join("jobs.ts"), jobs).unwrap();
             fs::write(
                 sink.join("authentication.ts"),
                 generator.authentication_target(),

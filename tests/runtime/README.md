@@ -235,10 +235,11 @@ require the partial descending index without a sort and with at most the
 page-plus-one rows emitted after a deep cursor. It verifies the route slice,
 not execution of frozen LIST-001/002, which remains RM-109 work.
 
-`delivery-hook-components.test.ts` checks the production persistence renderer on
-the complete compiler-checked reminder fixture and its opaque binding. A Rust
-component test emits unmodified app/auth/persistence/schema output to a disposable sink;
-the normal public target still refuses the job. SQLite and
+`delivery-hook-components.test.ts` derives the complete compiler-checked
+reminder target, including `target/jobs.ts`, and runs its host-invoked worker
+entrypoint. The host supplies a worker credential, separate activation and
+delivery profiles, and the operation-time snapshot; generated output installs
+no scheduler or profile defaults. SQLite and
 `bash tests/runtime/postgres.sh delivery-hook-components` exercise actual create
 and supplied/equal/cleared/omitted/ABA patch revisions, source rollback, caught
 hook faults, ordinary owner-policy refusal, concurrency and fresh-process recovery.

@@ -307,7 +307,8 @@ impl<'project> ArtifactModel<'project> {
                     "reachable_names": reachable, "external_service_effects": effects,
                     "effect_evidence": "static_may_call_not_execution_or_authority",
                     "durable_failure_dispositions": "pending_checked_worker_binding",
-                    "execution_profile": null, "runtime_lowering_supported": false
+                    "execution_profile": null, "runtime_lowering_supported": delivery.is_some(),
+                    "activation_mode": if delivery.is_some() { "host_invoked_with_explicit_profiles" } else { "unsupported" }
                 });
                 if let Some(delivery) = delivery {
                     row["delivery"] = delivery.source_facts();

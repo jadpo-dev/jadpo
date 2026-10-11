@@ -70,7 +70,8 @@ impl CheckedReminderDeliveryBinding {
                 "max_elapsed_ms":effect.max_elapsed_ms,"jitter":effect.jitter,"proxy_allowed":effect.proxy_allowed,
                 "redirects_allowed":effect.redirects_allowed,"outcomes":effect.outcomes,"mappings":effect.outcome_mappings,
                 "schema_parity":serde_json::from_str::<serde_json::Value>(&effect.schema_parity_json()).expect("checked parity JSON")},
-            "execution_profile":null,"runtime_lowering_supported":false,"live_authority_established":false})
+            "execution_profile":null,"runtime_lowering_supported":true,
+            "activation_mode":"host_invoked_with_explicit_profiles","live_authority_established":false})
     }
 }
 

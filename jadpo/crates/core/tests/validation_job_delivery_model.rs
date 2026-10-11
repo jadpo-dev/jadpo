@@ -5,7 +5,7 @@ use jadpo_core::{
 };
 use jadpo_diagnostics::Severity;
 use jadpo_semantic::NodeKind;
-use jadpo_syntax::SourceFile;
+use jadpo_syntax::{Declaration, SourceFile};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -66,10 +66,34 @@ fn checked(project: &AnalyzedProject) {
         .iter()
         .all(|job| job.job != "overdue_reminders"));
     assert!(derive_approval_subject(&root(), project, None, None, None).is_ok());
-    assert_eq!(
-        derive_target(&root(), project).unwrap_err().code,
-        "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
-    );
+    let has_ordinary_job = project
+        .syntax
+        .sources
+        .iter()
+        .flat_map(|source| {
+            source.file.declarations.iter().filter(|declaration| {
+            matches!(declaration, Declaration::Job(job) if job.delivery.is_none())
+        })
+        })
+        .next()
+        .is_some();
+    if has_ordinary_job {
+        assert_eq!(
+            derive_target(&root(), project).unwrap_err().code,
+            "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
+        );
+    } else {
+        let target = derive_target(&root(), project)
+            .expect("checked delivery jobs lower to host entrypoints");
+        let jobs = target
+            .iter()
+            .find(|artifact| artifact.relative_path == "target/jobs.ts")
+            .unwrap();
+        assert!(jobs.contents.contains("runScheduledJob"));
+        assert!(jobs.contents.contains(
+            "activationProfile: ScheduledJobProfile, deliveryProfile: ScheduledJobProfile"
+        ));
+    }
 }
 fn expected_graph() -> Value {
     // Independent closed expectation: do not obtain it from the phase model.
@@ -258,7 +282,11 @@ fn complete_binding_publishes_exact_private_graph_without_ordinary_authority() {
     let facts = binding.source_facts();
     assert_eq!(facts["status"], "checked_nonexecuting_binding");
     assert_eq!(facts["execution_profile"], Value::Null);
-    assert_eq!(facts["runtime_lowering_supported"], false);
+    assert_eq!(facts["runtime_lowering_supported"], true);
+    assert_eq!(
+        facts["activation_mode"],
+        "host_invoked_with_explicit_profiles"
+    );
     assert_eq!(
         facts["run_failure_contract"],
         json!({"job":"overdue_reminders","callee":"reminder_tick","failures":[],"may_suspend":false})
@@ -333,6 +361,12 @@ fn mixed_jobs_are_an_explicit_complete_audit_union_with_private_outcomes_separat
     );
     assert_eq!(delivery["external_service_effects"], json!([]));
     assert_eq!(delivery["failures"], json!([]));
+    assert_eq!(delivery["runtime_lowering_supported"], true);
+    assert_eq!(
+        delivery["activation_mode"],
+        "host_invoked_with_explicit_profiles"
+    );
+    assert_eq!(plain["runtime_lowering_supported"], false);
     let meta: Value = serde_json::from_str(
         &artifacts
             .iter()

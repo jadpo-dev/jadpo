@@ -6,10 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-// Component evidence only: the production renderer consumes the complete
-// checked fixture and opaque binding, while public full-target lowering still
-// refuses its job. No generated code is rewritten; invocation components use a
-// disposable loopback reference provider, never a real mail account or scheduler.
+// Component evidence: public lowering emits a host-invoked job entrypoint from
+// the complete checked fixture. The host supplies both profiles and owns every
+// wakeup; invocation components use a disposable loopback reference provider.
 const postgresUrl = Bun.env.JADPO_DELIVERY_HOOK_DATABASE_URL;
 if (postgresUrl) {
   const url = new URL(postgresUrl);
@@ -19,7 +18,7 @@ delete Bun.env.DATABASE_URL;
 delete Bun.env.SQLITE_PATH;
 const root = mkdtempSync(join(tmpdir(), "jadpo-delivery-hook-components-"));
 const repository = new URL("../../", import.meta.url).pathname;
-const compiler = Bun.spawn(["cargo", "test", "--manifest-path", join(repository, "jadpo/Cargo.toml"), "-p", "jadpo-core", "--lib", "target::tests::delivery_schedule_hook_components_keep_full_execution_disabled", "--", "--exact"], {
+const compiler = Bun.spawn(["cargo", "test", "--manifest-path", join(repository, "jadpo/Cargo.toml"), "-p", "jadpo-core", "--lib", "target::tests::delivery_schedule_job_components_render_host_invoked_worker", "--", "--exact"], {
   cwd: repository, env: { ...Bun.env, CARGO_INCREMENTAL: "0", JADPO_DELIVERY_HOOK_COMPONENT_OUTPUT: root }, stdout: "pipe", stderr: "pipe",
 });
 const [compileOut, compileErr, compileExit] = await Promise.all([new Response(compiler.stdout).text(), new Response(compiler.stderr).text(), compiler.exited]);
@@ -34,6 +33,7 @@ symlinkSync(dependency, join(root, "node_modules"), "dir");
 const { persistence } = await import(pathToFileURL(persistencePath).href) as { persistence: any };
 const { persistence: ordinary } = await import(pathToFileURL(join(root, "ordinary-persistence.ts")).href) as { persistence: any };
 const app = await import(pathToFileURL(join(root, "app.ts")).href);
+const jobs = await import(pathToFileURL(join(root, "jobs.ts")).href);
 const { authenticationStorage, resolveAuthenticationAuthority } = await import(pathToFileURL(persistencePath).href);
 const { createFirstPartyAuthentication } = await import(pathToFileURL(join(root, "first-party-authentication.ts")).href);
 const { setReferenceMailEndpointForTesting } = await import(pathToFileURL(join(root, "service-adapter.ts")).href);
@@ -634,6 +634,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
   test("generated worker resumes a 501-row selection after the bounded 500-intent page", async () => {
+    expect(jobs.scheduledJobs).toEqual([{
+      name: "overdue_reminders", intervalMs: 900_000, concurrency: "singleton", retryWakeup: "next_schedule",
+    }]);
     await clearScanTodos();
     await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, scanTime));
     await rows('DELETE FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [bindingIdentity]);
@@ -654,9 +657,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       const workerSource = (at: string) => `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
         const {setReferenceMailEndpointForTesting}=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});
         await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
-        const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
         setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
-        const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(extendedActivationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(at)});
+        const jobs=await import(${JSON.stringify(pathToFileURL(join(root, "jobs.ts")).href)});
+        const result=await jobs.runScheduledJob("overdue_reminders",process.env.COMPONENT_WORKER_KEY,${JSON.stringify(extendedActivationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(at)});
         console.log(JSON.stringify(result)); process.exit(0);`;
       const childEnv = {
         ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
@@ -1637,8 +1640,9 @@ describe(`opaque-binding generated schedule hook component (${sql ? "postgres" :
   });
   test("complete checked binding remains nonexecuting and unrelated entities have no schedule hook", async () => {
     const binding = JSON.parse(readFileSync(join(root, "binding.json"), "utf8"));
-    expect(binding.runtime_lowering_supported).toBe(false);
+    expect(binding.runtime_lowering_supported).toBe(true);
     expect(binding.execution_profile).toBeNull();
+    expect(binding.activation_mode).toBe("host_invoked_with_explicit_profiles");
     expect(binding.live_authority_established).toBe(false);
     expect(await client.transaction((tx: any) => tx.read_delivery_schedule_revision("User", owner))).toBeNull();
   });

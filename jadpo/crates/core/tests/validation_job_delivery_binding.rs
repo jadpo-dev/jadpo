@@ -253,10 +253,14 @@ fn actual_migration_contracts_finish_nonexecuting_binding_not_worker() {
     }
     let root = root();
     assert!(derive_approval_subject(&root, &project, None, None, None).is_ok());
-    assert_eq!(
-        derive_target(&root, &project).unwrap_err().code,
-        "JADPO_TARGET_JOB_NOT_IMPLEMENTED"
-    );
+    let target = derive_target(&root, &project)
+        .expect("checked binding lowers through generated host entrypoint");
+    assert!(target.iter().any(|artifact| {
+        artifact.relative_path == "target/jobs.ts"
+            && artifact
+                .contents
+                .contains("job.overdue_reminders.delivery.reminder_v1")
+    }));
     // Removing the descriptor leaves genuinely supported ordinary declarations,
     // including the exact imported service, not a rewritten unchecked graph.
     let plain = FIXTURE[..FIXTURE.find("    delivery:").unwrap()].to_owned() + "}\n";
