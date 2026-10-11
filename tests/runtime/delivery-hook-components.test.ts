@@ -972,6 +972,115 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
     expect(callsInProgress).toHaveLength(2);
   });
+  test("in-flight cancellation preserves a known-no-effect receipt and releases the same-key successor", async () => {
+    const f = await fixture();
+    const first = (await scan(f.proof)).intents[0];
+    let callsInProgress: any[] = [];
+    let successor: any;
+    let cancellation: any[] = [];
+    let firstSnapshot: any;
+    await provider(async calls => {
+      callsInProgress = calls;
+      expect(await activate(f.proof)).toMatchObject({ status: "finished", selected: 1, attempted: 1, continued: false });
+      firstSnapshot = {
+        intent: await persistence.read_delivery_intent(first.intentId),
+        cancellation: await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId]),
+        claims: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId]),
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [first.intentId]),
+        deadLetters: await rows('SELECT * FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [first.intentId]),
+      };
+      expect(firstSnapshot.intent.state).toBe("cancelled");
+      expect(firstSnapshot.cancellation).toHaveLength(1);
+      expect(firstSnapshot.cancellation).toEqual(cancellation);
+      expect(firstSnapshot.claims).toHaveLength(1);
+      expect(Number(firstSnapshot.claims[0].possible_dispatch)).toBe(0);
+      expect(firstSnapshot.attempts).toHaveLength(1);
+      expect(firstSnapshot.attempts[0].failure_class).toBe("recipient_rejected");
+      expect(firstSnapshot.deadLetters).toEqual([]);
+
+      expect(await activate(f.proof, "2026-10-08T08:15:00.000Z")).toMatchObject({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls.map(call => call.body.idempotency_key)).toEqual([first.intentId, successor.intentId]);
+      expect(calls.map(call => call.body)).toEqual([first.payload, successor.payload]);
+      expect((await persistence.read_delivery_intent(successor.intentId)).state).toBe("succeeded");
+      expect(await persistence.read_delivery_intent(first.intentId)).toEqual(firstSnapshot.intent);
+      expect(await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId])).toEqual(firstSnapshot.cancellation);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId])).toEqual(firstSnapshot.claims);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [first.intentId])).toEqual(firstSnapshot.attempts);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [first.intentId])).toEqual(firstSnapshot.deadLetters);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [first.intentId])).toEqual([]);
+    }, async () => {
+      if (callsInProgress.length === 1) {
+        expect(callsInProgress[0].body.idempotency_key).toBe(first.intentId);
+        expect(callsInProgress[0].possibleDispatch).toBe(1);
+        expect((await persistence.read_delivery_intent(first.intentId)).state).toBe("running");
+        await patch(f.value.id, { due_at: dueB });
+        successor = (await scan(f.proof)).intents.find((intent: any) => intent.sourceRevision === "2");
+        expect(successor).toBeDefined();
+        expect(successor.orderingKey).toBe(first.orderingKey);
+        expect(BigInt(successor.keySequence)).toBeGreaterThan(BigInt(first.keySequence));
+        expect(await persistence.transaction((tx: any) => tx.cancel_delivery_intent(first.intentId))).toBe("requested");
+        cancellation = await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId]);
+        expect(cancellation).toHaveLength(1);
+        expect(await persistence.transaction((tx: any) => tx.claim_delivery_intent(successor.intentId, { maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile }))).toBeNull();
+      } else {
+        expect(callsInProgress).toHaveLength(2);
+        expect(await persistence.read_delivery_intent(first.intentId)).toEqual(firstSnapshot.intent);
+      }
+    }, body => body.idempotency_key === first.intentId
+      ? Response.json({ code: "invalid_recipient" }, { status: 400 })
+      : Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } }));
+  });
+  test("in-flight cancellation preserves an unknown receipt and keeps the same-key successor blocked", async () => {
+    const f = await fixture();
+    const first = (await scan(f.proof)).intents[0];
+    let callsInProgress: any[] = [];
+    let successor: any;
+    let cancellation: any[] = [];
+    let unknownSnapshot: any;
+    await provider(async calls => {
+      callsInProgress = calls;
+      expect(await activate(f.proof)).toMatchObject({ status: "finished", selected: 1, attempted: 1, continued: false });
+      unknownSnapshot = {
+        intent: await persistence.read_delivery_intent(first.intentId),
+        cancellation: await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId]),
+        claims: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId]),
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [first.intentId]),
+      };
+      expect(unknownSnapshot.intent.state).toBe("outcome_unknown");
+      expect(unknownSnapshot.cancellation).toEqual(cancellation);
+      expect(unknownSnapshot.cancellation).toHaveLength(1);
+      expect(unknownSnapshot.claims).toHaveLength(1);
+      expect(Number(unknownSnapshot.claims[0].possible_dispatch)).toBe(1);
+      expect(unknownSnapshot.attempts).toEqual([]);
+
+      expect(await activate(f.proof, "2026-10-08T08:15:00.000Z")).toMatchObject({ status: "finished", selected: 1, continued: false });
+      expect(calls).toHaveLength(1);
+      expect((await persistence.read_delivery_intent(successor.intentId)).state).toBe("pending");
+      expect(await persistence.transaction((tx: any) => tx.claim_delivery_intent(successor.intentId, { maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile }))).toBeNull();
+      expect(await persistence.read_delivery_intent(first.intentId)).toEqual(unknownSnapshot.intent);
+      expect(await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId])).toEqual(unknownSnapshot.cancellation);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId])).toEqual(unknownSnapshot.claims);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [first.intentId])).toEqual(unknownSnapshot.attempts);
+      expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+    }, async () => {
+      expect(callsInProgress).toHaveLength(1);
+      expect(callsInProgress[0].body.idempotency_key).toBe(first.intentId);
+      expect(callsInProgress[0].possibleDispatch).toBe(1);
+      expect((await persistence.read_delivery_intent(first.intentId)).state).toBe("running");
+      await patch(f.value.id, { due_at: dueB });
+      successor = (await scan(f.proof)).intents.find((intent: any) => intent.sourceRevision === "2");
+      expect(successor).toBeDefined();
+      expect(successor.orderingKey).toBe(first.orderingKey);
+      expect(BigInt(successor.keySequence)).toBeGreaterThan(BigInt(first.keySequence));
+      expect(await persistence.transaction((tx: any) => tx.cancel_delivery_intent(first.intentId))).toBe("requested");
+      cancellation = await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId]);
+      expect(cancellation).toHaveLength(1);
+    }, body => Response.json({ accepted_at: instant }, { status: 202, headers: {
+      // The provider may have accepted the request, but a mismatched key cannot
+      // prove which intent it accepted; the adapter must preserve uncertainty.
+      "Idempotency-Key": body.idempotency_key === first.intentId ? "different-intent" : body.idempotency_key,
+    } }));
+  });
   test("generated worker releases a same-key successor after a cancelled predecessor without rewriting its history", async () => {
     const f = await fixture();
     const first = (await scan(f.proof)).intents[0];
