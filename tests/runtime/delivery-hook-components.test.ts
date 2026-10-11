@@ -711,6 +711,57 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
     });
   });
+  test("generated worker leaves a known-no-effect retry cancelled before the next claim", async () => {
+    const f = await fixture();
+    const calls: any[] = [];
+    const previousRandom = Math.random;
+    const previousNodeEnv = Bun.env.NODE_ENV;
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json();
+      calls.push({ body, key: request.headers.get("Idempotency-Key") });
+      return Response.json({ code: "rate_limited" }, { status: 429 });
+    } });
+    Bun.env.NODE_ENV = "test";
+    Math.random = () => 0;
+    setReferenceMailEndpointForTesting(`http://127.0.0.1:${server.port}`);
+    try {
+      const original = (await scan(f.proof)).intents[0];
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(3);
+      expect(calls.every(call => call.body.idempotency_key === original.intentId && call.key === original.intentId)).toBe(true);
+      const retrying = await persistence.read_delivery_intent(original.intentId);
+      expect(retrying.state).toBe("retry_wait");
+      const attempt = await rows('SELECT intent_id,generation,provider_attempts,failure_class FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]);
+      expect(attempt).toHaveLength(1);
+      expect(attempt[0]).toMatchObject({ intent_id: original.intentId, provider_attempts: 3, failure_class: "service_unavailable" });
+
+      expect(await persistence.transaction((tx: any) => tx.cancel_delivery_intent(original.intentId))).toBe("cancelled");
+      const cancelled = {
+        intent: await persistence.read_delivery_intent(original.intentId),
+        claim: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId]),
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]),
+        cancellation: await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [original.intentId]),
+        sourceIntents: await intentRows(f.value.id),
+      };
+      expect(cancelled.intent.state).toBe("cancelled");
+      expect(cancelled.cancellation).toHaveLength(1);
+      expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+
+      expect(await activate(f.proof, "2026-10-08T08:15:00.000Z")).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(3);
+      expect(await persistence.read_delivery_intent(original.intentId)).toEqual(cancelled.intent);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId])).toEqual(cancelled.claim);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId])).toEqual(cancelled.attempts);
+      expect(await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [original.intentId])).toEqual(cancelled.cancellation);
+      expect(await intentRows(f.value.id)).toEqual(cancelled.sourceIntents);
+      expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+    } finally {
+      setReferenceMailEndpointForTesting(null);
+      server.stop(true);
+      Math.random = previousRandom;
+      if (previousNodeEnv === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previousNodeEnv;
+    }
+  }, 30_000);
   test("in-flight cancellation preserves a successful receipt and releases the same-key successor", async () => {
     const f = await fixture();
     let callsInProgress: any[] = [];
