@@ -579,6 +579,7 @@ type Label = Text {
 | Naming case rules | Works in general. |
 | Reserved words | Inconsistent: `var return = x` is accepted, but `return` cannot then be read back. A fix policy was chosen on 2026-10-01 and not built. |
 | Comments | `//` only. Documentation comments are undesigned. |
+| Golden app layout | A todo route (`GET /todos/{todo_id}`) sits in the health route file and is accepted. The reminder job, mail service and readiness check were dropped in the migration, so the layout has never held them. |
 
 ### Consistency with the rest of the language
 
@@ -599,35 +600,164 @@ type Label = Text {
 - **The formatter keeps your blank lines and import order.** Two people can
   format the same file differently and both pass `jadpo fmt --check`.
 
+### Proposed layout (preliminary)
+
+Based on three pieces of research in `docs/language/research/`: what
+developers like and dislike in other frameworks' layouts
+(`layout-patterns.md`), six realistic applications from this todo app up to a
+72-entity, eight-team platform (`layout-scenarios.md`), and three candidate
+layouts tested against all of them (`layout-mapping.md`). Everything here is a
+proposal for review; nothing is built.
+
+**The shape.** Role folders, as today, while the app is small. When an app
+grows into separate business areas, it declares domains, and the same role
+folders move one level down into a folder per domain. A todo app never sees a
+domain folder; a 72-entity app has one folder per team.
+
+```text
+app.jadpo                  application, principal, readiness
+config.jadpo               configuration
+authentication.jadpo       authentication methods and their failures
+entities/
+  todo.jadpo               Todo, plus the types and failures only it uses
+  todo.test.jadpo          its tests, beside it
+  user.jadpo
+  service.jadpo
+  service_credential.jadpo
+values/
+  todo_view.jadpo          promoted: used by Todo and User
+  user_status.jadpo        promoted: used by User and authentication
+workflows/
+  send_due_reminders.jadpo
+routes/
+  api_todos.jadpo          every /todos route
+  api_todos.test.jadpo
+  api_users.jadpo          every /users route
+  api_health.jadpo
+jobs/
+  overdue_reminders.jadpo
+services/
+  reminder_mail.jadpo      the mail provider, its messages and failures
+  reminder_mail.contract.json
+.jadpo/                    committed compiler data (schema identities)
+build/                     generated output, never edited
+```
+
+The same rules at scale, once domains are declared:
+
+```text
+app.jadpo  config.jadpo  authentication.jadpo  policy.jadpo
+shared/
+  values/       money.jadpo  country_code.jadpo  address.jadpo
+domains/
+  ordering/
+    entities/   cart.jadpo  order.jadpo  order.test.jadpo  order_line.jadpo
+    queries/    order_history.jadpo
+    workflows/  checkout.jadpo
+    routes/     v1_orders.jadpo  v2_orders.jadpo  backoffice_orders.jadpo
+    events/     order_event.jadpo
+  payments/
+    services/   stripe.jadpo  stripe.contract.json
+    routes/     webhooks_stripe.jadpo
+  catalogue/  fulfilment/  identity/
+```
+
+#### Where things go
+
+- Every kind of declaration has exactly one home. Entities in `entities/`,
+  cross-entity reads in `queries/`, multi-entity actions in `workflows/`,
+  routes in `routes/`, and likewise `events/`, `subscribers/`, `services/`,
+  `jobs/` and `migrations/`.
+- One main declaration per file, and the file is named after it:
+  `ServiceCredential` lives in `service_credential.jadpo`.
+- Types, failures and helper functions live in the one file that uses them.
+  When a second file starts using one, it moves to `values/` or `functions/`.
+  The compiler enforces this in both directions and `jadpo fmt --layout` does
+  the move, so `values/` only ever holds things that are genuinely shared.
+- Routes are filed by audience and URL: `api_todos.jadpo` holds every `/todos`
+  route. Audiences and API versions (`admin`, `partner`, `v1`, `v2`,
+  `webhooks`) are declared once with their URL prefix, so `/admin/orders`
+  lives in `admin_orders.jadpo`. The URL in a log line tells you the file.
+- Tests sit beside their subject as `<name>.test.jadpo`. Non-Jadpo files
+  (provider contracts, email templates, search mappings) sit beside the file
+  that uses them and must be referenced from it.
+- Fixed root files: `app.jadpo`, `config.jadpo`, `authentication.jadpo` and
+  `policy.jadpo`. A tiny project may keep everything in a single `app.jadpo`.
+- A `.jadpo` file anywhere else is an error. Folders without `.jadpo` files
+  (`docs/`, `.github/`) are ignored.
+
+#### Names
+
+- A name must convert to its file name and back unchanged, so consecutive
+  capitals are not allowed: `VatRate`, not `VATRate`. This avoids the acronym
+  problem Rails has with file-name mapping.
+- Names stay unique across the whole project and across kinds, so every file
+  name is unique too: no screen full of identical tab names.
+
+#### Domains replace modules
+
+- A domain folder is the owner of everything in it and the visibility
+  boundary. Declarations are private to their domain unless marked `public`.
+- Only data, queries, events and pure functions can be public. One domain can
+  read another's data through its public queries, but can only cause changes
+  in another domain by emitting an event.
+- `shared/` holds only pure types and functions used across domains.
+- There are no `module` headers and no `import` lists.
+- Moving a file within a domain changes nothing. Moving it to another domain
+  changes its owner, and that shows up in review.
+
+#### What the compiler would check
+
+New errors would include `layout.unknown_location`, `layout.wrong_home`,
+`layout.file_name_mismatch`, `layout.supporting_home`,
+`layout.route_file_mismatch`, `layout.test_without_subject`,
+`layout.asset_unreferenced`, `naming.round_trip`, `naming.folded_collision`,
+`visibility.private_cross_domain` and `layout.call_direction`. Most have
+exactly one fix, which `jadpo fmt --layout` applies.
+
+#### Hard to reverse
+
+Domains as owners, the name-to-file rule, route files keyed by audience and
+URL, and project-wide unique names. Everything else is a mechanical move,
+because moving a file never changes a declaration's meaning or database
+identity.
+
 ### Open questions
 
-1. **Adopt one strict project layout?** Today only the entity rule is checked,
-   and roots and made-up folders accept anything. *Recommendation:* make the
-   layout fully enforced and closed: `app.jadpo` at the root for the
-   application, configuration and authentication; `entities/`, `values/`,
-   `queries/`, `workflows/`, `routes/`, `jobs/`, `services/` and `tests/` as the
-   only folders; every declaration kind has exactly one home; each file is
-   named after its main declaration; no other folders or root files. Role
-   first rather than feature first, so any project can be navigated without
-   knowing its domain. Revisit sub-folders only when a real app outgrows flat
-   role folders.
-2. **Drop the module system?** Names are already unique across the project,
-   the compiler already knows the dependency graph, and the golden app does
-   not use modules. With a strict layout, modules add a second organising
-   system, 22 error messages and import lists to maintain, mainly in exchange
-   for `public`/private visibility. *Recommendation:* remove modules and
-   imports, and let the layout organise the code. If privacy turns out to be
-   needed (helpers private to one entity file, say), add a single `private`
-   modifier then.
-3. **Reserved words.** *Recommendation:* build the chosen policy:
+1. **Adopt the proposed layout?** Role folders while small, domain folders
+   above them when an app grows, one home per kind, files named after their
+   declaration, and single-use types kept beside their user.
+   *Recommendation:* yes. A small app looks like today's layout, a large one
+   gets one folder per team, and an agent never has to choose where a new file
+   goes.
+2. **Should domain folders replace modules?** This deletes `module` and
+   `import`, and reverses the event design's current rule that owners come
+   from module names rather than folders. *Recommendation:* yes. Otherwise
+   ownership needs a second hand-maintained mapping, which is the "two ways
+   to organise a project" problem this page already flags.
+3. **How is policy protected from agent edits?** The original golden app kept
+   policy in a separate human-owned file. Under this layout, entity policy
+   lives in the entity file. *Recommendation:* protect it through the approval
+   check, which already fingerprints policy, so any policy change needs human
+   approval wherever it lives. Protection by file path would need a policy file
+   beside every entity.
+4. **Multiple deployables (API, worker, back-office) as declarations in one
+   project, not separate projects?** *Recommendation:* declarations. Each
+   deployable selects its audiences and entry points and is compiled from what
+   it reaches. Separate projects would need a package system that doesn't
+   exist.
+5. **Large entity files.** An order entity in a real shop could reach 800
+   lines. *Recommendation:* no companion files for now; the formatter keeps a
+   fixed section order. Revisit with measured sizes from the order/payment app.
+6. **Reserved words.** *Recommendation:* build the chosen policy:
    control-flow and declaration words are fully reserved, with a short explicit
    list of words such as `input` and `value` that can be used as names.
-4. **Documentation comments.** *Recommendation:* add `///` comments that
+7. **Documentation comments.** *Recommendation:* add `///` comments that
    attach to the following declaration and flow into generated documentation
    and OpenAPI descriptions. Leave intent and decision annotations out.
-5. **Formatter owns layout within a file.** *Recommendation:* the formatter
-   decides blank lines (one between declarations) and declaration order within
-   a file, so equivalent code always looks identical.
+8. **Formatter owns layout within a file.** *Recommendation:* the formatter
+   decides blank lines (one between declarations) and section order within a
+   file, so equivalent code always looks identical.
 
 ### Decisions
 
@@ -638,3 +768,6 @@ type Label = Text {
 | 3 | | |
 | 4 | | |
 | 5 | | |
+| 6 | | |
+| 7 | | |
+| 8 | | |
