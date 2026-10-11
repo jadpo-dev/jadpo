@@ -612,7 +612,7 @@ def rel_004_observation(case, raw, backend=None):
     if observed_backend not in ('sqlite', 'postgres') or (backend is not None and observed_backend != backend):
         raise ValueError('REL-004 observation belongs to a different or unsupported database backend')
     begin_sql = 'BEGIN IMMEDIATE' if observed_backend == 'sqlite' else 'BEGIN'
-    delete_sql = 'DELETE FROM "user" WHERE "id" = ?1' if observed_backend == 'sqlite' else 'DELETE FROM "user" WHERE "id" = $1'
+    delete_sql = 'DELETE FROM "user" WHERE "id" = ?1' if observed_backend == 'sqlite' else 'DELETE FROM "user" WHERE "id" = ?'
     expected_attempt = {'operation': 'delete.User', 'userId': alice, 'backend': observed_backend,
                         'accepted': False, 'faultKind': 'constraint', 'relationshipConstraintMatched': True,
                         'normalisedFailure': 'relationship_conflict', 'todoRowExists': True,

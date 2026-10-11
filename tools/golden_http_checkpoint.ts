@@ -384,7 +384,7 @@ try {
       const observeRestriction = (error: unknown) => {
         const detail = error as { code?: unknown; errno?: unknown; constraint?: unknown };
         relationshipConstraintMatched = pg
-          ? detail.code === "23503" && detail.constraint === "todo_owner_id_fk"
+          ? detail.errno === "23503" && detail.constraint === "todo_owner_id_fk"
           : detail.code === "SQLITE_CONSTRAINT_TRIGGER" && detail.errno === 1811;
         faultKind = relationshipConstraintMatched ? "constraint" : "unexpected";
       };
@@ -396,7 +396,7 @@ try {
             await pg.begin(async (transaction: any) => {
               transactionEntered = true;
               try {
-                await transaction.unsafe('DELETE FROM "user" WHERE "id" = $1', alice);
+                await transaction`DELETE FROM "user" WHERE "id" = ${alice}`;
                 accepted = true;
               } catch (error) { observeRestriction(error); }
               rollbackRequested = true;

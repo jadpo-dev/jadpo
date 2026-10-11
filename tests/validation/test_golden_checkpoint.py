@@ -110,7 +110,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
             todo = {'id': todo_id, 'ownerId': alice, 'title': 'Alice retained todo', 'status': 'open',
                     'dueAt': None, 'reminderSentAt': None, 'createdAt': created,
                     'updatedAt': created, 'deletedAt': None}
-            delete = 'DELETE FROM "user" WHERE "id" = ?1' if backend == 'sqlite' else 'DELETE FROM "user" WHERE "id" = $1'
+            delete = 'DELETE FROM "user" WHERE "id" = ?1' if backend == 'sqlite' else 'DELETE FROM "user" WHERE "id" = ?'
             return [
                 {'fixture': {'user': user, 'referencingServicesBefore': [], 'retainedTodosBefore': [todo]}},
                 {'persistenceAttempt': {'operation': 'delete.User', 'userId': alice, 'backend': backend,
