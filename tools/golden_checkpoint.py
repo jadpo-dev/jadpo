@@ -19,7 +19,7 @@ import golden_cases as harness
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = ('AUTH-001', 'AUTH-002', 'AUTH-003', 'AUTH-004', 'AUTH-005', 'AUTH-006', 'AUTH-007', 'AUTH-008', 'AUTH-009', 'AUTH-010', 'AUTH-011', 'AUTH-012', 'PUBLIC-001', 'CREATE-001', 'CREATE-002',
-             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'LIST-004', 'REL-001', 'PATCH-001', 'PATCH-003', 'PATCH-004', 'DELETE-001', 'DELETE-002', 'USER-001')
+             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'LIST-004', 'REL-001', 'PATCH-001', 'PATCH-002', 'PATCH-003', 'PATCH-004', 'DELETE-001', 'DELETE-002', 'USER-001')
 
 TODO_VIEW_FIELDS = frozenset({'id', 'title', 'status', 'due_at', 'created_at', 'updated_at'})
 TODO_PRIVATE_FIELDS = ('owner_id', 'deleted_at', 'reminder_sent_at')
@@ -619,6 +619,109 @@ def patch_001_observation(case, raw, reply):
             'ownerScopedUpdate': True}
 
 
+def patch_002_observation(case, raw, reply):
+    """Bind PATCH-002's explicit none to the persisted due-date clear."""
+    expected_fixture_spec = ['alice todo t1 due 2026-02-01']
+    expected_request = {'method': 'PATCH', 'path': '/todos/t1', 'auth': 'alice-session',
+                        'json': {'due_at': None}}
+    expected = {'status': 200, 'storedDueAt': None}
+    if (case.get('id') != 'PATCH-002' or case.get('fixture') != expected_fixture_spec
+            or case.get('request') != expected_request or case.get('expect') != expected):
+        raise ValueError('Changed PATCH-002 frozen explicit-none due-date case')
+    if (len(raw) != 3 or not isinstance(raw[0], dict) or set(raw[0]) != {'fixture'}
+            or not isinstance(raw[1], dict) or 'method' not in raw[1]
+            or not isinstance(raw[2], dict) or set(raw[2]) != {'persistence'}):
+        raise ValueError('PATCH-002 fixture, response and persistence readback are missing or reordered')
+    fixture = raw[0]['fixture']
+    persisted = raw[2]['persistence']
+    user_id = '00000000-0000-4000-8000-000000000001'
+    todo_id = '00000000-0000-4000-8000-000000000021'
+    expected_due = '2026-02-01T00:00:00.000Z'
+    expected_reminder = '2026-01-20T00:00:00.000Z'
+    expected_created = '2026-01-15T10:00:00.000Z'
+    if (fixture != {'id': todo_id, 'ownerId': user_id, 'title': 'alice todo t1', 'status': 'open',
+                    'dueAt': expected_due, 'reminderSentAt': expected_reminder,
+                    'createdAt': expected_created, 'updatedAt': expected_created, 'deletedAt': None}
+            or raw.index(raw[0]) >= raw.index(reply)
+            or raw.index(raw[2]) <= raw.index(reply)):
+        raise ValueError('PATCH-002 persisted Alice fixture is missing, changed, or reordered')
+    if (persisted.get('id') != todo_id or persisted.get('ownerId') != user_id
+            or persisted.get('title') != 'alice todo t1' or persisted.get('status') != 'open'
+            or persisted.get('dueAt') is not None or persisted.get('reminderSentAt') is not None
+            or epoch_millis(persisted.get('createdAt')) != epoch_millis(expected_created)
+            or persisted.get('deletedAt') is not None
+            or epoch_millis(persisted.get('updatedAt')) is None
+            or epoch_millis(persisted.get('updatedAt')) < epoch_millis(expected_created)):
+        raise ValueError('PATCH-002 persisted row did not clear due date and reminder state')
+    principal = reply.get('principal')
+    body = reply.get('body')
+    statements = reply.get('statements')
+    if (reply.get('status') != 200 or reply.get('authenticationAttempts') != 1
+            or principal != {'kind': 'user', 'subject': 'alice', 'identityId': user_id}
+            or not isinstance(body, dict) or set(body) != TODO_VIEW_FIELDS
+            or body.get('id') != todo_id or body.get('title') != 'alice todo t1' or body.get('status') != 'open'
+            or body.get('due_at') is not None
+            or epoch_millis(body.get('created_at')) != epoch_millis(expected_created)
+            or epoch_millis(body.get('updated_at')) != epoch_millis(persisted.get('updatedAt'))
+            or not isinstance(statements, list)):
+        raise ValueError('PATCH-002 response does not match the exact Alice-owned cleared TodoView')
+    todo_selects = [row for row in statements if row['operation'] == 'SELECT'
+                    and re.search(r'\bfrom\s+"?todo"?', row['sql'], re.IGNORECASE)]
+    todo_updates = [row for row in statements if row['operation'] == 'UPDATE'
+                    and re.search(r'\bupdate\s+"?todo"?', row['sql'], re.IGNORECASE)]
+    writes = [row for row in statements if row['operation'] in ('INSERT', 'UPDATE', 'DELETE', 'REPLACE')]
+    def where_clause(statement):
+        match = re.search(r'\bwhere\b(.*)', statement['sql'], re.IGNORECASE | re.DOTALL)
+        return match.group(1) if match else ''
+    def set_clause(statement):
+        match = re.search(r'\bset\b(.*?)(?:\bwhere\b|$)', statement['sql'], re.IGNORECASE | re.DOTALL)
+        return match.group(1) if match else ''
+    def owner_scoped(predicates):
+        return (bool(re.search(r'"?id"?\s*=', predicates, re.IGNORECASE))
+                and bool(re.search(r'"?owner_id"?\s*=', predicates, re.IGNORECASE))
+                and bool(re.search(r'"?deleted_at"?\s+is\s+null\b', predicates, re.IGNORECASE))
+                and not has_top_level_sql_keyword(predicates, 'or'))
+    def active_row_scope(predicates):
+        return (bool(re.search(r'"?id"?\s*=', predicates, re.IGNORECASE))
+                and bool(re.search(r'"?deleted_at"?\s+is\s+null\b', predicates, re.IGNORECASE))
+                and not has_top_level_sql_keyword(predicates, 'or'))
+    assignments = [set_clause(row) for row in todo_updates]
+    content_updates = [(row, value) for row, value in zip(todo_updates, assignments)
+                       if re.search(r'"?due_at"?\s*=', value, re.IGNORECASE)]
+    timestamp_updates = [(row, value) for row, value in zip(todo_updates, assignments)
+                         if re.search(r'"?updated_at"?\s*=', value, re.IGNORECASE)
+                         and not re.search(r'"?due_at"?\s*=', value, re.IGNORECASE)]
+    due_case = (re.search(r'"?due_at"?\s*=\s*case\s+when\s+(\$\d+|\?\d*)\s+then\s+(?:\$\d+|\?\d*)\s+else\s+"?due_at"?\s+end',
+                          content_updates[0][1], re.IGNORECASE) if len(content_updates) == 1 else None)
+    reminder_case = (re.search(r'"?reminder_sent_at"?\s*=\s*case\s+when\s+(\$\d+|\?\d*)\s+then\s+(?:\$\d+|\?\d*)\s+else\s+"?reminder_sent_at"?\s+end',
+                               content_updates[0][1], re.IGNORECASE) if len(content_updates) == 1 else None)
+    title_case = (re.search(r'"?title"?\s*=\s*case\s+when\s+(?:\$\d+|\?\d*)\s+then\s+(?:\$\d+|\?\d*)\s+else\s+"?title"?\s+end',
+                            content_updates[0][1], re.IGNORECASE) if len(content_updates) == 1 else None)
+    status_case = (re.search(r'"?status"?\s*=\s*case\s+when\s+(?:\$\d+|\?\d*)\s+then\s+(?:\$\d+|\?\d*)\s+else\s+"?status"?\s+end',
+                             content_updates[0][1], re.IGNORECASE) if len(content_updates) == 1 else None)
+    todo_flow = [(index, row['operation']) for index, row in enumerate(statements)
+                 if row in todo_selects or row in todo_updates]
+    transactions = [row['operation'] for row in statements if row['operation'] in ('BEGIN', 'COMMIT', 'ROLLBACK')]
+    transaction_positions = [(index, row['operation']) for index, row in enumerate(statements)
+                             if row['operation'] in ('BEGIN', 'COMMIT', 'ROLLBACK')]
+    todo_operation_indexes = [index for index, _ in todo_flow]
+    if (len(todo_selects) != 2 or len(todo_updates) != 2 or len(writes) != 2
+            or not all(owner_scoped(where_clause(row)) for row in todo_selects)
+            or len(content_updates) != 1 or len(timestamp_updates) != 1
+            or not owner_scoped(where_clause(content_updates[0][0]))
+            or not active_row_scope(where_clause(timestamp_updates[0][0]))
+            or due_case is None or reminder_case is None or title_case is None or status_case is None
+            or due_case.group(1) != reminder_case.group(1)
+            or [operation for _, operation in todo_flow] != ['SELECT', 'SELECT', 'UPDATE', 'UPDATE']
+            or transactions != ['BEGIN', 'COMMIT']
+            or transaction_positions[0][0] >= min(todo_operation_indexes)
+            or transaction_positions[1][0] <= max(todo_operation_indexes)):
+        raise ValueError('PATCH-002 SQL lacks scoped conditional clear or committed update ordering')
+    return {'outputSchema': 'TodoView', 'storedDueAt': canonical_utc(persisted.get('dueAt')),
+            'storedTitle': persisted.get('title'), 'dueDateCleared': True,
+            'reminderStateReset': True, 'ownerScopedUpdate': True}
+
+
 def observations(case: dict, raw: list) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
     if (case['id'] not in SUPPORTED or (case.get('fixtureVariants') and case['id'] != 'REL-001')
@@ -688,6 +791,8 @@ def observations(case: dict, raw: list) -> list:
         reply = replies[0]
         if case['id'] == 'PATCH-001':
             patch_projection = patch_001_observation(case, raw, reply)
+        if case['id'] == 'PATCH-002':
+            patch_projection = patch_002_observation(case, raw, reply)
         if case['id'] == 'PATCH-003':
             fixtures = [(index, item['fixture']) for index, item in enumerate(raw) if 'fixture' in item]
             if (len(fixtures) != 1 or fixtures[0][0] >= raw.index(reply)
