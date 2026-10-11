@@ -103,5 +103,34 @@ impl TargetGenerator<'_> {
         line(output, "  const finished = await rootPersistence.transaction((tx: any) => tx.finish_delivery_activation(handle));");
         line(output, "  return Object.freeze({ status: finished ? \"finished\" : \"partial\", selected: staged.page.intentIds.length, attempted, continued: !finished || staged.page.after !== null });");
         line(output, "}");
+        // Privileged native administrative seam, separate from the scheduled
+        // worker host. Explicit replay allocates no activation, tick or page.
+        line(output, "export function createDeliveryReplayOperator(binding: string, grant: unknown, credential: string, profile: Readonly<{ executionMs: number; leaseMs: number }>) {");
+        line(output, "  if (arguments.length !== 4) invalid(\"delivery.operator\", \"one checked binding, native grant, worker credential and explicit delivery profile\"); readCurrentDeliveryOperatorGrant(grant);");
+        line(output, "  let strategy: string; switch (binding) {");
+        for binding in self.project.delivery_model().bindings() {
+            let strategy = binding
+                .descriptor()
+                .authority
+                .validator
+                .path
+                .first()
+                .expect("checked delivery authority names its credential strategy");
+            line(
+                output,
+                &format!(
+                    "    case {}: strategy = {}; break;",
+                    ts_string(binding.binding_identity()),
+                    ts_string(&strategy.text)
+                ),
+            );
+        }
+        line(output, "    default: throw new AuthenticationFault(\"authority_invariant\", 500);");
+        line(output, "  }");
+        line(output, "  if (typeof credential !== \"string\" || credential.length === 0) throw new AuthenticationFault(\"invalid_credentials\", 401);");
+        line(output, "  if (profile === null || typeof profile !== \"object\" || Object.getPrototypeOf(profile) !== Object.prototype || Reflect.ownKeys(profile).sort().join(\",\") !== \"executionMs,leaseMs\") invalid(\"delivery.profile\", \"an explicit finite delivery profile\");");
+        line(output, "  const execution = Object.getOwnPropertyDescriptor(profile, \"executionMs\"), lease = Object.getOwnPropertyDescriptor(profile, \"leaseMs\"); if (execution === undefined || lease === undefined || !(\"value\" in execution) || !(\"value\" in lease)) invalid(\"delivery.profile\", \"ordinary profile values\"); profile = Object.freeze({ executionMs: execution.value, leaseMs: lease.value }); if (!Number.isSafeInteger(profile.executionMs) || !Number.isSafeInteger(profile.leaseMs) || profile.leaseMs <= 0 || profile.executionMs < profile.leaseMs) invalid(\"delivery.profile\", \"an explicit finite delivery profile\");");
+        line(output, "  return Object.freeze({ async replay(intentId: string) { readCurrentDeliveryOperatorGrant(grant); if (typeof intentId !== \"string\" || intentId.length === 0) invalid(\"delivery.intentId\", \"an original intent identity\"); const at = captureOperation(null, null, undefined, false).now; const proof = await authenticationHost().prepareDeliveryCredential(strategy, credential, Date.parse(at)); readCurrentDeliveryOperatorGrant(grant); const token = await prepareDeliveryInvocationInternal(binding, proof, intentId, at, profile, grant); if (token === null) return false; const receipt = await dispatchDeliveryInvocation(token); return completeDeliveryInvocation(receipt); } });");
+        line(output, "}");
     }
 }

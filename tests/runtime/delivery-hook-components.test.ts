@@ -580,6 +580,197 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const saved = (await activationRows())[0]; expect(saved.activation_id).toBeNull(); expect(saved.page).toBeNull();
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
+  test("native replay retries only an adapter-proven no-effect intent and preserves its identity and lifetime budget", async () => {
+    const f = await fixture();
+    const calls: any[] = [];
+    const previousRandom = Math.random;
+    const previousNodeEnv = Bun.env.NODE_ENV;
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json(); calls.push(body);
+      if (calls.length <= 3) return Response.json({ code: "rate_limited" }, { status: 429 });
+      return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
+    } });
+    Bun.env.NODE_ENV = "test";
+    Math.random = () => 0;
+    setReferenceMailEndpointForTesting(`http://127.0.0.1:${server.port}`);
+    try {
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(3);
+      const intentId = calls[0].idempotency_key;
+      const original = await persistence.read_delivery_intent(intentId);
+      expect(original.state).toBe("retry_wait");
+      const initialLedger = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0];
+      const initialAttempts = await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [intentId]);
+      expect(initialAttempts).toHaveLength(1);
+      expect(initialAttempts[0].failure_class).toBe("service_unavailable");
+      expect(Number(initialAttempts[0].provider_attempts)).toBe(3);
+      const activationBefore = await activationRows();
+      const childSource = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));adapter.setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);const grant=app.authenticationHost().issueDeliveryOperatorGrant();const operator=app.createDeliveryReplayOperator(${JSON.stringify(bindingIdentity)},grant,process.env.COMPONENT_WORKER_KEY,${JSON.stringify(deliveryProfile)});const replayed=await operator.replay(${JSON.stringify(intentId)});const repeated=await operator.replay(${JSON.stringify(intentId)});console.log(JSON.stringify({replayed,repeated}));process.exit(0);`;
+      const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: { ...Bun.env, NODE_ENV: "test", DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment), COMPONENT_WORKER_KEY: f.issued.credential, COMPONENT_ENDPOINT: `http://127.0.0.1:${server.port}` }, stdout: "pipe", stderr: "pipe" });
+      const [out, err, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+      expect(exit, err).toBe(0);
+      expect(JSON.parse(out.trim().split(/\r?\n/u).at(-1)!)).toEqual({ replayed: true, repeated: false });
+      expect(calls).toHaveLength(4);
+      expect(calls[3]).toEqual(original.payload);
+      const completed = await persistence.read_delivery_intent(intentId);
+      expect(completed.state).toBe("succeeded");
+      expect(completed.payload).toEqual(original.payload);
+      const nextLedger = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0];
+      expect(Number(nextLedger.invocations)).toBe(Number(initialLedger.invocations) + 1);
+      expect(BigInt(nextLedger.generation)).toBe(BigInt(initialLedger.generation) + 1n);
+      for (const field of ["max_invocations", "lifetime_ms", "execution_ms", "lease_ms", "first_claim_at", "lifetime_deadline"]) {
+        expect(nextLedger[field]).toBe(initialLedger[field]);
+      }
+      expect(await activationRows()).toEqual(activationBefore);
+      expect(await intentRows(f.value.id)).toHaveLength(1);
+      expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+    } finally {
+      setReferenceMailEndpointForTesting(null);
+      server.stop(true);
+      Math.random = previousRandom;
+      if (previousNodeEnv === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previousNodeEnv;
+    }
+  }, 30_000);
+  test("native replay rejects forged grants and future backoff without changing durable state", async () => {
+    const f = await fixture();
+    const calls: any[] = [];
+    const previousRandom = Math.random;
+    const previousNodeEnv = Bun.env.NODE_ENV;
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json(); calls.push(body);
+      return Response.json({ code: "rate_limited" }, { status: 429 });
+    } });
+    Bun.env.NODE_ENV = "test";
+    Math.random = () => 0;
+    setReferenceMailEndpointForTesting(`http://127.0.0.1:${server.port}`);
+    try {
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(3);
+      const intentId = calls[0].idempotency_key;
+      const genuineGrant = app.authenticationHost().issueDeliveryOperatorGrant();
+      for (const forged of [f.proof, f.issued.credential, {}, { ...genuineGrant }, Object.create(genuineGrant)]) {
+        expect(() => app.createDeliveryReplayOperator(bindingIdentity, forged, f.issued.credential, deliveryProfile)).toThrow();
+      }
+      const operator = app.createDeliveryReplayOperator(bindingIdentity, genuineGrant, f.issued.credential, deliveryProfile);
+      const before = async () => ({
+        intent: await persistence.read_delivery_intent(intentId),
+        ledger: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]),
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [intentId]),
+        activation: await activationRows(),
+        source: await stored(f.value.id),
+      });
+      const savedLedger = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0];
+      const savedAttempt = (await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1', [intentId]))[0];
+      const saved = savedAttempt.retry_not_before;
+      await rows('UPDATE "__jadpo_delivery_attempts_v1" SET retry_not_before=$1 WHERE intent_id=$2', ["2099-01-01T00:00:00.000Z", intentId]);
+      const snapshot = await before();
+      expect(await operator.replay(intentId)).toBe(false);
+      expect(await before()).toEqual(snapshot);
+      expect(calls).toHaveLength(3);
+      await rows('UPDATE "__jadpo_delivery_attempts_v1" SET retry_not_before=$1 WHERE intent_id=$2', [saved, intentId]);
+      await rows('UPDATE "__jadpo_delivery_attempts_v1" SET claim_id=$1 WHERE intent_id=$2', ["mismatched-claim", intentId]);
+      const mismatchedEvidence = await before();
+      expect(await operator.replay(intentId)).toBe(false);
+      expect(await before()).toEqual(mismatchedEvidence);
+      await rows('UPDATE "__jadpo_delivery_attempts_v1" SET claim_id=$1 WHERE intent_id=$2', [savedAttempt.claim_id, intentId]);
+      await rows('DELETE FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1', [intentId]);
+      const missingEvidence = await before();
+      expect(await operator.replay(intentId)).toBe(false);
+      expect(await before()).toEqual(missingEvidence);
+      await rows('INSERT INTO "__jadpo_delivery_attempts_v1" (intent_id,generation,claim_id,invocation,provider_attempts,failure_class,observed_at,retry_not_before) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [savedAttempt.intent_id, savedAttempt.generation, savedAttempt.claim_id, savedAttempt.invocation, savedAttempt.provider_attempts, savedAttempt.failure_class, savedAttempt.observed_at, savedAttempt.retry_not_before]);
+      await rows('UPDATE "__jadpo_delivery_claims_v1" SET invocations=max_invocations WHERE intent_id=$1', [intentId]);
+      const exhaustedCount = await before();
+      expect(await operator.replay(intentId)).toBe(false);
+      expect(await before()).toEqual(exhaustedCount);
+      await rows('UPDATE "__jadpo_delivery_claims_v1" SET invocations=$1 WHERE intent_id=$2', [savedLedger.invocations, intentId]);
+      await rows('UPDATE "__jadpo_delivery_claims_v1" SET lifetime_deadline=$1,execution_deadline=$1,lease_until=$1 WHERE intent_id=$2', [savedLedger.first_claim_at, intentId]);
+      const exhaustedLifetime = await before();
+      expect(await operator.replay(intentId)).toBe(false);
+      expect(await before()).toEqual(exhaustedLifetime);
+      await rows('UPDATE "__jadpo_delivery_claims_v1" SET lifetime_deadline=$1,execution_deadline=$2,lease_until=$3 WHERE intent_id=$4', [savedLedger.lifetime_deadline, savedLedger.execution_deadline, savedLedger.lease_until, intentId]);
+      await patch(f.value.id, { due_at: dueB });
+      const staleSource = await before();
+      expect(await operator.replay(intentId)).toBe(false);
+      expect(await before()).toEqual(staleSource);
+      expect((await persistence.read_delivery_intent(intentId)).state).toBe("retry_wait");
+      expect(calls).toHaveLength(3);
+      app.authenticationHost().revokeDeliveryOperatorGrant(genuineGrant);
+      expect(() => app.createDeliveryReplayOperator(bindingIdentity, genuineGrant, f.issued.credential, deliveryProfile)).toThrow();
+      await expect(operator.replay(intentId)).rejects.toMatchObject({ code: "invalid_credentials" });
+      expect(await before()).toEqual(staleSource);
+      expect(calls).toHaveLength(3);
+    } finally {
+      setReferenceMailEndpointForTesting(null);
+      server.stop(true);
+      Math.random = previousRandom;
+      if (previousNodeEnv === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previousNodeEnv;
+    }
+  }, 30_000);
+  test.skipIf(!sql)("withdrawn native replay authority during a stale-source PostgreSQL lock wait cannot cancel or checkpoint the intent", async () => {
+    const f = await fixture();
+    const calls: any[] = [];
+    const previousRandom = Math.random;
+    const previousNodeEnv = Bun.env.NODE_ENV;
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json(); calls.push(body);
+      return Response.json({ code: "rate_limited" }, { status: 429 });
+    } });
+    Bun.env.NODE_ENV = "test";
+    Math.random = () => 0;
+    setReferenceMailEndpointForTesting(`http://127.0.0.1:${server.port}`);
+    let release!: () => void;
+    const resume = new Promise<void>(resolve => { release = resolve; });
+    let entered!: () => void;
+    const locked = new Promise<void>(resolve => { entered = resolve; });
+    let holding: Promise<unknown> | null = null;
+    try {
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(3);
+      const intentId = calls[0].idempotency_key;
+      const grant = app.authenticationHost().issueDeliveryOperatorGrant();
+      const operator = app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, deliveryProfile);
+      await patch(f.value.id, { due_at: dueB });
+      const before = {
+        intent: await persistence.read_delivery_intent(intentId),
+        ledger: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]),
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [intentId]),
+        activation: await activationRows(),
+        source: await stored(f.value.id),
+      };
+      holding = sql!.begin(async tx => {
+        await tx.unsafe('SELECT id FROM todo WHERE id=$1 FOR UPDATE', [f.value.id]);
+        entered();
+        await resume;
+      });
+      await locked;
+      const replay = operator.replay(intentId);
+      const handled = replay.catch(error => error);
+      let blocked = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const waiters = await sql!.unsafe("SELECT count(*) AS n FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FOR SHARE OF t, u%'");
+        if (Number(waiters[0].n) > 0) { blocked = true; break; }
+        await Bun.sleep(10);
+      }
+      expect(blocked).toBe(true);
+      await app.initializeApplication(authEnvironment);
+      release();
+      await holding;
+      expect(await handled).toMatchObject({ code: "invalid_credentials" });
+      expect(await persistence.read_delivery_intent(intentId)).toEqual(before.intent);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId])).toEqual(before.ledger);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [intentId])).toEqual(before.attempts);
+      expect(await activationRows()).toEqual(before.activation);
+      expect(await stored(f.value.id)).toEqual(before.source);
+      expect(calls).toHaveLength(3);
+    } finally {
+      release();
+      if (holding !== null) await holding.catch(() => {});
+      setReferenceMailEndpointForTesting(null);
+      server.stop(true);
+      Math.random = previousRandom;
+      if (previousNodeEnv === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previousNodeEnv;
+    }
+  }, 30_000);
   test("generated worker coalesces missed UTC ticks into one latest occurrence after downtime", async () => {
     const f = await fixture();
     const previousTick = "2026-10-08T08:01:02.003Z";
@@ -1297,6 +1488,37 @@ describe(`committed admission and adapter-origin outcome components (${sql ? "po
     expect((await persistence.read_delivery_intent(f.intent.intentId)).state).toBe("outcome_unknown");
     await patch(f.value.id, { due_at: dueB }); const next = (await scan(f.proof)).intents[0];
     expect(next.intentId).not.toBe(f.intent.intentId); expect(await prepare(f.proof, next.intentId)).toBeNull(); expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+  });
+  test("native replay refuses pending and unresolved-unknown intents without changing durable state", async () => {
+    const f = await enrolled();
+    const grant = app.authenticationHost().issueDeliveryOperatorGrant();
+    const operator = app.createDeliveryReplayOperator(bindingIdentity, grant, f.issued.credential, profile);
+    const snapshot = async () => ({
+      intent: await persistence.read_delivery_intent(f.intent.intentId),
+      ledger: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [f.intent.intentId]),
+      attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [f.intent.intentId]),
+      activation: await rows('SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [bindingIdentity]),
+      source: await stored(f.value.id),
+    });
+    const pending = await snapshot();
+    expect(pending.intent.state).toBe("pending");
+    expect(await operator.replay(f.intent.intentId)).toBe(false);
+    expect(await snapshot()).toEqual(pending);
+
+    let providerCalls: any[] = [];
+    await provider("lost", async calls => {
+      providerCalls = calls;
+      const dispatch = await prepare(f.proof, f.intent.intentId);
+      expect(dispatch).not.toBeNull();
+      const receipt = await app.dispatchDeliveryInvocation(dispatch);
+      expect(await app.completeDeliveryInvocation(receipt)).toBe(true);
+      expect(calls).toHaveLength(1);
+    });
+    expect((await persistence.read_delivery_intent(f.intent.intentId)).state).toBe("outcome_unknown");
+    const unknown = await snapshot();
+    expect(await operator.replay(f.intent.intentId)).toBe(false);
+    expect(await snapshot()).toEqual(unknown);
+    expect(providerCalls).toHaveLength(1);
   });
   test("typed adapter no-effect rejection fails permanently; transient exhaustion preserves same-ID retry budget", async () => {
     for (const kind of ["rejected", "rate_limited"] as const) {

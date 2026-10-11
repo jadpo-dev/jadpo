@@ -22,6 +22,15 @@ type DeliveryCredentialFacts = Readonly<{ id: string; strategy: string; subject:
 type DeliveryIssuer = { storage: AuthenticationStorage; owner: { active: boolean } };
 const deliveryCredentialHosts = new WeakMap<object, DeliveryIssuer>();
 const deliveryCredentialProofs = new WeakMap<object, DeliveryIssuer & { facts: DeliveryCredentialFacts }>();
+// Privileged native operator provenance is separate from worker credentials.
+// Only the selected current host/storage owner may mint or read these grants.
+const deliveryOperatorGrants = new WeakMap<object, DeliveryIssuer>();
+export function readDeliveryOperatorGrant(grant: unknown, storage: AuthenticationStorage, selectedHost: unknown): void {
+  const record = typeof grant === "object" && grant !== null ? deliveryOperatorGrants.get(grant) : undefined;
+  const issuer = typeof selectedHost === "object" && selectedHost !== null ? deliveryCredentialHosts.get(selectedHost) : undefined;
+  if (record === undefined || issuer === undefined || record.storage !== storage || issuer.storage !== storage
+      || record.owner !== issuer.owner || !record.owner.active) return invalid();
+}
 // The generated application supplies its private currently published host.
 // A structurally identical host, or another real factory on the same storage,
 // cannot substitute for that exact native issuer. There is no issuer setter.
@@ -306,6 +315,18 @@ export async function createFirstPartyAuthentication(
     // Configuration reinitialization invalidates old host proofs, including
     // ones awaiting an authority transaction. This only withdraws authority.
     invalidateDeliveryCredentialProofs(): void { deliveryProofOwner.active = false; },
+    // Same trusted administrative boundary as native issue/revoke: the host
+    // caller already owns privileged operator authorization. No authored API.
+    issueDeliveryOperatorGrant(): object {
+      if (!deliveryProofOwner.active) return invalid();
+      const grant = Object.freeze({});
+      deliveryOperatorGrants.set(grant, { storage, owner: deliveryProofOwner });
+      return grant;
+    },
+    revokeDeliveryOperatorGrant(grant: unknown): void {
+      readDeliveryOperatorGrant(grant, storage, host);
+      deliveryOperatorGrants.delete(grant as object);
+    },
     async exchangeServiceCredential(strategyName: string, credential: string, operationNow: number) {
       const now = milliseconds(operationNow);
       const direct = config(strategyName, "service", "api_key");
