@@ -1197,8 +1197,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
           claim: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId]),
           attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [first.intentId]),
         };
-        expect(firstAfterAdmission.intent).toMatchObject({
-          intentId: first.intentId, state: "cancelled", payloadVersion: first.payloadVersion, payload: first.payload,
+        expect(firstAfterAdmission.intent).toEqual({
+          ...firstBeforeAdmission.intent,
+          state: "cancelled",
         });
         expect(firstAfterAdmission.claim).toEqual(firstBeforeAdmission.claim);
         expect(firstAfterAdmission.attempts).toEqual(firstBeforeAdmission.attempts);

@@ -210,9 +210,12 @@ pending or `retry_wait` intents for that same source whose schedule revision is
 stale are cancelled under the ordering-key lock before the successor is
 claimed. The native cancellation check requires `possible_dispatch = 0`, so
 those records cannot have produced a provider effect and their claim/attempt
-history remains intact. Running and `outcome_unknown` predecessors are not
-released by a newer revision; FIFO continues to hold the successor until a
-trusted terminal outcome or resolution.
+history remains intact. If a claim races this cancellation before its possible-
+dispatch checkpoint, the shared key lock decides the order: cancellation can
+make the predecessor terminal only while `possible_dispatch = 0`, and a later
+checkpoint then fails. A running predecessor that has crossed the checkpoint,
+and any `outcome_unknown` predecessor, remain active and keep the successor
+behind FIFO until a trusted terminal outcome or resolution.
 
 Committed admission is the concurrency cut: a due-date patch before it prevents
 A dispatch; a patch after it may race A's HTTP request. A crash after admission
