@@ -1434,6 +1434,95 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     expect(schedule.continuation_for).toBeNull();
     expect(schedule.activation_id).toBeNull();
   }, 120_000);
+  test("a fresh generated worker reclaims A's durable pre-dispatch intent claim and fences A's late checkpoint and acknowledgement", async () => {
+    const f = await fixture();
+    const initial = await scan(f.proof);
+    expect(initial.intents).toHaveLength(1);
+    const originalRows = await intentRows(f.value.id);
+    expect(originalRows).toHaveLength(1);
+    const intentId = originalRows[0].intent_id;
+
+    // Stage the generated worker's immutable page, then model worker A's
+    // committed intent claim before its possible-dispatch checkpoint.
+    const stagedHandle = await persistence.withOperationTime(scanTime).transaction(async (tx: any) => {
+      await tx.tick_delivery_schedule(bindingIdentity, 900_000, scanTime);
+      const activation = await tx.claim_delivery_activation(bindingIdentity, scanTime, activationProfile);
+      expect(activation).not.toBeNull();
+      const selected = await tx.select_delivery_intents(bindingIdentity, f.proof);
+      expect(selected.intents.map((intent: any) => intent.intentId)).toEqual([intentId]);
+      expect(await tx.stage_delivery_activation_page(activation, selected.intents.map((intent: any) => intent.intentId), selected.after)).toBe(true);
+      return activation;
+    });
+    const stagedActivation = (await activationRows())[0];
+    const stagedPage = JSON.parse(stagedActivation.page);
+    expect(stagedPage).toEqual({ intentIds: [intentId], after: null });
+
+    const staleA = await persistence.transaction((tx: any) => tx.claim_delivery_intent(intentId, {
+      maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile,
+    }));
+    expect(staleA).toMatchObject({ intentId, generation: "1", invocation: 1 });
+    expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
+    const firstClaim = (await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0];
+    expect(firstClaim).toEqual({ generation: "1", invocations: 1, possible_dispatch: 0 });
+
+    const calls: Array<{ intentId: string; payload: any; page: any; activationGeneration: string; claimGeneration: string; invocations: number; possibleDispatch: number }> = [];
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const payload = await request.json() as { idempotency_key: string };
+      const activation = (await activationRows())[0];
+      const claim = (await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [payload.idempotency_key]))[0];
+      calls.push({ intentId: payload.idempotency_key, payload, page: JSON.parse(activation.page), activationGeneration: String(activation.generation), claimGeneration: claim.generation, invocations: Number(claim.invocations), possibleDispatch: Number(claim.possible_dispatch) });
+      return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": payload.idempotency_key } });
+    } });
+    const childSource = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
+      const {setReferenceMailEndpointForTesting}=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});
+      await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
+      const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
+      setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
+      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(activationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(scanTime)});
+      console.log(JSON.stringify(result)); process.exit(0);`;
+    const childEnv = { ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
+      COMPONENT_WORKER_KEY: f.issued.credential, COMPONENT_ENDPOINT: `http://127.0.0.1:${server.port}/`,
+      DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath };
+    let child: ReturnType<typeof Bun.spawn> | undefined;
+    try {
+      // Test-owned lease advancement models expiry without a wall-clock sleep.
+      await rows('UPDATE "__jadpo_delivery_claims_v1" SET lease_until=$1 WHERE intent_id=$2', ["2000-01-01T00:00:00.000Z", intentId]);
+      await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", bindingIdentity]);
+      child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+      const capture = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited] as const);
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<{ settled: false }>(resolve => { timer = setTimeout(() => resolve({ settled: false }), 15_000); });
+      let result: { settled: false } | { settled: true; value: readonly [string, string, number] };
+      try { result = await Promise.race([capture.then(value => ({ settled: true as const, value })), deadline]); }
+      finally { clearTimeout(timer!); }
+      if (!result.settled) { child.kill("SIGKILL"); throw new Error("stale-claim recovery worker exceeded its 15-second bound"); }
+      const [stdout, stderr, exitCode] = result.value;
+      expect(exitCode, stderr).toBe(0);
+      expect(JSON.parse(stdout.trim().split(/\r?\n/u).at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ intentId, payload: (await persistence.read_delivery_intent(intentId)).payload, page: stagedPage, claimGeneration: "2", invocations: 2, possibleDispatch: 1 });
+      expect(BigInt(calls[0].activationGeneration)).toBeGreaterThan(BigInt(stagedHandle.generation));
+      expect(calls[0].claimGeneration).toBe("2");
+
+      const receiptQuery = 'SELECT intent_id, claim_id, CAST(generation AS TEXT) AS generation, payload_version, accepted_at, observed_at FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1';
+      const currentReceipt = await rows(receiptQuery, [intentId]);
+      expect(currentReceipt).toHaveLength(1);
+      expect(currentReceipt[0]).toMatchObject({ intent_id: intentId, generation: "2" });
+      expect(currentReceipt[0].claim_id).not.toBe(staleA.claimId);
+      expect(await persistence.transaction((tx: any) => tx.checkpoint_delivery_dispatch(staleA))).toBe(false);
+      expect(await persistence.transaction((tx: any) => tx.acknowledge_delivery_mail(staleA, { accepted_at: instant }))).toBe(false);
+      expect(await rows(receiptQuery, [intentId])).toEqual(currentReceipt);
+      expect((await persistence.read_delivery_intent(intentId)).state).toBe("succeeded");
+      expect(await intentRows(f.value.id)).toHaveLength(1);
+      expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+      const finished = (await activationRows())[0];
+      expect(finished.activation_id).toBeNull(); expect(finished.page).toBeNull();
+      expect(String(finished.generation)).toBe(calls[0].activationGeneration);
+    } finally {
+      if (child !== undefined) { child.kill("SIGKILL"); await child.exited; }
+      server.stop(true);
+    }
+  }, 45_000);
   test("a fresh generated worker reclaims the original staged page after a pre-dispatch checkpoint fault", async () => {
     const f = await fixture();
     // Initialize native claim storage with an unrelated test-owned sentinel so
