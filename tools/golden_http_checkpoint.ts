@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation, todoLimitBindingObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
-const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
+const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "USER-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const prototype = Database.prototype as any;
@@ -49,6 +49,7 @@ const listTieTime = "2026-01-15T11:00:00.000Z";
 const listOlderTime = "2026-01-15T10:00:00.000Z";
 const reportingService = "00000000-0000-4000-8000-000000000003";
 const fixedCreateClockNow = "2026-01-15T12:00:00.000Z";
+const fixedPatchClockNow = "2026-01-22T00:00:00.000Z";
 const userSessionIssuedAt = "2026-01-15T11:59:00.000Z";
 const userDisabledAt = "2026-01-15T12:00:00.000Z";
 const userRepeatedDisableAt = "2026-01-15T12:00:01.000Z";
@@ -276,6 +277,7 @@ try {
     let restoreClock: (() => void) | undefined;
     try {
     if (["CREATE-001", "CREATE-003", "DELETE-001"].includes(case_.id)) restoreClock = installFixedClock(fixedCreateClockNow);
+    else if (case_.id === "PATCH-005") restoreClock = installFixedClock(fixedPatchClockNow);
     else if (case_.id === "USER-001") restoreClock = installFixedClock(userSessionIssuedAt);
     await reset();
     if (case_.id === "USER-001") { restoreClock?.(); restoreClock = undefined; }
@@ -518,6 +520,41 @@ try {
           || persistedRows[0].status !== "open" || persistedRows[0].due_at !== null
           || persistedRows[0].reminder_sent_at !== null || persistedRows[0].deleted_at !== null) {
         throw new Error("PATCH-002 explicit none did not clear due date and reminder state");
+      }
+      raw.push({ persistence: projectRow(persistedRows[0]) });
+    } else if (case_.id === "PATCH-005") {
+      const expectedFixture = ["alice todo t1 due in future with reminder_sent_at set"];
+      const expectedRequest = { method: "PATCH", path: "/todos/t1", auth: "alice-session", json: { due_at: "2026-02-15T09:00:00Z" } };
+      const expected = { status: 200, storedDueAt: "2026-02-15T09:00:00Z", storedReminderSentAt: null };
+      if (JSON.stringify(case_.fixture) !== JSON.stringify(expectedFixture)
+          || JSON.stringify(case_.request) !== JSON.stringify(expectedRequest)
+          || JSON.stringify(case_.expect) !== JSON.stringify(expected)) {
+        throw new Error("Changed PATCH-005 frozen due-date replacement case");
+      }
+      const dueAt = "2026-02-01T00:00:00.000Z";
+      const reminderSentAt = "2026-01-20T00:00:00.000Z";
+      const createdAt = "2026-01-15T10:00:00.000Z";
+      await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, NULL)',
+        [t1, alice, "alice todo t1", "open", pg ? dueAt : Date.parse(dueAt),
+          pg ? reminderSentAt : Date.parse(reminderSentAt), pg ? createdAt : Date.parse(createdAt)]);
+      const projectRow = (row: any) => ({ id: row.id, ownerId: row.owner_id, title: row.title, status: row.status,
+        dueAt: row.due_at === null ? null : timestamp(row.due_at),
+        reminderSentAt: row.reminder_sent_at === null ? null : timestamp(row.reminder_sent_at),
+        createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at),
+        deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) });
+      const fixtureRows = await execute('SELECT id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at FROM todo WHERE id = $1', [t1]);
+      if (fixtureRows.length !== 1 || fixtureRows[0].owner_id !== alice || fixtureRows[0].title !== "alice todo t1"
+          || fixtureRows[0].status !== "open" || timestamp(fixtureRows[0].due_at) !== dueAt
+          || timestamp(fixtureRows[0].reminder_sent_at) !== reminderSentAt || fixtureRows[0].deleted_at !== null) {
+        throw new Error("Missing PATCH-005 persisted Alice todo fixture");
+      }
+      raw.push({ fixture: projectRow(fixtureRows[0]) });
+      await send(case_.request);
+      const persistedRows = await execute('SELECT id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at FROM todo WHERE id = $1', [t1]);
+      if (persistedRows.length !== 1 || persistedRows[0].owner_id !== alice || persistedRows[0].title !== "alice todo t1"
+          || persistedRows[0].status !== "open" || timestamp(persistedRows[0].due_at) !== "2026-02-15T09:00:00.000Z"
+          || persistedRows[0].reminder_sent_at !== null || persistedRows[0].deleted_at !== null) {
+        throw new Error("PATCH-005 due-date replacement did not reset reminder state");
       }
       raw.push({ persistence: projectRow(persistedRows[0]) });
     } else if (case_.id === "READ-001") {
