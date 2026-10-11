@@ -80,7 +80,7 @@ impl TargetGenerator<'_> {
         );
         line(
             output,
-            "  const context = Object.freeze({ ...base, deadlineAt: invocation.deadlineAt });",
+            "  const context = Object.freeze({ ...base, operationId: invocation.prepared.handle.intentId, deadlineAt: invocation.deadlineAt });",
         );
         line(output, "  let outcome: any;");
         line(output, "  try {");
@@ -139,6 +139,10 @@ impl TargetGenerator<'_> {
         line(output, "    } }");
         line(output, "    const retryDelayMs = noEffect === \"service_unavailable\" ? Math.floor(Math.random() * Math.min(30_000, 1000 * 2 ** invocation.prepared.handle.invocation)) : 0;");
         line(output, "    outcome = noEffect === null ? { kind: \"unknown\" } : { kind: \"no_effect\", value: { failureClass: noEffect, providerAttempts: context.serviceAttemptBudget.attemptsUsed, retryDelayMs } };");
+        // Tie the safe failure to the immutable intent identity, rather than a
+        // new process-local dispatch UUID. Operational logging never alters
+        // no-effect/unknown state or retains arbitrary provider diagnostics.
+        line(output, &format!("    reportRuntimeFault(error instanceof ServiceAdapterFault && error.kind === \"misconfigured\" ? \"RUNTIME_SERVICE_MISCONFIGURED\" : noEffect === null ? \"RUNTIME_OUTCOME_UNKNOWN\" : \"RUNTIME_JOB_NO_EFFECT\", \"job:\" + invocation.binding, {}, \"job_\" + context.operationId, error);", ts_string(&self.source_revision())));
         line(output, "  }");
         line(output, "  const receiptToken = Object.freeze({}); deliveryOutcomes.set(receiptToken, { invocation, outcome }); return receiptToken;");
         line(output, "}");

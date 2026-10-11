@@ -1057,14 +1057,14 @@ function normalizeAuthenticationResolution(value: unknown, kind: string, subject
         }
         line(
             output,
-            "export async function runLifecycleMaintenance(): Promise<void> {",
+            "export async function runLifecycleMaintenance(operationTime?: string): Promise<void> {",
         );
         line(
             output,
             "  if (configuration === undefined) configuration = loadConfiguration(Bun.env);",
         );
         line(output, "  bindLifecycleRetention(configuration);");
-        line(output, "  const attemptNow = new Date().toISOString();");
+        line(output, "  const attemptNow = operationTime === undefined ? new Date().toISOString() : validateInstant(operationTime, \"retention.operationTime\");");
         for (name, record) in self.entities() {
             let Some(purge) = record
                 .dossier
@@ -1500,6 +1500,8 @@ export const temporal = Object.freeze({
         }
         line(output, "};");
         line(output, "let configuration: ApplicationConfiguration;");
+        line(output, "type ConfigurationDiagnostic = Readonly<{ code: \"config_required\" | \"config_invalid\"; declaration: string; binding: string }>;");
+        line(output, "class ConfigurationFault extends Error { constructor(readonly diagnostics: readonly ConfigurationDiagnostic[]) { super(\"Invalid application configuration\"); this.name = \"ConfigurationFault\"; } }");
         line(output, "");
         line(
             output,
@@ -1558,11 +1560,14 @@ export const temporal = Object.freeze({
         line(output, "}");
         line(output, "function loadConfiguration(environment: Record<string, string | undefined>): ApplicationConfiguration {");
         let retention_fields = self.lifecycle_purge_config_fields();
-        if retention_fields.is_empty() {
-            line(output, "  return {");
-        } else {
-            line(output, "  const loaded: ApplicationConfiguration = {");
-        }
+        line(
+            output,
+            "  const diagnostics: ConfigurationDiagnostic[] = [];",
+        );
+        // Never retain the validator's error or actual value, even for a
+        // nonsecret declaration. Collect every bad field before startup stops.
+        line(output, "  const read = <T>(declaration: string, binding: string, work: () => T): T => { try { return work(); } catch { diagnostics.push(Object.freeze({ code: environment[binding] === undefined || environment[binding] === \"\" ? \"config_required\" : \"config_invalid\", declaration, binding })); return undefined as T; } };");
+        line(output, "  const loaded: ApplicationConfiguration = {");
         for field in &configuration.fields {
             let binding = field
                 .binding
@@ -1608,21 +1613,29 @@ export const temporal = Object.freeze({
                 &parsed,
                 &ts_string(&format!("config.{}", field.name.text)),
             );
-            line(output, &format!("    {}: {validated},", field.name.text));
-        }
-        line(output, "  };");
-        for field in retention_fields {
             line(
                 output,
                 &format!(
-                    "  if (durationMilliseconds(loaded.{field}, {}) <= 0) throw new Error(\"Retention must be positive: config.{field}\");",
-                    ts_string(&format!("config.{field}"))
+                    "    {}: read({}, {}, () => {validated}),",
+                    field.name.text,
+                    ts_string(&format!("{}.{}", configuration.name.text, field.name.text)),
+                    ts_string(binding)
                 ),
             );
         }
-        if !self.lifecycle_purge_config_fields().is_empty() {
-            line(output, "  return loaded;");
+        line(output, "  };");
+        for field in retention_fields {
+            let binding = configuration
+                .fields
+                .iter()
+                .find(|candidate| candidate.name.text == field)
+                .and_then(|candidate| candidate.binding.as_ref())
+                .map(|binding| unquote(&binding.text))
+                .unwrap_or("");
+            line(output, &format!("  if (loaded.{field} !== undefined && durationMilliseconds(loaded.{field}, {}) <= 0) diagnostics.push(Object.freeze({{ code: \"config_invalid\", declaration: {}, binding: {} }}));", ts_string(&format!("config.{field}")), ts_string(&format!("{}.{}", configuration.name.text, field)), ts_string(binding)));
         }
+        line(output, "  if (diagnostics.length !== 0) throw new ConfigurationFault(Object.freeze(diagnostics));");
+        line(output, "  return loaded;");
         line(output, "}");
         line(output, "");
     }
@@ -9251,6 +9264,9 @@ export const temporal = Object.freeze({
         }
         line(output, "    }));");
         line(output, "  } catch (error) {");
+        if self.configuration.is_some() {
+            line(output, "    if (error instanceof ConfigurationFault) for (const diagnostic of error.diagnostics) console.error(JSON.stringify({ schemaVersion: 1, kind: \"configuration_diagnostic\", ...diagnostic }));");
+        }
         line(output, "    reportRuntimeFault(");
         line(output, "      \"RUNTIME_STARTUP_FAILED\",");
         line(output, "      \"runtime:start\",");
@@ -13297,7 +13313,8 @@ route GET /todos { auth: none query: ListTodos output: ListTodos action: { retur
         assert!(app.contains("transition_required_User_by_id_disable"));
         assert!(app.contains("runLifecycleMaintenance"));
         assert!(app.contains("bindLifecycleRetention(configuration)"));
-        assert!(app.contains("Retention must be positive: config.soft_delete_retention"));
+        assert!(app.contains("LifecycleConfiguration.soft_delete_retention"));
+        assert!(app.contains("class ConfigurationFault"));
         assert!(app.contains("retention.purge.batch"));
         let persistence = &targets
             .iter()

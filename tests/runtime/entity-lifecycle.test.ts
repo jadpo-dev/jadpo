@@ -789,9 +789,9 @@ describe("entity lifecycle transition lowering", () => {
 
   test("purges only expired post-transition rows in audited batches of 500", async () => {
     Bun.env.JADPO_LIFECYCLE_RETENTION = "-1d";
-    await expect(runLifecycleMaintenance()).rejects.toThrow(
-      "Retention must be positive: config.soft_delete_retention",
-    );
+    await expect(runLifecycleMaintenance()).rejects.toMatchObject({
+      diagnostics: [{ code: "config_invalid", declaration: "LifecycleConfiguration.soft_delete_retention", binding: "JADPO_LIFECYCLE_RETENTION" }],
+    });
     Bun.env.JADPO_LIFECYCLE_RETENTION = "30d";
 
     const ids = Array.from(
@@ -983,5 +983,24 @@ describe("entity lifecycle transition lowering", () => {
       bound: 500,
       outcome: "committed",
     });
+  });
+  test("host maintenance captures an explicit past clock and keeps young/live rows", async () => {
+    const at = "2026-01-15T12:00:00.000Z";
+    const userId = crypto.randomUUID(), young = crypto.randomUUID(), expired = crypto.randomUUID(), active = crypto.randomUUID();
+    await persistence.withOperationTime(at).create_User({ id: userId, name: "Host clock owner", batch_group: "host-clock", status: "active", disabled_at: null, updated_at: at });
+    const deleted29 = "2025-12-17T12:00:00.000Z", deleted31 = "2025-12-15T12:00:00.000Z";
+    await seedTodo(young, userId, "29 days deleted", "open", deleted29, deleted29);
+    await seedTodo(expired, userId, "31 days deleted", "open", deleted31, deleted31);
+    await seedTodo(active, userId, "active retained", "open", null, at);
+    await expect(runLifecycleMaintenance("not an instant")).rejects.toThrow();
+    expect(await todoExists(young)).toBeTrue(); expect(await todoExists(expired)).toBeTrue(); expect(await todoExists(active)).toBeTrue();
+    const audits: any[] = [], originalError = console.error;
+    console.error = (...values: unknown[]) => { try { audits.push(JSON.parse(values.map(String).join(" "))); } catch {} };
+    try { await runLifecycleMaintenance(at); }
+    finally { console.error = originalError; }
+    expect(await todoExists(young)).toBeTrue(); expect(await todoExists(expired)).toBeFalse(); expect(await todoExists(active)).toBeTrue();
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({ attemptNow: at, bound: 500, selectedCount: 1, committedCount: 1, outcome: "committed" });
+    expect(JSON.stringify(audits)).not.toContain(expired);
   });
 });

@@ -17,6 +17,8 @@ config Settings {
   label: Label { binding: "VALIDATION_LABEL" }
   enabled: Bool { binding: "VALIDATION_ENABLED" default: true }
   count: Int { binding: "VALIDATION_COUNT" default: 1 }
+  issuer: Url { binding: "VALIDATION_ISSUER" default: "https://issuer.example.invalid" }
+  database: Url { binding: "VALIDATION_DATABASE" default: "https://database.example.invalid" }
 }
 type Reading = Object { now: Instant label: Label }
 type Readings = Object { first: Reading second: Reading }
@@ -121,6 +123,25 @@ test("missing and malformed startup configuration exits safely without reporting
     expect(output).not.toContain("runtime.ready");
     expect(output).not.toContain(canary);
   }
+});
+
+test("startup reports every invalid declaration and missing secret without retaining values", () => {
+  const invalidDatabase = "postgres://user:credential-canary-74911@";
+  const result = Bun.spawnSync([process.execPath, "--no-install", emptyEnvironmentFile, entry], {
+    env: { ...environment, VALIDATION_KEY: "", VALIDATION_ISSUER: "not a url", VALIDATION_DATABASE: invalidDatabase },
+    stdout: "pipe", stderr: "pipe", timeout: 5000,
+  });
+  expect(result.exitCode).toBe(1);
+  const output = result.stdout.toString() + result.stderr.toString();
+  const diagnostics = output.split(/\r?\n/u).filter(line => line.startsWith("{")).map(line => JSON.parse(line)).filter(event => event.kind === "configuration_diagnostic");
+  expect(diagnostics).toEqual([
+    { schemaVersion: 1, kind: "configuration_diagnostic", code: "config_required", declaration: "Settings.api_key", binding: "VALIDATION_KEY" },
+    { schemaVersion: 1, kind: "configuration_diagnostic", code: "config_invalid", declaration: "Settings.issuer", binding: "VALIDATION_ISSUER" },
+    { schemaVersion: 1, kind: "configuration_diagnostic", code: "config_invalid", declaration: "Settings.database", binding: "VALIDATION_DATABASE" },
+  ]);
+  expect(output).not.toContain("runtime.ready");
+  expect(output).not.toContain(canary); expect(output).not.toContain(invalidDatabase);
+  expect(output).not.toContain("credential-canary-74911"); expect(output).not.toContain("not a url");
 });
 
 test("production launch cannot satisfy missing configuration from ambient env files", () => {

@@ -2364,13 +2364,15 @@ describe(`committed admission and adapter-origin outcome components (${sql ? "po
     await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
     const intent = (await scan(f.proof)).intents[0]; return { ...f, value, intent };
   }
-  async function provider(kind: "accepted" | "lost" | "rejected" | "rate_limited", work: (calls: any[]) => Promise<void>) {
+  async function provider(kind: "accepted" | "lost" | "rejected" | "rate_limited" | "authentication" | "unsafe", work: (calls: any[]) => Promise<void>) {
     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
       const body = await request.json(); calls.push({ body, key: request.headers.get("Idempotency-Key"), credential: request.headers.get("Authorization") });
       if (kind === "lost") return new Response("invalid acknowledgement", { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
       if (kind === "rejected") return Response.json({ code: "invalid_recipient" }, { status: 400 });
       if (kind === "rate_limited") return Response.json({ code: "rate_limited" }, { status: 429 });
+      if (kind === "authentication") return Response.json({ code: "authentication" }, { status: 401 });
+      if (kind === "unsafe") return Response.json({ code: "authentication", detail: "provider-secret-canary-77491 SELECT private_token FROM credentials", stack: "provider-stack-canary-77491" }, { status: 401 });
       return Response.json({ accepted_at: "2099-01-01T00:00:00.000Z" }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
     } });
     setReferenceMailEndpointForTesting(`http://127.0.0.1:${server.port}`);
@@ -2468,6 +2470,33 @@ describe(`committed admission and adapter-origin outcome components (${sql ? "po
     expect(await operator.replay(f.intent.intentId)).toBe(false);
     expect(await snapshot()).toEqual(unknown);
     expect(providerCalls).toHaveLength(1);
+  });
+  test("worker provider authentication faults emit only safe durable request identity and preserve uncertainty", async () => {
+    for (const kind of ["authentication", "unsafe"] as const) {
+      const f = await enrolled(), grant = await prepare(f.proof, f.intent.intentId);
+      const events: any[] = [], originalError = console.error;
+      console.error = (...values: unknown[]) => { try { events.push(JSON.parse(values.map(String).join(" "))); } catch {} };
+      try {
+        await provider(kind, async calls => {
+          const receipt = await app.dispatchDeliveryInvocation(grant);
+          expect(await app.completeDeliveryInvocation(receipt)).toBe(true);
+          expect(calls).toHaveLength(1);
+          expect(await prepare(f.proof, f.intent.intentId)).toBeNull();
+        });
+      } finally { console.error = originalError; }
+      const failures = events.filter(event => event.eventName === "operation.failed");
+      expect(failures).toHaveLength(1);
+      const attempts = events.filter(event => event.eventName === "service.attempt");
+      expect(attempts).toHaveLength(1); expect(attempts[0].operationId).toBe(f.intent.intentId);
+      const event = failures[0];
+      expect(Object.keys(event).sort()).toEqual(["attributes", "classification", "eventName", "kind", "requestId", "schemaVersion", "semanticOperationId", "sourceRevision", "traceId"]);
+      expect(event).toMatchObject({ schemaVersion: 1, kind: "operational_log_event", eventName: "operation.failed", classification: kind === "authentication" ? "RUNTIME_SERVICE_MISCONFIGURED" : "RUNTIME_OUTCOME_UNKNOWN", requestId: `job_${f.intent.intentId}`, traceId: null, semanticOperationId: `job:${bindingIdentity}`, attributes: {} });
+      expect(event.sourceRevision).toMatch(/^src_[a-f0-9]+$/u);
+      const visible = JSON.stringify(events);
+      for (const value of ["provider-secret-canary-77491", "provider-stack-canary-77491", "SELECT", f.issued.credential, authEnvironment.MAIL_API_KEY, f.intent.payload.to]) expect(visible).not.toContain(value);
+      expect((await persistence.read_delivery_intent(f.intent.intentId)).state).toBe("outcome_unknown");
+      expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+    }
   });
   test("typed adapter no-effect rejection fails permanently; transient exhaustion preserves same-ID retry budget", async () => {
     for (const kind of ["rejected", "rate_limited"] as const) {
