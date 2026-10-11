@@ -649,26 +649,67 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const extendedActivationProfile = Object.freeze({ executionMs: 600_000, leaseMs: 300_000 });
     let calls: any[] = [];
 
-    await provider(async requestCalls => {
+    await provider(async (requestCalls, endpoint) => {
       calls = requestCalls;
-      const first = await activate(f.proof, firstTime, extendedActivationProfile);
-      expect(first).toEqual({ status: "finished", selected: 500, attempted: 500, continued: true });
-      expect(calls).toHaveLength(500);
-      const checkpoint = (await activationRows())[0];
-      expect(checkpoint.activation_id).toBeNull();
-      expect(checkpoint.continuation_for).toBe("2026-10-08T08:00:00.000Z");
-      expect(JSON.parse(checkpoint.cursor)).toEqual({ binding: bindingIdentity, operationTime: firstTime, dueAt: dueA, id: ids[499] });
+      const workerSource = (at: string) => `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
+        const {setReferenceMailEndpointForTesting}=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});
+        await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
+        const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
+        setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
+        const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(extendedActivationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(at)});
+        console.log(JSON.stringify(result)); process.exit(0);`;
+      const childEnv = {
+        ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
+        COMPONENT_WORKER_KEY: f.issued.credential, COMPONENT_ENDPOINT: endpoint,
+        DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath,
+      };
+      const children: ReturnType<typeof Bun.spawn>[] = [];
+      const captures: Promise<readonly [string, string, number]>[] = [];
+      const settleWithin = async <T>(promise: Promise<T>, ms: number) => {
+        let timer: ReturnType<typeof setTimeout>;
+        const deadline = new Promise<{ settled: false }>(resolve => { timer = setTimeout(() => resolve({ settled: false }), ms); });
+        try { return await Promise.race([promise.then(value => ({ settled: true as const, value })), deadline]); }
+        finally { clearTimeout(timer!); }
+      };
+      const runWorker = async (at: string) => {
+        const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", workerSource(at)], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+        children.push(child);
+        const capture = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited] as const);
+        captures.push(capture);
+        const result = await settleWithin(capture, 30_000);
+        if (!result.settled) {
+          child.kill("SIGKILL");
+          await Promise.all([settleWithin(child.exited, 5_000), settleWithin(capture, 5_000)]);
+          throw new Error("bounded continuation worker exceeded its 30-second limit");
+        }
+        const [out, err, exit] = result.value;
+        expect(exit, err).toBe(0);
+        return JSON.parse(out.trim().split(/\r?\n/u).at(-1)!);
+      };
+      try {
+        const first = await runWorker(firstTime);
+        expect(first).toEqual({ status: "finished", selected: 500, attempted: 500, continued: true });
+        expect(calls).toHaveLength(500);
+        const checkpoint = (await activationRows())[0];
+        expect(checkpoint.activation_id).toBeNull();
+        expect(checkpoint.continuation_for).toBe("2026-10-08T08:00:00.000Z");
+        expect(JSON.parse(checkpoint.cursor)).toEqual({ binding: bindingIdentity, operationTime: firstTime, dueAt: dueA, id: ids[499] });
 
-      const second = await activate(f.proof, secondTime, extendedActivationProfile);
-      expect(second).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
-      expect(calls).toHaveLength(501);
-      expect(calls[500].scheduledFor).toBe("2026-10-08T08:00:00.000Z");
-      expect(calls[500].operationTime).toBe(secondTime);
+        const second = await runWorker(secondTime);
+        expect(second).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+        expect(calls).toHaveLength(501);
+        expect(calls[500].scheduledFor).toBe("2026-10-08T08:00:00.000Z");
+        expect(calls[500].operationTime).toBe(secondTime);
 
-      const emptyFollowup = await activate(f.proof, secondTime, extendedActivationProfile);
-      expect(emptyFollowup).toEqual({ status: "finished", selected: 0, attempted: 0, continued: false });
-      expect(await activate(f.proof, secondTime, extendedActivationProfile)).toEqual({ status: "idle", selected: 0, attempted: 0, continued: false });
-      expect(calls).toHaveLength(501);
+        const emptyFollowup = await runWorker(secondTime);
+        expect(emptyFollowup).toEqual({ status: "finished", selected: 0, attempted: 0, continued: false });
+        expect(await runWorker(secondTime)).toEqual({ status: "idle", selected: 0, attempted: 0, continued: false });
+        expect(calls).toHaveLength(501);
+      } finally {
+        for (const child of children) child.kill("SIGKILL");
+        const cleanup = await Promise.all([...children.map(child => settleWithin(child.exited, 5_000)), ...captures.map(capture => settleWithin(capture, 5_000))]);
+        if (cleanup.some(result => !result.settled)) throw new Error("bounded continuation workers did not finish cleanup");
+      }
     });
 
     const intentIds = calls.map(call => call.body.idempotency_key);
