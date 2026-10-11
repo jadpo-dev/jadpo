@@ -418,6 +418,10 @@ def list_004_observation(case, raw, reply):
             or not isinstance(error.get('request_id'), str)
             or reply.get('authenticationAttempts') != 1):
         raise ValueError('LIST-004 did not return the authenticated invalid-value response')
+    if reply.get('principal') != {
+            'kind': 'user', 'subject': 'alice',
+            'identityId': '00000000-0000-4000-8000-000000000001'}:
+        raise ValueError('LIST-004 response is not bound to the authenticated Alice principal')
     statements = reply.get('statements')
     if not isinstance(statements, list) or statements:
         raise ValueError('LIST-004 accessed the database before rejecting the page size')

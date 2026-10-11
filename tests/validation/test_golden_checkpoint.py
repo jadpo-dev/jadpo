@@ -1165,6 +1165,13 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('missing request id', missing_request_id))
         unauthenticated = deepcopy(raw); unauthenticated[0]['authenticationAttempts'] = 0
         mutations.append(('authentication not observed', unauthenticated))
+        missing_principal = deepcopy(raw); del missing_principal[0]['principal']
+        mutations.append(('authenticated principal missing', missing_principal))
+        foreign_principal = deepcopy(raw)
+        foreign_principal[0]['principal'] = {
+            'kind': 'user', 'subject': 'bob',
+            'identityId': '00000000-0000-4000-8000-000000000002'}
+        mutations.append(('authenticated principal belongs to Bob', foreign_principal))
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'LIST-004'):
                 checkpoint.observations(case, changed)
