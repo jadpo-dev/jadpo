@@ -4305,3 +4305,20 @@ retry_wait branch. Other traces, RM-306/RM-307/RM-108 and Golden Todo acceptance
 remain open. Timer `RM-307-578af69102ea` records 0.40 active minutes and a
 2.79-minute unknown interruption interval, excluded after the laptop crash,
 under `gpt-6.1-sol/high` and the original 0.5–2h estimate.
+
+**RM-307 generated cancellation before claim, 2026-10-11:** test commit
+`a4f8e0fcf467745f8b9697869e345042f7718582` adds `ASYNC-CANCEL-PENDING`
+to the generated scheduler suite. It cancels an enrolled pending intent before
+claim, then runs public activation: the retained page slot is selected and
+counted as attempted, but no delivery claim or provider call occurs; the
+intent, cancellation record and null source sent-marker remain unchanged.
+The focused trace passes 1/0/0/13. SQLite default/derived pass 79/2/996 and
+80/2/1014; PostgreSQL default/derived pass 79/1/927 and 80/1/945. Independent
+review approved the exact source and contract without corrections after seven
+pin checks and fresh reruns of all five tests. The [source-bound packet](../../tests/validation/evidence/rm307-cancel-pending-20261011/README.md)
+contains author/reviewer logs and a clean fourteen-file scan. Scope is limited
+to native trusted cancellation before first claim; public cancellation policy,
+retry-wait and after-dispatch cancellation, and races remain uncovered. Other
+traces, RM-306/RM-307/RM-108 and Golden Todo acceptance remain open. Timer
+`RM-307-f4b67f77b8bf` records 4.20 active minutes (1.77 verification, 0.21
+review wait) under `gpt-6.1-sol/high` and the original 0.5–2h estimate.
