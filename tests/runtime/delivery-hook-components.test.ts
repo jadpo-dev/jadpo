@@ -672,6 +672,22 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const saved = (await activationRows())[0]; expect(saved.activation_id).toBeNull(); expect(saved.page).toBeNull();
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
+  test("generated worker holds an unsupported payload version without decoding or dispatch", async () => {
+    const f = await fixture();
+    const original = (await scan(f.proof)).intents[0];
+    const unknownPayload = JSON.stringify({ future_schema: { recipient: "not-a-reminder" } });
+    await rows('UPDATE "__jadpo_deliveries_v1" SET payload_version=$1, payload=$2 WHERE intent_id=$3', ["reminder.vNext", unknownPayload, original.intentId]);
+    const held = await rows('SELECT payload_version,payload,state FROM "__jadpo_deliveries_v1" WHERE intent_id=$1', [original.intentId]);
+    expect(held).toEqual([{ payload_version: "reminder.vNext", payload: unknownPayload, state: "pending" }]);
+    const activationsBefore = await activationRows();
+
+    await provider(async calls => {
+      await expect(activate(f.proof)).rejects.toMatchObject({ operation: "delivery.identity_conflict" });
+      expect(calls).toHaveLength(0);
+      expect(await rows('SELECT payload_version,payload,state FROM "__jadpo_deliveries_v1" WHERE intent_id=$1', [original.intentId])).toEqual(held);
+      expect(await activationRows()).toEqual(activationsBefore);
+    });
+  });
   test("native replay retries only an adapter-proven no-effect intent and preserves its identity and lifetime budget", async () => {
     const f = await fixture();
     const calls: any[] = [];
