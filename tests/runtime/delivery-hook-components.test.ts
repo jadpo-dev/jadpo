@@ -633,6 +633,55 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     expect(schedule.pending_for).toBeNull();
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
+  test("generated worker resumes a 501-row selection after the bounded 500-intent page", async () => {
+    await clearScanTodos();
+    await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, scanTime));
+    await rows('DELETE FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [bindingIdentity]);
+    const f = await authorityFixture();
+    const idPrefix = crypto.randomUUID().slice(0, 24);
+    const ids = Array.from({ length: 501 }, (_, index) => `${idPrefix}${String(index + 1).padStart(12, "0")}`);
+    await client.transaction(async (tx: any) => {
+      for (const id of ids) await tx.create_Todo(todo(id));
+    });
+    const firstTime = "2026-10-08T08:01:02.003Z";
+    const secondTime = "2026-10-08T08:16:02.003Z";
+    await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, firstTime));
+    const extendedActivationProfile = Object.freeze({ executionMs: 600_000, leaseMs: 300_000 });
+    let calls: any[] = [];
+
+    await provider(async requestCalls => {
+      calls = requestCalls;
+      const first = await activate(f.proof, firstTime, extendedActivationProfile);
+      expect(first).toEqual({ status: "finished", selected: 500, attempted: 500, continued: true });
+      expect(calls).toHaveLength(500);
+      const checkpoint = (await activationRows())[0];
+      expect(checkpoint.activation_id).toBeNull();
+      expect(checkpoint.continuation_for).toBe("2026-10-08T08:00:00.000Z");
+      expect(JSON.parse(checkpoint.cursor)).toEqual({ binding: bindingIdentity, operationTime: firstTime, dueAt: dueA, id: ids[499] });
+
+      const second = await activate(f.proof, secondTime, extendedActivationProfile);
+      expect(second).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(501);
+      expect(calls[500].scheduledFor).toBe("2026-10-08T08:00:00.000Z");
+      expect(calls[500].operationTime).toBe(secondTime);
+
+      const emptyFollowup = await activate(f.proof, secondTime, extendedActivationProfile);
+      expect(emptyFollowup).toEqual({ status: "finished", selected: 0, attempted: 0, continued: false });
+      expect(await activate(f.proof, secondTime, extendedActivationProfile)).toEqual({ status: "idle", selected: 0, attempted: 0, continued: false });
+      expect(calls).toHaveLength(501);
+    });
+
+    const intentIds = calls.map(call => call.body.idempotency_key);
+    expect(new Set(intentIds).size).toBe(501);
+    const placeholders = intentIds.map((_, index) => `$${index + 1}`).join(",");
+    const delivered = await rows(`SELECT source_entity_id FROM "__jadpo_deliveries_v1" WHERE intent_id IN (${placeholders}) ORDER BY source_entity_id`, intentIds);
+    expect(delivered.map((row: any) => row.source_entity_id)).toEqual(ids);
+    expect(Number((await rows('SELECT COUNT(*) AS n FROM todo WHERE reminder_sent_at IS NULL'))[0].n)).toBe(0);
+    const schedule = (await activationRows())[0];
+    expect(schedule.cursor).toBeNull();
+    expect(schedule.continuation_for).toBeNull();
+    expect(schedule.activation_id).toBeNull();
+  }, 120_000);
   test("a fresh generated worker reclaims the original staged page after a pre-dispatch checkpoint fault", async () => {
     const f = await fixture();
     // Initialize native claim storage with an unrelated test-owned sentinel so
