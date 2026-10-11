@@ -205,6 +205,15 @@ Required-owner visibility is applied before ordering and limit, as in DATA-007.
 The transaction records `possible_dispatch` durably before releasing its claim
 to the HTTP adapter. No database transaction is held across HTTP.
 
+When an eligible current-revision intent reaches key-ordered admission, older
+pending or `retry_wait` intents for that same source whose schedule revision is
+stale are cancelled under the ordering-key lock before the successor is
+claimed. The native cancellation check requires `possible_dispatch = 0`, so
+those records cannot have produced a provider effect and their claim/attempt
+history remains intact. Running and `outcome_unknown` predecessors are not
+released by a newer revision; FIFO continues to hold the successor until a
+trusted terminal outcome or resolution.
+
 Committed admission is the concurrency cut: a due-date patch before it prevents
 A dispatch; a patch after it may race A's HTTP request. A crash after admission
 without a durable outcome leaves A unknown, even if no bytes were actually sent.

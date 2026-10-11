@@ -1145,6 +1145,70 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       ? Response.json({ code: "invalid_recipient" }, { status: 400 })
       : Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } }));
   });
+  test("generated worker cancels a stale no-effect retry before the current same-key revision while J progresses", async () => {
+    const f = await fixture();
+    const independent = todo();
+    await client.create_Todo(independent);
+    const initial = (await scan(f.proof)).intents;
+    expect(initial).toHaveLength(2);
+    const first = initial.find((intent: any) => intent.sourceEntityId === f.value.id)!;
+    const independentIntent = initial.find((intent: any) => intent.sourceEntityId === independent.id)!;
+    expect(first).toBeDefined();
+    expect(independentIntent).toBeDefined();
+
+    const previousRandom = Math.random;
+    Math.random = () => 0;
+    try {
+      let firstCalls: any[] = [];
+      await provider(async calls => {
+        firstCalls = calls;
+        expect(await activate(f.proof)).toEqual({ status: "finished", selected: 2, attempted: 2, continued: false });
+      }, undefined, body => body.idempotency_key === first.intentId
+        ? Response.json({ code: "rate_limited" }, { status: 429 })
+        : Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } }));
+      expect(firstCalls.filter(call => call.body.idempotency_key === first.intentId)).toHaveLength(3);
+      expect(firstCalls.filter(call => call.body.idempotency_key === independentIntent.intentId)).toHaveLength(1);
+      expect((await persistence.read_delivery_intent(first.intentId)).state).toBe("retry_wait");
+      expect((await persistence.read_delivery_intent(independentIntent.intentId)).state).toBe("succeeded");
+
+      await patch(f.value.id, { due_at: dueB });
+      const successor = (await scan(f.proof)).intents.find((intent: any) => intent.sourceEntityId === f.value.id && intent.sourceRevision === "2");
+      expect(successor).toBeDefined();
+      expect(successor.orderingKey).toBe(first.orderingKey);
+      expect(BigInt(successor.keySequence)).toBeGreaterThan(BigInt(first.keySequence));
+      const firstBeforeAdmission = {
+        intent: await persistence.read_delivery_intent(first.intentId),
+        claim: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId]),
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [first.intentId]),
+      };
+      expect(await persistence.transaction((tx: any) => tx.claim_delivery_intent(successor.intentId, {
+        maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile,
+      }))).toBeNull();
+      expect((await persistence.read_delivery_intent(first.intentId)).state).toBe("retry_wait");
+      expect(await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId])).toEqual([]);
+
+      await provider(async calls => {
+        expect(await activate(f.proof, "2026-10-08T08:15:00.000Z")).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+        expect(calls.map(call => call.body.idempotency_key)).toEqual([successor.intentId]);
+        expect(calls[0].body).toEqual(successor.payload);
+        expect((await persistence.read_delivery_intent(successor.intentId)).state).toBe("succeeded");
+        const firstAfterAdmission = {
+          intent: await persistence.read_delivery_intent(first.intentId),
+          claim: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId]),
+          attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [first.intentId]),
+        };
+        expect(firstAfterAdmission.intent).toMatchObject({
+          intentId: first.intentId, state: "cancelled", payloadVersion: first.payloadVersion, payload: first.payload,
+        });
+        expect(firstAfterAdmission.claim).toEqual(firstBeforeAdmission.claim);
+        expect(firstAfterAdmission.attempts).toEqual(firstBeforeAdmission.attempts);
+        expect(await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId])).toHaveLength(1);
+        expect((await persistence.read_delivery_intent(independentIntent.intentId)).state).toBe("succeeded");
+        expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+        expect((await stored(independent.id))[0].reminder_sent_at).not.toBeNull();
+      });
+    } finally { Math.random = previousRandom; }
+  }, 30_000);
   test("native replay retries only an adapter-proven no-effect intent and preserves its identity and lifetime budget", async () => {
     const f = await fixture();
     const calls: any[] = [];

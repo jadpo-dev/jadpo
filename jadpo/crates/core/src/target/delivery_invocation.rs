@@ -228,6 +228,11 @@ impl TargetGenerator<'_> {
             line(&mut output, &format!("        const revision = sources.length === 0 ? null : await client.read_delivery_schedule_revision({}, intent.sourceEntityId);", ts_string(&s.entity.text)));
             line(&mut output, "        const payload = validateDeliveryPayload(binding, intent.payload); if (payload.idempotency_key !== intent.intentId) return fault(\"delivery.payload_identity\");");
             line(&mut output, "        if (revision !== intent.sourceRevision || sources.length !== 1 || sources[0].recipient !== payload.to) { if (operatorGrant !== null) { readCurrentDeliveryCredentialProof(proof); readCurrentDeliveryOperatorGrant(operatorGrant); return null; } await client.cancel_delivery_intent(intentId); return null; }");
+            // A newer, currently admitted revision supersedes older same-source
+            // pending/retry-wait records that cannot have had a provider effect.
+            // Cancel under the normal key lock before FIFO claim; unknown/running
+            // predecessors remain active and continue to block the successor.
+            line(&mut output, "        if (operatorGrant === null) { const stale = await execute(\"delivery.admission.stale_predecessors\", `SELECT p.\"intent_id\" FROM \"__jadpo_deliveries_v1\" p JOIN \"__jadpo_deliveries_v1\" c ON c.\"intent_id\" = $1 WHERE p.\"job\" = c.\"job\" AND p.\"source_operation\" = c.\"source_operation\" AND p.\"source_entity\" = c.\"source_entity\" AND p.\"source_entity_id\" = c.\"source_entity_id\" AND p.\"ordering_key\" = c.\"ordering_key\" AND p.\"key_sequence\" < c.\"key_sequence\" AND p.\"source_revision\" <> $2 AND p.\"state\" IN ('pending', 'retry_wait') ORDER BY p.\"key_sequence\" LIMIT 500`, [intentId, revision]); for (const predecessor of stale) await client.cancel_delivery_intent(predecessor.intent_id); }");
             line(&mut output, "        const handle = operatorGrant === null ? await client.claim_delivery_intent(intentId, limits) : await client.claim_delivery_resolved_replay(intentId, limits); if (handle === null) return null;");
             // Recheck crypto issuer after all awaited lock/claim work but before
             // committing the checkpoint. Live SQL role rows remain locked.
