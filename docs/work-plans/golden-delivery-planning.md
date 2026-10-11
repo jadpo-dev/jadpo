@@ -4195,3 +4195,25 @@ public job lowering or close RM-306/RM-307/Golden Todo. Timer
 **RM-306 generated UTC interval across DST fallback, 2026-10-11:** commit f569e5e06922fe7537aaa8fa006d2084410c23c4 adds a generated-worker case spanning the Europe/London 2026 autumn clock change. Two UTC instants both format as local 01:31 but map to distinct quarter-hour occurrences; the worker dispatches once for the later UTC occurrence and repeated wakeup is idle. SQLite passes 70/1 skip/812 assertions and PostgreSQL 69/1/733; the fresh supported verifier passes 68/68 with Golden HTTP 70/0/18 and frozen protocol 88 not_run. The [source-bound packet](../../tests/validation/evidence/rm306-utc-dst-fallback-20261011/README.md) is independently approved after 20 pin references, fresh SQLite/PostgreSQL reruns and privacy scan. This uses explicit timestamps, not an elapsed-time DST or deployment soak. Production singleton profile, public lowering, full recovery matrix and Golden acceptance remain open.
 
 **RM-306 generated bounded continuation, 2026-10-11:** commit `e79130d18811262165da5708b9444f5309d29826` adds a generated-worker trace for a 501-row due set crossing the fixed 500-intent page. The first child commits the first page and typed continuation cursor, then exits; a separate child resumes with a fresh operation snapshot and completes the sole remaining intent. Two further child processes complete an empty follow-up and return idle; the provider receives exactly501 calls and durable rows cover the complete fixture without duplicate intent IDs. SQLite passes71/1 backend skip/834 assertions; PostgreSQL70/1/755; the fresh supported verifier passes68/68 with Golden HTTP70/0/18 and frozen protocol0/0/88. The [source-bound packet](../../tests/validation/evidence/rm306-bounded-continuation-20261011/README.md) is independently approved after20 pin references, fresh backend reruns and a clean seven-file privacy/symlink scan. These are clean worker exits after committed work, not a crash or host restart; the 600s/300s activation profile is test-only, and there is no general exactly-once claim. Public target lowering, production profile selection, the full18-trace matrix and Golden acceptance remain open. Timing `RM-306-19eea3518267` closes partial with its post-interruption unknown interval excluded; continuation run `RM-306-c32f81b3dc41` records the resumed work.
+
+**RM-306 public worker argument conformance, 2026-10-11:** test commit
+`98447b1ee917e4b7a23fdfebfce5fef2ef37f9ed` exercises eight rejected argument
+forms through fresh generated `target/jobs.ts` processes and preserves the
+successful 500+1 continuation path. Every rejection leaves provider calls,
+activation rows and fixture intent enrollment unchanged. SQLite passes
+71/1 backend skip/864 assertions; PostgreSQL passes 70/1/785. The
+[source-bound packet](../../tests/validation/evidence/rm306-public-entrypoint-conformance-20261011/README.md)
+is independently approved after 20 pin checks and fresh reruns of both suites;
+no corrections were required. This slice does not select a production
+activation profile, execute all 18 recovery traces or close
+RM-306/RM-307/Golden Todo. Separately, the fresh supported
+[`python3 tools/verify.py` report](../../build/validation/20261011T072214-44400/report.json)
+passes 68/68 steps on the current checkout. Golden HTTP remains 70 passed,
+0 failed and 18 `not_run`; all 88 frozen backend entries remain `not_run`, the
+Golden application has 49 compile diagnostics and `release_equivalent=false`.
+This satisfies the combined-gate prerequisite for advancing the reviewed
+Golden job milestone, while RM-306 generic event binding and production profile
+selection remain open. Timing
+`RM-306-a2b5cb6ac815` records this partial slice under `gpt-6.1-sol/high`; its
+tests were recorded in the implementation phase because the timer was not
+switched before verification began.
