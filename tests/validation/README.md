@@ -194,22 +194,33 @@ recorded source or that supplied observations were obtained from the application
 
 The registered Python contract tests include synthetic drivers solely to exercise
 protocol counterexamples. Their passes are not golden acceptance evidence.
-Application adapters must still implement real generated HTTP/database/job/
-preflight/policy observations, retain safe raw evidence and generated-artifact
-bindings, demonstrate route/OpenAPI/policy/query-audit agreement, and integrate
-with a fresh compiler build and `--require-golden`. RM-108/RM-402/RM-403 closure
-and required independent review remain prerequisites for full RM-109 completion.
-No adapter or final golden-pass import path is enabled by this preparation.
+Application adapters must still implement the full set of generated HTTP,
+database, job, preflight and policy observations, demonstrate route/OpenAPI/
+policy/query-audit agreement, and integrate with `--require-golden`. RM-108/
+RM-402/RM-403 closure and required independent review remain prerequisites for
+full RM-109 completion. The selected migrated-application checkpoint below
+does not enable the final golden-pass import path.
 
 
-The reviewed migrated HTTP checkpoint command is
+The selected migrated checkpoint command is
 `python3 tools/golden_checkpoint.py --output <new-evidence-directory>`. It builds
-a fresh compiler, generates the migrated application, and observes eight original
-IDs through real loopback HTTP on SQLite and disposable PostgreSQL. Generated
-original/instrumented artifacts, the pinned JWT dependency, safe raw responses
-and SQL/authentication observations are bound to the report. All 88 entries
-remain present; unsupported cases stay `not_run`. A selected case mismatch fails
-the command, while a passing eight-ID checkpoint remains partial golden evidence.
+a fresh compiler, generates the migrated application, and currently observes 35
+of the 44 original IDs through real SQLite/PostgreSQL execution. Its latest
+source-bound report has 70 passed, 0 failed and 18 `not_run` backend entries.
+The approved source-bound packets include LIST-001 through LIST-004, REL-001,
+REL-002, REL-004, PATCH-001, PATCH-002 and PATCH-005. The REL-004 packet proves
+restricted hard-delete behavior and unchanged readback on both backends, with 22
+saved mutations in its 38-test focused suite; the reviewer approved after 870
+pin checks. The nine remaining IDs need separate prerequisites or
+runtime support: CONFIG-001/002 need structured diagnostics currently absent
+from generated startup, CONFIG-003 needs RM-403, JOB-001–004 need RM-307/RM-108,
+REL-003 needs the RM-601/RM-603 policy decision, and BOUNDARY-001 needs
+RM-303/RM-304/RM-402. Generated original/instrumented artifacts, the pinned JWT
+dependency, safe raw responses and SQL/authentication observations are bound to
+the report. All 88 entries remain present, unsupported cases stay `not_run`,
+aggregate status remains `not_run`, and `release_equivalent` remains false. A
+selected case mismatch fails the command, while this checkpoint is still only
+supporting golden evidence.
 The full supported verifier runs this command after its runtime suites and
 retains its separate report; the explicit quick profile skips the two-backend
 checkpoint. The frozen-source `--require-golden` gate remains independent.

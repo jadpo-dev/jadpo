@@ -28,7 +28,9 @@ def estimate(value):
         if not 0 < lo <= hi:
             raise ValueError(f'Invalid effort range: {value}')
         return [lo, hi]
-    if value.startswith('Unmeasured') or value == 'Unestimated (needs planning)' or 'per decision' in value:
+    if (value.startswith('Unmeasured')
+            or re.fullmatch(r'Unestimated \(needs planning(?:;[^)]*)?\)', value)
+            or 'per decision' in value):
         return None
     raise ValueError(f'Unrecognised estimate; update parser rather than silently omit: {value}')
 

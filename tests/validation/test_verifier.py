@@ -105,6 +105,43 @@ class VerificationEnvironmentTests(unittest.TestCase):
 
 
 class GoldenCaseIntegrationTests(unittest.TestCase):
+    def test_require_golden_gate_needs_all_eighty_eight_source_bound_passes_and_compile(self):
+        golden = {'status': 'compiled', 'case_protocol': {
+            'status': 'observations_passed', 'case_backend_entries': 88,
+            'source_bound': True, 'counts': {'passed': 88, 'failed': 0, 'not_run': 0}}}
+        self.assertTrue(verify.golden_behavioral_gate_passes(golden))
+        for mutation in ('compiled', 'count', 'source', 'status'):
+            candidate = json.loads(json.dumps(golden))
+            if mutation == 'compiled':
+                candidate['status'] = 'compile_failed'
+            elif mutation == 'count':
+                candidate['case_protocol']['counts']['passed'] = 87
+                candidate['case_protocol']['counts']['not_run'] = 1
+            elif mutation == 'source':
+                candidate['case_protocol']['source_bound'] = False
+            else:
+                candidate['case_protocol']['status'] = 'not_run'
+            with self.subTest(mutation=mutation):
+                self.assertFalse(verify.golden_behavioral_gate_passes(candidate))
+
+    def test_golden_compile_gate_uses_migration_and_keeps_pressure_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            accepted = json.dumps({'status': 'passed', 'diagnostics': []})
+            historical = json.dumps({'status': 'failed', 'diagnostics': [{'code': 'OLD-SYNTAX'}]})
+            from types import SimpleNamespace
+            with patch.object(verify.subprocess, 'run', side_effect=[
+                    SimpleNamespace(returncode=0, stdout=accepted),
+                    SimpleNamespace(returncode=1, stdout=historical)]) as run:
+                result = verify.collect_golden_source_report(output, {}, {'cases': {'AUTH-001': {}}})
+            self.assertEqual(result['status'], 'compiled')
+            self.assertEqual(result['source'], 'examples/golden-todo-migration')
+            self.assertEqual(result['historical_pressure_source']['status'], 'compile_failed')
+            self.assertEqual(result['historical_pressure_source']['diagnostic_count'], 1)
+            self.assertTrue(run.call_args_list[0].args[0][2].endswith('golden-todo-migration'))
+            self.assertEqual(json.loads((output/'golden-diagnostics.json').read_text()), json.loads(accepted))
+            self.assertEqual(json.loads((output/'golden-historical-pressure-diagnostics.json').read_text()), json.loads(historical))
+
     def test_pending_real_protocol_is_retained_separately_from_supported_success(self):
         with tempfile.TemporaryDirectory() as directory:
             result = verify.collect_golden_case_report(Path(directory), verify.verification_environment())

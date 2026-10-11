@@ -74,6 +74,19 @@ class GoldenProtocolTests(unittest.TestCase):
         self.assertEqual(report['status'], 'failed')
         harness.validate_report(report, self.root)
 
+    def test_backend_blockers_and_missing_case_support_remain_not_run(self):
+        drivers = {('sqlite', 'http'): lambda case, backend: self.observations()}
+        evidence = {
+            'supported_ids': {'sqlite': [self.case['id']], 'postgres': []},
+            'blocked_backends': {'postgres': 'Owner URL contract remains unresolved'},
+        }
+        report = harness.run_cases(self.root, drivers, evidence)
+        sqlite, postgres = report['results']
+        self.assertEqual(sqlite['status'], 'passed')
+        self.assertEqual(postgres['status'], 'not_run')
+        self.assertEqual(postgres['reason'], evidence['blocked_backends']['postgres'])
+        self.assertEqual(report['status'], 'not_run')
+
     def test_query_budget_and_missing_boolean_are_not_inferred(self):
         self.assertTrue(harness.compare({'databaseQueriesAtMost': 1}, {'databaseQueries': 2}))
         self.assertTrue(harness.compare({'databaseQueriesAtMost': 1}, {'databaseQueries': True}))
@@ -190,6 +203,44 @@ class GoldenProtocolTests(unittest.TestCase):
             return self.observations()
         with self.assertRaisesRegex(ValueError, 'changed during'):
             self.run_synthetic(mutate_source)
+
+    def test_source_bound_driver_passes_are_replayed_from_retained_evidence(self):
+        observation = self.observations()
+        raw_path = self.root/'evidence/raw-observations.json'
+        raw_path.parent.mkdir(parents=True)
+        raw_path.write_text(json.dumps({'sqlite': observation, 'postgres': observation}))
+        adapter_path = self.root/harness.APPLICATION_ADAPTER
+        adapter_path.parent.mkdir(parents=True, exist_ok=True)
+        adapter_path.write_text(
+            'import hashlib, json\n'
+            'def validate_bindings(root, evidence):\n'
+            ' p = root / evidence["raw_path"]\n'
+            ' if hashlib.sha256(p.read_bytes()).hexdigest() != evidence["raw_sha256"]: raise ValueError("stale raw pin")\n'
+            'def derive_observations(root, evidence, case, backend):\n'
+            ' return json.loads((root / evidence["raw_path"]).read_text())[backend]\n')
+        evidence = {
+            'adapter_source_sha256': harness.digest(adapter_path),
+            'raw_path': 'evidence/raw-observations.json',
+            'raw_sha256': harness.digest(raw_path),
+            'supported_ids': {'sqlite': [self.case['id']], 'postgres': [self.case['id']]},
+            'blocked_backends': {},
+            'registered_backends': ['sqlite', 'postgres'],
+            'registered_supported_ids_by_backend': {
+                'sqlite': [self.case['id']], 'postgres': [self.case['id']]},
+        }
+        drivers = {(backend, 'http'): lambda case, requested_backend: json.loads(
+            (self.root/'evidence/raw-observations.json').read_text())[requested_backend]
+            for backend in harness.BACKENDS}
+        report = harness.run_cases(self.root, drivers, evidence)
+        harness.validate_report(report, self.root)
+
+        report['results'][0]['observations'][0]['steps'][0]['unrequestedClaim'] = True
+        with self.assertRaisesRegex(ValueError, 'differ from retained raw'):
+            harness.validate_report(report, self.root)
+
+        raw_path.write_text(json.dumps({'sqlite': [], 'postgres': observation}))
+        with self.assertRaisesRegex(ValueError, 'evidence validation failed'):
+            harness.validate_report(harness.run_cases(self.root, drivers, evidence), self.root)
 
     def test_tampered_observations_or_expectations_cannot_keep_pass_label(self):
         report = self.run_synthetic()

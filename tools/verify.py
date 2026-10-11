@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -81,17 +82,73 @@ def collect_golden_case_report(output, environment):
     path = output / 'golden-cases.json'
     if path.exists():
         raise ValueError('Golden case report already exists; fresh evidence is required')
-    code = execute([sys.executable, 'tools/golden_cases.py', '--output', str(path)],
+    command = [sys.executable, 'tools/golden_cases.py', '--output', str(path)]
+    checkpoint_directory = output / 'golden-http-checkpoint'
+    if checkpoint_directory.is_dir():
+        command += ['--checkpoint-dir', str(checkpoint_directory),
+                    '--jwt-dependencies', str(ROOT/'build/validation/jwt-dependencies')]
+    code = execute(command,
                    output / 'golden-cases.log', environment)
     cases = json.loads(path.read_text())
     if (cases.get('status') not in ('not_run', 'failed', 'observations_passed')
             or cases.get('release_equivalent') is not False
             or code != (0 if cases['status'] == 'observations_passed' else 1)):
         raise ValueError('Golden case command failed or contradicted its supporting report')
+    spec = importlib.util.spec_from_file_location('jadpo_verify_golden_cases', ROOT/'tools/golden_cases.py')
+    if spec is None or spec.loader is None:
+        raise ValueError('Golden report validator is unavailable')
+    cases_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cases_module)
+    cases_module.validate_report(cases, ROOT)
+    counts = {status: sum(entry['status'] == status for entry in cases['results'])
+              for status in ('passed', 'failed', 'not_run')}
+    source_bound = isinstance(cases.get('driver_evidence'), dict)
+    if cases['status'] == 'observations_passed' and (len(cases['results']) != 88 or not source_bound):
+        raise ValueError('Passing Golden results lack complete source-bound application evidence')
     return {'report': path.name, 'status': cases['status'],
             'case_backend_entries': len(cases['results']),
-            'counts': {status: sum(entry['status'] == status for entry in cases['results'])
-                       for status in ('passed', 'failed', 'not_run')}}
+            'counts': counts, 'source_bound': source_bound}
+
+
+def golden_behavioral_gate_passes(golden):
+    """The opt-in gate means all frozen behavioural entries executed and passed."""
+    protocol = golden.get('case_protocol', {})
+    counts = protocol.get('counts', {})
+    return (golden.get('status') == 'compiled'
+            and protocol.get('status') == 'observations_passed'
+            and protocol.get('case_backend_entries') == 88
+            and protocol.get('source_bound') is True
+            and counts == {'passed': 88, 'failed': 0, 'not_run': 0})
+
+
+def collect_golden_source_report(output, environment, obligations):
+    """Check the executable successor and retain the frozen pressure-source diagnostics separately."""
+    checks = {}
+    for name, project, report_name in (
+            ('accepted_successor', 'examples/golden-todo-migration', 'golden-diagnostics.json'),
+            ('historical_pressure_source', 'examples/golden-todo', 'golden-historical-pressure-diagnostics.json')):
+        result = subprocess.run([str(COMPILER), 'check', project, '--diagnostic-format=json'],
+                                 cwd=ROOT, env=environment, capture_output=True, text=True, timeout=60)
+        try:
+            diagnostic_report = json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise ValueError(f'{project} compiler check did not produce a diagnostic report') from error
+        (output/report_name).write_text(result.stdout)
+        checks[name] = {
+            'source': project,
+            'status': 'compiled' if result.returncode == 0 and diagnostic_report.get('status') == 'passed' else 'compile_failed',
+            'diagnostic_count': len(diagnostic_report.get('diagnostics', [])),
+            'report': report_name,
+        }
+    accepted = checks['accepted_successor']
+    return {
+        'status': accepted['status'],
+        'source': accepted['source'],
+        'diagnostic_count': accepted['diagnostic_count'],
+        'historical_pressure_source': checks['historical_pressure_source'],
+        'behavioural_evidence': 'not_run',
+        'obligations': obligations['cases'],
+    }
 
 
 def main():
@@ -179,19 +236,14 @@ def main():
         else:
             report['steps'].append({'name': 'golden-http-checkpoint', 'status': 'skipped',
                                     'reason': 'Explicit quick profile omits this two-backend checkpoint'})
-        # A design contract's non-compilation is recorded as a blocker, never a passed test.
-        result = subprocess.run([str(COMPILER), 'check', 'examples/golden-todo', '--diagnostic-format=json'],
-                                cwd=ROOT, env=environment, capture_output=True, text=True, timeout=60)
-        diagnostic_report = json.loads(result.stdout)
-        (output/'golden-diagnostics.json').write_text(result.stdout)
-        report['golden'] = {'status': 'compiled' if result.returncode == 0 and diagnostic_report['status'] == 'passed' else 'compile_failed',
-                            'diagnostic_count': len(diagnostic_report['diagnostics']),
-                            'behavioural_evidence': 'not_run', 'obligations': obligations['cases']}
+        # The frozen pressure source remains historical; the accepted migration
+        # is the app the supporting checkpoint actually builds and executes.
+        report['golden'] = collect_golden_source_report(output, environment, obligations)
         report['golden']['case_protocol'] = collect_golden_case_report(output, environment)
         if checkpoint_summary is not None:
             report['golden']['http_checkpoint'] = checkpoint_summary
-        if args.require_golden:
-            raise RuntimeError('Golden behavioural acceptance is not executable yet; see golden-diagnostics.json and the obligation map')
+        if args.require_golden and not golden_behavioral_gate_passes(report['golden']):
+            raise RuntimeError('Golden behavioural acceptance is incomplete; see golden-diagnostics.json and the source-bound case report')
         report['status'] = 'supported_checks_passed_with_open_gates'
         print('OPEN full golden application, behavioural acceptance and other recorded release gates', flush=True)
     except (Exception, KeyboardInterrupt) as error:

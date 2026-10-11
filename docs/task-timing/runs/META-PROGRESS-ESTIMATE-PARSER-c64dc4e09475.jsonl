@@ -1,0 +1,2 @@
+{"schema_version": 1, "run_id": "META-PROGRESS-ESTIMATE-PARSER-c64dc4e09475", "task_id": "META-PROGRESS-ESTIMATE-PARSER", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "fix", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T02:14:54.916825+00:00", "phase": "planning"}
+{"at": "2026-10-11T02:15:08.908215+00:00", "phase": "finished", "note": null, "outcome": "complete", "evidence": "tools/project-progress.py"}

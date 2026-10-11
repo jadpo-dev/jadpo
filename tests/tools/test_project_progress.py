@@ -42,6 +42,7 @@ class ReportFacts(unittest.TestCase):
         self.assertEqual(m.effort(active), '1–2h + 1 unestimated')
         self.assertIsNone(m.estimate('0.25–0.75h (S) per decision'))
         self.assertIsNone(m.estimate('Unestimated (needs planning)'))
+        self.assertIsNone(m.estimate('Unestimated (needs planning; owner session time separate)'))
         data.update(date='2026-10-01', captured_at='test', changes=None)
         notes = dict(summary='Summary', delivered=['Evidence'], next='Next', input_needed='None')
         self.assertIn('| E01 — Example | 3 | 1 | 1–2h + 1 unestimated |', m.render(data, notes))

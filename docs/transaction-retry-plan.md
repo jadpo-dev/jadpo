@@ -361,5 +361,10 @@ representation rerun hit a lock-wait hang/cascade; the clean isolated rerun and
 fresh full verifier both pass, and all outputs are retained in the
 [RM-402 distribution packet](../tests/validation/evidence/rm402-jitter-distribution-20261011/README.md).
 
-Whole-request hard bounds and broad replay eligibility remain unproved, so
-RM-402 stays partial. The scoped exact-source review is recorded in that packet.
+The scoped independent exact-source review approved this seeded-distribution
+slice with no findings: 13 pins passed, and focused SQLite plus full SQLite and
+PostgreSQL persistence reruns passed. The verdict and reviewer privacy scan are
+retained in the [RM-402 distribution packet](../tests/validation/evidence/rm402-jitter-distribution-20261011/README.md).
+Reviewer-assigned settings were gpt-6.1-sol/high; actual settings were not
+available. Whole-request hard bounds, broad replay eligibility and wider
+conformance remain unproved, so RM-402 stays partial.
