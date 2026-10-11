@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
-const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
+const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const prototype = Database.prototype as any;
@@ -269,7 +269,7 @@ const results: any[] = [];
 try {
   const contract = JSON.parse(readFileSync(contractPath, "utf8"));
   for (const case_ of contract.cases.filter((case_: any) => supported.includes(case_.id))) {
-    if (case_.fixtureVariants || (case_.followUps && case_.id !== "USER-001")) throw new Error("Unsupported scenario extension");
+    if ((case_.fixtureVariants && case_.id !== "REL-001") || (case_.followUps && case_.id !== "USER-001")) throw new Error("Unsupported scenario extension");
     const start = raw.length;
     let restoreClock: (() => void) | undefined;
     try {
@@ -408,6 +408,50 @@ try {
         deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) }));
       raw.push({ fixture: { rows: persistedFixtures } });
       await send(case_.request);
+    } else if (case_.id === "REL-001") {
+      const variants = ["alice zero todos", "alice one todo", "alice 100 todos"];
+      if (JSON.stringify(case_.fixtureVariants) !== JSON.stringify(variants)
+          || case_.request?.method !== "GET" || case_.request?.path !== "/users/alice/todos"
+          || case_.request?.auth !== "alice-session") {
+        throw new Error("Changed REL-001 frozen UserWithTodos scenario");
+      }
+      for (let variantIndex = 0; variantIndex < variants.length; variantIndex++) {
+        if (variantIndex > 0) await reset();
+        const activeCount = variantIndex === 0 ? 0 : variantIndex === 1 ? 1 : 100;
+        const fixtureRows: any[] = [];
+        for (let index = 0; index < activeCount; index++) {
+          const createdAt = new Date(Date.parse("2026-01-15T10:00:00.000Z") + Math.floor(index / 2) * 60_000).toISOString();
+          fixtureRows.push({ id: `00000000-0000-4000-8000-${String(3000 + index).padStart(12, "0")}`,
+            ownerId: alice, title: `alice todo ${index + 1}`, status: "open", dueAt: null,
+            createdAt, updatedAt: createdAt, deletedAt: null });
+        }
+        if (variantIndex === 2) {
+          fixtureRows.push({ id: "00000000-0000-4000-8000-000000000201", ownerId: alice,
+            title: "deleted Alice todo", status: "open", dueAt: null,
+            createdAt: "2026-01-15T09:00:00.000Z", updatedAt: "2026-01-15T09:00:00.000Z",
+            deletedAt: "2026-01-16T00:00:00.000Z" });
+        }
+        fixtureRows.push({ id: "00000000-0000-4000-8000-000000000202", ownerId: bob,
+          title: "Bob foreign todo", status: "open", dueAt: null,
+          createdAt: "2026-01-15T08:00:00.000Z", updatedAt: "2026-01-15T08:00:00.000Z",
+          deletedAt: null });
+        for (const row of fixtureRows) {
+          await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7, $8)',
+            [row.id, row.ownerId, row.title, row.status, row.dueAt,
+              pg ? new Date(row.createdAt).toISOString() : Date.parse(row.createdAt),
+              pg ? new Date(row.updatedAt).toISOString() : Date.parse(row.updatedAt),
+              row.deletedAt === null ? null : pg ? new Date(row.deletedAt).toISOString() : Date.parse(row.deletedAt)]);
+        }
+        const persisted = await execute(`SELECT id, owner_id, title, status, due_at, created_at, updated_at, deleted_at FROM todo WHERE id IN (${fixtureRows.map((_, index) => `$${index + 1}`).join(", ")}) ORDER BY id ASC`, fixtureRows.map(row => row.id));
+        if (persisted.length !== fixtureRows.length) throw new Error(`Missing REL-001 persisted fixture rows for variant ${variantIndex}`);
+        raw.push({ fixture: { variantIndex, variant: variants[variantIndex], rows: persisted.map((row: any) => ({
+          id: row.id, ownerId: row.owner_id, title: row.title, status: row.status,
+          dueAt: row.due_at === null ? null : timestamp(row.due_at),
+          createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at),
+          deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at),
+        })) } });
+        await send(case_.request, true);
+      }
     } else if (case_.id === "READ-001") {
       const now = Date.now();
       await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)', [t1, alice, "active fixture todo", "open", pg ? new Date(now).toISOString() : now]);

@@ -39,6 +39,41 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id == 'REL-001':
+            alice = '00000000-0000-4000-8000-000000000001'
+            bob = '00000000-0000-4000-8000-000000000002'
+            variants = ['alice zero todos', 'alice one todo', 'alice 100 todos']
+            raw = []
+            for index, (variant, count) in enumerate(zip(variants, [0, 1, 100])):
+                rows = []
+                for todo_index in range(count):
+                    created = f'2026-01-15T10:{todo_index // 2:02d}:00.000Z'
+                    rows.append({'id': f'00000000-0000-4000-8000-{3000 + todo_index:012d}',
+                                 'ownerId': alice, 'title': f'alice todo {todo_index + 1}', 'status': 'open',
+                                 'dueAt': None, 'createdAt': created, 'updatedAt': created, 'deletedAt': None})
+                if index == 2:
+                    rows.append({'id': '00000000-0000-4000-8000-000000000201', 'ownerId': alice,
+                                 'title': 'deleted Alice todo', 'status': 'open', 'dueAt': None,
+                                 'createdAt': '2026-01-15T09:00:00.000Z', 'updatedAt': '2026-01-15T09:00:00.000Z',
+                                 'deletedAt': '2026-01-16T00:00:00.000Z'})
+                rows.append({'id': '00000000-0000-4000-8000-000000000202', 'ownerId': bob,
+                             'title': 'Bob foreign todo', 'status': 'open', 'dueAt': None,
+                             'createdAt': '2026-01-15T08:00:00.000Z', 'updatedAt': '2026-01-15T08:00:00.000Z',
+                             'deletedAt': None})
+                raw.append({'fixture': {'variantIndex': index, 'variant': variant, 'rows': rows}})
+                active = [row for row in rows if row['ownerId'] == alice and row['deletedAt'] is None]
+                items = [{'id': row['id'], 'title': row['title'], 'status': row['status'],
+                          'due_at': row['dueAt'], 'created_at': row['createdAt'], 'updated_at': row['updatedAt']}
+                         for row in active]
+                raw.append({'method': 'GET', 'path': f'/users/{alice}/todos', 'auth': 'alice-session',
+                            'requestJson': None, 'requestStartedAt': 1768478400000 + index,
+                            'responseCompletedAt': 1768478400000 + index, 'status': 200,
+                            'body': {'user_id': alice, 'todos': items}, 'authenticationAttempts': 1,
+                            'principal': {'kind': 'user', 'subject': 'alice', 'identityId': alice},
+                            'statements': [
+                                {'sql': 'SELECT "id" FROM "user" WHERE "id" = ? AND ("status" = \'<literal>\') LIMIT 2', 'operation': 'SELECT'},
+                                {'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "created_at", "updated_at" FROM "todo" WHERE "owner_id" = ?1 AND "deleted_at" IS NULL AND ("deleted_at" IS NULL) ORDER BY "created_at" ASC, "id" ASC LIMIT ?4', 'operation': 'SELECT'}]})
+            return raw
         if case_id == 'USER-001':
             user_id = '00000000-0000-4000-8000-000000000001'
             todo_id = '00000000-0000-4000-8000-000000000021'
@@ -409,7 +444,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         report = harness.run_cases(self.root)
         checkpoint.apply_checkpoint(report, self.outputs(), self.root)
         self.assertEqual(len(report['results']), 88)
-        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 30)
+        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 28)
         self.assertEqual(report['status'], 'failed')
         self.assertFalse(report['release_equivalent'])
 
@@ -1174,6 +1209,51 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('authenticated principal belongs to Bob', foreign_principal))
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'LIST-004'):
+                checkpoint.observations(case, changed)
+
+    def test_rel001_covers_zero_one_and_hundred_child_variants(self):
+        case = self.cases['REL-001']
+        raw = self.raw('REL-001')
+        observed = checkpoint.observations(case, raw)
+        self.assertEqual(harness.assess(case, observed), [])
+        self.assertEqual([scenario['variant_index'] for scenario in observed], [0, 1, 2])
+        self.assertEqual([scenario['steps'][0]['databaseQueries'] for scenario in observed], [2, 2, 2])
+
+        mutations = []
+        missing = deepcopy(raw); del missing[1]
+        mutations.append(('missing variant response', missing))
+        missing_principal = deepcopy(raw); del missing_principal[1]['principal']
+        mutations.append(('missing Alice principal', missing_principal))
+        bob_principal = deepcopy(raw); bob_principal[3]['principal'] = {
+            'kind': 'user', 'subject': 'bob', 'identityId': '00000000-0000-4000-8000-000000000002'}
+        mutations.append(('Bob principal', bob_principal))
+        email = deepcopy(raw); email[5]['body']['email'] = 'alice@example.test'
+        mutations.append(('private email output', email))
+        foreign = deepcopy(raw); foreign_todo = deepcopy(foreign[0]['fixture']['rows'][-1])
+        foreign[1]['body']['todos'].append({'id': foreign_todo['id'], 'title': foreign_todo['title'],
+            'status': foreign_todo['status'], 'due_at': None, 'created_at': foreign_todo['createdAt'],
+            'updated_at': foreign_todo['updatedAt']})
+        mutations.append(('Bob todo mixed into Alice response', foreign))
+        deleted = deepcopy(raw); deleted_todo = deleted[4]['fixture']['rows'][100]
+        deleted[5]['body']['todos'].append({'id': deleted_todo['id'], 'title': deleted_todo['title'],
+            'status': deleted_todo['status'], 'due_at': None, 'created_at': deleted_todo['createdAt'],
+            'updated_at': deleted_todo['updatedAt']})
+        mutations.append(('deleted Alice todo returned', deleted))
+        reversed_rows = deepcopy(raw); reversed_rows[5]['body']['todos'].reverse()
+        mutations.append(('child order changed', reversed_rows))
+        no_limit = deepcopy(raw); no_limit[5]['statements'][1]['sql'] = no_limit[5]['statements'][1]['sql'].replace(' LIMIT ?4', '')
+        mutations.append(('child SQL unbounded', no_limit))
+        no_order = deepcopy(raw); no_order[5]['statements'][1]['sql'] = no_order[5]['statements'][1]['sql'].replace(' ORDER BY "created_at" ASC, "id" ASC', '')
+        mutations.append(('child SQL order missing', no_order))
+        extra_query = deepcopy(raw); extra_query[3]['statements'].append({'sql': 'SELECT id FROM todo', 'operation': 'SELECT'})
+        mutations.append(('more than two database queries', extra_query))
+        overfull_fixture = deepcopy(raw); overfull_fixture[4]['fixture']['rows'].append({
+            'id': '00000000-0000-4000-8000-000000000999', 'ownerId': '00000000-0000-4000-8000-000000000001',
+            'title': 'extra Alice todo', 'status': 'open', 'dueAt': None,
+            'createdAt': '2026-01-15T11:00:00.000Z', 'updatedAt': '2026-01-15T11:00:00.000Z', 'deletedAt': None})
+        mutations.append(('fixture exceeds frozen child count', overfull_fixture))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'REL-001'):
                 checkpoint.observations(case, changed)
 
     def test_scenario_expansion_is_not_silently_partial(self):

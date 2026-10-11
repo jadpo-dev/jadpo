@@ -19,7 +19,7 @@ import golden_cases as harness
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = ('AUTH-001', 'AUTH-002', 'AUTH-003', 'AUTH-004', 'AUTH-005', 'AUTH-006', 'AUTH-007', 'AUTH-008', 'AUTH-009', 'AUTH-010', 'AUTH-011', 'AUTH-012', 'PUBLIC-001', 'CREATE-001', 'CREATE-002',
-             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'LIST-004', 'PATCH-003', 'PATCH-004', 'DELETE-001', 'DELETE-002', 'USER-001')
+             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'LIST-004', 'REL-001', 'PATCH-003', 'PATCH-004', 'DELETE-001', 'DELETE-002', 'USER-001')
 
 TODO_VIEW_FIELDS = frozenset({'id', 'title', 'status', 'due_at', 'created_at', 'updated_at'})
 TODO_PRIVATE_FIELDS = ('owner_id', 'deleted_at', 'reminder_sent_at')
@@ -429,9 +429,86 @@ def list_004_observation(case, raw, reply):
             'totalDatabaseStatements': 0, 'authenticationAttempts': 1, 'writes': 0}
 
 
+def rel_001_observation(case, raw):
+    """Bind all three UserWithTodos fixture sizes to ordered, scoped live reads."""
+    variants = ['alice zero todos', 'alice one todo', 'alice 100 todos']
+    request = {'method': 'GET', 'path': '/users/alice/todos', 'auth': 'alice-session'}
+    expect = {'status': 200, 'outputSchema': 'UserWithTodos', 'databaseQueriesAtMost': 2,
+              'childLimit': 100, 'childOrder': ['created_at asc', 'id asc'],
+              'crossParentMixing': False, 'privateFieldsAbsent': ['email']}
+    if (case.get('id') != 'REL-001' or case.get('fixtureVariants') != variants
+            or case.get('request') != request or case.get('expect') != expect):
+        raise ValueError('Changed REL-001 frozen variants, request or expectations')
+    if len(raw) != 6:
+        raise ValueError('REL-001 requires one fixture and one request for each of three variants')
+    alice = '00000000-0000-4000-8000-000000000001'
+    bob = '00000000-0000-4000-8000-000000000002'
+    expected_counts = [0, 1, 100]
+    observations = []
+    for index, (variant, expected_count) in enumerate(zip(variants, expected_counts)):
+        fixture_entry, reply = raw[index * 2:index * 2 + 2]
+        fixture = fixture_entry.get('fixture') if isinstance(fixture_entry, dict) else None
+        if (not isinstance(fixture, dict) or fixture.get('variantIndex') != index
+                or fixture.get('variant') != variant or not isinstance(fixture.get('rows'), list)):
+            raise ValueError(f'REL-001 fixture {index} is missing, reordered or changed')
+        rows = fixture['rows']
+        if any(not isinstance(row, dict) for row in rows):
+            raise ValueError(f'REL-001 fixture {index} contains an invalid persisted row')
+        active_alice = [row for row in rows if row.get('ownerId') == alice and row.get('deletedAt') is None]
+        bob_rows = [row for row in rows if row.get('ownerId') == bob and row.get('deletedAt') is None]
+        deleted_alice = [row for row in rows if row.get('ownerId') == alice and row.get('deletedAt') is not None]
+        if len(active_alice) != expected_count or not bob_rows:
+            raise ValueError(f'REL-001 fixture {index} does not match its Alice count and foreign-parent control')
+        if index == 2 and not deleted_alice:
+            raise ValueError('REL-001 100-row fixture lacks a deleted Alice control row')
+        expected_rows = sorted(active_alice, key=lambda row: (epoch_millis(row.get('createdAt')) or 0, row.get('id', '')))
+        expected_items = [{key: row.get(source) for key, source in (
+            ('id', 'id'), ('title', 'title'), ('status', 'status'), ('due_at', 'dueAt'),
+            ('created_at', 'createdAt'), ('updated_at', 'updatedAt'))} for row in expected_rows]
+        expected_path = f'/users/{alice}/todos'
+        principal = reply.get('principal') if isinstance(reply, dict) else None
+        body = reply.get('body') if isinstance(reply, dict) else None
+        if (reply.get('method') != request['method'] or reply.get('path') != expected_path
+                or reply.get('auth') != request['auth'] or reply.get('requestJson') is not None
+                or reply.get('status') != 200 or reply.get('authenticationAttempts') != 1
+                or principal != {'kind': 'user', 'subject': 'alice', 'identityId': alice}
+                or not isinstance(body, dict) or body.get('user_id') != alice
+                or 'email' in body or body.get('todos') != expected_items):
+            raise ValueError(f'REL-001 response {index} does not match Alice-scoped UserWithTodos fixture')
+        if any(set(item) != TODO_VIEW_FIELDS or any(field in item for field in TODO_PRIVATE_FIELDS)
+               for item in body['todos']):
+            raise ValueError(f'REL-001 response {index} does not use the exact public TodoView projection')
+        statements = reply.get('statements')
+        if not isinstance(statements, list) or len(statements) > 2 or any(
+                row.get('operation') != 'SELECT' for row in statements):
+            raise ValueError(f'REL-001 response {index} exceeded two read-only database queries')
+        user_reads = [row for row in statements if re.search(r'\bfrom\s+"?user"?\b', row['sql'], re.IGNORECASE)]
+        todo_reads = [row for row in statements if re.search(r'\bfrom\s+"?todo"?\b', row['sql'], re.IGNORECASE)]
+        if len(statements) != 2 or len(user_reads) != 1 or len(todo_reads) != 1:
+            raise ValueError(f'REL-001 response {index} must perform one parent and one child read')
+        user_where = re.search(r'\bwhere\b(.*)', user_reads[0]['sql'], re.IGNORECASE | re.DOTALL)
+        todo_where = re.search(r'\bwhere\b(.*?)(?:\border\s+by\b|\blimit\b|$)', todo_reads[0]['sql'], re.IGNORECASE | re.DOTALL)
+        predicates = todo_where.group(1) if todo_where else ''
+        ordered = re.search(r'\border\s+by\s+"?created_at"?\s+asc\s*,\s*"?id"?\s+asc\b',
+                            todo_reads[0]['sql'], re.IGNORECASE)
+        bounded = re.search(r'\blimit\s+(?:\$\d+|\?\d*|\d+)\b', todo_reads[0]['sql'], re.IGNORECASE)
+        if (user_where is None or not re.search(r'\b"?id"?\s*=', user_where.group(1), re.IGNORECASE)
+                or not re.search(r'\b"?owner_id"?\s*=', predicates, re.IGNORECASE)
+                or not re.search(r'\b"?deleted_at"?\s+is\s+null\b', predicates, re.IGNORECASE)
+                or has_top_level_sql_keyword(predicates, 'or') or ordered is None or bounded is None
+                or statements.index(user_reads[0]) > statements.index(todo_reads[0])):
+            raise ValueError(f'REL-001 response {index} lacks scoped, ordered, bounded child SQL')
+        observations.append({'variant_index': index, 'steps': [{
+            'status': 200, 'outputSchema': 'UserWithTodos', 'databaseQueries': len(statements),
+            'childLimit': 100, 'childOrder': ['created_at asc', 'id asc'],
+            'crossParentMixing': False, 'privateFieldsAbsent': ['email'],
+        }]})
+    return observations
+
+
 def observations(case: dict, raw: list) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
-    if (case['id'] not in SUPPORTED or case.get('fixtureVariants')
+    if (case['id'] not in SUPPORTED or (case.get('fixtureVariants') and case['id'] != 'REL-001')
             or (case.get('followUps') and case['id'] != 'USER-001')):
         raise ValueError('Unsupported case/scenario')
     expected_requests = case.get('requests', [case.get('request')])
@@ -452,6 +529,8 @@ def observations(case: dict, raw: list) -> list:
             raise ValueError('Changed USER-001 frozen refresh/expiry timeline')
         expected_requests = [case['request'], *[step['request'] for step in follow_ups if 'request' in step]]
     replies = [item for item in raw if 'method' in item]
+    if case['id'] == 'REL-001':
+        return rel_001_observation(case, raw)
     if case['id'] == 'LIST-002':
         step = list_002_observation(case, raw, replies)
         return [{'variant_index': 0, 'steps': [step]}]
