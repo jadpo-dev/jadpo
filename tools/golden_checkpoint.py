@@ -472,7 +472,8 @@ def rel_001_observation(case, raw):
                 or reply.get('auth') != request['auth'] or reply.get('requestJson') is not None
                 or reply.get('status') != 200 or reply.get('authenticationAttempts') != 1
                 or principal != {'kind': 'user', 'subject': 'alice', 'identityId': alice}
-                or not isinstance(body, dict) or body.get('user_id') != alice
+                or not isinstance(body, dict) or set(body) != {'user_id', 'todos'}
+                or body.get('user_id') != alice
                 or 'email' in body or body.get('todos') != expected_items):
             raise ValueError(f'REL-001 response {index} does not match Alice-scoped UserWithTodos fixture')
         if any(set(item) != TODO_VIEW_FIELDS or any(field in item for field in TODO_PRIVATE_FIELDS)

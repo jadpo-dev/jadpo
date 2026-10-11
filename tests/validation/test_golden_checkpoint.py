@@ -1221,6 +1221,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
         self.assertEqual([scenario['steps'][0]['databaseQueries'] for scenario in observed], [2, 2, 2])
 
         mutations = []
+        reordered = deepcopy(raw); reordered[0:2], reordered[2:4] = reordered[2:4], reordered[0:2]
+        mutations.append(('reordered fixture variants', reordered))
         missing = deepcopy(raw); del missing[1]
         mutations.append(('missing variant response', missing))
         missing_principal = deepcopy(raw); del missing_principal[1]['principal']
@@ -1230,6 +1232,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('Bob principal', bob_principal))
         email = deepcopy(raw); email[5]['body']['email'] = 'alice@example.test'
         mutations.append(('private email output', email))
+        unexpected_parent_field = deepcopy(raw); unexpected_parent_field[1]['body']['authentication_subject'] = 'alice'
+        mutations.append(('unexpected parent response field', unexpected_parent_field))
         foreign = deepcopy(raw); foreign_todo = deepcopy(foreign[0]['fixture']['rows'][-1])
         foreign[1]['body']['todos'].append({'id': foreign_todo['id'], 'title': foreign_todo['title'],
             'status': foreign_todo['status'], 'due_at': None, 'created_at': foreign_todo['createdAt'],
