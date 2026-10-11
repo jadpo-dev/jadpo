@@ -851,7 +851,23 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         "2026-10-08T08:15:00.000Z",
         "2026-10-08T08:30:00.000Z",
       ];
+      const readDeadLetter = async () => {
+        const storedRows = await rows('SELECT * FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [original.intentId]);
+        expect(storedRows).toHaveLength(1);
+        const row = storedRows[0];
+        expect(Object.keys(row).sort()).toEqual(["failure_class", "generation", "intent_id", "invocations", "observed_at", "payload_version", "provider_attempts"]);
+        return {
+          intent_id: row.intent_id,
+          payload_version: row.payload_version,
+          generation: String(row.generation),
+          invocations: Number(row.invocations),
+          provider_attempts: String(row.provider_attempts),
+          failure_class: row.failure_class,
+          observed_at: row.observed_at,
+        };
+      };
       let firstLedger: any;
+      let terminalAttemptAt = "";
       for (let invocation = 1; invocation <= 3; invocation++) {
         expect(await activate(f.proof, scheduledFor[invocation - 1])).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
         expect(calls).toHaveLength(invocation * 3);
@@ -875,17 +891,18 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         } else {
           expect(current.state).toBe("failed");
           expect(attempts.at(-1).retry_not_before).toBeNull();
+          terminalAttemptAt = attempts.at(-1).observed_at;
         }
       }
 
-      const deadLetters = await rows('SELECT CAST(generation AS TEXT) AS generation,invocations,CAST(provider_attempts AS TEXT) AS provider_attempts,failure_class,payload_version FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [original.intentId]);
-      expect(deadLetters).toEqual([{ generation: "3", invocations: 3, provider_attempts: "9", failure_class: "budget_exhausted", payload_version: original.payloadVersion }]);
+      const deadLetter = await readDeadLetter();
+      expect(deadLetter).toEqual({ intent_id: original.intentId, payload_version: original.payloadVersion, generation: "3", invocations: 3, provider_attempts: "9", failure_class: "budget_exhausted", observed_at: terminalAttemptAt });
       expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
       const exhaustedState = {
         intent: await persistence.read_delivery_intent(original.intentId),
         ledger: (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId]))[0],
         attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]),
-        deadLetters,
+        deadLetter,
         sourceIntents: await intentRows(f.value.id),
         reminder: (await stored(f.value.id))[0],
       };
@@ -895,7 +912,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         intent: await persistence.read_delivery_intent(original.intentId),
         ledger: (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId]))[0],
         attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]),
-        deadLetters: await rows('SELECT CAST(generation AS TEXT) AS generation,invocations,CAST(provider_attempts AS TEXT) AS provider_attempts,failure_class,payload_version FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [original.intentId]),
+        deadLetter: await readDeadLetter(),
         sourceIntents: await intentRows(f.value.id),
         reminder: (await stored(f.value.id))[0],
       }).toEqual(exhaustedState);
