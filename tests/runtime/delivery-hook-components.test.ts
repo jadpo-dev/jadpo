@@ -1441,6 +1441,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const originalRows = await intentRows(f.value.id);
     expect(originalRows).toHaveLength(1);
     const intentId = originalRows[0].intent_id;
+    const originalIntent = await persistence.read_delivery_intent(intentId);
+    expect(originalIntent).toMatchObject({ intentId, state: "pending" });
 
     // Stage the generated worker's immutable page, then model worker A's
     // committed intent claim before its possible-dispatch checkpoint.
@@ -1503,7 +1505,11 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       if (!reached.entered) throw new Error("stale-claim recovery worker did not reach its provider checkpoint within 15 seconds");
       expect(calls).toHaveLength(1);
       expect(calls[0]).toMatchObject({ intentId, page: stagedPage, claimGeneration: "2", invocations: 2, possibleDispatch: 1 });
-      expect(calls[0].payload).toEqual((await persistence.read_delivery_intent(intentId)).payload);
+      expect(calls[0].payload).toEqual(originalIntent.payload);
+      expect((await persistence.read_delivery_intent(intentId))).toMatchObject({
+        payloadVersion: originalIntent.payloadVersion,
+        payload: originalIntent.payload,
+      });
       expect(BigInt(calls[0].activationGeneration)).toBeGreaterThan(BigInt(stagedHandle.generation));
       expect(calls[0].claimGeneration).toBe("2");
       expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
@@ -1528,10 +1534,14 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(JSON.parse(stdout.trim().split(/\r?\n/u).at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
       const currentReceipt = await rows(receiptQuery, [intentId]);
       expect(currentReceipt).toHaveLength(1);
-      expect(currentReceipt[0]).toMatchObject({ intent_id: intentId, generation: "2" });
+      expect(currentReceipt[0]).toMatchObject({ intent_id: intentId, generation: "2", payload_version: originalIntent.payloadVersion });
       expect(currentReceipt[0].claim_id).not.toBe(staleA.claimId);
       expect(await rows(receiptQuery, [intentId])).toEqual(currentReceipt);
-      expect((await persistence.read_delivery_intent(intentId)).state).toBe("succeeded");
+      expect(await persistence.read_delivery_intent(intentId)).toMatchObject({
+        state: "succeeded",
+        payloadVersion: originalIntent.payloadVersion,
+        payload: originalIntent.payload,
+      });
       expect(await intentRows(f.value.id)).toHaveLength(1);
       expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
       const finished = (await activationRows())[0];
