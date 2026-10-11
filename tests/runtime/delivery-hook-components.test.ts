@@ -831,6 +831,81 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       if (previousNodeEnv === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previousNodeEnv;
     }
   }, 30_000);
+  test("generated worker dead-letters exhausted retries and later activations cannot reset or dispatch them", async () => {
+    const f = await fixture();
+    const calls: any[] = [];
+    const previousRandom = Math.random;
+    const previousNodeEnv = Bun.env.NODE_ENV;
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json();
+      calls.push({ body, key: request.headers.get("Idempotency-Key") });
+      return Response.json({ code: "rate_limited" }, { status: 429 });
+    } });
+    Bun.env.NODE_ENV = "test";
+    Math.random = () => 0;
+    setReferenceMailEndpointForTesting(`http://127.0.0.1:${server.port}`);
+    try {
+      const original = (await scan(f.proof)).intents[0];
+      const scheduledFor = [
+        "2026-10-08T08:00:00.000Z",
+        "2026-10-08T08:15:00.000Z",
+        "2026-10-08T08:30:00.000Z",
+      ];
+      let firstLedger: any;
+      for (let invocation = 1; invocation <= 3; invocation++) {
+        expect(await activate(f.proof, scheduledFor[invocation - 1])).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+        expect(calls).toHaveLength(invocation * 3);
+        expect(calls.every(call => call.body.idempotency_key === original.intentId && call.key === original.intentId)).toBe(true);
+        expect(calls.map(call => call.body)).toEqual(Array(invocation * 3).fill(original.payload));
+
+        const current = await persistence.read_delivery_intent(original.intentId);
+        const ledger = (await rows('SELECT CAST(generation AS TEXT) AS generation,invocations,CAST(max_invocations AS TEXT) AS max_invocations,CAST(lifetime_ms AS TEXT) AS lifetime_ms,CAST(execution_ms AS TEXT) AS execution_ms,CAST(lease_ms AS TEXT) AS lease_ms,first_claim_at,lifetime_deadline FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId]))[0];
+        expect(ledger).toMatchObject({ generation: String(invocation), invocations: invocation, max_invocations: "3" });
+        if (firstLedger === undefined) firstLedger = ledger;
+        else for (const field of ["max_invocations", "lifetime_ms", "execution_ms", "lease_ms", "first_claim_at", "lifetime_deadline"]) expect(ledger[field]).toBe(firstLedger[field]);
+
+        const attempts = await rows('SELECT CAST(generation AS TEXT) AS generation,invocation,CAST(provider_attempts AS TEXT) AS provider_attempts,failure_class,observed_at,retry_not_before FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]);
+        expect(attempts).toHaveLength(invocation);
+        expect(attempts.map((attempt: any) => ({ generation: attempt.generation, invocation: attempt.invocation, provider_attempts: attempt.provider_attempts, failure_class: attempt.failure_class }))).toEqual(
+          Array.from({ length: invocation }, (_, index) => ({ generation: String(index + 1), invocation: index + 1, provider_attempts: "3", failure_class: "service_unavailable" })),
+        );
+        if (invocation < 3) {
+          expect(current.state).toBe("retry_wait");
+          expect(attempts.at(-1).retry_not_before).toBe(attempts.at(-1).observed_at);
+        } else {
+          expect(current.state).toBe("failed");
+          expect(attempts.at(-1).retry_not_before).toBeNull();
+        }
+      }
+
+      const deadLetters = await rows('SELECT CAST(generation AS TEXT) AS generation,invocations,CAST(provider_attempts AS TEXT) AS provider_attempts,failure_class,payload_version FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [original.intentId]);
+      expect(deadLetters).toEqual([{ generation: "3", invocations: 3, provider_attempts: "9", failure_class: "budget_exhausted", payload_version: original.payloadVersion }]);
+      expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+      const exhaustedState = {
+        intent: await persistence.read_delivery_intent(original.intentId),
+        ledger: (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId]))[0],
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]),
+        deadLetters,
+        sourceIntents: await intentRows(f.value.id),
+        reminder: (await stored(f.value.id))[0],
+      };
+      expect(await activate(f.proof, "2026-10-08T08:45:00.000Z")).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(9);
+      expect({
+        intent: await persistence.read_delivery_intent(original.intentId),
+        ledger: (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId]))[0],
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]),
+        deadLetters: await rows('SELECT CAST(generation AS TEXT) AS generation,invocations,CAST(provider_attempts AS TEXT) AS provider_attempts,failure_class,payload_version FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [original.intentId]),
+        sourceIntents: await intentRows(f.value.id),
+        reminder: (await stored(f.value.id))[0],
+      }).toEqual(exhaustedState);
+    } finally {
+      setReferenceMailEndpointForTesting(null);
+      server.stop(true);
+      Math.random = previousRandom;
+      if (previousNodeEnv === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previousNodeEnv;
+    }
+  }, 30_000);
   test("in-flight cancellation preserves a successful receipt and releases the same-key successor", async () => {
     const f = await fixture();
     let callsInProgress: any[] = [];
