@@ -570,6 +570,104 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const saved = (await activationRows())[0]; expect(saved.activation_id).toBeNull(); expect(saved.page).toBeNull();
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
+  test("a fresh generated worker reclaims the original staged page after a pre-dispatch checkpoint fault", async () => {
+    const f = await fixture();
+    // Initialize native claim storage with an unrelated test-owned sentinel so
+    // the fault trigger also works when this single case is run in isolation.
+    await persistence.transaction(async (tx: any) => {
+      const sentinel = await tx.enqueue_delivery_intent({ job: "fixture_schema", sourceOperation: "fixture", sourceEntity: "fixture", sourceEntityId: crypto.randomUUID(), sourceRevision: "1", orderingKey: crypto.randomUUID(), payloadVersion: "fixture.v1", payload: {} });
+      await tx.claim_delivery_intent(sentinel.intentId, { maxInvocations: 3, lifetimeMs: 3_600_000, ...profile });
+      await tx.cancel_delivery_intent(sentinel.intentId);
+    });
+    const calls: Array<{ intentId: string; payload: any; page: string; generation: string; possibleDispatch: number }> = [];
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json() as { idempotency_key: string };
+      const activation = (await activationRows())[0];
+      const claim = (await rows('SELECT possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
+      calls.push({ intentId: body.idempotency_key, payload: body, page: activation.page, generation: String(activation.generation), possibleDispatch: Number(claim.possible_dispatch) });
+      return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
+    } });
+    const childSource = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
+      const {setReferenceMailEndpointForTesting}=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});
+      await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
+      const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
+      setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
+      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(scanTime)});
+      console.log(JSON.stringify(result)); process.exit(0);`;
+    const childEnv = { ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
+      COMPONENT_WORKER_KEY: f.issued.credential, COMPONENT_ENDPOINT: `http://127.0.0.1:${server.port}/`,
+      DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath };
+    const children: ReturnType<typeof Bun.spawn>[] = [];
+    const captures: Promise<readonly [string, string, number]>[] = [];
+    const settleWithin = async <T>(promise: Promise<T>, ms: number) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<{ settled: false }>(resolve => { timer = setTimeout(() => resolve({ settled: false }), ms); });
+      try { return await Promise.race([promise.then(value => ({ settled: true as const, value })), deadline]); }
+      finally { clearTimeout(timer!); }
+    };
+    const worker = async () => {
+      const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+      children.push(child);
+      const capture = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited] as const);
+      captures.push(capture);
+      const result = await settleWithin(capture, 15_000);
+      if (!result.settled) { child.kill("SIGKILL"); throw new Error("pre-dispatch recovery worker exceeded its 15-second bound"); }
+      return result.value;
+    };
+    const dropFault = async () => {
+      if (sql) {
+        await rows('DROP TRIGGER IF EXISTS rm306_predispatch_fault ON "__jadpo_delivery_claims_v1"');
+        await rows('DROP FUNCTION IF EXISTS rm306_predispatch_fault()');
+      } else await rows('DROP TRIGGER IF EXISTS rm306_predispatch_fault');
+    };
+    try {
+      if (sql) {
+        await rows("CREATE FUNCTION rm306_predispatch_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.possible_dispatch = 1 THEN RAISE EXCEPTION 'fixture pre-dispatch checkpoint fault'; END IF; RETURN NEW; END $$");
+        await rows('CREATE TRIGGER rm306_predispatch_fault BEFORE UPDATE ON "__jadpo_delivery_claims_v1" FOR EACH ROW EXECUTE FUNCTION rm306_predispatch_fault()');
+      } else await rows("CREATE TRIGGER rm306_predispatch_fault BEFORE UPDATE OF possible_dispatch ON __jadpo_delivery_claims_v1 WHEN NEW.possible_dispatch=1 BEGIN SELECT RAISE(ABORT, 'fixture pre-dispatch checkpoint fault'); END");
+      const [firstOut, firstErr, firstExit] = await worker();
+      expect(firstExit).not.toBe(0);
+      expect(firstErr).toContain("fixture pre-dispatch checkpoint fault");
+      expect(firstOut).not.toContain('"status":"finished"');
+      expect(calls).toHaveLength(0);
+      const staged = (await activationRows())[0];
+      expect(staged.activation_id).not.toBeNull();
+      const page = JSON.parse(staged.page);
+      expect(page.intentIds).toHaveLength(1); expect(page.after).toBeNull();
+      const intentId = page.intentIds[0];
+      const original = await persistence.read_delivery_intent(intentId);
+      expect(original.sourceEntityId).toBe(f.value.id); expect(original.state).toBe("pending");
+      expect(original.payload.idempotency_key).toBe(intentId);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId])).toEqual([]);
+      expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+      await dropFault();
+      // Test-owned lease advancement avoids a long sleep; this is not a
+      // host-clock drift test or a claim that activation and delivery profiles match.
+      await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", bindingIdentity]);
+      const [secondOut, secondErr, secondExit] = await worker();
+      expect(secondExit, secondErr).toBe(0);
+      expect(JSON.parse(secondOut.trim().split(/\r?\n/u).at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1);
+      expect(calls[0].intentId).toBe(intentId); expect(calls[0].payload).toEqual(original.payload);
+      expect(calls[0].page).toBe(staged.page); expect(calls[0].possibleDispatch).toBe(1);
+      expect(BigInt(calls[0].generation)).toBeGreaterThan(BigInt(staged.generation));
+      const completed = await persistence.read_delivery_intent(intentId);
+      expect(completed.state).toBe("succeeded"); expect(completed.payload).toEqual(original.payload);
+      expect(await intentRows(f.value.id)).toHaveLength(1);
+      expect((await rows('SELECT invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0]).toEqual({ invocations: 1, possible_dispatch: 1 });
+      expect(await rows('SELECT intent_id FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [intentId])).toEqual([{ intent_id: intentId }]);
+      expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+      const finished = (await activationRows())[0];
+      expect(finished.activation_id).toBeNull(); expect(finished.page).toBeNull();
+      expect(BigInt(finished.generation)).toBe(BigInt(calls[0].generation));
+    } finally {
+      for (const child of children) child.kill("SIGKILL");
+      try {
+        const cleanup = await Promise.all([...children.map(child => settleWithin(child.exited, 5_000)), ...captures.map(capture => settleWithin(capture, 5_000))]);
+        if (cleanup.some(result => !result.settled)) throw new Error("pre-dispatch workers did not finish bounded cleanup");
+      } finally { await dropFault(); server.stop(true); }
+    }
+  }, 45_000);
   test("a fresh generated worker does not resend after the first process dies at possible dispatch", async () => {
     const f = await fixture();
     let entered!: () => void, release!: () => void;
