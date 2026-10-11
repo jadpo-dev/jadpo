@@ -711,6 +711,54 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
     });
   });
+  test("in-flight cancellation preserves a successful receipt and releases the same-key successor", async () => {
+    const f = await fixture();
+    let callsInProgress: any[] = [];
+    let cancellation: any[] = [];
+    let firstIntentId = "";
+    let firstInitialSnapshot: any;
+    let successor: any;
+    let firstSucceededSnapshot: any;
+    await provider(async calls => {
+      callsInProgress = calls;
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1);
+      firstSucceededSnapshot = await persistence.read_delivery_intent(firstIntentId);
+      expect(firstSucceededSnapshot.state).toBe("succeeded");
+      expect(await activate(f.proof, "2026-10-08T08:15:00.000Z")).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls.map(call => call.body.idempotency_key)).toEqual([firstIntentId, successor.intentId]);
+    }, async () => {
+      if (callsInProgress.length === 1) {
+        expect(callsInProgress[0].possibleDispatch).toBe(1);
+        firstIntentId = callsInProgress[0].body.idempotency_key;
+        firstInitialSnapshot = await persistence.read_delivery_intent(firstIntentId);
+        expect(firstInitialSnapshot.state).toBe("running");
+        await patch(f.value.id, { due_at: dueB });
+        const page = await scan(f.proof);
+        successor = page.intents.find((intent: any) => intent.sourceRevision === "2");
+        expect(successor).toBeDefined();
+        expect(successor.orderingKey).toBe(firstInitialSnapshot.orderingKey);
+        expect(BigInt(successor.keySequence)).toBeGreaterThan(BigInt(firstInitialSnapshot.keySequence));
+        expect(await persistence.transaction((tx: any) => tx.cancel_delivery_intent(firstIntentId))).toBe("requested");
+        expect((await persistence.read_delivery_intent(firstIntentId)).state).toBe("running");
+        cancellation = await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [firstIntentId]);
+        expect(cancellation).toHaveLength(1);
+        expect(await persistence.transaction((tx: any) => tx.claim_delivery_intent(successor.intentId, { maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile }))).toBeNull();
+      } else {
+        expect(callsInProgress).toHaveLength(2);
+        expect(await persistence.read_delivery_intent(firstIntentId)).toEqual(firstSucceededSnapshot);
+        expect(await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [firstIntentId])).toEqual(cancellation);
+      }
+    });
+
+    expect(firstSucceededSnapshot).not.toEqual(firstInitialSnapshot);
+    expect(await persistence.read_delivery_intent(firstIntentId)).toEqual(firstSucceededSnapshot);
+    expect((await persistence.read_delivery_intent(successor.intentId)).state).toBe("succeeded");
+    expect(await rows('SELECT intent_id FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [firstIntentId])).toEqual([{ intent_id: firstIntentId }]);
+    expect(await rows('SELECT intent_id FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [successor.intentId])).toEqual([{ intent_id: successor.intentId }]);
+    expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+    expect(callsInProgress).toHaveLength(2);
+  });
   test("native replay retries only an adapter-proven no-effect intent and preserves its identity and lifetime budget", async () => {
     const f = await fixture();
     const calls: any[] = [];
