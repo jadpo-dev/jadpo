@@ -1713,7 +1713,16 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(calls[0].claimGeneration).toBe("3");
       expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
       const inFlightClaim = (await rows('SELECT "intent_id", "claim_id", CAST("generation" AS TEXT) AS "generation", "invocations", "max_invocations", "lifetime_ms", "execution_ms", "lease_ms", "first_claim_at", "lifetime_deadline", "execution_deadline", "lease_until", "possible_dispatch" FROM "__jadpo_delivery_claims_v1" WHERE "intent_id"=$1', [intentId]))[0];
-      expect(inFlightClaim).toMatchObject({ intent_id: intentId, generation: "3", invocations: 3, possible_dispatch: 1 });
+      expect(inFlightClaim).toMatchObject({
+        intent_id: intentId, generation: "3", invocations: 3,
+        max_invocations: preDispatchB.max_invocations,
+        lifetime_ms: preDispatchB.lifetime_ms,
+        execution_ms: preDispatchB.execution_ms,
+        lease_ms: preDispatchB.lease_ms,
+        first_claim_at: preDispatchB.first_claim_at,
+        lifetime_deadline: preDispatchB.lifetime_deadline,
+        possible_dispatch: 1,
+      });
       expect(inFlightClaim.claim_id).not.toBe(staleA.claimId);
       expect(inFlightClaim.claim_id).not.toBe(replacementB.claimId);
       const receiptQuery = 'SELECT intent_id, claim_id, CAST(generation AS TEXT) AS generation, payload_version, accepted_at, observed_at FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1';
@@ -1735,9 +1744,10 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(JSON.parse(stdout.trim().split(/\r?\n/u).at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
       const currentReceipt = await rows(receiptQuery, [intentId]);
       expect(currentReceipt).toHaveLength(1);
-      expect(currentReceipt[0]).toMatchObject({ intent_id: intentId, generation: "3", payload_version: originalIntent.payloadVersion });
-      expect(currentReceipt[0].claim_id).not.toBe(staleA.claimId);
-      expect(currentReceipt[0].claim_id).not.toBe(replacementB.claimId);
+      expect(currentReceipt[0]).toMatchObject({
+        intent_id: intentId, claim_id: inFlightClaim.claim_id,
+        generation: "3", payload_version: originalIntent.payloadVersion,
+      });
       expect(await rows(receiptQuery, [intentId])).toEqual(currentReceipt);
       const completedIntent = await persistence.read_delivery_intent(intentId);
       expect(completedIntent.state).toBe("succeeded");
