@@ -1576,6 +1576,59 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
     }
     // Deterministic mapping/bounds, not a statistical RNG-quality claim.
   });
+  test("full-jitter retry delays preserve a seeded broad distribution on both adapters", async () => {
+    const persistence = persistenceModule.persistence as any;
+    const originalRandom = Math.random;
+    const originalNow = performance.now;
+    const originalTimer = globalThis.setTimeout;
+    const originalLog = console.error;
+    const cause: any = new Error("structured jitter distribution probe");
+    if (postgresUrl) cause.errno = "40001";
+    else cause.code = "SQLITE_BUSY";
+    const now = 500;
+    let randomState = 0x9e3779b9;
+    const delays: number[] = [];
+    const sampleCount = 512;
+    performance.now = () => now;
+    Math.random = () => {
+      randomState ^= randomState << 13;
+      randomState ^= randomState >>> 17;
+      randomState ^= randomState << 5;
+      return (randomState >>> 0) / 0x1_0000_0000;
+    };
+    globalThis.setTimeout = ((callback: (...args: any[]) => void, delay?: number, ...args: any[]) => {
+      if (typeof delay === "number") delays.push(delay);
+      return originalTimer(callback, 0, ...args);
+    }) as typeof setTimeout;
+    console.error = () => {};
+    try {
+      for (let sample = 0; sample < sampleCount; sample++) {
+        let attempts = 0;
+        const result = await persistence.transaction(async () => {
+          attempts++;
+          if (attempts === 1) throw new persistenceModule.PersistenceFault("transaction.jitter_distribution_probe", "driver", cause);
+          return "committed";
+        }, { replayable: true, operationId: `jitter-distribution-${sample}`, operation: "validation.jitter_distribution", startedAt: now, signal: null });
+        expect(result).toBe("committed");
+        expect(attempts).toBe(2);
+      }
+      expect(delays).toHaveLength(sampleCount);
+      expect(delays.every(delay => delay >= 0 && delay < 50)).toBe(true);
+      const buckets = Array.from({ length: 10 }, () => 0);
+      for (const delay of delays) buckets[Math.min(9, Math.floor(delay / 5))]++;
+      // A reproducible seeded sample should span the interval without claiming
+      // cryptographic or production Math.random quality.
+      expect(buckets.every(count => count >= 35 && count <= 70)).toBe(true);
+      const mean = delays.reduce((sum, delay) => sum + delay, 0) / delays.length;
+      expect(mean).toBeGreaterThan(24);
+      expect(mean).toBeLessThan(26);
+    } finally {
+      Math.random = originalRandom;
+      performance.now = originalNow;
+      globalThis.setTimeout = originalTimer;
+      console.error = originalLog;
+    }
+  });
   test("retried updates retain a contiguous multi-revision change history on both adapters", async () => {
     const persistence = persistenceModule.persistence as any;
     const value = entry("contiguous-revisions");

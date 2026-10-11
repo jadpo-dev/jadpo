@@ -338,3 +338,28 @@ for replay eligibility rather than establishing broad safe-default support.
 Durable outbox/compiler binding and whole-task conformance remain open. These
 limits preserve the owner's cooperative deadline decision; no universal response
 latency or exactly-once effect guarantee is claimed.
+
+### RM-402 seeded jitter-distribution checkpoint — 2026-10-11
+
+The persistence suite now checks a reproducible broad distribution in addition
+to the existing point-sample bounds: 512 retry delays use a fixed xorshift32
+seed, fixed monotonic clock and captured timers. Every delay stays in `[0, 50)`
+ms; each of ten 5 ms bins contains 35–70 samples and the sample mean is 24–26
+ms. The same test executes through SQLite and PostgreSQL transaction adapters.
+This checks the seeded adapter path and catches collapsed or badly skewed
+sampling; it does not establish production entropy, RNG quality or a statistical
+guarantee.
+
+Both full persistence suites pass (SQLite 85 tests / 1,792 assertions;
+PostgreSQL 85 tests / 1,783 assertions), and PostgreSQL delivery-completion
+representation passes 90 tests with one adapter-specific skip and 1,230
+assertions. The fresh full supported verifier passes **68/68** steps and reports
+`supported_checks_passed_with_open_gates`; Golden remains compile-failed with
+49 diagnostics, the frozen protocol remains 0/88, and the migrated HTTP
+checkpoint remains 70 passed / 18 not run. The first full attempt and
+representation rerun hit a lock-wait hang/cascade; the clean isolated rerun and
+fresh full verifier both pass, and all outputs are retained in the
+[RM-402 distribution packet](../tests/validation/evidence/rm402-jitter-distribution-20261011/README.md).
+
+Whole-request hard bounds and broad replay eligibility remain unproved, so
+RM-402 stays partial. The scoped exact-source review is recorded in that packet.

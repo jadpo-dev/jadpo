@@ -1,0 +1,3 @@
+{"schema_version": 1, "run_id": "RM-402-39fb96dba05f", "task_id": "RM-402", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T18:17:08.597994+00:00", "phase": "planning"}
+{"at": "2026-10-11T18:20:09.710856+00:00", "phase": "review", "note": "Source change and primary evidence are stable; finalizing packet pins and exact-source independent review."}
+{"at": "2026-10-11T18:20:16.716940+00:00", "phase": "paused", "note": "Waiting for the authorized independent reviewer to assess the committed exact-source slice; no active work during the external review wait."}
