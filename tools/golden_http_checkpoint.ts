@@ -28,6 +28,7 @@ prototype.prepare = function(sql: string, ...options: unknown[]) {
 if (backend === "sqlite") { Bun.env.SQLITE_PATH = join(project, "checkpoint.sqlite"); delete Bun.env.DATABASE_URL; }
 else { if (!Bun.env.DATABASE_URL) throw new Error("Missing isolated PostgreSQL URL"); delete Bun.env.SQLITE_PATH; }
 const db = backend === "sqlite" ? new Database(Bun.env.SQLITE_PATH, { strict: true }) : undefined;
+if (db) db.exec("PRAGMA foreign_keys = ON");
 const pg = backend === "postgres" ? new SQL({ url: Bun.env.DATABASE_URL!, prepare: false }) : undefined;
 async function execute(sql: string, values: unknown[] = []) {
   if (pg) return await pg.unsafe(sql, values);
@@ -381,19 +382,38 @@ try {
       let accepted = false;
       let relationshipConstraintMatched = false;
       let faultKind = "none";
+      const observeRestriction = (error: unknown) => {
+        const detail = error as { code?: unknown; errno?: unknown; constraint?: unknown };
+        relationshipConstraintMatched = pg
+          ? detail.code === "23503" && detail.constraint === "todo_owner_id_fk"
+          : detail.code === "SQLITE_CONSTRAINT_TRIGGER" && detail.errno === 1811;
+        faultKind = relationshipConstraintMatched ? "constraint" : "unexpected";
+      };
       try {
-        await execute(pg ? "BEGIN" : "BEGIN IMMEDIATE");
-        try {
-          await execute('DELETE FROM "user" WHERE "id" = $1', [alice]);
-          accepted = true;
-        } catch (error) {
-          const detail = error as { code?: unknown; errno?: unknown; constraint?: unknown };
-          relationshipConstraintMatched = pg
-            ? detail.code === "23503" && detail.constraint === "todo_owner_id_fk"
-            : detail.code === "SQLITE_CONSTRAINT_TRIGGER" && detail.errno === 1811;
-          faultKind = relationshipConstraintMatched ? "constraint" : "unexpected";
+        if (pg) {
+          let transactionEntered = false;
+          let rollbackRequested = false;
+          try {
+            await pg.begin(async (transaction: any) => {
+              transactionEntered = true;
+              try {
+                await transaction.unsafe('DELETE FROM "user" WHERE "id" = $1', alice);
+                accepted = true;
+              } catch (error) { observeRestriction(error); }
+              rollbackRequested = true;
+              throw new Error("REL-004 checkpoint rollback sentinel");
+            });
+          } catch (error) {
+            if (!transactionEntered || !rollbackRequested) throw error;
+          }
+        } else {
+          await execute("BEGIN IMMEDIATE");
+          try {
+            await execute('DELETE FROM "user" WHERE "id" = $1', [alice]);
+            accepted = true;
+          } catch (error) { observeRestriction(error); }
+          await execute("ROLLBACK");
         }
-        await execute("ROLLBACK");
       } finally { endSqlObservation(); }
       const normalisedFailure = !accepted && relationshipConstraintMatched
         && serviceRows.length === 0 && beforeTodos.length === 1 ? "relationship_conflict" : null;
