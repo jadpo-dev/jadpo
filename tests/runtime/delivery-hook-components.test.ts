@@ -1465,12 +1465,17 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const firstClaim = (await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0];
     expect(firstClaim).toEqual({ generation: "1", invocations: 1, possible_dispatch: 0 });
 
+    let providerEntered!: () => void, releaseProvider!: () => void;
+    const providerReached = new Promise<void>(resolve => { providerEntered = resolve; });
+    const heldProviderResponse = new Promise<void>(resolve => { releaseProvider = resolve; });
     const calls: Array<{ intentId: string; payload: any; page: any; activationGeneration: string; claimGeneration: string; invocations: number; possibleDispatch: number }> = [];
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
       const payload = await request.json() as { idempotency_key: string };
       const activation = (await activationRows())[0];
       const claim = (await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [payload.idempotency_key]))[0];
       calls.push({ intentId: payload.idempotency_key, payload, page: JSON.parse(activation.page), activationGeneration: String(activation.generation), claimGeneration: claim.generation, invocations: Number(claim.invocations), possibleDispatch: Number(claim.possible_dispatch) });
+      providerEntered();
+      await heldProviderResponse;
       return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": payload.idempotency_key } });
     } });
     const childSource = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
@@ -1491,26 +1496,40 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
       const capture = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited] as const);
       let timer: ReturnType<typeof setTimeout>;
-      const deadline = new Promise<{ settled: false }>(resolve => { timer = setTimeout(() => resolve({ settled: false }), 15_000); });
-      let result: { settled: false } | { settled: true; value: readonly [string, string, number] };
-      try { result = await Promise.race([capture.then(value => ({ settled: true as const, value })), deadline]); }
+      const deadline = new Promise<{ entered: false }>(resolve => { timer = setTimeout(() => resolve({ entered: false }), 15_000); });
+      let reached: { entered: false } | { entered: true };
+      try { reached = await Promise.race([providerReached.then(() => ({ entered: true as const })), capture.then(() => ({ entered: false as const }), () => ({ entered: false as const })), deadline]); }
       finally { clearTimeout(timer!); }
-      if (!result.settled) { child.kill("SIGKILL"); throw new Error("stale-claim recovery worker exceeded its 15-second bound"); }
+      if (!reached.entered) throw new Error("stale-claim recovery worker did not reach its provider checkpoint within 15 seconds");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ intentId, page: stagedPage, claimGeneration: "2", invocations: 2, possibleDispatch: 1 });
+      expect(calls[0].payload).toEqual((await persistence.read_delivery_intent(intentId)).payload);
+      expect(BigInt(calls[0].activationGeneration)).toBeGreaterThan(BigInt(stagedHandle.generation));
+      expect(calls[0].claimGeneration).toBe("2");
+      expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
+      const inFlightClaim = (await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0];
+      expect(inFlightClaim).toEqual({ generation: "2", invocations: 2, possible_dispatch: 1 });
+      const receiptQuery = 'SELECT intent_id, claim_id, CAST(generation AS TEXT) AS generation, payload_version, accepted_at, observed_at FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1';
+      expect(await persistence.transaction((tx: any) => tx.checkpoint_delivery_dispatch(staleA))).toBe(false);
+      expect(await persistence.transaction((tx: any) => tx.acknowledge_delivery_mail(staleA, { accepted_at: instant }))).toBe(false);
+      expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
+      expect((await rows('SELECT intent_id FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [intentId]))).toEqual([]);
+      expect((await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0]).toEqual(inFlightClaim);
+
+      releaseProvider();
+      let completionTimer: ReturnType<typeof setTimeout>;
+      const completionDeadline = new Promise<{ settled: false }>(resolve => { completionTimer = setTimeout(() => resolve({ settled: false }), 15_000); });
+      let result: { settled: false } | { settled: true; value: readonly [string, string, number] };
+      try { result = await Promise.race([capture.then(value => ({ settled: true as const, value })), completionDeadline]); }
+      finally { clearTimeout(completionTimer!); }
+      if (!result.settled) { child.kill("SIGKILL"); throw new Error("stale-claim recovery worker exceeded its 15-second completion bound"); }
       const [stdout, stderr, exitCode] = result.value;
       expect(exitCode, stderr).toBe(0);
       expect(JSON.parse(stdout.trim().split(/\r?\n/u).at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
-      expect(calls).toHaveLength(1);
-      expect(calls[0]).toMatchObject({ intentId, payload: (await persistence.read_delivery_intent(intentId)).payload, page: stagedPage, claimGeneration: "2", invocations: 2, possibleDispatch: 1 });
-      expect(BigInt(calls[0].activationGeneration)).toBeGreaterThan(BigInt(stagedHandle.generation));
-      expect(calls[0].claimGeneration).toBe("2");
-
-      const receiptQuery = 'SELECT intent_id, claim_id, CAST(generation AS TEXT) AS generation, payload_version, accepted_at, observed_at FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1';
       const currentReceipt = await rows(receiptQuery, [intentId]);
       expect(currentReceipt).toHaveLength(1);
       expect(currentReceipt[0]).toMatchObject({ intent_id: intentId, generation: "2" });
       expect(currentReceipt[0].claim_id).not.toBe(staleA.claimId);
-      expect(await persistence.transaction((tx: any) => tx.checkpoint_delivery_dispatch(staleA))).toBe(false);
-      expect(await persistence.transaction((tx: any) => tx.acknowledge_delivery_mail(staleA, { accepted_at: instant }))).toBe(false);
       expect(await rows(receiptQuery, [intentId])).toEqual(currentReceipt);
       expect((await persistence.read_delivery_intent(intentId)).state).toBe("succeeded");
       expect(await intentRows(f.value.id)).toHaveLength(1);
@@ -1519,6 +1538,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(finished.activation_id).toBeNull(); expect(finished.page).toBeNull();
       expect(String(finished.generation)).toBe(calls[0].activationGeneration);
     } finally {
+      releaseProvider();
       if (child !== undefined) { child.kill("SIGKILL"); await child.exited; }
       server.stop(true);
     }
