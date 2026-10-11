@@ -4355,6 +4355,26 @@ retains both review rounds. Timer
 6.67 active minutes including 4.16 verification minutes at `gpt-6.1-sol/high`;
 the slice is partial because RM-307 remains open.
 
+**RM-307 generated scheduled retry and retry-wait FIFO, 2026-10-11:** test commit
+`e82dfc6261bcb0afdc90ee3e0b62e19ccb563059` adds one generated
+`ASYNC-RETRY-KNOWN-NO-EFFECT` retry across the persisted 1,800 ms deadline and
+an independently checked native K/K/J `retry_wait` branch for
+`ASYNC-PER-KEY-ORDER`. The generated trace preserves the intent ID, full body
+and immutable budgets, makes no early provider request, then records the accepted
+receipt. Focused generated/native tests pass 1/0/0 with 28/16 assertions;
+SQLite components pass default/derived 82/2/1,069 and 83/2/1,087; PostgreSQL
+components pass 82/1/1,000 and 83/1/1,018; native persistence passes 84/0/763
+on SQLite and 84/0/754 on PostgreSQL. Independent review approved with no
+findings after 13 exact source/contract/log pin checks and eight fresh reruns.
+The [source-bound packet](../../tests/validation/evidence/rm307-scheduled-retry-20261011/README.md)
+retains both runs' logs, the historical PostgreSQL test-assertion correction and
+the final 21-file privacy scan. Scope is one generated delayed retry and native
+retry-wait FIFO only; exhaustion, deployment scheduling and broader acceptance
+remain open. Timer
+[`RM-307-e10969f7f01b`](../task-timing/runs/RM-307-e10969f7f01b.jsonl) records
+8.47 active minutes (4.18 verification, 4.07 review-blocked) under
+`gpt-6.1-sol/high`, partial against the original 0.5–2h estimate.
+
 ## RM-307 frozen trace evidence inventory — 2026-10-11
 
 This is an evidence map for the unchanged 18-case frozen contract at
@@ -4373,7 +4393,7 @@ these counts into a claim that RM-307 is complete.
 | `ASYNC-DUPLICATE-ENQUEUE` | Approved [duplicate identity packet](../../tests/validation/evidence/rm307-duplicate-enqueue-20261011/README.md). | Concurrent scans are in one process; SQLite serializes writers, so independent-process writer contention is outside the claim. |
 | `ASYNC-LEASE-RECLAIM-FENCE` | Native fenced pre-dispatch reclaim assertions run in the reviewed validation-persistence suite; generated recovery evidence is in the [RM-306 pre-dispatch packet](../../tests/validation/evidence/rm306-predispatch-reclaim-integrated-20261011/README.md). | Needs a case-bound independent review tying the precise stale-handle/generation assertions to this frozen row and generated worker boundary. |
 | `ASYNC-STALE-WORKER-AFTER-DISPATCH` | Approved fresh-process no-resend recovery in the [RM-306 crash packet](../../tests/validation/evidence/rm306-process-crash-recovery/README.md); native expired possible-dispatch/FIFO assertions also run in validation-persistence. | Uses process death and fixture lease expiry; no production elapsed-time/host-clock claim. |
-| `ASYNC-PER-KEY-ORDER` | Approved [native per-key packet](../../tests/validation/evidence/rm307-per-key-order-20261011/README.md). | Exercises `outcome_unknown` but not the alternate `retry_wait` K/K/J branch or full generated dispatch. |
+| `ASYNC-PER-KEY-ORDER` | Approved [native per-key packet](../../tests/validation/evidence/rm307-per-key-order-20261011/README.md) plus independently approved native K/K/J `retry_wait` supplement in the [scheduled retry packet](../../tests/validation/evidence/rm307-scheduled-retry-20261011/README.md). | Bounded native FIFO and fresh-process refusal; no full generated K/K/J provider-dispatch or production concurrency claim. |
 | `ASYNC-KEY-RELEASE-AFTER-KNOWN-TERMINAL` | Approved [in-flight cancellation packet](../../tests/validation/evidence/rm307-cancel-after-dispatch-20261011/README.md) proves release after a succeeded receipt. | Same-key release after `cancelled` and after `failed` with proven no effect still need explicit cases. |
 | `ASYNC-UNKNOWN-NO-REPLAY` | Approved [RM-306 crash packet](../../tests/validation/evidence/rm306-process-crash-recovery/README.md) shows `outcome_unknown` after restart with no second provider request; the [native replay packet](../../tests/validation/evidence/rm307-native-replay-20261011/README.md) refuses unresolved unknown replay. | Bounded process-crash/native-replay evidence; no broader external-provider or deployment claim. |
 | `ASYNC-COALESCE-DOWNTIME` | Approved [UTC downtime packet](../../tests/validation/evidence/rm306-utc-downtime-20261011/README.md). | One eligible source row and simulated timestamps; no elapsed outage soak. |
@@ -4381,14 +4401,13 @@ these counts into a claim that RM-307 is complete.
 | `ASYNC-BOUNDED-CONTINUATION` | Approved [501-row continuation packet](../../tests/validation/evidence/rm306-bounded-continuation-20261011/README.md). | Clean child exits between pages; not a crash/power-loss test. |
 | `ASYNC-CANCEL-PENDING` | Approved [pending cancellation packet](../../tests/validation/evidence/rm307-cancel-pending-20261011/README.md) and approved generated known-no-effect `retry_wait` supplement (source `536c81f`) in the [supplemental packet](../../tests/validation/evidence/rm307-cancel-retry-20261011/README.md). | Native trusted cancellation only; no public route/authorization or claim/cancel race. |
 | `ASYNC-CANCEL-AFTER-DISPATCH` | Approved [in-flight cancellation packet](../../tests/validation/evidence/rm307-cancel-after-dispatch-20261011/README.md) proves cancellation remains requested and a successful receipt is retained. | The known-no-effect and `outcome_unknown` receipt branches after cancellation remain uncovered. |
-| `ASYNC-RETRY-KNOWN-NO-EFFECT` | Direct adapter retry evidence and approved [resolved replay packet](../../tests/validation/evidence/rm307-native-replay-20261011/README.md) preserve one ID/payload and the remaining invocation/lifetime budget. | Needs an explicit generated scheduled retry after `retry_not_before`, with same-ID/payload and bounded jitter/budget assertions. |
+| `ASYNC-RETRY-KNOWN-NO-EFFECT` | Approved [generated scheduled retry packet](../../tests/validation/evidence/rm307-scheduled-retry-20261011/README.md) proves the same ID/body is retried only after persisted `retry_not_before`, with stable budgets; the approved [resolved replay packet](../../tests/validation/evidence/rm307-native-replay-20261011/README.md) adds native replay evidence. | One generated delayed retry only; multiple retry cycles, exhaustion, production scheduler soak and deployment activation remain outside the trace. |
 | `ASYNC-RETRY-EXHAUSTION` | Native invocation/lifetime exhaustion and transient adapter-attempt evidence run in the reviewed persistence/component suites. | Needs a case-bound generated terminal failed/dead-letter record and proof later activations cannot reset exhausted budget or dispatch. |
 | `ASYNC-REPLAY-RESOLVED-INTENT` | Approved [native resolved-replay packet](../../tests/validation/evidence/rm307-native-replay-20261011/README.md). | Bounded known-no-effect replay path; does not close operator UI or full RM-308. |
 | `ASYNC-UNSUPPORTED-PAYLOAD-VERSION` | Approved [unsupported-version packet](../../tests/validation/evidence/rm307-unsupported-payload-version-20261011/README.md). | Injected future payload version in the current runtime; no historical-binary upgrade claim. |
 | `ASYNC-UTC-INTERVAL` | Approved [London DST fallback packet](../../tests/validation/evidence/rm306-utc-dst-fallback-20261011/README.md). | Explicit two-instant generated trace; no elapsed DST/deployment soak. |
 
-The next worker slice is the generated scheduled retry after `retry_not_before`
-and same-key `retry_wait` ordering branch. The latest full verifier report,
+The next worker slice is generated retry exhaustion and dead-letter behavior after the configured invocation budget is consumed. The latest full verifier report,
 [`20261011T072214-44400`](../../build/validation/20261011T072214-44400/report.json),
 records 68/68 supported checks passed. The full Golden application still has 49
 compile diagnostics and behavioural evidence is `not_run`; its HTTP checkpoint
