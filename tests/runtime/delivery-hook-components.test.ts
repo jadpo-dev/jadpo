@@ -472,6 +472,23 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
     await expect(scan(f.proof)).rejects.toMatchObject({ operation: "delivery.schedule_missing" });
     expect(await intentRows(value.id)).toEqual([]); expect(await intentRows(lost.id)).toEqual([]);
   });
+  test("source mutation and generated intent enrollment roll back in the same owning transaction", async () => {
+    await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+    expect((await scan(f.proof)).intents).toHaveLength(1);
+    const beforeSource = await stored(value.id), beforeIntents = await intentRows(value.id);
+    await expect(persistence.withOperationTime(scanTime).withPolicy({ kind: "user", subject: owner, values: { user_id: owner } }, "Todo.patch_todo").transaction(async (tx: any) => {
+      expect(await tx[method](value.id, { due_at: dueB }, null)).not.toBeNull();
+      const page = await tx.select_delivery_intents(bindingIdentity, f.proof);
+      expect(page.intents).toHaveLength(1);
+      expect(page.intents[0]).toMatchObject({ sourceEntityId: value.id, sourceRevision: "2", payload: { due_at: dueB } });
+      expect(page.intents[0].payload.idempotency_key).toBe(page.intents[0].intentId);
+      throw new Error("source plus outbox rollback");
+    })).rejects.toThrow("source plus outbox rollback");
+    expect(await stored(value.id)).toEqual(beforeSource);
+    expect(await revision(value.id)).toBe("1");
+    expect(await intentRows(value.id)).toEqual(beforeIntents);
+    expect(await intentRows(value.id)).toHaveLength(1);
+  });
   test("concurrent native scans resolve one immutable identity per business revision", async () => {
     await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
     const pages = await Promise.all([scan(f.proof), scan(f.proof)]);
@@ -512,6 +529,56 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
     expect(exit, err).toBe(0);
     const second = JSON.parse(out).intents[0]; expect(second.intentId).toBe(first.intentId); expect(second.payload).toEqual(first.payload);
     expect(await intentRows(value.id)).toHaveLength(1);
+  });
+  test("fresh process discovers the exact source-plus-intent commit after the writer exits before wakeup", async () => {
+    await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+    const writerSource = `
+      const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
+      const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});
+      await app.initializeApplication(${JSON.stringify(authEnvironment)});
+      const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
+      const client=persistence.withOperationTime(${JSON.stringify(scanTime)}).withPolicy({kind:"user",subject:${JSON.stringify(owner)},values:{user_id:${JSON.stringify(owner)}}},"Todo.patch_todo");
+      await client.transaction(async tx=>{
+        const updated=await tx[${JSON.stringify(method)}](${JSON.stringify(value.id)},{due_at:${JSON.stringify(dueB)}},null);
+        if(!updated) throw new Error("source patch was refused");
+        const page=await tx.select_delivery_intents(${JSON.stringify(bindingIdentity)},proof);
+        if(page.intents.length!==1 || page.intents[0].sourceEntityId!==${JSON.stringify(value.id)} || page.intents[0].sourceRevision!=="2" || page.intents[0].payload.due_at!==${JSON.stringify(dueB)}) throw new Error("source and intent were not enrolled together");
+      });
+      process.exit(73);
+    `;
+    const writer = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", writerSource], {
+      env: { ...Bun.env, DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdout: "pipe", stderr: "pipe",
+    });
+    const writerOutput = new Response(writer.stdout).text(), writerErrors = new Response(writer.stderr).text(), writerExit = writer.exited;
+    const writerResult = await Promise.race([
+      Promise.all([writerOutput, writerErrors, writerExit] as const),
+      Bun.sleep(15_000).then(() => null),
+    ]);
+    if (writerResult === null) { writer.kill("SIGKILL"); await writerExit; throw new Error("source-plus-intent writer exceeded its 15-second bound"); }
+    const [_writerOut, writerErr, writerExitCode] = writerResult;
+    expect(writerExitCode, writerErr).toBe(73); // Deliberate hard exit after COMMIT, before any worker wakeup.
+    expect(new Date((await stored(value.id))[0].due_at as any).toISOString()).toBe(dueB);
+    expect(await revision(value.id)).toBe("2");
+    expect(await intentRows(value.id)).toHaveLength(1);
+
+    const recoverySource = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const page=await persistence.withOperationTime(${JSON.stringify(scanTime)}).transaction(tx=>tx.select_delivery_intents(${JSON.stringify(bindingIdentity)},proof));console.log(JSON.stringify(page));process.exit(0);`;
+    const recovery = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", recoverySource], {
+      env: { ...Bun.env, DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdout: "pipe", stderr: "pipe",
+    });
+    const recoveryOutput = new Response(recovery.stdout).text(), recoveryErrors = new Response(recovery.stderr).text(), recoveryExit = recovery.exited;
+    const recoveryResult = await Promise.race([
+      Promise.all([recoveryOutput, recoveryErrors, recoveryExit] as const),
+      Bun.sleep(15_000).then(() => null),
+    ]);
+    if (recoveryResult === null) { recovery.kill("SIGKILL"); await recoveryExit; throw new Error("fresh source-plus-intent recovery exceeded its 15-second bound"); }
+    const [out, err, exit] = recoveryResult;
+    expect(exit, err).toBe(0);
+    const recovered = JSON.parse(out).intents;
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({ sourceEntityId: value.id, sourceRevision: "2", payload: { due_at: dueB } });
+    expect(recovered[0].payload.idempotency_key).toBe(recovered[0].intentId);
+    expect(await intentRows(value.id)).toHaveLength(1);
+    expect((await persistence.read_delivery_intent(recovered[0].intentId)).payload).toEqual(recovered[0].payload);
   });
   test("invalid source or retained payload cannot be admitted as a new immutable request", async () => {
     await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
