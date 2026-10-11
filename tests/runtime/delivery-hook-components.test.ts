@@ -894,11 +894,13 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       finally { clearTimeout(timer!); }
     };
 
+    let firstIntentBeforeFollowup: any;
     await provider(async calls => {
       const firstRun = activate(f.proof, scanTime).then(
         result => ({ ok: true as const, result }),
         error => ({ ok: false as const, error }),
       );
+      let firstRunDrain: Awaited<typeof firstRun> | undefined;
       try {
         const entered = await settleWithin(providerEntered, 15_000);
         if (!entered.settled) throw new Error("overlapping worker did not reach the provider within 15 seconds");
@@ -919,14 +921,23 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         expect(await activationRows()).toHaveLength(1);
       } finally {
         releaseProvider();
+        const drained = await settleWithin(firstRun, 15_000);
+        if (!drained.settled) throw new Error("overlapping worker did not finish within 15 seconds after provider release");
+        firstRunDrain = drained.value;
       }
 
-      const firstRunResult = await settleWithin(firstRun, 15_000);
-      if (!firstRunResult.settled) throw new Error("overlapping worker did not finish within 15 seconds after provider release");
-      if (!firstRunResult.value.ok) throw firstRunResult.value.error;
-      expect(firstRunResult.value.result).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      if (!firstRunDrain) throw new Error("overlapping worker did not produce a bounded cleanup result");
+      if (!firstRunDrain.ok) throw firstRunDrain.error;
+      expect(firstRunDrain.result).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
       expect(calls).toHaveLength(1);
-      expect((await persistence.read_delivery_intent(calls[0].body.idempotency_key)).state).toBe("succeeded");
+      firstIntentBeforeFollowup = await persistence.read_delivery_intent(calls[0].body.idempotency_key);
+      expect(firstIntentBeforeFollowup).toMatchObject({
+        intentId: calls[0].body.idempotency_key,
+        sourceRevision: "1",
+        payloadVersion: "reminder.v1",
+        payload: calls[0].body,
+        state: "succeeded",
+      });
       expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
 
       const followup = await activate(f.proof, "2026-10-08T08:46:00.000Z");
@@ -948,6 +959,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const intentRowsByRevision = await rows('SELECT intent_id FROM "__jadpo_deliveries_v1" WHERE source_entity_id=$1 ORDER BY source_revision', [f.value.id]);
     const [firstIntent, secondIntent] = await Promise.all(intentRowsByRevision.map((row: any) => persistence.read_delivery_intent(row.intent_id)));
     expect(intentRowsByRevision).toHaveLength(2);
+    expect(firstIntent).toEqual(firstIntentBeforeFollowup);
     expect([firstIntent.sourceRevision, secondIntent.sourceRevision]).toEqual(["1", "2"]);
     expect([firstIntent.state, secondIntent.state]).toEqual(["succeeded", "succeeded"]);
     expect([firstIntent.payload.due_at, secondIntent.payload.due_at]).toEqual([dueA, dueB]);
