@@ -1506,10 +1506,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(calls).toHaveLength(1);
       expect(calls[0]).toMatchObject({ intentId, page: stagedPage, claimGeneration: "2", invocations: 2, possibleDispatch: 1 });
       expect(calls[0].payload).toEqual(originalIntent.payload);
-      expect((await persistence.read_delivery_intent(intentId))).toMatchObject({
-        payloadVersion: originalIntent.payloadVersion,
-        payload: originalIntent.payload,
-      });
+      const inFlightIntent = await persistence.read_delivery_intent(intentId);
+      expect(inFlightIntent.payloadVersion).toBe(originalIntent.payloadVersion);
+      expect(inFlightIntent.payload).toEqual(originalIntent.payload);
       expect(BigInt(calls[0].activationGeneration)).toBeGreaterThan(BigInt(stagedHandle.generation));
       expect(calls[0].claimGeneration).toBe("2");
       expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
@@ -1537,11 +1536,10 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(currentReceipt[0]).toMatchObject({ intent_id: intentId, generation: "2", payload_version: originalIntent.payloadVersion });
       expect(currentReceipt[0].claim_id).not.toBe(staleA.claimId);
       expect(await rows(receiptQuery, [intentId])).toEqual(currentReceipt);
-      expect(await persistence.read_delivery_intent(intentId)).toMatchObject({
-        state: "succeeded",
-        payloadVersion: originalIntent.payloadVersion,
-        payload: originalIntent.payload,
-      });
+      const completedIntent = await persistence.read_delivery_intent(intentId);
+      expect(completedIntent.state).toBe("succeeded");
+      expect(completedIntent.payloadVersion).toBe(originalIntent.payloadVersion);
+      expect(completedIntent.payload).toEqual(originalIntent.payload);
       expect(await intentRows(f.value.id)).toHaveLength(1);
       expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
       const finished = (await activationRows())[0];
