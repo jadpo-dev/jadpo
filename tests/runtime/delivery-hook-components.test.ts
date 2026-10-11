@@ -475,7 +475,10 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
   test("source mutation and generated intent enrollment roll back in the same owning transaction", async () => {
     await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
     expect((await scan(f.proof)).intents).toHaveLength(1);
+    const changes = () => rows('SELECT change_id,revision,operation,payload,created_at FROM "__jadpo_changes" WHERE entity=$1 AND entity_id=$2 ORDER BY revision', ["Todo", value.id]);
     const beforeSource = await stored(value.id), beforeIntents = await intentRows(value.id);
+    const beforeChanges = representationVariant ? await changes() : null;
+    if (representationVariant) expect(beforeChanges).toHaveLength(1);
     await expect(persistence.withOperationTime(scanTime).withPolicy({ kind: "user", subject: owner, values: { user_id: owner } }, "Todo.patch_todo").transaction(async (tx: any) => {
       expect(await tx[method](value.id, { due_at: dueB }, null)).not.toBeNull();
       const page = await tx.select_delivery_intents(bindingIdentity, f.proof);
@@ -488,6 +491,7 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
     expect(await revision(value.id)).toBe("1");
     expect(await intentRows(value.id)).toEqual(beforeIntents);
     expect(await intentRows(value.id)).toHaveLength(1);
+    if (representationVariant) expect(await changes()).toEqual(beforeChanges);
   });
   test("concurrent native scans resolve one immutable identity per business revision", async () => {
     await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
@@ -532,6 +536,26 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
   });
   test("fresh process discovers the exact source-plus-intent commit after the writer exits before wakeup", async () => {
     await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
+    const children: ReturnType<typeof Bun.spawn>[] = [];
+    const captures: Promise<readonly [string, string, number]>[] = [];
+    const settleWithin = async <T>(promise: Promise<T>, ms: number) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<{ settled: false }>(resolve => { timer = setTimeout(() => resolve({ settled: false }), ms); });
+      try { return await Promise.race([promise.then(value => ({ settled: true as const, value })), deadline]); }
+      finally { clearTimeout(timer!); }
+    };
+    const runChild = async (source: string) => {
+      const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", source], {
+        env: { ...Bun.env, DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdout: "pipe", stderr: "pipe",
+      });
+      children.push(child);
+      const capture = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited] as const);
+      captures.push(capture);
+      const result = await settleWithin(capture, 15_000);
+      if (!result.settled) throw new Error("source-plus-intent child exceeded its 15-second bound");
+      return result.value;
+    };
+    try {
     const writerSource = `
       const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
       const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});
@@ -546,43 +570,34 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
       });
       process.exit(73);
     `;
-    const writer = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", writerSource], {
-      env: { ...Bun.env, DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdout: "pipe", stderr: "pipe",
-    });
-    const writerOutput = new Response(writer.stdout).text(), writerErrors = new Response(writer.stderr).text(), writerExit = writer.exited;
-    const writerResult = await Promise.race([
-      Promise.all([writerOutput, writerErrors, writerExit] as const),
-      Bun.sleep(15_000).then(() => null),
-    ]);
-    if (writerResult === null) { writer.kill("SIGKILL"); await writerExit; throw new Error("source-plus-intent writer exceeded its 15-second bound"); }
-    const [_writerOut, writerErr, writerExitCode] = writerResult;
+    const [_writerOut, writerErr, writerExitCode] = await runChild(writerSource);
     expect(writerExitCode, writerErr).toBe(73); // Deliberate hard exit after COMMIT, before any worker wakeup.
     expect(new Date((await stored(value.id))[0].due_at as any).toISOString()).toBe(dueB);
     expect(await revision(value.id)).toBe("2");
     const committedIntents = await intentRows(value.id);
     expect(committedIntents).toHaveLength(1);
     const committedIntentId = committedIntents[0].intent_id;
+    const committedIntent = await persistence.read_delivery_intent(committedIntentId);
+    expect(committedIntent).toMatchObject({ intentId: committedIntentId, sourceRevision: "2", payloadVersion: "reminder.v1", payload: { due_at: dueB } });
 
     const recoverySource = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const page=await persistence.withOperationTime(${JSON.stringify(scanTime)}).transaction(tx=>tx.select_delivery_intents(${JSON.stringify(bindingIdentity)},proof));console.log(JSON.stringify(page));process.exit(0);`;
-    const recovery = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", recoverySource], {
-      env: { ...Bun.env, DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdout: "pipe", stderr: "pipe",
-    });
-    const recoveryOutput = new Response(recovery.stdout).text(), recoveryErrors = new Response(recovery.stderr).text(), recoveryExit = recovery.exited;
-    const recoveryResult = await Promise.race([
-      Promise.all([recoveryOutput, recoveryErrors, recoveryExit] as const),
-      Bun.sleep(15_000).then(() => null),
-    ]);
-    if (recoveryResult === null) { recovery.kill("SIGKILL"); await recoveryExit; throw new Error("fresh source-plus-intent recovery exceeded its 15-second bound"); }
-    const [out, err, exit] = recoveryResult;
+    const [out, err, exit] = await runChild(recoverySource);
     expect(exit, err).toBe(0);
     const recovered = JSON.parse(out).intents;
     expect(recovered).toHaveLength(1);
     expect(recovered[0].intentId).toBe(committedIntentId);
-    expect(recovered[0]).toMatchObject({ sourceEntityId: value.id, sourceRevision: "2", payload: { due_at: dueB } });
+    expect(recovered[0]).toMatchObject({ sourceEntityId: value.id, sourceRevision: "2" });
+    expect(recovered[0].payloadVersion).toBe(committedIntent.payloadVersion);
+    expect(recovered[0].payload).toEqual(committedIntent.payload);
     expect(recovered[0].payload.idempotency_key).toBe(recovered[0].intentId);
     expect(await intentRows(value.id)).toHaveLength(1);
-    expect((await persistence.read_delivery_intent(recovered[0].intentId)).payload).toEqual(recovered[0].payload);
-  });
+    expect(await persistence.read_delivery_intent(recovered[0].intentId)).toEqual(committedIntent);
+    } finally {
+      for (const child of children) child.kill("SIGKILL");
+      const cleanup = await Promise.all([...children.map(child => settleWithin(child.exited, 5_000)), ...captures.map(capture => settleWithin(capture, 5_000))]);
+      if (cleanup.some(result => !result.settled)) throw new Error("source-plus-intent children did not finish bounded cleanup");
+    }
+  }, 45_000);
   test("invalid source or retained payload cannot be admitted as a new immutable request", async () => {
     await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
     await rows('UPDATE todo SET title=$1 WHERE id=$2', ["", value.id]);
