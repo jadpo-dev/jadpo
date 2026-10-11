@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation, todoLimitBindingObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
-const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
+const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const prototype = Database.prototype as any;
@@ -454,6 +454,37 @@ try {
         })) } });
         await send(case_.request, true, true);
       }
+    } else if (case_.id === "PATCH-001") {
+      const expectedFixture = ["alice todo t1 due 2026-02-01"];
+      const expectedRequest = { method: "PATCH", path: "/todos/t1", auth: "alice-session", json: { title: "Changed" } };
+      const expected = { status: 200, storedDueAt: "2026-02-01T00:00:00Z", storedTitle: "Changed" };
+      if (JSON.stringify(case_.fixture) !== JSON.stringify(expectedFixture)
+          || JSON.stringify(case_.request) !== JSON.stringify(expectedRequest)
+          || JSON.stringify(case_.expect) !== JSON.stringify(expected)) {
+        throw new Error("Changed PATCH-001 frozen due-date omission case");
+      }
+      const dueAt = "2026-02-01T00:00:00.000Z";
+      const reminderSentAt = "2026-01-20T00:00:00.000Z";
+      const createdAt = "2026-01-15T10:00:00.000Z";
+      await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, NULL)',
+        [t1, alice, "alice todo t1", "open", pg ? dueAt : Date.parse(dueAt),
+          pg ? reminderSentAt : Date.parse(reminderSentAt), pg ? createdAt : Date.parse(createdAt)]);
+      const projectRow = (row: any) => ({ id: row.id, ownerId: row.owner_id, title: row.title, status: row.status,
+        dueAt: row.due_at === null ? null : timestamp(row.due_at),
+        reminderSentAt: row.reminder_sent_at === null ? null : timestamp(row.reminder_sent_at),
+        createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at),
+        deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) });
+      const fixtureRows = await execute('SELECT id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at FROM todo WHERE id = $1', [t1]);
+      if (fixtureRows.length !== 1 || fixtureRows[0].owner_id !== alice || fixtureRows[0].title !== "alice todo t1"
+          || fixtureRows[0].status !== "open" || timestamp(fixtureRows[0].due_at) !== dueAt
+          || timestamp(fixtureRows[0].reminder_sent_at) !== reminderSentAt || fixtureRows[0].deleted_at !== null) {
+        throw new Error("Missing PATCH-001 persisted Alice todo fixture");
+      }
+      raw.push({ fixture: projectRow(fixtureRows[0]) });
+      await send(case_.request);
+      const persistedRows = await execute('SELECT id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at FROM todo WHERE id = $1', [t1]);
+      if (persistedRows.length !== 1) throw new Error("Missing PATCH-001 persisted todo readback");
+      raw.push({ persistence: projectRow(persistedRows[0]) });
     } else if (case_.id === "READ-001") {
       const now = Date.now();
       await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)', [t1, alice, "active fixture todo", "open", pg ? new Date(now).toISOString() : now]);

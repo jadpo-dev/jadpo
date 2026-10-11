@@ -75,6 +75,35 @@ class CheckpointIntegrityTests(unittest.TestCase):
                                 {'sql': 'SELECT "id" FROM "user" WHERE "id" = ? AND ("status" = \'<literal>\') LIMIT 2', 'operation': 'SELECT'},
                                 {'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "created_at", "updated_at" FROM "todo" WHERE "owner_id" = ?1 AND "deleted_at" IS NULL AND ("deleted_at" IS NULL) ORDER BY "created_at" ASC, "id" ASC LIMIT ?4', 'operation': 'SELECT'}]})
             return raw
+        if case_id == 'PATCH-001':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            todo_id = '00000000-0000-4000-8000-000000000021'
+            created = '2026-01-15T10:00:00.000Z'
+            due = '2026-02-01T00:00:00.000Z'
+            reminder = '2026-01-20T00:00:00.000Z'
+            updated = '2026-01-15T10:01:00.000Z'
+            raw = [{'fixture': {'id': todo_id, 'ownerId': user_id, 'title': 'alice todo t1', 'status': 'open',
+                                'dueAt': due, 'reminderSentAt': reminder, 'createdAt': created,
+                                'updatedAt': created, 'deletedAt': None}},
+                   {'method': 'PATCH', 'path': f'/todos/{todo_id}', 'auth': 'alice-session',
+                    'requestJson': {'title': 'Changed'}, 'requestStartedAt': 1768478400000,
+                    'responseCompletedAt': 1768478400010, 'status': 200,
+                    'body': {'id': todo_id, 'title': 'Changed', 'status': 'open', 'due_at': due,
+                             'created_at': created, 'updated_at': updated},
+                    'authenticationAttempts': 1,
+                    'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                    'statements': [
+                        {'sql': 'BEGIN IMMEDIATE', 'operation': 'BEGIN'},
+                        {'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "reminder_sent_at", "created_at", "updated_at", "deleted_at" FROM "todo" WHERE "id" = ?1 AND "owner_id" = ?2 AND "deleted_at" IS NULL LIMIT 2', 'operation': 'SELECT'},
+                        {'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "reminder_sent_at", "created_at", "updated_at", "deleted_at" FROM "todo" WHERE "id" = ?1 AND "owner_id" = ?2 AND "deleted_at" IS NULL LIMIT 2 FOR UPDATE', 'operation': 'SELECT'},
+                        {'sql': 'UPDATE "todo" SET "title" = CASE WHEN ?1 THEN ?2 ELSE "title" END, "status" = CASE WHEN ?3 THEN ?4 ELSE "status" END, "due_at" = CASE WHEN ?5 THEN ?6 ELSE "due_at" END, "reminder_sent_at" = CASE WHEN ?5 THEN ?7 ELSE "reminder_sent_at" END WHERE "id" = ?8 AND ("deleted_at" IS NULL) AND (("todo"."owner_id" = ?9)) RETURNING "id"', 'operation': 'UPDATE'},
+                        {'sql': 'UPDATE "todo" SET "updated_at" = ?1 WHERE "id" = ?2 AND ("deleted_at" IS NULL) RETURNING "id"', 'operation': 'UPDATE'},
+                        {'sql': 'COMMIT', 'operation': 'COMMIT'},
+                    ]},
+                   {'persistence': {'id': todo_id, 'ownerId': user_id, 'title': 'Changed', 'status': 'open',
+                                    'dueAt': due, 'reminderSentAt': reminder, 'createdAt': created,
+                                    'updatedAt': updated, 'deletedAt': None}}]
+            return raw
         if case_id == 'USER-001':
             user_id = '00000000-0000-4000-8000-000000000001'
             todo_id = '00000000-0000-4000-8000-000000000021'
@@ -445,7 +474,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         report = harness.run_cases(self.root)
         checkpoint.apply_checkpoint(report, self.outputs(), self.root)
         self.assertEqual(len(report['results']), 88)
-        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 28)
+        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 26)
         self.assertEqual(report['status'], 'failed')
         self.assertFalse(report['release_equivalent'])
 
@@ -1263,6 +1292,55 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('fixture exceeds frozen child count', overfull_fixture))
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'REL-001'):
+                checkpoint.observations(case, changed)
+
+    def test_patch001_preserves_omitted_due_date_and_reminder(self):
+        case = self.cases['PATCH-001']
+        raw = self.raw('PATCH-001')
+        observed = checkpoint.observations(case, raw)
+        self.assertEqual(harness.assess(case, observed), [])
+        self.assertEqual(observed[0]['steps'][0]['storedDueAt'], '2026-02-01T00:00:00Z')
+        self.assertTrue(observed[0]['steps'][0]['dueDatePreserved'])
+        self.assertTrue(observed[0]['steps'][0]['reminderStatePreserved'])
+
+        mutations = []
+        missing_fixture = deepcopy(raw); missing_fixture.pop(0)
+        mutations.append(('missing persisted fixture', missing_fixture))
+        reordered = deepcopy(raw); reordered[0], reordered[2] = reordered[2], reordered[0]
+        mutations.append(('reordered fixture and persistence', reordered))
+        foreign_fixture = deepcopy(raw); foreign_fixture[0]['fixture']['ownerId'] = '00000000-0000-4000-8000-000000000002'
+        mutations.append(('Bob-owned fixture', foreign_fixture))
+        bob_principal = deepcopy(raw); bob_principal[1]['principal']['subject'] = 'bob'
+        mutations.append(('Bob principal', bob_principal))
+        due_cleared = deepcopy(raw); due_cleared[2]['persistence']['dueAt'] = None
+        mutations.append(('omitted due date cleared in storage', due_cleared))
+        reminder_cleared = deepcopy(raw); reminder_cleared[2]['persistence']['reminderSentAt'] = None
+        mutations.append(('omitted due date reset reminder', reminder_cleared))
+        wrong_title = deepcopy(raw); wrong_title[2]['persistence']['title'] = 'alice todo t1'
+        mutations.append(('title not persisted', wrong_title))
+        missing_persistence = deepcopy(raw); missing_persistence.pop(2)
+        mutations.append(('missing persisted readback', missing_persistence))
+        wrong_body_due = deepcopy(raw); wrong_body_due[1]['body']['due_at'] = None
+        mutations.append(('response due date changed', wrong_body_due))
+        private_output = deepcopy(raw); private_output[1]['body']['owner_id'] = '00000000-0000-4000-8000-000000000001'
+        mutations.append(('private response field', private_output))
+        due_written = deepcopy(raw); due_written[1]['statements'][3]['sql'] = due_written[1]['statements'][3]['sql'].replace('ELSE "due_at" END', 'ELSE NULL END')
+        mutations.append(('SQL does not preserve omitted due field', due_written))
+        missing_owner = deepcopy(raw); missing_owner[1]['statements'][3]['sql'] = missing_owner[1]['statements'][3]['sql'].replace(' AND (("todo"."owner_id" = ?9))', '')
+        mutations.append(('update owner predicate absent', missing_owner))
+        missing_deleted = deepcopy(raw); missing_deleted[1]['statements'][3]['sql'] = missing_deleted[1]['statements'][3]['sql'].replace(' AND ("deleted_at" IS NULL)', '')
+        mutations.append(('update deleted predicate absent', missing_deleted))
+        top_level_or = deepcopy(raw); top_level_or[1]['statements'][3]['sql'] += ' OR 1 = 1'
+        mutations.append(('update top-level OR bypass', top_level_or))
+        extra_write = deepcopy(raw); extra_write[1]['statements'].append({'sql': 'UPDATE todo SET status = ?', 'operation': 'UPDATE'})
+        mutations.append(('extra database write', extra_write))
+        wrong_path = deepcopy(raw); wrong_path[1]['path'] = '/todos/00000000-0000-4000-8000-000000000099'
+        mutations.append(('wrong request path', wrong_path))
+        wrong_status = deepcopy(raw); wrong_status[1]['status'] = 204
+        mutations.append(('wrong response status', wrong_status))
+        self.assertEqual(len(mutations), 17)
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'PATCH-001|Foreign request observation'):
                 checkpoint.observations(case, changed)
 
     def test_scenario_expansion_is_not_silently_partial(self):
