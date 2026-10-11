@@ -4253,3 +4253,20 @@ trace-to-evidence reconciliation, RM-306, RM-307 acceptance, RM-108 and Golden
 Todo remain open. Timer
 `RM-307-f16c67bd1b8a` records the implementation slice as partial under the
 existing `gpt-6.1-sol/high` pin and original 0.5–2h estimate.
+
+**RM-307 concurrent duplicate-enqueue identity, 2026-10-11:** source commit
+`87538f4138d997802bb29b7648a4e2267ff1c2f6` strengthens the generated
+`ASYNC-DUPLICATE-ENQUEUE` scan race: both pages return the same complete
+intent identity and payload for one source revision, and durable storage
+contains exactly one matching row. The focused trace passes 1/0/0 with 8
+assertions; SQLite passes 77/2/978 (default) and 78/2/996 (derived), while
+PostgreSQL 16.3 passes 77/1/909 and 78/1/927. Independent review approved the
+bounded trace with no corrections after exact-source checks and fresh reruns of
+all five checks; the [source-bound packet](../../tests/validation/evidence/rm307-duplicate-enqueue-20261011/README.md)
+retains reviewer logs and the approved report. These concurrent scans are in
+one process; SQLite serializes the transactions, so this does not prove
+independent OS-process writer contention. The full trace-to-evidence
+reconciliation, RM-306, RM-307 acceptance, RM-108 and Golden Todo remain open.
+Timer `RM-307-6271a90526ff` records this verified slice as partial: 7.30 active
+minutes, including 6.71 verification minutes, under `gpt-6.1-sol/high` and the
+original 0.5–2h estimate.
