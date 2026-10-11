@@ -524,8 +524,12 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
   });
   test("possible-dispatch expiry becomes durable unknown and blocks the next same-key intent", async () => {
     const persistence = persistenceModule.persistence as any;
-    const value = entry("claim-unknown-fifo");
-    const [first, second] = await persistence.transaction(async (transaction: any) => [await transaction.enqueue_delivery_intent(outboxSpec(value, "1")), await transaction.enqueue_delivery_intent(outboxSpec(value, "2"))]);
+    const value = entry("claim-unknown-fifo"), independentKey = entry("claim-independent-key");
+    const [first, second, independent] = await persistence.transaction(async (transaction: any) => [
+      await transaction.enqueue_delivery_intent(outboxSpec(value, "1")),
+      await transaction.enqueue_delivery_intent(outboxSpec(value, "2")),
+      await transaction.enqueue_delivery_intent(outboxSpec(independentKey, "1")),
+    ]);
     expect(await claimIntent(second.intentId)).toBeNull();
     const handle = await claimIntent(first.intentId);
     expect(await checkpoint(handle)).toBe(true);
@@ -534,6 +538,9 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
     expect((await persistence.read_delivery_intent(first.intentId)).state).toBe("outcome_unknown");
     expect(await checkpoint(handle)).toBe(false);
     expect(await claimIntent(second.intentId)).toBeNull();
+    const unrelated = await claimIntent(independent.intentId);
+    expect(unrelated.generation).toBe("1");
+    expect(unrelated.intentId).toBe(independent.intentId);
     // Fresh generated process uses the same authority DB: neither restart nor
     // another wake-up manufactures permission to retry an uncertain effect.
     const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", `const {persistence}=await import(${JSON.stringify(pathToFileURL(persistencePath).href)});console.log(JSON.stringify(await persistence.transaction(tx=>tx.claim_delivery_intent(${JSON.stringify(first.intentId)},${JSON.stringify(claimLimits)}))));process.exit(0);`], { env: { ...Bun.env, DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath }, stdout: "pipe", stderr: "pipe" });
