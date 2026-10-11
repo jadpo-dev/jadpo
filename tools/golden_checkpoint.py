@@ -634,6 +634,10 @@ def patch_002_observation(case, raw, reply):
         raise ValueError('PATCH-002 fixture, response and persistence readback are missing or reordered')
     fixture = raw[0]['fixture']
     persisted = raw[2]['persistence']
+    expected_persistence_fields = {'id', 'ownerId', 'title', 'status', 'dueAt',
+                                   'reminderSentAt', 'createdAt', 'updatedAt', 'deletedAt'}
+    if not isinstance(persisted, dict) or set(persisted) != expected_persistence_fields:
+        raise ValueError('PATCH-002 persisted row is missing or has unexpected fields')
     user_id = '00000000-0000-4000-8000-000000000001'
     todo_id = '00000000-0000-4000-8000-000000000021'
     expected_due = '2026-02-01T00:00:00.000Z'

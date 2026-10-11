@@ -1395,6 +1395,12 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('unrequested title changed', changed_title))
         missing_persistence = deepcopy(raw); missing_persistence.pop(2)
         mutations.append(('missing persisted readback', missing_persistence))
+        missing_due_key = deepcopy(raw); del missing_due_key[2]['persistence']['dueAt']
+        mutations.append(('missing persisted dueAt key', missing_due_key))
+        missing_reminder_key = deepcopy(raw); del missing_reminder_key[2]['persistence']['reminderSentAt']
+        mutations.append(('missing persisted reminderSentAt key', missing_reminder_key))
+        missing_deleted_key = deepcopy(raw); del missing_deleted_key[2]['persistence']['deletedAt']
+        mutations.append(('missing persisted deletedAt key', missing_deleted_key))
         wrong_body_due = deepcopy(raw); wrong_body_due[1]['body']['due_at'] = '2026-02-01T00:00:00Z'
         mutations.append(('response due date retained', wrong_body_due))
         private_output = deepcopy(raw); private_output[1]['body']['owner_id'] = '00000000-0000-4000-8000-000000000001'
@@ -1427,7 +1433,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         statements = commit_before_todo_operations[1]['statements']
         statements[:] = [statements[0], statements[5], *statements[1:5]]
         mutations.append(('COMMIT before Todo reads and updates', commit_before_todo_operations))
-        self.assertEqual(len(mutations), 22)
+        self.assertEqual(len(mutations), 25)
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'PATCH-002|Foreign request observation'):
                 checkpoint.observations(case, changed)
