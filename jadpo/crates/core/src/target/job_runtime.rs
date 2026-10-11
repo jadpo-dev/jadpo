@@ -39,6 +39,7 @@ impl TargetGenerator<'_> {
         );
         line(&mut output, "");
         line(&mut output, "export async function runScheduledJob(name: ScheduledJobName, workerCredential: string, activationProfile: ScheduledJobProfile, deliveryProfile: ScheduledJobProfile, operationTime: string) {");
+        line(&mut output, "  if (operationTime === undefined) throw new TypeError(\"operationTime is required\");");
         line(&mut output, "  switch (name) {");
         for binding in bindings {
             let strategy = binding

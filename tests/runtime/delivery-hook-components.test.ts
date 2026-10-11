@@ -654,12 +654,12 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
 
     await provider(async (requestCalls, endpoint) => {
       calls = requestCalls;
-      const workerSource = (at: string) => `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
+      const workerSource = (at: string | undefined, includeOperationTime = true) => `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
         const {setReferenceMailEndpointForTesting}=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});
         await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
         setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
         const jobs=await import(${JSON.stringify(pathToFileURL(join(root, "jobs.ts")).href)});
-        const result=await jobs.runScheduledJob("overdue_reminders",process.env.COMPONENT_WORKER_KEY,${JSON.stringify(extendedActivationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(at)});
+        const result=await jobs.runScheduledJob("overdue_reminders",process.env.COMPONENT_WORKER_KEY,${JSON.stringify(extendedActivationProfile)},${JSON.stringify(deliveryProfile)}${includeOperationTime ? `,${at === undefined ? "undefined" : JSON.stringify(at)}` : ""});
         console.log(JSON.stringify(result)); process.exit(0);`;
       const childEnv = {
         ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
@@ -674,8 +674,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         try { return await Promise.race([promise.then(value => ({ settled: true as const, value })), deadline]); }
         finally { clearTimeout(timer!); }
       };
-      const runWorker = async (at: string) => {
-        const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", workerSource(at)], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+      const runWorker = async (at: string | undefined, includeOperationTime = true, expectMissingTime = false) => {
+        const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", workerSource(at, includeOperationTime)], { env: childEnv, stdout: "pipe", stderr: "pipe" });
         children.push(child);
         const capture = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited] as const);
         captures.push(capture);
@@ -686,10 +686,22 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
           throw new Error("bounded continuation worker exceeded its 30-second limit");
         }
         const [out, err, exit] = result.value;
+        if (expectMissingTime) {
+          expect(exit).not.toBe(0);
+          expect(err).toContain("operationTime is required");
+          expect(out).toBe("");
+          return null;
+        }
         expect(exit, err).toBe(0);
         return JSON.parse(out.trim().split(/\r?\n/u).at(-1)!);
       };
       try {
+        const beforeMissingTime = await activationRows();
+        await runWorker(undefined, true, true);
+        await runWorker(undefined, false, true);
+        expect(calls).toHaveLength(0);
+        expect(await activationRows()).toEqual(beforeMissingTime);
+
         const first = await runWorker(firstTime);
         expect(first).toEqual({ status: "finished", selected: 500, attempted: 500, continued: true });
         expect(calls).toHaveLength(500);
