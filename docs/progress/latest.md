@@ -1,38 +1,36 @@
-# Jadpo daily progress — 2026-10-06
+# Jadpo daily progress — 2026-10-11
 
-Updated 2026-10-06T04:27:24+01:00 · figures reflect the recorded roadmap.
+Updated 2026-10-11T10:09:44+01:00 · figures reflect the recorded roadmap.
 
-The parallel golden delivery batch added reviewed activation renewal and real generated HTTP observations on both databases. All 67 supported checks pass; the full golden gate remains open.
+RM-307 now has independently approved generated retry-exhaustion evidence across SQLite and PostgreSQL default and derived representations. RM-306, RM-307, and Golden Todo acceptance remain open.
 
 ## At a glance
 
 | Measure | Recorded count |
 |---|---:|
 | Completed since task-ID tracking began | 19 |
-| Remaining open tasks | 84 |
+| Remaining open tasks | 86 |
 | Of those, conditional / not activated | 28 |
-| In progress | 9 |
+| In progress | 10 |
 | Marked ready for work | 4 |
-| Queued behind dependencies | 20 |
+| Queued behind dependencies | 21 |
 | Decision / blocked / external / review | 23 |
 
 Completed counts cover the reorganised roadmap, not all earlier development. Older capabilities are in the history; there is no reliable whole-project percentage.
 
 ## Delivered
 
-- Singleton activation renews its durable live lease between delivery intents, with database time and strict duration decoding; generated crash/reclaim acceptance remains open. [Checkpoint](../work-plans/golden-delivery-planning.md#checkpoint).
-- Eight original golden HTTP IDs pass on SQLite and PostgreSQL (16 entries); 72 remain unexecuted. Real failures led to reviewed constant liveness and accepted 422 input corrections. [Independent reviews](../../tests/validation/rm109-independent-boundary-correction-review.json).
-- The integrated compiler/runtime and supporting HTTP checkpoint pass 67 registered checks. [Fresh report](../../build/validation/20261006T041625-33809/report.json).
+- [Corrected retry-exhaustion evidence](../../tests/validation/evidence/rm307-retry-exhaustion-corrected-20261011/README.md)
 
 ## Since the previous report
 
-Compared with 2026-10-05: 0 newly recorded complete; 0 added or reopened; 0 removed/reclassified without completion evidence.
+Compared with 2026-10-06: 0 newly recorded complete; 2 added or reopened; 0 removed/reclassified without completion evidence.
 
 ## Planning and implementation
 
-- **83** open tasks have an explicitly recorded plan; **1** is recorded as needing planning and **0** as needing input for their plan.
+- **83** open tasks have an explicitly recorded plan; **3** are recorded as needing planning and **0** as needing input for their plan.
 - **0** still need their planning status assessed. Existing design documents may already cover some of them.
-- **56** non-conditional tasks remain to deliver; **28** more are conditional. This includes coding, decisions, testing and external work—not just implementation.
+- **58** non-conditional tasks remain to deliver; **28** more are conditional. This includes coding, decisions, testing and external work—not just implementation.
 - A saved plan does not make a task execution-ready; its dependencies still apply.
 
 ## Remaining work by epic
@@ -40,7 +38,7 @@ Compared with 2026-10-05: 0 newly recorded complete; 0 added or reopened; 0 remo
 | Epic | Open tasks | Conditional | Estimated effort for non-conditional tasks |
 |---|---:|---:|---|
 | E01 — Complete the golden todo | 3 | 0 | 2.5–10h |
-| E02 — Close language and tooling gaps | 19 | 5 | 10.25–40.75h + 1 unestimated |
+| E02 — Close language and tooling gaps | 21 | 5 | 10.25–40.75h + 3 unestimated |
 | E03 — Add reviewed services and durable jobs | 7 | 3 | 7–28h |
 | E04 — Qualify transactions and deployment readiness | 9 | 5 | 5–20h |
 | E05 — Complete engineering validation | 6 | 0 | 6–24h |
@@ -56,10 +54,10 @@ Estimates are provisional agent session hours for open tasks, not days or a deli
 
 ## Next milestone
 
-Generate the separate-process crash/reclaim traces while expanding real golden case observations; then integrate the checked reminder worker using the approved 60s execution / renewable 40s lease profile.
+Review generated lease-reclaim fencing against the frozen trace, then continue the remaining RM-307 boundaries and RM-306/RM-108 dependencies.
 
 ## Input needed
 
-None for the delivered bounded batch. The separate singleton activation profile must be selected before public activation; full golden prerequisites remain open.
+A production singleton activation profile is still needed before public worker execution; no decision blocks the bounded retry-exhaustion work.
 
 [Roadmap](../implementation-roadmap.md) · [Completed evidence](../implementation-history.md) · [Estimate basis](../task-timing/README.md) · [Reporting rules](README.md)

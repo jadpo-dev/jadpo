@@ -4375,6 +4375,24 @@ remain open. Timer
 8.47 active minutes (4.18 verification, 4.07 review-blocked) under
 `gpt-6.1-sol/high`, partial against the original 0.5–2h estimate.
 
+**RM-307 generated retry exhaustion, 2026-10-11:** corrected candidate
+`bfcbd70d2f8959c7ce49da6808ddbaa3992aa04c` closes the first review's P2 by
+capturing the full safe seven-field dead-letter row, binding its observation time
+to the terminal attempt, and comparing the complete row after a later
+activation. Three explicit UTC activations each make three provider attempts
+with the same immutable intent and payload; generation 3 becomes `failed` with
+one `budget_exhausted` record aggregating nine attempts. Focused testing passes
+1/0/0/48; SQLite default/derived pass 83/2/1,117 and 84/2/1,135; PostgreSQL
+16.3 default/derived pass 83/1/1,048 and 84/1/1,066. Independent review
+approved with no findings after 19 pin checks and five fresh reruns. The
+[corrected packet](../../tests/validation/evidence/rm307-retry-exhaustion-corrected-20261011/README.md)
+retains both author/reviewer logs and the earlier correction history. Scope is
+count exhaustion with zero jitter at two boundaries, not elapsed lifetime
+exhaustion or deployment scheduling. Timer
+[`RM-307-93cb0056c16b`](../task-timing/runs/RM-307-93cb0056c16b.jsonl) records
+this verified trace as partial under `gpt-6.1-sol/high`; RM-307 and Golden
+acceptance remain open.
+
 ## RM-307 frozen trace evidence inventory — 2026-10-11
 
 This is an evidence map for the unchanged 18-case frozen contract at
@@ -4383,7 +4401,7 @@ This is an evidence map for the unchanged 18-case frozen contract at
 case's current trace; it does not establish full RM-306/RM-307 or Golden
 acceptance. “Partial” means the nearby assertion does not yet exercise all
 branches or integration boundaries required by that row. The current inventory
-has 12 cases with approved bounded evidence and six partial cases; do not turn
+has 13 cases with approved bounded evidence and five partial cases; do not turn
 these counts into a claim that RM-307 is complete.
 
 | Frozen trace | Current evidence | Remaining boundary |
@@ -4402,19 +4420,22 @@ these counts into a claim that RM-307 is complete.
 | `ASYNC-CANCEL-PENDING` | Approved [pending cancellation packet](../../tests/validation/evidence/rm307-cancel-pending-20261011/README.md) and approved generated known-no-effect `retry_wait` supplement (source `536c81f`) in the [supplemental packet](../../tests/validation/evidence/rm307-cancel-retry-20261011/README.md). | Native trusted cancellation only; no public route/authorization or claim/cancel race. |
 | `ASYNC-CANCEL-AFTER-DISPATCH` | Approved [in-flight cancellation packet](../../tests/validation/evidence/rm307-cancel-after-dispatch-20261011/README.md) proves cancellation remains requested and a successful receipt is retained. | The known-no-effect and `outcome_unknown` receipt branches after cancellation remain uncovered. |
 | `ASYNC-RETRY-KNOWN-NO-EFFECT` | Approved [generated scheduled retry packet](../../tests/validation/evidence/rm307-scheduled-retry-20261011/README.md) proves the same ID/body is retried only after persisted `retry_not_before`, with stable budgets; the approved [resolved replay packet](../../tests/validation/evidence/rm307-native-replay-20261011/README.md) adds native replay evidence. | One generated delayed retry only; multiple retry cycles, exhaustion, production scheduler soak and deployment activation remain outside the trace. |
-| `ASYNC-RETRY-EXHAUSTION` | Native invocation/lifetime exhaustion and transient adapter-attempt evidence run in the reviewed persistence/component suites. | Needs a case-bound generated terminal failed/dead-letter record and proof later activations cannot reset exhausted budget or dispatch. |
+| `ASYNC-RETRY-EXHAUSTION` | Approved [generated exhaustion packet](../../tests/validation/evidence/rm307-retry-exhaustion-corrected-20261011/README.md) proves three generated activations, three provider attempts per invocation, terminal `failed`, the exact safe seven-field dead-letter row, and unchanged state/no dispatch on a later activation. | Count-exhaustion only with deterministic zero jitter; elapsed lifetime exhaustion, positive-backoff/deployment scheduling, and public operator policy remain outside the evidence. |
 | `ASYNC-REPLAY-RESOLVED-INTENT` | Approved [native resolved-replay packet](../../tests/validation/evidence/rm307-native-replay-20261011/README.md). | Bounded known-no-effect replay path; does not close operator UI or full RM-308. |
 | `ASYNC-UNSUPPORTED-PAYLOAD-VERSION` | Approved [unsupported-version packet](../../tests/validation/evidence/rm307-unsupported-payload-version-20261011/README.md). | Injected future payload version in the current runtime; no historical-binary upgrade claim. |
 | `ASYNC-UTC-INTERVAL` | Approved [London DST fallback packet](../../tests/validation/evidence/rm306-utc-dst-fallback-20261011/README.md). | Explicit two-instant generated trace; no elapsed DST/deployment soak. |
 
-The next worker slice is generated retry exhaustion and dead-letter behavior after the configured invocation budget is consumed. The latest full verifier report,
+The next worker slice is a case-bound review of generated
+`ASYNC-LEASE-RECLAIM-FENCE`, tying the RM-306 packet's stale-handle and
+generation assertions to this frozen trace. The latest full verifier report,
 [`20261011T072214-44400`](../../build/validation/20261011T072214-44400/report.json),
 records 68/68 supported checks passed. The full Golden application still has 49
 compile diagnostics and behavioural evidence is `not_run`; its HTTP checkpoint
 records 70 passed, 0 failed and 18 `not_run`, while the frozen backend protocol
 records 0 passed, 0 failed and 88 `not_run`. `release_equivalent` is false.
 That report predates the latest RM-307 test-only supplements and does not close
-Golden acceptance. After the six partial trace rows are closed with source-bound
-reviews, RM-306's selected production activation profile and acceptance gates,
+Golden acceptance. After the five remaining partial trace rows are closed
+with source-bound reviews, RM-306's selected production activation profile
+and acceptance gates,
 RM-108's checked worker/clock/crash/duplicate integration, and the remaining
 Golden HTTP cases remain.
