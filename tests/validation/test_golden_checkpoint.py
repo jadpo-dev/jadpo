@@ -172,6 +172,16 @@ class CheckpointIntegrityTests(unittest.TestCase):
                      'principal': {'kind': 'user', 'subject': 'alice', 'identityId': alice},
                      'statements': [{'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "created_at", "updated_at" FROM "todo" WHERE ("owner_id" = ? AND "deleted_at" IS NULL AND "status" = ? AND "due_at" <= ?) ORDER BY "created_at" DESC, "id" DESC LIMIT ?', 'operation': 'SELECT'}]}
             return [{'fixture': {'rows': rows}}, reply]
+        if case_id == 'LIST-004':
+            return [{'method': 'GET', 'path': case['request']['path'],
+                     'auth': case['request']['auth'], 'requestJson': None,
+                     'requestStartedAt': 1768478400000, 'responseCompletedAt': 1768478400000,
+                     'status': 422,
+                     'body': {'error': {'code': 'invalid_value', 'request_id': 'req_invalid_page_size'}},
+                     'authenticationAttempts': 1,
+                     'principal': {'kind': 'user', 'subject': 'alice',
+                                   'identityId': '00000000-0000-4000-8000-000000000001'},
+                     'statements': []}]
         replies = []
         requests = case.get('requests', [case.get('request')])
         if case_id == 'DELETE-001':
@@ -399,7 +409,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         report = harness.run_cases(self.root)
         checkpoint.apply_checkpoint(report, self.outputs(), self.root)
         self.assertEqual(len(report['results']), 88)
-        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 32)
+        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 30)
         self.assertEqual(report['status'], 'failed')
         self.assertFalse(report['release_equivalent'])
 
@@ -1129,6 +1139,34 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('wrong frozen request', wrong_path))
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'LIST-003'):
+                checkpoint.observations(case, changed)
+
+    def test_list004_rejects_page_size_before_any_database_statement(self):
+        case = self.cases['LIST-004']
+        raw = self.raw('LIST-004')
+        observed = checkpoint.observations(case, raw)
+        self.assertEqual(harness.assess(case, observed), [])
+        self.assertEqual(observed[0]['steps'], [{
+            'status': 422, 'code': 'invalid_value', 'databaseQueries': 0,
+            'totalDatabaseStatements': 0, 'authenticationAttempts': 1, 'writes': 0,
+        }])
+        mutations = []
+        accepted = deepcopy(raw); accepted[0]['status'] = 200
+        mutations.append(('oversized page accepted', accepted))
+        wrong_code = deepcopy(raw); wrong_code[0]['body']['error']['code'] = 'invalid_request'
+        mutations.append(('wrong public validation code', wrong_code))
+        database_read = deepcopy(raw); database_read[0]['statements'].append({'sql': 'SELECT id FROM todo', 'operation': 'SELECT'})
+        mutations.append(('database read before rejection', database_read))
+        transaction = deepcopy(raw); transaction[0]['statements'].append({'sql': 'BEGIN', 'operation': 'BEGIN'})
+        mutations.append(('transaction before rejection', transaction))
+        wrong_page = deepcopy(raw); wrong_page[0]['path'] = '/todos?page_size=100'
+        mutations.append(('wrong boundary request', wrong_page))
+        missing_request_id = deepcopy(raw); del missing_request_id[0]['body']['error']['request_id']
+        mutations.append(('missing request id', missing_request_id))
+        unauthenticated = deepcopy(raw); unauthenticated[0]['authenticationAttempts'] = 0
+        mutations.append(('authentication not observed', unauthenticated))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'LIST-004'):
                 checkpoint.observations(case, changed)
 
     def test_scenario_expansion_is_not_silently_partial(self):

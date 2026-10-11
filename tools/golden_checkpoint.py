@@ -19,7 +19,7 @@ import golden_cases as harness
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = ('AUTH-001', 'AUTH-002', 'AUTH-003', 'AUTH-004', 'AUTH-005', 'AUTH-006', 'AUTH-007', 'AUTH-008', 'AUTH-009', 'AUTH-010', 'AUTH-011', 'AUTH-012', 'PUBLIC-001', 'CREATE-001', 'CREATE-002',
-             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'PATCH-003', 'PATCH-004', 'DELETE-001', 'DELETE-002', 'USER-001')
+             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'LIST-004', 'PATCH-003', 'PATCH-004', 'DELETE-001', 'DELETE-002', 'USER-001')
 
 TODO_VIEW_FIELDS = frozenset({'id', 'title', 'status', 'due_at', 'created_at', 'updated_at'})
 TODO_PRIVATE_FIELDS = ('owner_id', 'deleted_at', 'reminder_sent_at')
@@ -398,6 +398,33 @@ def list_003_observation(case, raw, reply):
             'allDueBefore': cutoff, 'undatedAbsent': True}
 
 
+def list_004_observation(case, raw, reply):
+    """Require invalid page-size rejection before any database access."""
+    frozen_request = {'method': 'GET', 'path': '/todos?page_size=101', 'auth': 'alice-session'}
+    if (case.get('id') != 'LIST-004' or case.get('request') != frozen_request
+            or case.get('expect') != {'status': 422, 'code': 'invalid_value', 'databaseQueries': 0}):
+        raise ValueError('Changed LIST-004 frozen request or expectations')
+    if len(raw) != 1 or raw[0] is not reply:
+        raise ValueError('LIST-004 missing or reordered request observation')
+    if (reply.get('method') != frozen_request['method']
+            or reply.get('path') != frozen_request['path']
+            or reply.get('auth') != frozen_request['auth']
+            or reply.get('requestJson') is not None):
+        raise ValueError('LIST-004 request differs from frozen page-size boundary')
+    body = reply.get('body')
+    error = body.get('error') if isinstance(body, dict) else None
+    if (reply.get('status') != 422 or not isinstance(error, dict)
+            or error.get('code') != 'invalid_value'
+            or not isinstance(error.get('request_id'), str)
+            or reply.get('authenticationAttempts') != 1):
+        raise ValueError('LIST-004 did not return the authenticated invalid-value response')
+    statements = reply.get('statements')
+    if not isinstance(statements, list) or statements:
+        raise ValueError('LIST-004 accessed the database before rejecting the page size')
+    return {'status': 422, 'code': 'invalid_value', 'databaseQueries': 0,
+            'totalDatabaseStatements': 0, 'authenticationAttempts': 1, 'writes': 0}
+
+
 def observations(case: dict, raw: list) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
     if (case['id'] not in SUPPORTED or case.get('fixtureVariants')
@@ -428,6 +455,10 @@ def observations(case: dict, raw: list) -> list:
         if len(replies) != 1:
             raise ValueError('LIST-003 missing or extra request observation')
         return [{'variant_index': 0, 'steps': [list_003_observation(case, raw, replies[0])]}]
+    if case['id'] == 'LIST-004':
+        if len(replies) != 1:
+            raise ValueError('LIST-004 missing or extra request observation')
+        return [{'variant_index': 0, 'steps': [list_004_observation(case, raw, replies[0])]}]
     if len(replies) != len(expected_requests):
         raise ValueError('Missing request observation')
     for request, reply in zip(expected_requests, replies):

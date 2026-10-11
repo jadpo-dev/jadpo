@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
-const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
+const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const prototype = Database.prototype as any;
