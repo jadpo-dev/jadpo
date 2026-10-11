@@ -1724,6 +1724,14 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     let deliveryChild: ReturnType<typeof Bun.spawn> | undefined;
     let server: ReturnType<typeof Bun.serve> | undefined;
     let releaseProvider = () => {};
+    const waitForChildExit = async (child: ReturnType<typeof Bun.spawn>, label: string) => {
+      let timer: ReturnType<typeof setTimeout>;
+      try {
+        await Promise.race([child.exited, new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${label} did not exit within 5 seconds`)), 5_000);
+        })]);
+      } finally { clearTimeout(timer!); }
+    };
     try {
     processA = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", claimWorkerSource], {
       env: { ...claimWorkerEnv, CLAIM_HOLD: "1", CLAIM_HANDLE_PATH: staleAHandlePath, CLAIM_READY_PATH: staleAReadyPath,
@@ -1753,7 +1761,14 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     processB = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", claimWorkerSource], {
       env: { ...claimWorkerEnv, CLAIM_HOLD: "0" }, stdout: "pipe", stderr: "pipe",
     });
-    const processBResult = await Promise.all([new Response(processB.stdout).text(), new Response(processB.stderr).text(), processB.exited] as const);
+    let processBTimer: ReturnType<typeof setTimeout>;
+    let processBResult: readonly [string, string, number];
+    try {
+      processBResult = await Promise.race([
+        Promise.all([new Response(processB.stdout).text(), new Response(processB.stderr).text(), processB.exited] as const),
+        new Promise<never>((_, reject) => { processBTimer = setTimeout(() => reject(new Error("replacement claimant B did not finish within 15 seconds")), 15_000); }),
+      ]);
+    } finally { clearTimeout(processBTimer!); }
     const [processBOut, processBErr, processBExit] = processBResult;
     expect(processBExit, processBErr).toBe(0);
     const replacementB = JSON.parse(processBOut.trim().split(/\r?\n/u).at(-1)!);
@@ -1836,6 +1851,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       writeFileSync(staleAAckContinuePath, "continue");
       await waitForFile(staleAAckResultPath, "worker A stale acknowledgement result");
       expect(JSON.parse(readFileSync(staleAAckResultPath, "utf8"))).toEqual({ acknowledged: false, handle: staleA });
+      await waitForChildExit(processA, "stale claimant A after its stale operations");
       const [processAOut, processAErr, processAExit] = await processACapture;
       expect(processAExit, processAErr).toBe(0);
       expect(JSON.parse(processAOut.trim().split(/\r?\n/u).at(-1)!)).toEqual(staleA);
@@ -1870,13 +1886,22 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(finished.activation_id).toBeNull(); expect(finished.page).toBeNull();
       expect(String(finished.generation)).toBe(calls[0].activationGeneration);
     } finally {
-      if (processA && processA.exitCode === null) processA.kill("SIGKILL");
-      if (processA) await processA.exited;
-      if (processB && processB.exitCode === null) processB.kill("SIGKILL");
-      if (processB) await processB.exited;
+      const childReapers: Promise<void>[] = [];
+      if (processA) {
+        if (processA.exitCode === null) processA.kill("SIGKILL");
+        childReapers.push(waitForChildExit(processA, "stale claimant A"));
+      }
+      if (processB) {
+        if (processB.exitCode === null) processB.kill("SIGKILL");
+        childReapers.push(waitForChildExit(processB, "replacement claimant B"));
+      }
       releaseProvider();
-      if (deliveryChild !== undefined) { deliveryChild.kill("SIGKILL"); await deliveryChild.exited; }
+      if (deliveryChild !== undefined) {
+        if (deliveryChild.exitCode === null) deliveryChild.kill("SIGKILL");
+        childReapers.push(waitForChildExit(deliveryChild, "generated worker C"));
+      }
       server?.stop(true);
+      await Promise.all(childReapers);
     }
   }, 45_000);
   test("a fresh generated worker reclaims the original staged page after a pre-dispatch checkpoint fault", async () => {
