@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Supporting migrated HTTP checkpoint; does not activate the final golden gate."""
+"""Supporting migrated application checkpoint; does not activate the final golden gate."""
 from __future__ import annotations
 
 import argparse
@@ -1734,7 +1734,7 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
     for entry in report['results']:
         key = (entry['backend'], entry['id'])
         if key not in observed:
-            entry['reason'] = 'Unsupported by the reviewed migrated HTTP checkpoint; full application/gate prerequisites remain'
+            entry['reason'] = 'Unsupported by the reviewed migrated application checkpoint; full application/gate prerequisites remain'
             continue
         entry.pop('reason', None)
         if observed[key] is None:
