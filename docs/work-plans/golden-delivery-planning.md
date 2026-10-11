@@ -4270,3 +4270,21 @@ reconciliation, RM-306, RM-307 acceptance, RM-108 and Golden Todo remain open.
 Timer `RM-307-6271a90526ff` records this verified slice as partial: 7.30 active
 minutes, including 6.71 verification minutes, under `gpt-6.1-sol/high` and the
 original 0.5–2h estimate.
+
+**RM-307 unsupported payload version, 2026-10-11:** source commit
+`4fe6c574fb96a39cb4b38a489a855b295ab70046` adds a generated-worker case for
+`ASYNC-UNSUPPORTED-PAYLOAD-VERSION`. After a normal intent is enrolled, the
+test stores version `reminder.vNext` with a valid but future-schema JSON body.
+Generated selection returns `delivery.identity_conflict` before the reminder.v1
+constructor/validator; payload bytes, pending state and activation rows remain
+unchanged, with zero provider calls. The focused trace passes 1/0/0 with 5
+assertions; SQLite passes 78/2/983 (default) and 79/2/1001 (derived), while
+PostgreSQL 16.3 passes 78/1/914 and 79/1/932. Independent review approved the
+exact source without corrections and reran all five checks; the [source-bound
+packet](../../tests/validation/evidence/rm307-unsupported-payload-version-20261011/README.md)
+retains reviewer logs and limitations. It proves selection-stage refusal after
+test-owned version injection, not a separate historical binary or resumed
+committed page. Other frozen traces, the full RM-306/RM-307 gates, RM-108 and
+Golden Todo remain open. Timer `RM-307-51a6ec85122f` records this slice as
+partial: 4.69 active minutes, including 3.57 verification minutes, under
+`gpt-6.1-sol/high` and the original 0.5–2h estimate.
