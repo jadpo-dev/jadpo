@@ -634,7 +634,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
     return { ...f, value };
   }
-  async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>) {
+  async function provider(work: (calls: any[], endpoint: string) => Promise<void>, onCall?: () => Promise<void>, respond?: (body: any) => Response | Promise<Response>) {
     const calls: any[] = [], previous = Bun.env.NODE_ENV; Bun.env.NODE_ENV = "test";
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
       const body = await request.json();
@@ -643,6 +643,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       const claim = (await rows('SELECT execution_ms, lease_ms, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
       calls.push({ body, page: JSON.parse(activation.page), scheduledFor: activation.scheduled_for, operationTime: activation.operation_time, possibleDispatch: Number(claim.possible_dispatch), activationLeaseMs: Number(activation.lease_ms), activationExecutionDeadline: activation.execution_deadline, deliveryExecutionMs: Number(claim.execution_ms), deliveryLeaseMs: Number(claim.lease_ms) });
       if (onCall) await onCall();
+      if (respond) return await respond(body);
       return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
     } });
     const endpoint = `http://127.0.0.1:${server.port}`;
@@ -970,6 +971,70 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     expect(await rows('SELECT intent_id FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [successor.intentId])).toEqual([{ intent_id: successor.intentId }]);
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
     expect(callsInProgress).toHaveLength(2);
+  });
+  test("generated worker releases a same-key successor after a cancelled predecessor without rewriting its history", async () => {
+    const f = await fixture();
+    const first = (await scan(f.proof)).intents[0];
+    expect(first).toBeDefined();
+    expect(await persistence.transaction((tx: any) => tx.cancel_delivery_intent(first.intentId))).toBe("cancelled");
+    const firstSnapshot = {
+      intent: await persistence.read_delivery_intent(first.intentId),
+      cancellation: await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId]),
+      claims: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId]),
+    };
+    expect(firstSnapshot.intent.state).toBe("cancelled");
+    expect(firstSnapshot.cancellation).toHaveLength(1);
+    expect(firstSnapshot.claims).toEqual([]);
+
+    await patch(f.value.id, { due_at: dueB });
+    const successor = (await scan(f.proof)).intents.find((intent: any) => intent.sourceRevision === "2");
+    expect(successor).toBeDefined();
+    expect(successor.orderingKey).toBe(first.orderingKey);
+    expect(BigInt(successor.keySequence)).toBeGreaterThan(BigInt(first.keySequence));
+
+    await provider(async calls => {
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls.map(call => call.body.idempotency_key)).toEqual([successor.intentId]);
+      expect(calls[0].body).toEqual(successor.payload);
+      expect((await persistence.read_delivery_intent(successor.intentId)).state).toBe("succeeded");
+      expect(await persistence.read_delivery_intent(first.intentId)).toEqual(firstSnapshot.intent);
+      expect(await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [first.intentId])).toEqual(firstSnapshot.cancellation);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId])).toEqual(firstSnapshot.claims);
+    });
+  });
+  test("generated worker releases a same-key successor after permanent known-no-effect failure without rewriting its history", async () => {
+    const f = await fixture();
+    const first = (await scan(f.proof)).intents[0];
+    await provider(async calls => {
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      const firstSnapshot = {
+        intent: await persistence.read_delivery_intent(first.intentId),
+        claim: await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId]),
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [first.intentId]),
+        deadLetters: await rows('SELECT * FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [first.intentId]),
+      };
+      expect(firstSnapshot.intent.state).toBe("failed");
+      expect(firstSnapshot.attempts).toHaveLength(1);
+      expect(firstSnapshot.attempts[0].failure_class).toBe("recipient_rejected");
+
+      await patch(f.value.id, { due_at: dueB });
+      const successor = (await scan(f.proof)).intents.find((intent: any) => intent.sourceRevision === "2");
+      expect(successor).toBeDefined();
+      expect(successor.orderingKey).toBe(first.orderingKey);
+      expect(BigInt(successor.keySequence)).toBeGreaterThan(BigInt(first.keySequence));
+
+      expect(await activate(f.proof, "2026-10-08T08:15:00.000Z")).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls.map(call => call.body.idempotency_key)).toEqual([first.intentId, successor.intentId]);
+      expect(calls.map(call => call.body)).toEqual([first.payload, successor.payload]);
+      expect((await persistence.read_delivery_intent(successor.intentId)).state).toBe("succeeded");
+      expect(await persistence.read_delivery_intent(first.intentId)).toEqual(firstSnapshot.intent);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [first.intentId])).toEqual(firstSnapshot.claim);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [first.intentId])).toEqual(firstSnapshot.attempts);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_dead_letters_v1" WHERE intent_id=$1', [first.intentId])).toEqual(firstSnapshot.deadLetters);
+      expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+    }, undefined, body => body.idempotency_key === first.intentId
+      ? Response.json({ code: "invalid_recipient" }, { status: 400 })
+      : Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } }));
   });
   test("native replay retries only an adapter-proven no-effect intent and preserves its identity and lifetime budget", async () => {
     const f = await fixture();
