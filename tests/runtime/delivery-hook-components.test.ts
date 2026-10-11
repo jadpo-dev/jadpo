@@ -570,6 +570,210 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const saved = (await activationRows())[0]; expect(saved.activation_id).toBeNull(); expect(saved.page).toBeNull();
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
+  test("a fresh generated worker does not resend after the first process dies at possible dispatch", async () => {
+    const f = await fixture();
+    let entered!: () => void, release!: () => void;
+    const providerEntered = new Promise<void>(resolve => { entered = resolve; });
+    const heldResponse = new Promise<void>(resolve => { release = resolve; });
+    const calls: Array<{ intentId: string; possibleDispatch: number }> = [];
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json() as { idempotency_key: string };
+      const claim = (await rows('SELECT possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
+      calls.push({ intentId: body.idempotency_key, possibleDispatch: Number(claim.possible_dispatch) });
+      if (calls.length === 1) { entered(); await heldResponse; }
+      return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
+    } });
+    const endpoint = `http://127.0.0.1:${server.port}/`;
+    const childSource = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
+      const {setReferenceMailEndpointForTesting}=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});
+      await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
+      const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
+      setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
+      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(scanTime)});
+      console.log(JSON.stringify(result)); process.exit(0);`;
+    const childEnv = {
+      ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
+      COMPONENT_WORKER_KEY: f.issued.credential, COMPONENT_ENDPOINT: endpoint,
+      DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath,
+    };
+    const captureChild = (child: ReturnType<typeof Bun.spawn>) => Promise.all([
+      new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
+    ] as const);
+    const settleWithin = async <T>(promise: Promise<T>, ms: number) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<{ settled: false }>(resolve => {
+        timer = setTimeout(() => resolve({ settled: false }), ms);
+      });
+      try {
+        return await Promise.race([promise.then(value => ({ settled: true as const, value })), deadline]);
+      } finally { clearTimeout(timer!); }
+    };
+    let first: ReturnType<typeof Bun.spawn> | null = null;
+    let second: ReturnType<typeof Bun.spawn> | null = null;
+    let firstCapture: ReturnType<typeof captureChild> | null = null;
+    let secondCapture: ReturnType<typeof captureChild> | null = null;
+    try {
+      first = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+      firstCapture = captureChild(first);
+      await Promise.race([
+        providerEntered,
+        Bun.sleep(15_000).then(() => { throw new Error("first generated worker did not reach the provider"); }),
+      ]);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].intentId).toMatch(/^[0-9a-f-]{36}$/u);
+      expect(calls[0].possibleDispatch).toBe(1);
+      expect((await persistence.read_delivery_intent(calls[0].intentId)).state).toBe("running");
+      first.kill("SIGKILL");
+      const firstResult = await settleWithin(firstCapture, 5_000);
+      if (!firstResult.settled) throw new Error("first generated worker did not exit after SIGKILL");
+      const [firstOut, , firstExit] = firstResult.value;
+      expect(firstExit).not.toBe(0);
+      expect(firstOut).not.toContain('"status":"finished"');
+
+      // The fixture advances only the two persisted lease boundaries. The
+      // second process must resolve the committed possible-dispatch claim as
+      // uncertain before it can call the provider again.
+      await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", bindingIdentity]);
+      await rows('UPDATE "__jadpo_delivery_claims_v1" SET lease_until=$1 WHERE intent_id=$2', ["2000-01-01T00:00:00.000Z", calls[0].intentId]);
+      second = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+      secondCapture = captureChild(second);
+      const secondResult = await settleWithin(secondCapture, 15_000);
+      if (!secondResult.settled) {
+        second.kill("SIGKILL");
+        const secondExit = await settleWithin(second.exited, 5_000);
+        if (!secondExit.settled) throw new Error("recovery worker did not exit after SIGKILL");
+        throw new Error("recovery worker did not finish within 15 seconds");
+      }
+      const [secondOut, secondErr, secondExit] = secondResult.value;
+      expect(secondExit, secondErr).toBe(0);
+      const resultLine = secondOut.trim().split(/\r?\n/u).at(-1);
+      expect(JSON.parse(resultLine!)).toMatchObject({ status: "finished", selected: 1, attempted: 1 });
+      expect(calls).toHaveLength(1);
+      expect((await persistence.read_delivery_intent(calls[0].intentId)).state).toBe("outcome_unknown");
+      expect((await rows('SELECT invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [calls[0].intentId]))[0])
+        .toEqual({ invocations: 1, possible_dispatch: 1 });
+    } finally {
+      first?.kill("SIGKILL");
+      second?.kill("SIGKILL");
+      release();
+      try {
+        const cleanup = await Promise.all([
+          first ? settleWithin(first.exited, 5_000) : Promise.resolve(null),
+          second ? settleWithin(second.exited, 5_000) : Promise.resolve(null),
+          firstCapture ? settleWithin(firstCapture, 5_000) : Promise.resolve(null),
+          secondCapture ? settleWithin(secondCapture, 5_000) : Promise.resolve(null),
+        ]);
+        if (cleanup.some(result => result !== null && !result.settled)) {
+          throw new Error("generated worker child did not finish bounded cleanup");
+        }
+      } finally { server.stop(true); }
+    }
+  });
+  test("a fresh generated worker finishes the staged page without resending after receipt commit", async () => {
+    const f = await fixture();
+    const calls: string[] = [];
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json() as { idempotency_key: string };
+      calls.push(body.idempotency_key);
+      return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
+    } });
+    const endpoint = `http://127.0.0.1:${server.port}/`;
+    const childSource = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
+      const {setReferenceMailEndpointForTesting}=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});
+      await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
+      const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
+      setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
+      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(scanTime)});
+      console.log(JSON.stringify(result)); process.exit(0);`;
+    const childEnv = {
+      ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
+      COMPONENT_WORKER_KEY: f.issued.credential, COMPONENT_ENDPOINT: endpoint,
+      DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath,
+    };
+    const captureChild = (child: ReturnType<typeof Bun.spawn>) => Promise.all([
+      new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
+    ] as const);
+    const settleWithin = async <T>(promise: Promise<T>, ms: number) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<{ settled: false }>(resolve => {
+        timer = setTimeout(() => resolve({ settled: false }), ms);
+      });
+      try {
+        return await Promise.race([promise.then(value => ({ settled: true as const, value })), deadline]);
+      } finally { clearTimeout(timer!); }
+    };
+    let first: ReturnType<typeof Bun.spawn> | null = null;
+    let second: ReturnType<typeof Bun.spawn> | null = null;
+    let firstCapture: ReturnType<typeof captureChild> | null = null;
+    let secondCapture: ReturnType<typeof captureChild> | null = null;
+    try {
+      if (sql) {
+        await rows("CREATE FUNCTION rm306_activation_finish_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.activation_id IS NOT NULL AND NEW.activation_id IS NULL THEN RAISE EXCEPTION 'fixture activation finish fault'; END IF; RETURN NEW; END $$");
+        await rows('CREATE TRIGGER rm306_activation_finish_fault BEFORE UPDATE ON "__jadpo_delivery_activations_v1" FOR EACH ROW EXECUTE FUNCTION rm306_activation_finish_fault()');
+      } else {
+        await rows("CREATE TRIGGER rm306_activation_finish_fault BEFORE UPDATE OF activation_id ON __jadpo_delivery_activations_v1 WHEN OLD.activation_id IS NOT NULL AND NEW.activation_id IS NULL BEGIN SELECT RAISE(ABORT, 'fixture activation finish fault'); END");
+      }
+      first = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+      firstCapture = captureChild(first);
+      const firstResult = await settleWithin(firstCapture, 15_000);
+      if (!firstResult.settled) {
+        first.kill("SIGKILL");
+        const firstExit = await settleWithin(first.exited, 5_000);
+        if (!firstExit.settled) throw new Error("receipt worker did not exit after SIGKILL");
+        throw new Error("receipt worker did not finish within 15 seconds");
+      }
+      const [, firstErr, firstExit] = firstResult.value;
+      expect(firstExit, firstErr).not.toBe(0);
+      expect(calls).toHaveLength(1);
+      const intentId = calls[0];
+      expect((await persistence.read_delivery_intent(intentId)).state).toBe("succeeded");
+      expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+      const staged = (await activationRows())[0];
+      expect(staged.activation_id).not.toBeNull();
+      expect(JSON.parse(staged.page).intentIds).toEqual([intentId]);
+
+      await rows(sql
+        ? 'DROP TRIGGER rm306_activation_finish_fault ON "__jadpo_delivery_activations_v1"'
+        : 'DROP TRIGGER rm306_activation_finish_fault');
+      if (sql) await rows('DROP FUNCTION rm306_activation_finish_fault()');
+      await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", bindingIdentity]);
+      second = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+      secondCapture = captureChild(second);
+      const secondResult = await settleWithin(secondCapture, 15_000);
+      if (!secondResult.settled) {
+        second.kill("SIGKILL");
+        const secondExit = await settleWithin(second.exited, 5_000);
+        if (!secondExit.settled) throw new Error("recovery worker did not exit after SIGKILL");
+        throw new Error("recovery worker did not finish within 15 seconds");
+      }
+      const [secondOut, secondErr, secondExit] = secondResult.value;
+      expect(secondExit, secondErr).toBe(0);
+      expect(JSON.parse(secondOut.trim().split(/\r?\n/u).at(-1)!)).toMatchObject({ status: "finished", selected: 1, attempted: 1 });
+      expect(calls).toEqual([intentId]);
+      expect((await persistence.read_delivery_intent(intentId)).state).toBe("succeeded");
+      expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+      const finished = (await activationRows())[0];
+      expect(finished.activation_id).toBeNull(); expect(finished.page).toBeNull();
+    } finally {
+      first?.kill("SIGKILL");
+      second?.kill("SIGKILL");
+      try {
+        if (sql) {
+          await rows('DROP TRIGGER IF EXISTS rm306_activation_finish_fault ON "__jadpo_delivery_activations_v1"');
+          await rows('DROP FUNCTION IF EXISTS rm306_activation_finish_fault()');
+        } else await rows('DROP TRIGGER IF EXISTS rm306_activation_finish_fault');
+        const cleanup = await Promise.all([
+          first ? settleWithin(first.exited, 5_000) : Promise.resolve(null),
+          second ? settleWithin(second.exited, 5_000) : Promise.resolve(null),
+          firstCapture ? settleWithin(firstCapture, 5_000) : Promise.resolve(null),
+          secondCapture ? settleWithin(secondCapture, 5_000) : Promise.resolve(null),
+        ]);
+        if (cleanup.some(result => result !== null && !result.settled)) {
+          throw new Error("generated receipt worker did not finish bounded cleanup");
+        }
+      } finally { server.stop(true); }
+    }
+  }, 45_000);
   test("forged credential, unknown binding and missing/invalid profiles refuse before durable enrollment or HTTP", async () => {
     const f = await fixture();
     await provider(async calls => {

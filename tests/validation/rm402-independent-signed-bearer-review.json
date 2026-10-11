@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-402",
+  "kind": "independent_test_only_signed_bearer_private_retry_review",
+  "candidate": "7682afbaea38f48dbc481966f600dc13756c71ff",
+  "reviewer": "golden_worker_closure_audit",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-402-159b48d79a54",
+  "estimateHours": [
+    0.5,
+    2
+  ],
+  "disposition": "approved_scoped_test_only_leaf",
+  "blockingFindings": [],
+  "wholeTaskComplete": false,
+  "releasedPublicRetry": false,
+  "capture": "/private/tmp/jadpo-signed-bearer-7682-independent",
+  "sourcePin": "f5cf8f23a02482b1a9da99c69a0646677a0889ed807fcd46ab8793b6c09d4d65",
+  "independentExecution": {
+    "SQLite": {
+      "passed": 2,
+      "failed": 0,
+      "assertions": 37,
+      "log": "sqlite-native-bearer-corrected.log"
+    },
+    "PostgreSQL": {
+      "passed": 2,
+      "failed": 0,
+      "assertions": 41,
+      "log": "postgres-native-bearer.log"
+    },
+    "freshNativeFullTargetGenerator": {
+      "passed": 1,
+      "failed": 0,
+      "log": "native-generator.log",
+      "ownCargoTarget": "/private/tmp/jadpo-signed-bearer-7682-independent/owned-target",
+      "generatedBytesRetained": true
+    },
+    "originalAuthorMembersHashVerified": 9
+  },
+  "observed": [
+    "Exact leaf changes runtime test matrix/strategy/header/assertions and records only; no product/compiler/authentication changes. Captured immutable7682 excludes all uncommitted JWT code.",
+    "Actual canonical api_bearer.signed_user selects user mode signed, HMAC-SHA256 WebCrypto crypto, configured session secret and todo-api audience. Native host.issue creates durable signed session and genuine jds1 credential; host.authenticate verifies it and materializes declared typed primary strength, subject and exact user_id. Signed is proof mode, not a new assurance enum.",
+    "Actual HTTP Authorization Bearer reaches native handleRequest. Counterfactual private inspection changes only already-closed emitted retry admission bit; original emitted protected public permission remains literalfalse. Native credential, policy, action and persistence retry bodies are preserved.",
+    "Positive actual first SQLite busy BEGIN or PostgreSQL40001 callback mutation abort schedules one proven no-commit retry. Same immutable operationId attempt2 commits once, HTTP200, business revision2; original intent payload/sourceRevision1 remain immutable and checked subsequent invocation cancels obsolete intent before any provider claim.",
+    "Negative after first proven abort deletes only original durable signed session. PostgreSQL real ACCESS EXCLUSIVE session-table lock prevents fresh read overtaking fixture change/commit; SQLite native locker released before deletion. Native next authorization refuses401, no second mutation attempt, revision1/title/payload/sourceRevision1 and pending prior intent unchanged.",
+    "Native public retry gate and callable.policy.is_none boundary are unchanged; this leaf establishes necessary private proof only."
+  ],
+  "retainedFailures": [
+    "First reviewer SQLite sandbox command could not bind Bun loopback server; retained log contains original port0/EADDRINUSE refusal and ensuing locked-fixture second failure. Escalated disposable local HTTP command passes, no product fault inferred.",
+    "Reviewer initially assumed postgres runner used ./file syntax; immutable leaf runner uses bare test file. Corrected reviewer-owned runner to exact ./path plus focused pattern, without changing authored/product source.",
+    "All9 author raw/plan/timing hashes verified, including original test incorrectly expecting signed assurance, corrected canonical primary result and interrupted timer unknown interval. No historical red or unknown timing reclassified."
+  ],
+  "limits": [
+    "Private necessary-candidate inspection only; no public retry activation, wholeRM402 closure, production/deployment or publication.",
+    "JWT validator/user lifecycle authority and future mutable leaves are outside this exact leaf.",
+    "Fresh current combined full gate still needed after integration; independent current source is immutable7682, not evolving parent main."
+  ],
+  "evidenceDirectory": "tests/validation/evidence/rm402-independent-signed-bearer-7682",
+  "evidenceInventorySha256": "1bfb3bb4a8968730e519aa36d772fb76be7f0ecdbb84e06caf7e6f146e56f143",
+  "createdAt": "2026-10-06T14:51:36.731228+00:00",
+  "timing": {
+    "closed": true,
+    "outcome": "partial",
+    "activeMinutes": 4.0,
+    "verificationMinutes": 3.51
+  }
+}

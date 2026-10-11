@@ -1,0 +1,12 @@
+{"schema_version": 1, "run_id": "RM-109-256ffe22d307", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": "01a11fd2-f415-7272-aa35-a8ab485256f8", "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T21:16:14.492525+00:00", "phase": "planning"}
+{"at": "2026-10-10T21:17:27.967532+00:00", "phase": "paused", "note": "Briefly switching to finish the completed RM-306 independent-review evidence record; harness inspection is preserved for resume."}
+{"at": "2026-10-10T21:20:52.492660+00:00", "phase": "planning", "note": "RM306 review packet is complete; resume separate RM109 real-HTTP checkpoint preparation."}
+{"at": "2026-10-10T21:23:16.182489+00:00", "phase": "implementation", "note": "Add one real HTTP observation, PATCH-003, with an explicitly persisted owner/status/deletion fixture and strict raw re-derivation."}
+{"at": "2026-10-10T21:23:40.146238+00:00", "phase": "verification", "note": "Run expanded source-bound generated HTTP checkpoint on SQLite and disposable PostgreSQL, then inspect retained artifacts."}
+{"at": "2026-10-10T21:29:24.180451+00:00", "phase": "review", "note": "Review exact source/provenance/raw pins and bounded checkpoint limitations before the already-authorized independent re-review."}
+{"at": "2026-10-10T21:29:56.103201+00:00", "phase": "blocked", "note": "Waiting for the authorized independent review of the source-pinned nine-ID checkpoint packet."}
+{"at": "2026-10-10T21:32:09.608386+00:00", "phase": "implementation", "note": "Fix review finding by recording Bun.SQL rollback outcomes from rejected transaction callbacks and requiring rollback observation for PATCH-003."}
+{"at": "2026-10-10T21:32:56.272750+00:00", "phase": "review", "note": "Corrected checkpoint passed fresh source-bound dual-adapter execution; validate raw/report pins, rollback outcome and updated documentation before reviewer follow-up."}
+{"at": "2026-10-10T21:33:27.589959+00:00", "phase": "blocked", "note": "Waiting for the same reviewer to recheck the corrected rollback capture and regenerated raw outputs."}
+{"at": "2026-10-10T21:35:10.105453+00:00", "phase": "review", "note": "Authorized independent reviewer approved the corrected PATCH-003 evidence packet; record bounded checkpoint approval and limitations."}
+{"at": "2026-10-10T21:35:10.160126+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm109-http-patch003-20261010-rereview/README.md"}

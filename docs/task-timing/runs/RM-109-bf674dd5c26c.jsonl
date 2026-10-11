@@ -1,0 +1,7 @@
+{"schema_version": 1, "run_id": "RM-109-bf674dd5c26c", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": "01a11fd2-f415-7272-aa35-a8ab485256f8", "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T22:17:31.565308+00:00", "phase": "planning"}
+{"at": "2026-10-10T22:18:17.502745+00:00", "phase": "implementation", "note": "AUTH-002 browser-session principal and provider-field output observations"}
+{"at": "2026-10-10T22:18:53.539847+00:00", "phase": "verification", "note": null}
+{"at": "2026-10-10T22:19:39.974776+00:00", "phase": "review", "note": null}
+{"at": "2026-10-10T22:19:55.179010+00:00", "phase": "blocked", "note": "Awaiting independent AUTH-002 packet review while preserving its pinned source"}
+{"at": "2026-10-10T22:22:31.962613+00:00", "phase": "review", "note": null}
+{"at": "2026-10-10T22:22:50.151062+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm109-http-auth002-20261010-final/README.md"}

@@ -1,0 +1,6 @@
+{"schema_version": 1, "run_id": "RM-306-d1d5fdbc48a3", "task_id": "RM-306", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "subsystem", "estimate_hours": [2.0, 8.0], "thread": "01a11fd2-f415-7272-aa35-a8ab485256f8", "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T21:13:32.022990+00:00", "phase": "planning"}
+{"at": "2026-10-10T21:14:03.466433+00:00", "phase": "verification", "note": "Validate the generated restart case after a durable receipt but failed activation checkpoint."}
+{"at": "2026-10-10T21:15:44.221165+00:00", "phase": "review", "note": "Requesting the same independent reviewer to assess both generated recovery boundaries and refreshed raw outputs."}
+{"at": "2026-10-10T21:16:12.207020+00:00", "phase": "blocked", "note": "Waiting on the already-authorized independent review of the two crash/recovery probes; RM-109 harness preparation is independent."}
+{"at": "2026-10-10T21:20:51.367697+00:00", "phase": "review", "note": "Same independent reviewer approved the expanded two-case source and both refreshed adapter logs; caveat preserved in rereview report."}
+{"at": "2026-10-10T21:20:51.883732+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm306-process-crash-recovery/README.md"}

@@ -1,0 +1,4 @@
+{"schema_version": 1, "run_id": "RM-109-c02627948970", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T22:49:08.997203+00:00", "phase": "planning"}
+{"at": "2026-10-10T22:49:13.258999+00:00", "phase": "planning", "note": "Small, directly mapped checkpoint addition; reuse existing UserWithTodos route and JWT fixture behavior"}
+{"at": "2026-10-10T22:53:36.097778+00:00", "phase": "review", "note": "Fresh AUTH-007 two-backend evidence packet is ready for independent review"}
+{"at": "2026-10-10T22:57:48.738172+00:00", "phase": "finished", "note": null, "unobserved_gap": true, "outcome": "partial", "evidence": "Laptop interruption during AUTH-007 independent review; reviewer found fail-open unexpected fetch path. Last interval unknown; correction and rereview continue."}

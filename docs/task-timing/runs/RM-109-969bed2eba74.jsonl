@@ -1,0 +1,5 @@
+{"schema_version": 1, "run_id": "RM-109-969bed2eba74", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": "01a11fd2-f415-7272-aa35-a8ab485256f8", "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T21:35:17.222485+00:00", "phase": "planning"}
+{"at": "2026-10-10T21:36:12.310231+00:00", "phase": "implementation", "note": "Extend the source-bound HTTP observer with AUTH-006 and strict persisted-state/session timeline validation; correct the stale rollback coverage comment."}
+{"at": "2026-10-10T21:36:26.861748+00:00", "phase": "verification", "note": "The focused 30-test integrity suite and diff check pass; now run the fresh source-bound SQLite/PostgreSQL HTTP checkpoint."}
+{"at": "2026-10-10T21:38:38.722810+00:00", "phase": "review", "note": "Fresh 10-ID packet revalidates after transient cleanup; awaiting the authorized independent review."}
+{"at": "2026-10-10T21:40:19.445719+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm109-http-auth006-20261010-final/README.md"}

@@ -67,6 +67,7 @@
     "tests/runtime/field-contracts.test.ts",
     "tests/runtime/first-party-authentication.test.ts",
     "tests/runtime/generated-identity.test.ts",
+    "tests/runtime/golden-checkpoint-fetch.test.ts",
     "tests/runtime/golden-auth-http-jwt.test.ts",
     "tests/runtime/golden-migration-authentication.test.ts",
     "tests/runtime/golden-protected-route.test.ts",

@@ -175,6 +175,176 @@ are retained. Next integrate reviewed branches through protected main, then
 select the next bounded scheduler-recovery/application-adapter checkpoint;
 retain the unanswered execution/lease decision before golden activation.
 
+**Resumed crash-recovery checkpoint, 2026-10-10:** the owner resumed the
+authorised loop after a laptop interruption, superseding the older stop request
+below. Two generated worker recovery boundaries pass against SQLite and
+PostgreSQL. First, the provider observes the committed possible-dispatch marker
+before the worker is killed; a fresh worker makes no second request and persists
+`outcome_unknown` with one invocation. Second, a test-only activation-finish
+trigger faults after accepted receipt and source sent-marker commit; a fresh
+worker finishes the staged page without resending. Child waits are bounded,
+timeout cleanup hard-kills workers, and final cleanup kills them before
+releasing the held provider response. Both full component suites pass:
+SQLite67/1 skip/0 fail (746 assertions), PostgreSQL66/1 skip/0 fail (667
+assertions). The [evidence packet](../../tests/validation/evidence/rm306-process-crash-recovery/README.md)
+retains raw outputs and hashes; its [expanded independent review](../../tests/validation/evidence/rm306-process-crash-recovery/independent-review-rereview.json)
+approves these two bounded cases. The reviewer notes the receipt-fault case
+checks for a nonzero child exit but does not assert the exact trigger message in
+stderr. The fixture directly advances stored lease values and does not test
+clock drift. This does not close RM-306, RM-307, the 18-trace runtime matrix, or
+Golden Todo acceptance. Timer
+[`RM-306-3387d69d7f1b`](../task-timing/runs/RM-306-3387d69d7f1b.jsonl) closes
+partial against this evidence with the original2–8h estimate and actual
+`gpt-6.1-sol/high` preserved; no completed-task marker is added. Continue with
+the remaining generated crash/reclaim checkpoints, then RM-307's full controlled
+18-trace matrix before dependent Golden Todo integration.
+
+**RM-109 supporting HTTP expansion, 2026-10-10:** the real migrated-application
+checkpoint now covers sixteen frozen IDs on SQLite and PostgreSQL. The prior
+twelve-ID baseline and the AUTH-008 and AUTH-002 additions are independently
+approved after 764 pin checks each. The new [READ-001
+packet](../../tests/validation/evidence/rm109-http-read001-20261010-rereview/README.md)
+proves an authenticated GET of a persisted active Alice-owned Todo on both
+backends. Each request resolves Alice, performs one Todo SELECT constrained by
+owner and active-row predicates, returns the exact six-field `TodoView`, omits
+`owner_id`, `deleted_at` and `reminder_sent_at`, and performs no writes. Its
+focused counterexamples reject a foreign fixture/principal, mismatched
+resource, or removed SQL owner/active-row predicate; adding a private response
+field fails the frozen projection expectation. The first independent review
+found that the SQL predicates were visible but were not required by the ledger
+derivation, and found a retained generated dependency symlink. The corrected
+packet removes the link and derives the pass only when both predicates are
+present; independent re-review approved it after 766 pin checks. The
+[CREATE-003
+packet](../../tests/validation/evidence/rm109-http-create003-20261010-rollback-rereview/README.md)
+uses a scoped fixed clock so the frozen due date is one second in the past on
+both backends. Both authenticated requests return 422 `due_date_in_past` with
+zero writes and a captured BEGIN→ROLLBACK outcome. Derivation requires that
+transaction sequence; mutations reject missing BEGIN, missing ROLLBACK,
+COMMIT, clock drift and a write. Independent review approved the slice after
+768 pin-reference checks. The clock override is test-process instrumentation,
+not a production clock API. The new [CREATE-001
+packet](../../tests/validation/evidence/rm109-http-create001-20261010-commit-order-rereview/README.md)
+executes owner-assigned create on both backends at a fixed clock: the response
+and persisted row agree on ID, title, status, due date, and timestamps; the
+stored row belongs to Alice, while the public response is exactly `TodoView`
+without owner data. Strict derivation now requires the Todo INSERT between
+BEGIN and COMMIT; tests reject both out-of-transaction placements. The first
+review identified that missing order assertion and the corrected packet was
+approved after 766 pin checks. CREATE-003 remains passing as the separate
+BEGIN→ROLLBACK case. The
+[AUTH-009
+packet](../../tests/validation/evidence/rm109-http-auth009-20261010-final/README.md)
+adds the positive service-key exchange: each backend reads back an active
+reporting service, sends a real issued key to `POST /auth/exchange`, verifies
+the returned service bearer HMAC and claims in memory, and redacts the output
+token before raw capture. The strict derivation requires credential-store,
+declared credential and live-service SELECT evidence; status 200; service
+principal `reporting`; one authentication attempt; zero writes; and
+nondecreasing request, token-issue, response and expiry timestamps. The packet
+passed independent review after 641 pin checks. PostgreSQL request-start and
+token-issue times share one millisecond; the token is verified in memory because
+its raw value is intentionally redacted. The [AUTH-008 packet](../../tests/validation/evidence/rm109-http-auth008-20261010-final2/README.md)
+adds a short-lived HMAC-signed Alice bearer for `GET /todos`; both backends
+return Alice after one Todo query, one authentication attempt, zero writes and
+zero principal/credential authority SELECTs. The raw bearer is not retained.
+The generated application has no configured cache adapter, so the packet does
+not claim to exercise an outage in a deployed cache service. PostgreSQL token
+issue and request-start times share one millisecond; validation proves
+nondecreasing order and both responses precede expiry. The original
+44-ID/two-backend report retains all entries: 34 passed, 0 failed and 54
+`not_run`; `release_equivalent` remains false. The [AUTH-002 packet](../../tests/validation/evidence/rm109-http-auth002-20261010-final/README.md)
+adds browser-session principal resolution and a provider-field response scan;
+the returned Todo list is empty and the GET does not exercise CSRF validation.
+
+The [AUTH-006 packet](../../tests/validation/evidence/rm109-http-auth006-20261010-final/README.md)
+adds persisted user-disablement evidence and a live unexpired-session timeline;
+the [AUTH-011 packet](../../tests/validation/evidence/rm109-http-auth011-20261010-final/README.md)
+adds a real generated key and persisted disabled-service exchange. Both have
+independent approval after 406 pin checks each. Their fixture setup now sequences
+disablement 10 ms after credential issuance and waits for the persisted timestamp
+before sending the request. The earlier [PATCH-003 packet](../../tests/validation/evidence/rm109-http-patch003-20261010-rereview/README.md)
+was independently approved after 162 pin checks, and its initial PostgreSQL
+rollback omission and stale observer comment remain documented in the preserved
+[first review](../../tests/validation/evidence/rm109-http-patch003-20261010/independent-review.json).
+The focused Golden Python suite passes 37 tests. This is preparation only:
+RM-108, RM-402, RM-403, the other RM-109 prerequisites and the full frozen
+golden gate remain open.
+Timers [`RM-109-256ffe22d307`](../task-timing/runs/RM-109-256ffe22d307.jsonl),
+[`RM-109-969bed2eba74`](../task-timing/runs/RM-109-969bed2eba74.jsonl),
+[`RM-109-a57651521b0f`](../task-timing/runs/RM-109-a57651521b0f.jsonl) and
+[`RM-109-aea85de262d4`](../task-timing/runs/RM-109-aea85de262d4.jsonl) retain
+the original 1–4h forecast and actual `gpt-6.1-sol/high`; the AUTH-009 run
+records the approved AUTH-009 slice, [`RM-109-ad08f21a0fb5`](../task-timing/runs/RM-109-ad08f21a0fb5.jsonl)
+records AUTH-008 and [`RM-109-bf674dd5c26c`](../task-timing/runs/RM-109-bf674dd5c26c.jsonl)
+records AUTH-002 at the same batch pin, and
+[`RM-109-deaab28a4b8e`](../task-timing/runs/RM-109-deaab28a4b8e.jsonl)
+records READ-001 at the same batch pin. The corrected CREATE-003 review and
+recovery are recorded in [`RM-109-d5d5d9c64d48`](../task-timing/runs/RM-109-d5d5d9c64d48.jsonl)
+and [`RM-109-d31ae5dadcd3`](../task-timing/runs/RM-109-d31ae5dadcd3.jsonl).
+The CREATE-001 review correction and approval are recorded in
+[`RM-109-1e8cc7e5df62`](../task-timing/runs/RM-109-1e8cc7e5df62.jsonl).
+No task completion marker is added.
+
+**USER-001 short plan, 2026-10-11:** keep the frozen four-step contract unchanged
+and add an explicit migrated HTTP checkpoint scenario. Issue Alice's browser
+session at the fixed 11:59 clock, persist an active Alice-owned Todo, then run
+self-disable at 12:00, repeat disable at 12:00:01, call the generated
+authentication-host refresh at 12:00:02, and GET `/todos` exactly at session
+expiry (12:04). Retain only redacted fixture, response, compiler-owned refresh
+failure, SQL and persistence observations. Derivation must require Alice's
+principal, the ID-and-active scoped user lookup/update with a committed
+transaction, exact disable/expiry timestamps, unchanged Todo and user readback,
+and zero writes for every later step. Add mutation coverage for ordering,
+timeline, scope, rows, responses and a wrongly accepted refresh/expiry request.
+Run the focused suite, both live database backends, and the supported quick
+profile; then rebuild and validate a source-bound packet and use the already
+authorized independent reviewer. This is a direct M slice (0.5–2h); retain the
+gpt-6.1-sol/high RM-109 batch pin. Continue to the next eligible HTTP case if
+this checkpoint passes; full frozen-source, RM-108/RM-402/RM-403 and full-Golden
+gates remain separate.
+
+**RM-109 supporting HTTP expansion, 2026-10-11:** the source-bound migrated
+checkpoint now covers twenty-four of the 44 frozen case IDs on SQLite and PostgreSQL:
+48 passed, 0 failed, 40 `not_run`; report status remains `not_run` and
+`release_equivalent` remains false. The [AUTH-007 closed-fetch packet](../../tests/validation/evidence/rm109-http-auth007-20261011-closed-fetch-redirect/README.md)
+is independently approved after 782 pin checks and forces loopback redirects to
+error; its regression uses a native-fetch test double rather than a live redirect
+server. The [AUTH-003/AUTH-004 packet](../../tests/validation/evidence/rm109-http-auth003-004-20261011-jwt-predicate-final/README.md)
+is independently approved after 782 pin checks. It resolves Alice from a signed
+OIDC JWT for `GET /todos`, and rejects competing Alice-session/Bob-JWT
+credentials before provider validation or database access. Two preserved review
+corrections tightened the AUTH-003 derivation: projection-only columns and a
+top-level `OR` bypass now fail, while the generated query's parenthesized
+optional filters remain valid. The final packet was captured after the quick
+profile rebuilt the compiler and passes retained reconstruction with no database
+or dependency symlink retained. The 27-test focused checkpoint suite and the latest included quick-profile
+checks pass; full frozen-source execution and the release gates remain open. The
+[Corrected AUTH-010 packet](../../tests/validation/evidence/rm109-http-auth010-20261011-or-mutation-final/README.md)
+adds bounded Alice bearer validation, one fresh `authentication_subject`
+principal lookup distinct from the route row read, a scoped disable UPDATE, and
+persisted disabled-state readback on both backends; it is independently approved
+after 778 pin checks. Its first review found that the OR mutation omitted the
+identity predicate; the corrected mutation retains it and exercises the
+top-level OR guard. Earlier derivation attempts and the correction review remain
+in their evidence packets. The [approved PATCH-004 packet](../../tests/validation/evidence/rm109-http-patch004-20261011-owner-scope-or-final/README.md) adds Alice's non-owner patch rejection, owner-scoped SQL, zero writes, and unchanged Bob-row readback on both backends; it passed 778 pin checks. Its first packet's OR mutation omitted the soft-delete predicate, so the approved mutation preserves `id`, `owner_id`, and `deleted_at IS NULL` before adding top-level `OR`. The [approved DELETE-001 packet](../../tests/validation/evidence/rm109-http-delete001-20261011-soft-delete-final/README.md) captures Alice's fixed-clock 204 soft delete, persisted row timestamp, and subsequent authenticated 404 on both backends; it passed 778 pin checks. The [approved DELETE-002 packet](../../tests/validation/evidence/rm109-http-delete002-20261011-repeat-conceal-loopback-rerun/README.md) proves that repeating DELETE for Alice's already deleted row returns 404 `todo_not_found`, performs no DML, and leaves the row unchanged on SQLite and PostgreSQL; it passed 778 pin checks. The supporting ledger now has 50 passed, 0 failed and 38 `not_run` entries across 25 of 44 IDs. The [USER-001 packet](../../tests/validation/evidence/rm109-http-user001-20261011-self-disable-final/README.md) proves self-disable, Todo retention, repeated-disable rejection, compiler-owned refresh rejection, and exact session expiry on both backends; it is independently approved after 778 pin checks. Next bounded case: LIST-001. Keep the original-source, RM-108/RM-402/RM-403 and full-Golden gates explicit.
+
+**RM-109 continuation after laptop restart, 2026-10-11:** LIST-001 is now
+captured on SQLite and PostgreSQL. Both traces return the expected Alice-owned
+tie-timestamp rows in descending `(created_at, id)` order, omit Bob's active
+row and Alice's soft-deleted row, retain a valid next cursor, and use one Todo
+query. Eleven targeted mutations cover the persisted fixture, scope, deletion,
+ordering, cursor and query predicates. The [26-ID checkpoint packet](../../tests/validation/evidence/rm109-http-list001-20261011-final-pinned/README.md)
+records 52 passed, 0 failed and 36 `not_run` backend entries; the suite passes
+29 tests. Its independent review is pending, so LIST-002 is the next eligible
+case after review. Timer [`RM-109-f732f70a574e`](../task-timing/runs/RM-109-f732f70a574e.jsonl)
+records this partial slice at the actual `gpt-6.1-sol/high` pin. RM-109 and all
+original-source, prerequisite and full-Golden gates remain open.
+The crash-interrupted review and resumed correction are recorded in
+[`RM-109-10a601f41b70`](../task-timing/runs/RM-109-10a601f41b70.jsonl) and
+[`RM-109-9594d186f515`](../task-timing/runs/RM-109-9594d186f515.jsonl), both
+partial and pinned to `gpt-6.1-sol/high`.
+
 ### Earlier checkpoints (historical)
 
 **Golden closure batch entry, 2026-10-04 (chat
@@ -661,7 +831,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-105 | Short; checked keyset-page lowering and both-adapter plan evidence | RM-101, RM-204, RM-102; accepted URL-encoded JSON cursor and supported-database pagination | planned | complete |
 | RM-107 | Short; bounded route implemented and both database adapters exercised | RM-101/RM-102 complete; owner resolved email output while preserving policy | planned | done |
 | RM-108 | Decision-dependent composition; scoped owner choices accepted | RM-105–107 and RM-304 complete; RM-307 unfinished. Owner accepted 3 scheduled invocations / 1 hour, narrow reminder-service authority and exact self-disable repair. Owner approved golden-only 60s execution / renewable 40s lease on 2026-10-06; checked worker and recovery gates remain. Fresh full gate passes 61/61; self-disable correction independently approved. Checked bindings/admission/completion remain | planned | in_progress |
-| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol and real eight-ID migrated HTTP checkpoint independently reviewed; 16 supporting entries pass and 72 remain not_run. Original frozen-source execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
+| RM-109 | Short; executable golden gate must be built | Source-bound 44-ID/two-backend protocol and 26-ID migrated HTTP checkpoint; 52/88 backend entries pass, 0 fail and 36 remain not_run. USER-001 is independently approved after 778 pin checks; LIST-001 passes both backends and is pending independent review. Next is LIST-002 after review. Original frozen-source execution and RM-103–108/RM-402/RM-403 acceptance gates remain | planned | in_progress |
 | RM-110 | Short; integration evidence, not another feature | RM-109, RM-504, RM-505, RM-603 | planned | queued |
 | RM-204 | Decision; public query/header decoding contract | Compiler/runtime/OpenAPI/formatter agreement and independent runtime/security review recorded in history | planned | complete |
 | RM-205 | Decision; separate lifecycle from authorisation | [Frozen entity-owned contract and 27 cases](../lifecycle-plan.md); independent correction review approved R1–R3 | planned | complete |
@@ -672,7 +842,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-303 | Decision-dependent provider adapter | [Generated HTTP adapter, 19 tests/90 assertions, 59/59 supported checks and approved independent review](../implementation-history.md#2026-10-03--rm-303-checked-provider-adapter) | planned | complete |
 | RM-304 | Short after service contract | [History](../implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes); independent correction review and fresh supported gate pass; malformed host-map seams excluded | planned | complete |
 | RM-305 | Decision; independently reviewed ASYNC-001 semantic freeze complete | [History](../implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract); 18 traces remain contract-only, with implementation in RM-306/RM-307 | planned | complete |
-| RM-306 | Decision-dependent outbox/compiler subsystem | Static/read/hook/current-issuer/paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage corrections independently approved. Final65/65 supported gate: normal SQLite51/442 and PG50/448; renamed representation52/458 and51/464. Owner resumed the parallel plan, actual6.1-sol/high; closed native scheduler assembly now passes6 focused tests per adapter with independent correction review. Native activation renewal and strict duration correction independently reviewed; 18 traces and public execution remain open. Golden per-delivery60s/40s profile approved; singleton activation profile separate. [Resume point and limits](#rm-301307108--services-durable-jobs-and-reminders) | planned | in_progress |
+| RM-306 | Decision-dependent outbox/compiler subsystem | Static/read/hook/current-issuer/paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage corrections independently approved. Final65/65 supported gate: normal SQLite51/442 and PG50/448; renamed representation52/458 and51/464. Owner resumed the parallel plan, actual6.1-sol/high; closed native scheduler assembly and activation renewal have scoped independent review. Generated crash-after-possible-dispatch recovery now passes SQLite66/1 skip/733 assertions and PostgreSQL65/1 skip/654 assertions, with bounded child cleanup and independent approval [evidence](../../tests/validation/evidence/rm306-process-crash-recovery/README.md). This is one trace only; remaining worker recovery, all18 traces and public activation remain open. Golden per-delivery60s/40s profile is approved; singleton activation profile is separate. [Resume point and limits](#rm-301307108--services-durable-jobs-and-reminders) | planned | in_progress |
 | RM-307 | Decision-dependent worker subsystem | RM-306, RM-304 | planned | queued |
 | RM-401 | Decision; bounded retries enabled by default | Contract frozen after phase probe and independent correction re-review; [completion evidence](../implementation-history.md#2026-10-02--rm-401-bounded-retry-contract) | planned | complete |
 | RM-402 | Short after retry/failure decisions | RM-401, reviewed RM-207 boundary-contract milestone; scoped corrections/native LOCKED/jitter/revision review approved; fresh supported gate61/61; [current TX checkpoint and limits](../transaction-retry-plan.md#rm-402-reviewed-adapter-checkpoint--2026-10-04) | planned | in_progress |
@@ -3424,6 +3594,16 @@ instrumentation limits. Compare SQLite/PostgreSQL observations rather than
 assuming shared generated code proves parity. Missing tools are a blocked gate,
 not a skip/pass. Run the full verifier, not `--profile quick`. Luna High fixture
 work; Luna Extra High for adapter differences; Sol High security review as needed.
+
+**2026-10-10 N recovery checkpoint:** the [generated change-clock crash replay](../../tests/validation/evidence/rm504-next-slice-audit/generated-change-clock-crash-replay/README.md)
+passes 17 SQLite and 17 PostgreSQL cases on the clean recovered M commit. The
+base fixture hash matches its saved pre-crash pin; the original uncommitted N
+compiler pins were lost, so the replay is explicitly rebound to that recovered
+commit. Independent review approved this bounded replay; its report retains the
+PostgreSQL identity-query and single-connection temp-shadow qualifications and
+marks the first wrapper-exit cause unverified. This is supporting evidence only:
+RM-504, its RM-402 dependency and the full golden gate remain open. Recovery
+timing `RM-504-850585448cfd` closes partial with the crash interval unobserved.
 
 **RM-505 — L.** Derive named hostile cases from the accepted lifecycle, auth,
 service/job and transaction obligations after its prerequisites. Cover revocation

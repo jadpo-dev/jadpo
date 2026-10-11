@@ -5,9 +5,19 @@ import { SQL as NativeSQL } from "bun";
 export type StatementObservation = { sql: string; operation: string };
 let active: StatementObservation[] | undefined;
 let authenticationAttempts = 0;
+let authenticatedPrincipal: { kind: "user" | "service"; subject: string; identityId: string } | undefined;
 export function recordAuthenticationAttempt() { if (active) authenticationAttempts++; }
 export function authenticationAttemptCount() { return authenticationAttempts; }
-export function beginSqlObservation() { active = []; authenticationAttempts = 0; return active; }
+export function recordAuthenticatedPrincipal(principal: any) {
+  if (!active || !principal || typeof principal.subject !== "string" || typeof principal.values !== "object") return;
+  if (principal.kind === "user" && typeof principal.values.user_id === "string") {
+    authenticatedPrincipal = { kind: "user", subject: principal.subject, identityId: principal.values.user_id };
+  } else if (principal.kind === "service" && typeof principal.values.service_id === "string") {
+    authenticatedPrincipal = { kind: "service", subject: principal.subject, identityId: principal.values.service_id };
+  }
+}
+export function authenticatedPrincipalObservation() { return authenticatedPrincipal ?? null; }
+export function beginSqlObservation() { active = []; authenticationAttempts = 0; authenticatedPrincipal = undefined; return active; }
 export function endSqlObservation() { active = undefined; }
 export function recordStatement(sql: string) {
   if (!active) return;
@@ -31,17 +41,20 @@ function observeConnection(connection: any): any {
       if (property === "begin") return async (...arguments_: any[]) => {
         const callback = arguments_.pop();
         if (typeof callback !== "function") throw new Error("Unsupported transaction callback");
-        // A callback is entered after BEGIN, and native resolution acknowledges
-        // COMMIT. Failed transaction control is intentionally unsupported.
+        // A callback is entered after BEGIN. Bun.SQL rolls back when the
+        // callback rejects, so retain that transaction outcome; successful
+        // native resolution acknowledges COMMIT. Failed transaction control is
+        // intentionally unsupported.
         const result = await target.begin(...arguments_, async (transaction: any) => {
           recordStatement("BEGIN");
-          return callback(observeConnection(transaction));
+          try { return await callback(observeConnection(transaction)); }
+          catch (error) { recordStatement("ROLLBACK"); throw error; }
         });
         recordStatement("COMMIT");
         return result;
       };
       // Refuse unobserved protocol/API expansion. No selected case exercises
-      // reserved/file/distributed SQL or transaction rollback/retry semantics.
+      // reserved/file/distributed SQL or transaction retry semantics.
       if (["transaction", "reserve", "file", "beginDistributed"].includes(String(property))) {
         return () => { throw new Error("Unsupported checkpoint SQL dispatch"); };
       }

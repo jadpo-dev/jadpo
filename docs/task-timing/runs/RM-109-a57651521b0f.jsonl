@@ -1,0 +1,7 @@
+{"schema_version": 1, "run_id": "RM-109-a57651521b0f", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": "01a11fd2-f415-7272-aa35-a8ab485256f8", "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T21:40:36.704634+00:00", "phase": "planning"}
+{"at": "2026-10-10T21:41:08.839280+00:00", "phase": "implementation", "note": "Add AUTH-011 with a real generated service key, persisted service disablement and strict credential timeline validation."}
+{"at": "2026-10-10T21:41:18.411128+00:00", "phase": "verification", "note": "The 31 focused protocol tests pass; run the fresh source-bound SQLite/PostgreSQL checkpoint."}
+{"at": "2026-10-10T21:42:47.922227+00:00", "phase": "review", "note": "The 11-ID source-bound packet validates after transient cleanup; awaiting the authorized independent review."}
+{"at": "2026-10-10T21:42:52.017315+00:00", "phase": "blocked", "note": "Waiting for the authorized independent review of the source-pinned AUTH-011 packet."}
+{"at": "2026-10-10T21:44:20.909286+00:00", "phase": "review", "note": "Authorized independent reviewer approved the final AUTH-011 packet with all pins matching and no blocking findings."}
+{"at": "2026-10-10T21:44:21.827740+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm109-http-auth011-20261010-final/README.md"}

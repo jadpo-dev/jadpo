@@ -24,7 +24,10 @@ class CheckpointIntegrityTests(unittest.TestCase):
         # still rejects passing observations when a compiler binding is absent.
         for name in (harness.ACCEPTANCE, harness.OBLIGATIONS, 'tools/golden_cases.py',
                      'tools/golden_checkpoint.py', 'tools/golden_http_checkpoint.ts',
-                     'tools/golden_sql_observer.ts'):
+                     'tools/golden_checkpoint_fetch.ts', 'tools/golden_sql_observer.ts',
+                     'tests/runtime/golden-auth-http-jwt.test.ts',
+                     'tests/runtime/golden-checkpoint-fetch.test.ts',
+                     'tests/validation/test_golden_checkpoint.py'):
             destination = self.root/name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT/name, destination)
@@ -35,16 +38,291 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def raw(self, case_id):
         case = self.cases[case_id]
+        if case_id == 'USER-001':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            todo_id = '00000000-0000-4000-8000-000000000021'
+            issued = '2026-01-15T11:59:00.000Z'
+            disabled = '2026-01-15T12:00:00.000Z'
+            expires = '2026-01-15T12:04:00.000Z'
+            todo = {'id': todo_id, 'ownerId': user_id, 'title': 'retained user todo', 'status': 'open',
+                    'dueAt': None, 'createdAt': issued, 'updatedAt': issued, 'deletedAt': None}
+            fixture = {'user': {'id': user_id, 'subject': 'alice', 'status': 'active', 'disabledAt': None},
+                       'todo': deepcopy(todo),
+                       'session': {'issuedAt': 1768478340000, 'expiresAt': 1768478640000,
+                                   'available': True, 'csrfAvailable': True}}
+            primary = {'method': 'DELETE', 'path': f'/users/{user_id}', 'auth': 'alice-session',
+                       'requestJson': None, 'requestStartedAt': 1768478400000, 'responseCompletedAt': 1768478400000,
+                       'status': 204, 'body': None, 'authenticationAttempts': 1,
+                       'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                       'statements': [
+                           {'sql': 'SELECT "id" FROM "__jadpo_auth_sessions" WHERE "id" = ?', 'operation': 'SELECT'},
+                           {'sql': 'SELECT "id" FROM "user" WHERE "authentication_subject" = ? AND "status" = \'<literal>\'', 'operation': 'SELECT'},
+                           {'sql': 'BEGIN', 'operation': 'BEGIN'},
+                           {'sql': 'SELECT "id" FROM "user" WHERE "id" = ? AND ("status" = \'<literal>\') LIMIT 2', 'operation': 'SELECT'},
+                           {'sql': 'UPDATE "user" SET "status" = ?, "disabled_at" = ? WHERE "id" = ? AND "status" = ?', 'operation': 'UPDATE'},
+                           {'sql': 'COMMIT', 'operation': 'COMMIT'}]}
+            after = {'stage': 'after_disable', 'user': {'id': user_id, 'subject': 'alice', 'status': 'disabled',
+                      'disabledAt': disabled}, 'todo': deepcopy(todo)}
+            repeated = {'method': 'DELETE', 'path': f'/users/{user_id}', 'auth': 'alice-session',
+                        'requestJson': None, 'requestStartedAt': 1768478401000, 'responseCompletedAt': 1768478401000,
+                        'status': 403, 'body': {'error': {'code': 'user_disabled', 'request_id': 'req_repeat'}},
+                        'authenticationAttempts': 1,
+                        'statements': [
+                            {'sql': 'SELECT "id" FROM "__jadpo_auth_sessions" WHERE "id" = ?', 'operation': 'SELECT'},
+                            {'sql': 'SELECT "id" FROM "user" WHERE "authentication_subject" = ? AND "status" = \'<literal>\'', 'operation': 'SELECT'}]}
+            refresh = {'at': 1768478402000, 'outcome': 'rejected', 'declaredFailure': 'UserDisabled',
+                       'internalCode': 'principal_inactive', 'credentialReturned': False,
+                       'publicFailureCode': 'user_disabled',
+                       'statements': [
+                           {'sql': 'SELECT "id" FROM "__jadpo_auth_sessions" WHERE "id" = ?', 'operation': 'SELECT'},
+                           {'sql': 'SELECT "id", "status" FROM "user" WHERE "authentication_subject" = ? AND "status" = \'<literal>\'', 'operation': 'SELECT'}]}
+            expired = {'method': 'GET', 'path': '/todos', 'auth': 'alice-session', 'requestJson': None,
+                       'requestStartedAt': 1768478640000, 'responseCompletedAt': 1768478640000,
+                       'status': 401, 'body': {'error': {'code': 'invalid_credentials', 'request_id': 'req_expired'}},
+                       'authenticationAttempts': 1, 'statements': []}
+            final = {**after, 'stage': 'final'}
+            return [{'fixture': fixture}, primary, {'persistence': after}, repeated,
+                    {'refresh': refresh}, expired, {'persistence': final}]
+        if case_id == 'LIST-001':
+            alice = '00000000-0000-4000-8000-000000000001'
+            bob = '00000000-0000-4000-8000-000000000002'
+            tie = '2026-01-15T11:00:00.000Z'
+            older = '2026-01-15T10:00:00.000Z'
+            fixture = {'rows': [
+                {'id': '00000000-0000-4000-8000-000000000031', 'ownerId': alice, 'title': 'alice tie lower id', 'status': 'open', 'createdAt': tie, 'deletedAt': None},
+                {'id': '00000000-0000-4000-8000-000000000032', 'ownerId': alice, 'title': 'alice tie higher id', 'status': 'open', 'createdAt': tie, 'deletedAt': None},
+                {'id': '00000000-0000-4000-8000-000000000033', 'ownerId': alice, 'title': 'alice older active', 'status': 'open', 'createdAt': older, 'deletedAt': None},
+                {'id': '00000000-0000-4000-8000-000000000034', 'ownerId': bob, 'title': 'bob newer active', 'status': 'open', 'createdAt': tie, 'deletedAt': None},
+                {'id': '00000000-0000-4000-8000-000000000099', 'ownerId': alice, 'title': 'alice newer deleted', 'status': 'open', 'createdAt': tie, 'deletedAt': tie},
+            ]}
+            reply = {'method': 'GET', 'path': '/todos?page_size=2', 'auth': 'alice-session', 'requestJson': None,
+                     'requestStartedAt': 1768478400000, 'responseCompletedAt': 1768478400000, 'status': 200,
+                     'body': {'items': [
+                         {'id': '00000000-0000-4000-8000-000000000032', 'title': 'alice tie higher id', 'status': 'open', 'due_at': None, 'created_at': tie, 'updated_at': tie},
+                         {'id': '00000000-0000-4000-8000-000000000031', 'title': 'alice tie lower id', 'status': 'open', 'due_at': None, 'created_at': tie, 'updated_at': tie}],
+                         'next': {'created_at': tie, 'id': '00000000-0000-4000-8000-000000000031'}},
+                     'authenticationAttempts': 1, 'principal': {'kind': 'user', 'subject': 'alice', 'identityId': alice},
+                     'statements': [
+                         {'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "created_at", "updated_at" FROM "todo" WHERE ("owner_id" = ? AND "deleted_at" IS NULL) ORDER BY "created_at" DESC, "id" DESC LIMIT ?', 'operation': 'SELECT'}]}
+            return [{'fixture': fixture}, reply]
         replies = []
-        for request in case.get('requests', [case.get('request')]):
-            replies.append({'method': request['method'], 'path': request['path'].replace('/todos/t2', '/todos/00000000-0000-4000-8000-000000000022'),
+        requests = case.get('requests', [case.get('request')])
+        if case_id == 'DELETE-001':
+            request = case['request']
+            requests = [request, {'method': 'GET', 'path': request['path'], 'auth': request.get('auth')}]
+        for request in requests:
+            path = request['path'].replace('/todos/t1', '/todos/00000000-0000-4000-8000-000000000021').replace('/todos/t2', '/todos/00000000-0000-4000-8000-000000000022')
+            if case_id == 'AUTH-007':
+                path = path.replace('/users/alice', '/users/00000000-0000-4000-8000-000000000001')
+            if case_id == 'AUTH-010':
+                path = path.replace('/users/alice', '/users/00000000-0000-4000-8000-000000000001')
+            replies.append({'method': request['method'], 'path': path,
                             'auth': request.get('auth'), 'requestJson': request.get('json'),
-                            'status': 404 if case_id == 'READ-002' else 401,
-                            'body': {'error': {'code': 'todo_not_found' if case_id == 'READ-002' else 'authentication_required', 'request_id': f'req_{len(replies)}'}},
+                            'status': 404 if case_id in ('READ-002', 'PATCH-004', 'DELETE-002') else 403 if case_id in ('AUTH-006', 'AUTH-011') else 401,
+                            'body': {'error': {'code': 'todo_not_found' if case_id in ('READ-002', 'PATCH-004', 'DELETE-002') else 'user_disabled' if case_id == 'AUTH-006' else 'service_disabled' if case_id == 'AUTH-011' else 'authentication_required', 'request_id': f'req_{len(replies)}'}},
                             'statements': [], 'authenticationAttempts': 1})
+        if case_id == 'AUTH-006':
+            replies[0]['requestStartedAt'] = 3000
+            replies.insert(0, {'fixture': {'subject': 'alice', 'status': 'disabled', 'disabledAt': 2000,
+                                           'issuedAt': 1000, 'credentialExpiresAt': 4000}})
+        if case_id == 'AUTH-008':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            claims = {'signatureValid': True, 'version': 1, 'audience': 'todo-api', 'strategy': 'api_bearer',
+                      'credentialId': 'session-1', 'subject': 'alice', 'userId': user_id,
+                      'issuedAt': 1000, 'expiresAt': 301000}
+            replies[0].update({'requestStartedAt': 3000, 'responseCompletedAt': 3500, 'status': 200,
+                               'body': {'todos': []}, 'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                               'statements': [{'sql': 'SELECT id FROM "todo" WHERE "owner_id" = ?', 'operation': 'SELECT'}]})
+            replies.insert(0, {'fixture': {'subject': 'alice', 'userId': user_id, 'status': 'active',
+                                           'credentialId': 'session-1', 'credentialIssuedAt': 1000,
+                                           'credentialExpiresAt': 301000, 'tokenClaims': claims,
+                                           'cacheAdapter': 'unavailable; no cache adapter is configured'}})
+        if case_id == 'AUTH-002':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            replies[0].update({'requestStartedAt': 3000, 'responseCompletedAt': 3500, 'status': 200,
+                               'body': {'todos': []},
+                               'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                               'statements': [{'sql': 'SELECT id FROM "__jadpo_auth_sessions" WHERE "id" = ?', 'operation': 'SELECT'},
+                                              {'sql': 'SELECT id FROM "user" WHERE "id" = ?', 'operation': 'SELECT'}]})
+            replies.insert(0, {'fixture': {'subject': 'alice', 'userId': user_id, 'status': 'active',
+                                           'sessionIssuedAt': 1000, 'sessionExpiresAt': 301000,
+                                           'sessionAvailable': True, 'csrfAvailable': True}})
+        if case_id == 'AUTH-003':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            replies[0].update({'requestStartedAt': 3000, 'responseCompletedAt': 3500, 'status': 200,
+                               'body': {'items': [], 'next': None},
+                               'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                               'statements': [
+                                   {'sql': 'SELECT id, authentication_subject, status FROM "user" WHERE authentication_subject = ? LIMIT 2', 'operation': 'SELECT'},
+                                   {'sql': 'SELECT id, title, status FROM "todo" WHERE owner_id = ? AND deleted_at IS NULL ORDER BY created_at ASC, id ASC LIMIT ?', 'operation': 'SELECT'}]})
+            replies.insert(0, {'fixture': {'subject': 'alice', 'userId': user_id, 'status': 'active',
+                                           'tokenClaims': {'signatureValid': True, 'issuer': 'https://issuer.test',
+                                               'audience': 'todo', 'subject': 'alice',
+                                               'email': 'attacker@example.test', 'issuedAt': 1000, 'expiresAt': 121000},
+                                           'providerCalls': ['https://issuer.test/.well-known/openid-configuration',
+                                                             'https://issuer.test/jwks'],
+                                           'rejectedProviderCalls': []}})
+        if case_id == 'AUTH-004':
+            replies[0].update({'requestStartedAt': 3000, 'responseCompletedAt': 3000,
+                               'status': 401, 'body': {'error': {'code': 'ambiguous_credentials', 'request_id': 'req_0'}},
+                               'authenticationAttempts': 1, 'statements': []})
+            replies.insert(0, {'fixture': {
+                'aliceSession': {'subject': 'alice', 'userId': '00000000-0000-4000-8000-000000000001',
+                                 'status': 'active', 'issuedAt': 1000, 'expiresAt': 301000,
+                                 'sessionAvailable': True},
+                'bobJwt': {'subject': 'bob', 'userId': '00000000-0000-4000-8000-000000000002',
+                           'status': 'active', 'tokenClaims': {'signatureValid': True,
+                               'issuer': 'https://issuer.test', 'audience': 'todo', 'subject': 'bob',
+                               'issuedAt': 1000, 'expiresAt': 121000}},
+                'providerCalls': [], 'rejectedProviderCalls': []}})
+        if case_id == 'AUTH-007':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            replies[0].update({'requestStartedAt': 3000, 'responseCompletedAt': 3500, 'status': 200,
+                               'body': {'user_id': user_id, 'todos': []},
+                               'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                               'authenticationAttempts': 1})
+            replies.insert(0, {'fixture': {'subject': 'alice', 'userId': user_id, 'status': 'active',
+                                           'storedEmail': 'alice@example.test',
+                                           'tokenClaims': {'signatureValid': True, 'issuer': 'https://issuer.test',
+                                               'audience': 'todo', 'subject': 'alice',
+                                               'email': 'attacker@example.test', 'issuedAt': 1000, 'expiresAt': 121000},
+                                           'providerCalls': ['https://issuer.test/.well-known/openid-configuration',
+                                                             'https://issuer.test/jwks'],
+                                           'rejectedProviderCalls': []}})
+        if case_id == 'AUTH-011':
+            replies[0]['requestStartedAt'] = 3000
+            replies.insert(0, {'fixture': {'subject': 'reporting', 'status': 'disabled', 'disabledAt': 2000,
+                                           'credentialIssuedAt': 1000, 'credentialExpiresAt': 4000}})
+        if case_id == 'AUTH-009':
+            replies[0].update({'requestStartedAt': 3000, 'responseCompletedAt': 3500, 'status': 200,
+                               'body': {'access_token': '<redacted>', 'token_type': 'Bearer',
+                                        'expires_at': '1970-01-01T00:00:05.000Z'},
+                               'statements': [
+                                   {'sql': 'SELECT "data", "revoked" FROM "__jadpo_auth_service_credentials" WHERE "id" = ?', 'operation': 'SELECT'},
+                                   {'sql': 'SELECT * FROM "service_credential" WHERE "id" = ?', 'operation': 'SELECT'},
+                                   {'sql': 'SELECT "id", "name", "status" FROM "service" WHERE "name" = ?', 'operation': 'SELECT'}],
+                               'serviceExchange': {'signatureValid': True, 'version': 1,
+                                   'audience': 'todo-service-token', 'strategy': 'api_bearer',
+                                   'credentialId': 'credential-1', 'subject': 'reporting',
+                                   'serviceId': 'service-1', 'issuedAt': 3200, 'expiresAt': 5000,
+                                   'principalKind': 'service', 'authenticationStrength': 'api_key',
+                                   'secretInOutput': False, 'outputTokenRedacted': True}})
+            replies.insert(0, {'fixture': {'subject': 'reporting', 'serviceId': 'service-1',
+                                           'status': 'active', 'disabledAt': None,
+                                           'credentialId': 'credential-1', 'credentialIssuedAt': 1000,
+                                           'credentialExpiresAt': 6000}})
+        if case_id == 'AUTH-010':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            claims = {'signatureValid': True, 'version': 1, 'audience': 'todo-api', 'strategy': 'api_bearer',
+                      'credentialId': 'session-2', 'subject': 'alice', 'userId': user_id,
+                      'issuedAt': 1000, 'expiresAt': 301000}
+            replies[0].update({'requestStartedAt': 3000, 'responseCompletedAt': 3500, 'status': 204,
+                               'body': None, 'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                               'statements': [
+                                   {'sql': 'SELECT id, authentication_subject, status FROM "user" WHERE authentication_subject = ? AND status = \'active\'', 'operation': 'SELECT'},
+                                   {'sql': 'UPDATE "user" SET status = ?, disabled_at = ? WHERE id = ?', 'operation': 'UPDATE'}]})
+            replies.insert(0, {'fixture': {'subject': 'alice', 'userId': user_id, 'status': 'active',
+                                           'credentialId': 'session-2', 'credentialIssuedAt': 1000,
+                                           'credentialExpiresAt': 301000, 'tokenClaims': claims}})
+            replies.append({'persistence': {'userId': user_id, 'subject': 'alice', 'status': 'disabled', 'disabledAt': 3200}})
+        if case_id == 'PATCH-003':
+            replies.insert(0, {'fixture': {'id': '00000000-0000-4000-8000-000000000021',
+                                           'ownerId': '00000000-0000-4000-8000-000000000001',
+                                           'status': 'open', 'deletedAt': None}})
+            replies[1]['status'] = 422
+            replies[1]['body'] = {'error': {'code': 'empty_patch', 'request_id': 'req_0'}}
+            replies[1]['statements'] = [{'sql':'BEGIN','operation':'BEGIN'}, {'sql':'SELECT todo','operation':'SELECT'}, {'sql':'ROLLBACK','operation':'ROLLBACK'}]
+        if case_id == 'PATCH-004':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            todo_id = '00000000-0000-4000-8000-000000000022'
+            bob_id = '00000000-0000-4000-8000-000000000002'
+            row = {'id': todo_id, 'ownerId': bob_id, 'title': 'private bob todo',
+                   'status': 'open', 'deletedAt': None}
+            replies[0].update({'status': 404, 'body': {'error': {'code': 'todo_not_found', 'request_id': 'req_0'}},
+                               'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                               'statements': [{'sql': 'SELECT "id", "owner_id", "title", "status", "deleted_at" FROM "todo" WHERE "id" = ? AND ("deleted_at" IS NULL) AND (("todo"."owner_id" = ?)) LIMIT 2', 'operation': 'SELECT'}]})
+            replies.insert(0, {'fixture': deepcopy(row)})
+            replies.append({'persistence': deepcopy(row)})
+        if case_id == 'DELETE-001':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            todo_id = '00000000-0000-4000-8000-000000000021'
+            clock_now = '2026-01-15T12:00:00.000Z'
+            fixture = {'id': todo_id, 'ownerId': user_id, 'title': 'active fixture todo',
+                       'status': 'open', 'createdAt': clock_now, 'updatedAt': clock_now,
+                       'deletedAt': None, 'clockNow': clock_now}
+            persisted = {key: value for key, value in fixture.items() if key != 'clockNow'}
+            persisted['deletedAt'] = clock_now
+            principal = {'kind': 'user', 'subject': 'alice', 'identityId': user_id}
+            replies[0].update({'status': 204, 'body': None,
+                               'requestStartedAt': 1768478400000, 'responseCompletedAt': 1768478400000,
+                               'principal': deepcopy(principal),
+                               'statements': [{'sql': 'BEGIN IMMEDIATE', 'operation': 'BEGIN'},
+                                              {'sql': 'UPDATE "todo" SET "deleted_at" = ?, "updated_at" = ? WHERE "id" = ? AND "owner_id" = ? AND "deleted_at" IS NULL', 'operation': 'UPDATE'},
+                                              {'sql': 'COMMIT', 'operation': 'COMMIT'}]})
+            replies[1].update({'status': 404,
+                               'body': {'error': {'code': 'todo_not_found', 'request_id': 'req_hidden'}},
+                               'principal': deepcopy(principal),
+                               'statements': [{'sql': 'SELECT "id", "owner_id", "title", "status", "deleted_at" FROM "todo" WHERE "id" = ? AND "owner_id" = ? AND "deleted_at" IS NULL', 'operation': 'SELECT'}]})
+            replies.insert(0, {'fixture': fixture})
+            replies.insert(2, {'persistence': persisted})
+        if case_id == 'DELETE-002':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            todo_id = '00000000-0000-4000-8000-000000000021'
+            row = {'id': todo_id, 'ownerId': user_id, 'title': 'previously deleted todo',
+                   'status': 'open', 'createdAt': '2026-01-15T11:00:00.000Z',
+                   'updatedAt': '2026-01-15T11:59:00.000Z',
+                   'deletedAt': '2026-01-15T11:59:00.000Z'}
+            replies[0].update({'status': 404, 'body': {'error': {'code': 'todo_not_found', 'request_id': 'req_repeat'}},
+                               'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                               'statements': [{'sql': 'SELECT "id", "owner_id", "title", "status", "deleted_at" FROM "todo" WHERE "id" = ? AND ("deleted_at" IS NULL) AND (("todo"."owner_id" = ?)) LIMIT 2', 'operation': 'SELECT'}]})
+            replies.insert(0, {'fixture': deepcopy(row)})
+            replies.append({'persistence': deepcopy(row)})
+        if case_id == 'READ-001':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            todo_id = '00000000-0000-4000-8000-000000000021'
+            replies[0].update({'status': 200,
+                               'body': {'id': todo_id, 'title': 'active fixture todo', 'status': 'open',
+                                        'due_at': None, 'created_at': '2026-10-10T20:00:00.000Z',
+                                        'updated_at': '2026-10-10T20:00:00.000Z'},
+                               'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                               'statements': [{'sql': 'SELECT * FROM "todo" WHERE "id" = ? AND "owner_id" = ? AND "deleted_at" IS NULL', 'operation': 'SELECT'}]})
+            replies.insert(0, {'fixture': {'id': todo_id, 'ownerId': user_id, 'title': 'active fixture todo',
+                                           'status': 'open', 'deletedAt': None}})
         if case_id == 'CREATE-004':
             replies[0]['body'] = {'id': 'synthetic-id', 'due_at': None}
             replies.append({'persistence': {'id': 'synthetic-id', 'storedDueAt': None}})
+        if case_id == 'CREATE-001':
+            user_id = '00000000-0000-4000-8000-000000000001'
+            todo_id = '00000000-0000-4000-8000-000000000021'
+            request = case['request']['json']
+            replies[0].update({'status': 201,
+                               'body': {'id': todo_id, 'title': request['title'], 'status': 'open',
+                                        'due_at': request['due_at'],
+                                        'created_at': '2026-01-15T12:00:00.000Z',
+                                        'updated_at': '2026-01-15T12:00:00.000Z'},
+                               'requestStartedAt': 1768478400000,
+                               'responseCompletedAt': 1768478400000,
+                               'principal': {'kind': 'user', 'subject': 'alice', 'identityId': user_id},
+                               'statements': [{'sql': 'BEGIN IMMEDIATE', 'operation': 'BEGIN'},
+                                              {'sql': 'INSERT INTO "todo" ("id", "owner_id", "title") VALUES (?, ?, ?)', 'operation': 'INSERT'},
+                                              {'sql': 'COMMIT', 'operation': 'COMMIT'}]})
+            replies.insert(0, {'fixture': {'subject': 'alice', 'userId': user_id, 'status': 'active',
+                                           'clockNow': '2026-01-15T12:00:00.000Z',
+                                           'sessionAvailable': True, 'csrfAvailable': True}})
+            replies.append({'persistence': {'id': todo_id, 'ownerId': user_id,
+                                            'title': request['title'], 'status': 'open',
+                                            'dueAt': '2026-01-20T09:00:00Z',
+                                            'createdAt': '2026-01-15T12:00:00.000Z',
+                                            'updatedAt': '2026-01-15T12:00:00.000Z',
+                                            'deletedAt': None}})
+        if case_id == 'CREATE-003':
+            replies[0].update({'status': 422,
+                               'body': {'error': {'code': 'due_date_in_past', 'request_id': 'req_0'}},
+                               'requestStartedAt': 1768478400000,
+                               'responseCompletedAt': 1768478400000,
+                               'statements': [{'sql': 'BEGIN IMMEDIATE', 'operation': 'BEGIN'},
+                                              {'sql': 'ROLLBACK', 'operation': 'ROLLBACK'}]})
+            replies.insert(0, {'fixture': {'clockNow': '2026-01-15T12:00:00.000Z'}})
         return replies
 
     def outputs(self):
@@ -54,7 +332,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         report = harness.run_cases(self.root)
         checkpoint.apply_checkpoint(report, self.outputs(), self.root)
         self.assertEqual(len(report['results']), 88)
-        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 72)
+        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 36)
         self.assertEqual(report['status'], 'failed')
         self.assertFalse(report['release_equivalent'])
 
@@ -92,6 +370,28 @@ class CheckpointIntegrityTests(unittest.TestCase):
         self.assertFalse(checkpoint.observations(self.cases['READ-002'], raw)[0]['steps'][0]['samePublicShape'])
         with self.assertRaises(ValueError): checkpoint.observations(self.cases['READ-002'], raw[:1])
 
+    def test_owned_read_requires_persisted_alice_fixture_and_exact_public_projection(self):
+        raw = self.raw('READ-001')
+        observed = checkpoint.observations(self.cases['READ-001'], raw)
+        self.assertEqual(harness.assess(self.cases['READ-001'], observed), [])
+        self.assertEqual(observed[0]['steps'][0]['outputSchema'], 'TodoView')
+        self.assertEqual(observed[0]['steps'][0]['privateFieldsAbsent'],
+                         ['owner_id', 'deleted_at', 'reminder_sent_at'])
+        for mutation in ('foreign_owner', 'foreign_response', 'foreign_principal', 'missing_owner_predicate', 'missing_deleted_predicate', 'missing_principal'):
+            changed = deepcopy(raw)
+            if mutation == 'foreign_owner': changed[0]['fixture']['ownerId'] = 'foreign-owner'
+            elif mutation == 'foreign_response': changed[1]['body']['id'] = 'foreign-todo'
+            elif mutation == 'foreign_principal': changed[1]['principal']['subject'] = 'bob'
+            elif mutation == 'missing_owner_predicate': changed[1]['statements'][0]['sql'] = 'SELECT * FROM "todo" WHERE "id" = ? AND "deleted_at" IS NULL'
+            elif mutation == 'missing_deleted_predicate': changed[1]['statements'][0]['sql'] = 'SELECT * FROM "todo" WHERE "id" = ? AND "owner_id" = ?'
+            else: changed[1].pop('principal')
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'READ-001'):
+                checkpoint.observations(self.cases['READ-001'], changed)
+        private = deepcopy(raw)
+        private[1]['body']['owner_id'] = '00000000-0000-4000-8000-000000000001'
+        private_observation = checkpoint.observations(self.cases['READ-001'], private)
+        self.assertTrue(harness.assess(self.cases['READ-001'], private_observation))
+
     def test_stored_and_output_values_are_separate_and_require_matching_identity(self):
         raw = self.raw('CREATE-004')
         raw[1]['persistence']['storedDueAt'] = 'unexpected stored date'
@@ -101,6 +401,596 @@ class CheckpointIntegrityTests(unittest.TestCase):
         raw[1]['persistence']['id'] = 'foreign'
         with self.assertRaises(ValueError): checkpoint.observations(self.cases['CREATE-004'], raw)
 
+    def test_past_due_create_requires_frozen_error_and_zero_writes(self):
+        raw = self.raw('CREATE-003')
+        observations = checkpoint.observations(self.cases['CREATE-003'], raw)
+        self.assertEqual(harness.assess(self.cases['CREATE-003'], observations), [])
+        self.assertEqual(observations[0]['steps'][0]['clockNow'], '2026-01-15T12:00:00.000Z')
+        self.assertTrue(observations[0]['steps'][0]['rollbackObserved'])
+        for mutation in ('earlier_clock', 'off_clock_request', 'missing_fixture'):
+            changed = deepcopy(raw)
+            if mutation == 'earlier_clock': changed[0]['fixture']['clockNow'] = '2026-01-15T11:59:58.000Z'
+            elif mutation == 'off_clock_request': changed[1]['requestStartedAt'] += 1000
+            else: changed.pop(0)
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'CREATE-003'):
+                checkpoint.observations(self.cases['CREATE-003'], changed)
+        for mutation, statements in (
+            ('missing_rollback', [{'sql': 'BEGIN IMMEDIATE', 'operation': 'BEGIN'},
+                                  {'sql': 'SELECT 1', 'operation': 'SELECT'}]),
+            ('missing_begin', [{'sql': 'ROLLBACK', 'operation': 'ROLLBACK'}]),
+            ('committed', [{'sql': 'BEGIN', 'operation': 'BEGIN'},
+                           {'sql': 'COMMIT', 'operation': 'COMMIT'}]),
+        ):
+            changed = deepcopy(raw)
+            changed[1]['statements'] = statements
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'transaction rollback'):
+                checkpoint.observations(self.cases['CREATE-003'], changed)
+        raw[1]['statements'] = [{'sql': 'BEGIN IMMEDIATE', 'operation': 'BEGIN'},
+                                {'sql': 'INSERT INTO todo VALUES (...)', 'operation': 'INSERT'},
+                                {'sql': 'ROLLBACK', 'operation': 'ROLLBACK'}]
+        changed = checkpoint.observations(self.cases['CREATE-003'], raw)
+        self.assertTrue(harness.assess(self.cases['CREATE-003'], changed))
+
+    def test_owner_assigned_create_requires_persisted_alice_and_public_todoview(self):
+        raw = self.raw('CREATE-001')
+        observations = checkpoint.observations(self.cases['CREATE-001'], raw)
+        self.assertEqual(harness.assess(self.cases['CREATE-001'], observations), [])
+        self.assertEqual(observations[0]['steps'][0]['storedOwner'], 'alice')
+        self.assertEqual(observations[0]['steps'][0]['outputSchema'], 'TodoView')
+        self.assertTrue(observations[0]['steps'][0]['ownerFieldAbsent'])
+        mutations = []
+        foreign_owner = deepcopy(raw); foreign_owner[-1]['persistence']['ownerId'] = 'foreign-user'
+        mutations.append(('foreign stored owner', foreign_owner))
+        foreign_principal = deepcopy(raw); foreign_principal[1]['principal']['identityId'] = 'foreign-user'
+        mutations.append(('foreign request principal', foreign_principal))
+        owner_leak = deepcopy(raw); owner_leak[1]['body']['owner_id'] = '00000000-0000-4000-8000-000000000001'
+        mutations.append(('private owner response field', owner_leak))
+        mismatched_id = deepcopy(raw); mismatched_id[-1]['persistence']['id'] = 'foreign-todo'
+        mutations.append(('response/persistence identity mismatch', mismatched_id))
+        wrong_due = deepcopy(raw); wrong_due[-1]['persistence']['dueAt'] = '2026-01-15T12:00:00Z'
+        mutations.append(('persisted due date mismatch', wrong_due))
+        missing_row = deepcopy(raw); missing_row.pop()
+        mutations.append(('missing persisted row', missing_row))
+        missing_fixture = deepcopy(raw); missing_fixture.pop(0)
+        mutations.append(('missing active-user fixture', missing_fixture))
+        drifted_clock = deepcopy(raw); drifted_clock[0]['fixture']['clockNow'] = '2026-01-15T12:00:01.000Z'
+        mutations.append(('wrong fixed clock', drifted_clock))
+        off_clock = deepcopy(raw); off_clock[1]['requestStartedAt'] += 1000
+        mutations.append(('request outside fixed clock', off_clock))
+        committed_rejection = deepcopy(raw); committed_rejection[1]['statements'][2] = {'sql': 'ROLLBACK', 'operation': 'ROLLBACK'}
+        mutations.append(('wrong transaction outcome', committed_rejection))
+        missing_insert = deepcopy(raw); missing_insert[1]['statements'].pop(1)
+        mutations.append(('missing todo insert', missing_insert))
+        insert_before_begin = deepcopy(raw)
+        insert_before_begin[1]['statements'].insert(0, insert_before_begin[1]['statements'].pop(1))
+        mutations.append(('todo insert before transaction', insert_before_begin))
+        insert_after_commit = deepcopy(raw)
+        insert_after_commit[1]['statements'].append(insert_after_commit[1]['statements'].pop(1))
+        mutations.append(('todo insert after commit', insert_after_commit))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'CREATE-001'):
+                checkpoint.observations(self.cases['CREATE-001'], changed)
+
+    def test_empty_patch_requires_the_persisted_active_owner_fixture(self):
+        raw = self.raw('PATCH-003')
+        observations = checkpoint.observations(self.cases['PATCH-003'], raw)
+        self.assertEqual(harness.assess(self.cases['PATCH-003'], observations), [])
+        self.assertTrue(observations[0]['steps'][0]['rollbackObserved'])
+        raw[1]['statements'] = raw[1]['statements'][:-1]
+        with self.assertRaisesRegex(ValueError, 'transaction outcome'):
+            checkpoint.observations(self.cases['PATCH-003'], raw)
+        raw = self.raw('PATCH-003')
+        raw[0]['fixture']['ownerId'] = 'foreign-owner'
+        with self.assertRaisesRegex(ValueError, 'fixture'):
+            checkpoint.observations(self.cases['PATCH-003'], raw)
+
+    def test_disabled_user_case_requires_a_valid_persisted_fixture_and_live_session_timeline(self):
+        raw = self.raw('AUTH-006')
+        observed = checkpoint.observations(self.cases['AUTH-006'], raw)
+        self.assertEqual(harness.assess(self.cases['AUTH-006'], observed), [])
+        self.assertEqual(observed[0]['steps'][0]['fixtureStatus'], 'disabled')
+        self.assertEqual(observed[0]['steps'][0]['timeline'], {
+            'issuedAt': 1000, 'disabledAt': 2000, 'requestAt': 3000, 'credentialExpiresAt': 4000})
+        for field, value in (('issuedAt', 2500), ('disabledAt', 3500),
+                             ('credentialExpiresAt', 2500), ('status', 'active')):
+            changed = deepcopy(raw)
+            changed[0]['fixture'][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'AUTH-006'):
+                checkpoint.observations(self.cases['AUTH-006'], changed)
+        equal_time = deepcopy(raw)
+        equal_time[1]['requestStartedAt'] = 2000
+        with self.assertRaisesRegex(ValueError, 'AUTH-006'):
+            checkpoint.observations(self.cases['AUTH-006'], equal_time)
+        with self.assertRaisesRegex(ValueError, 'AUTH-006'):
+            checkpoint.observations(self.cases['AUTH-006'], raw[1:])
+
+    def test_signed_bearer_case_requires_verified_active_identity_and_zero_authority_queries(self):
+        raw = self.raw('AUTH-008')
+        observed = checkpoint.observations(self.cases['AUTH-008'], raw)
+        self.assertEqual(harness.assess(self.cases['AUTH-008'], observed), [])
+        self.assertEqual(observed[0]['steps'][0]['principalAuthorityQueries'], 0)
+        self.assertEqual(observed[0]['steps'][0]['credentialAuthorityQueries'], 0)
+        mutations = []
+        for field, value in (('signatureValid', False), ('audience', 'wrong-audience'),
+                             ('userId', 'foreign-user')):
+            changed = deepcopy(raw)
+            changed[0]['fixture']['tokenClaims'][field] = value
+            mutations.append((field, changed))
+        inactive = deepcopy(raw)
+        inactive[0]['fixture']['status'] = 'disabled'
+        mutations.append(('inactive user', inactive))
+        after_expiry = deepcopy(raw)
+        after_expiry[1]['requestStartedAt'] = 302000
+        mutations.append(('expired token', after_expiry))
+        principal_query = deepcopy(raw)
+        principal_query[1]['statements'].append({'sql': 'SELECT id FROM "user" WHERE id = ?', 'operation': 'SELECT'})
+        mutations.append(('principal lookup', principal_query))
+        credential_query = deepcopy(raw)
+        credential_query[1]['statements'].append({'sql': 'SELECT "data" FROM "__jadpo_auth_sessions" WHERE id = ?', 'operation': 'SELECT'})
+        mutations.append(('credential lookup', credential_query))
+        wrong_principal = deepcopy(raw)
+        wrong_principal[1]['principal']['identityId'] = 'foreign-user'
+        mutations.append(('resolved principal', wrong_principal))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'AUTH-008'):
+                checkpoint.observations(self.cases['AUTH-008'], changed)
+
+    def test_untrusted_jwt_email_cannot_enter_self_scoped_user_output(self):
+        raw = self.raw('AUTH-007')
+        observations = checkpoint.observations(self.cases['AUTH-007'], raw)
+        self.assertEqual(harness.assess(self.cases['AUTH-007'], observations), [])
+        self.assertEqual(observations[0]['steps'][0]['privateFieldsAbsent'], ['email'])
+        self.assertFalse(observations[0]['steps'][0]['providerEmailUsed'])
+        mutations = []
+        email_leak = deepcopy(raw); email_leak[1]['body']['email'] = 'attacker@example.test'
+        mutations.append(('email appears in output', email_leak))
+        wrong_stored_email = deepcopy(raw); wrong_stored_email[0]['fixture']['storedEmail'] = 'attacker@example.test'
+        mutations.append(('stored fixture collides with JWT email', wrong_stored_email))
+        wrong_issuer = deepcopy(raw); wrong_issuer[0]['fixture']['tokenClaims']['issuer'] = 'https://wrong.test'
+        mutations.append(('wrong JWT issuer', wrong_issuer))
+        wrong_subject = deepcopy(raw); wrong_subject[0]['fixture']['tokenClaims']['subject'] = 'bob'
+        mutations.append(('wrong JWT subject', wrong_subject))
+        invalid_signature = deepcopy(raw); invalid_signature[0]['fixture']['tokenClaims']['signatureValid'] = False
+        mutations.append(('invalid JWT signature', invalid_signature))
+        missing_jwks = deepcopy(raw); missing_jwks[0]['fixture']['providerCalls'].pop()
+        mutations.append(('missing JWKS fetch', missing_jwks))
+        unexpected_fetch = deepcopy(raw); unexpected_fetch[0]['fixture']['rejectedProviderCalls'] = ['https://unexpected.example/metadata']
+        mutations.append(('unexpected fetch destination', unexpected_fetch))
+        foreign_principal = deepcopy(raw); foreign_principal[1]['principal']['identityId'] = 'foreign-user'
+        mutations.append(('foreign resolved principal', foreign_principal))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'AUTH-007'):
+                checkpoint.observations(self.cases['AUTH-007'], changed)
+
+    def test_signed_oidc_jwt_get_todos_requires_resolved_alice_and_bounded_authority_queries(self):
+        raw = self.raw('AUTH-003')
+        observed = checkpoint.observations(self.cases['AUTH-003'], raw)
+        self.assertEqual(harness.assess(self.cases['AUTH-003'], observed), [])
+        step = observed[0]['steps'][0]
+        self.assertEqual((step['databaseQueries'], step['authorityQueries'], step['todoQueries']), (2, 1, 1))
+        self.assertFalse(step['providerFieldsInOutput'])
+        mutations = []
+        wrong_subject = deepcopy(raw); wrong_subject[0]['fixture']['tokenClaims']['subject'] = 'bob'
+        mutations.append(('wrong JWT subject', wrong_subject))
+        invalid_signature = deepcopy(raw); invalid_signature[0]['fixture']['tokenClaims']['signatureValid'] = False
+        mutations.append(('invalid JWT signature', invalid_signature))
+        foreign_principal = deepcopy(raw); foreign_principal[1]['principal']['identityId'] = 'foreign-user'
+        mutations.append(('foreign resolved principal', foreign_principal))
+        missing_discovery = deepcopy(raw); missing_discovery[0]['fixture']['providerCalls'].pop(0)
+        mutations.append(('missing OIDC discovery', missing_discovery))
+        missing_authority = deepcopy(raw); missing_authority[1]['statements'].pop(0)
+        mutations.append(('missing authority query', missing_authority))
+        authority_projection_only = deepcopy(raw)
+        authority_projection_only[1]['statements'][0]['sql'] = 'SELECT authentication_subject FROM "user"'
+        mutations.append(('authority subject appears only in projection', authority_projection_only))
+        authority_or_bypass = deepcopy(raw)
+        authority_or_bypass[1]['statements'][0]['sql'] = 'SELECT authentication_subject FROM "user" WHERE authentication_subject = ? OR 1 = 1'
+        mutations.append(('authority subject predicate bypassed by top-level OR', authority_or_bypass))
+        todo_projection_only = deepcopy(raw)
+        todo_projection_only[1]['statements'][1]['sql'] = 'SELECT owner_id, deleted_at FROM "todo"'
+        mutations.append(('Todo scope fields appear only in projection', todo_projection_only))
+        todo_or_bypass = deepcopy(raw)
+        todo_or_bypass[1]['statements'][1]['sql'] = 'SELECT owner_id, deleted_at FROM "todo" WHERE owner_id = ? OR status = \'open\' AND deleted_at IS NULL'
+        mutations.append(('Todo owner predicate bypassed by top-level OR', todo_or_bypass))
+        unscoped_todos = deepcopy(raw); unscoped_todos[1]['statements'][1]['sql'] = 'SELECT id FROM "todo"'
+        mutations.append(('unscoped todo query', unscoped_todos))
+        leaked_email = deepcopy(raw); leaked_email[1]['body']['email'] = 'attacker@example.test'
+        mutations.append(('provider email in output', leaked_email))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'AUTH-003'):
+                checkpoint.observations(self.cases['AUTH-003'], changed)
+
+    def test_competing_valid_session_and_jwt_fail_before_validation_or_queries(self):
+        raw = self.raw('AUTH-004')
+        observed = checkpoint.observations(self.cases['AUTH-004'], raw)
+        self.assertEqual(harness.assess(self.cases['AUTH-004'], observed), [])
+        self.assertTrue(observed[0]['steps'][0]['ambiguousBeforeValidation'])
+        self.assertEqual(observed[0]['steps'][0]['databaseQueries'], 0)
+        mutations = []
+        wrong_code = deepcopy(raw); wrong_code[1]['body']['error']['code'] = 'invalid_credentials'
+        mutations.append(('wrong ambiguity code', wrong_code))
+        database_query = deepcopy(raw); database_query[1]['statements'] = [{'sql': 'SELECT id FROM "user"', 'operation': 'SELECT'}]
+        mutations.append(('database query before rejection', database_query))
+        provider_call = deepcopy(raw); provider_call[0]['fixture']['providerCalls'] = ['https://issuer.test/jwks']
+        mutations.append(('JWT validation before ambiguity rejection', provider_call))
+        same_subject = deepcopy(raw); same_subject[0]['fixture']['bobJwt']['tokenClaims']['subject'] = 'alice'
+        mutations.append(('competing JWT is not Bob', same_subject))
+        inactive_session = deepcopy(raw); inactive_session[0]['fixture']['aliceSession']['status'] = 'disabled'
+        mutations.append(('session fixture inactive', inactive_session))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'AUTH-004'):
+                checkpoint.observations(self.cases['AUTH-004'], changed)
+
+    def test_browser_session_case_requires_active_user_safe_output_and_bound_principal(self):
+        raw = self.raw('AUTH-002')
+        observed = checkpoint.observations(self.cases['AUTH-002'], raw)
+        self.assertEqual(harness.assess(self.cases['AUTH-002'], observed), [])
+        self.assertFalse(observed[0]['steps'][0]['providerFieldsInOutput'])
+        mutations = []
+        inactive = deepcopy(raw)
+        inactive[0]['fixture']['status'] = 'disabled'
+        mutations.append(('inactive user', inactive))
+        expired = deepcopy(raw)
+        expired[0]['fixture']['sessionExpiresAt'] = 2500
+        mutations.append(('expired session', expired))
+        foreign_principal = deepcopy(raw)
+        foreign_principal[1]['principal']['identityId'] = 'foreign-user'
+        mutations.append(('foreign principal', foreign_principal))
+        missing_session = deepcopy(raw)
+        missing_session[0]['fixture']['sessionAvailable'] = False
+        mutations.append(('missing session', missing_session))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'AUTH-002'):
+                checkpoint.observations(self.cases['AUTH-002'], changed)
+        provider_email = deepcopy(raw)
+        provider_email[1]['body']['email'] = 'alice@example.test'
+        unsafe = checkpoint.observations(self.cases['AUTH-002'], provider_email)
+        self.assertTrue(unsafe[0]['steps'][0]['providerFieldsInOutput'])
+        self.assertTrue(harness.assess(self.cases['AUTH-002'], unsafe))
+
+    def test_disabled_service_case_requires_a_valid_persisted_fixture_and_live_key_timeline(self):
+        raw = self.raw('AUTH-011')
+        observed = checkpoint.observations(self.cases['AUTH-011'], raw)
+        self.assertEqual(harness.assess(self.cases['AUTH-011'], observed), [])
+        self.assertEqual(observed[0]['steps'][0]['fixtureStatus'], 'disabled')
+        self.assertEqual(observed[0]['steps'][0]['timeline'], {
+            'credentialIssuedAt': 1000, 'disabledAt': 2000, 'requestAt': 3000, 'credentialExpiresAt': 4000})
+        changed = deepcopy(raw)
+        changed[0]['fixture']['subject'] = 'other-service'
+        with self.assertRaisesRegex(ValueError, 'AUTH-011'):
+            checkpoint.observations(self.cases['AUTH-011'], changed)
+        equal_time = deepcopy(raw)
+        equal_time[1]['requestStartedAt'] = 2000
+        with self.assertRaisesRegex(ValueError, 'AUTH-011'):
+            checkpoint.observations(self.cases['AUTH-011'], equal_time)
+        missing_attempt = deepcopy(raw)
+        missing_attempt[1]['authenticationAttempts'] = 0
+        with self.assertRaisesRegex(ValueError, 'exchange attempt'):
+            checkpoint.observations(self.cases['AUTH-011'], missing_attempt)
+        raw = self.raw('PATCH-003')[1:]
+        with self.assertRaisesRegex(ValueError, 'fixture'):
+            checkpoint.observations(self.cases['PATCH-003'], raw)
+
+    def test_service_exchange_requires_verified_claims_and_redacts_both_credentials(self):
+        raw = self.raw('AUTH-009')
+        observed = checkpoint.observations(self.cases['AUTH-009'], raw)
+        self.assertEqual(harness.assess(self.cases['AUTH-009'], observed), [])
+        step = observed[0]['steps'][0]
+        self.assertEqual((step['principalKind'], step['principalService'], step['secretInOutput']),
+                         ('service', 'reporting', False))
+        mutations = []
+        for key, value in (('signatureValid', False), ('secretInOutput', True),
+                           ('outputTokenRedacted', False), ('principalKind', 'user'),
+                           ('serviceId', 'foreign-service')):
+            changed = deepcopy(raw)
+            changed[1]['serviceExchange'][key] = value
+            mutations.append((key, changed))
+        for field, value in (('status', 'disabled'), ('credentialExpiresAt', 3200),
+                             ('subject', 'different-service')):
+            changed = deepcopy(raw)
+            changed[0]['fixture'][field] = value
+            mutations.append((field, changed))
+        for field, value in (('requestStartedAt', 3300), ('responseCompletedAt', 5000)):
+            changed = deepcopy(raw)
+            changed[1][field] = value
+            mutations.append((field, changed))
+        missing_credential_lookup = deepcopy(raw)
+        missing_credential_lookup[1]['statements'].pop(0)
+        mutations.append(('credential lookup', missing_credential_lookup))
+        missing_authority_lookup = deepcopy(raw)
+        missing_authority_lookup[1]['statements'].pop()
+        mutations.append(('active service lookup', missing_authority_lookup))
+        unredacted = deepcopy(raw)
+        unredacted[1]['body']['access_token'] = 'jdx1.secret-output'
+        mutations.append(('unredacted access token', unredacted))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'AUTH-009'):
+                checkpoint.observations(self.cases['AUTH-009'], changed)
+
+    def test_fresh_authority_disable_requires_bounded_bearer_query_and_persistence_evidence(self):
+        raw = self.raw('AUTH-010')
+        observed = checkpoint.observations(self.cases['AUTH-010'], raw)
+        self.assertEqual(harness.assess(self.cases['AUTH-010'], observed), [])
+        step = observed[0]['steps'][0]
+        self.assertEqual((step['principalAuthorityQueries'], step['credentialAuthorityQueries'],
+                          step['credentialAuthorityQueriesRecorded'], step['persistedStatus']),
+                         (1, 0, True, 'disabled'))
+        mutations = []
+        for field, value in (('signatureValid', False), ('audience', 'wrong-audience'),
+                             ('userId', 'foreign-user'), ('expiresAt', 2500)):
+            changed = deepcopy(raw)
+            changed[0]['fixture']['tokenClaims'][field] = value
+            mutations.append((f'claim {field}', changed))
+        inactive_fixture = deepcopy(raw)
+        inactive_fixture[0]['fixture']['status'] = 'disabled'
+        mutations.append(('inactive Alice fixture', inactive_fixture))
+        for field, value in (('userId', 'foreign-user'), ('subject', 'bob'), ('status', 'active'), ('disabledAt', 4000)):
+            changed = deepcopy(raw)
+            changed[-1]['persistence'][field] = value
+            mutations.append((f'persistence {field}', changed))
+        wrong_path = deepcopy(raw)
+        wrong_path[1]['path'] = '/users/foreign-user'
+        mutations.append(('foreign disable path', wrong_path))
+        wrong_principal = deepcopy(raw)
+        wrong_principal[1]['principal']['identityId'] = 'foreign-user'
+        mutations.append(('foreign principal', wrong_principal))
+        missing_authority = deepcopy(raw)
+        missing_authority[1]['statements'].pop(0)
+        mutations.append(('missing principal query', missing_authority))
+        unscoped_authority = deepcopy(raw)
+        unscoped_authority[1]['statements'][0]['sql'] = 'SELECT id, status FROM "user"'
+        mutations.append(('unscoped principal query', unscoped_authority))
+        authority_or_bypass = deepcopy(raw)
+        authority_or_bypass_sql = 'SELECT id FROM "user" WHERE authentication_subject = ? OR status = \'active\''
+        authority_or_bypass[1]['statements'][0]['sql'] = authority_or_bypass_sql
+        self.assertRegex(authority_or_bypass_sql, r'WHERE authentication_subject = \? OR ')
+        self.assertTrue(checkpoint.has_top_level_sql_keyword(authority_or_bypass_sql.split('WHERE', 1)[1], 'or'))
+        mutations.append(('principal query OR bypass', authority_or_bypass))
+        write_or_bypass = deepcopy(raw)
+        write_or_bypass[1]['statements'][1]['sql'] = 'UPDATE "user" SET status = ? WHERE id = ? OR status = \'active\''
+        mutations.append(('disable write OR bypass', write_or_bypass))
+        extra_authority = deepcopy(raw)
+        extra_authority[1]['statements'].append({'sql': 'SELECT id FROM "user" WHERE authentication_subject = ?', 'operation': 'SELECT'})
+        mutations.append(('duplicate principal query', extra_authority))
+        missing_write = deepcopy(raw)
+        missing_write[1]['statements'].pop()
+        mutations.append(('missing disable write', missing_write))
+        wrong_status = deepcopy(raw)
+        wrong_status[1]['status'] = 200
+        mutations.append(('wrong success status', wrong_status))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'AUTH-010|Foreign request observation'):
+                checkpoint.observations(self.cases['AUTH-010'], changed)
+
+    def test_non_owner_patch_requires_hidden_foreign_fixture_scoped_lookup_and_zero_writes(self):
+        raw = self.raw('PATCH-004')
+        observed = checkpoint.observations(self.cases['PATCH-004'], raw)
+        self.assertEqual(harness.assess(self.cases['PATCH-004'], observed), [])
+        self.assertEqual(observed[0]['steps'][0]['ownerScopedLookup'], True)
+        self.assertEqual(observed[0]['steps'][0]['persistedUnchanged'], True)
+        mutations = []
+        foreign_fixture = deepcopy(raw)
+        foreign_fixture[0]['fixture']['ownerId'] = '00000000-0000-4000-8000-000000000001'
+        mutations.append(('Alice owns fixture', foreign_fixture))
+        missing_fixture = deepcopy(raw)
+        missing_fixture.pop(0)
+        mutations.append(('missing persisted fixture', missing_fixture))
+        missing_readback = deepcopy(raw)
+        missing_readback.pop()
+        mutations.append(('missing persistence readback', missing_readback))
+        changed_readback = deepcopy(raw)
+        changed_readback[-1]['persistence']['title'] = 'Stolen'
+        mutations.append(('changed foreign row', changed_readback))
+        unscoped = deepcopy(raw)
+        unscoped[1]['statements'][0]['sql'] = 'SELECT id, owner_id FROM "todo" WHERE id = ? AND deleted_at IS NULL'
+        mutations.append(('missing owner scope', unscoped))
+        or_bypass = deepcopy(raw)
+        or_bypass_sql = 'SELECT id, owner_id FROM "todo" WHERE id = ? AND owner_id = ? AND deleted_at IS NULL OR status = \'open\''
+        or_bypass[1]['statements'][0]['sql'] = or_bypass_sql
+        self.assertRegex(or_bypass_sql, r'WHERE id = \? AND owner_id = \? AND deleted_at IS NULL OR ')
+        self.assertTrue(checkpoint.has_top_level_sql_keyword(or_bypass_sql.split('WHERE', 1)[1], 'or'))
+        mutations.append(('top-level owner OR bypass', or_bypass))
+        wrote = deepcopy(raw)
+        wrote[1]['statements'].append({'sql': 'UPDATE "todo" SET title = ? WHERE id = ?', 'operation': 'UPDATE'})
+        mutations.append(('unexpected write', wrote))
+        wrong_principal = deepcopy(raw)
+        wrong_principal[1]['principal']['identityId'] = '00000000-0000-4000-8000-000000000002'
+        mutations.append(('foreign principal', wrong_principal))
+        private_output = deepcopy(raw)
+        private_output[1]['body']['todo'] = 'private bob todo'
+        mutations.append(('private row disclosed', private_output))
+        wrong_code = deepcopy(raw)
+        wrong_code[1]['body']['error']['code'] = 'not_found'
+        mutations.append(('wrong concealed error', wrong_code))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'PATCH-004|Foreign request observation'):
+                checkpoint.observations(self.cases['PATCH-004'], changed)
+
+    def test_soft_delete_requires_persisted_timestamp_scoped_write_and_hidden_followup(self):
+        raw = self.raw('DELETE-001')
+        observed = checkpoint.observations(self.cases['DELETE-001'], raw)
+        self.assertEqual(harness.assess(self.cases['DELETE-001'], observed), [])
+        step = observed[0]['steps'][0]
+        self.assertEqual(step['rowExists'], True)
+        self.assertEqual(step['deletedAt'], '2026-01-15T12:00:00Z')
+        self.assertEqual(step['subsequentGetStatus'], 404)
+        mutations = []
+        missing_fixture = deepcopy(raw); missing_fixture.pop(0)
+        mutations.append(('missing active fixture', missing_fixture))
+        wrong_owner = deepcopy(raw); wrong_owner[0]['fixture']['ownerId'] = 'foreign-user'
+        mutations.append(('foreign fixture owner', wrong_owner))
+        missing_readback = deepcopy(raw); missing_readback.pop(2)
+        mutations.append(('missing persistence readback', missing_readback))
+        wrong_timestamp = deepcopy(raw); wrong_timestamp[2]['persistence']['deletedAt'] = '2026-01-15T12:00:01.000Z'
+        mutations.append(('wrong persisted deletion time', wrong_timestamp))
+        unscoped_delete = deepcopy(raw)
+        unscoped_delete[1]['statements'][1]['sql'] = 'UPDATE "todo" SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL'
+        mutations.append(('missing owner scope on delete', unscoped_delete))
+        delete_or_bypass = deepcopy(raw)
+        delete_sql = 'UPDATE "todo" SET deleted_at = ? WHERE id = ? AND owner_id = ? AND deleted_at IS NULL OR status = \'open\''
+        delete_or_bypass[1]['statements'][1]['sql'] = delete_sql
+        self.assertRegex(delete_sql, r'WHERE id = \? AND owner_id = \? AND deleted_at IS NULL OR ')
+        self.assertTrue(checkpoint.has_top_level_sql_keyword(delete_sql.split('WHERE', 1)[1], 'or'))
+        mutations.append(('top-level OR on delete', delete_or_bypass))
+        unexpected_write = deepcopy(raw)
+        unexpected_write[1]['statements'].append({'sql': 'DELETE FROM "todo" WHERE id = ?', 'operation': 'DELETE'})
+        mutations.append(('unexpected delete write', unexpected_write))
+        visible_get = deepcopy(raw); visible_get[3]['status'] = 200
+        mutations.append(('followup GET remains visible', visible_get))
+        wrong_get_error = deepcopy(raw); wrong_get_error[3]['body']['error']['code'] = 'not_found'
+        mutations.append(('wrong hidden GET error', wrong_get_error))
+        unscoped_get = deepcopy(raw)
+        unscoped_get[3]['statements'][0]['sql'] = 'SELECT id FROM "todo" WHERE id = ? AND deleted_at IS NULL'
+        mutations.append(('missing owner scope on followup GET', unscoped_get))
+        get_or_bypass = deepcopy(raw)
+        get_sql = 'SELECT id FROM "todo" WHERE id = ? AND owner_id = ? AND deleted_at IS NULL OR status = \'open\''
+        get_or_bypass[3]['statements'][0]['sql'] = get_sql
+        self.assertRegex(get_sql, r'WHERE id = \? AND owner_id = \? AND deleted_at IS NULL OR ')
+        self.assertTrue(checkpoint.has_top_level_sql_keyword(get_sql.split('WHERE', 1)[1], 'or'))
+        mutations.append(('top-level OR on followup GET', get_or_bypass))
+        wrong_principal = deepcopy(raw); wrong_principal[1]['principal']['identityId'] = 'foreign-user'
+        mutations.append(('wrong delete principal', wrong_principal))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'DELETE-001|Foreign request observation'):
+                checkpoint.observations(self.cases['DELETE-001'], changed)
+
+    def test_repeated_delete_conceals_deleted_fixture_and_performs_no_write(self):
+        raw = self.raw('DELETE-002')
+        observed = checkpoint.observations(self.cases['DELETE-002'], raw)
+        self.assertEqual(harness.assess(self.cases['DELETE-002'], observed), [])
+        self.assertEqual(observed[0]['steps'][0]['fixtureStatus'], 'deleted')
+        self.assertEqual(observed[0]['steps'][0]['ownerScopedLookup'], True)
+        self.assertEqual(observed[0]['steps'][0]['persistedUnchanged'], True)
+        mutations = []
+        missing_fixture = deepcopy(raw); missing_fixture.pop(0)
+        mutations.append(('missing deleted fixture', missing_fixture))
+        active_fixture = deepcopy(raw); active_fixture[0]['fixture']['deletedAt'] = None
+        mutations.append(('fixture is active', active_fixture))
+        foreign_fixture = deepcopy(raw); foreign_fixture[0]['fixture']['ownerId'] = 'foreign-user'
+        mutations.append(('foreign fixture owner', foreign_fixture))
+        missing_readback = deepcopy(raw); missing_readback.pop()
+        mutations.append(('missing unchanged readback', missing_readback))
+        changed_readback = deepcopy(raw); changed_readback[-1]['persistence']['updatedAt'] = '2026-01-15T11:59:01.000Z'
+        mutations.append(('changed deleted row', changed_readback))
+        visible = deepcopy(raw); visible[1]['status'] = 204
+        mutations.append(('repeated delete accepted', visible))
+        wrong_error = deepcopy(raw); wrong_error[1]['body']['error']['code'] = 'not_found'
+        mutations.append(('wrong concealment error', wrong_error))
+        unscoped = deepcopy(raw)
+        unscoped[1]['statements'][0]['sql'] = 'SELECT id, owner_id FROM "todo" WHERE id = ? AND deleted_at IS NULL'
+        mutations.append(('missing owner scope', unscoped))
+        or_bypass = deepcopy(raw)
+        sql = "SELECT id, owner_id FROM \"todo\" WHERE id = ? AND owner_id = ? AND deleted_at IS NULL OR status = 'open'"
+        or_bypass[1]['statements'][0]['sql'] = sql
+        mutations.append(('top-level owner OR bypass', or_bypass))
+        unexpected_write = deepcopy(raw)
+        unexpected_write[1]['statements'].append({'sql': 'UPDATE "todo" SET deleted_at = ? WHERE id = ?', 'operation': 'UPDATE'})
+        mutations.append(('unexpected write', unexpected_write))
+        wrong_principal = deepcopy(raw); wrong_principal[1]['principal']['identityId'] = 'foreign-user'
+        mutations.append(('wrong principal', wrong_principal))
+        disclosed_title = deepcopy(raw); disclosed_title[1]['body']['todo'] = 'previously deleted todo'
+        mutations.append(('prior title disclosed', disclosed_title))
+        disclosed_owner = deepcopy(raw); disclosed_owner[1]['body']['ownerId'] = '00000000-0000-4000-8000-000000000001'
+        mutations.append(('owner identity disclosed', disclosed_owner))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'DELETE-002|Foreign request observation'):
+                checkpoint.observations(self.cases['DELETE-002'], changed)
+
+    def test_user001_requires_self_disable_refresh_rejection_and_exact_session_expiry(self):
+        case = self.cases['USER-001']
+        raw = self.raw('USER-001')
+        observed = checkpoint.observations(case, raw)
+        self.assertEqual(harness.assess(case, observed), [])
+        self.assertEqual(observed[0]['steps'], [
+            {'status': 204, 'userStatus': 'disabled', 'todoRowExists': True},
+            {'status': 403, 'code': 'user_disabled', 'writes': 0},
+            {'failure': 'UserDisabled', 'code': 'user_disabled', 'credentialsIssued': 0},
+            {'status': 401, 'code': 'invalid_credentials', 'writes': 0},
+        ])
+        mutations = []
+        changed_time = deepcopy(raw); changed_time[1]['requestStartedAt'] += 1
+        mutations.append(('disable outside fixed timeline', changed_time))
+        wrong_identity = deepcopy(raw); wrong_identity[1]['principal']['identityId'] = 'foreign-user'
+        mutations.append(('foreign authenticated principal', wrong_identity))
+        missing_fixture = deepcopy(raw); missing_fixture.pop(0)
+        mutations.append(('missing active user/Todo/session fixture', missing_fixture))
+        stale_todo = deepcopy(raw); stale_todo[2]['persistence']['todo']['deletedAt'] = '2026-01-15T12:00:00.000Z'
+        mutations.append(('self-disable changed retained Todo', stale_todo))
+        missing_user_scope = deepcopy(raw)
+        missing_user_scope[1]['statements'][3]['sql'] = 'SELECT "id" FROM "user" WHERE "status" = \'<literal>\' LIMIT 2'
+        mutations.append(('disable lookup lost identity predicate', missing_user_scope))
+        lookup_or = deepcopy(raw)
+        lookup_or[1]['statements'][3]['sql'] = 'SELECT "id" FROM "user" WHERE "id" = ? AND "status" = \'<literal>\' OR 1 = 1'
+        mutations.append(('disable lookup top-level OR bypass', lookup_or))
+        update_or = deepcopy(raw)
+        update_or[1]['statements'][4]['sql'] = 'UPDATE "user" SET "status" = ? WHERE "id" = ? AND "status" = ? OR 1 = 1'
+        mutations.append(('disable update top-level OR bypass', update_or))
+        no_commit = deepcopy(raw); no_commit[1]['statements'][-1]['operation'] = 'ROLLBACK'
+        mutations.append(('disable transaction did not commit', no_commit))
+        repeated_visible = deepcopy(raw); repeated_visible[3]['status'] = 204
+        mutations.append(('repeated disable accepted', repeated_visible))
+        repeated_write = deepcopy(raw)
+        repeated_write[3]['statements'].append({'sql': 'UPDATE "user" SET status = ? WHERE id = ?', 'operation': 'UPDATE'})
+        mutations.append(('repeated disable wrote data', repeated_write))
+        refresh_succeeded = deepcopy(raw); refresh_succeeded[4]['refresh']['outcome'] = 'returned'
+        mutations.append(('compiler refresh succeeded', refresh_succeeded))
+        refresh_credential = deepcopy(raw); refresh_credential[4]['refresh']['credentialReturned'] = True
+        mutations.append(('compiler refresh issued credential', refresh_credential))
+        refresh_mapping = deepcopy(raw); refresh_mapping[4]['refresh']['publicFailureCode'] = 'principal_inactive'
+        mutations.append(('wrong compiler public failure mapping', refresh_mapping))
+        refresh_scope = deepcopy(raw); refresh_scope[4]['refresh']['statements'][1]['sql'] = 'SELECT id FROM "user" WHERE "authentication_subject" = ?'
+        mutations.append(('refresh skipped live active-user check', refresh_scope))
+        expiry_early = deepcopy(raw); expiry_early[5]['requestStartedAt'] -= 1
+        mutations.append(('expiry request arrived early', expiry_early))
+        expiry_accepted = deepcopy(raw); expiry_accepted[5]['status'] = 200
+        mutations.append(('expired session accepted', expiry_accepted))
+        changed_final = deepcopy(raw); changed_final[6]['persistence']['user']['status'] = 'active'
+        mutations.append(('later step changed disabled user', changed_final))
+        changed_contract = deepcopy(case); changed_contract['timeline']['maximumRevocationDelaySeconds'] = 301
+        with self.assertRaisesRegex(ValueError, 'USER-001'):
+            checkpoint.observations(changed_contract, raw)
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'USER-001|Foreign request observation'):
+                checkpoint.observations(case, changed)
+
+    def test_list001_requires_owner_scope_deleted_exclusion_stable_order_and_cursor(self):
+        case = self.cases['LIST-001']
+        raw = self.raw('LIST-001')
+        observed = checkpoint.observations(case, raw)
+        self.assertEqual(harness.assess(case, observed), [])
+        self.assertEqual(observed[0]['steps'], [{
+            'status': 200, 'databaseQueries': 1, 'totalDatabaseStatements': 1,
+            'authenticationAttempts': 1, 'writes': 0, 'onlyOwner': 'alice',
+            'deletedAbsent': True, 'order': ['created_at desc', 'id desc'],
+            'nextCursorPresent': True,
+        }])
+        mutations = []
+        foreign_row = deepcopy(raw); foreign_row[1]['body']['items'][0]['id'] = '00000000-0000-4000-8000-000000000034'
+        mutations.append(('foreign owner leaked', foreign_row))
+        deleted_row = deepcopy(raw); deleted_row[1]['body']['items'][0]['id'] = '00000000-0000-4000-8000-000000000099'
+        mutations.append(('soft-deleted row leaked', deleted_row))
+        unstable = deepcopy(raw); unstable[1]['body']['items'].reverse()
+        mutations.append(('tie ordering reversed', unstable))
+        missing_cursor = deepcopy(raw); missing_cursor[1]['body']['next'] = None
+        mutations.append(('missing continuation cursor', missing_cursor))
+        wrong_cursor = deepcopy(raw); wrong_cursor[1]['body']['next']['id'] = '00000000-0000-4000-8000-000000000033'
+        mutations.append(('cursor does not identify last item', wrong_cursor))
+        no_owner = deepcopy(raw); no_owner[1]['statements'][0]['sql'] = 'SELECT "id" FROM "todo" WHERE "deleted_at" IS NULL ORDER BY "created_at" DESC, "id" DESC LIMIT ?'
+        mutations.append(('SQL owner predicate absent', no_owner))
+        owner_or = deepcopy(raw); owner_or[1]['statements'][0]['sql'] = 'SELECT "id" FROM "todo" WHERE "owner_id" = ? AND "deleted_at" IS NULL OR "status" = ? ORDER BY "created_at" DESC, "id" DESC LIMIT ?'
+        mutations.append(('top-level owner OR bypass', owner_or))
+        no_deleted_predicate = deepcopy(raw); no_deleted_predicate[1]['statements'][0]['sql'] = 'SELECT "id" FROM "todo" WHERE "owner_id" = ? ORDER BY "created_at" DESC, "id" DESC LIMIT ?'
+        mutations.append(('SQL deleted filter absent', no_deleted_predicate))
+        duplicate_query = deepcopy(raw); duplicate_query[1]['statements'].append(deepcopy(duplicate_query[1]['statements'][0]))
+        mutations.append(('more than one Todo query', duplicate_query))
+        changed_fixture = deepcopy(raw); changed_fixture[0]['fixture']['rows'][0]['ownerId'] = '00000000-0000-4000-8000-000000000002'
+        mutations.append(('foreign persisted fixture row', changed_fixture))
+        wrong_principal = deepcopy(raw); wrong_principal[1]['principal']['subject'] = 'bob'
+        mutations.append(('wrong authenticated owner', wrong_principal))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'LIST-001|Foreign request observation'):
+                checkpoint.observations(case, changed)
+
     def test_scenario_expansion_is_not_silently_partial(self):
         for field, value in (('fixtureVariants', ['first', 'second']), ('followUps', [{'expect': {'status': 200}}])):
             case = deepcopy(self.cases['AUTH-001']); case[field] = value
@@ -109,8 +999,11 @@ class CheckpointIntegrityTests(unittest.TestCase):
 
     def test_actual_adapter_and_instrumentation_are_bound_source_inputs(self):
         paths = harness.provenance(ROOT)['files']
-        for name in ('golden_checkpoint.py', 'golden_http_checkpoint.ts', 'golden_sql_observer.ts'):
+        for name in ('golden_checkpoint.py', 'golden_http_checkpoint.ts', 'golden_checkpoint_fetch.ts', 'golden_sql_observer.ts'):
             self.assertIn('tools/'+name, paths)
+        self.assertIn('tests/runtime/golden-auth-http-jwt.test.ts', paths)
+        self.assertIn('tests/runtime/golden-checkpoint-fetch.test.ts', paths)
+        self.assertIn('tests/validation/test_golden_checkpoint.py', paths)
 
     def test_adapter_failure_keeps_case_failed_and_later_cases_present(self):
         outputs = self.outputs()
@@ -126,6 +1019,10 @@ class CheckpointIntegrityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             evidence = Path(temporary)
             target = evidence/'application/build/target'; target.mkdir(parents=True)
+            compatibility = evidence/'application/build/compatibility/public-failure-codes.json'
+            compatibility.parent.mkdir(parents=True)
+            compatibility.write_text(json.dumps({'schema_version': 1, 'current': [
+                {'failure': 'UserDisabled', 'code': 'user_disabled'}]}))
             dependencies = evidence/'dependencies'; jose = dependencies/'node_modules/jose'; jose.mkdir(parents=True)
             (jose/'package.json').write_text('synthetic dependency')
             for generated, retained in (('persistence.ts', 'original-persistence.ts'), ('first-party-authentication.ts', 'original-authentication.ts')):
@@ -142,7 +1039,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
                                     'raw_files': {f'{backend}-raw.json': harness.digest(evidence/f'{backend}-raw.json') for backend in harness.BACKENDS},
                                     'dependency_files': checkpoint.hashes(jose)}
             checkpoint.validate_checkpoint(report, evidence, dependencies, self.root)
-            for path in (target/'persistence.ts', evidence/'original-authentication.ts', evidence/'sqlite-raw.json', jose/'package.json'):
+            for path in (target/'persistence.ts', evidence/'original-authentication.ts', compatibility,
+                         evidence/'sqlite-raw.json', jose/'package.json'):
                 previous = path.read_bytes(); path.write_bytes(previous+b'\n')
                 with self.subTest(path=path.name), self.assertRaises(ValueError): checkpoint.validate_checkpoint(report, evidence, dependencies, self.root)
                 path.write_bytes(previous)

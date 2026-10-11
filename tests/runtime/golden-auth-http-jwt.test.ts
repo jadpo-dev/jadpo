@@ -4,6 +4,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } fr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { installCheckpointFetchPolicy } from "../../tools/golden_checkpoint_fetch.ts";
 
 // Unchanged migration, real localhost HTTP and real pinned JOSE signatures.
 // Only the external issuer discovery/JWKS documents are supplied by the test.
@@ -51,13 +52,9 @@ const issuer = "https://golden-issuer.example.test";
 const discovery = `${issuer}/.well-known/openid-configuration`;
 const jwksUri = `${issuer}/jwks`;
 const providerCalls: string[] = [];
-globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-  const url = input instanceof Request ? input.url : String(input);
-  if (url !== discovery && url !== jwksUri) return originalFetch(input, init);
-  providerCalls.push(url);
-  if (init?.redirect !== "error" || init?.credentials !== "omit") throw new Error("Provider fetch lost its closed request policy");
-  return Response.json(url === discovery ? { issuer, jwks_uri: jwksUri } : { keys: [publicKey] });
-}) as typeof fetch;
+const rejectedProviderCalls: string[] = [];
+installCheckpointFetchPolicy({ issuer, jwksUri, localOrigin: () => server?.url.origin,
+  jwk: () => publicKey, providerCalls, rejectedCalls: rejectedProviderCalls, nativeFetch: originalFetch });
 Bun.env.SQLITE_PATH = join(root, "golden.sqlite");
 delete Bun.env.DATABASE_URL;
 const app = await import(pathToFileURL(join(target, "app.ts")).href);
@@ -78,6 +75,7 @@ let now: number;
 beforeEach(async () => {
   await app.initializeApplication(environment);
   providerCalls.length = 0;
+  rejectedProviderCalls.length = 0;
   db.exec('DELETE FROM todo; DELETE FROM "__jadpo_auth_sessions"; DELETE FROM "user";');
   now = Date.now();
   db.prepare('INSERT INTO "user" (id, authentication_subject, email, status, created_at, disabled_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -132,6 +130,8 @@ test("actual HTTP protected todo creation binds the signed user's identity and r
   await accepted(credential.credential);
   expect(countTodos()).toBe(1);
   expect(providerCalls).toHaveLength(0);
+  expect(rejectedProviderCalls).toHaveLength(0);
+  expect(rejectedProviderCalls).toHaveLength(0);
 });
 
 test("the selected golden JWT validator resolves a typed primary user and authorizes real HTTP creation", async () => {
@@ -141,6 +141,7 @@ test("the selected golden JWT validator resolves a typed primary user and author
   await accepted(credential);
   expect(countTodos()).toBe(1);
   expect(providerCalls).toEqual([discovery, jwksUri]);
+  expect(rejectedProviderCalls).toEqual([]);
 });
 
 test("self todo output omits the provisioning-only email even when a JWT supplies a different email", async () => {
@@ -149,6 +150,8 @@ test("self todo output omits the provisioning-only email even when a JWT supplie
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ user_id: owner, todos: [] });
   expect(providerCalls).toEqual([discovery, jwksUri]);
+  expect(rejectedProviderCalls).toEqual([]);
+  expect(rejectedProviderCalls).toEqual([]);
 });
 
 test("a corrupted signature cannot pass the selected golden JWT validator or mutate over HTTP", async () => {
@@ -160,4 +163,5 @@ test("a corrupted signature cannot pass the selected golden JWT validator or mut
   await rejected(parts.join("."), "invalid_credentials");
   expect(countTodos()).toBe(0);
   expect(providerCalls).toEqual([discovery, jwksUri]);
+  expect(rejectedProviderCalls).toEqual([]);
 });

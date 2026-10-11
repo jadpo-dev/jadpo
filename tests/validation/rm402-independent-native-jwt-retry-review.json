@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "task": "RM-402",
+  "kind": "independent_test_only_native_JWT_private_retry_review",
+  "candidate": "5acd640408905ea095368886131f3a2aa5b4484e",
+  "parentCandidate": "7682afbaea38f48dbc481966f600dc13756c71ff",
+  "reviewer": "golden_worker_closure_audit",
+  "model": "gpt-6.1-sol",
+  "reasoning": "high",
+  "timer": "RM-402-46760839b30c",
+  "estimateHours": [
+    0.5,
+    2
+  ],
+  "disposition": "approved_scoped_test_only_leaf",
+  "blockingFindings": [],
+  "wholeTaskComplete": false,
+  "releasedPublicRetry": false,
+  "capture": "/private/tmp/jadpo-jwt-5acd-independent",
+  "sourcePin": "1e8c6f221946c39741f75de8057f7ea6eb1f0c54183f360fbe4c112c59857aa6",
+  "independentExecution": {
+    "originalSQLite": {
+      "passed": 2,
+      "failed": 0,
+      "assertions": 39,
+      "log": "sqlite-native-jwt.log"
+    },
+    "originalPostgreSQL": {
+      "passed": 2,
+      "failed": 0,
+      "assertions": 45,
+      "log": "postgres-native-jwt.log"
+    },
+    "signatureNegativeSQLite": {
+      "passed": 2,
+      "failed": 0,
+      "assertions": 41,
+      "log": "sqlite-jwt-independent-signature-control.log"
+    },
+    "signatureNegativePostgreSQL": {
+      "passed": 2,
+      "failed": 0,
+      "assertions": 47,
+      "log": "postgres-jwt-independent-signature-control.log"
+    },
+    "freshNativeFullTargetGenerator": {
+      "passed": 1,
+      "failed": 0,
+      "ownCargoTarget": "/private/tmp/jadpo-jwt-5acd-independent/owned-target",
+      "generatedBytesRetained": true
+    },
+    "originalAuthorMembersHashVerified": 8,
+    "JOSEExactPinnedInstalledFiles": 80
+  },
+  "observed": [
+    "Exact immutable5acd changes runtime test matrix/fixture/assertions and timing/evidence only. Genuine locally generated RSA2048 RS256 token is signed using compiler-pinned JOSE6.2.12; actual native jwtVerify verifies it against supplied public JWK after generated HTTPS issuer-discovery/JWKS validation. Only external document responses are fixture-owned; non-provider fetch delegates actual native transport.",
+    "Pinned cached npm archive integrity and all80 installed JOSE bytes were independently verified with actual repository verifier functions. No homemade crypto, stubbed jwtVerify, fabricated successful validator result, ordinary principal injection or emitted auth/retry-body rewrite supplies proof.",
+    "Actual generated verifier captures external fetch at initialization; fixture publishes a fresh private application only after provider interception is installed. Initial and retry principal resolution retain exact user/subject/user_id and canonical typed primary assurance. JWT proof mode is recorded separately. Independent changed signature byte rejects invalid_credentials with the same verifier/cache before business work.",
+    "Actual loopback Authorization Bearer HTTP uses unchanged generated handleRequest plus sole private closed admission-bit inspection. Public permission remains literalfalse. Discovery/JWKS are each requested once with redirect:error/credentials:omit policy, then actual cached cryptographic validation and native current authority are reused according to contract.",
+    "SQLite IMMEDIATE locker allows initial JWT authority read while actual mutation BEGIN failsbusy. PostgreSQL trigger causes actual40001 callback rollback; after abort, fixture locks native user table, observes real pg_stat_activity Lock waiter for current user-authority SELECT, then releases after exact durable user change. Both original and independent runs observe this barrier.",
+    "Positive attempt2 retains same operationId, commits once and responds200, revision2, unchanged original payload/sourceRevision1 then checked next invocation cancels obsolete intent with no provider claim.",
+    "JWT inactive negative changes actual durable User status after first proven abort; native refreshed user authority produces403, no second business write/attempt, revision1/source title/prior immutable payload and pending intent retained. This is current lifecycle authority evidence, not a local JWT-session revocation claim."
+  ],
+  "retainedFailures": [
+    "All8 author evidence hashes verified, including original wrong fetch-capture initialization order and original SQLiteEXCLUSIVE lock preventing initial authority read. Those historical failures remain unchanged; reviewed fixes affect fixture publication and lock mode only.",
+    "Reviewer-owned postgres script focuses exact ./test path; original bare-path runner is not used to rediscover unrelated retained suites. No product mutation or broad repeated campaign.",
+    "Independent signature negative adds only actual corrupt signature authentication assertion to reviewer test; original maintained test restored byte-exact afterward."
+  ],
+  "limits": [
+    "No public retry activation, all-strategy/all-route qualification, User.disable_user operation proof or wholeRM402 closure.",
+    "No JWT signed-session deletion/revocation claim; this proof is actual user lifecycle current authority. Signed-session leaf remains separately pinned/reviewed.",
+    "Issuer HTTPS documents are controlled reference responses; this is no production issuer/TLS/discovery availability test, production identity provisioning, deployment or publication.",
+    "Root fresh combined full gate and final integrated source binding remain required; source reviewed here is fixed5acd, not evolving parent checkout."
+  ],
+  "evidenceDirectory": "tests/validation/evidence/rm402-independent-jwt-5acd",
+  "evidenceInventorySha256": "fc30b7cbc8fb848ec01addabb0f2a8093cdc5dc925d42adc40771c0001bbb536",
+  "createdAt": "2026-10-06T14:55:49.667859+00:00",
+  "timing": {
+    "closed": true,
+    "outcome": "partial",
+    "activeMinutes": 3.88,
+    "verificationMinutes": 2.47
+  }
+}

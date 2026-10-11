@@ -1,0 +1,8 @@
+{"schema_version": 1, "run_id": "RM-109-9594d186f515", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T23:29:34.830630+00:00", "phase": "planning"}
+{"at": "2026-10-10T23:29:57.773709+00:00", "phase": "implementation", "note": "Tighten AUTH-003 derivation to require active SQL WHERE predicates and add reviewer counterexamples."}
+{"at": "2026-10-10T23:30:09.397427+00:00", "phase": "verification", "note": "Regenerate source-bound SQLite/PostgreSQL evidence after reviewer-driven WHERE-predicate derivation fix."}
+{"at": "2026-10-10T23:34:10.003277+00:00", "phase": "review", "note": "Focused tests, source-bound backend checkpoint and repository quick verification pass; assembling and revalidating immutable review evidence."}
+{"at": "2026-10-10T23:38:38.436088+00:00", "phase": "implementation", "note": "Fix reviewer-discovered top-level SQL OR bypass while permitting nested optional predicates; add authority and Todo counterexamples."}
+{"at": "2026-10-10T23:38:54.502414+00:00", "phase": "verification", "note": "Rerun focused tests and source-bound SQLite/PostgreSQL checkpoint after top-level OR rejection."}
+{"at": "2026-10-10T23:43:29.134539+00:00", "phase": "review", "note": "Final ordered quick profile then source-bound checkpoint passes; pins, compiler digest, reconstruction and secret scan verified; request independent rereview."}
+{"at": "2026-10-10T23:45:03.855146+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm109-http-auth003-004-20261011-jwt-predicate-final/README.md"}
