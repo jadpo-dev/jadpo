@@ -101,7 +101,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
                                 'updatedAt': created, 'deletedAt': None}},
                    {'method': 'PATCH', 'path': f'/todos/{todo_id}', 'auth': 'alice-session',
                     'requestJson': request_json, 'requestStartedAt': request_started,
-                    'responseCompletedAt': request_started + 10, 'status': 200,
+                    'responseCompletedAt': request_started if changed_due else request_started + 10, 'status': 200,
                     'body': {'id': todo_id, 'title': stored_title, 'status': 'open', 'due_at': stored_due,
                              'created_at': created, 'updated_at': updated},
                     'authenticationAttempts': 1,
@@ -1493,6 +1493,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('wrong response status', wrong_status))
         wrong_request_due = deepcopy(raw); wrong_request_due[1]['requestJson']['due_at'] = '2026-02-16T09:00:00Z'
         mutations.append(('request changed to a different due date', wrong_request_due))
+        shifted_clock = deepcopy(raw)
+        shifted_clock[1]['requestStartedAt'] += 1000
+        shifted_clock[1]['responseCompletedAt'] += 1000
+        mutations.append(('request and response use a shifted clock', shifted_clock))
+        updated_after_response = deepcopy(raw)
+        updated_after_response[2]['persistence']['updatedAt'] = '2030-01-01T00:00:00.000Z'
+        updated_after_response[1]['body']['updated_at'] = '2030-01-01T00:00:00.000Z'
+        mutations.append(('persisted updatedAt advances after the response', updated_after_response))
         past_fixture_due = deepcopy(raw); past_fixture_due[1]['requestStartedAt'] = 1769990400000
         mutations.append(('fixture due date is no longer in the future', past_fixture_due))
         begin_after_updates = deepcopy(raw)
@@ -1503,7 +1511,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         statements = commit_before_todo_operations[1]['statements']
         statements[:] = [statements[0], statements[5], *statements[1:5]]
         mutations.append(('COMMIT before Todo reads and updates', commit_before_todo_operations))
-        self.assertEqual(len(mutations), 28)
+        self.assertEqual(len(mutations), 30)
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'PATCH-005|Foreign request observation|Changed request'):
                 checkpoint.observations(case, changed)

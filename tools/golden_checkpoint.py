@@ -751,6 +751,7 @@ def patch_005_observation(case, raw, reply):
     old_due = '2026-02-01T00:00:00.000Z'
     old_reminder = '2026-01-20T00:00:00.000Z'
     expected_created = '2026-01-15T10:00:00.000Z'
+    expected_operation_time = epoch_millis('2026-01-22T00:00:00.000Z')
     request_started = reply.get('requestStartedAt')
     response_completed = reply.get('responseCompletedAt')
     if (fixture != {'id': todo_id, 'ownerId': user_id, 'title': 'alice todo t1', 'status': 'open',
@@ -759,6 +760,8 @@ def patch_005_observation(case, raw, reply):
             or raw.index(raw[0]) >= raw.index(reply)
             or raw.index(raw[2]) <= raw.index(reply)
             or type(request_started) is not int or type(response_completed) is not int
+            or request_started != expected_operation_time
+            or response_completed != expected_operation_time
             or epoch_millis(fixture['dueAt']) <= request_started
             or response_completed < request_started):
         raise ValueError('PATCH-005 persisted Alice fixture is missing, changed, or reordered')
@@ -768,9 +771,7 @@ def patch_005_observation(case, raw, reply):
             or persisted.get('reminderSentAt') is not None
             or epoch_millis(persisted.get('createdAt')) != epoch_millis(expected_created)
             or persisted.get('deletedAt') is not None
-            or epoch_millis(persisted.get('updatedAt')) is None
-            or epoch_millis(persisted.get('updatedAt')) < epoch_millis(expected_created)
-            or persisted.get('updatedAt') is None or epoch_millis(persisted.get('updatedAt')) < request_started):
+            or epoch_millis(persisted.get('updatedAt')) != expected_operation_time):
         raise ValueError('PATCH-005 persisted row did not replace due date and reset reminder state')
     principal = reply.get('principal')
     body = reply.get('body')
