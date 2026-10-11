@@ -19,7 +19,7 @@ import golden_cases as harness
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = ('AUTH-001', 'AUTH-002', 'AUTH-003', 'AUTH-004', 'AUTH-005', 'AUTH-006', 'AUTH-007', 'AUTH-008', 'AUTH-009', 'AUTH-010', 'AUTH-011', 'AUTH-012', 'PUBLIC-001', 'CREATE-001', 'CREATE-002',
-             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'LIST-004', 'REL-001', 'PATCH-001', 'PATCH-002', 'PATCH-003', 'PATCH-004', 'PATCH-005', 'DELETE-001', 'DELETE-002', 'USER-001')
+             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'LIST-004', 'REL-001', 'REL-002', 'PATCH-001', 'PATCH-002', 'PATCH-003', 'PATCH-004', 'PATCH-005', 'DELETE-001', 'DELETE-002', 'USER-001')
 
 TODO_VIEW_FIELDS = frozenset({'id', 'title', 'status', 'due_at', 'created_at', 'updated_at'})
 TODO_PRIVATE_FIELDS = ('owner_id', 'deleted_at', 'reminder_sent_at')
@@ -519,6 +519,67 @@ def rel_001_observation(case, raw):
     return observations
 
 
+def rel_002_observation(case, raw, backend=None):
+    """Bind the missing-owner insert to a generated constraint fault and rollback."""
+    expected_operation = {'createTodoWithOwner': 'missing-user'}
+    expected = {'accepted': False, 'normalisedFailure': 'relationship_conflict',
+                'rawDatabaseDetailsPublic': False}
+    if (case.get('id') != 'REL-002' or case.get('kind') != 'persistence'
+            or case.get('operation') != expected_operation or case.get('expect') != expected):
+        raise ValueError('Changed REL-002 frozen missing-owner case')
+    if (len(raw) != 3 or not isinstance(raw[0], dict) or set(raw[0]) != {'fixture'}
+            or not isinstance(raw[1], dict) or set(raw[1]) != {'persistenceAttempt'}
+            or not isinstance(raw[2], dict) or set(raw[2]) != {'readback'}):
+        raise ValueError('REL-002 fixture, generated persistence attempt and readback are missing or reordered')
+
+    fixture = raw[0]['fixture']
+    alice = '00000000-0000-4000-8000-000000000001'
+    missing_owner = '00000000-0000-4000-8000-000000009999'
+    control_id = '00000000-0000-4000-8000-000000000021'
+    orphan_id = '00000000-0000-4000-8000-000000000099'
+    expected_control = {'id': control_id, 'ownerId': alice, 'title': 'Alice relationship control',
+                         'status': 'open', 'dueAt': None, 'reminderSentAt': None,
+                         'createdAt': '2026-01-15T10:00:00.000Z',
+                         'updatedAt': '2026-01-15T10:00:00.000Z', 'deletedAt': None}
+    if fixture != {'alice': {'id': alice, 'subject': 'alice', 'status': 'active'},
+                   'missingOwnerId': missing_owner, 'missingOwnerRowsBefore': [],
+                   'duplicateTodoRowsBefore': [],
+                   'controlTodo': expected_control}:
+        raise ValueError('REL-002 did not prove an absent owner and exact Alice control before the insert')
+
+    attempt = raw[1]['persistenceAttempt']
+    observed_backend = attempt.get('backend') if isinstance(attempt, dict) else None
+    if observed_backend not in ('sqlite', 'postgres') or (backend is not None and observed_backend != backend):
+        raise ValueError('REL-002 observation belongs to a different or unsupported database backend')
+    begin_sql = 'BEGIN IMMEDIATE' if observed_backend == 'sqlite' else 'BEGIN'
+    values_sql = ', '.join(f'?{index}' if observed_backend == 'sqlite' else '?'
+                           for index in range(1, 10))
+    expected_insert = ('INSERT INTO "todo" ("id", "owner_id", "title", "status", "due_at", "reminder_sent_at", "created_at", "updated_at", "deleted_at") '
+                       f'VALUES ({values_sql}) RETURNING "id", "owner_id", "title", "status", "due_at", "reminder_sent_at", "created_at", "updated_at", "deleted_at"')
+    expected_attempt = {'operation': 'create.Todo', 'todoId': orphan_id, 'ownerId': missing_owner,
+                        'backend': observed_backend,
+                        'accepted': False, 'faultKind': 'constraint', 'constraintIdentity': None,
+                        'normalisedFailure': 'relationship_conflict',
+                        'rawDatabaseDetailsPublic': False,
+                        'statements': [
+                            {'sql': begin_sql, 'operation': 'BEGIN'},
+                            {'sql': expected_insert, 'operation': 'INSERT'},
+                            {'sql': 'ROLLBACK', 'operation': 'ROLLBACK'}]}
+    if isinstance(attempt, dict) and any(
+            field in attempt for field in ('message', 'cause', 'stack', 'driverError', 'databaseError')):
+        raise ValueError('REL-002 exposes raw database error details')
+    if not isinstance(attempt, dict) or attempt != expected_attempt:
+        raise ValueError('REL-002 did not retain the exact generated constraint failure and rollback without driver details')
+
+    readback = raw[2]['readback']
+    if readback != {'orphanRows': [], 'aliceControlTodos': [expected_control]}:
+        raise ValueError('REL-002 left an orphan row or changed the Alice control')
+    return [{'variant_index': 0, 'steps': [{
+        'accepted': False, 'normalisedFailure': 'relationship_conflict',
+        'rawDatabaseDetailsPublic': False,
+    }]}]
+
+
 def patch_001_observation(case, raw, reply):
     """Bind PATCH-001's omitted due date to its persisted pre/post state."""
     expected_fixture_spec = ['alice todo t1 due 2026-02-01']
@@ -846,7 +907,7 @@ def patch_005_observation(case, raw, reply):
             'reminderStateReset': True, 'ownerScopedUpdate': True}
 
 
-def observations(case: dict, raw: list) -> list:
+def observations(case: dict, raw: list, backend=None) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
     if (case['id'] not in SUPPORTED or (case.get('fixtureVariants') and case['id'] != 'REL-001')
             or (case.get('followUps') and case['id'] != 'USER-001')):
@@ -871,6 +932,8 @@ def observations(case: dict, raw: list) -> list:
     replies = [item for item in raw if 'method' in item]
     if case['id'] == 'REL-001':
         return rel_001_observation(case, raw)
+    if case['id'] == 'REL-002':
+        return rel_002_observation(case, raw, backend)
     if case['id'] == 'LIST-002':
         step = list_002_observation(case, raw, replies)
         return [{'variant_index': 0, 'steps': [step]}]
@@ -1667,7 +1730,7 @@ def apply_checkpoint(report: dict, outputs: list[dict], root: Path):
         if len(ids) != len(set(ids)) or set(ids) != set(SUPPORTED):
             raise ValueError('Missing/duplicate/foreign supported result')
         for item in output['results']:
-            observed[(output['backend'], item['id'])] = None if item.get('adapterFailure') is True else observations(cases[item['id']], item['raw'])
+            observed[(output['backend'], item['id'])] = None if item.get('adapterFailure') is True else observations(cases[item['id']], item['raw'], backend=output['backend'])
     for entry in report['results']:
         key = (entry['backend'], entry['id'])
         if key not in observed:

@@ -37,7 +37,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         self.compiler.write_text('synthetic compiler digest fixture; never executable')
         self.cases = {case['id']: case for case in harness.read_contract(self.root)['cases']}
 
-    def raw(self, case_id):
+    def raw(self, case_id, backend='sqlite'):
         case = self.cases[case_id]
         if case_id == 'REL-001':
             alice = '00000000-0000-4000-8000-000000000001'
@@ -75,6 +75,32 @@ class CheckpointIntegrityTests(unittest.TestCase):
                                 {'sql': 'SELECT "id" FROM "user" WHERE "id" = ? AND ("status" = \'<literal>\') LIMIT 2', 'operation': 'SELECT'},
                                 {'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "created_at", "updated_at" FROM "todo" WHERE "owner_id" = ?1 AND "deleted_at" IS NULL AND ("deleted_at" IS NULL) ORDER BY "created_at" ASC, "id" ASC LIMIT ?4', 'operation': 'SELECT'}]})
             return raw
+        if case_id == 'REL-002':
+            alice = '00000000-0000-4000-8000-000000000001'
+            missing_owner = '00000000-0000-4000-8000-000000009999'
+            control_id = '00000000-0000-4000-8000-000000000021'
+            orphan_id = '00000000-0000-4000-8000-000000000099'
+            created = '2026-01-15T10:00:00.000Z'
+            control = {'id': control_id, 'ownerId': alice, 'title': 'Alice relationship control',
+                       'status': 'open', 'dueAt': None, 'reminderSentAt': None,
+                       'createdAt': created, 'updatedAt': created, 'deletedAt': None}
+            values = ', '.join(f'?{index}' if backend == 'sqlite' else '?'
+                               for index in range(1, 10))
+            insert = ('INSERT INTO "todo" ("id", "owner_id", "title", "status", "due_at", "reminder_sent_at", "created_at", "updated_at", "deleted_at") '
+                      f'VALUES ({values}) RETURNING "id", "owner_id", "title", "status", "due_at", "reminder_sent_at", "created_at", "updated_at", "deleted_at"')
+            return [
+                {'fixture': {'alice': {'id': alice, 'subject': 'alice', 'status': 'active'},
+                             'missingOwnerId': missing_owner, 'missingOwnerRowsBefore': [],
+                             'duplicateTodoRowsBefore': [], 'controlTodo': control}},
+                {'persistenceAttempt': {'operation': 'create.Todo', 'todoId': orphan_id,
+                    'ownerId': missing_owner, 'backend': backend, 'accepted': False,
+                    'faultKind': 'constraint', 'constraintIdentity': None,
+                    'normalisedFailure': 'relationship_conflict', 'rawDatabaseDetailsPublic': False,
+                    'statements': [{'sql': 'BEGIN IMMEDIATE' if backend == 'sqlite' else 'BEGIN', 'operation': 'BEGIN'},
+                                   {'sql': insert, 'operation': 'INSERT'},
+                                   {'sql': 'ROLLBACK', 'operation': 'ROLLBACK'}]}},
+                {'readback': {'orphanRows': [], 'aliceControlTodos': [control]}},
+            ]
         if case_id in ('PATCH-001', 'PATCH-002', 'PATCH-005'):
             user_id = '00000000-0000-4000-8000-000000000001'
             todo_id = '00000000-0000-4000-8000-000000000021'
@@ -482,13 +508,13 @@ class CheckpointIntegrityTests(unittest.TestCase):
         return replies
 
     def outputs(self):
-        return [{'backend': backend, 'results': [{'id': case_id, 'raw': self.raw(case_id)} for case_id in checkpoint.SUPPORTED]} for backend in harness.BACKENDS]
+        return [{'backend': backend, 'results': [{'id': case_id, 'raw': self.raw(case_id, backend)} for case_id in checkpoint.SUPPORTED]} for backend in harness.BACKENDS]
 
     def test_all_inventory_entries_retained_and_selected_observations_do_not_infer_pass(self):
         report = harness.run_cases(self.root)
         checkpoint.apply_checkpoint(report, self.outputs(), self.root)
         self.assertEqual(len(report['results']), 88)
-        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 22)
+        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 20)
         self.assertEqual(report['status'], 'failed')
         self.assertFalse(report['release_equivalent'])
 
@@ -1307,6 +1333,44 @@ class CheckpointIntegrityTests(unittest.TestCase):
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'REL-001'):
                 checkpoint.observations(case, changed)
+
+    def test_rel002_missing_owner_insert_normalises_and_rolls_back(self):
+        case = self.cases['REL-002']
+        for backend in harness.BACKENDS:
+            with self.subTest(backend=backend):
+                raw = self.raw('REL-002', backend)
+                observed = checkpoint.observations(case, raw, backend=backend)
+                self.assertEqual(harness.assess(case, observed), [])
+                self.assertEqual(observed[0]['steps'][0], {
+                    'accepted': False, 'normalisedFailure': 'relationship_conflict',
+                    'rawDatabaseDetailsPublic': False,
+                })
+
+                mutations = []
+                accepted = deepcopy(raw); accepted[1]['persistenceAttempt']['accepted'] = True
+                mutations.append(('orphan insert accepted', accepted))
+                wrong_fault = deepcopy(raw); wrong_fault[1]['persistenceAttempt']['faultKind'] = 'driver'
+                mutations.append(('wrong persistence fault kind', wrong_fault))
+                wrong_failure = deepcopy(raw); wrong_failure[1]['persistenceAttempt']['normalisedFailure'] = 'todo_mutation_conflict'
+                mutations.append(('wrong normalized relationship failure', wrong_failure))
+                leaked_details = deepcopy(raw); leaked_details[1]['persistenceAttempt']['driverError'] = 'FOREIGN KEY constraint failed'
+                mutations.append(('raw database error leaked', leaked_details))
+                missing_rollback = deepcopy(raw); missing_rollback[1]['persistenceAttempt']['statements'].pop()
+                mutations.append(('failed insert did not roll back', missing_rollback))
+                wrong_insert = deepcopy(raw); wrong_insert[1]['persistenceAttempt']['statements'][1]['sql'] = 'INSERT INTO "todo" ("id", "title") VALUES (?, ?)'
+                mutations.append(('attempt was not the generated owner-bearing Todo insert', wrong_insert))
+                orphan_retained = deepcopy(raw); orphan_retained[2]['readback']['orphanRows'] = [{'id': '00000000-0000-4000-8000-000000000099', 'owner_id': '00000000-0000-4000-8000-000000009999'}]
+                mutations.append(('orphan row persisted', orphan_retained))
+                changed_control = deepcopy(raw); changed_control[2]['readback']['aliceControlTodos'][0]['title'] = 'changed'
+                mutations.append(('Alice control changed', changed_control))
+                owner_exists = deepcopy(raw); owner_exists[0]['fixture']['missingOwnerRowsBefore'] = [{'id': '00000000-0000-4000-8000-000000009999'}]
+                mutations.append(('missing owner was present', owner_exists))
+                wrong_backend = deepcopy(raw)
+                wrong_backend[1]['persistenceAttempt']['backend'] = 'postgres' if backend == 'sqlite' else 'sqlite'
+                mutations.append(('backend label contradicts output backend', wrong_backend))
+                for name, changed in mutations:
+                    with self.subTest(backend=backend, mutation=name), self.assertRaisesRegex(ValueError, 'REL-002'):
+                        checkpoint.observations(case, changed, backend=backend)
 
     def test_patch001_preserves_omitted_due_date_and_reminder(self):
         case = self.cases['PATCH-001']

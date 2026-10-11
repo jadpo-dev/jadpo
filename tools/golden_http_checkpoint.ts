@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation, todoLimitBindingObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
-const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "USER-001"];
+const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "REL-002", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "USER-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const prototype = Database.prototype as any;
@@ -84,6 +84,7 @@ installCheckpointFetchPolicy({ issuer: environment.OIDC_ISSUER, jwksUri: oidcJwk
   providerCalls: aliceJwtProviderCalls, rejectedCalls: aliceJwtRejectedProviderCalls,
   nativeFetch: originalProviderFetch });
 const app = await import(pathToFileURL(join(project, "build/target/app.ts")).href);
+const generatedPersistence = await import(pathToFileURL(join(project, "build/target/persistence.ts")).href);
 async function reset() {
   await app.initializeApplication(environment);
   for (const table of ["service_credential", "__jadpo_auth_service_credentials", "service", "todo", "__jadpo_auth_sessions", "user"]) await execute(`DELETE FROM "${table}"`);
@@ -281,7 +282,67 @@ try {
     else if (case_.id === "USER-001") restoreClock = installFixedClock(userSessionIssuedAt);
     await reset();
     if (case_.id === "USER-001") { restoreClock?.(); restoreClock = undefined; }
-    if (case_.id === "AUTH-002") {
+    if (case_.id === "REL-002") {
+      const expectedOperation = { createTodoWithOwner: "missing-user" };
+      const expected = { accepted: false, normalisedFailure: "relationship_conflict", rawDatabaseDetailsPublic: false };
+      if (JSON.stringify(case_.operation) !== JSON.stringify(expectedOperation)
+          || JSON.stringify(case_.expect) !== JSON.stringify(expected)) throw new Error("Changed REL-002 frozen missing-owner case");
+      const missingOwnerId = "00000000-0000-4000-8000-000000009999";
+      const orphanTodoId = "00000000-0000-4000-8000-000000000099";
+      const createdAt = "2026-01-15T10:00:00.000Z";
+      await execute('INSERT INTO "todo" (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)',
+        [t1, alice, "Alice relationship control", "open", pg ? createdAt : Date.parse(createdAt)]);
+      const [aliceRows, missingOwnerRows, duplicateTodoRows, controlRows] = await Promise.all([
+        execute('SELECT id, authentication_subject, status FROM "user" WHERE id = $1', [alice]),
+        execute('SELECT id FROM "user" WHERE id = $1', [missingOwnerId]),
+        execute('SELECT id FROM "todo" WHERE id = $1', [orphanTodoId]),
+        execute('SELECT id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at FROM "todo" WHERE id = $1', [t1]),
+      ]);
+      if (aliceRows.length !== 1 || aliceRows[0].status !== "active" || missingOwnerRows.length !== 0
+          || duplicateTodoRows.length !== 0 || controlRows.length !== 1) throw new Error("Invalid REL-002 pre-insert fixture");
+      const projectTodo = (row: any) => ({ id: row.id, ownerId: row.owner_id, title: row.title, status: row.status,
+        dueAt: row.due_at === null ? null : timestamp(row.due_at),
+        reminderSentAt: row.reminder_sent_at === null ? null : timestamp(row.reminder_sent_at),
+        createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at),
+        deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) });
+      const expectedControl = { id: t1, ownerId: alice, title: "Alice relationship control", status: "open",
+        dueAt: null, reminderSentAt: null, createdAt, updatedAt: createdAt, deletedAt: null };
+      const initialControl = projectTodo(controlRows[0]);
+      if (JSON.stringify(initialControl) !== JSON.stringify(expectedControl)) throw new Error("Changed REL-002 Alice control fixture");
+      raw.push({ fixture: { alice: { id: aliceRows[0].id, subject: aliceRows[0].authentication_subject, status: aliceRows[0].status },
+        missingOwnerId, missingOwnerRowsBefore: missingOwnerRows, duplicateTodoRowsBefore: duplicateTodoRows,
+        controlTodo: initialControl } });
+
+      const statements = beginSqlObservation();
+      let accepted = false;
+      let faultKind = "none";
+      let constraintIdentity: string | null = null;
+      try {
+        const actor = generatedPersistence.persistence.withPolicy(
+          { kind: "user", subject: "missing-user", values: { user_id: missingOwnerId } }, "REL-002");
+        await actor.create_Todo({ id: orphanTodoId, owner_id: missingOwnerId, title: "orphan relationship probe",
+          status: "open", due_at: null, reminder_sent_at: null,
+          created_at: createdAt, updated_at: createdAt, deleted_at: null });
+        accepted = true;
+      } catch (error) {
+        if (error instanceof generatedPersistence.PersistenceFault) {
+          faultKind = error.kind;
+          constraintIdentity = error.constraint;
+        } else faultKind = "unexpected";
+      } finally { endSqlObservation(); }
+      const normalisedFailure = !accepted && faultKind === "constraint"
+        && missingOwnerRows.length === 0 && duplicateTodoRows.length === 0 ? "relationship_conflict" : null;
+      raw.push({ persistenceAttempt: { operation: "create.Todo", todoId: orphanTodoId, ownerId: missingOwnerId,
+        backend, accepted, faultKind, constraintIdentity, normalisedFailure,
+        rawDatabaseDetailsPublic: false, statements } });
+      const [orphanRows, finalControlRows] = await Promise.all([
+        execute('SELECT id, owner_id FROM "todo" WHERE id = $1', [orphanTodoId]),
+        execute('SELECT id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at FROM "todo" WHERE id = $1', [t1]),
+      ]);
+      if (finalControlRows.length !== 1) throw new Error("Missing REL-002 Alice control readback");
+      raw.push({ readback: { orphanRows,
+        aliceControlTodos: finalControlRows.map((row: any) => projectTodo(row)) } });
+    } else if (case_.id === "AUTH-002") {
       const rows = await execute('SELECT id, authentication_subject, status FROM "user" WHERE authentication_subject = $1', ["alice"]);
       if (rows.length !== 1 || rows[0].status !== "active" || !session?.credential || !session?.csrfToken || !session?.setCookie) throw new Error("Missing AUTH-002 active-user browser session fixture");
       raw.push({ fixture: { subject: rows[0].authentication_subject, userId: rows[0].id, status: rows[0].status,
