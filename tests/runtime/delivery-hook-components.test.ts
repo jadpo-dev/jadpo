@@ -1608,7 +1608,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     expect(schedule.continuation_for).toBeNull();
     expect(schedule.activation_id).toBeNull();
   }, 120_000);
-  test("a fresh generated worker reclaims A's durable pre-dispatch intent claim and fences A's late checkpoint and acknowledgement", async () => {
+  test("generated-persistence claim generations fence stale A before a fresh worker completes", async () => {
     const f = await fixture();
     const initial = await scan(f.proof);
     expect(initial.intents).toHaveLength(1);
@@ -1641,6 +1641,31 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const firstClaim = (await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0];
     expect(firstClaim).toEqual({ generation: "1", invocations: 1, possible_dispatch: 0 });
 
+    // Expire worker A's durable claim and the staged activation before B
+    // reclaims. Both lease changes are test-owned and avoid wall-clock sleeps.
+    await rows('UPDATE "__jadpo_delivery_claims_v1" SET lease_until=$1 WHERE intent_id=$2', ["2000-01-01T00:00:00.000Z", intentId]);
+    await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", bindingIdentity]);
+    // Worker B is represented by a second real generated-persistence claim.
+    // Its pre-dispatch state leaves A's checkpoint fence observable before a
+    // later generated worker takes the final invocation.
+    const replacementB = await persistence.transaction((tx: any) => tx.claim_delivery_intent(intentId, {
+      maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile,
+    }));
+    expect(replacementB).toMatchObject({ intentId, generation: "2", invocation: 2 });
+    expect(replacementB.claimId).not.toBe(staleA.claimId);
+    expect(replacementB.firstClaimAt).toBe(staleA.firstClaimAt);
+    expect(replacementB.lifetimeDeadline).toBe(staleA.lifetimeDeadline);
+    const claimQuery = 'SELECT "intent_id", "claim_id", CAST("generation" AS TEXT) AS "generation", "invocations", "max_invocations", "lifetime_ms", "execution_ms", "lease_ms", "first_claim_at", "lifetime_deadline", "execution_deadline", "lease_until", "possible_dispatch" FROM "__jadpo_delivery_claims_v1" WHERE "intent_id"=$1';
+    const preDispatchB = (await rows(claimQuery, [intentId]))[0];
+    expect(preDispatchB).toMatchObject({ intent_id: intentId, claim_id: replacementB.claimId, generation: "2", invocations: 2, possible_dispatch: 0 });
+    expect(preDispatchB.first_claim_at).toBe(replacementB.firstClaimAt);
+    expect(preDispatchB.lifetime_deadline).toBe(replacementB.lifetimeDeadline);
+    expect(preDispatchB.execution_deadline).toBe(replacementB.executionDeadline);
+    expect(preDispatchB.lease_until).toBe(replacementB.leaseUntil);
+    expect((await persistence.read_delivery_intent(intentId)).payload).toEqual(originalIntent.payload);
+    expect(await persistence.transaction((tx: any) => tx.checkpoint_delivery_dispatch(staleA))).toBe(false);
+    expect((await rows(claimQuery, [intentId]))[0]).toEqual(preDispatchB);
+
     let providerEntered!: () => void, releaseProvider!: () => void;
     const providerReached = new Promise<void>(resolve => { providerEntered = resolve; });
     const heldProviderResponse = new Promise<void>(resolve => { releaseProvider = resolve; });
@@ -1666,9 +1691,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath };
     let child: ReturnType<typeof Bun.spawn> | undefined;
     try {
-      // Test-owned lease advancement models expiry without a wall-clock sleep.
+      // Expire B's claim and leave the activation expired for generated worker C.
       await rows('UPDATE "__jadpo_delivery_claims_v1" SET lease_until=$1 WHERE intent_id=$2', ["2000-01-01T00:00:00.000Z", intentId]);
-      await rows('UPDATE "__jadpo_delivery_activations_v1" SET lease_until=$1 WHERE binding=$2', ["2000-01-01T00:00:00.000Z", bindingIdentity]);
       child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", childSource], { env: childEnv, stdout: "pipe", stderr: "pipe" });
       const capture = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited] as const);
       let timer: ReturnType<typeof setTimeout>;
@@ -1678,22 +1702,26 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       finally { clearTimeout(timer!); }
       if (!reached.entered) throw new Error("stale-claim recovery worker did not reach its provider checkpoint within 15 seconds");
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toMatchObject({ intentId, page: stagedPage, claimGeneration: "2", invocations: 2, possibleDispatch: 1 });
+      // Fresh worker C reclaims after B's lease expires. Activation generation
+      // is independent of the intent-claim generation checked above.
+      expect(calls[0]).toMatchObject({ intentId, page: stagedPage, claimGeneration: "3", invocations: 3, possibleDispatch: 1 });
       expect(calls[0].payload).toEqual(originalIntent.payload);
       const inFlightIntent = await persistence.read_delivery_intent(intentId);
       expect(inFlightIntent.payloadVersion).toBe(originalIntent.payloadVersion);
       expect(inFlightIntent.payload).toEqual(originalIntent.payload);
       expect(BigInt(calls[0].activationGeneration)).toBeGreaterThan(BigInt(stagedHandle.generation));
-      expect(calls[0].claimGeneration).toBe("2");
+      expect(calls[0].claimGeneration).toBe("3");
       expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
-      const inFlightClaim = (await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0];
-      expect(inFlightClaim).toEqual({ generation: "2", invocations: 2, possible_dispatch: 1 });
+      const inFlightClaim = (await rows('SELECT "intent_id", "claim_id", CAST("generation" AS TEXT) AS "generation", "invocations", "max_invocations", "lifetime_ms", "execution_ms", "lease_ms", "first_claim_at", "lifetime_deadline", "execution_deadline", "lease_until", "possible_dispatch" FROM "__jadpo_delivery_claims_v1" WHERE "intent_id"=$1', [intentId]))[0];
+      expect(inFlightClaim).toMatchObject({ intent_id: intentId, generation: "3", invocations: 3, possible_dispatch: 1 });
+      expect(inFlightClaim.claim_id).not.toBe(staleA.claimId);
+      expect(inFlightClaim.claim_id).not.toBe(replacementB.claimId);
       const receiptQuery = 'SELECT intent_id, claim_id, CAST(generation AS TEXT) AS generation, payload_version, accepted_at, observed_at FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1';
-      expect(await persistence.transaction((tx: any) => tx.checkpoint_delivery_dispatch(staleA))).toBe(false);
       expect(await persistence.transaction((tx: any) => tx.acknowledge_delivery_mail(staleA, { accepted_at: instant }))).toBe(false);
+      expect(await persistence.transaction((tx: any) => tx.checkpoint_delivery_dispatch(staleA))).toBe(false);
       expect((await persistence.read_delivery_intent(intentId)).state).toBe("running");
       expect((await rows('SELECT intent_id FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [intentId]))).toEqual([]);
-      expect((await rows('SELECT CAST(generation AS TEXT) AS generation, invocations, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [intentId]))[0]).toEqual(inFlightClaim);
+      expect((await rows(claimQuery, [intentId]))[0]).toEqual(inFlightClaim);
 
       releaseProvider();
       let completionTimer: ReturnType<typeof setTimeout>;
@@ -1707,8 +1735,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(JSON.parse(stdout.trim().split(/\r?\n/u).at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
       const currentReceipt = await rows(receiptQuery, [intentId]);
       expect(currentReceipt).toHaveLength(1);
-      expect(currentReceipt[0]).toMatchObject({ intent_id: intentId, generation: "2", payload_version: originalIntent.payloadVersion });
+      expect(currentReceipt[0]).toMatchObject({ intent_id: intentId, generation: "3", payload_version: originalIntent.payloadVersion });
       expect(currentReceipt[0].claim_id).not.toBe(staleA.claimId);
+      expect(currentReceipt[0].claim_id).not.toBe(replacementB.claimId);
       expect(await rows(receiptQuery, [intentId])).toEqual(currentReceipt);
       const completedIntent = await persistence.read_delivery_intent(intentId);
       expect(completedIntent.state).toBe("succeeded");
