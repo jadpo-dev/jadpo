@@ -599,6 +599,9 @@ def patch_001_observation(case, raw, reply):
     todo_flow = [(index, row['operation']) for index, row in enumerate(statements)
                  if row in todo_selects or row in todo_updates]
     transactions = [row['operation'] for row in statements if row['operation'] in ('BEGIN', 'COMMIT', 'ROLLBACK')]
+    transaction_positions = [(index, row['operation']) for index, row in enumerate(statements)
+                             if row['operation'] in ('BEGIN', 'COMMIT', 'ROLLBACK')]
+    todo_operation_indexes = [index for index, _ in todo_flow]
     if (len(todo_selects) != 2 or len(todo_updates) != 2 or len(writes) != 2
             or not all(owner_scoped(where_clause(row)) for row in todo_selects)
             or len(main_updates) != 1 or len(timestamp_updates) != 1
@@ -606,7 +609,9 @@ def patch_001_observation(case, raw, reply):
             or not active_row_scope(where_clause(timestamp_updates[0][0]))
             or due_case is None or reminder_case is None or due_case.group(1) != reminder_case.group(1)
             or [operation for _, operation in todo_flow] != ['SELECT', 'SELECT', 'UPDATE', 'UPDATE']
-            or transactions != ['BEGIN', 'COMMIT']):
+            or transactions != ['BEGIN', 'COMMIT']
+            or transaction_positions[0][0] >= min(todo_operation_indexes)
+            or transaction_positions[1][0] <= max(todo_operation_indexes)):
         raise ValueError('PATCH-001 SQL lacks scoped conditional patch preservation or committed update ordering')
     return {'outputSchema': 'TodoView', 'storedDueAt': canonical_utc(persisted.get('dueAt')),
             'storedTitle': persisted.get('title'), 'dueDateOmitted': True,

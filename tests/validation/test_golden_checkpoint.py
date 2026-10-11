@@ -1340,7 +1340,15 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('wrong request path', wrong_path))
         wrong_status = deepcopy(raw); wrong_status[1]['status'] = 204
         mutations.append(('wrong response status', wrong_status))
-        self.assertEqual(len(mutations), 18)
+        begin_after_updates = deepcopy(raw)
+        statements = begin_after_updates[1]['statements']
+        statements[:] = statements[1:5] + [statements[0], statements[5]]
+        mutations.append(('BEGIN after todo reads and updates', begin_after_updates))
+        commit_before_todo_operations = deepcopy(raw)
+        statements = commit_before_todo_operations[1]['statements']
+        statements[:] = [statements[0], statements[5], *statements[1:5]]
+        mutations.append(('COMMIT before todo reads and updates', commit_before_todo_operations))
+        self.assertEqual(len(mutations), 20)
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'PATCH-001|Foreign request observation'):
                 checkpoint.observations(case, changed)
