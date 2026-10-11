@@ -549,7 +549,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       // A separate connection observes both durable commits before HTTP.
       const activation = (await activationRows())[0];
       const claim = (await rows('SELECT execution_ms, lease_ms, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
-      calls.push({ body, page: JSON.parse(activation.page), possibleDispatch: Number(claim.possible_dispatch), activationLeaseMs: Number(activation.lease_ms), activationExecutionDeadline: activation.execution_deadline, deliveryExecutionMs: Number(claim.execution_ms), deliveryLeaseMs: Number(claim.lease_ms) });
+      calls.push({ body, page: JSON.parse(activation.page), scheduledFor: activation.scheduled_for, operationTime: activation.operation_time, possibleDispatch: Number(claim.possible_dispatch), activationLeaseMs: Number(activation.lease_ms), activationExecutionDeadline: activation.execution_deadline, deliveryExecutionMs: Number(claim.execution_ms), deliveryLeaseMs: Number(claim.lease_ms) });
       if (onCall) await onCall();
       return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
     } });
@@ -578,6 +578,31 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const activationClockAfter = await persistence.transaction((tx: any) => tx.delivery_activation_clock());
     expect(Date.parse(activationExecutionDeadline)).toBeLessThanOrEqual(Date.parse(activationClockAfter) + activationProfile.executionMs);
     const saved = (await activationRows())[0]; expect(saved.activation_id).toBeNull(); expect(saved.page).toBeNull();
+    expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+  });
+  test("generated worker coalesces missed UTC ticks into one latest occurrence after downtime", async () => {
+    const f = await fixture();
+    const previousTick = "2026-10-08T08:01:02.003Z";
+    const resumedAt = "2026-10-08T09:31:02.003Z";
+    await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, previousTick));
+
+    await provider(async calls => {
+      expect(await activate(f.proof, resumedAt)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(1);
+      expect(calls[0].scheduledFor).toBe("2026-10-08T09:30:00.000Z");
+      expect(calls[0].operationTime).toBe(resumedAt);
+      expect(calls[0].scheduledFor).not.toBe(calls[0].operationTime);
+
+      // Repeating the same late scheduler wakeup cannot enqueue another
+      // occurrence or resend the completed immutable intent.
+      expect(await activate(f.proof, resumedAt)).toEqual({ status: "idle", selected: 0, attempted: 0, continued: false });
+      expect(calls).toHaveLength(1);
+    });
+
+    const schedule = (await activationRows())[0];
+    expect(schedule.last_tick).toBe("2026-10-08T09:30:00.000Z");
+    expect(schedule.pending_for).toBeNull();
+    expect(schedule.activation_id).toBeNull();
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
   test("a fresh generated worker reclaims the original staged page after a pre-dispatch checkpoint fault", async () => {
