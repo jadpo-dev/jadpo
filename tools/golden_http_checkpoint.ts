@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
-const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
+const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const prototype = Database.prototype as any;
@@ -339,6 +339,47 @@ try {
         deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) }));
       raw.push({ fixture: { rows: persistedFixtures } });
       await send(case_.request);
+    } else if (case_.id === "LIST-002") {
+      const fixtureRows = Array.from({ length: 5 }, (_, index) => ({
+        id: `00000000-0000-4000-8000-0000000000${41 + index}`,
+        ownerId: alice,
+        title: `cursor row ${index + 1}`,
+        status: "open",
+        createdAt: `2026-01-15T${String(10 + index).padStart(2, "0")}:00:00.000Z`,
+        deletedAt: null,
+      }));
+      if (case_.requests.length !== 3
+        || case_.requests[0].path !== "/todos?page_size=2"
+        || case_.requests[1].path !== "/todos?page_size=2&after={first.next}"
+        || case_.requests[2].path !== "/todos?page_size=2&after={second.next}") {
+        throw new Error("Changed LIST-002 frozen cursor request sequence");
+      }
+      for (const row of fixtureRows) {
+        await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)',
+          [row.id, row.ownerId, row.title, row.status, pg ? row.createdAt : Date.parse(row.createdAt)]);
+      }
+      const rows = await execute(`SELECT id, owner_id, title, status, created_at, deleted_at FROM "todo" WHERE id IN (${fixtureRows.map((_, index) => `$${index + 1}`).join(", ")}) ORDER BY id ASC`, fixtureRows.map(row => row.id));
+      if (rows.length !== fixtureRows.length) throw new Error("Missing LIST-002 persisted fixture rows");
+      const persistedFixtures = rows.map((row: any) => ({ id: row.id, ownerId: row.owner_id, title: row.title,
+        status: row.status, createdAt: timestamp(row.created_at),
+        deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) }));
+      raw.push({ fixture: { rows: persistedFixtures } });
+      const runTraversal = async () => {
+        let cursor: { created_at: string; id: string } | null = null;
+        for (let pageIndex = 0; pageIndex < case_.requests.length; pageIndex++) {
+          const template = case_.requests[pageIndex];
+          let path = template.path;
+          if (pageIndex > 0) {
+            if (!cursor) throw new Error("LIST-002 page ended before frozen continuation request");
+            const marker = pageIndex === 1 ? "{first.next}" : "{second.next}";
+            path = path.replace(marker, encodeURIComponent(JSON.stringify({ created_at: cursor.created_at, id: cursor.id })));
+          }
+          const reply = await send({ ...template, path });
+          cursor = reply.body?.next ?? null;
+        }
+      };
+      await runTraversal();
+      await runTraversal();
     } else if (case_.id === "READ-001") {
       const now = Date.now();
       await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)', [t1, alice, "active fixture todo", "open", pg ? new Date(now).toISOString() : now]);

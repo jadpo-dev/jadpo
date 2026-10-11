@@ -19,7 +19,7 @@ import golden_cases as harness
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = ('AUTH-001', 'AUTH-002', 'AUTH-003', 'AUTH-004', 'AUTH-005', 'AUTH-006', 'AUTH-007', 'AUTH-008', 'AUTH-009', 'AUTH-010', 'AUTH-011', 'AUTH-012', 'PUBLIC-001', 'CREATE-001', 'CREATE-002',
-             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'PATCH-003', 'PATCH-004', 'DELETE-001', 'DELETE-002', 'USER-001')
+             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'PATCH-003', 'PATCH-004', 'DELETE-001', 'DELETE-002', 'USER-001')
 
 TODO_VIEW_FIELDS = frozenset({'id', 'title', 'status', 'due_at', 'created_at', 'updated_at'})
 TODO_PRIVATE_FIELDS = ('owner_id', 'deleted_at', 'reminder_sent_at')
@@ -214,6 +214,101 @@ def list_001_observation(raw, reply):
             'order': ['created_at desc', 'id desc'], 'nextCursorPresent': True}
 
 
+def list_002_observation(case, raw, replies):
+    """Validate two complete cursor traversals against five persisted rows."""
+    alice = '00000000-0000-4000-8000-000000000001'
+    ids = [f'00000000-0000-4000-8000-0000000000{number}' for number in range(41, 46)]
+    fixture_rows = [
+        {'id': ids[index], 'ownerId': alice, 'title': f'cursor row {index + 1}', 'status': 'open',
+         'createdAt': f'2026-01-15T{10 + index:02d}:00:00.000Z', 'deletedAt': None}
+        for index in range(5)
+    ]
+    frozen_requests = [
+        {'method': 'GET', 'path': '/todos?page_size=2', 'auth': 'alice-session'},
+        {'method': 'GET', 'path': '/todos?page_size=2&after={first.next}', 'auth': 'alice-session'},
+        {'method': 'GET', 'path': '/todos?page_size=2&after={second.next}', 'auth': 'alice-session'},
+    ]
+    if (case.get('id') != 'LIST-002' or case.get('requests') != frozen_requests
+            or case.get('expect') != {'status': 200, 'uniqueItemCount': 5, 'stableAcrossRepeat': True}):
+        raise ValueError('Changed LIST-002 frozen request sequence or expectations')
+    if (len(raw) != 7 or raw[0] != {'fixture': {'rows': fixture_rows}}
+            or len(replies) != 6 or any(item is not reply for item, reply in zip(raw[1:], replies))):
+        raise ValueError('LIST-002 missing, reordered or changed persisted fixture/repeated request traces')
+
+    ordered = sorted(fixture_rows, key=lambda row: (epoch_millis(row['createdAt']), row['id']), reverse=True)
+    observed_pages = []
+    expected_paths = []
+    from urllib.parse import quote
+
+    for traversal in range(2):
+        cursor = None
+        traversal_pages = []
+        for page_index in range(3):
+            template = frozen_requests[page_index]
+            if page_index == 0:
+                expected_path = template['path']
+            else:
+                if not isinstance(cursor, dict) or set(cursor) != {'created_at', 'id'}:
+                    raise ValueError('LIST-002 traversal ended before the next frozen cursor request')
+                canonical_cursor = {'created_at': cursor['created_at'], 'id': cursor['id']}
+                marker = '{first.next}' if page_index == 1 else '{second.next}'
+                expected_path = template['path'].replace(marker, quote(json.dumps(canonical_cursor, separators=(',', ':')), safe=''))
+            expected_paths.append(expected_path)
+            reply = replies[traversal * 3 + page_index]
+            if (reply.get('method') != template['method'] or reply.get('path') != expected_path
+                    or reply.get('auth') != template['auth'] or reply.get('requestJson') is not None):
+                raise ValueError('LIST-002 cursor request was not dynamically encoded from the prior response')
+            if (reply.get('status') != 200 or reply.get('authenticationAttempts') != 1
+                    or reply.get('principal') != {'kind': 'user', 'subject': 'alice', 'identityId': alice}):
+                raise ValueError('LIST-002 page did not resolve the authenticated Alice principal')
+
+            statements = reply.get('statements')
+            todo_selects = [row for row in statements if row['operation'] == 'SELECT'
+                            and re.search(r'\bfrom\s+"?todo"?(?:\s|$)', row['sql'], re.IGNORECASE)]
+            sql = todo_selects[0]['sql'] if len(todo_selects) == 1 else ''
+            where = re.search(r'\bwhere\b(.*?)(?:\border\s+by\b|\blimit\b|\bfetch\b|$)',
+                              sql, re.IGNORECASE | re.DOTALL)
+            predicates = where.group(1) if where else ''
+            owner_scoped = bool(re.search(r'"?owner_id"?\s*=', predicates, re.IGNORECASE))
+            excludes_deleted = bool(re.search(r'"?deleted_at"?\s+is\s+null', predicates, re.IGNORECASE))
+            stable_order = bool(re.search(r'\border\s+by\s+"?created_at"?\s+desc\s*,\s*"?id"?\s+desc\b', sql, re.IGNORECASE))
+            bounded = bool(re.search(r'\blimit\s+(?:\?|\$\d+)', sql, re.IGNORECASE))
+            if (len(statements) != 1 or len(todo_selects) != 1 or not owner_scoped or not excludes_deleted
+                    or has_top_level_sql_keyword(predicates, 'or') or not stable_order or not bounded
+                    or re.search(r'\boffset\b', sql, re.IGNORECASE)):
+                raise ValueError('LIST-002 page lacks one bounded, owner/deletion-scoped stable query')
+            if page_index > 0 and not re.search(r'\(\s*\(\s*"?created_at"?\s*,\s*"?id"?\s*\)\s*<\s*\(', predicates, re.IGNORECASE):
+                raise ValueError('LIST-002 continuation query lacks the composite keyset predicate')
+            if any(row['operation'] in ('INSERT', 'UPDATE', 'DELETE', 'REPLACE') for row in statements):
+                raise ValueError('LIST-002 list request unexpectedly wrote data')
+
+            body = reply.get('body')
+            if not isinstance(body, dict) or set(body) != {'items', 'next'} or not isinstance(body['items'], list):
+                raise ValueError('LIST-002 response is not a TodoPage')
+            expected_page = ordered[page_index * 2:(page_index + 1) * 2]
+            expected_items = [{'id': row['id'], 'title': row['title'], 'status': row['status'],
+                               'due_at': None, 'created_at': row['createdAt'], 'updated_at': row['createdAt']}
+                              for row in expected_page]
+            if body['items'] != expected_items or any(not isinstance(item, dict) or frozenset(item) != TODO_VIEW_FIELDS
+                                                       for item in body['items']):
+                raise ValueError('LIST-002 page has a gap, duplicate, unstable order, foreign row or non-TodoView field')
+            expected_cursor = ({'created_at': expected_page[-1]['createdAt'], 'id': expected_page[-1]['id']}
+                               if page_index < 2 else None)
+            if body['next'] != expected_cursor:
+                raise ValueError('LIST-002 continuation cursor does not identify the last returned row')
+            cursor = body['next']
+            traversal_pages.append(body)
+        observed_pages.append(traversal_pages)
+
+    first_ids = [item['id'] for page in observed_pages[0] for item in page['items']]
+    second_ids = [item['id'] for page in observed_pages[1] for item in page['items']]
+    if first_ids != [row['id'] for row in ordered] or len(set(first_ids)) != 5:
+        raise ValueError('LIST-002 traversal contains a gap or duplicate')
+    if first_ids != second_ids or observed_pages[0] != observed_pages[1] or expected_paths[:3] != expected_paths[3:]:
+        raise ValueError('LIST-002 repeated traversal is not stable')
+    return {'status': 200, 'uniqueItemCount': len(set(first_ids)), 'stableAcrossRepeat': True}
+
+
 def observations(case: dict, raw: list) -> list:
     """Derive only fields supported by retained real response/statement evidence."""
     if (case['id'] not in SUPPORTED or case.get('fixtureVariants')
@@ -237,6 +332,9 @@ def observations(case: dict, raw: list) -> list:
             raise ValueError('Changed USER-001 frozen refresh/expiry timeline')
         expected_requests = [case['request'], *[step['request'] for step in follow_ups if 'request' in step]]
     replies = [item for item in raw if 'method' in item]
+    if case['id'] == 'LIST-002':
+        step = list_002_observation(case, raw, replies)
+        return [{'variant_index': 0, 'steps': [step]}]
     if len(replies) != len(expected_requests):
         raise ValueError('Missing request observation')
     for request, reply in zip(expected_requests, replies):
