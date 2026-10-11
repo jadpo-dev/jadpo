@@ -101,6 +101,27 @@ class CheckpointIntegrityTests(unittest.TestCase):
                                    {'sql': 'ROLLBACK', 'operation': 'ROLLBACK'}]}},
                 {'readback': {'orphanRows': [], 'aliceControlTodos': [control]}},
             ]
+        if case_id == 'REL-004':
+            alice = '00000000-0000-4000-8000-000000000001'
+            todo_id = '00000000-0000-4000-8000-000000000021'
+            disabled_at = '2026-01-15T11:00:00.000Z'
+            created = '2026-01-15T10:00:00.000Z'
+            user = {'id': alice, 'subject': 'alice', 'status': 'disabled', 'disabledAt': disabled_at}
+            todo = {'id': todo_id, 'ownerId': alice, 'title': 'Alice retained todo', 'status': 'open',
+                    'dueAt': None, 'reminderSentAt': None, 'createdAt': created,
+                    'updatedAt': created, 'deletedAt': None}
+            delete = 'DELETE FROM "user" WHERE "id" = ?1' if backend == 'sqlite' else 'DELETE FROM "user" WHERE "id" = $1'
+            return [
+                {'fixture': {'user': user, 'referencingServicesBefore': [], 'retainedTodosBefore': [todo]}},
+                {'persistenceAttempt': {'operation': 'delete.User', 'userId': alice, 'backend': backend,
+                    'accepted': False, 'faultKind': 'constraint', 'relationshipConstraintMatched': True,
+                    'normalisedFailure': 'relationship_conflict', 'todoRowExists': True,
+                    'rawDatabaseDetailsPublic': False,
+                    'statements': [{'sql': 'BEGIN IMMEDIATE' if backend == 'sqlite' else 'BEGIN', 'operation': 'BEGIN'},
+                                   {'sql': delete, 'operation': 'DELETE'},
+                                   {'sql': 'ROLLBACK', 'operation': 'ROLLBACK'}]}},
+                {'readback': {'user': user, 'retainedTodos': [todo]}},
+            ]
         if case_id in ('PATCH-001', 'PATCH-002', 'PATCH-005'):
             user_id = '00000000-0000-4000-8000-000000000001'
             todo_id = '00000000-0000-4000-8000-000000000021'
@@ -514,7 +535,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         report = harness.run_cases(self.root)
         checkpoint.apply_checkpoint(report, self.outputs(), self.root)
         self.assertEqual(len(report['results']), 88)
-        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 20)
+        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 18)
         self.assertEqual(report['status'], 'failed')
         self.assertFalse(report['release_equivalent'])
 
@@ -1370,6 +1391,46 @@ class CheckpointIntegrityTests(unittest.TestCase):
                 mutations.append(('backend label contradicts output backend', wrong_backend))
                 for name, changed in mutations:
                     with self.subTest(backend=backend, mutation=name), self.assertRaisesRegex(ValueError, 'REL-002'):
+                        checkpoint.observations(case, changed, backend=backend)
+
+    def test_rel004_restricts_hard_delete_and_retains_disabled_user_and_todo(self):
+        case = self.cases['REL-004']
+        for backend in harness.BACKENDS:
+            with self.subTest(backend=backend):
+                raw = self.raw('REL-004', backend)
+                observed = checkpoint.observations(case, raw, backend=backend)
+                self.assertEqual(harness.assess(case, observed), [])
+                self.assertEqual(observed[0]['steps'][0], {
+                    'accepted': False, 'normalisedFailure': 'relationship_conflict',
+                    'todoRowExists': True, 'rawDatabaseDetailsPublic': False,
+                })
+
+                mutations = []
+                accepted = deepcopy(raw); accepted[1]['persistenceAttempt']['accepted'] = True
+                mutations.append(('hard delete accepted', accepted))
+                wrong_fault = deepcopy(raw); wrong_fault[1]['persistenceAttempt']['faultKind'] = 'driver'
+                mutations.append(('wrong persistence fault kind', wrong_fault))
+                wrong_constraint = deepcopy(raw); wrong_constraint[1]['persistenceAttempt']['relationshipConstraintMatched'] = False
+                mutations.append(('expected owner constraint not matched', wrong_constraint))
+                wrong_failure = deepcopy(raw); wrong_failure[1]['persistenceAttempt']['normalisedFailure'] = 'todo_mutation_conflict'
+                mutations.append(('wrong normalized relationship failure', wrong_failure))
+                leaked_details = deepcopy(raw); leaked_details[1]['persistenceAttempt']['errno'] = 1811
+                mutations.append(('raw database code leaked', leaked_details))
+                missing_rollback = deepcopy(raw); missing_rollback[1]['persistenceAttempt']['statements'].pop()
+                mutations.append(('failed delete did not roll back', missing_rollback))
+                wrong_delete = deepcopy(raw); wrong_delete[1]['persistenceAttempt']['statements'][1]['sql'] = 'DELETE FROM "todo" WHERE "owner_id" = ?1'
+                mutations.append(('attempt was not the frozen user delete', wrong_delete))
+                referencing_service = deepcopy(raw); referencing_service[0]['fixture']['referencingServicesBefore'] = [{'id': 'service'}]
+                mutations.append(('fixture has a competing referencing service', referencing_service))
+                lost_todo = deepcopy(raw); lost_todo[2]['readback']['retainedTodos'] = []
+                mutations.append(('retained Todo missing after rollback', lost_todo))
+                changed_user = deepcopy(raw); changed_user[2]['readback']['user']['status'] = 'active'
+                mutations.append(('disabled Alice changed after rollback', changed_user))
+                wrong_backend = deepcopy(raw)
+                wrong_backend[1]['persistenceAttempt']['backend'] = 'postgres' if backend == 'sqlite' else 'sqlite'
+                mutations.append(('backend label contradicts output backend', wrong_backend))
+                for name, changed in mutations:
+                    with self.subTest(backend=backend, mutation=name), self.assertRaisesRegex(ValueError, 'REL-004'):
                         checkpoint.observations(case, changed, backend=backend)
 
     def test_patch001_preserves_omitted_due_date_and_reminder(self):

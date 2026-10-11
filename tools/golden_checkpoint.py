@@ -19,7 +19,7 @@ import golden_cases as harness
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = ('AUTH-001', 'AUTH-002', 'AUTH-003', 'AUTH-004', 'AUTH-005', 'AUTH-006', 'AUTH-007', 'AUTH-008', 'AUTH-009', 'AUTH-010', 'AUTH-011', 'AUTH-012', 'PUBLIC-001', 'CREATE-001', 'CREATE-002',
-             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'LIST-004', 'REL-001', 'REL-002', 'PATCH-001', 'PATCH-002', 'PATCH-003', 'PATCH-004', 'PATCH-005', 'DELETE-001', 'DELETE-002', 'USER-001')
+             'CREATE-003', 'CREATE-004', 'READ-001', 'READ-002', 'READ-003', 'LIST-001', 'LIST-002', 'LIST-003', 'LIST-004', 'REL-001', 'REL-002', 'REL-004', 'PATCH-001', 'PATCH-002', 'PATCH-003', 'PATCH-004', 'PATCH-005', 'DELETE-001', 'DELETE-002', 'USER-001')
 
 TODO_VIEW_FIELDS = frozenset({'id', 'title', 'status', 'due_at', 'created_at', 'updated_at'})
 TODO_PRIVATE_FIELDS = ('owner_id', 'deleted_at', 'reminder_sent_at')
@@ -580,6 +580,59 @@ def rel_002_observation(case, raw, backend=None):
     }]}]
 
 
+def rel_004_observation(case, raw, backend=None):
+    """Bind the restricted hard delete to exact relation evidence and rollback."""
+    expected_fixture = ['disabled alice', 'alice retained todo t1']
+    expected_operation = {'hardDeleteUser': 'alice'}
+    expected = {'accepted': False, 'normalisedFailure': 'relationship_conflict',
+                'todoRowExists': True, 'rawDatabaseDetailsPublic': False}
+    if (case.get('id') != 'REL-004' or case.get('kind') != 'persistence'
+            or case.get('fixture') != expected_fixture or case.get('operation') != expected_operation
+            or case.get('expect') != expected):
+        raise ValueError('Changed REL-004 frozen hard-delete case')
+    if (len(raw) != 3 or not isinstance(raw[0], dict) or set(raw[0]) != {'fixture'}
+            or not isinstance(raw[1], dict) or set(raw[1]) != {'persistenceAttempt'}
+            or not isinstance(raw[2], dict) or set(raw[2]) != {'readback'}):
+        raise ValueError('REL-004 fixture, persistence attempt and readback are missing or reordered')
+
+    alice = '00000000-0000-4000-8000-000000000001'
+    todo_id = '00000000-0000-4000-8000-000000000021'
+    disabled_at = '2026-01-15T11:00:00.000Z'
+    created_at = '2026-01-15T10:00:00.000Z'
+    expected_user = {'id': alice, 'subject': 'alice', 'status': 'disabled', 'disabledAt': disabled_at}
+    expected_todo = {'id': todo_id, 'ownerId': alice, 'title': 'Alice retained todo', 'status': 'open',
+                     'dueAt': None, 'reminderSentAt': None,
+                     'createdAt': created_at, 'updatedAt': created_at, 'deletedAt': None}
+    if raw[0]['fixture'] != {'user': expected_user, 'referencingServicesBefore': [],
+                             'retainedTodosBefore': [expected_todo]}:
+        raise ValueError('REL-004 did not prove disabled Alice and the exact sole retained Todo before deletion')
+
+    attempt = raw[1]['persistenceAttempt']
+    observed_backend = attempt.get('backend') if isinstance(attempt, dict) else None
+    if observed_backend not in ('sqlite', 'postgres') or (backend is not None and observed_backend != backend):
+        raise ValueError('REL-004 observation belongs to a different or unsupported database backend')
+    begin_sql = 'BEGIN IMMEDIATE' if observed_backend == 'sqlite' else 'BEGIN'
+    delete_sql = 'DELETE FROM "user" WHERE "id" = ?1' if observed_backend == 'sqlite' else 'DELETE FROM "user" WHERE "id" = $1'
+    expected_attempt = {'operation': 'delete.User', 'userId': alice, 'backend': observed_backend,
+                        'accepted': False, 'faultKind': 'constraint', 'relationshipConstraintMatched': True,
+                        'normalisedFailure': 'relationship_conflict', 'todoRowExists': True,
+                        'rawDatabaseDetailsPublic': False,
+                        'statements': [{'sql': begin_sql, 'operation': 'BEGIN'},
+                                       {'sql': delete_sql, 'operation': 'DELETE'},
+                                       {'sql': 'ROLLBACK', 'operation': 'ROLLBACK'}]}
+    if isinstance(attempt, dict) and any(
+            field in attempt for field in ('message', 'cause', 'stack', 'driverError', 'databaseError', 'code', 'errno')):
+        raise ValueError('REL-004 exposes raw database error details')
+    if not isinstance(attempt, dict) or attempt != expected_attempt:
+        raise ValueError('REL-004 did not prove the exact restricted delete and rollback without driver details')
+    if raw[2]['readback'] != {'user': expected_user, 'retainedTodos': [expected_todo]}:
+        raise ValueError('REL-004 did not retain disabled Alice and her exact Todo after rollback')
+    return [{'variant_index': 0, 'steps': [{
+        'accepted': False, 'normalisedFailure': 'relationship_conflict',
+        'todoRowExists': True, 'rawDatabaseDetailsPublic': False,
+    }]}]
+
+
 def patch_001_observation(case, raw, reply):
     """Bind PATCH-001's omitted due date to its persisted pre/post state."""
     expected_fixture_spec = ['alice todo t1 due 2026-02-01']
@@ -934,6 +987,8 @@ def observations(case: dict, raw: list, backend=None) -> list:
         return rel_001_observation(case, raw)
     if case['id'] == 'REL-002':
         return rel_002_observation(case, raw, backend)
+    if case['id'] == 'REL-004':
+        return rel_004_observation(case, raw, backend)
     if case['id'] == 'LIST-002':
         step = list_002_observation(case, raw, replies)
         return [{'variant_index': 0, 'steps': [step]}]

@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation, todoLimitBindingObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
-const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "REL-002", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "USER-001"];
+const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "REL-002", "REL-004", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "USER-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const prototype = Database.prototype as any;
@@ -342,6 +342,76 @@ try {
       if (finalControlRows.length !== 1) throw new Error("Missing REL-002 Alice control readback");
       raw.push({ readback: { orphanRows,
         aliceControlTodos: finalControlRows.map((row: any) => projectTodo(row)) } });
+    } else if (case_.id === "REL-004") {
+      const expectedFixture = ["disabled alice", "alice retained todo t1"];
+      const expectedOperation = { hardDeleteUser: "alice" };
+      const expected = { accepted: false, normalisedFailure: "relationship_conflict",
+        todoRowExists: true, rawDatabaseDetailsPublic: false };
+      if (JSON.stringify(case_.fixture) !== JSON.stringify(expectedFixture)
+          || JSON.stringify(case_.operation) !== JSON.stringify(expectedOperation)
+          || JSON.stringify(case_.expect) !== JSON.stringify(expected)) throw new Error("Changed REL-004 frozen hard-delete case");
+      const disabledAt = "2026-01-15T11:00:00.000Z";
+      const createdAt = "2026-01-15T10:00:00.000Z";
+      await execute('UPDATE "user" SET status = $1, disabled_at = $2 WHERE id = $3',
+        ["disabled", pg ? disabledAt : Date.parse(disabledAt), alice]);
+      await execute('INSERT INTO "todo" (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)',
+        [t1, alice, "Alice retained todo", "open", pg ? createdAt : Date.parse(createdAt)]);
+      const [aliceRows, serviceRows, todoRows] = await Promise.all([
+        execute('SELECT id, authentication_subject, status, disabled_at FROM "user" WHERE id = $1', [alice]),
+        execute('SELECT id FROM "service" WHERE owner_id = $1 ORDER BY id ASC', [alice]),
+        execute('SELECT id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at FROM "todo" WHERE owner_id = $1 ORDER BY id ASC', [alice]),
+      ]);
+      const projectTodo = (row: any) => ({ id: row.id, ownerId: row.owner_id, title: row.title, status: row.status,
+        dueAt: row.due_at === null ? null : timestamp(row.due_at),
+        reminderSentAt: row.reminder_sent_at === null ? null : timestamp(row.reminder_sent_at),
+        createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at),
+        deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) });
+      const expectedTodo = { id: t1, ownerId: alice, title: "Alice retained todo", status: "open",
+        dueAt: null, reminderSentAt: null, createdAt, updatedAt: createdAt, deletedAt: null };
+      const expectedUser = { id: alice, subject: "alice", status: "disabled", disabledAt };
+      const beforeUser = aliceRows.length === 1 ? { id: aliceRows[0].id, subject: aliceRows[0].authentication_subject,
+        status: aliceRows[0].status, disabledAt: aliceRows[0].disabled_at === null ? null : timestamp(aliceRows[0].disabled_at) } : null;
+      const beforeTodos = todoRows.map((row: any) => projectTodo(row));
+      if (JSON.stringify(beforeUser) !== JSON.stringify(expectedUser) || serviceRows.length !== 0
+          || JSON.stringify(beforeTodos) !== JSON.stringify([expectedTodo])) throw new Error("Invalid REL-004 restrictive-delete fixture");
+      raw.push({ fixture: { user: beforeUser, referencingServicesBefore: serviceRows,
+        retainedTodosBefore: beforeTodos } });
+
+      const statements = beginSqlObservation();
+      let accepted = false;
+      let relationshipConstraintMatched = false;
+      let faultKind = "none";
+      try {
+        await execute(pg ? "BEGIN" : "BEGIN IMMEDIATE");
+        try {
+          await execute('DELETE FROM "user" WHERE "id" = $1', [alice]);
+          accepted = true;
+        } catch (error) {
+          const detail = error as { code?: unknown; errno?: unknown; constraint?: unknown };
+          relationshipConstraintMatched = pg
+            ? detail.code === "23503" && detail.constraint === "todo_owner_id_fk"
+            : detail.code === "SQLITE_CONSTRAINT_TRIGGER" && detail.errno === 1811;
+          faultKind = relationshipConstraintMatched ? "constraint" : "unexpected";
+        }
+        await execute("ROLLBACK");
+      } finally { endSqlObservation(); }
+      const normalisedFailure = !accepted && relationshipConstraintMatched
+        && serviceRows.length === 0 && beforeTodos.length === 1 ? "relationship_conflict" : null;
+      raw.push({ persistenceAttempt: { operation: "delete.User", userId: alice, backend, accepted,
+        faultKind, relationshipConstraintMatched, normalisedFailure,
+        todoRowExists: !accepted && normalisedFailure === "relationship_conflict",
+        rawDatabaseDetailsPublic: false, statements } });
+      const [finalUserRows, finalTodoRows] = await Promise.all([
+        execute('SELECT id, authentication_subject, status, disabled_at FROM "user" WHERE id = $1', [alice]),
+        execute('SELECT id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at FROM "todo" WHERE owner_id = $1 ORDER BY id ASC', [alice]),
+      ]);
+      const finalUser = finalUserRows.length === 1 ? { id: finalUserRows[0].id,
+        subject: finalUserRows[0].authentication_subject, status: finalUserRows[0].status,
+        disabledAt: finalUserRows[0].disabled_at === null ? null : timestamp(finalUserRows[0].disabled_at) } : null;
+      const finalTodos = finalTodoRows.map((row: any) => projectTodo(row));
+      if (JSON.stringify(finalUser) !== JSON.stringify(expectedUser)
+          || JSON.stringify(finalTodos) !== JSON.stringify([expectedTodo])) throw new Error("REL-004 rollback did not retain disabled Alice and her Todo");
+      raw.push({ readback: { user: finalUser, retainedTodos: finalTodos } });
     } else if (case_.id === "AUTH-002") {
       const rows = await execute('SELECT id, authentication_subject, status FROM "user" WHERE authentication_subject = $1', ["alice"]);
       if (rows.length !== 1 || rows[0].status !== "active" || !session?.credential || !session?.csrfToken || !session?.setCookie) throw new Error("Missing AUTH-002 active-user browser session fixture");
