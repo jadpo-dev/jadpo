@@ -688,6 +688,29 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(await activationRows()).toEqual(activationsBefore);
     });
   });
+  test("generated worker leaves a pending intent cancelled without provider dispatch", async () => {
+    const f = await fixture();
+    const original = (await scan(f.proof)).intents[0];
+    expect((await persistence.read_delivery_intent(original.intentId)).state).toBe("pending");
+    expect(await persistence.transaction((tx: any) => tx.cancel_delivery_intent(original.intentId))).toBe("cancelled");
+    const cancelled = await persistence.read_delivery_intent(original.intentId);
+    const cancellation = await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [original.intentId]);
+    const durableRows = await intentRows(f.value.id);
+    expect(cancelled.state).toBe("cancelled");
+    expect(cancellation).toHaveLength(1);
+    expect(durableRows).toHaveLength(1);
+    expect(durableRows[0].intent_id).toBe(original.intentId);
+
+    await provider(async calls => {
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(0);
+      expect(await persistence.read_delivery_intent(original.intentId)).toEqual(cancelled);
+      expect(await rows('SELECT intent_id,requested_at FROM "__jadpo_delivery_cancellations_v1" WHERE intent_id=$1', [original.intentId])).toEqual(cancellation);
+      expect(await intentRows(f.value.id)).toEqual(durableRows);
+      expect(await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId])).toEqual([]);
+      expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+    });
+  });
   test("native replay retries only an adapter-proven no-effect intent and preserves its identity and lifetime budget", async () => {
     const f = await fixture();
     const calls: any[] = [];
