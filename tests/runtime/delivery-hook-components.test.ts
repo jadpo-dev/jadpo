@@ -641,6 +641,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     await persistence.transaction((tx: any) => tx.tick_delivery_schedule(bindingIdentity, 900_000, scanTime));
     await rows('DELETE FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [bindingIdentity]);
     const f = await authorityFixture();
+    // Ensure the private intent ledger exists while this test has no source
+    // rows; rejected public arguments must not enroll any of the 501 fixtures.
+    expect(await scan(f.proof)).toEqual({ intents: [], after: null });
     const idPrefix = crypto.randomUUID().slice(0, 24);
     const ids = Array.from({ length: 501 }, (_, index) => `${idPrefix}${String(index + 1).padStart(12, "0")}`);
     await client.transaction(async (tx: any) => {
@@ -654,12 +657,19 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
 
     await provider(async (requestCalls, endpoint) => {
       calls = requestCalls;
-      const workerSource = (at: string | undefined, includeOperationTime = true) => `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
+      const workerSource = (
+        at: unknown,
+        includeOperationTime = true,
+        activation = extendedActivationProfile,
+        delivery = deliveryProfile,
+        workerCredential?: string,
+        name = "overdue_reminders",
+      ) => `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});
         const {setReferenceMailEndpointForTesting}=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});
         await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
         setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
         const jobs=await import(${JSON.stringify(pathToFileURL(join(root, "jobs.ts")).href)});
-        const result=await jobs.runScheduledJob("overdue_reminders",process.env.COMPONENT_WORKER_KEY,${JSON.stringify(extendedActivationProfile)},${JSON.stringify(deliveryProfile)}${includeOperationTime ? `,${at === undefined ? "undefined" : JSON.stringify(at)}` : ""});
+        const result=await jobs.runScheduledJob(${JSON.stringify(name)},${workerCredential === undefined ? "process.env.COMPONENT_WORKER_KEY" : JSON.stringify(workerCredential)},${JSON.stringify(activation)},${JSON.stringify(delivery)}${includeOperationTime ? `,${at === undefined ? "undefined" : JSON.stringify(at)}` : ""});
         console.log(JSON.stringify(result)); process.exit(0);`;
       const childEnv = {
         ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
@@ -674,8 +684,16 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
         try { return await Promise.race([promise.then(value => ({ settled: true as const, value })), deadline]); }
         finally { clearTimeout(timer!); }
       };
-      const runWorker = async (at: string | undefined, includeOperationTime = true, expectMissingTime = false) => {
-        const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", workerSource(at, includeOperationTime)], { env: childEnv, stdout: "pipe", stderr: "pipe" });
+      const runWorker = async (
+        at: unknown,
+        includeOperationTime = true,
+        expectedError?: string,
+        activation = extendedActivationProfile,
+        delivery = deliveryProfile,
+        workerCredential?: string,
+        name = "overdue_reminders",
+      ) => {
+        const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", workerSource(at, includeOperationTime, activation, delivery, workerCredential, name)], { env: childEnv, stdout: "pipe", stderr: "pipe" });
         children.push(child);
         const capture = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited] as const);
         captures.push(capture);
@@ -686,9 +704,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
           throw new Error("bounded continuation worker exceeded its 30-second limit");
         }
         const [out, err, exit] = result.value;
-        if (expectMissingTime) {
+        if (expectedError !== undefined) {
           expect(exit).not.toBe(0);
-          expect(err).toContain("operationTime is required");
+          expect(err).toContain(expectedError);
           expect(out).toBe("");
           return null;
         }
@@ -697,10 +715,18 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       };
       try {
         const beforeMissingTime = await activationRows();
-        await runWorker(undefined, true, true);
-        await runWorker(undefined, false, true);
+        await runWorker(undefined, true, "operationTime is required");
+        await runWorker(undefined, false, "operationTime is required");
+        await runWorker("not-an-instant", true, "delivery.activation.operationTime");
+        await runWorker(null, true, "delivery.activation.operationTime");
+        await runWorker(firstTime, true, "delivery.activation.profile", { executionMs: 0, leaseMs: 1 });
+        await runWorker(firstTime, true, "delivery.profile", extendedActivationProfile, { executionMs: 0, leaseMs: 1 });
+        await runWorker(firstTime, true, "Unknown checked scheduled job", extendedActivationProfile, deliveryProfile, undefined, "unknown_job");
+        await runWorker(firstTime, true, "invalid_credentials", extendedActivationProfile, deliveryProfile, "not-a-worker-credential");
         expect(calls).toHaveLength(0);
         expect(await activationRows()).toEqual(beforeMissingTime);
+        const fixtureIds = ids.map((_, index) => `$${index + 1}`).join(",");
+        expect(await rows(`SELECT source_entity_id FROM "__jadpo_deliveries_v1" WHERE source_entity_id IN (${fixtureIds})`, ids)).toEqual([]);
 
         const first = await runWorker(firstTime);
         expect(first).toEqual({ status: "finished", selected: 500, attempted: 500, continued: true });
