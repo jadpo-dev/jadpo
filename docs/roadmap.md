@@ -10,11 +10,14 @@ and specifications, not here.
    records, timing logs and committed build output; archived the Codex planning
    documents; parked stranded branches as `archive/*` tags (see the
    [archive index](archive/README.md)).
-2. **Language review.** Walk every language area with Richard, one at a time.
-   Each area gets a short page showing what the compiler accepts today, with
-   examples run through the current compiler, and anything special-cased marked
-   as such. Outcome per area: keep, change or drop. Replaces the old RM-222,
-   RM-224 and RM-225 and absorbs the open E02 language/tooling gaps.
+2. **Language review.** Walk every language area with Richard, one at a time,
+   in [docs/language](language/README.md). Each page shows what the compiler
+   accepts today with compiled examples, every error the area can produce,
+   consistency with the rest of the language, and open questions; Richard
+   comments on the rendered page. Outcome per area: keep, change or drop.
+   Area 1 now covers project layout as well as modules, absorbing the old
+   LAYOUT-001 work. Replaces the old RM-222, RM-224 and RM-225 and absorbs the
+   open E02 language/tooling gaps.
 3. **Rework the areas the review flags.** Keep `python3 tools/verify.py` and
    the passing golden cases green throughout. Rebuild only what the review says
    is wrong.

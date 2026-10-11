@@ -202,6 +202,7 @@ def main():
         step('rust-workspace', ['cargo', 'test', '--locked', '--manifest-path', 'jadpo/Cargo.toml', '--workspace'])
         step('compiler-build', ['cargo', 'build', '--locked', '--manifest-path', 'jadpo/Cargo.toml', '-p', 'jadpo-cli'])
         step('compile-fixtures', ['ruby', 'tests/compile/verify.rb'])
+        step('language-docs', [sys.executable, 'tools/language_docs.py', '--check'])
         step('editor', ['node', '--test', *[str(p.relative_to(ROOT)) for p in sorted((ROOT/'editors/vscode/test').glob('*.test.js'))]])
         step('candidate-contract', [sys.executable, 'tools/verify-p10r.py'])
         for name, entry in manifest['examples'].items():
