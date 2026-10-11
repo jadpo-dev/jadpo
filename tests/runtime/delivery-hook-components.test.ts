@@ -765,6 +765,72 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       if (previousNodeEnv === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previousNodeEnv;
     }
   }, 30_000);
+  test("generated worker retries the same intent only after its durable retry time", async () => {
+    const f = await fixture();
+    const calls: any[] = [];
+    const previousRandom = Math.random;
+    const previousNodeEnv = Bun.env.NODE_ENV;
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      const body = await request.json();
+      calls.push({ body, key: request.headers.get("Idempotency-Key") });
+      if (calls.length <= 3) return Response.json({ code: "rate_limited" }, { status: 429 });
+      return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
+    } });
+    Bun.env.NODE_ENV = "test";
+    Math.random = () => 0.9;
+    setReferenceMailEndpointForTesting(`http://127.0.0.1:${server.port}`);
+    try {
+      const original = (await scan(f.proof)).intents[0];
+      expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(3);
+      expect(calls.every(call => call.body.idempotency_key === original.intentId && call.key === original.intentId)).toBe(true);
+      expect(calls.map(call => call.body)).toEqual([original.payload, original.payload, original.payload]);
+
+      const retrying = await persistence.read_delivery_intent(original.intentId);
+      const firstLedger = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId]))[0];
+      const firstAttempt = (await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]))[0];
+      expect(retrying).toMatchObject({ state: "retry_wait", payloadVersion: original.payloadVersion, payload: original.payload });
+      expect(firstAttempt).toMatchObject({ intent_id: original.intentId, invocation: 1, provider_attempts: 3, failure_class: "service_unavailable" });
+      expect(String(firstAttempt.generation)).toBe("1");
+      expect(Date.parse(firstAttempt.retry_not_before) - Date.parse(firstAttempt.observed_at)).toBe(1800);
+      const waitingState = {
+        intent: retrying,
+        ledger: firstLedger,
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]),
+      };
+
+      expect(await activate(f.proof, "2026-10-08T08:15:00.000Z")).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(3);
+      expect({
+        intent: await persistence.read_delivery_intent(original.intentId),
+        ledger: (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId]))[0],
+        attempts: await rows('SELECT * FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]),
+      }).toEqual(waitingState);
+      expect((await stored(f.value.id))[0].reminder_sent_at).toBeNull();
+
+      const remainingMs = Date.parse(firstAttempt.retry_not_before) - Date.now();
+      expect(remainingMs).toBeGreaterThan(0);
+      await Bun.sleep(remainingMs + 75);
+      expect(await activate(f.proof, "2026-10-08T08:30:00.000Z")).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
+      expect(calls).toHaveLength(4);
+      expect(calls.every(call => call.body.idempotency_key === original.intentId && call.key === original.intentId)).toBe(true);
+      expect(calls.map(call => call.body)).toEqual([original.payload, original.payload, original.payload, original.payload]);
+      expect((await persistence.read_delivery_intent(original.intentId)).state).toBe("succeeded");
+      const completedLedger = (await rows('SELECT * FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [original.intentId]))[0];
+      expect(Number(completedLedger.invocations)).toBe(2);
+      expect(String(completedLedger.generation)).toBe("2");
+      for (const field of ["max_invocations", "lifetime_ms", "execution_ms", "lease_ms", "first_claim_at", "lifetime_deadline"]) {
+        expect(completedLedger[field]).toBe(firstLedger[field]);
+      }
+      expect(await rows('SELECT intent_id,accepted_at FROM "__jadpo_delivery_mail_receipts_v1" WHERE intent_id=$1', [original.intentId])).toEqual([{ intent_id: original.intentId, accepted_at: instant }]);
+      expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
+    } finally {
+      setReferenceMailEndpointForTesting(null);
+      server.stop(true);
+      Math.random = previousRandom;
+      if (previousNodeEnv === undefined) delete Bun.env.NODE_ENV; else Bun.env.NODE_ENV = previousNodeEnv;
+    }
+  }, 30_000);
   test("in-flight cancellation preserves a successful receipt and releases the same-key successor", async () => {
     const f = await fixture();
     let callsInProgress: any[] = [];

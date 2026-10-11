@@ -1002,14 +1002,22 @@ describe(`inherited nullable persistence and transaction contracts (${postgresUr
   const mailNoEffect = (handle: any, outcome: any = noEffect) => (persistenceModule.persistence as any).transaction((tx: any) => tx.record_delivery_mail_no_effect(handle, outcome));
   test("durable no-effect retry wait survives restart and retains identity budgets and FIFO", async () => {
     const persistence = persistenceModule.persistence as any;
-    const value = entry("retry-persist");
-    const [first, second] = await persistence.transaction(async (tx: any) => [await tx.enqueue_delivery_intent(outboxSpec(value, "1")), await tx.enqueue_delivery_intent(outboxSpec(value, "2"))]);
+    const value = entry("retry-persist"), independentKey = entry("retry-independent");
+    const [first, second, independent] = await persistence.transaction(async (tx: any) => [
+      await tx.enqueue_delivery_intent(outboxSpec(value, "1")),
+      await tx.enqueue_delivery_intent(outboxSpec(value, "2")),
+      await tx.enqueue_delivery_intent(outboxSpec(independentKey, "1")),
+    ]);
     const handle = await claimIntent(first.intentId);
     expect(await checkpoint(handle)).toBe(true);
     expect(await mailNoEffect(handle)).toBe("retry_wait");
     expect(await mailNoEffect(handle)).toBeNull();
+    expect((await persistence.read_delivery_intent(first.intentId)).state).toBe("retry_wait");
     expect(await claimIntent(first.intentId)).toBeNull();
     expect(await claimIntent(second.intentId)).toBeNull();
+    expect(await rows('SELECT intent_id FROM "__jadpo_delivery_claims_v1" WHERE intent_id = $1', [second.intentId])).toEqual([]);
+    const independentHandle = await claimIntent(independent.intentId);
+    expect(independentHandle).toMatchObject({ intentId: independent.intentId, generation: "1", invocation: 1 });
     const attempt = (await rows('SELECT *, CAST(generation AS TEXT) AS generation FROM "__jadpo_delivery_attempts_v1" WHERE intent_id = $1', [first.intentId]))[0];
     expect(attempt).toMatchObject({ generation: "1", invocation: 1, provider_attempts: 3, failure_class: "service_unavailable" });
     expect(Date.parse(attempt.retry_not_before) - Date.parse(attempt.observed_at)).toBe(60000);
