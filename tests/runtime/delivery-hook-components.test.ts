@@ -496,9 +496,16 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
   test("concurrent native scans resolve one immutable identity per business revision", async () => {
     await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);
     const pages = await Promise.all([scan(f.proof), scan(f.proof)]);
-    expect(pages[0].intents[0].intentId).toBe(pages[1].intents[0].intentId);
-    expect(pages[0].intents[0].payload).toEqual(pages[1].intents[0].payload);
-    expect(await intentRows(value.id)).toHaveLength(1);
+    expect(pages.map((page: any) => page.intents)).toHaveLength(2);
+    expect(pages.every((page: any) => page.intents.length === 1)).toBe(true);
+    const [first, duplicate] = pages.map((page: any) => page.intents[0]);
+    expect(duplicate).toEqual(first);
+    expect(first).toMatchObject({ sourceEntityId: value.id, sourceRevision: "1", payloadVersion: "reminder.v1", orderingKey: value.id, keySequence: "1" });
+    expect(first.payload.idempotency_key).toBe(first.intentId);
+    const durable = await intentRows(value.id);
+    expect(durable).toHaveLength(1);
+    expect(durable[0].intent_id).toBe(first.intentId);
+    expect((await persistence.read_delivery_intent(first.intentId)).payload).toEqual(first.payload);
   });
   test("caught native enrollment SQL failure rolls back the entire page and leaves surrounding source work committable", async () => {
     await clearScanTodos(); const f = await authorityFixture();
