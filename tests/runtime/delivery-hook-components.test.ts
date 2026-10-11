@@ -528,10 +528,11 @@ describe(`checked selection and immutable enrollment component (${sql ? "postgre
 });
 
 describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`, () => {
-  // Explicit native activation test profile; per-delivery golden approval does
-  // not choose a 500-call activation profile.
-  const profile = Object.freeze({ executionMs: 120_000, leaseMs: 90_000 });
-  const activate = (proof: unknown, at = scanTime) => app.runDeliveryScheduleActivation(bindingIdentity, proof, profile, at);
+  // Activation owns a bounded page; each delivery has its separate accepted
+  // golden claim window. The activation profile remains test-owned.
+  const activationProfile = Object.freeze({ executionMs: 120_000, leaseMs: 90_000 });
+  const deliveryProfile = Object.freeze({ executionMs: 60_000, leaseMs: 40_000 });
+  const activate = (proof: unknown, at = scanTime, activation = activationProfile, delivery = deliveryProfile) => app.runDeliveryScheduleActivation(bindingIdentity, proof, activation, delivery, at);
   const activationRows = () => rows('SELECT * FROM "__jadpo_delivery_activations_v1" WHERE binding=$1', [bindingIdentity]);
   async function fixture() {
     await clearScanTodos();
@@ -547,8 +548,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       const body = await request.json();
       // A separate connection observes both durable commits before HTTP.
       const activation = (await activationRows())[0];
-      const claim = (await rows('SELECT possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
-      calls.push({ body, page: JSON.parse(activation.page), possibleDispatch: Number(claim.possible_dispatch) });
+      const claim = (await rows('SELECT execution_ms, lease_ms, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
+      calls.push({ body, page: JSON.parse(activation.page), possibleDispatch: Number(claim.possible_dispatch), activationLeaseMs: Number(activation.lease_ms), deliveryExecutionMs: Number(claim.execution_ms), deliveryLeaseMs: Number(claim.lease_ms) });
       if (onCall) await onCall();
       return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
     } });
@@ -562,6 +563,9 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     await provider(async calls => {
       expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
       expect(calls).toHaveLength(1); expect(calls[0].possibleDispatch).toBe(1);
+      expect(calls[0].activationLeaseMs).toBe(activationProfile.leaseMs);
+      expect(calls[0].deliveryExecutionMs).toBe(deliveryProfile.executionMs);
+      expect(calls[0].deliveryLeaseMs).toBe(deliveryProfile.leaseMs);
       expect(calls[0].page.intentIds).toEqual([calls[0].body.idempotency_key]);
       expect(calls[0].body).toEqual((await persistence.read_delivery_intent(calls[0].body.idempotency_key)).payload);
       expect(await activate(f.proof)).toEqual({ status: "idle", selected: 0, attempted: 0, continued: false });
@@ -576,7 +580,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     // the fault trigger also works when this single case is run in isolation.
     await persistence.transaction(async (tx: any) => {
       const sentinel = await tx.enqueue_delivery_intent({ job: "fixture_schema", sourceOperation: "fixture", sourceEntity: "fixture", sourceEntityId: crypto.randomUUID(), sourceRevision: "1", orderingKey: crypto.randomUUID(), payloadVersion: "fixture.v1", payload: {} });
-      await tx.claim_delivery_intent(sentinel.intentId, { maxInvocations: 3, lifetimeMs: 3_600_000, ...profile });
+      await tx.claim_delivery_intent(sentinel.intentId, { maxInvocations: 3, lifetimeMs: 3_600_000, ...deliveryProfile });
       await tx.cancel_delivery_intent(sentinel.intentId);
     });
     const calls: Array<{ intentId: string; payload: any; page: string; generation: string; possibleDispatch: number }> = [];
@@ -592,7 +596,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
       const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
       setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
-      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(scanTime)});
+      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(activationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(scanTime)});
       console.log(JSON.stringify(result)); process.exit(0);`;
     const childEnv = { ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
       COMPONENT_WORKER_KEY: f.issued.credential, COMPONENT_ENDPOINT: `http://127.0.0.1:${server.port}/`,
@@ -687,7 +691,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
       const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
       setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
-      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(scanTime)});
+      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(activationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(scanTime)});
       console.log(JSON.stringify(result)); process.exit(0);`;
     const childEnv = {
       ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
@@ -781,7 +785,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       await app.initializeApplication(JSON.parse(process.env.COMPONENT_AUTH_ENV));
       const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());
       setReferenceMailEndpointForTesting(process.env.COMPONENT_ENDPOINT);
-      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(scanTime)});
+      const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(activationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(scanTime)});
       console.log(JSON.stringify(result)); process.exit(0);`;
     const childEnv = {
       ...Bun.env, NODE_ENV: "test", COMPONENT_AUTH_ENV: JSON.stringify(authEnvironment),
@@ -876,10 +880,14 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const f = await fixture();
     await provider(async calls => {
       await expect(activate({})).rejects.toMatchObject({ code: "invalid_credentials" });
-      await expect(app.runDeliveryScheduleActivation("foreign-binding", f.proof, profile, scanTime)).rejects.toMatchObject({ code: "authority_invariant" });
-      for (const invalid of [undefined, null, {}, { executionMs: 0, leaseMs: 1 }, { executionMs: 10, leaseMs: 20 }, { ...profile, extra: true }]) {
-        await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, invalid, scanTime)).rejects.toBeDefined();
+      await expect(app.runDeliveryScheduleActivation("foreign-binding", f.proof, activationProfile, deliveryProfile, scanTime)).rejects.toMatchObject({ code: "authority_invariant" });
+      const invalidProfiles = [undefined, null, {}, { executionMs: 0, leaseMs: 1 }, { executionMs: 10, leaseMs: 20 }, { ...activationProfile, extra: true }];
+      for (const invalid of invalidProfiles) {
+        await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, invalid, deliveryProfile, scanTime)).rejects.toBeDefined();
+        await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, activationProfile, invalid, scanTime)).rejects.toBeDefined();
       }
+      await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, { executionMs: 59_999, leaseMs: 40_000 }, deliveryProfile, scanTime)).rejects.toBeDefined();
+      await expect(app.runDeliveryScheduleActivation(bindingIdentity, f.proof, { executionMs: 60_000, leaseMs: 39_999 }, deliveryProfile, scanTime)).rejects.toBeDefined();
       expect(calls).toHaveLength(0); expect(await activationRows()).toEqual([]); expect(await intentRows(f.value.id)).toEqual([]);
     });
     await expect(persistence.delivery_activation_clock()).rejects.toMatchObject({ operation: "delivery.transaction_required" });
@@ -924,7 +932,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const short = { executionMs: 5_000, leaseMs: 1_500 };
     let initial: any;
     await provider(async calls => {
-      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, short, scanTime);
+      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, short, { executionMs: 1_500, leaseMs: 1_000 }, scanTime);
       expect(result).toEqual({ status: "finished", selected: 4, attempted: 4, continued: false });
       expect(calls).toHaveLength(4);
       expect(new Set(calls.map(call => call.body.idempotency_key)).size).toBe(4);
@@ -945,7 +953,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const f = await fixture(); for (let i = 0; i < 5; i++) await client.create_Todo(todo());
     let initial: any;
     await provider(async calls => {
-      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, { executionMs: 1_500, leaseMs: 1_000 }, scanTime);
+      const result = await app.runDeliveryScheduleActivation(bindingIdentity, f.proof, { executionMs: 1_500, leaseMs: 1_000 }, { executionMs: 1_000, leaseMs: 600 }, scanTime);
       expect(result.status).toBe("partial"); expect(result.selected).toBe(6); expect(result.attempted < 6).toBe(true);
       expect(calls.length < 6).toBe(true);
       const row = (await activationRows())[0];
@@ -980,7 +988,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
   async function staged(f: Awaited<ReturnType<typeof fixture>>) {
     return persistence.withOperationTime(scanTime).transaction(async (tx: any) => {
       await tx.tick_delivery_schedule(bindingIdentity, 900_000, scanTime);
-      const handle = await tx.claim_delivery_activation(bindingIdentity, scanTime, profile);
+      const handle = await tx.claim_delivery_activation(bindingIdentity, scanTime, activationProfile);
       const page = await tx.select_delivery_intents(bindingIdentity, f.proof, null);
       expect(await tx.stage_delivery_activation_page(handle, page.intents.map((intent: any) => intent.intentId), page.after)).toBe(true);
       return page.intents[0];
@@ -1008,7 +1016,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
     const later = todo(); await client.create_Todo(later);
     const resumedAt = "2026-10-08T08:01:00.000Z";
     await provider(async (calls, endpoint) => {
-      const code = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});adapter.setReferenceMailEndpointForTesting(${JSON.stringify(endpoint)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(profile)},${JSON.stringify(resumedAt)});console.log(JSON.stringify(result));process.exit(0);`;
+    const code = `const app=await import(${JSON.stringify(pathToFileURL(join(root, "app.ts")).href)});const adapter=await import(${JSON.stringify(pathToFileURL(join(root, "service-adapter.ts")).href)});await app.initializeApplication(${JSON.stringify(authEnvironment)});adapter.setReferenceMailEndpointForTesting(${JSON.stringify(endpoint)});const proof=await app.authenticationHost().prepareDeliveryCredential("api_bearer",process.env.COMPONENT_WORKER_KEY,Date.now());const result=await app.runDeliveryScheduleActivation(${JSON.stringify(bindingIdentity)},proof,${JSON.stringify(activationProfile)},${JSON.stringify(deliveryProfile)},${JSON.stringify(resumedAt)});console.log(JSON.stringify(result));process.exit(0);`;
       const child = Bun.spawn([process.execPath, "--no-install", "--env-file=/dev/null", "-e", code], { env: { ...Bun.env, NODE_ENV: "test", DATABASE_URL: postgresUrl ?? "", SQLITE_PATH: sqlitePath, COMPONENT_WORKER_KEY: f.issued.credential }, stdout: "pipe", stderr: "pipe" });
       const [out, err, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
       expect(exit, err).toBe(0); expect(JSON.parse(out.trim().split("\n").at(-1)!)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
@@ -1019,8 +1027,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
 });
 
 describe(`committed admission and adapter-origin outcome components (${sql ? "postgres" : "sqlite"})`, () => {
-  // Explicit test-owned finite profile, not the unanswered production proposal.
-  const profile = Object.freeze({ executionMs: 120_000, leaseMs: 90_000 });
+  // Owner-approved golden per-delivery limits; activation has a separate profile.
+  const profile = Object.freeze({ executionMs: 60_000, leaseMs: 40_000 });
   const prepare = (proof: unknown, id: string) => app.prepareDeliveryInvocation(bindingIdentity, proof, id, scanTime, profile);
   async function enrolled() {
     await clearScanTodos(); const f = await authorityFixture(), value = todo(); await client.create_Todo(value);

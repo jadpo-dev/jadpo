@@ -7,7 +7,7 @@ impl TargetGenerator<'_> {
         if self.project.delivery_model().bindings().is_empty() {
             return;
         }
-        line(output, "export async function runDeliveryScheduleActivation(binding: string, proof: unknown, profile: Readonly<{ executionMs: number; leaseMs: number }>, at: unknown = undefined) {");
+        line(output, "export async function runDeliveryScheduleActivation(binding: string, proof: unknown, activationProfileInput: Readonly<{ executionMs: number; leaseMs: number }>, deliveryProfileInput: Readonly<{ executionMs: number; leaseMs: number }>, at: unknown = undefined) {");
         line(
             output,
             "  const context = captureOperation(null, null, undefined, false);",
@@ -15,8 +15,9 @@ impl TargetGenerator<'_> {
         // Optional native clock input is a component-test/host seam, never an
         // authored callable or a substitution of scheduled_for for clock.now.
         line(output, "  const operationTime = at === undefined ? context.now : validateInstant(at, \"delivery.activation.operationTime\");");
-        line(output, "  if (profile === null || typeof profile !== \"object\" || Reflect.ownKeys(profile).sort().join(\",\") !== \"executionMs,leaseMs\" || !Number.isSafeInteger(profile.executionMs) || !Number.isSafeInteger(profile.leaseMs) || profile.leaseMs <= 0 || profile.executionMs < profile.leaseMs) invalid(\"delivery.profile\", \"an explicit finite execution/lease profile\");");
-        line(output, "  profile = Object.freeze({ executionMs: profile.executionMs, leaseMs: profile.leaseMs });");
+        line(output, "  const validateProfile = (value: Readonly<{ executionMs: number; leaseMs: number }>, operation: string) => { if (value === null || typeof value !== \"object\" || Reflect.ownKeys(value).sort().join(\",\") !== \"executionMs,leaseMs\" || !Number.isSafeInteger(value.executionMs) || !Number.isSafeInteger(value.leaseMs) || value.leaseMs <= 0 || value.executionMs < value.leaseMs) invalid(operation, \"an explicit finite execution/lease profile\"); return Object.freeze({ executionMs: value.executionMs, leaseMs: value.leaseMs }); };");
+        line(output, "  const activationProfile = validateProfile(activationProfileInput, \"delivery.activation.profile\"), deliveryProfile = validateProfile(deliveryProfileInput, \"delivery.profile\");");
+        line(output, "  if (activationProfile.executionMs < deliveryProfile.executionMs || activationProfile.leaseMs < deliveryProfile.leaseMs) invalid(\"delivery.activation.profile\", \"an activation window that covers one complete delivery profile\");");
         line(output, "  readCurrentDeliveryCredentialProof(proof);");
         line(output, "  let intervalMs: number; switch (binding) {");
         for binding in self.project.delivery_model().bindings() {
@@ -41,7 +42,7 @@ impl TargetGenerator<'_> {
             output,
             "    await tx.tick_delivery_schedule(binding, intervalMs, operationTime);",
         );
-        line(output, "    const handle = await tx.claim_delivery_activation(binding, operationTime, profile); if (handle === null) return null;");
+        line(output, "    const handle = await tx.claim_delivery_activation(binding, operationTime, activationProfile); if (handle === null) return null;");
         // Continuation coordinates are read from the compiler's durable row.
         // Only their snapshot changes on a new activation; the typed tuple and
         // exact binding cannot come from a user-supplied cursor/ordinary query.
@@ -82,7 +83,7 @@ impl TargetGenerator<'_> {
         line(output, "    if (renewed === null) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true });");
         line(output, "    handle = renewed.handle; deadlineAt = Math.min(executionDeadlineAt, renewalStarted + renewed.remainingMs);");
         line(output, "    if (performance.now() >= deadlineAt) return Object.freeze({ status: \"partial\", selected: staged.page.intentIds.length, attempted, continued: true });");
-        line(output, "    const token = await prepareDeliveryInvocation(binding, proof, intentId, operationTime, profile);");
+        line(output, "    const token = await prepareDeliveryInvocation(binding, proof, intentId, operationTime, deliveryProfile);");
         line(output, "    if (token !== null) {");
         // The closed lexical WeakMap is compiler-owned, not another public
         // deadline setter or an authored invocation capability.
