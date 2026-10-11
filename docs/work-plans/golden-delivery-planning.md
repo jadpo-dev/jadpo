@@ -842,7 +842,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-303 | Decision-dependent provider adapter | [Generated HTTP adapter, 19 tests/90 assertions, 59/59 supported checks and approved independent review](../implementation-history.md#2026-10-03--rm-303-checked-provider-adapter) | planned | complete |
 | RM-304 | Short after service contract | [History](../implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes); independent correction review and fresh supported gate pass; malformed host-map seams excluded | planned | complete |
 | RM-305 | Decision; independently reviewed ASYNC-001 semantic freeze complete | [History](../implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract); 18 traces remain contract-only, with implementation in RM-306/RM-307 | planned | complete |
-| RM-306 | Decision-dependent outbox/compiler subsystem | Static/read/hook/current-issuer/paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage corrections independently approved. Final65/65 supported gate: normal SQLite51/442 and PG50/448; renamed representation52/458 and51/464. Owner resumed the parallel plan, actual6.1-sol/high; closed native scheduler assembly and activation renewal have scoped independent review. Generated crash-after-possible-dispatch recovery now passes SQLite66/1 skip/733 assertions and PostgreSQL65/1 skip/654 assertions, with bounded child cleanup and independent approval [evidence](../../tests/validation/evidence/rm306-process-crash-recovery/README.md). This is one trace only; remaining worker recovery, all18 traces and public activation remain open. Golden per-delivery60s/40s profile is approved; singleton activation profile is separate. [Resume point and limits](#rm-301307108--services-durable-jobs-and-reminders) | planned | in_progress |
+| RM-306 | Decision-dependent outbox/compiler subsystem | Static/read/hook/current-issuer/paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage foundation are independently approved. Six generated worker traces now pass together on SQLite71/1 skip/834 assertions and PostgreSQL70/1 skip/755 assertions. Bounded packets cover pre-dispatch reclaim, downtime coalescing, DST fallback and 500+1 continuation across clean worker-process exits; the latest [continuation packet](../../tests/validation/evidence/rm306-bounded-continuation-20261011/README.md) is independently approved. The fresh supported verifier passes68/68; Golden HTTP remains70/0/18 and all88 frozen backend entries remain not_run. Public job lowering, production singleton activation-profile selection, the complete18-trace matrix and RM-306 acceptance remain open. Golden per-delivery60s/40s is approved. [Resume point and limits](#rm-301307108--services-durable-jobs-and-reminders) | planned | in_progress |
 | RM-307 | Decision-dependent worker subsystem | RM-306, RM-304 | planned | queued |
 | RM-401 | Decision; bounded retries enabled by default | Contract frozen after phase probe and independent correction re-review; [completion evidence](../implementation-history.md#2026-10-02--rm-401-bounded-retry-contract) | planned | complete |
 | RM-402 | Short after retry/failure decisions | RM-401, reviewed RM-207 boundary-contract milestone; scoped corrections/native LOCKED/jitter/revision review approved; fresh supported gate61/61; [current TX checkpoint and limits](../transaction-retry-plan.md#rm-402-reviewed-adapter-checkpoint--2026-10-04) | planned | in_progress |
@@ -4133,3 +4133,65 @@ restart, no-reissue and reconciliation belong to the gated job path, while
 deadline-aware operational mapping and independent runtime review remain. Run
 [`RM-207-aee77ee77b62`](../task-timing/runs/RM-207-aee77ee77b62.jsonl) records
 the 3.18-minute source/evidence review under the current batch pin.
+
+
+**RM-306 resumed checkpoint, 2026-10-11:** after the owner explicitly resumed
+the interrupted delivery loop, the pre-dispatch trigger/reclaim test from the
+isolated writer branch was integrated beside the existing SIGKILL/unknown-outcome
+and receipt/finish-recovery tests. Commit
+`18b7030c86895c7a96cce25f401440eab6eaf363` changes only the runtime test file.
+The integrated SQLite suite passes68/1 skip/775 assertions; PostgreSQL
+67/1 skip/696. The new [source-bound packet](../../tests/validation/evidence/rm306-predispatch-reclaim-integrated-20261011/README.md)
+was independently approved for this bounded checkpoint after 45 pin checks
+(90 digest references); no corrections were required. The exact test packet
+proves the pre-dispatch admission rollback/reclaim boundary alongside the two
+existing crash cases. The reviewer confirms the component renderer executes
+the generated orchestration but public target lowering still returns
+`JADPO_TARGET_JOB_NOT_IMPLEMENTED`. Continue RM-306 with public lowering while
+keeping execution gated on a separately selected singleton activation profile;
+then verify the frozen worker matrix before proceeding to RM-307/RM-108. This
+checkpoint does not close RM-306, RM-307, or Golden Todo. Timing
+`RM-306-2e15fca338e0` records the bounded test/evidence slice as partial under
+`gpt-6.1-sol/high`.
+
+
+**RM-306 activation/per-delivery profile separation, 2026-10-11:** commits
+`ade0e29bd746ea3d6ba94348aad237b3c2d9ff88` and
+`f502b1c20fbe17f2c34ecc28136ae781ee780c31` split the singleton activation
+window from the owner-approved per-delivery claim limits. Generated code
+validates both profiles separately, routes each to its own durable claim, and
+rejects activation bounds shorter than one complete delivery window. At the
+provider boundary the runtime records activation lease 90s and deadline plus
+per-delivery execution/lease 60s/40s; a database-clock bracket verifies the
+persisted deadline against the test-owned 120s activation execution value while
+accounting for lease renewal. SQLite passes 68 tests/788 assertions and
+PostgreSQL 67/709, with one backend-inapplicable skip each. The supported
+[`python3 tools/verify.py` report](../../build/validation/20261011T045749-90777/report.json)
+passes 68/68 steps; its Golden HTTP checkpoint is 70 passed, 0 failed, 18
+unrun, while the full frozen 44-case protocol remains unexecuted. The refreshed
+[source-bound packet](../../tests/validation/evidence/rm306-profile-separation-20261011/README.md)
+was independently approved after 46 pin checks (92 digest references), 42
+candidate-blob comparisons and fresh backend reruns. The 120s/90s activation
+profile is still a test fixture; no production singleton profile is selected.
+Public target lowering remains `JADPO_TARGET_JOB_NOT_IMPLEMENTED`; the full
+worker recovery matrix remains for RM-307. This checkpoint does not close
+RM-306, RM-307 or Golden Todo. Timing `RM-306-4be7de4f2a2b` records 25.66 active
+minutes and 5.08 verification minutes under `gpt-6.1-sol/high`, partial.
+
+**RM-306 generated UTC downtime coalescing, 2026-10-11:** commit
+`8ab3a3e15ac48b34e9e98a395deee19c43e42160` adds an actual generated-worker
+trace for `ASYNC-COALESCE-DOWNTIME`: after missing multiple 15-minute ticks, the
+worker dispatches once for the latest UTC occurrence and preserves a separate
+operation-time snapshot; repeating the late wakeup is idle. The exact test passes
+in both suites: SQLite 69/1 backend skip/799 assertions; PostgreSQL 68/1/720.
+The fresh supported verifier passes 68/68 steps. Golden HTTP remains 70 passed,
+0 failed and 18 `not_run`; all 88 entries of the frozen 44-case/two-backend
+protocol remain `not_run`. The [source-bound evidence packet](../../tests/validation/evidence/rm306-utc-downtime-20261011/README.md)
+retains backend logs and the full verifier report; independent review approved this bounded trace and independently reran both backend suites. The trace simulates downtime with explicit timestamps; it does not restart an OS process or soak through DST/deployment.
+This component trace does not select a production activation profile, enable
+public job lowering or close RM-306/RM-307/Golden Todo. Timer
+`RM-306-19eea3518267` retains the original 2–8h RM-306 estimate and is partial.
+
+**RM-306 generated UTC interval across DST fallback, 2026-10-11:** commit f569e5e06922fe7537aaa8fa006d2084410c23c4 adds a generated-worker case spanning the Europe/London 2026 autumn clock change. Two UTC instants both format as local 01:31 but map to distinct quarter-hour occurrences; the worker dispatches once for the later UTC occurrence and repeated wakeup is idle. SQLite passes 70/1 skip/812 assertions and PostgreSQL 69/1/733; the fresh supported verifier passes 68/68 with Golden HTTP 70/0/18 and frozen protocol 88 not_run. The [source-bound packet](../../tests/validation/evidence/rm306-utc-dst-fallback-20261011/README.md) is independently approved after 20 pin references, fresh SQLite/PostgreSQL reruns and privacy scan. This uses explicit timestamps, not an elapsed-time DST or deployment soak. Production singleton profile, public lowering, full recovery matrix and Golden acceptance remain open.
+
+**RM-306 generated bounded continuation, 2026-10-11:** commit `e79130d18811262165da5708b9444f5309d29826` adds a generated-worker trace for a 501-row due set crossing the fixed 500-intent page. The first child commits the first page and typed continuation cursor, then exits; a separate child resumes with a fresh operation snapshot and completes the sole remaining intent. Two further child processes complete an empty follow-up and return idle; the provider receives exactly501 calls and durable rows cover the complete fixture without duplicate intent IDs. SQLite passes71/1 backend skip/834 assertions; PostgreSQL70/1/755; the fresh supported verifier passes68/68 with Golden HTTP70/0/18 and frozen protocol0/0/88. The [source-bound packet](../../tests/validation/evidence/rm306-bounded-continuation-20261011/README.md) is independently approved after20 pin references, fresh backend reruns and a clean seven-file privacy/symlink scan. These are clean worker exits after committed work, not a crash or host restart; the 600s/300s activation profile is test-only, and there is no general exactly-once claim. Public target lowering, production profile selection, the full18-trace matrix and Golden acceptance remain open. Timing `RM-306-19eea3518267` closes partial with its post-interruption unknown interval excluded; continuation run `RM-306-c32f81b3dc41` records the resumed work.
