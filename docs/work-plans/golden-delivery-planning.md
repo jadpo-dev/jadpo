@@ -843,7 +843,7 @@ same verified Astra High settings; its evidence follows the original checkpoint.
 | RM-304 | Short after service contract | [History](../implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes); independent correction review and fresh supported gate pass; malformed host-map seams excluded | planned | complete |
 | RM-305 | Decision; independently reviewed ASYNC-001 semantic freeze complete | [History](../implementation-history.md#2026-10-04--rm-305-durable-delivery-semantic-contract); 18 traces remain contract-only, with implementation in RM-306/RM-307 | planned | complete |
 | RM-306 | Decision-dependent outbox/compiler subsystem | Static/read/hook/current-issuer/paging, CI-I01 completion and ACT-STORAGE-TIME-01 storage foundation are independently approved. Six generated worker traces now pass together on SQLite71/1 skip/834 assertions and PostgreSQL70/1 skip/755 assertions. Bounded packets cover pre-dispatch reclaim, downtime coalescing, DST fallback and 500+1 continuation across clean worker-process exits; the latest [continuation packet](../../tests/validation/evidence/rm306-bounded-continuation-20261011/README.md) is independently approved. The fresh supported verifier passes68/68; Golden HTTP remains70/0/18 and all88 frozen backend entries remain not_run. Public job lowering, production singleton activation-profile selection, the complete18-trace matrix and RM-306 acceptance remain open. Golden per-delivery60s/40s is approved. [Resume point and limits](#rm-301307108--services-durable-jobs-and-reminders) | planned | in_progress |
-| RM-307 | Decision-dependent worker subsystem | RM-306, RM-304 | planned | queued |
+| RM-307 | Decision-dependent worker subsystem | RM-306 remains open; the independently approved [atomic-enqueue checkpoint](../../tests/validation/evidence/rm307-atomic-enqueue-20261011/README.md) covers ASYNC-OUTBOX-ROLLBACK and ASYNC-COMMIT-CRASH only; the full 18-trace matrix and RM-307 acceptance remain open | planned | in_progress |
 | RM-401 | Decision; bounded retries enabled by default | Contract frozen after phase probe and independent correction re-review; [completion evidence](../implementation-history.md#2026-10-02--rm-401-bounded-retry-contract) | planned | complete |
 | RM-402 | Short after retry/failure decisions | RM-401, reviewed RM-207 boundary-contract milestone; scoped corrections/native LOCKED/jitter/revision review approved; fresh supported gate61/61; [current TX checkpoint and limits](../transaction-retry-plan.md#rm-402-reviewed-adapter-checkpoint--2026-10-04) | planned | in_progress |
 | RM-403 | Short staged; CONFIG-P5 separates liveness and bounded dependency readiness | Scoped recovery/startup-lock, PostgreSQL auth-session, real connection-loss/32-way recovery and asynchronous response-deadline evidence independently approved. Response controller passes six deterministic groups, ten independent emitted-module probes and14-case live readiness. [CONFIG-P5](../configuration-plan.md#config-p5--liveness-and-readiness) retains synchronous/native/startup/platform gates; mail advisory/unprobed; actual6.1-sol/high | planned | in_progress |
@@ -4217,3 +4217,21 @@ selection remain open. Timing
 `RM-306-a2b5cb6ac815` records this partial slice under `gpt-6.1-sol/high`; its
 tests were recorded in the implementation phase because the timer was not
 switched before verification began.
+
+**RM-307 atomic-enqueue crash recovery, 2026-10-11:** commit
+`606c10a638fca1c23663bf753f75f476cac1cd13` adds generated-runtime evidence for
+`ASYNC-OUTBOX-ROLLBACK` and `ASYNC-COMMIT-CRASH`. The rollback case compares the
+pre-transaction source and schedule revision, prior intent ID/payload, and the
+derived `__jadpo_changes` history under the completion-representation variant.
+The fresh-process case exits after source-plus-intent COMMIT and before wakeup,
+then verifies recovery of the exact pre-recovery intent ID, payload version and
+payload. SQLite passes 76/2 skips/947 assertions (default) and 77/2/965
+(derived); PostgreSQL 16.3 passes 76/1/878 and 77/1/896. Independent review
+approved both bounded claims and reran all four variants; its precision note
+records that rollback compares the prior intent ID/payload projection while
+the recovery case compares the full public intent record. The
+[source-bound evidence packet](../../tests/validation/evidence/rm307-atomic-enqueue-20261011/README.md)
+retains author and reviewer logs. This closes only these two traces; the full
+18-trace matrix, RM-306/RM-307 acceptance, RM-108 and Golden Todo remain open.
+Timer `RM-307-0e589fca9150` records this verified slice as partial under
+`gpt-6.1-sol/high` with the original 2–8h estimate.
