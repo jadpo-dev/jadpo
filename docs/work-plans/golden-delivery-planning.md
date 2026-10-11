@@ -4288,3 +4288,20 @@ committed page. Other frozen traces, the full RM-306/RM-307 gates, RM-108 and
 Golden Todo remain open. Timer `RM-307-51a6ec85122f` records this slice as
 partial: 4.69 active minutes, including 3.57 verification minutes, under
 `gpt-6.1-sol/high` and the original 0.5–2h estimate.
+
+**RM-307 per-key ordering with independent progress, 2026-10-11:** test commit
+`4305777d27183524a78d068b97fb83f30e27623f` extends the durable claim/FIFO
+trace with two intents for key K and an independent intent for key J. Once K's
+first intent becomes `outcome_unknown`, K's successor remains blocked, J is
+claimable at generation 1, and a fresh process cannot reclaim uncertain K.
+Focused SQLite passes 1/0/0/11; full validation-persistence passes SQLite
+84/0/0/760 and PostgreSQL 84/0/0/751. Independent review approved the exact
+source and frozen contract without corrections after five pin checks and fresh
+reruns of all three suites. The [source-bound packet](../../tests/validation/evidence/rm307-per-key-order-20261011/README.md)
+retains author and review logs; its final scan covered ten files with zero
+symlinks or detected credential patterns. This proves the native durable
+outcome_unknown FIFO branch only; it does not exercise provider dispatch or the
+retry_wait branch. Other traces, RM-306/RM-307/RM-108 and Golden Todo acceptance
+remain open. Timer `RM-307-578af69102ea` records 0.40 active minutes and a
+2.79-minute unknown interruption interval, excluded after the laptop crash,
+under `gpt-6.1-sol/high` and the original 0.5–2h estimate.
