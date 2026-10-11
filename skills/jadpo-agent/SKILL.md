@@ -11,7 +11,7 @@ failure handling, authentication, policy, persistence, or approval behavior.
 For source work:
 
 1. Read the relevant accepted contract in `docs/decision-register.md`, then
-   `docs/implementation-roadmap.md`, `docs/developer-tooling.md`,
+   `docs/roadmap.md`, `docs/developer-tooling.md`,
    `docs/syntax.md`, and `docs/semantic-model.md`. Use
    `docs/grammar-v0.1.md` for the currently executable subset.
 2. Run `jadpo check <project> --diagnostic-format=json`. Consume the version-2

@@ -1,7 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-19eea3518267", "task_id": "RM-306", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": "01a11fd2-f415-7272-aa35-a8ab485256f8", "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T04:08:27.123458+00:00", "phase": "planning"}
-{"at": "2026-10-11T04:18:20.035708+00:00", "phase": "review", "note": "Independent review of the source-bound generated UTC downtime/coalescing test and retained backend/verifier evidence"}
-{"at": "2026-10-11T04:20:38.611597+00:00", "phase": "verification", "note": "Adding and verifying the generated DST fallback trace on SQLite and PostgreSQL"}
-{"at": "2026-10-11T04:28:06.533187+00:00", "phase": "review", "note": "Source, backend logs and fresh supported report for the DST fallback trace are pinned; awaiting independent review"}
-{"at": "2026-10-11T04:30:58.324164+00:00", "phase": "implementation", "note": "Next eligible RM-306 runtime trace: generated bounded continuation across 501 rows and two activation snapshots"}
-{"at": "2026-10-11T04:31:45.913648+00:00", "phase": "verification", "note": "Focused generated-worker 501-row bounded continuation trace on both adapters"}
-{"at": "2026-10-11T04:47:26.666501+00:00", "phase": "finished", "note": null, "unobserved_gap": true, "outcome": "partial", "evidence": "Interrupted by laptop crash; last recorded phase was verification of the 501-row bounded continuation. Exact interval after the last timer event is unknown and excluded."}

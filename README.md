@@ -20,7 +20,7 @@ See [Contributing](CONTRIBUTING.md) for setup, branches, worktrees and review.
 Licensing remains undecided.
 
 Implementation progress is tracked in the
-[Jadpo implementation roadmap](docs/implementation-roadmap.md). The first implementation
+[Jadpo implementation roadmap](docs/roadmap.md). The first implementation
 contract is the [core grammar](docs/grammar-v0.1.md) exercised by the
 [Jadpo seed application](examples/jadpo-seed/app.jadpo).
 
@@ -54,13 +54,13 @@ available. See the experiment README for prerequisites and output paths.
 The [authenticated policy experiment](experiments/auth-policy/README.md) builds with
 `jadpo build experiments/auth-policy/fixture --target native` (or `wasm`). It adds
 opaque bearer verification, live authority checks, and owner/editor field policies.
-Its [measured performance](docs/auth-policy-performance-results.md) and
-[WASM host trust decision](docs/wasm-host-trust-decision.md) retain the frozen controls
+Its [measured performance](docs/experiments/auth-policy-performance-results.md) and
+[WASM host trust decision](docs/experiments/wasm-host-trust-decision.md) retain the frozen controls
 and distinguish trusted application code from independently enforced guest authority.
-The [capability-host follow-up](docs/capability-host-results.md) implements and tests
+The [capability-host follow-up](docs/experiments/capability-host-results.md) implements and tests
 a separate trusted Rust authority with isolated application guests. Build it with
 `jadpo build experiments/capability-host/fixture --target native` or `--target wasm`.
-The [single-pass monitor prototype](docs/capability-monitor-results.md) removes the
+The [single-pass monitor prototype](docs/experiments/capability-monitor-results.md) removes the
 reference application pass while retaining effect, policy, redaction and commit
 checks. It is a bounded performance follow-up, not a production backend.
 

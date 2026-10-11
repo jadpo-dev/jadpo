@@ -1,5 +1,0 @@
-{"schema_version": 1, "run_id": "RM-403-2f4a47321fe0", "task_id": "RM-403", "actor": "rm403-independent-postgres-auth-review", "actor_kind": "agent", "category": "research", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T08:28:09.933058+00:00", "phase": "planning"}
-{"at": "2026-10-04T08:28:28.220649+00:00", "phase": "review", "note": "Narrow PostgreSQL auth-outage regression review; confirmed Sol/high suitable for consequential auth review; original estimate 1\u20134h retained"}
-{"at": "2026-10-04T08:29:05.799317+00:00", "phase": "verification", "note": "Run registered focused readiness command on approved disposable PostgreSQL cluster; no compiler/rebuild/fullgate"}
-{"at": "2026-10-04T08:29:51.927832+00:00", "phase": "review", "note": "Focused approved PostgreSQL readiness run passed 7/7 with 688 assertions; assess exact outage and cleanup limits, pin post-run hashes"}
-{"at": "2026-10-04T08:32:45.656820+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm403-independent-postgres-auth-review.json"}

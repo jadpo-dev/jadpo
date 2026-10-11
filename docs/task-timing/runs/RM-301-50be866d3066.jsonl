@@ -1,2 +1,0 @@
-{"schema_version": 1, "run_id": "RM-301-50be866d3066", "task_id": "RM-301", "actor": "01a0f95e-c47a-78d0-b173-6ef78949a7e9", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-02T22:18:25.463624+00:00", "phase": "planning"}
-{"at": "2026-10-02T22:23:45.852100+00:00", "phase": "finished", "note": null, "unobserved_gap": true, "outcome": "partial", "evidence": "Interrupted at compaction; lifecycle provenance correction next, service successor pending"}

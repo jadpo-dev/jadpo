@@ -229,5 +229,5 @@ is assumed.
 Implement registry/manifest/source-map probes before UI polish. These cases are
 planned evidence only. Public metadata compatibility and source-retention access
 need review before schema freeze. The
-[E11 plan](work-plans/developer-console-mcp.md#hierarchical-application-graph-plan--2026-10-04)
+[E11 plan](archive/work-plans/developer-console-mcp.md#hierarchical-application-graph-plan--2026-10-04)
 owns live inspection and overhead validation.

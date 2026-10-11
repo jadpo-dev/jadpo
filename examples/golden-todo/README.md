@@ -83,7 +83,7 @@ acceptance and both digests are retained in the
 [review log](REVIEW.md#2026-10-02-owner-authorised-userwithtodos-email-revision).
 The migrated route now uses a self-scoped parent lookup and a bounded indexed
 Todo page; focused SQLite, PostgreSQL and JWT HTTP evidence is recorded in
-[RM-107 history](../../docs/implementation-history.md#2026-10-02--rm-107-self-scoped-user-todo-route).
+[RM-107 history](../../docs/archive/implementation-history.md#2026-10-02--rm-107-self-scoped-user-todo-route).
 The frozen AUTH-007/REL-001 case entries remain unexecuted until the full
 source-bound golden harness runs.
 

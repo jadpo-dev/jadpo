@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-205-b44afa468403", "task_id": "RM-205", "actor": "lifecycle_contract_review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-02T18:09:06.063813+00:00", "phase": "planning"}
-{"at": "2026-10-02T18:09:14.720984+00:00", "phase": "review", "note": "Independent bounded contract review; consequential language and policy invariants"}
-{"at": "2026-10-02T18:18:37.832527+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm205-independent-contract-review.json"}

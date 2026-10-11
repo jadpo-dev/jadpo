@@ -1,7 +1,7 @@
 # DATA-007 — first entity lifecycle contract
 
 **Status:** RM-205 contract frozen, 2026-10-02, after the
-[independent correction re-review](../tests/validation/rm205-independent-contract-review.json)
+independent correction re-review
 approved the exact candidate for freeze. The accepted semantic body and 27-case
 catalog are byte-pinned by that review (candidate document SHA-256
 `663d9bf8a60cc2d5e200c771d18c1205971b420a743a0b78fe5babb102da3215`).
@@ -251,7 +251,7 @@ boundary without projecting hidden owner fields. It does not establish the
 golden reminder selection or email-delivery behaviour owned by RM-106/RM-108.
 
 The full supported verifier passed 58 checks at
-[report 2026-10-03T05:12](../build/validation/20261003T051204-47840/report.json).
+report 2026-10-03T05:12.
 Its status still records the full golden application, behavioural acceptance
 and other release gates as open. The case-by-case status below distinguishes
 fixture/runtime evidence from the remaining application acceptance. Independent
@@ -319,14 +319,14 @@ retained Todo rows, hidden reads and mutations, list exclusion, refresh failure,
 five-minute signed credential bounds, and a concurrent HTTP patch/delete
 outcome. Both adapters pass the route suite; the full supported verifier passes
 58/58 steps, including all SQLite and disposable PostgreSQL integration steps
-([report](../build/validation/20261003T203150-84421/report.json)).
+(report).
 The full verifier continues to report the broader golden behavioural and
-release gates as open. The [independent auth/lifecycle review](../tests/validation/rm106-independent-route-review.json)
+release gates as open. The independent auth/lifecycle review
 approves this scoped route integration with no blocking findings; its two
 nonblocking test-strength notes remain recorded there. The implementation and
 review runs record 238.45 active minutes total: 224.35 for implementation and
-verification in [run RM-106-b3d3a86b6de8](task-timing/runs/RM-106-b3d3a86b6de8.jsonl),
-and 14.1 for review in [run RM-106-cad27e70d915](task-timing/runs/RM-106-cad27e70d915.jsonl).
+verification in run RM-106-b3d3a86b6de8,
+and 14.1 for review in run RM-106-cad27e70d915.
 The reviewer model and effort are unknown under the owner's scoped continuation
 instruction. The original 1–4h estimate is unchanged.
 
@@ -341,9 +341,9 @@ from retention captured from its configured binding and clamps the supplied
 attempt time to the wall clock, so a future operation-time argument cannot age
 rows prematurely. Focused boundary regressions pass on SQLite and PostgreSQL,
 and `cargo test -p jadpo-core` passes 85 tests. The full supported verifier passes
-58/58 checks at [report 2026-10-03T08:33](../build/validation/20261003T083341-45067/report.json).
+58/58 checks at report 2026-10-03T08:33.
 The changes and original findings are recorded in
-[`rm206-independent-implementation-review.json`](../tests/validation/rm206-independent-implementation-review.json).
+`rm206-independent-implementation-review.json`.
 Independent correction re-review was still pending at this checkpoint; it is
 resolved in the completion note below.
 
@@ -364,7 +364,7 @@ pass on SQLite and PostgreSQL, including an uninitialized direct-purge rejection
 generated first-party lifecycle test also checks that initialization binds the
 validated configuration. The independent
 final correction review approved all three boundary fixes; see
-[`rm206-independent-correction-review.json`](../tests/validation/rm206-independent-correction-review.json).
+`rm206-independent-correction-review.json`.
 
 ### RM-206 completion, 2026-10-03
 
@@ -379,15 +379,15 @@ plus its integration tests; all 13 lifecycle runtime tests pass on SQLite and
 PostgreSQL. The independent correction review approved the host create and
 purge boundaries plus configuration binding, and a second read-only spot check
 found no residual issue under the frozen trusted-host boundary. See the
-[correction review](../tests/validation/rm206-independent-correction-review.json),
-[compile corpus run](task-timing/runs/RM-206-d840e261433b.jsonl) and
+correction review,
+compile corpus run and
 [lifecycle runtime suite](../tests/runtime/entity-lifecycle.test.ts).
 
 The remaining seven partial case classifications belong to golden HTTP route
 integration in RM-106 and reminder delivery in RM-108. This closeout does not
 claim that the golden application or release gates pass; those remain separate
 work. The final correction-review timer
-[`RM-206-f76cdc3c1c2e`](task-timing/runs/RM-206-f76cdc3c1c2e.jsonl) records an
+`RM-206-f76cdc3c1c2e` records an
 unreliable 460.62 active minutes due to an unobserved interval and is excluded
 from the reliable task-effort sum. The other 11 measured partial/completion runs
 sum to 367.15 active minutes; the original 1–4h forecast is historical, not a

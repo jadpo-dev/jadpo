@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-420264ad2afa", "task_id": "RM-306", "actor": "01a10337-a83f-72e0-9d14-a52c626704fd", "actor_kind": "agent", "category": "subsystem", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T10:54:50.381757+00:00", "phase": "planning"}
-{"at": "2026-10-04T10:55:32.687740+00:00", "phase": "verification", "note": "Final workspace/compile checks; launch occurred before this timer and is not backfilled"}
-{"at": "2026-10-04T10:56:06.761570+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/work-plans/golden-delivery-planning.md; locked Rust workspace and 215 compile fixture pairs pass; launch interval not backfilled"}

@@ -111,7 +111,7 @@ emit `audit/jobs.json`, but target/build returns
 durable failure dispositions and checked worker lowering exist. It never emits
 an inert job registry or invokes the action at startup. Historical pressure
 syntax is not certified or rewritten. The
-[owning plan](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders)
+[owning plan](archive/work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders)
 records the initial primitive-signature mismatch, correction review and current
 verification. No event/subscriber grammar, service authority or runtime ASYNC
 trace is established by this frontend slice.
@@ -123,14 +123,14 @@ primitives using the application's selected SQLite/PostgreSQL authority database
 They are **private host integration under development**, not a checked authored
 job API, scheduler or operator endpoint. No additional package or hosted queue
 is required. [ASYNC-001](async-plan.md) owns the frozen semantics; the
-[current delivery plan](work-plans/golden-delivery-planning.md) records staged
+[current delivery plan](archive/work-plans/golden-delivery-planning.md) records staged
 implementation and acceptance.
 
 Enqueue requires the live source transaction's attempt token and connection.
 Its immutable source identity, payload/version and per-key sequence survive
 commit/restart; rollback removes the mutation and intent together. Token expiry
 is shared across views, and each SQL invocation rechecks it. The independent
-[storage correction review](../tests/validation/rm306-independent-correction-review.json)
+storage correction review
 accepts retained-client containment and rejection of sparse/unsupported arrays.
 
 The reviewed private state slice adds database-time claims, cumulative immutable limits,
@@ -141,15 +141,15 @@ and blocks successors. Allocation uses fresh database time; late results return
 no handle while preserving any charged invocation/fence. Seven generated-host
 claim cases pass on SQLite (79 assertions), and the full PostgreSQL persistence
 suite passes 56/56 (464 assertions). The independent
-[claim correction review](../tests/validation/rm306-independent-claim-correction-review.json)
+claim correction review
 approves the stale-time correction within this private foundation, not the whole
-task. The fresh supported [gate](../build/validation/20261004T091849-87931/report.json)
+task. The fresh supported gate
 passes 61/61. Independent probes used real SQLite; PostgreSQL execution is main
 verification evidence, not reviewer-run evidence.
 These are state primitive tests, not provider dispatch or the 18-case ASYNC catalog.
 
 Bounded lease renewal has its own independent
-[review](../tests/validation/rm306-independent-renewal-review.json): exact current
+review: exact current
 claim/fence and live stored deadlines guard a fresh database-time update, capped
 by the immutable execution/lifetime. Counts and possible-dispatch evidence do not
 reset; late results return no handle. Three generated-host cases pass on both
@@ -157,7 +157,7 @@ adapters. Database clock rollback may shorten a lease; no monotonic wall-clock
 or cached-handle dispatch guarantee is claimed.
 
 Additional private slices are implemented: reference-mail outcome storage has
-independent [approval](../tests/validation/rm306-independent-mail-outcome-review.json).
+independent approval.
 Cancellation before checkpoint atomically ends work, while after possible dispatch
 it only records a durable request and does not release an unknown key. The
 reference-mail-only acknowledgement accepts the closed validated `accepted_at`
@@ -170,17 +170,17 @@ an already-expired/stale claim cannot newly acknowledge. Explicit uncertainty
 keeps the original intent blocked, including after restart. These trusted-host
 tests do not prove that a receipt originated at a provider or that authored code
 cannot forge it: that authority requires the future checked worker binding.
-The fresh [gate](../build/validation/20261004T094724-2900/report.json) passes 61/61;
+The fresh gate passes 61/61;
 the full PostgreSQL persistence suite passes 67/67 (608 assertions), with five
 focused SQLite mail-outcome cases passing (69 assertions). Cancellation's
-[original review](../tests/validation/rm306-independent-cancellation-review.json)
+original review
 found a caught-state-fault orphan-request gap. The correction wraps cancellation
 in a method-local savepoint; real SQLite/PG trigger failures can be caught while
 the outer host commits unrelated work, without retaining an unmatched request.
 Four focused SQLite cases pass (49 assertions), and the full PostgreSQL suite
 passes 68/68 (616 assertions). The corrected fresh
-[gate](../build/validation/20261004T095612-6271/report.json) passes 61/61;
-the independent [correction review](../tests/validation/rm306-independent-cancellation-correction-review.json)
+gate passes 61/61;
+the independent correction review
 approves the exact cancellation fix, with 27 separate real SQLite probes and
 main-attributed PostgreSQL evidence. All approvals remain storage-foundation-only.
 
@@ -194,10 +194,10 @@ Current trustworthy no-effect proof can complete a stored cancellation request;
 unknown/expired/stale outcomes never reopen resend. This is trusted-host state,
 not checked adapter provenance or full-jitter/scheduler execution.
 
-The [original retry review](../tests/validation/rm306-independent-retry-state-review.json)
+The original retry review
 found a P1 in the inherited savepoint dependency: native whole-transaction
 rollback followed by caught failed cleanup left a reusable client. The
-[scoped correction review](../tests/validation/rm306-independent-retry-state-correction-review.json)
+scoped correction review
 accepts shared attempt poisoning/revocation, local SQL/policy-entry guards and
 poisoned-callback refusal before commit. Real SQLite whole-rollback and real
 PostgreSQL injected rollback-to failure regressions now reject subsequent
@@ -206,19 +206,19 @@ unrelated outer commit. Unproved recovery remains conservative unknown where
 appropriate, never an automatic replay or permission to autocommit. This does
 not cancel already-issued SQL; callers must still await all work.
 
-The preceding retry-only [gate](../build/validation/20261004T112820-24028/report.json)
+The preceding retry-only gate
 passed 61/61 before the poisoning correction. Current focused generated-host
 retry/poison cases pass on both applicable adapters. The next full gate exposed
 the independently reproduced golden self-disable field-policy conflict
-([failed gate](../build/validation/20261004T113901-31108/report.json),
-[policy review](../tests/validation/rm108-independent-policy-composition-review.json)).
+(failed gate,
+policy review).
 The owner subsequently approved exactly two self-update-only lifecycle field
 grants. After that source repair, the fresh supported
-[gate](../build/validation/20261004T141712-52403/report.json) passes 61/61,
+gate passes 61/61,
 including the current retry/poison guards and both golden adapter suites.
 Release equivalence remains false; no ASYNC or checked-worker conformance is
 inferred. Do not treat the earlier passing gate as verification of the new guard bytes.
-The [owning checkpoint](work-plans/golden-delivery-planning.md#checkpoint) records
+The [owning checkpoint](archive/work-plans/golden-delivery-planning.md#checkpoint) records
 current counts, authority input and pending compiler/worker stages.
 
 Limits remain explicit: exact compiler-owned table layout is assumed; schema

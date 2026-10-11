@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-109-83a8fe88ab8b", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T18:42:22.712113+00:00", "phase": "planning"}
-{"at": "2026-10-11T18:49:22.966984+00:00", "phase": "implementation", "note": null}
-{"at": "2026-10-11T18:53:39.810189+00:00", "phase": "verification", "note": null}
-{"at": "2026-10-11T19:05:27.894743+00:00", "phase": "finished", "note": null, "unobserved_gap": true, "outcome": "partial", "evidence": "Laptop interruption; last interval unknown. Integrated adapter replay retained at build/validation/golden-adapter-reviewed-20261011; 18 backend entries remain not_run and review is pending."}

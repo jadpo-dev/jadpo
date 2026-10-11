@@ -17,10 +17,10 @@ abort/ambiguous-commit traces, preserving unknown when evidence is insufficient.
 It does not enable production retries. RM-402 follows freeze with production
 lowering and the complete conformance matrix. This separates proof preparation
 from implementation without removing the evidence gate or making RM-401 wait
-for the task that depends on it. See the [planning assessment](work-plans/roadmap-assessment.md).
+for the task that depends on it. See the [planning assessment](archive/work-plans/roadmap-assessment.md).
 
-The [bounded adapter probe](../tests/validation/rm401-phase-probe.ts) and
-[saved result](../tests/validation/rm401-phase-probe-results.json) ran with Bun
+The bounded adapter probe and
+saved result ran with Bun
 1.2.20, SQLite via Bun and disposable PostgreSQL 16.3 on 2026-10-02. SQLite
 reported structured `SQLITE_BUSY` at failed `BEGIN IMMEDIATE` with no active
 transaction; a commit-time `SQLITE_BUSY` left a transaction that a successful
@@ -60,7 +60,7 @@ acknowledgements remain `outcome_unknown`. SQLite and PostgreSQL tests cover
 real contention, nested rollback, commit acknowledgement loss, operation-clock
 refresh, retry exhaustion, and process-level PostgreSQL deadlock. The focused
 validation suite passes 29 tests on each adapter; full-gate evidence is linked
-from the [delivery checkpoint](work-plans/golden-delivery-planning.md).
+from the [delivery checkpoint](archive/work-plans/golden-delivery-planning.md).
 
 Cancellation now reaches route transactions. Generated async queries check it
 before and after each query; synchronous SQLite calls check before and after
@@ -104,7 +104,7 @@ the safe unavailable response. Runtime tests inject a transient first attempt,
 then make the retry's SQLite synchronous statement or PostgreSQL trigger-backed
 statement return after the one-second retry window. Both assert no persisted
 row, a stopped retry sequence and safe unavailability. The 31-test persistence
-suite passes on SQLite and PostgreSQL 16.3. The [full supported verifier report](../build/validation/20261002T214536-64903/report.json)
+suite passes on SQLite and PostgreSQL 16.3. The full supported verifier report
 passes all 55 checks;
 the separate golden and release gates remain open.
 
@@ -126,7 +126,7 @@ The focused persistence suites now pass 33 tests on each adapter. This proves
 the acknowledged-commit branch; it does not make active database calls
 interruptible or supply a separate operation deadline. The fresh full supported
 verifier run passes all 55 checks, including nine PostgreSQL modes:
-[report](../build/validation/20261002T215540-67673/report.json).
+report.
 
 ### RM-402 request-deadline and cancellation recheck — 2026-10-03
 
@@ -154,14 +154,14 @@ The checked language has no provider-dispatch callable declaration; fixture 169
 rejects the undeclared provider call before execution. This preserves the
 current fail-closed boundary but does not define effects for future provider
 syntax. The full supported verifier passes 58/58 checks
-([report](../build/validation/20261003T213248-5311/report.json)). RM-402 remains
+(report). RM-402 remains
 partial: request-deadline semantics, supported active-call interruption and
 independent transaction review are still open.
 
 ### RM-402 cancellation-boundary continuation — 2026-10-04
 
 The fresh supported verifier now passes 61/61 supported checks, including the
-SQLite/PostgreSQL retry suites ([report](../build/validation/20261004T015807-88670/report.json)).
+SQLite/PostgreSQL retry suites (report).
 Its PostgreSQL cancellation case records 1020.33 ms from aborting an in-flight
 statement until the generated request settles; the transaction then rolls back
 before commit and does not retry. This is one observed run around the test's
@@ -272,7 +272,7 @@ phase record are enough for each proposed retryable server abort. The saved
 probe establishes 40001 after the callback and 40P01 with a confirmed victim
 abort on this pinned runtime. Its dropped response case shows that a transport
 failure after possible `COMMIT` can hide a committed write; keep such cases
-non-retryable. The [independent review and correction re-review](../tests/validation/rm401-rm207-independent-contract-review.json)
+non-retryable. The independent review and correction re-review
 approve this contract freeze. Original findings remain in that record; the
 review does not claim generated-adapter conformance.
 
@@ -298,7 +298,7 @@ pass; the SQLite persistence runtime suite passes 37 tests, including explicit
 deadline rollback, retry-window 503, acknowledged-commit success and
 unknown-outcome mapping; the service fake suite passes 3 tests. The supported
 verifier attempt is recorded at
-[`20261004T041018-15968`](../build/validation/20261004T041018-15968/report.json)
+`20261004T041018-15968`
 and stopped because the sandbox denied localhost binding. The PostgreSQL
 deadline suite could not start because this host denied `shmget`. PostgreSQL
 deadline evidence, the independent transaction review and active-query
@@ -307,7 +307,7 @@ interruption evidence remain open; RM-402 is still partial.
 ### RM-402 reviewed adapter checkpoint — 2026-10-04
 
 Approved disposable host verification supersedes the historical socket/shared-memory
-restriction above; the fresh supported [gate](../build/validation/20261004T092753-91801/report.json)
+restriction above; the fresh supported gate
 passes 61/61, including the complete registered PostgreSQL persistence mode.
 PostgreSQL transactional statements receive a server-side statement timeout
 refreshed from the operation budget; setup/refresh/reset/savepoint faults are
@@ -315,7 +315,7 @@ classified, while rollback/release cleanup remains possible after expiry.
 Expired known-no-commit inline operations and retry backoff return 504;
 retry-window-only exhaustion remains 503, acknowledged COMMIT remains success,
 and uncertain COMMIT is neither replayed nor converted into definite timeout.
-The independent [correction review](../tests/validation/rm402-independent-correction-review.json)
+The independent correction review
 approves those scoped corrections.
 
 Native SQLite write contention is covered using two explicit test-only shared-cache
@@ -328,8 +328,8 @@ avoids fractional-clock equality artifacts. This tests mapping/caps, not random
 distribution or progressive clock consumption. Injected BUSY/40001 rollback cases
 produce contiguous revisions 1–4 with no holes/duplicates; the 40001 revision case
 is structured injection, not a native PostgreSQL serialization event. See
-[coverage review](../tests/validation/rm402-independent-coverage-review.json) and
-[jitter correction approval](../tests/validation/rm402-independent-jitter-correction-review.json).
+coverage review and
+jitter correction approval.
 
 Whole-request hard bounds remain unproved for pool acquisition, BEGIN,
 nontransactional reads, logs and COMMIT; SQLite synchronous calls are cooperative.
@@ -343,7 +343,7 @@ latency or exactly-once effect guarantee is claimed.
 
 The persistence suite now checks a reproducible broad distribution in addition
 to the existing point-sample bounds: 512 retry delays use a fixed xorshift32
-seed, fixed monotonic clock and captured timers. Every delay stays in `[0, 50)`
+seed, fixed monotonic clock and captured timers. Every delay stays in `0, 50)`
 ms; each of ten 5 ms bins contains 35–70 samples and the sample mean is 24–26
 ms. The same test executes through SQLite and PostgreSQL transaction adapters.
 This checks the seeded adapter path and catches collapsed or badly skewed
@@ -359,12 +359,12 @@ assertions. The fresh full supported verifier passes **68/68** steps and reports
 checkpoint remains 70 passed / 18 not run. The first full attempt and
 representation rerun hit a lock-wait hang/cascade; the clean isolated rerun and
 fresh full verifier both pass, and all outputs are retained in the
-[RM-402 distribution packet](../tests/validation/evidence/rm402-jitter-distribution-20261011/README.md).
+[RM-402 distribution packet.
 
 The scoped independent exact-source review approved this seeded-distribution
 slice with no findings: 13 pins passed, and focused SQLite plus full SQLite and
 PostgreSQL persistence reruns passed. The verdict and reviewer privacy scan are
-retained in the [RM-402 distribution packet](../tests/validation/evidence/rm402-jitter-distribution-20261011/README.md).
+retained in the RM-402 distribution packet.
 Reviewer-assigned settings were gpt-6.1-sol/high; actual settings were not
 available. Whole-request hard bounds, broad replay eligibility and wider
 conformance remain unproved, so RM-402 stays partial.

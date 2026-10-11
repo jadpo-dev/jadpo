@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-204-d7f2a1a862a6", "task_id": "RM-204", "actor": "rm204-language-review", "actor_kind": "agent", "category": "research", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-02T07:32:26.657607+00:00", "phase": "planning"}
-{"at": "2026-10-02T07:32:30.384611+00:00", "phase": "review", "note": "Read-only final re-review of node:http streaming/auth and integer fixes."}
-{"at": "2026-10-02T07:33:57.494580+00:00", "phase": "finished", "note": null, "outcome": "complete", "evidence": "Read-only targeted RM-204 re-review approved; bun focused pair passed 13 tests/152 assertions; streaming node:http adapter, query safe integer and protected auth/CSRF checks verified."}

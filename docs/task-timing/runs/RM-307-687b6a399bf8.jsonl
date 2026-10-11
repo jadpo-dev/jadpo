@@ -1,9 +1,0 @@
-{"schema_version": 1, "run_id": "RM-307-687b6a399bf8", "task_id": "RM-307", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T10:07:37.510012+00:00", "phase": "planning"}
-{"at": "2026-10-11T10:08:30.517409+00:00", "phase": "verification", "note": "Focused generated cancellation receipt branches pass on SQLite; run the full four-variant component matrix."}
-{"at": "2026-10-11T10:08:51.932841+00:00", "phase": "implementation", "note": "Fix lazy receipt-table assumption found by the first focused run; preserve the initial failure log."}
-{"at": "2026-10-11T10:08:51.990553+00:00", "phase": "verification", "note": "Rerun focused known-no-effect and outcome-unknown cancellation traces after test correction."}
-{"at": "2026-10-11T10:11:34.189072+00:00", "phase": "blocked", "note": "Exact candidate 64f3bcb is with the already-authorized independent reviewer; continue read-only triage of the next RM-307 partial trace."}
-{"at": "2026-10-11T10:11:51.931489+00:00", "phase": "planning", "note": "Read-only triage of ASYNC-PER-KEY-ORDER generated dispatch after the cancellation candidate; no edits during independent reruns."}
-{"at": "2026-10-11T10:13:16.924849+00:00", "phase": "blocked", "note": "Source-bound packet is with the already-authorized reviewer; next RM-307 slice is generated K/K/J retry-wait provider dispatch."}
-{"at": "2026-10-11T10:13:30.645719+00:00", "phase": "review", "note": "Independent review approved 64f3bcb with 8 pins and fresh matrix reruns; update evidence and inventory before next trace."}
-{"at": "2026-10-11T10:14:53.578842+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm307-cancel-after-dispatch-outcomes-20261011/README.md"}

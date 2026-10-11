@@ -71,4 +71,4 @@ match the Rust decoder.
 These are experiment limits, not new language rules. HTTP cache headers and
 request-ID correlation are checked; random IDs are normalized for comparison.
 
-See [results and limitations](../../docs/auth-policy-conformance-results.md).
+See [results and limitations](../../docs/experiments/auth-policy-conformance-results.md).

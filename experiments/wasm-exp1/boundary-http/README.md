@@ -85,7 +85,7 @@ handler timings include body parsing and response construction but exclude socke
 queueing. Closed-loop load does not establish fixed-arrival-rate latency SLOs,
 production saturation behavior, cold starts or distributed/cloud capacity.
 
-See the [results report](../../../docs/wasm-http-experiment-results.md),
+See the [results report](../../../docs/experiments/wasm-http-experiment-results.md),
 [HTTP table](table.md), [paired summaries](results.json) and
 [raw evidence manifest](evidence/manifest.json) for the final conclusion.
 

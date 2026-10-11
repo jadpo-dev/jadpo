@@ -1,6 +1,0 @@
-{"schema_version": 1, "run_id": "RM-108-0f3380f34158", "task_id": "RM-108", "actor": "01a10337-a83f-72e0-9d14-a52c626704fd", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T10:29:51.361067+00:00", "phase": "planning"}
-{"at": "2026-10-04T10:31:51.801739+00:00", "phase": "implementation", "note": null}
-{"at": "2026-10-04T10:35:15.140697+00:00", "phase": "verification", "note": null}
-{"at": "2026-10-04T10:37:57.213296+00:00", "phase": "review", "note": "Full gate hit concurrent non-normative grammar/formatter coverage failure; focused policy and PostgreSQL tests pass"}
-{"at": "2026-10-04T10:40:34.915894+00:00", "phase": "paused", "note": "Awaiting policy/lifecycle correction review; switch to retry finding correction"}
-{"at": "2026-10-04T10:53:55.335611+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/work-plans/golden-delivery-planning.md"}

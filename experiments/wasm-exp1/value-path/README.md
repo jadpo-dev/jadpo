@@ -79,6 +79,6 @@ and runs three rotations of both write workloads at concurrency sixteen. Long
 server-side application/storage stalls occurred on both backends; their exact
 cause remains unresolved. Do not infer a general write-performance win.
 
-See the [results report](../../../docs/wasm-value-path-results.md),
+See the [results report](../../../docs/experiments/wasm-value-path-results.md),
 [HTTP table](table.md), [paired summaries](results.json) and
 [raw evidence manifest](evidence/manifest.json).

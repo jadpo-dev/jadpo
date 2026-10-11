@@ -1,2 +1,0 @@
-{"schema_version": 1, "run_id": "META-EVENT-GRAPH-CONTEXT-396b1f758807", "task_id": "META-EVENT-GRAPH-CONTEXT", "actor": "01a105c2-7987-7571-86c8-2a4804c75f53", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": null, "reasoning": null, "at": "2026-10-04T08:21:01.365221+00:00", "phase": "planning"}
-{"at": "2026-10-04T08:28:01.398048+00:00", "phase": "finished", "note": null, "outcome": "complete", "evidence": "docs/work-plans/roadmap-assessment.md"}

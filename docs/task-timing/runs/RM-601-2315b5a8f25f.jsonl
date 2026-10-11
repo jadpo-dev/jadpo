@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-601-2315b5a8f25f", "task_id": "RM-601", "actor": "01a0f95e-c47a-78d0-b173-6ef78949a7e9", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6-astra", "reasoning": "high", "at": "2026-10-02T21:45:56.615013+00:00", "phase": "planning"}
-{"at": "2026-10-02T21:47:19.408003+00:00", "phase": "implementation", "note": "Saved short plan: bind captured schema registry and full baseline state; preserve unsupported effect categories and local-only authority."}
-{"at": "2026-10-02T21:52:02.037242+00:00", "phase": "verification", "note": null}
-{"at": "2026-10-02T21:55:25.681491+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/approval-protocol.md; build/validation/20261002T225252-86027/report.json: 55/55; 12 approval tests and CLI baseline pass"}

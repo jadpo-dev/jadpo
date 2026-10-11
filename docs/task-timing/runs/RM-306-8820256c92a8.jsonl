@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-8820256c92a8", "task_id": "RM-306", "actor": "rm306-independent-retry-state-correction-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T10:43:24.496908+00:00", "phase": "planning"}
-{"at": "2026-10-04T10:44:28.370189+00:00", "phase": "verification", "note": "Isolated real SQLite and modeled PostgreSQL protocol probes of exact emitted guards and transaction method"}
-{"at": "2026-10-04T10:48:00.715760+00:00", "phase": "review", "note": "Seven correction probes passed; exact-region pinning and disposition"}
-{"at": "2026-10-04T10:51:12.096785+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-retry-state-correction-review.json"}

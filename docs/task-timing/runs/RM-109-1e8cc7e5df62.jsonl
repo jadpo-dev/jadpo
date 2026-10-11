@@ -1,5 +1,0 @@
-{"schema_version": 1, "run_id": "RM-109-1e8cc7e5df62", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T22:40:26.954730+00:00", "phase": "planning"}
-{"at": "2026-10-10T22:41:31.683375+00:00", "phase": "verification", "note": "37 focused Golden tests pass, including CREATE-001 owner, output projection, due-date and transaction mutations; running the live SQLite/PostgreSQL checkpoint."}
-{"at": "2026-10-10T22:44:29.608201+00:00", "phase": "review", "note": "CREATE-001 retained packet prepared for independent review"}
-{"at": "2026-10-10T22:46:45.282560+00:00", "phase": "implementation", "note": "Correct reviewer finding: CREATE-001 must place Todo INSERT between BEGIN and COMMIT"}
-{"at": "2026-10-10T22:48:47.395680+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm109-http-create001-20261010-commit-order-rereview/README.md"}

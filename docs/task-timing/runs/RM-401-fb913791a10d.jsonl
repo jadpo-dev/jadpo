@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-401-fb913791a10d", "task_id": "RM-401", "actor": "01a0f884-59ca-7d10-bcde-75084fd349e9", "actor_kind": "agent", "category": "research", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-02T17:19:28.700248+00:00", "phase": "planning"}
-{"at": "2026-10-02T17:25:40.138294+00:00", "phase": "verification", "note": "Disposable Bun 1.2.20 SQLite/PostgreSQL 16.3 phase probe; persisted result and checked catalog."}
-{"at": "2026-10-02T17:29:23.419467+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm401-phase-probe-results.json"}

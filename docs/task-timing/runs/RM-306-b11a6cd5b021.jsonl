@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-b11a6cd5b021", "task_id": "RM-306", "actor": "rm306-independent-job-frontend-final-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T13:59:55.172529+00:00", "phase": "planning"}
-{"at": "2026-10-04T14:02:57.126346+00:00", "phase": "verification", "note": "Final stable-candidate pinning and independent interval/audit reprobes; no worker-profile review."}
-{"at": "2026-10-04T14:03:26.226275+00:00", "phase": "review", "note": "Final boundary probes reproduce the interval-integrality blocker; record gate evidence separately."}
-{"at": "2026-10-04T14:04:20.308307+00:00", "phase": "finished", "note": null, "outcome": "complete", "evidence": "tests/validation/rm306-independent-job-frontend-review.json"}

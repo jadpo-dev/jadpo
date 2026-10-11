@@ -3,7 +3,7 @@
 **Status:** workflow hypothesis
 
 This document describes Jadpo's intended product workflow. For developing this
-repository now, use the [adaptive roadmap workflow](roadmap-workflow.md), routed
+repository now, use the [adaptive roadmap workflow](archive/roadmap-workflow.md), routed
 through [AGENTS.md](../AGENTS.md).
 
 ## 1. Intended collaboration
@@ -158,7 +158,7 @@ Generated target code is excluded from ordinary review.
 
 ## 11. Measure roadmap work
 
-For implementation tasks, follow the [task-timing workflow](task-timing/README.md)
+For implementation tasks, follow the task-timing workflow
 and repository `AGENTS.md`. Record the task ID, original estimate, UTC start/end,
 work/verification/review phases, pauses and blockers, actor, and completion
 or partial-work evidence using `python3 tools/task-time.py`. Store each run in

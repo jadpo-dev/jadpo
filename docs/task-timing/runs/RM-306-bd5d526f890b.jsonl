@@ -1,5 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-bd5d526f890b", "task_id": "RM-306", "actor": "rm306-independent-claim-correction-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T08:17:35.979119+00:00", "phase": "planning"}
-{"at": "2026-10-04T08:18:08.021771+00:00", "phase": "review", "note": "Review fresh allocation SQL and post-state deadline handling"}
-{"at": "2026-10-04T08:19:29.875578+00:00", "phase": "verification", "note": "Unmodified claim/outbox includes, isolated SQLite allocation timing and accounting probes"}
-{"at": "2026-10-04T08:20:18.871625+00:00", "phase": "review", "note": "Prepare scoped correction approval; independent SQLite timing probes passed, main-attributed generated-host adapter results retained"}
-{"at": "2026-10-04T08:22:29.824812+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-claim-correction-review.json"}

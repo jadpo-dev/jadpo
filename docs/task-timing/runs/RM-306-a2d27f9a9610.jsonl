@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-a2d27f9a9610", "task_id": "RM-306", "actor": "01a10959-550b-7f72-ab55-3165b3a611dc", "actor_kind": "agent", "category": "slice", "estimate_hours": null, "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-05T22:23:01.026095+00:00", "phase": "planning"}
-{"at": "2026-10-05T22:23:19.372545+00:00", "phase": "verification", "note": "Bounded correction: fresh private generation, original red oracle replay, ordinary and renamed checked-role/change-log focus; no full gate."}
-{"at": "2026-10-05T22:26:31.646770+00:00", "phase": "review", "note": "Correction probes passed: original red both adapters, ordinary/renamed focus, private delayed completion/no-op/missing/ABA/post-cut deletion matrix. Final scoped evidence only."}
-{"at": "2026-10-05T22:28:27.962364+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-committed-invocation-correction-review.json"}

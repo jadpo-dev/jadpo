@@ -7,26 +7,14 @@ documentation address is [jadpo.dev/docs](https://jadpo.dev/docs/). This tree
 extracts the substance of the original design conversation so future work does
 not need that conversation for context.
 
-## Start with the task
+## Start here
 
-Read the relevant path, not the entire catalogue. For current work use the
-[roadmap](implementation-roadmap.md), [saved golden-delivery plans](work-plans/golden-delivery-planning.md), [whole-roadmap assessment](work-plans/roadmap-assessment.md)
-and [supported checks](../tests/validation/README.md). For commands use the
-[cheat sheet](workflow-cheat-sheet.md); for current totals use the [daily report](progress/latest.md).
-
-| Upcoming work | Contract / decision | Current evidence and next action |
-|---|---|---|
-| RM-303/304 service adapter and fakes | [Frozen SERVICE-001](service-plan.md) and [D3 scope](decision-sprint.md#d3--service-001-and-the-service-side-of-async-001) | Reviewed local HTTP adapter and checked authored fakes are complete; see [history](implementation-history.md), with durable-job integration still open |
-| RM-305–307 durable jobs | [Frozen ASYNC-001](async-plan.md) and [D4 scope](decision-sprint.md#d4--jobs-and-events-in-async-001) | RM-305 is complete; reviewed private outbox/claim foundation exists on both adapters. [Runtime scope and remaining bindings](runtime-target-v0.1.md#private-durable-delivery-storage-foundation-rm-306); 18 catalog traces remain contract-only |
-| RM-402 transaction retries | [TX-001](transaction-retry-plan.md) | Deadline/active-call evidence and independent transaction review remain; see the [active queue](implementation-roadmap.md#delivery-order--golden-todo-first) |
-| RM-603 local attestation | [Approval protocol](approval-protocol.md) | [AP cases](../tests/assurance/approval-protocol-v0.1.json); [local validation plan](work-plans/golden-delivery-planning.md#rm-601603--review-artifacts-and-local-attestation-validation); hosted authority is RM-604 |
-
-For a previously discussed idea, use the roadmap's
-[topic/legacy index and language-issue coverage](implementation-roadmap.md#discussion-and-legacy-work-index).
-It includes Revset, Jev, deferred language questions and completed foundations.
-The [conversation reconciliation](conversation-coverage.md#4-roadmap-reconciliation--2026-10-01)
-records source coverage and limits; archived placement never means an unfinished
-requirement was completed or cancelled.
+Outstanding work and its order are in the [roadmap](roadmap.md). Language
+meaning is owned by the specifications below and the
+[decision register](decision-register.md). Checks are run with
+`python3 tools/verify.py` ([validation guide](../tests/validation/README.md)).
+Codex-era plans, history and process documents are in the [archive](archive/README.md);
+experiment results are in [experiments](experiments).
 
 ## Recommended reading order
 
@@ -87,18 +75,9 @@ This is a reference catalogue, not a required reading sequence for every task.
 17. [Compiler and runtime architecture](compiler-runtime.md) — toolchain,
     generated artifacts, target strategy, diagnostics, source mapping, and
     operations.
-18. [Implementation roadmap](implementation-roadmap.md) — remaining epics and
-    tasks, effort estimates, dependency IDs, completion conditions and external
-    gates. [Implementation history](implementation-history.md) holds completed
-    capabilities, evidence and the preserved earlier roadmap.
-    [Task timing](task-timing/README.md) records the estimate calibration and
-    start/finish/pause workflow for future work.
-    [Adaptive roadmap workflow](roadmap-workflow.md) supplies local priorities,
-    evidence gates and record locations for the personal skills.
-    [Skill command cheat sheet](workflow-cheat-sheet.md) provides copyable prompts
-    for ideas, planning, implementation, reviews and Goal controls.
-    [Daily progress](progress/latest.md) summarises delivered work, remaining
-    tasks, planning status and epic estimates; dated reports preserve changes.
+18. [Roadmap](roadmap.md) — outstanding work, in order, on one page. The
+    [archived roadmap](archive/implementation-roadmap-2026-10-11.md) holds the
+    detailed scope of parked epics.
 19. [Project structure workstream](project-structure.md) — the case for a
     canonical layout, enforcement ladder, flexibility requirements, and
     pressure-test plan.
@@ -113,7 +92,7 @@ This is a reference catalogue, not a required reading sequence for every task.
     and explicit limits.
 24. [Migration identity v0.1](migration-identity-v0.1.md) — the provisional
     checked-in identity registry, rename, lifecycle, and schema-diff contract.
-25. [Pre-implementation decision sprint](decision-sprint.md) — the ordered
+25. [Pre-implementation decision sprint](archive/decision-sprint.md) — the ordered
     owner-decision packages, external gates, deliberate non-decisions, and
     unattended build queue for currently parked work.
     - [TIME-001 and TEST-001 decision plan](time-testing-plan.md) — the approved
@@ -128,8 +107,8 @@ This is a reference catalogue, not a required reading sequence for every task.
     commercial, timing, and adoption risks.
 29. [Decision register](decision-register.md) — accepted, provisional, rejected,
     and open design choices.
-30. [Conversation coverage](conversation-coverage.md) — a traceability check
-    showing where every substantive theme from the source discussion lives.
+30. [Conversation coverage](archive/conversation-coverage.md) — archived traceability
+    check of themes from the source discussion.
 
 The [candidate golden todo](../examples/golden-todo/README.md) is the current
 P10R design contract. The [historical todo sketch](../examples/chat-todo-sketch.md) preserves the
@@ -169,7 +148,7 @@ If documents appear to disagree:
 4. the failure-model specification determines failure classification,
    disclosure, and boundary mapping;
 5. the syntax document determines current spelling;
-6. the implementation roadmap tracks progress but cannot override semantic
+6. the roadmap tracks outstanding work but cannot override semantic
    authority;
 7. historical examples do not override current decisions.
 
@@ -181,41 +160,9 @@ syntax, compiler behaviour, and examples to drift apart.
 | Information | Owning location |
 |---|---|
 | Semantic decision/status and essential rationale | Decision register, linking the relevant specification |
-| Behaviour, source spelling and acceptance contract | Relevant specification and canonical fixtures; label candidates explicitly |
-| Open work, estimates and prerequisites | Implementation roadmap; no chronological progress log |
-| Next steps, assumptions and pending questions | Existing task/batch plan under work-plans; update its checkpoint in place |
-| Completed task and concise acceptance evidence | History entry above the preserved snapshot, linking raw results |
-| Raw runs, experiments and timings | Existing validation/experiment/task-timing locations |
-| Daily counts and summary | Generated progress snapshots; never a second manually maintained tracker |
+| Behaviour, source spelling and acceptance contract | Relevant specification and canonical fixtures |
+| Outstanding work and its order | [Roadmap](roadmap.md) — one page, no progress log |
+| Evidence that something works | `tools/verify.py` and the tests it runs |
 
-- Update the owning source first; link to it elsewhere rather than copying its rules.
-  A focused specification can own a contract even if its filename ends in `-plan`.
-- Create a document only for a distinct durable contract, evidence set or handoff
-  that does not fit an existing owner. Keep transient exploration and repeated
-  status narration in chat; retain rejected choices only when they explain a decision.
-- Save the minimum future context: outcome, constraints, authoritative sources,
-  decision rationale, checks and unresolved work. Do not paste whole transcripts,
-  command output or duplicated skill procedures into task plans.
-- On completion, retain the plan as linked evidence while other tasks depend on it;
-  move it to an archive only after updating inbound links. Preserve old anchors or
-  a redirect when moving content. Frozen contracts and historical/raw evidence
-  are not deleted or rewritten merely to reduce word count.
-- Check new links/anchors and the relevant task reading path when changing structure.
-  Refresh stale summaries by linking current evidence, not copying another snapshot.
-  Retention of large generated/raw data needs an explicit policy before deletion.
-
-## Current phase
-
-The next product milestone is the complete golden todo on Bun. Use the
-[active roadmap](implementation-roadmap.md) for its current gates and the
-[validation ledger](../tests/validation/unattended-progress.md) for recorded checks.
-[History](implementation-history.md) preserves completed capability evidence and
-legacy requirements; it is not another active backlog. Alternative-runtime and
-conditional follow-ups do not change the default target or current milestone.
-
-P10R independent review, first-user/comprehension trials and protected approval
-remain separate assurance gates. Technical implementation may proceed as
-exploratory work; it does not validate the product thesis. Preserve frozen
-candidate behaviour and human-owned policy while implementing accepted semantics.
-The [core grammar](grammar-v0.1.md), [semantic specifications](semantic-model.md)
-and [language issues](language-issues.md) remain the implementation references.
+Update the owning document rather than copying its rules elsewhere. Do not add
+progress logs, per-task plans, timing records or evidence packets.

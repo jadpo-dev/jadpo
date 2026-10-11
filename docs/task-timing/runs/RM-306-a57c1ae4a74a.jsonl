@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-a57c1ae4a74a", "task_id": "RM-306", "actor": "rm306-independent-interval-correction-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T14:26:42.264053+00:00", "phase": "planning"}
-{"at": "2026-10-04T14:27:06.008188+00:00", "phase": "review", "note": "Direct correction review; confirmed Sol/high suitable for exact public-duration and shared-route-helper semantics."}
-{"at": "2026-10-04T14:27:36.113921+00:00", "phase": "verification", "note": "Rebuilt CLI hash changed; run focused existing binary and disposable exact interval, artifact, target and shared route probes."}

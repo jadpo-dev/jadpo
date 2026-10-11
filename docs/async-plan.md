@@ -1,13 +1,13 @@
 # ASYNC-001 durable jobs and events
 
 **Status:** semantic contract frozen, 2026-10-04, after the authorised
-[independent transaction/effect review](../tests/validation/rm305-independent-contract-review.json)
+independent transaction/effect review
 approved the owner-selected candidate without blocking findings.  
 **Task:** RM-305 · **Version:** 0.1 · **Updated:** 2026-10-04
 
 This document records the durable job/event contract required before RM-306
 implements compiler declarations and a transactional outbox. It follows D4 in the
-[decision sprint](decision-sprint.md#d4--jobs-and-events-in-async-001), the
+[decision sprint](archive/decision-sprint.md#d4--jobs-and-events-in-async-001), the
 [transaction retry contract](transaction-retry-plan.md), the accepted
 [service uncertainty rules](service-plan.md), and TIME-D05 in the
 [time/testing plan](time-testing-plan.md). The

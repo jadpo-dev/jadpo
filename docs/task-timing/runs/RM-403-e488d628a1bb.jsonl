@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-403-e488d628a1bb", "task_id": "RM-403", "actor": "golden_worker_closure_audit", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T15:03:32.814202+00:00", "phase": "planning"}
-{"at": "2026-10-06T15:03:42.566503+00:00", "phase": "review", "note": null}
-{"at": "2026-10-06T15:05:24.083980+00:00", "phase": "blocked", "note": "Awaiting writer fixed RM403 bounded startup proposal and executable evidence; ESM constraints sent."}
-{"at": "2026-10-06T15:08:24.676846+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm403-independent-startup-review-checkpoint.json"}

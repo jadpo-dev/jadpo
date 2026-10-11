@@ -78,7 +78,7 @@ requests with an up-to-date passing `supported-language` check and resolved
 review conversations, including for administrators. It blocks force pushes and
 branch deletion without imposing a mandatory human approval count. Required
 independent implementation reviews still follow the
-[project workflow](../../docs/roadmap-workflow.md). CI integration does not
+[project workflow](../../docs/archive/roadmap-workflow.md). CI integration does not
 satisfy P10R approval attestation. Action configuration follows the official
 [checkout](https://github.com/actions/checkout),
 [setup-bun](https://github.com/oven-sh/setup-bun),
@@ -113,14 +113,14 @@ evidence. Migration work must preserve intended behaviour.
 ## Independent test-authoring work packages
 
 The cross-area evidence gaps selected for the next validation wave are tracked
-in the [RM-501 roadmap gap inventory](roadmap-gap-inventory.md). It separates
+in the [RM-501 roadmap gap inventory](../../docs/archive/validation-findings/roadmap-gap-inventory.md). It separates
 repository-executable tests from semantic decisions and external evidence, so
 later campaigns do not encode unsupported expectations.
 
-The reproducible [RM-502 parser/type/failure campaign](fuzz-campaign.md) runs
+The reproducible [RM-502 parser/type/failure campaign](../../docs/archive/validation-findings/fuzz-campaign.md) runs
 as a Cargo integration test and consumes the registered compile-fixture corpus.
 
-The [RM-503 mutation findings](rm503-mutation-findings.md) record five killed
+The [RM-503 mutation findings](../../docs/archive/validation-findings/rm503-mutation-findings.md) record five killed
 targeted mutations and identify the additional obligation areas still to review.
 
 Agents should derive cases from accepted specifications before consulting the
@@ -153,13 +153,13 @@ persistence, auth/policy, config/time, artifacts, diagnostic discovery, LSP,
 fixture isolation, reviewed SQLite migrations and Unicode length parity, with
 independent mutation challenges.
 Assignments, findings and integration
-status are recorded in [the progress ledger](unattended-progress.md). This
+status are recorded in the progress ledger. This
 test-authoring work does not satisfy the formal comparative trials or human
-comprehension study. A [single internal cold-start pilot](fresh-agent-pilot/findings.md)
+comprehension study. A [single internal cold-start pilot](../../docs/archive/validation-findings/fresh-agent-pilot/findings.md)
 passed its twelve frozen black-box obligations and identified actionable
 documentation and diagnostic-location problems; it is not a P10R/P12 gate.
 
-The current artifact review also exposed an explicit [Set/Map HTTP wire gap](artifact-contract-findings.md#explicit-setmap-wire-contract-gap):
+The current artifact review also exposed an explicit [Set/Map HTTP wire gap](../../docs/archive/validation-findings/artifact-contract-findings.md#explicit-setmap-wire-contract-gap):
 generated schemas advertise JSON representations that handlers reject. The
 accepted contracts do not yet settle key encoding and duplicate handling, so
 these boundaries are recorded as unsupported evidence rather than passing

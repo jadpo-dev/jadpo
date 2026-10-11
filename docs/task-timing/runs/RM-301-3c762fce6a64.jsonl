@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-301-3c762fce6a64", "task_id": "RM-301", "actor": "service_contract_review", "actor_kind": "agent", "category": "research", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-02T22:29:44.958538+00:00", "phase": "planning"}
-{"at": "2026-10-02T22:29:48.707524+00:00", "phase": "review", "note": "Independent re-review of revised SERVICE-001 successor contract; Sol High pin retained"}
-{"at": "2026-10-02T22:33:46.334421+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm301-independent-contract-review.json"}

@@ -1,6 +1,0 @@
-{"schema_version": 1, "run_id": "RM-601-4f37f6034cf2", "task_id": "RM-601", "actor": "01a0f95e-c47a-78d0-b173-6ef78949a7e9", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6-astra", "reasoning": "high", "at": "2026-10-02T18:09:26.594564+00:00", "phase": "planning"}
-{"at": "2026-10-02T18:25:39.135071+00:00", "phase": "implementation", "note": "Versioned local SHA-256 artifact, checked source baseline and explicit extraction limits; includes brief coordination of independent contract corrections."}
-{"at": "2026-10-02T18:29:18.095679+00:00", "phase": "paused", "note": "Recording reviewed RM-401 contract closure before resuming artifact verification."}
-{"at": "2026-10-02T18:30:36.427998+00:00", "phase": "implementation", "note": "Resume artifact implementation and targeted tests."}
-{"at": "2026-10-02T18:34:10.624374+00:00", "phase": "verification", "note": "Focused source-derived effect/delta tests and CLI baseline tests, then full supported gate."}
-{"at": "2026-10-02T18:35:38.908940+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/work-plans/golden-delivery-planning.md"}

@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-205-090cf4e6fc8e", "task_id": "RM-205", "actor": "01a0f95e-c47a-78d0-b173-6ef78949a7e9", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-02T22:16:34.687582+00:00", "phase": "planning"}
-{"at": "2026-10-02T22:17:52.050166+00:00", "phase": "verification", "note": "Corrected maintenance authority and added six contract cases; these are contract fixtures, not compiler/runtime evidence."}
-{"at": "2026-10-02T22:18:07.833872+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/lifecycle-plan.md; tests/assurance/lifecycle-v0.1.json: 27 unique candidate cases; independent re-review pending"}

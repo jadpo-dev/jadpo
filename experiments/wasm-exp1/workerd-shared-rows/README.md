@@ -1,6 +1,6 @@
 # Shared ownership of typed input frames — unselected experiment
 
-Follow-up to [SIMD/bulk-memory results](../../../docs/wasm-guest-scans-results.md).
+Follow-up to [SIMD/bulk-memory results](../../../docs/experiments/wasm-guest-scans-results.md).
 This local workerd selection pass tests whether avoiding per-field Rust string
 copies closes the remaining gap to generated JavaScript.
 

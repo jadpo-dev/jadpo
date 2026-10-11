@@ -1,5 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-2e15fca338e0", "task_id": "RM-306", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T03:34:08.439107+00:00", "phase": "planning"}
-{"at": "2026-10-11T03:35:37.500845+00:00", "phase": "implementation", "note": "Transplanted the reviewed pre-dispatch checkpoint into the current checkout while preserving both existing recovery tests; focused SQLite case passes."}
-{"at": "2026-10-11T03:36:42.970492+00:00", "phase": "verification", "note": "Re-run integrated candidate suites and capture source-bound evidence for independent review."}
-{"at": "2026-10-11T03:38:34.447870+00:00", "phase": "review", "note": "Fresh evidence for integrated coordinator candidate 18b7030c is complete; exact source/log pins verified and handed to the authorized independent reviewer."}
-{"at": "2026-10-11T03:40:11.488913+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm306-predispatch-reclaim-integrated-20261011/independent-review.json"}

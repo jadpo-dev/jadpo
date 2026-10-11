@@ -25,7 +25,7 @@ lowering, production HTTP and optimized WASM transport remain outside this slice
 
 ## Results and reproduction
 
-See the [completed conformance report](../../docs/shared-rust-conformance-results.md).
+See the [completed conformance report](../../docs/experiments/shared-rust-conformance-results.md).
 The original native performance campaign is not retimed or overwritten here.
 
 ### Simple builds

@@ -1,7 +1,7 @@
 # Jadpo compiler workspace
 
 This Rust workspace implements the phases tracked in
-[the implementation roadmap](../docs/implementation-roadmap.md).
+[the implementation roadmap](../docs/roadmap.md).
 
 Milestone A is complete: syntax analysis, declaration indexing, nominal type
 checking, constraint validation, and failure/effect checking are implemented.

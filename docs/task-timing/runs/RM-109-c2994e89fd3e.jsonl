@@ -1,8 +1,0 @@
-{"schema_version": 1, "run_id": "RM-109-c2994e89fd3e", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T02:29:34.025321+00:00", "phase": "planning"}
-{"at": "2026-10-11T02:33:22.183752+00:00", "phase": "implementation", "note": "Implementing PATCH-001 live fixture/readback and derivation; frozen case title-only update must preserve its due date."}
-{"at": "2026-10-11T02:33:22.240677+00:00", "phase": "verification", "note": "Focused suite 34 passed and both-backend real checkpoint reports 62 passed, 0 failed, 26 not_run."}
-{"at": "2026-10-11T02:34:03.575535+00:00", "phase": "review", "note": "PATCH-001 packet is rebuilt and pin/reconstruction checks pass; requesting independent review of candidate 27e6d710."}
-{"at": "2026-10-11T02:34:21.227460+00:00", "phase": "implementation", "note": "Paused independent review to add a targeted mutant for mismatched due/reminder presence placeholders."}
-{"at": "2026-10-11T02:34:38.498884+00:00", "phase": "verification", "note": "The updated 18-mutation suite passes (34 tests), and the regenerated real checkpoint remains 62 passed, 0 failed, 26 not_run."}
-{"at": "2026-10-11T02:35:09.255868+00:00", "phase": "blocked", "note": "Waiting on the authorized independent re-review of the corrected PATCH-001 packet, candidate 948947d1."}
-{"at": "2026-10-11T02:35:59.640196+00:00", "phase": "finished", "note": null, "unobserved_gap": true, "outcome": "partial", "evidence": "tests/validation/evidence/rm109-http-patch001-20261011-final/README.md"}

@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-206-743d25b5ed43", "task_id": "RM-206", "actor": "rm206-review-fixes-20261003", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6-luna", "reasoning": "xhigh", "at": "2026-10-03T07:15:06.208378+00:00", "phase": "planning"}
-{"at": "2026-10-03T07:15:11.723622+00:00", "phase": "implementation", "note": "Fix independent review findings at exported persistence boundary"}
-{"at": "2026-10-03T07:32:43.010225+00:00", "phase": "verification", "note": "Run compiler codegen, lifecycle runtime on SQLite and PostgreSQL, then full supported verification"}
-{"at": "2026-10-03T07:35:49.420292+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "build/validation/20261003T083341-45067/report.json; tests/runtime/entity-lifecycle.test.ts; PostgreSQL lifecycle suite; compiler boundary correction pending independent re-review"}

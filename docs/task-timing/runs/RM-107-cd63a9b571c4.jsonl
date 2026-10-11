@@ -1,2 +1,0 @@
-{"schema_version": 1, "run_id": "RM-107-cd63a9b571c4", "task_id": "RM-107", "actor": "01a0f95e-c47a-78d0-b173-6ef78949a7e9", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-5.6-luna", "reasoning": "xhigh", "at": "2026-10-02T04:30:23.975614+00:00", "phase": "planning"}
-{"at": "2026-10-02T04:35:47.095247+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/work-plans/golden-delivery-planning.md"}

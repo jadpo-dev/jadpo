@@ -1,5 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-3fcd80307a5a", "task_id": "RM-306", "actor": "rm306-independent-correction-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T07:43:18.434810+00:00", "phase": "planning"}
-{"at": "2026-10-04T07:43:49.363564+00:00", "phase": "review", "note": "Independent two-finding correction review, inherited user-confirmed gpt-6-sol/high; no broad gate/build or source writes."}
-{"at": "2026-10-04T07:45:15.018548+00:00", "phase": "verification", "note": "Tiny memory-only lifetime/await-race and array probes; no compiler or full suite."}
-{"at": "2026-10-04T07:48:10.122845+00:00", "phase": "review", "note": "Both corrections pass independent memory probes; pin scoped approval with prior schema/compiler/worker limits."}
-{"at": "2026-10-04T07:51:48.993104+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-correction-review.json"}

@@ -36,7 +36,7 @@ resolution, and static public liveness route have also moved here. Browser
 authentication now requires `BROWSER_ORIGIN` and binds it to the signed cookie
 validator under the [owner-authorised revision](../golden-todo/REVIEW.md#2026-10-01-browser-origin-configuration-revision).
 The original candidate is preserved. The generated protected-browser suite now
-proves origin/CSRF behavior for the migrated target, with [RM-103 closure evidence](../../docs/implementation-history.md#2026-10-01--rm-103-browser-origin-and-csrf-closure). RM-106 now applies the accepted lifecycle to User and Todo, with fresh-authenticated self-disable and owner-scoped soft-delete routes. SQLite and PostgreSQL HTTP evidence, including concealed reads/mutations, retained child rows, bounded credentials and a patch/delete race, is recorded in the [runtime suite](../../tests/runtime/README.md#generated-runtime-acceptance-tests) and [lifecycle plan](../../docs/lifecycle-plan.md#rm-106-golden-lifecycle-route-checkpoint-2026-10-03). Its independent auth/lifecycle review approves this scoped integration ([history](../../docs/implementation-history.md#2026-10-03--rm-106-golden-lifecycle-routes)); remaining protected operations/routes, workflows, jobs and full frozen golden acceptance remain open. The User identity now binds `UserRole.self`,
+proves origin/CSRF behavior for the migrated target, with [RM-103 closure evidence](../../docs/archive/implementation-history.md#2026-10-01--rm-103-browser-origin-and-csrf-closure). RM-106 now applies the accepted lifecycle to User and Todo, with fresh-authenticated self-disable and owner-scoped soft-delete routes. SQLite and PostgreSQL HTTP evidence, including concealed reads/mutations, retained child rows, bounded credentials and a patch/delete race, is recorded in the [runtime suite](../../tests/runtime/README.md#generated-runtime-acceptance-tests) and [lifecycle plan](../../docs/lifecycle-plan.md#rm-106-golden-lifecycle-route-checkpoint-2026-10-03). Its independent auth/lifecycle review approves this scoped integration ([history](../../docs/archive/implementation-history.md#2026-10-03--rm-106-golden-lifecycle-routes)); remaining protected operations/routes, workflows, jobs and full frozen golden acceptance remain open. The User identity now binds `UserRole.self`,
 preserving the frozen `principal.user_id == User.id` self-scope; only `id` is
 readable under this role, while provisioning and lifecycle fields have empty
 field policies. `Todo.owner_id` binds the accepted `TodoRole.owner` role and
@@ -78,8 +78,8 @@ to a compiler-owned `POST /auth/exchange`; the endpoint returns only a new
 bounded bearer, its type and exact expiry. Trusted host provisioning still owns
 one-time key issuance, and verifier material is never a principal subject. The
 generated SQLite/PostgreSQL HTTP evidence is recorded in the
-[RM-104 checkpoint](../../docs/work-plans/golden-delivery-planning.md#rm-104-checked-exchange-decision-packet--2026-10-01);
-the [independent runtime/security review](../../tests/validation/rm104-generated-runtime-review.json)
+[RM-104 checkpoint](../../docs/archive/work-plans/golden-delivery-planning.md#rm-104-checked-exchange-decision-packet--2026-10-01);
+the independent runtime/security review
 approves the scoped exchange implementation. The complete frozen golden gate remains RM-109/RM-110.
 
 Registered runtime suites execute protected user/browser paths and service

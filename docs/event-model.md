@@ -1,13 +1,13 @@
 # Typed events and enforced subscribers
 
 **Status:** candidate design, 2026-10-04; not frozen or implemented. Independent candidate review identified corrections;
-see the [review record](../tests/validation/event-design-independent-review.json). **Owners:** RM-309 contract, RM-310 compiler, RM-311 runtime, RM-312
+see the review record. **Owners:** RM-309 contract, RM-310 compiler, RM-311 runtime, RM-312
 successor golden evidence. Syntax review RM-222 precedes adoption. Existing
 DATA-007, ASYNC-001, SERVICE-001 and authentication/policy contracts remain the
 implemented/frozen baseline until explicit reviewed amendments land.
 
 This document owns the successor event semantics. The
-[session context and plan](work-plans/roadmap-assessment.md#syntax-component-messaging-and-graph-intake--2026-10-04)
+[session context and plan](archive/work-plans/roadmap-assessment.md#syntax-component-messaging-and-graph-intake--2026-10-04)
 preserves motivation, decisions, alternatives and scheduling. Its older command/
 fact API examples are superseded by the one-event authoring direction here.
 There is no claim that planning has removed every implementation risk.
@@ -484,7 +484,7 @@ requires a protected approval bound to that exact checked tuple, including the
 mapping representation and version; until declaration-to-IR binding and its
 enforcement are qualified, this path is unsupported. No Todo-specific name check
 or generated-code status grants permission. This reuses CONSISTENCY-001 and
-[RM-405–RM-407](implementation-roadmap.md#e04--qualify-transactions-and-deployment-readiness)
+[RM-405–RM-407](archive/implementation-roadmap-2026-10-11.md#e04--qualify-transactions-and-deployment-readiness)
 for projection selection, delivery and recovery qualification. It does not activate
 their conditional scope or claim their implementation. Logical declaration identity
 and the runtime incarnation of an individual source row are separate identities.
@@ -769,7 +769,7 @@ Static edges distinguish emit, automatic transition publication, subscription,
 read, local call and coordination input. Runtime edges distinguish actual causal
 delivery/attempts and all fan-in contributors. Consume the
 [identity/artifact successor](generated-artifacts.md#semantic-identity-and-incident-artifact-candidate--2026-10-04)
-and [E11 graph plan](work-plans/developer-console-mcp.md#hierarchical-application-graph-plan--2026-10-04).
+and [E11 graph plan](archive/work-plans/developer-console-mcp.md#hierarchical-application-graph-plan--2026-10-04).
 Logs inherit compiler/runtime context, preserve disclosure controls and remain
 useful without a retained graph. Stable logical identity never implies unchanged
 behaviour after a fix.

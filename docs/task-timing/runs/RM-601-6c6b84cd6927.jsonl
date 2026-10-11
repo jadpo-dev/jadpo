@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-601-6c6b84cd6927", "task_id": "RM-601", "actor": "golden_worker_closure_audit", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-06T15:09:01.642517+00:00", "phase": "planning"}
-{"at": "2026-10-06T15:09:20.655514+00:00", "phase": "verification", "note": null}
-{"at": "2026-10-06T15:11:49.009852+00:00", "phase": "review", "note": null}
-{"at": "2026-10-06T15:12:47.180410+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm601-independent-operational409-review.json"}

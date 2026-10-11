@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-106-cad27e70d915", "task_id": "RM-106", "actor": "review_rm106_routes_independent", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": null, "reasoning": null, "at": "2026-10-03T19:53:13.657478+00:00", "phase": "planning"}
-{"at": "2026-10-03T19:53:20.347924+00:00", "phase": "review", "note": "Read-only independent review of RM-106 self-disable and soft-delete route integration."}
-{"at": "2026-10-03T20:07:19.458690+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm106-independent-route-review.json"}

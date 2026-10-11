@@ -1,7 +1,7 @@
 # WASM-EXP1
 
 Experimental compiler and host work only. The production target remains Bun.
-The fixed protocol is [the preregistration](../../docs/wasm-experiment-plan.md).
+The fixed protocol is [the preregistration](../../docs/experiments/wasm-experiment-plan.md).
 
 The authentication baseline is commit `4dc5604`. Its 45-step validation report
 is `build/validation/20260930T024217-25646/report.json` (SHA-256
@@ -15,7 +15,7 @@ Fixture principals are synthetic trusted harness inputs, not authentication.
 
 ## Rebuild and inspect
 
-Read the [results and limitations](../../docs/wasm-experiment-results.md) before
+Read the [results and limitations](../../docs/experiments/wasm-experiment-results.md) before
 interpreting a passing fixture as backend readiness. Tool installation is pinned
 in [tooling](tooling/README.md). The [compiler projection](compiler/README.md)
 uses the existing checked frontend; the original production target is unchanged.

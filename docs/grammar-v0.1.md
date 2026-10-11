@@ -1006,7 +1006,7 @@ Event/subscriber successor grammar below remains separate and unimplemented.
 exactly one optional `delivery: reminder_v1 { ... }` with all five sections
 `selection`, `hooks`, `service`, `authority`, `completion` exactly once. Every
 section uses its closed required-key catalogue, specified in the
-[reviewed exact source recipe](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders).
+[reviewed exact source recipe](archive/work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders).
 Keys/sections may be reordered; unknown, missing or duplicate keys reject. No
 semicolons or arbitrary expression/config/record map is accepted. Direct references
 are qualified names, open is `field(enum.variant)`, cursor is exactly two ordered

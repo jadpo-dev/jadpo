@@ -95,7 +95,7 @@ The copied runtime/harness files freeze earlier experiments independently.
 
 ## Completed evidence
 
-The [result report](../../../docs/wasm-read-path-results.md) records 80 HTTP cells,
+The [result report](../../../docs/experiments/wasm-read-path-results.md) records 80 HTTP cells,
 240 supplemental matrix cells, 40 local startup processes and 24 write-smoke cells.
 Large-read Bun parity fails; the small-probe regression gate passes. Interrupted
 sleep-related evidence and losing variants are retained in `evidence/` with hashes.

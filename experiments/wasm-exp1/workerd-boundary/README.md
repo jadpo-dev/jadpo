@@ -2,8 +2,8 @@
 
 Follow-up to `workerd-read-path`, informed by primary-source research into
 workers-rs, wasm-bindgen, native Rust APIs, Go JS/WASM and Wasmtime. See the
-[research](../../../docs/wasm-framework-boundaries.md) and
-[measured results](../../../docs/wasm-workerd-boundary-results.md).
+[research](../../../docs/experiments/wasm-framework-boundaries.md) and
+[measured results](../../../docs/experiments/wasm-workerd-boundary-results.md).
 
 The guest remains the exact frozen read-path module
 `cf3716529f29fd0ababa6e4d99982908ba7f9326035b486f9c03d1ffe2d99c0b`.

@@ -1,6 +1,0 @@
-{"schema_version": 1, "run_id": "RM-102-b9d4b6df90e1", "task_id": "RM-102", "actor": "auth-review-01a0f95e", "actor_kind": "agent", "category": "research", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6-astra", "reasoning": "high", "at": "2026-10-01T21:38:47.047606+00:00", "phase": "planning"}
-{"at": "2026-10-01T21:39:54.830300+00:00", "phase": "paused", "note": "Source review findings returned; waiting for implementation patch to independently review"}
-{"at": "2026-10-01T21:41:56.596372+00:00", "phase": "review", "note": "Independent review of parent typed-strength patch"}
-{"at": "2026-10-01T21:42:54.194241+00:00", "phase": "paused", "note": "Strength patch independent review returned; awaiting final revision and runtime evidence"}
-{"at": "2026-10-01T21:45:33.692114+00:00", "phase": "review", "note": "Final strength helper and independent runtime suite review"}
-{"at": "2026-10-01T21:45:52.575344+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "Independent scoped review of typed authentication strength generation, strict principal normalization, unused-kind rejection and tests/runtime/golden-protected-route.test.ts; no new scoped blocker. Remaining declared credential/service authority and subject mapping gaps returned to parent for tests/validation/rm102-authentication-review.json. No full RM-102 approval."}

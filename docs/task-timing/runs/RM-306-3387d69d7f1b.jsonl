@@ -1,7 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-3387d69d7f1b", "task_id": "RM-306", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "subsystem", "estimate_hours": [2.0, 8.0], "thread": "01a11fd2-f415-7272-aa35-a8ab485256f8", "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T20:55:57.468510+00:00", "phase": "planning"}
-{"at": "2026-10-10T20:58:25.152649+00:00", "phase": "verification", "note": "Baseline current recovered RM-306 generated scheduler and persistent worker components before selecting the next separate-process recovery gap."}
-{"at": "2026-10-10T21:01:21.688230+00:00", "phase": "implementation", "note": "Existing state-level cancellation, retry, renewal and process-restart tests already pass; add the missing generated scheduler crash-after-possible-dispatch restart probe."}
-{"at": "2026-10-10T21:02:21.302181+00:00", "phase": "verification", "note": "Run the expanded generated scheduler component suite on SQLite after the process-kill/restart probe."}
-{"at": "2026-10-10T21:08:16.726926+00:00", "phase": "implementation", "note": "Fixing independent review cleanup finding for generated worker crash/reclaim probe."}
-{"at": "2026-10-10T21:08:57.437197+00:00", "phase": "verification", "note": "Re-running complete scheduler component suites after bounded-child cleanup fix."}
-{"at": "2026-10-10T21:11:26.556563+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm306-process-crash-recovery/README.md"}

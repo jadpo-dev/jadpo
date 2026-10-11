@@ -284,15 +284,15 @@ native error code and raw SELECT are absent from the checked debug-disabled
 response/log paths. The auth and persistence fixtures use separate databases
 inside one disposable cluster because their User schemas differ. The seven-case
 readiness suite passes, including both PostgreSQL cases; the independent
-[PG auth regression review](../tests/validation/rm403-independent-postgres-auth-review.json)
+PG auth regression review
 accepts this narrow evidence. Ready remains 200 during private-table absence:
 availability (and possibly its healthy cache) is not schema-integrity proof.
 This table-rename case does not cover connection loss, concurrent PostgreSQL
 recovery or hard initialization bounds. Approved disposable host verification cleared
 the former socket/shared-memory restrictions. The supported snapshot passes
 61/61 checks, including live HTTP and PostgreSQL readiness
-([report](../build/validation/20261004T092753-91801/report.json)). The
-[independent correction review](../tests/validation/rm403-independent-correction-review.json)
+(report). The
+independent correction review
 accepts the mixed-batch assertions and transient initialization classification,
 with real SQLite initial/recovery-time exclusive locks, same-process recovery,
 one initialization and unchanged fatal secret/schema validation. A deterministic
@@ -327,19 +327,19 @@ debug-disabled logs retain secret/native-detail checks. The verifier strips
 inherited readiness database variables; only the disposable wrapper supplies
 the fault-injection pair, restored in cleanup.
 
-The fresh supported [gate](../build/validation/20261005T010805-27481/report.json)
+The fresh supported gate
 passes61/61; its live readiness suite passes8/8 (4,721 assertions in that run).
-The [scoped independent review](../tests/validation/rm403-independent-connection-recovery-review.json)
+The scoped independent review
 approves this evidence, rebuilding isolated targets and independently passing8/8.
 This is real connection-loss/concurrent
 recovery evidence, not an observed PostgreSQL single-initialization count, hard
 probe/whole-initialization bound, golden CONFIG-003 or platform qualification.
-The [next response-bound plan](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders)
+The [next response-bound plan](archive/work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders)
 separates caller response deadlines from native-attempt lifetime and requires
 late-success fencing rather than treating a cancellation request as interruption.
 
 **Asynchronous response-bound continuation, 2026-10-05:** after
-[independent plan approval](../tests/validation/rm403-independent-response-bound-plan-review.json),
+independent plan approval,
 generated readiness now separates the shared one-second caller response budget
 from the aggregate native attempt. Expiry marks not-ready and returns false even
 if best-effort cancellation throws or does not settle the query. The native
@@ -354,8 +354,8 @@ fatal; synthetic timeout does not.
 
 Six deterministic groups and the14-case current live SQLite/PostgreSQL readiness
 suite pass. The fresh supported
-[gate](../build/validation/20261005T012226-44058/report.json) passes61/61;
-the [independent implementation review](../tests/validation/rm403-independent-response-bound-implementation-review.json)
+gate passes61/61;
+the independent implementation review
 approves this narrow slice with no blocking findings. It independently passes
 the six controlled groups and ten in-memory probes of the complete emitted
 persistence/authentication modules, including late initialization, genuine late

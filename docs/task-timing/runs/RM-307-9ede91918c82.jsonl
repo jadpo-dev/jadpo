@@ -1,6 +1,0 @@
-{"schema_version": 1, "run_id": "RM-307-9ede91918c82", "task_id": "RM-307", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T09:54:32.430449+00:00", "phase": "planning"}
-{"at": "2026-10-11T09:54:51.711973+00:00", "phase": "implementation", "note": "Implement generated same-key successor release after cancelled and permanent known-no-effect terminal outcomes."}
-{"at": "2026-10-11T09:57:04.422167+00:00", "phase": "verification", "note": "Focused SQLite generated-worker successor-release tests pass; verify default/derived component groups and PostgreSQL adapter next."}
-{"at": "2026-10-11T10:01:51.080762+00:00", "phase": "blocked", "note": "Waiting for the already-authorized independent review of exact candidate 70ec333fa501e306395b8b050852e1efba3ed0c0."}
-{"at": "2026-10-11T10:06:36.671976+00:00", "phase": "review", "note": "Independent review approved; finish manifest, packet and RM-307 inventory record."}
-{"at": "2026-10-11T10:07:13.334731+00:00", "phase": "finished", "note": null, "unobserved_gap": true, "outcome": "partial", "evidence": "tests/validation/evidence/rm307-key-release-known-terminal-20261011/README.md"}

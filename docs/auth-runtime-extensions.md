@@ -73,8 +73,8 @@ once, rejects missing, malformed or competing presentations before validation,
 and passes the sole selected key directly to the host operation. Business
 callables receive neither the raw key nor the returned bearer. The original key
 and stored verifier remain private. The scoped implementation is approved by the
-[independent runtime/security review](../tests/validation/rm104-generated-runtime-review.json)
-and documented in the [RM-104 history](implementation-history.md#2026-10-02--rm-104-generated-service-credential-exchange).
+independent runtime/security review
+and documented in the [RM-104 history](archive/implementation-history.md#2026-10-02--rm-104-generated-service-credential-exchange).
 
 Direct keys check credential and service authority on every request. Ordinary
 bounded requests validate locally; fresh requests, refresh and exchange check
@@ -133,7 +133,7 @@ regressions exercise declared expiry/revocation/status, service disablement,
 identity substitution, metadata corruption, verifier non-disclosure and rollback
 of either issuance write. Ordinary signed requests retain their issued bound;
 direct and fresh requests consult current lifecycle state.
-See the [current delivery checkpoint](work-plans/golden-delivery-planning.md#rm-102-implementation-slices-and-evidence).
+See the [current delivery checkpoint](archive/work-plans/golden-delivery-planning.md#rm-102-implementation-slices-and-evidence).
 
 ## Dependency and build contract
 

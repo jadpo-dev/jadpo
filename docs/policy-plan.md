@@ -1264,9 +1264,9 @@ These are design failures, not invitations to add unchecked escape hatches.
 ## 19. Retention maintenance addendum — POLICY-D30-M1
 
 **Owner direction:** 2026-10-02, compiler-owned narrow retention maintenance,
-as recorded in the [batch decision](work-plans/golden-delivery-planning.md).
+as recorded in the [batch decision](archive/work-plans/golden-delivery-planning.md).
 **Status:** contract addendum frozen on 2026-10-02 after the
-[independent RM-205 correction review](../tests/validation/rm205-independent-contract-review.json)
+independent RM-205 correction review
 accepted the candidate. Its reviewed semantics and decision-row digest are unchanged;
 compiler/runtime conformance remains RM-206.
 It is outside the historically approved D01–D43 baseline in section 2, whose
@@ -1282,6 +1282,6 @@ The owner direction does not retroactively amend that approval.
 This hashes the single UTF-8 POLICY-D30-M1 table row including its trailing LF;
 it does not claim approval of the whole document. The linked DATA-007 contract
 and assurance catalog are separately byte-pinned in the
-[independent review](../tests/validation/rm205-independent-contract-review.json).
+independent review.
 The final review disposition is `approved_for_contract_freeze`; it establishes
 contract acceptance, not future lowering or deployment approval.

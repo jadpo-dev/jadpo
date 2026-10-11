@@ -40,7 +40,7 @@ The todo repository should look like the complete source of a real application,
 not disconnected snippets.
 
 Phase progress and implementation exit gates are tracked in the
-[compiler implementation roadmap](implementation-roadmap.md).
+[compiler implementation roadmap](roadmap.md).
 
 The initial nominal-typing and construction cases are preserved in
 [examples/type-system-cases.md](../examples/type-system-cases.md). Golden

@@ -3,7 +3,7 @@
 This is the owner-requested follow-up to the completed WASM-EXP1 experiment.
 The [bounded plan](plan.md) preceded attribution and implementation. The original
 fixture, compiler routes, host, artifacts and measurement reports remain unchanged.
-See [the results](../../../docs/wasm-optimization-results.md).
+See [the results](../../../docs/experiments/wasm-optimization-results.md).
 
 ## What changed
 

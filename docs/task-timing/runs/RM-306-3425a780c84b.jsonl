@@ -1,6 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-3425a780c84b", "task_id": "RM-306", "actor": "rm306-recovery-writer", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T01:07:22.363867+00:00", "phase": "planning"}
-{"at": "2026-10-11T01:07:50.820284+00:00", "phase": "blocked", "note": "Read-only next-checkpoint triage complete; awaiting coordinator reviewed durable baseline restoration before edits."}
-{"at": "2026-10-11T01:08:34.208878+00:00", "phase": "implementation", "note": "Reviewed invocation/scheduler/claims source is byte-identical; durable test suite only lacks main two-case historical packet. New test stays separate."}
-{"at": "2026-10-11T01:09:33.537228+00:00", "phase": "verification", "note": "Added isolated generated pre-dispatch trigger fault/reclaim checkpoint; running focused native SQLite then PostgreSQL evidence."}
-{"at": "2026-10-11T01:11:05.095544+00:00", "phase": "review", "note": "Focused SQLite and full native SQLite/PostgreSQL component suites pass. Packaging exact source/raw-output pins and self-review before isolated checkpoint commit."}
-{"at": "2026-10-11T01:11:20.479973+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm306-predispatch-reclaim-20261011/manifest.json"}

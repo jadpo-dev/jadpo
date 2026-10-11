@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-305-bf538ba4248f", "task_id": "RM-305", "actor": "01a10337-a83f-72e0-9d14-a52c626704fd", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T07:17:30.646924+00:00", "phase": "planning"}
-{"at": "2026-10-04T07:19:46.954049+00:00", "phase": "review", "note": "Freeze metadata recorded against exact independently approved candidate hashes; independent freeze confirmation pending."}
-{"at": "2026-10-04T07:22:03.972075+00:00", "phase": "finished", "note": null, "outcome": "complete", "evidence": "docs/implementation-history.md"}

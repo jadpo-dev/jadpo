@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-97f85964c2a2", "task_id": "RM-306", "actor": "rm306-independent-retry-state-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T10:26:52.095093+00:00", "phase": "planning"}
-{"at": "2026-10-04T10:30:18.944231+00:00", "phase": "verification", "note": "Independent real SQLite production-include probes; no builds or broad gates"}
-{"at": "2026-10-04T10:32:00.974186+00:00", "phase": "review", "note": "Nine isolated SQLite cases passed; reviewing exact regions and main-attributed evidence"}
-{"at": "2026-10-04T10:40:01.675151+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-retry-state-review.json"}

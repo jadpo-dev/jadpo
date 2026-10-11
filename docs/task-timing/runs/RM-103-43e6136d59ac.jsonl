@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-103-43e6136d59ac", "task_id": "RM-103", "actor": "01a0f95e-c47a-78d0-b173-6ef78949a7e9", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-01T22:43:12.785393+00:00", "phase": "planning"}
-{"at": "2026-10-01T22:44:22.054152+00:00", "phase": "review", "note": "Audit frozen/successor digest chain, generated startup ordering, browser negative and independent auth review evidence."}
-{"at": "2026-10-01T22:45:14.599803+00:00", "phase": "verification", "note": "Check completion marker, roadmap removal, unchanged frozen hashes/case states, JSON parsing, links and diff whitespace."}
-{"at": "2026-10-01T22:45:26.040829+00:00", "phase": "finished", "note": null, "outcome": "complete", "evidence": "docs/implementation-history.md"}

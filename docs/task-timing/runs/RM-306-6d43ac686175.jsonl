@@ -1,2 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-6d43ac686175", "task_id": "RM-306", "actor": "01a10337-a83f-72e0-9d14-a52c626704fd", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-05T22:01:14.953863+00:00", "phase": "planning"}
-{"at": "2026-10-05T22:05:23.453470+00:00", "phase": "finished", "note": null, "unobserved_gap": true, "outcome": "partial", "evidence": "Interrupted by user percentage-status question; no additional golden task closed."}

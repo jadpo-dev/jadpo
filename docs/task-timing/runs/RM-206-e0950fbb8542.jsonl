@@ -1,2 +1,0 @@
-{"schema_version": 1, "run_id": "RM-206-e0950fbb8542", "task_id": "RM-206", "actor": "01a0f95e-c47a-78d0-b173-6ef78949a7e9", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": "01a0f95e-c47a-78d0-b173-6ef78949a7e9", "model": "gpt-6-luna", "reasoning": "xhigh", "at": "2026-10-03T06:20:34.421242+00:00", "phase": "planning"}
-{"at": "2026-10-03T06:24:43.996233+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/lifecycle-plan.md"}

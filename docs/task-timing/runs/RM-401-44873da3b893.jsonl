@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-401-44873da3b893", "task_id": "RM-401", "actor": "transaction_boundary_review", "actor_kind": "agent", "category": "research", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-02T18:25:21.969601+00:00", "phase": "planning"}
-{"at": "2026-10-02T18:25:25.899773+00:00", "phase": "review", "note": "Independent re-review of B1/B2 contract corrections; short decision check"}
-{"at": "2026-10-02T18:26:17.415176+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm401-rm207-independent-contract-review.json"}

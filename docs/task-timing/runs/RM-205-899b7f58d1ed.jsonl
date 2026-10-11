@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-205-899b7f58d1ed", "task_id": "RM-205", "actor": "lifecycle_contract_review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-02T22:18:37.124461+00:00", "phase": "planning"}
-{"at": "2026-10-02T22:19:05.967127+00:00", "phase": "review", "note": "Independent correction re-review; original purge and visibility findings against accepted policy contract"}
-{"at": "2026-10-02T22:20:43.115186+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm205-independent-contract-review.json"}

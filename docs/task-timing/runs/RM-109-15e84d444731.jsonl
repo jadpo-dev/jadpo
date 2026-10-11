@@ -1,6 +1,0 @@
-{"schema_version": 1, "run_id": "RM-109-15e84d444731", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "slice", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T02:03:51.202985+00:00", "phase": "planning"}
-{"at": "2026-10-11T02:04:58.721000+00:00", "phase": "verification", "note": "32 focused tests and Bun build pass; running real two-backend LIST-004 checkpoint under source-pinned compiler."}
-{"at": "2026-10-11T02:08:44.521796+00:00", "phase": "review", "note": "Retained packet reconstruction and source pin consistency checked; independent review pending."}
-{"at": "2026-10-11T02:09:35.386205+00:00", "phase": "implementation", "note": "Independent review found derivation did not bind authenticated principal to Alice; tightening exact principal check and mutation coverage before re-review."}
-{"at": "2026-10-11T02:11:15.692055+00:00", "phase": "verification", "note": "Rebuilt the full two-backend checkpoint on the corrected Alice-principal derivation; validating retained raw traces and reconstruction."}
-{"at": "2026-10-11T02:14:13.210013+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/work-plans/golden-delivery-planning.md"}

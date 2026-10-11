@@ -1,2 +1,0 @@
-{"schema_version": 1, "run_id": "META-GOLDEN-PLANNING-576f603330bb", "task_id": "META-GOLDEN-PLANNING", "actor": "01a0f884-59ca-7d10-bcde-75084fd349e9", "actor_kind": "agent", "category": "research", "estimate_hours": null, "thread": "01a0f884-59ca-7d10-bcde-75084fd349e9", "model": null, "reasoning": null, "at": "2026-10-01T19:05:45.375696+00:00", "phase": "planning"}
-{"at": "2026-10-01T19:16:11.207269+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/work-plans/golden-delivery-planning.md"}

@@ -115,7 +115,7 @@ test now commits an actual write and injects lost acknowledgement at the
 transaction boundary, checks the durable row and one transaction attempt, and
 verifies the route inventory, OpenAPI and audit envelope. This is controlled
 boundary injection, not network-phase classification. The
-[RM-401 phase probe](../tests/validation/rm401-phase-probe-results.json) separately
+RM-401 phase probe separately
 establishes a committed PostgreSQL write whose network acknowledgement was lost.
 Provider/job uncertainty and other transports remain unexecuted. This Bun-specific
 contract is not a universal mapping. `OutcomeUnknown` requires an effect that may

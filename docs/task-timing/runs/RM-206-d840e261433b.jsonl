@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-206-d840e261433b", "task_id": "RM-206", "actor": "rm206-compile-corpus-check-20261003", "actor_kind": "agent", "category": "fix", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6-luna", "reasoning": "xhigh", "at": "2026-10-03T15:44:34.371095+00:00", "phase": "planning"}
-{"at": "2026-10-03T15:44:40.957992+00:00", "phase": "verification", "note": null}
-{"at": "2026-10-03T15:44:54.381751+00:00", "phase": "finished", "note": null, "outcome": "complete", "evidence": "ruby tests/compile/verify.rb: verified 212 compile fixture pairs; final RM-206 correction review approved in tests/validation/rm206-independent-correction-review.json"}

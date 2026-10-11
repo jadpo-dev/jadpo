@@ -240,7 +240,7 @@ record exact safe contextual exceptions, preserve accepted casing/ASCII rules
 and test declaration/reference pairs before claiming conformance. Until that
 change passes its required review and gates, the checked implementation remains
 the recorded baseline. See the [decision](decision-register.md#keyword-names-and-canonical-formatting--2026-10-01)
-and [assessment](work-plans/roadmap-assessment.md) for sequencing.
+and [assessment](archive/work-plans/roadmap-assessment.md) for sequencing.
 
 ## 10. Naming reaffirmation and principal simplification — 2026-10-04
 

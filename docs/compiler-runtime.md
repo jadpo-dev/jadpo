@@ -73,7 +73,7 @@ evolution, and agent safety—not performance.
 ### 3.3 Scheduled Wasm target experiment
 
 On 2026-09-29 the project owner scheduled
-[WASM-EXP1](implementation-history.md#wasm-exp1--bounded-wasm-runtime-experiment)
+[WASM-EXP1](archive/implementation-history.md#wasm-exp1--bounded-wasm-runtime-experiment)
 after authentication. The owner subsequently clarified the order: finish the
 agreed authentication scope, complete the comprehensive validation phase, then
 begin this experiment. It will compare one generated
@@ -93,7 +93,7 @@ coordination or portable threading. Host adapters must preserve the accepted
 language guarantees or reject unsupported requirements. A replicated storage
 platform and a full backend migration are outside this bounded experiment.
 
-On 2026-09-30 [WASM-EXP1 completed](wasm-experiment-results.md). Both compiler
+On 2026-09-30 [WASM-EXP1 completed](experiments/wasm-experiment-results.md). Both compiler
 routes passed the bounded probe locally and on Cloudflare; the provisional
 Rust full slice reused identical core bytes with explicit SQLite adapters.
 The route comparison remains inconclusive. Request overhead failed the
@@ -101,27 +101,27 @@ preregistered I/O latency gate, and ABI-limit fault mapping remains incomplete,
 so the decision is to defer adoption for further backend development and retain
 Bun. This does not schedule a production migration or an unbudgeted extension.
 
-The subsequent [optimisation follow-up](wasm-optimization-results.md) identified
+The subsequent [optimisation follow-up](experiments/wasm-optimization-results.md) identified
 fresh instance creation as the dominant prototype cost. Exclusive instance reuse
 and host caching reached roughly 79% of Bun throughput with microsecond-scale
 p95 differences in the local fixture. Correctness passed locally and on Cloudflare;
 the original latency gate still fails at concurrency one. This strengthens the
 case for further bounded investigation while retaining Bun as the working target.
 
-A further [boundary and HTTP experiment](wasm-http-experiment-results.md) retained
+A further [boundary and HTTP experiment](experiments/wasm-http-experiment-results.md) retained
 that ABI while caching compiler-owned constants and compiling host descriptor
 checks. Small HTTP reads approached Bun; 16 KiB returned rows remained materially
 slower. Larger-value transport is the next performance question, not a selected
 replacement ABI. This changed artifact has local evidence only; earlier Cloudflare
 passes apply to their recorded artifacts.
 
-The [ownership/speed-build follow-up](wasm-value-path-results.md) then transferred
+The [ownership/speed-build follow-up](experiments/wasm-value-path-results.md) then transferred
 completed owned values and selected a speed-oriented release build. It won small
 concurrent reads against generated Bun in the local fixture, with lower p95 and
 CPU, but larger values and unresolved durable-write stalls prevent a general
 performance/adoption conclusion. The JSON ABI remains unchanged.
 
-The [row-transport follow-up](wasm-row-transport-results.md) then tested an internal
+The [row-transport follow-up](experiments/wasm-row-transport-results.md) then tested an internal
 schema-bound binary format while keeping external HTTP JSON. Egress-only transport
 improved concurrent large-row throughput about 7%, p95 about 5% and CPU/request
 about 7% against previous Wasm in all five local pairs. Ingress did not help.
@@ -129,7 +129,7 @@ Practical Bun parity failed, single-write stalls remained adverse, and no new
 Cloudflare qualification was performed. The candidate remains experimental; a
 fully specialised internal value representation is still unimplemented.
 
-The [immutable-row follow-up](wasm-typed-values-results.md) retains validated rows
+The [immutable-row follow-up](experiments/wasm-typed-values-results.md) retains validated rows
 as owned, schema-ordered scalars with shared immutable ownership and a locally
 derived size bound. Generic JSON decoding remains. Concurrent large reads improve
 about 3% in throughput/CPU and 2% in p95 against row transport, but Bun parity still
@@ -139,18 +139,18 @@ the generated Bun baseline on the tested writes, with different SQL plans and ho
 machinery. This is experimental local evidence, not a production backend or storage
 configuration change.
 
-The [compact-query/row-receipt follow-up](wasm-read-path-results.md) avoids sending
+The [compact-query/row-receipt follow-up](experiments/wasm-read-path-results.md) avoids sending
 full checked plans and copying unchanged validated rows back from the guest.
 The selected mode improves concurrent large-read throughput about 11% over the
 previous candidate, but still trails Bun by about 19% in the local HTTP fixture.
 Direct typed ingress is a measured alternative. The same module now passes a
-[local workerd/SQLite Durable Object comparison](wasm-workerd-read-results.md)
+[local workerd/SQLite Durable Object comparison](experiments/wasm-workerd-read-results.md)
 without Bun, including fresh ownership changes. Concurrent large reads still trail
 generated JavaScript on that host by about 10% throughput and 7% p95 in paired
 medians. This short local comparison cannot establish production capacity, CPU,
 cold starts or full backend coverage. No default target change follows from it.
 
-The [framework-informed workerd boundary pass](wasm-workerd-boundary-results.md)
+The [framework-informed workerd boundary pass](experiments/wasm-workerd-boundary-results.md)
 keeps the guest identical and tests direct host-to-guest JSON writes and synchronous
 borrowed output views. Forty-eight tests and 608,612 HTTP requests pass. Concurrent
 large-ASCII paired medians improve about 3% throughput/1% p95 over the previous
@@ -159,7 +159,7 @@ Retained instance memory increases from six to seven pages. Revised binary and
 adaptive encoders are measured alternatives with ASCII regressions. This remains
 an isolated experiment, with no default runtime or compiler change.
 
-The [native-runtime-informed value pass](wasm-native-values-results.md) retains
+The [native-runtime-informed value pass](experiments/wasm-native-values-results.md) retains
 that same guest and tests conservative JSON size proofs plus bounded selection of
 typed ingress. Fifty-three tests and 924,283 HTTP requests pass. Concurrent escaped
 HTTP improves about 17% throughput/15% p95 versus the previous WASM driver in all
@@ -168,7 +168,7 @@ and late-escape families still trail JS; small and Unicode HTTP regress against
 previous WASM. Retention stays at seven pages. Direct typed writes and full-string
 selection remain unsuccessful alternatives. This does not change the default target.
 
-The [SIMD/bulk-memory guest pass](wasm-guest-scans-results.md) now improves isolated
+The [SIMD/bulk-memory guest pass](experiments/wasm-guest-scans-results.md) now improves isolated
 large-text execution 14–52% over sampled WASM, using a negotiated guest exact-size
 check and typed ingress without content sampling. Fifty-two host tests, nine Rust
 tests and 949,050 HTTP requests pass. Retained guest memory drops to six pages.
@@ -529,7 +529,7 @@ messages, IDs, and provider payloads must not become labels.
 ## 15. Implementation sequence
 
 The active sequence, evidence, and exit gates live in the
-[compiler implementation roadmap](implementation-roadmap.md). In summary:
+[compiler implementation roadmap](roadmap.md). In summary:
 
 1. freeze a Jadpo seed, core grammar, and machine-readable fixtures;
 2. build the parser, semantic graph, type checker, and failure checker;

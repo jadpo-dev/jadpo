@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-109-d31ae5dadcd3", "task_id": "RM-109", "actor": "01a11fd2-f415-7272-aa35-a8ab485256f8", "actor_kind": "agent", "category": "fix", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-10T22:35:22.222326+00:00", "phase": "planning"}
-{"at": "2026-10-10T22:35:32.702623+00:00", "phase": "implementation", "note": "CREATE-003 rollback derivation and mutation tests pass; regenerating fixed-clock evidence against the corrected source."}
-{"at": "2026-10-10T22:40:22.978621+00:00", "phase": "review", "note": "Fresh fixed-clock packet approved after independent recheck of 768 pin references; updating RM-109 status records."}
-{"at": "2026-10-10T22:40:23.028818+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/evidence/rm109-http-create003-20261010-rollback-rereview/README.md"}

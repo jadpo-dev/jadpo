@@ -1,2 +1,0 @@
-{"schema_version": 1, "run_id": "RM-601-53475fde98b4", "task_id": "RM-601", "actor": "01a10337-a83f-72e0-9d14-a52c626704fd", "actor_kind": "agent", "category": "fix", "estimate_hours": [0.25, 0.75], "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-05T03:12:21.809461+00:00", "phase": "planning"}
-{"at": "2026-10-05T03:13:19.919318+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm601-independent-artifact-provenance-correction-review.json"}

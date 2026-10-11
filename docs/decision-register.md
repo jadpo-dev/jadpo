@@ -21,7 +21,7 @@ The existing three scheduled invocations within one hour, provider budget of
 three attempts within thirty seconds, and no automatic resend after uncertainty
 remain unchanged.
 
-This resolves the profile choice in the [owning delivery plan](work-plans/golden-delivery-planning.md#checkpoint).
+This resolves the profile choice in the [owning delivery plan](archive/work-plans/golden-delivery-planning.md#checkpoint).
 Checked worker lowering, scheduler/recovery evidence on both adapters and
 required independent reviews still govern activation. The frozen ASYNC-001
 contract and golden acceptance source are preserved.
@@ -42,7 +42,7 @@ and existing golden/contract gates remain prerequisites. Initial view coverage i
 partial; this decision grants no bootstrap/rebuild authority or complete-view claim.
 Retaining the origin check and requiring separate recovery was considered and not
 selected for this exact maintenance. Independent candidate corrections are recorded
-in the [review evidence](../tests/validation/event-design-independent-review.json).
+in the review evidence.
 
 ### Naming and principal direction — 2026-10-04
 
@@ -84,7 +84,7 @@ The owner adopted **Jadpo** and **jadpo.dev**, with `.jadpo` source files and th
 establish the product thesis. The “Rename language to Jadpo” chat reports the
 repository migration and verification complete; domain ownership/DNS/hosting
 remain external evidence under RM-1005. Buying `jadpo.com` was an optional later
-possibility, never a prerequisite. See the [source reconciliation](conversation-coverage.md#4-roadmap-reconciliation--2026-10-01).
+possibility, never a prerequisite. See the [source reconciliation](archive/conversation-coverage.md#4-roadmap-reconciliation--2026-10-01).
 
 ### Delivery defaults and planning directions — 2026-10-01
 
@@ -95,7 +95,7 @@ Cloudflare or another hosted queue dependency. Safe transient-failure retries
 default on, with bounded exponential backoff and jitter; uncertainty and
 non-repeatable effects remain excluded. The compiler/runtime owns these defaults
 so application-writing LLMs need fewer architectural decisions. See the
-[task plans and owner answers](work-plans/golden-delivery-planning.md#checkpoint)
+[task plans and owner answers](archive/work-plans/golden-delivery-planning.md#checkpoint)
 for scope, acceptance checks and remaining contract/implementation work. These
 are accepted directions, not claims that the runtime or formal contracts are complete.
 
@@ -122,7 +122,7 @@ bytes or general application permissions are changed by these records.
 
 The owner-approved database-backed durable-job directions are now frozen as
 [ASYNC-001](async-plan.md), after the
-[independent transaction/effect review](../tests/validation/rm305-independent-contract-review.json).
+independent transaction/effect review.
 The contract uses the existing SQLite/PostgreSQL authority database, atomic
 mutation plus intent, fenced claims, fixed UTC/coalesced scheduling, per-key
 FIFO, finite cumulative budgets and no blind replay after a possible effect.
@@ -143,7 +143,7 @@ recipient details, ReminderMail dispatch, and the matching schedule revision's
 `reminder_sent_at` write. It does not grant general update/delete, impersonate
 owners or bypass policy because a caller is generated/internal. Existing checked
 service authentication and live admission-time authority checks remain required.
-See the [owning implementation plan](work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders).
+See the [owning implementation plan](archive/work-plans/golden-delivery-planning.md#rm-301307108--services-durable-jobs-and-reminders).
 This accepts the scope, not implemented permissions or golden conformance;
 compiler/runtime and independent policy review gates remain open.
 
@@ -157,7 +157,7 @@ exception remains unchanged. No field read, general User update, owner
 impersonation or generated/lifecycle policy bypass is granted. Lifecycle ownership
 still forbids ordinary `set` and `patch` writes. This narrow source repair does
 not rewrite the frozen POLICY-D01–D43 matrix or approve reminder-worker authority.
-See the [owning checkpoint](work-plans/golden-delivery-planning.md#checkpoint)
+See the [owning checkpoint](archive/work-plans/golden-delivery-planning.md#checkpoint)
 for current tests and independent correction-review status.
 
 ### Keyword names and canonical formatting — 2026-10-01
@@ -214,7 +214,7 @@ a business-callable mint operation or a source-declared administration endpoint.
 This resolves RM-104's issuance-authority question without changing AUTH-P5's
 creation, rotation, expiry and revocation requirements. The exchange syntax and
 HTTP lowering still require independent language/security review and runtime
-evidence; see the [RM-104 handoff](work-plans/golden-delivery-planning.md#rm-104-strengthened-handoff).
+evidence; see the [RM-104 handoff](archive/work-plans/golden-delivery-planning.md#rm-104-strengthened-handoff).
 
 ### Product and philosophy
 
@@ -727,9 +727,9 @@ compatibility still need review. See the [event candidate](event-model.md) and
 Keep concepts/defaults simple and preserve the
 active golden delivery and frozen ASYNC-001 contracts. These are planning
 directions, not accepted amendments or implementation conformance.
-See [assessed plans, context and unresolved limits](work-plans/roadmap-assessment.md#syntax-component-messaging-and-graph-intake--2026-10-04),
+See [assessed plans, context and unresolved limits](archive/work-plans/roadmap-assessment.md#syntax-component-messaging-and-graph-intake--2026-10-04),
 RM-222/RM-309/RM-219, conditional successors RM-223/RM-310–RM-312 and
-[RM-1108's existing E11 plan](work-plans/developer-console-mcp.md#hierarchical-application-graph-plan--2026-10-04).
+[RM-1108's existing E11 plan](archive/work-plans/developer-console-mcp.md#hierarchical-application-graph-plan--2026-10-04).
 
 These are recommended but must survive the golden applications:
 - braces, no required semicolons, and canonical non-semantic formatting;

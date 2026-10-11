@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-306db54d56fc", "task_id": "RM-306", "actor": "rm306-independent-claim-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T08:05:21.667539+00:00", "phase": "planning"}
-{"at": "2026-10-04T08:06:25.455096+00:00", "phase": "verification", "note": "Exact-template in-memory SQLite clock and claim probes; no compiler or broad gates"}
-{"at": "2026-10-04T08:08:06.557350+00:00", "phase": "review", "note": "Record reproduced stale database-time admission blocker and scoped positive findings"}
-{"at": "2026-10-04T08:10:39.261213+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-claim-review.json"}

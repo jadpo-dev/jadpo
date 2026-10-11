@@ -1,8 +1,8 @@
 # Native-runtime-inspired value transport
 
 Local workerd experiment continuing `workerd-boundary`. See
-[research](../../../docs/wasm-native-runtime-values.md) and
-[results](../../../docs/wasm-native-values-results.md).
+[research](../../../docs/experiments/wasm-native-runtime-values.md) and
+[results](../../../docs/experiments/wasm-native-values-results.md).
 
 The guest remains the frozen `read-path` module, SHA-256
 `cf3716529f29fd0ababa6e4d99982908ba7f9326035b486f9c03d1ffe2d99c0b`.

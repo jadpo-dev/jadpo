@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-080556cf7c45", "task_id": "RM-306", "actor": "rm306-independent-mail-outcome-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [2.0, 8.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T08:47:37.086150+00:00", "phase": "planning"}
-{"at": "2026-10-04T08:50:12.596547+00:00", "phase": "verification", "note": "Exact outcome templates and source-extracted nested SQLite transaction, isolated receipt/savepoint/timing probes"}
-{"at": "2026-10-04T08:53:38.842251+00:00", "phase": "review", "note": "Seven exact-template SQLite outcome/savepoint probes passed; pin scoped additions and main-attributed adapter results"}
-{"at": "2026-10-04T08:56:47.201280+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-mail-outcome-review.json"}

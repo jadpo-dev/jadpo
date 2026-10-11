@@ -299,7 +299,7 @@ resuming a staged page with a new activation-time snapshot after lease expiry.
 Persisted-state decoding refuses15 malformed/null/noncanonical/out-of-range or
 incoherent states under the actual row lock, with claim/stage/finish each preserving
 the exact durable row on refusal. Portable0001/9999 controls pass; year0000 refuses.
-The [independent final storage correction review](../validation/rm306-independent-singleton-activation-storage-portable-range-review.json)
+The independent final storage correction review
 approves only this scoped correction, including real PostgreSQL late-lock controls;
 the original required-changes reports/red probes are preserved.
 These trusted native storage seams are not yet the assembled finished-binding

@@ -1,14 +1,14 @@
 # SERVICE-001 — outbound service contract
 
 **Status:** RM-301 semantic contract frozen, 2026-10-02, after the
-[independent correction re-review](../tests/validation/rm301-independent-contract-review.json)
+independent correction re-review
 resolved all six findings and the retry-catalog ambiguity. The reviewed candidate
 body is pinned as SHA-256 `d0162532b1e7bcab8b0ed5dbf355830f9a7d4147284a0548e681c62b8949819f`.
 This status/review-footer update records freeze without changing that body.
 RM-302 owns exact parser spelling/diagnostics; RM-303 and the durable-job tasks
 own executable adapter/recovery conformance. A generated Bun HTTP adapter and
 loopback integration suite now exist; the scoped adapter review is approved in
-the [RM-303 review record](../tests/validation/rm303-independent-implementation-review.json).
+the RM-303 review record.
 Durable-job and production-provider conformance are not claimed.
 
 ## Scope and source
@@ -169,7 +169,7 @@ lookup/replay operation requires a separately pinned and reviewed successor.
 reminder. Each schedule receives a new durable delivery intent identity, retained
 across attempts and reconciliation. “Yes and yes” also authorised the independent
 service review. The previous question below is retained as decision rationale,
-not an outstanding owner choice. The [initial independent findings](../tests/validation/rm301-independent-contract-review.json)
+not an outstanding owner choice. The initial independent findings
 are addressed by the successor source, durable state contract and 30-case
 catalog. A [JOB-001 replacement](../tests/assurance/service-acceptance-successor-v0.1.json)
 is separately pinned to current acceptance bytes; the other 43 cases remain
@@ -310,7 +310,7 @@ digests, closed types, effect and secret flow, no-effect versus unknown
 classification, retry budget, and the source revision above. RM-207's provider
 uncertainty mapping is approved. RM-303's real HTTP traces and its independent
 implementation review are complete for the scoped adapter boundary; see the
-[review record](../tests/validation/rm303-independent-implementation-review.json).
+review record.
 The author's self-check is not that review. Verification here is
 contract/fixture consistency, not a verify-loop campaign: the implementation's
 failure injection is already specified.
@@ -355,8 +355,8 @@ and wrong-host certificates, typed response mappings, credential/request
 bounds, shared operation deadline and attempt budget, exact-key deduplication,
 pre-dispatch retries, cancellation, and a provider acceptance stored before a
 lost acknowledgement and audit-contract parity. The full supported verifier
-passes **59/59 steps** ([report](../build/validation/20261003T234639-50956/report.json));
+passes **59/59 steps** (report);
 it still marks release equivalence false and the full golden app fails
-compilation. The independent [RM-303 implementation review](../tests/validation/rm303-independent-implementation-review.json)
+compilation. The independent RM-303 implementation review
 approves this scoped adapter boundary; durable-job and production-provider work
 remain open.

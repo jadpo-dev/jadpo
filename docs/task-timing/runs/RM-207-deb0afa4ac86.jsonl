@@ -1,2 +1,0 @@
-{"schema_version": 1, "run_id": "RM-207-deb0afa4ac86", "task_id": "RM-207", "actor": "01a0f884-59ca-7d10-bcde-75084fd349e9", "actor_kind": "agent", "category": "research", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-02T17:30:41.436151+00:00", "phase": "planning"}
-{"at": "2026-10-02T17:33:43.063098+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/assurance/operational-boundary-v0.1.json"}

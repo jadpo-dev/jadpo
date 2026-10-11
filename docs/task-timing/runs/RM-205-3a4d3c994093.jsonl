@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-205-3a4d3c994093", "task_id": "RM-205", "actor": "01a0f884-59ca-7d10-bcde-75084fd349e9", "actor_kind": "agent", "category": "research", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-02T17:10:05.898291+00:00", "phase": "planning"}
-{"at": "2026-10-02T17:15:55.284700+00:00", "phase": "review", "note": "Self-review of DATA-007 source, ownership, authentication exception and 21 contract cases; independent language/policy review still required."}
-{"at": "2026-10-02T17:16:27.756811+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/lifecycle-plan.md"}

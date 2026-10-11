@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-301-dc3d36365b34", "task_id": "RM-301", "actor": "01a0f884-59ca-7d10-bcde-75084fd349e9", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [0.5, 2.0], "thread": "01a0f884-59ca-7d10-bcde-75084fd349e9", "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-01T21:21:19.390967+00:00", "phase": "planning"}
-{"at": "2026-10-01T21:21:24.630637+00:00", "phase": "planning", "note": "Sol High contract stage: freeze local HTTP reference provider semantics against frozen ReminderMail source and accepted unknown-outcome decision."}
-{"at": "2026-10-01T21:26:50.708032+00:00", "phase": "verification", "note": "Parsed both JSON fixtures, checked snapshot status/code refs and operation alignment, and verified exact SHA-256 pin."}
-{"at": "2026-10-01T21:26:50.783658+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/service-plan.md"}

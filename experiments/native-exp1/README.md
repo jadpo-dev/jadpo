@@ -1,6 +1,6 @@
 # Bounded native Rust experiment
 
-Completed results and recommendation: [native Rust report](../../docs/native-rust-experiment-results.md).
+Completed results and recommendation: [native Rust report](../../docs/experiments/native-rust-experiment-results.md).
 
 Decision protocol, recorded before implementation measurements. No production
 target change, language extension, cloud deployment, or new persistence engine.

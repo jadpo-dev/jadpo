@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-301-3e15365d3cf6", "task_id": "RM-301", "actor": "service_contract_review", "actor_kind": "agent", "category": "research", "estimate_hours": [0.5, 2.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-02T18:10:01.735472+00:00", "phase": "planning"}
-{"at": "2026-10-02T18:10:05.226035+00:00", "phase": "review", "note": "Independent decision-depth contract review; successor identity decision settled by owner"}
-{"at": "2026-10-02T18:18:58.918274+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm301-independent-contract-review.json"}

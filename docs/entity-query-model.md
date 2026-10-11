@@ -7,7 +7,7 @@
 [project structure](project-structure.md),
 [POLICY-001 decision plan](policy-plan.md),
 [compiler/runtime architecture](compiler-runtime.md), and
-[implementation roadmap](implementation-roadmap.md)
+[implementation roadmap](roadmap.md)
 
 This document fixes the semantic boundary between identity-bearing entities,
 ordinary values, persistence, queries, entity-owned operations, multi-entity

@@ -1,3 +1,0 @@
-{"schema_version": 1, "run_id": "RM-108-38f17626bab5", "task_id": "RM-108", "actor": "rm108-independent-policy-plan-review", "actor_kind": "agent", "category": "research", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T10:19:26.881854+00:00", "phase": "planning"}
-{"at": "2026-10-04T10:22:39.011668+00:00", "phase": "review", "note": "Source-only consequential policy composition review; retain confirmed Sol/high, estimate omitted because original RM108 review estimate not supplied"}
-{"at": "2026-10-04T10:27:40.262737+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm108-independent-policy-plan-review.json"}

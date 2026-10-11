@@ -1,2 +1,0 @@
-{"schema_version": 1, "run_id": "META-GOLDEN-TONIGHT-PLAN-3ebb08405927", "task_id": "META-GOLDEN-TONIGHT-PLAN", "actor": "01a1131f-9eba-7291-ac5c-e14c1259cd6f", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6.1-sol", "reasoning": "high", "at": "2026-10-11T18:19:43.117935+00:00", "phase": "planning"}
-{"at": "2026-10-11T18:23:02.054234+00:00", "phase": "finished", "note": null, "outcome": "complete", "evidence": "docs/work-plans/golden-delivery-planning.md"}

@@ -857,16 +857,16 @@ These checks establish fixture integration and adapter behavior; the separate
 HTTP/TLS adapter suite remains the evidence for actual loopback request handling.
 
 **RM-304 closure, 2026-10-04:** the
-[independent correction review](../tests/validation/rm304-independent-correction-review.json)
+independent correction review
 accepts empty/missing checked authored fake containment and fresh-operation elapsed
 baselines. The baseline is keyed by shared attempt-budget identity, so cloned and
 nested contexts keep their limits while a new operation resets its relative
 elapsed budget without rewinding the queue. The registered suite passes 7/7
-(40 assertions), and the [fresh supported gate](../build/validation/20261004T084327-70967/report.json)
+(40 assertions), and the fresh supported gate
 passes 61/61. This scope excludes malformed host-injected nullish map entries and
 direct-host receipt validation seams identified by the reviewer; checked authored
 lowering cannot construct those inputs. Broader capability and job integration
-remains open. Timing and completion are linked from [history](implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes).
+remains open. Timing and completion are linked from [history](archive/implementation-history.md#2026-10-04--rm-304-checked-authored-service-fakes).
 
 Typed traces expose only reviewable facts:
 

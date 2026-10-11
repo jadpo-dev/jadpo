@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-104-0e4b8f920e81", "task_id": "RM-104", "actor": "01a0f95e-c47a-78d0-b173-6ef78949a7e9", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": [1.0, 4.0], "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-01T22:45:44.618832+00:00", "phase": "planning"}
-{"at": "2026-10-01T22:46:29.549008+00:00", "phase": "review", "note": "Reconcile AUTH-009/011 and host boundary; checked transport remains provisional for independent review."}
-{"at": "2026-10-01T22:48:23.557737+00:00", "phase": "verification", "note": "Check reviewed decision packet and defer grammar/fixture implementation until Luna Extra High."}
-{"at": "2026-10-01T22:48:23.675442+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "docs/work-plans/golden-delivery-planning.md"}

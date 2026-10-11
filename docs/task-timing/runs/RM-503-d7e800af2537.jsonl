@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-503-d7e800af2537", "task_id": "RM-503", "actor": "jadpo-roadmap-session-20261001", "actor_kind": "agent", "category": "research", "estimate_hours": [1.0, 4.0], "thread": null, "model": null, "reasoning": null, "at": "2026-10-01T18:49:14.174181+00:00", "phase": "planning"}
-{"at": "2026-10-01T18:49:42.488476+00:00", "phase": "review", "note": null}
-{"at": "2026-10-01T18:53:10.956657+00:00", "phase": "verification", "note": null}
-{"at": "2026-10-01T18:53:51.741493+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm503-mutation-findings.md"}

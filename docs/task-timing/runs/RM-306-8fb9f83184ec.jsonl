@@ -1,4 +1,0 @@
-{"schema_version": 1, "run_id": "RM-306-8fb9f83184ec", "task_id": "RM-306", "actor": "rm306-independent-renewal-review", "actor_kind": "agent", "category": "cross-cutting", "estimate_hours": null, "thread": null, "model": "gpt-6-sol", "reasoning": "high", "at": "2026-10-04T08:34:00.714942+00:00", "phase": "planning"}
-{"at": "2026-10-04T08:35:55.636596+00:00", "phase": "verification", "note": "Exact template in-memory SQLite renewal, timing, rollback, and injected clock probes"}
-{"at": "2026-10-04T08:37:50.724803+00:00", "phase": "review", "note": "Seven isolated probes passed; clock regression shortens only lease; pin additive regions and retain broader gates"}
-{"at": "2026-10-04T08:40:49.807379+00:00", "phase": "finished", "note": null, "outcome": "partial", "evidence": "tests/validation/rm306-independent-renewal-review.json"}

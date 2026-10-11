@@ -1,7 +1,7 @@
 # Guest string scans and bulk-memory experiment
 
 Follow-up to `workerd-native-values`. Local workerd only; see the
-[results and rationale](../../../docs/wasm-guest-scans-results.md).
+[results and rationale](../../../docs/experiments/wasm-guest-scans-results.md).
 
 ## Changes and contract
 

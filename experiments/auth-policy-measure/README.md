@@ -68,7 +68,7 @@ The five trust probes deliberately demonstrate that the raw SQL host accepts
 unauthorized effects from a malicious guest. A passing probe is evidence of that
 limitation, not security qualification. The admission helper is a separate tested
 prototype and is not wired into or measured as part of the frozen HTTP server.
-See [the host decision](../../docs/wasm-host-trust-decision.md).
+See [the host decision](../../docs/experiments/wasm-host-trust-decision.md).
 
 Thirty-two warmup requests and short one-second cells include possible JIT/GC
 transients; this is a bounded local comparison, not steady-state capacity testing.
