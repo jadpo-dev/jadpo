@@ -729,8 +729,11 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
       expect(calls).toHaveLength(3);
       expect(calls.every(call => call.body.idempotency_key === original.intentId && call.key === original.intentId)).toBe(true);
+      expect(calls.map(call => call.body)).toEqual([original.payload, original.payload, original.payload]);
       const retrying = await persistence.read_delivery_intent(original.intentId);
       expect(retrying.state).toBe("retry_wait");
+      expect(retrying.payloadVersion).toBe(original.payloadVersion);
+      expect(retrying.payload).toEqual(original.payload);
       const attempt = await rows('SELECT intent_id,generation,provider_attempts,failure_class FROM "__jadpo_delivery_attempts_v1" WHERE intent_id=$1 ORDER BY generation', [original.intentId]);
       expect(attempt).toHaveLength(1);
       expect(attempt[0]).toMatchObject({ intent_id: original.intentId, provider_attempts: 3, failure_class: "service_unavailable" });
