@@ -549,7 +549,7 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       // A separate connection observes both durable commits before HTTP.
       const activation = (await activationRows())[0];
       const claim = (await rows('SELECT execution_ms, lease_ms, possible_dispatch FROM "__jadpo_delivery_claims_v1" WHERE intent_id=$1', [body.idempotency_key]))[0];
-      calls.push({ body, page: JSON.parse(activation.page), possibleDispatch: Number(claim.possible_dispatch), activationLeaseMs: Number(activation.lease_ms), deliveryExecutionMs: Number(claim.execution_ms), deliveryLeaseMs: Number(claim.lease_ms) });
+      calls.push({ body, page: JSON.parse(activation.page), possibleDispatch: Number(claim.possible_dispatch), activationLeaseMs: Number(activation.lease_ms), activationExecutionDeadline: activation.execution_deadline, deliveryExecutionMs: Number(claim.execution_ms), deliveryLeaseMs: Number(claim.lease_ms) });
       if (onCall) await onCall();
       return Response.json({ accepted_at: instant }, { status: 202, headers: { "Idempotency-Key": body.idempotency_key } });
     } });
@@ -560,10 +560,14 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
   }
   test("generated scheduler commits selection/page and admission before provider dispatch, then finishes one singleton tick", async () => {
     const f = await fixture();
+    const activationClockBefore = await persistence.transaction((tx: any) => tx.delivery_activation_clock());
+    let activationExecutionDeadline = "";
     await provider(async calls => {
       expect(await activate(f.proof)).toEqual({ status: "finished", selected: 1, attempted: 1, continued: false });
       expect(calls).toHaveLength(1); expect(calls[0].possibleDispatch).toBe(1);
       expect(calls[0].activationLeaseMs).toBe(activationProfile.leaseMs);
+      activationExecutionDeadline = calls[0].activationExecutionDeadline;
+      expect(Date.parse(calls[0].activationExecutionDeadline)).toBeGreaterThanOrEqual(Date.parse(activationClockBefore) + activationProfile.executionMs);
       expect(calls[0].deliveryExecutionMs).toBe(deliveryProfile.executionMs);
       expect(calls[0].deliveryLeaseMs).toBe(deliveryProfile.leaseMs);
       expect(calls[0].page.intentIds).toEqual([calls[0].body.idempotency_key]);
@@ -571,6 +575,8 @@ describe(`closed scheduler assembly components (${sql ? "postgres" : "sqlite"})`
       expect(await activate(f.proof)).toEqual({ status: "idle", selected: 0, attempted: 0, continued: false });
       expect(calls).toHaveLength(1);
     });
+    const activationClockAfter = await persistence.transaction((tx: any) => tx.delivery_activation_clock());
+    expect(Date.parse(activationExecutionDeadline)).toBeLessThanOrEqual(Date.parse(activationClockAfter) + activationProfile.executionMs);
     const saved = (await activationRows())[0]; expect(saved.activation_id).toBeNull(); expect(saved.page).toBeNull();
     expect((await stored(f.value.id))[0].reminder_sent_at).not.toBeNull();
   });
