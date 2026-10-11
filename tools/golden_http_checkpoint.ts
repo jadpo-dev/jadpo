@@ -1,11 +1,10 @@
 // Real migrated-application observations for the reviewed supporting HTTP slice.
 // Receives the full frozen contract; never reads expected values to emit results.
 import { Database } from "bun:sqlite";
-import { SQL } from "bun";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation, todoLimitBindingObservation } from "./golden_sql_observer.ts";
+import { SQL, beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation, todoLimitBindingObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
 const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "LIST-004", "REL-001", "REL-002", "REL-004", "PATCH-001", "PATCH-002", "PATCH-003", "PATCH-004", "PATCH-005", "DELETE-001", "DELETE-002", "USER-001"];
