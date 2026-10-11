@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { beginSqlObservation, endSqlObservation, recordStatement, authenticationAttemptCount, authenticatedPrincipalObservation } from "./golden_sql_observer.ts";
 import { installCheckpointFetchPolicy } from "./golden_checkpoint_fetch.ts";
 
-const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
+const supported = ["AUTH-001", "AUTH-002", "AUTH-003", "AUTH-004", "AUTH-005", "AUTH-006", "AUTH-007", "AUTH-008", "AUTH-009", "AUTH-010", "AUTH-011", "AUTH-012", "PUBLIC-001", "CREATE-001", "CREATE-002", "CREATE-003", "CREATE-004", "READ-001", "READ-002", "READ-003", "LIST-001", "LIST-002", "LIST-003", "PATCH-003", "PATCH-004", "DELETE-001", "DELETE-002", "USER-001"];
 const [project, backend, contractPath, output] = Bun.argv.slice(2);
 if (!project || !["sqlite", "postgres"].includes(backend) || !output) throw new Error("Missing checkpoint arguments");
 const prototype = Database.prototype as any;
@@ -336,6 +336,75 @@ try {
       if (rows.length !== fixtureRows.length) throw new Error("Missing LIST-001 persisted fixture rows");
       const persistedFixtures = rows.map((row: any) => ({ id: row.id, ownerId: row.owner_id, title: row.title,
         status: row.status, createdAt: timestamp(row.created_at),
+        deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) }));
+      raw.push({ fixture: { rows: persistedFixtures } });
+      await send(case_.request);
+    } else if (case_.id === "LIST-002") {
+      const fixtureRows = Array.from({ length: 5 }, (_, index) => ({
+        id: `00000000-0000-4000-8000-0000000000${41 + index}`,
+        ownerId: alice,
+        title: `cursor row ${index + 1}`,
+        status: "open",
+        createdAt: `2026-01-15T${String(10 + index).padStart(2, "0")}:00:00.000Z`,
+        deletedAt: null,
+      }));
+      if (case_.requests.length !== 3
+        || case_.requests[0].path !== "/todos?page_size=2"
+        || case_.requests[1].path !== "/todos?page_size=2&after={first.next}"
+        || case_.requests[2].path !== "/todos?page_size=2&after={second.next}") {
+        throw new Error("Changed LIST-002 frozen cursor request sequence");
+      }
+      for (const row of fixtureRows) {
+        await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, NULL, NULL, $5, $5, NULL)',
+          [row.id, row.ownerId, row.title, row.status, pg ? row.createdAt : Date.parse(row.createdAt)]);
+      }
+      const rows = await execute(`SELECT id, owner_id, title, status, created_at, deleted_at FROM "todo" WHERE id IN (${fixtureRows.map((_, index) => `$${index + 1}`).join(", ")}) ORDER BY id ASC`, fixtureRows.map(row => row.id));
+      if (rows.length !== fixtureRows.length) throw new Error("Missing LIST-002 persisted fixture rows");
+      const persistedFixtures = rows.map((row: any) => ({ id: row.id, ownerId: row.owner_id, title: row.title,
+        status: row.status, createdAt: timestamp(row.created_at),
+        deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) }));
+      raw.push({ fixture: { rows: persistedFixtures } });
+      const runTraversal = async () => {
+        let cursor: { created_at: string; id: string } | null = null;
+        for (let pageIndex = 0; pageIndex < case_.requests.length; pageIndex++) {
+          const template = case_.requests[pageIndex];
+          let path = template.path;
+          if (pageIndex > 0) {
+            if (!cursor) throw new Error("LIST-002 page ended before frozen continuation request");
+            const marker = pageIndex === 1 ? "{first.next}" : "{second.next}";
+            path = path.replace(marker, encodeURIComponent(JSON.stringify({ created_at: cursor.created_at, id: cursor.id })));
+          }
+          const reply = await send({ ...template, path });
+          cursor = reply.body?.next ?? null;
+        }
+      };
+      await runTraversal();
+      await runTraversal();
+    } else if (case_.id === "LIST-003") {
+      const fixtureRows = [
+        { id: "00000000-0000-4000-8000-000000000061", ownerId: alice, title: "filter fixture 1", status: "open", dueAt: "2026-01-30T00:00:00.000Z", createdAt: "2026-01-15T10:00:00.000Z", deletedAt: null },
+        { id: "00000000-0000-4000-8000-000000000062", ownerId: alice, title: "filter fixture 2", status: "open", dueAt: "2026-01-31T00:00:00.000Z", createdAt: "2026-01-15T11:00:00.000Z", deletedAt: null },
+        { id: "00000000-0000-4000-8000-000000000063", ownerId: alice, title: "filter fixture 3", status: "closed", dueAt: "2026-01-20T00:00:00.000Z", createdAt: "2026-01-15T12:00:00.000Z", deletedAt: null },
+        { id: "00000000-0000-4000-8000-000000000064", ownerId: alice, title: "filter fixture 4", status: "open", dueAt: "2026-02-02T00:00:00.000Z", createdAt: "2026-01-15T13:00:00.000Z", deletedAt: null },
+        { id: "00000000-0000-4000-8000-000000000065", ownerId: alice, title: "filter fixture 5", status: "open", dueAt: null, createdAt: "2026-01-15T14:00:00.000Z", deletedAt: null },
+        { id: "00000000-0000-4000-8000-000000000066", ownerId: bob, title: "filter fixture 6", status: "open", dueAt: "2026-01-25T00:00:00.000Z", createdAt: "2026-01-15T15:00:00.000Z", deletedAt: null },
+        { id: "00000000-0000-4000-8000-000000000067", ownerId: alice, title: "filter fixture 7", status: "open", dueAt: "2026-01-31T00:00:00.000Z", createdAt: "2026-01-15T16:00:00.000Z", deletedAt: "2026-01-16T00:00:00.000Z" },
+      ];
+      if (case_.request.path !== "/todos?status=open&due_before=2026-02-01T00:00:00Z") {
+        throw new Error("Changed LIST-003 frozen filtered request");
+      }
+      for (const row of fixtureRows) {
+        const dueAt = row.dueAt === null ? null : pg ? row.dueAt : Date.parse(row.dueAt);
+        const createdAt = pg ? row.createdAt : Date.parse(row.createdAt);
+        const deletedAt = row.deletedAt === null ? null : pg ? row.deletedAt : Date.parse(row.deletedAt);
+        await execute('INSERT INTO todo (id, owner_id, title, status, due_at, reminder_sent_at, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $6, $7)',
+          [row.id, row.ownerId, row.title, row.status, dueAt, createdAt, deletedAt]);
+      }
+      const rows = await execute(`SELECT id, owner_id, title, status, due_at, created_at, deleted_at FROM "todo" WHERE id IN (${fixtureRows.map((_, index) => `$${index + 1}`).join(", ")}) ORDER BY id ASC`, fixtureRows.map(row => row.id));
+      if (rows.length !== fixtureRows.length) throw new Error("Missing LIST-003 persisted fixture rows");
+      const persistedFixtures = rows.map((row: any) => ({ id: row.id, ownerId: row.owner_id, title: row.title,
+        status: row.status, dueAt: row.due_at === null ? null : timestamp(row.due_at),
+        createdAt: timestamp(row.created_at),
         deletedAt: row.deleted_at === null ? null : timestamp(row.deleted_at) }));
       raw.push({ fixture: { rows: persistedFixtures } });
       await send(case_.request);

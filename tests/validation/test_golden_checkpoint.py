@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'tools'))
@@ -105,6 +106,72 @@ class CheckpointIntegrityTests(unittest.TestCase):
                      'statements': [
                          {'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "created_at", "updated_at" FROM "todo" WHERE ("owner_id" = ? AND "deleted_at" IS NULL) ORDER BY "created_at" DESC, "id" DESC LIMIT ?', 'operation': 'SELECT'}]}
             return [{'fixture': fixture}, reply]
+        if case_id == 'LIST-002':
+            alice = '00000000-0000-4000-8000-000000000001'
+            ids = [f'00000000-0000-4000-8000-0000000000{number}' for number in range(41, 46)]
+            rows = [
+                {'id': ids[index], 'ownerId': alice, 'title': f'cursor row {index + 1}', 'status': 'open',
+                 'createdAt': f'2026-01-15T{10 + index:02d}:00:00.000Z', 'deletedAt': None}
+                for index in range(5)
+            ]
+            ordered = sorted(rows, key=lambda row: (row['createdAt'], row['id']), reverse=True)
+            replies = []
+            for traversal in range(2):
+                cursor = None
+                for page_index in range(3):
+                    request = case['requests'][page_index]
+                    path = request['path']
+                    if page_index:
+                        marker = '{first.next}' if page_index == 1 else '{second.next}'
+                        path = path.replace(marker, quote(json.dumps(cursor, separators=(',', ':')), safe=''))
+                    page = ordered[page_index * 2:(page_index + 1) * 2]
+                    items = [{'id': row['id'], 'title': row['title'], 'status': row['status'], 'due_at': None,
+                              'created_at': row['createdAt'], 'updated_at': row['createdAt']} for row in page]
+                    cursor = {'created_at': page[-1]['createdAt'], 'id': page[-1]['id']} if page_index < 2 else None
+                    after = '' if page_index == 0 else ' AND (("created_at", "id") < (?, ?))'
+                    sql = ('SELECT "id", "owner_id", "title", "status", "due_at", "created_at", "updated_at" '
+                           'FROM "todo" WHERE ("owner_id" = ? AND "deleted_at" IS NULL' + after + ') '
+                           'ORDER BY "created_at" DESC, "id" DESC LIMIT ?')
+                    replies.append({'method': request['method'], 'path': path, 'auth': request.get('auth'),
+                                    'requestJson': None, 'requestStartedAt': 1768478400000 + len(replies),
+                                    'responseCompletedAt': 1768478400000 + len(replies), 'status': 200,
+                                    'body': {'items': items, 'next': cursor}, 'authenticationAttempts': 1,
+                                    'principal': {'kind': 'user', 'subject': 'alice', 'identityId': alice},
+                                    'statements': [{'sql': sql, 'operation': 'SELECT'}]})
+            return [{'fixture': {'rows': rows}}, *replies]
+        if case_id == 'LIST-003':
+            alice = '00000000-0000-4000-8000-000000000001'
+            bob = '00000000-0000-4000-8000-000000000002'
+            created = [
+                '2026-01-15T10:00:00.000Z', '2026-01-15T11:00:00.000Z',
+                '2026-01-15T12:00:00.000Z', '2026-01-15T13:00:00.000Z',
+                '2026-01-15T14:00:00.000Z', '2026-01-15T15:00:00.000Z',
+                '2026-01-15T16:00:00.000Z',
+            ]
+            due = ['2026-01-30T00:00:00.000Z', '2026-01-31T00:00:00.000Z',
+                   '2026-01-20T00:00:00.000Z', '2026-02-02T00:00:00.000Z', None,
+                   '2026-01-25T00:00:00.000Z', '2026-01-31T00:00:00.000Z']
+            rows = [
+                {'id': f'00000000-0000-4000-8000-0000000000{61 + index}',
+                 'ownerId': bob if index == 5 else alice,
+                 'title': f'filter fixture {index + 1}',
+                 'status': 'closed' if index == 2 else 'open',
+                 'dueAt': due[index], 'createdAt': created[index],
+                 'deletedAt': '2026-01-16T00:00:00.000Z' if index == 6 else None}
+                for index in range(7)
+            ]
+            expected = [rows[1], rows[0]]
+            items = [{'id': row['id'], 'title': row['title'], 'status': row['status'],
+                      'due_at': row['dueAt'], 'created_at': row['createdAt'],
+                      'updated_at': row['createdAt']} for row in expected]
+            reply = {'method': 'GET', 'path': case['request']['path'],
+                     'auth': case['request']['auth'], 'requestJson': None,
+                     'requestStartedAt': 1768478400000, 'responseCompletedAt': 1768478400000,
+                     'status': 200, 'body': {'items': items, 'next': None},
+                     'authenticationAttempts': 1,
+                     'principal': {'kind': 'user', 'subject': 'alice', 'identityId': alice},
+                     'statements': [{'sql': 'SELECT "id", "owner_id", "title", "status", "due_at", "created_at", "updated_at" FROM "todo" WHERE ("owner_id" = ? AND "deleted_at" IS NULL AND "status" = ? AND "due_at" <= ?) ORDER BY "created_at" DESC, "id" DESC LIMIT ?', 'operation': 'SELECT'}]}
+            return [{'fixture': {'rows': rows}}, reply]
         replies = []
         requests = case.get('requests', [case.get('request')])
         if case_id == 'DELETE-001':
@@ -332,7 +399,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         report = harness.run_cases(self.root)
         checkpoint.apply_checkpoint(report, self.outputs(), self.root)
         self.assertEqual(len(report['results']), 88)
-        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 36)
+        self.assertEqual(sum(entry['status'] == 'not_run' for entry in report['results']), 32)
         self.assertEqual(report['status'], 'failed')
         self.assertFalse(report['release_equivalent'])
 
@@ -989,6 +1056,79 @@ class CheckpointIntegrityTests(unittest.TestCase):
         mutations.append(('wrong authenticated owner', wrong_principal))
         for name, changed in mutations:
             with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'LIST-001|Foreign request observation'):
+                checkpoint.observations(case, changed)
+
+    def test_list002_requires_dynamic_cursor_traversal_without_gaps_or_duplicates(self):
+        case = self.cases['LIST-002']
+        raw = self.raw('LIST-002')
+        observations = checkpoint.observations(case, raw)
+        self.assertEqual(harness.assess(case, observations), [])
+        self.assertEqual(observations[0]['steps'], [{'status': 200, 'uniqueItemCount': 5, 'stableAcrossRepeat': True}])
+        mutations = []
+        missing_page = deepcopy(raw); missing_page.pop(3)
+        mutations.append(('missing page', missing_page))
+        duplicate = deepcopy(raw); duplicate[3]['body']['items'][0] = deepcopy(duplicate[1]['body']['items'][0])
+        mutations.append(('duplicate across pages', duplicate))
+        gap = deepcopy(raw); gap[2]['body']['items'][0] = deepcopy(gap[2]['body']['items'][1])
+        mutations.append(('gap in traversal', gap))
+        wrong_cursor_path = deepcopy(raw); wrong_cursor_path[2]['path'] = case['requests'][1]['path']
+        mutations.append(('request did not use first response cursor', wrong_cursor_path))
+        wrong_sql_cursor = deepcopy(raw); wrong_sql_cursor[2]['statements'][0]['sql'] = wrong_sql_cursor[2]['statements'][0]['sql'].replace('("created_at", "id") < (?, ?)', '"created_at" < ?')
+        mutations.append(('continuation query omitted composite id key', wrong_sql_cursor))
+        unstable_repeat = deepcopy(raw); unstable_repeat[5]['body']['items'][0]['title'] = 'changed on replay'
+        mutations.append(('repeat changed page', unstable_repeat))
+        missing_owner = deepcopy(raw); missing_owner[2]['statements'][0]['sql'] = missing_owner[2]['statements'][0]['sql'].replace('"owner_id" = ? AND ', '')
+        mutations.append(('continuation dropped owner scope', missing_owner))
+        missing_deleted = deepcopy(raw); missing_deleted[2]['statements'][0]['sql'] = missing_deleted[2]['statements'][0]['sql'].replace('"deleted_at" IS NULL AND ', '')
+        mutations.append(('continuation dropped deleted filter', missing_deleted))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'LIST-002'):
+                checkpoint.observations(case, changed)
+
+    def test_list003_requires_composed_filters_and_owner_scope(self):
+        case = self.cases['LIST-003']
+        raw = self.raw('LIST-003')
+        observed = checkpoint.observations(case, raw)
+        self.assertEqual(harness.assess(case, observed), [])
+        self.assertEqual(observed[0]['steps'], [{
+            'status': 200, 'databaseQueries': 1, 'totalDatabaseStatements': 1,
+            'authenticationAttempts': 1, 'writes': 0, 'onlyOwner': 'alice',
+            'onlyTodoStatus': 'open', 'allDueBefore': '2026-02-01T00:00:00Z',
+            'undatedAbsent': True,
+        }])
+        mutations = []
+        foreign_owner = deepcopy(raw); foreign_owner[1]['body']['items'][0]['id'] = '00000000-0000-4000-8000-000000000066'
+        mutations.append(('Bob row leaked', foreign_owner))
+        wrong_status = deepcopy(raw); wrong_status[1]['body']['items'][0]['status'] = 'closed'
+        mutations.append(('closed row leaked', wrong_status))
+        after_cutoff = deepcopy(raw); after_cutoff[1]['body']['items'][0]['due_at'] = '2026-02-02T00:00:00.000Z'
+        mutations.append(('due date after cutoff leaked', after_cutoff))
+        undated = deepcopy(raw); undated[1]['body']['items'][0]['due_at'] = None
+        mutations.append(('undated row leaked', undated))
+        missing_owner = deepcopy(raw); missing_owner[1]['statements'][0]['sql'] = missing_owner[1]['statements'][0]['sql'].replace('"owner_id" = ? AND ', '')
+        mutations.append(('owner predicate absent', missing_owner))
+        missing_status = deepcopy(raw); missing_status[1]['statements'][0]['sql'] = missing_status[1]['statements'][0]['sql'].replace(' AND "status" = ?', '')
+        mutations.append(('status predicate absent', missing_status))
+        missing_due = deepcopy(raw); missing_due[1]['statements'][0]['sql'] = missing_due[1]['statements'][0]['sql'].replace(' AND "due_at" <= ?', '')
+        mutations.append(('due-before predicate absent', missing_due))
+        missing_deleted = deepcopy(raw); missing_deleted[1]['statements'][0]['sql'] = missing_deleted[1]['statements'][0]['sql'].replace(' AND "deleted_at" IS NULL', '')
+        mutations.append(('soft-delete predicate absent', missing_deleted))
+        top_level_or = deepcopy(raw); top_level_or[1]['statements'][0]['sql'] = top_level_or[1]['statements'][0]['sql'].replace(' ORDER BY', ' OR 1 = 1 ORDER BY')
+        mutations.append(('top-level OR bypass', top_level_or))
+        unbounded = deepcopy(raw); unbounded[1]['statements'][0]['sql'] = unbounded[1]['statements'][0]['sql'].replace(' LIMIT ?', '')
+        mutations.append(('unbounded query', unbounded))
+        duplicate = deepcopy(raw); duplicate[1]['statements'].append(deepcopy(duplicate[1]['statements'][0]))
+        mutations.append(('duplicate Todo query', duplicate))
+        write = deepcopy(raw); write[1]['statements'].append({'sql': 'UPDATE todo SET status = ?', 'operation': 'UPDATE'})
+        mutations.append(('unexpected write', write))
+        changed_fixture = deepcopy(raw); changed_fixture[0]['fixture']['rows'][1]['ownerId'] = '00000000-0000-4000-8000-000000000002'
+        mutations.append(('changed persisted owner fixture', changed_fixture))
+        wrong_principal = deepcopy(raw); wrong_principal[1]['principal']['subject'] = 'bob'
+        mutations.append(('wrong authenticated principal', wrong_principal))
+        wrong_path = deepcopy(raw); wrong_path[1]['path'] = '/todos?status=closed&due_before=2026-02-01T00:00:00Z'
+        mutations.append(('wrong frozen request', wrong_path))
+        for name, changed in mutations:
+            with self.subTest(mutation=name), self.assertRaisesRegex(ValueError, 'LIST-003'):
                 checkpoint.observations(case, changed)
 
     def test_scenario_expansion_is_not_silently_partial(self):
