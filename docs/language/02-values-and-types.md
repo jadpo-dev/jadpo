@@ -906,6 +906,52 @@ enum TicketStatus {}
   requires `Todo.status(TodoStatus.open)`; building a `value` accepts
   `TicketStatus.open` directly.
 
+### Proposal: derived records
+
+Most record types in a real application are slices of an entity or of another
+record: a create input without the generated fields, a patch input where every
+field is optional, a public view without private fields, a list summary with
+fewer fields than the detail view, a v2 response that adds a field. Today each
+is written out field by field (`title: Todo.title`). The proposal is a small,
+fixed vocabulary on the declaration itself:
+
+```jadpo fragment
+input CreateTodo from Todo {
+    pick: title, due_at
+}
+
+input PatchTodo from Todo {
+    pick: title, due_at
+    optional: all
+}
+
+output TodoView from Todo {
+    pick: id, title, status, due_at
+}
+
+output TodoSummary from TodoView {
+    pick: id, title
+    add {
+        overdue: Bool
+    }
+}
+```
+
+- Four operations only: `pick` (keep these fields), `omit` (drop these),
+  `optional` (make listed or all fields optional, inputs only) and `add` (new
+  fields). No renaming and no changing a field's type.
+- Derived fields keep their type and validation rules, and follow the source:
+  renaming `Todo.title` renames it everywhere it was picked.
+- Every derived record has a name. There are no inline `Pick<...>` types in
+  signatures, so OpenAPI schemas and error messages always have a name, and
+  the editor and generated docs show the expanded fields.
+- An `output` may only use `pick`. With `omit`, adding a sensitive field to
+  the entity later (a password hash, an internal note) would silently expose
+  it in every response; an allowlist cannot leak by addition. Inputs may use
+  either, but generated fields such as `id` and `created_at` can never appear
+  in an input, which closes the mirror-image mass-assignment bug.
+- Policy checks still apply to every derived output.
+
 ### Open questions
 
 1. **How does a runtime `Type(value)` failure reach the caller?** Today it
@@ -956,14 +1002,24 @@ enum TicketStatus {}
    and operators work on the representation. *Recommendation:* yes, and close
    the issue: no `as` cast and no unwrap escape hatch. The golden app has not
    needed one.
-8. **What are `Int` and `Decimal` at runtime?** `Int` silently loses precision
-   past 2^53 and `Decimal` is a float, which is wrong for money.
-   *Recommendation:* `Int` is a 64-bit integer, sent as a JSON string outside
-   the JavaScript-safe range, with literals checked against that range;
-   `Decimal` is an exact decimal with a required `scale:` constraint, sent as a
-   JSON string. Money stays an authored type (`type Price = Decimal { scale: 2 }`),
-   as the decision register already says; compare C#'s `decimal`, Java and
-   Kotlin's `BigDecimal`, Elixir's `Decimal`.
+8. **Which number types, and what are they at runtime?** `Int` silently
+   loses precision past 2^53 and `Decimal` is a JavaScript float, which is
+   wrong for money (JavaScript has one number type, a 64-bit float, plus
+   `BigInt` since 2020, and no decimal). *Recommendation:* no sized types
+   such as `Int32` or `UInt8`. Size is a storage detail; the business rule is
+   the range you declare with `min` and `max`, and the compiler picks the
+   database column from it (`smallint`, `integer`, `bigint`). `Int` is an
+   exact 64-bit integer where overflow is an error, never a silent wrap; JSON
+   carries it as a number when the declared range fits JavaScript's safe range
+   and as a string otherwise. `Decimal` is exact, with a required `scale:`
+   (`type Price = Decimal { scale: 2 }`); operations that can produce extra
+   places, such as division or percentages, must name a rounding mode from
+   the standard library. JSON carries a `Decimal` as a string (`"12.50"`).
+   PostgreSQL stores `numeric(p, s)`; SQLite has no exact decimal, so it stores
+   a scaled integer. No `Float` until an application needs approximate
+   measurement, and then as its own explicit type so money can never use it
+   by accident. Compare C#'s `decimal`, Java's `BigDecimal` and Python's
+   unbounded `int`.
 9. **What do `pattern` and `format` mean exactly?** *Recommendation:* a
    pattern must match the whole text, uses a regular-expression subset with
    no backreferences or lookaround (RE2-style, so it runs in linear time and
@@ -990,6 +1046,33 @@ enum TicketStatus {}
     Elixir. The alternative of rejecting `==` on records would force agents to
     write field-by-field comparisons by hand.
 
+13. **Which UUIDs?** Today only canonical hyphenated text with versions 1 to
+    5 is accepted, and new identities are random version 4. Version 7
+    (RFC 9562, 2024) is time-ordered, which keeps database indexes compact and
+    sorts IDs by creation, and an ID arriving from a system that already uses
+    it is currently rejected. *Recommendation:* accept any RFC 9562 version,
+    normalise to lowercase, generate version 7 for new identities and store
+    PostgreSQL `uuid`. A version 7 ID reveals roughly when it was created; an
+    entity where that matters can opt into random version 4.
+14. **Adopt derived records?** See the proposal above. *Recommendation:* yes,
+    with exactly `pick`, `omit`, `optional` and `add`, named results only, and
+    outputs restricted to `pick`. This covers create, patch, view, summary and
+    versioned shapes without TypeScript's anonymous type algebra, whose
+    expanded types reviewers and error messages cannot name.
+15. **Should a literal take on the type it is going into?** Today
+    `var price: Price = 0.0`, `return 0.0` and `Item { price: 0.0 }` are all
+    errors; you must write `Price(0.0)`. *Recommendation:* yes, for literals
+    only. Where the expected type is known (a variable's declared type, a
+    return, a field or an argument), a literal becomes that type and its rules
+    are checked while compiling, so `var price: Price = 0.0` and `return 1`
+    from a function returning `Quantity` just work. Computed values still need
+    `Price(x)`, so a constructor in code always means a real check or a change
+    of type. Write the type once: `var price: Price = 0.0`, never
+    `var price: Price = Price(0.0)`, and the formatter rewrites
+    `var price = Price(0.0)` to that form. Rust adapts literals to built-in
+    integer types but not to its newtypes; this goes one step further because
+    the check still happens at compile time.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -1001,8 +1084,11 @@ enum TicketStatus {}
 | `Set` and `Map` encoding | | |
 | Transparent aliases | | |
 | Representation access | | |
-| `Int` and `Decimal` runtime | | |
+| Number types | | |
 | `pattern` and `format` | | |
 | Record spellings | | |
 | Signature rule scope | | |
 | Equality | | |
+| UUID versions | | |
+| Derived records | | |
+| Literal typing | | |
