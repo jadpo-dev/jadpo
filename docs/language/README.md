@@ -6,7 +6,7 @@ renders them as web pages into `build/language-site/`.
 
 ```sh
 python3 tools/language_docs.py --check   # also run by tools/verify.py
-python3 tools/language_docs.py           # check and render
+python3 tools/language_docs.py           # check and render, including decisions.html, the decision log built from every page
 ```
 
 ## Writing a page

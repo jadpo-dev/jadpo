@@ -390,16 +390,15 @@ class Renderer:
                 '<div class="decide"><button type="button" class="comment-btn" data-comment-target>Comment on this question</button></div></li>')
 
 
-def render_page(page, pages):
-    template = TEMPLATE.read_text()
-    renderer = Renderer(page)
-    content = renderer.render_decided() if page.meta.get('status') == 'decided' else renderer.render()
-    nav = []
-    titles = {int(p.meta.get('area', 0)): p for p in pages}
-    published = {}
+def load_published():
     links = Path(OUT_DEFAULT) / 'published.json'
-    if links.exists():
-        published = json.loads(links.read_text())
+    return json.loads(links.read_text()) if links.exists() else {}
+
+
+def build_nav(page, pages, published):
+    titles = {int(p.meta.get('area', 0)): p for p in pages}
+    current = ' class="current" aria-current="page"' if page is None else ''
+    nav = [f'<li><a{current} href="{published.get("decisions", "decisions.html")}"><span class="n">★</span>Decision log</a></li>']
     for number, name in AREAS:
         if number in titles:
             current = ' class="current" aria-current="page"' if titles[number] is page else ''
@@ -407,6 +406,15 @@ def render_page(page, pages):
             nav.append(f'<li><a{current} href="{href}"><span class="n">{number:02d}</span>{name}</a></li>')
         else:
             nav.append(f'<li><span><span class="n">{number:02d}</span>{name}</span></li>')
+    return nav
+
+
+def render_page(page, pages):
+    template = TEMPLATE.read_text()
+    renderer = Renderer(page)
+    content = renderer.render_decided() if page.meta.get('status') == 'decided' else renderer.render()
+    published = load_published()
+    nav = build_nav(page, pages, published)
     toc = ''.join(f'<li><a class="{cls}" href="#{a}">{html.escape(t)}</a></li>' for a, t, cls in renderer.toc)
     return (template.replace('{{title}}', html.escape(page.meta.get('title', page.path.stem)))
             .replace('{{area}}', f'{int(page.meta.get("area", 0)):02d}')
@@ -416,6 +424,71 @@ def render_page(page, pages):
             .replace('{{toc}}', toc)
             .replace('{{content}}', content))
 
+
+
+def section(body, title):
+    lines = body.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == f'### {title}')
+    except StopIteration:
+        return []
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('## ') or lines[i].startswith('### ')), len(lines))
+    return lines[start + 1:end]
+
+
+def table_rows(lines):
+    rows = [[c.strip() for c in line.strip().strip('|').split('|')] for line in lines if line.startswith('|')]
+    return [r for r in rows[1:] if not set(''.join(r)) <= set('-: ')]
+
+
+def question_titles(lines):
+    items = []
+    for line in lines:
+        if re.match(r'^\d+\. ', line):
+            items.append(line.strip())
+        elif items and line.strip():
+            items[-1] += ' ' + line.strip()
+    out = []
+    for item in items:
+        m = re.match(r'^(\d+)\. \*\*(.+?)\*\*(.*)$', item)
+        if m:
+            out.append((m.group(1), m.group(2), '*Decided' in m.group(3)))
+    return out
+
+
+def render_log(pages, published):
+    """One page listing every decision, open question and carried item, built from the area pages."""
+    out = ['<h1>Decision log</h1>',
+           '<p>Everything decided in the language review so far, every question still open, and items carried '
+           'to later areas. Built from the area pages each time they are generated, so it cannot drift from them.</p>']
+    toc = []
+    totals = [0, 0]
+    for page in pages:
+        area = int(page.meta.get('area', 0))
+        name = page.meta.get('title', page.path.stem)
+        anchor = f'area-{area}'
+        href = published.get(page.path.stem, f'{page.path.stem}.html')
+        decided = [r for r in table_rows(section(page.body, 'Decisions')) if len(r) > 1 and r[1]]
+        questions = question_titles(section(page.body, 'Open questions'))
+        open_q = [] if page.meta.get('status') == 'decided' else [q for q in questions if not q[2]]
+        carried = table_rows(section(page.body, 'Carried to later areas'))
+        totals[0] += len(decided)
+        totals[1] += len(open_q)
+        toc.append((anchor, f'{area:02d} {name}', ''))
+        out.append(f'<h2 id="{anchor}">{area:02d} · {html.escape(name)}</h2>')
+        out.append(f'<p class="muted">Status: {html.escape(page.meta.get("status", ""))} · {len(decided)} decided · '
+                   f'{len(open_q)} open · <a href="{href}">open the page</a></p>')
+        if decided:
+            rows = ''.join(f'<tr><td>{inline(r[0])}</td><td>{inline(r[1])}</td><td>{inline(r[2] if len(r) > 2 else "")}</td></tr>' for r in decided)
+            out.append(f'<h3>Decided</h3><div class="table-wrap"><table><thead><tr><th>Topic</th><th>Decision</th><th>Date</th></tr></thead><tbody>{rows}</tbody></table></div>')
+        if open_q:
+            items = ''.join(f'<li><strong>Q{n}</strong> {inline(t)}</li>' for n, t, _ in open_q)
+            out.append(f'<h3>Open</h3><ul>{items}</ul>')
+        if carried:
+            rows = ''.join('<tr>' + ''.join(f'<td>{inline(c)}</td>' for c in r) + '</tr>' for r in carried)
+            out.append(f'<h3>Carried to later areas</h3><div class="table-wrap"><table><thead><tr><th>Item</th><th>Area</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table></div>')
+    out.insert(2, f'<p><strong>{totals[0]} decided, {totals[1]} open</strong> across {len(pages)} area page(s).</p>')
+    return '\n'.join(out), toc
 
 AREAS = [
     (1, 'Project layout and modules'), (2, 'Values and types'), (3, 'Logic'), (4, 'Failures'),
@@ -455,6 +528,15 @@ def main():
         out.mkdir(parents=True, exist_ok=True)
         for page in pages:
             (out / f'{page.path.stem}.html').write_text(render_page(page, pages))
+        published = load_published()
+        content, toc = render_log(pages, published)
+        toc_html = ''.join(f'<li><a href="#{a}">{html.escape(t)}</a></li>' for a, t, _ in toc)
+        (out / 'decisions.html').write_text(
+            TEMPLATE.read_text()
+            .replace('{{area}}', 'log').replace('{{checked}}', 'all pages')
+            .replace('{{source}}', 'docs/language/*.md (Decisions, Open questions, Carried tables)')
+            .replace('{{nav}}', ''.join(build_nav(None, pages, published)))
+            .replace('{{toc}}', toc_html).replace('{{content}}', content))
         print(f'wrote {len(pages)} page(s) to {out}')
     sys.exit(1 if failed else 0)
 

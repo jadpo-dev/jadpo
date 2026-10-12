@@ -1161,7 +1161,7 @@ them.
 
 ```jadpo fragment
 type TodoView = Output from Todo {
-    pick: id, title, status, due_at
+    pick: [id, title, status, due_at]
 }
 ```
 
@@ -1169,7 +1169,7 @@ type TodoView = Output from Todo {
 
 ```jadpo fragment
 type ImportTodo = Input from Todo {
-    omit: id, owner_id, created_at, deleted_at
+    omit: [id, owner_id, created_at, deleted_at]
 }
 ```
 
@@ -1178,7 +1178,7 @@ type ImportTodo = Input from Todo {
 
 ```jadpo fragment
 type PatchTodo = Input from Todo {
-    pick: title, due_at
+    pick: [title, due_at]
     optional: all
 }
 ```
@@ -1190,25 +1190,25 @@ used inside the application:
 
 ```jadpo fragment
 type TodoReminder = Object from Todo {
-    pick: id, title, due_at
+    pick: [id, title, due_at]
     owner_email: User.email
     days_overdue: DayCount
 }
 ```
 
 **Objects inside objects, and lists.** Picking a field keeps its whole type,
-so `pick: lines` on an order keeps `List<OrderLine>`. To change what a nested
+so `pick: [lines]` on an order keeps `List<OrderLine>`. To change what a nested
 field holds, leave it out of `pick` and list a field of the same name with the
 new type. This is the only way to change a field's type, and it is visible in
 the declaration:
 
 ```jadpo fragment
 type OrderLineView = Output from OrderLine {
-    pick: product_name, quantity, line_total
+    pick: [product_name, quantity, line_total]
 }
 
 type OrderView = Output from Order {
-    pick: id, placed_at, total
+    pick: [id, placed_at, total]
     lines: List<OrderLineView>
 }
 ```
@@ -1218,11 +1218,11 @@ summaries build on each other:
 
 ```jadpo fragment
 type TodoSummary = Output from TodoView {
-    pick: id, title
+    pick: [id, title]
 }
 
 type TodoViewV2 = Output from TodoView {
-    pick: id, title, status, due_at
+    pick: [id, title, status, due_at]
     tags: List<TagName>
 }
 ```
@@ -1514,6 +1514,19 @@ type PartyId = Enum {
 Whether functions should also accept several types directly (generics or
 unions) is a logic question and is settled in area 3.
 
+### Carried to later areas
+
+Agreed or raised while reviewing this area; recorded in the area it belongs
+to when that page is written.
+
+| Item | Area | Status |
+|---|---|---|
+| Match arms use `->`, the same arrow as return types; `=>` is removed | 3 | Richard's call, 2026-10-12 |
+| A function argument that accepts several types: today an `Enum` whose variants carry each type; whether to add generics or unions | 3 | Open |
+| Failure `kind` values become lower_snake_case (`kind: not_found`), following the setting-options decision | 4 | Follows from a decision |
+| Entity field settings (`identity`, `unique`, `references`, `generated`) go in the field's block, following question 20 | 5 | Follows from a decision |
+| The remaining syntax-review findings (`docs/language/research/syntax-review.md`) | 3 to 14 | Input to each page |
+
 ### Open questions
 
 1. **How does a runtime `Type(value)` failure reach the caller?** Today it
@@ -1567,7 +1580,7 @@ unions) is a logic question and is settled in area 3.
 8. **Which number types, and what are they at runtime?** `Int` silently
    loses precision past 2^53 and `Decimal` is a JavaScript float, which is
    wrong for money (JavaScript has one number type, a 64-bit float, plus
-   `BigInt` since 2020, and no decimal). *Recommendation:* no sized types
+   `BigInt` since 2020, and no decimal). *Decided 2026-10-12 (agreed in discussion):* no sized types
    such as `Int32` or `UInt8`. Size is a storage detail; the business rule is
    the range you declare with `min` and `max`, and the compiler picks the
    database column from it (`smallint`, `integer`, `bigint`). `Int` is an
@@ -1608,17 +1621,14 @@ unions) is a logic question and is settled in area 3.
     Elixir. The alternative of rejecting `==` on objects would force agents to
     write field-by-field comparisons by hand.
 
-13. **Which UUIDs?** Today only canonical hyphenated text with versions 1 to
-    5 is accepted, and new identities are random version 4. Version 7
-    (RFC 9562, 2024) is time-ordered, which keeps database indexes compact and
-    sorts IDs by creation, and an ID arriving from a system that already uses
-    it is currently rejected. *Recommendation:* by default accept any RFC 9562
-    version, normalise to lowercase, generate version 7 for new identities and
-    store PostgreSQL `uuid`. A named type can pin a version with a constraint,
-    `type ExternalRef = Uuid { version: v4 }`, which then governs both what is
-    accepted and what is generated; use it where a version 7 ID would reveal
-    sensitive creation times, or where another system dictates the version.
-14. **Adopt derived types?** See "Derived types" above. *Recommendation:*
+13. **Which UUIDs?** *Decided 2026-10-12:* any version is accepted by
+    default and normalised to lowercase; new identities are version 7, which
+    is time-ordered and keeps indexes compact; a named type can pin a version,
+    `type PartnerRef = Uuid { version: v4 }`, which governs both what is
+    accepted and what is generated (for example where a version 7 ID would
+    reveal sensitive creation times, or another system dictates the version).
+
+14. **Adopt derived types?** See "Derived types" above. *Decided 2026-10-12 (agreed in discussion, with new fields listed directly and lists in brackets):*
     yes, with exactly `pick`, `omit` and `optional` plus listed new fields,
     named results only, and outputs restricted to `pick`. This covers create,
     patch, view, summary and versioned shapes without TypeScript's anonymous
@@ -1627,7 +1637,7 @@ unions) is a logic question and is settled in area 3.
 
 15. **Should a literal take on the type it is going into?** Today
     `var price: Price = 0.0`, `return 0.0` and `Item { price: 0.0 }` are all
-    errors; you must write `Price(0.0)`. *Recommendation:* yes, for literals
+    errors; you must write `Price(0.0)`. *Decided 2026-10-12 (agreed in discussion):* yes, for literals
     only. Where the expected type is known (a variable's declared type, a
     return, a field or an argument), a literal becomes that type and its rules
     are checked while compiling, so `var price: Price = 0.0` and `return 1`
@@ -1641,7 +1651,7 @@ unions) is a logic question and is settled in area 3.
 
 16. **Must every variable declare its type?** Today `var total = price * quantity`
     is allowed and infers a plain `Int`; the mismatch only surfaces later,
-    where `total` is returned as `Pence`. *Recommendation:* yes: every `var`
+    where `total` is returned as `Pence`. *Decided 2026-10-12 (agreed in discussion):* yes: every `var`
     states its type (`var total: Pence = Pence(price * quantity)`), while
     loop and `match` bindings take theirs from what they bind. The reader sees
     each value's type where it is introduced, a wrong type is reported on the
@@ -1654,12 +1664,9 @@ unions) is a logic question and is settled in area 3.
     explicit form.
 
 17. **Should every setting with a fixed set of options take a name from that
-    set?** Some already do (`format: email`, `consistency: atomic`,
-    `auth: none`). *Recommendation:* yes, everywhere: `version: v7`, not
+    set?** *Decided 2026-10-12:* yes, everywhere: `version: v7`, not
     `version: 7`; genuine quantities such as `min`, `max` and `scale` stay
-    numbers. The compiler knows each list, so the editor offers the choices,
-    generated docs list them and a typo is an error that names the valid
-    options. In settings the bare name is written because the setting fixes
+    numbers. In settings the bare name is written because the setting fixes
     the list; in ordinary code enum values stay qualified
     (`OrderStatus.paid`). Every option name is lower_snake_case, which changes
     failures' `kind: InvalidValue` to `kind: invalid_value` (area 4).
@@ -1676,7 +1683,7 @@ unions) is a logic question and is settled in area 3.
     trail its type separated by spaces (`name: ProductName optional`,
     `page_size: PageSize default 25`), while configuration fields already use
     a block (`mail_sender: Email { binding: "MAIL_SENDER" }`).
-    *Recommendation:* one rule everywhere: a field's settings go in a block
+    *Decided 2026-10-12 (agreed in discussion):* one rule everywhere: a field's settings go in a block
     after its type, one `name: value` per line (`optional: true`,
     `default: 25`, `default: none`). It reads like every other block in the
     language and gives later settings an obvious place. Entity field settings
@@ -1694,16 +1701,17 @@ unions) is a logic question and is settled in area 3.
 | `Set` and `Map` encoding | | |
 | Transparent aliases | | |
 | Representation access | | |
-| Number types | | |
+| Number types | No sized types; ranges set storage; `Int` is exact 64-bit with overflow an error; `Decimal` is exact with a required `scale`; JSON carries large `Int` and every `Decimal` as strings; no `Float` until needed | 2026-10-12 |
 | `pattern` and `format` | | |
 | Type spellings | Every type is `type Name = Base { ... }`, including `Object`, `Enum`, `Input` and `Output`; `value`, `enum`, `input` and `output` keywords are removed; only `Input` may have optional or default fields; routes accept `Input` and return `Output` | 2026-10-12 |
 | Signature rule scope | | |
 | Equality | | |
-| UUID versions | | |
-| Derived types | | |
-| Literal typing | | |
-| Variable types | | |
-| Setting options | | |
+| UUID versions | Any version accepted by default, normalised to lowercase; new identities are version 7; a named type can pin one, `type PartnerRef = Uuid { version: v4 }`, governing what is accepted and generated | 2026-10-12 |
+| Derived types | `type X = Base from Source { pick/omit/optional, then new fields }`; named results only; `Output` may only `pick`; generated fields never in an `Input` | 2026-10-12 |
+| Literal typing | A literal takes the expected type where it is known and is checked while compiling; computed values need an explicit constructor | 2026-10-12 |
+| Variable types | Every `var` states its type; loop and `match` bindings take theirs from what they bind | 2026-10-12 |
+| Setting options | A setting with a fixed set of options takes a lower_snake_case name from that set (`version: v7`, `format: email`, `kind: not_found`); genuine quantities stay numbers | 2026-10-12 |
 | Object keyword | `value` is dropped; objects are `type Name = Object { fields }` | 2026-10-12 |
 | `Object` | Only a base in a `type` declaration; no anonymous inline objects | 2026-10-12 |
-| Field settings | | |
+| Field settings | A field's settings go in a block after its type, one per line (`optional: true`, `default: 25`) | 2026-10-12 |
+| Lists | Square brackets are the only way to write a list: `pick: [id, title]`, `[create, read]`; braces never hold comma lists; signatures keep their commas (parameters, `fails A, B`) | 2026-10-12 |

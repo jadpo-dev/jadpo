@@ -1004,3 +1004,5 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Reserved words | Control-flow and declaration words fully reserved, with a short explicit list of usable names | 2026-10-12 |
 | Documentation comments | `///` comments attach to the next declaration and feed generated docs, the library catalogue and OpenAPI | 2026-10-12 |
 | Formatting | The formatter owns blank lines and section order within a file | 2026-10-12 |
+| Keywords match folders | `schedule` (folder `schedules/`), `integration` (`integrations/`) and `library` (`libraries/`) replace `job` and `service` | 2026-10-12 |
+| Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` | 2026-10-12 |
