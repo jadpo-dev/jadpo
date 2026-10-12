@@ -950,37 +950,37 @@ migration workflow (area 5). The layout only reserves their folders.
 ### Open questions
 
 1. **`domains/` folder, or domains directly at the root?**
-   *Recommendation:* keep `domains/`. Every root entry is then fixed by the
+   *Decided 2026-10-12 (see Decisions):* keep `domains/`. Every root entry is then fixed by the
    language and projects differ only inside it, so nobody has to tell a domain
    from a reserved folder.
 2. **Should the dot always name the owner of what you call?** This reverses
    the current rule that your own functions are called without a prefix.
-   *Recommendation:* yes. Libraries read exactly like the standard library,
+   *Decided 2026-10-12 (see Decisions):* yes. Libraries read exactly like the standard library,
    imports disappear (missing imports are among the most common reasons LLM
    code fails to compile), and every call says where its function lives.
    Exact syntax is confirmed in area 3.
 3. **Should creating a domain need human approval?** An agent that hits a
    cross-domain error might add a domain or reshuffle code rather than ask.
-   *Recommendation:* yes: a new or renamed domain appears in the approval
+   *Decided 2026-10-12 (see Decisions):* yes: a new or renamed domain appears in the approval
    review like a policy change, because it changes who owns what.
 4. **How is policy protected from agent edits?** Entity policy lives in the
-   entity file. *Recommendation:* protect it through the approval check,
+   entity file. *Decided 2026-10-12 (see Decisions):* protect it through the approval check,
    which already fingerprints policy, so any policy change needs human
    approval wherever it lives.
 5. **Multiple deployables (API, worker, back-office) as declarations in one
-   project, not separate projects?** *Recommendation:* declarations. Each
+   project, not separate projects?** *Decided 2026-10-12 (see Decisions):* declarations. Each
    deployable selects its routes, schedules and subscribers and is compiled
    from what it reaches.
 6. **Large entity files.** An order entity in a real shop could reach 800
-   lines. *Recommendation:* no companion files for now; the formatter keeps a
+   lines. *Decided 2026-10-12 (see Decisions):* no companion files for now; the formatter keeps a
    fixed section order. Revisit with measured sizes from the order/payment app.
-7. **Reserved words.** *Recommendation:* build the chosen policy:
+7. **Reserved words.** *Decided 2026-10-12 (see Decisions):* build the chosen policy:
    control-flow and declaration words are fully reserved, with a short explicit
    list of words such as `input` and `value` that can be used as names.
-8. **Documentation comments.** *Recommendation:* add `///` comments that
+8. **Documentation comments.** *Decided 2026-10-12 (see Decisions):* add `///` comments that
    attach to the following declaration and flow into generated documentation,
    the library catalogue and OpenAPI descriptions.
-9. **Formatter owns layout within a file.** *Recommendation:* the formatter
+9. **Formatter owns layout within a file.** *Decided 2026-10-12 (see Decisions):* the formatter
    decides blank lines (one between declarations) and section order within a
    file, so equivalent code always looks identical.
 10. **Root `api/` and `acceptances/` folders** (carried from area 7). Area 7

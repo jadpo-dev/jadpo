@@ -360,6 +360,9 @@ class Renderer:
         h3 = [i for i in range(review + 1, len(lines)) if heading(i, 3)] + [len(lines)]
         sections = [(h3[k], h3[k + 1], lines[h3[k]][4:].strip()) for k in range(len(h3) - 1)]
         decided = [x for x in sections if x[2].lower().startswith(('decided', 'carried')) or x[2].lower() == 'decisions']
+        questions = next((x for x in sections if x[2].lower() == 'open questions'), None)
+        if questions and any(not q[2] for q in question_titles(lines[questions[0] + 1:questions[1]])):
+            decided.insert(0, questions)
         notes = [x for x in sections if x not in decided]
         inline_decisions = not any(t.lower().startswith('decided') for _, _, t in sections)
         if inline_decisions:
@@ -368,7 +371,9 @@ class Renderer:
             self.toc = [(a, t, c) for a, t, c in self.toc]
             for a, b, title in decided:
                 self.toc.append((slug(title), title, ''))
+                self.review_mode = title.lower() == 'open questions'
                 out.append(self.render(a, b))
+                self.review_mode = False
             review_notes = Renderer(self.page)
             review_notes.review_mode = True
             body = ''.join(review_notes.render(a, b) for a, b, _ in notes)
@@ -379,7 +384,9 @@ class Renderer:
         out = [self.render(0, first_h2)]
         for a, b, title in decided:
             self.toc.append((slug(title), title, ''))
+            self.review_mode = title.lower() == 'open questions'
             part = self.render(a, b)
+            self.review_mode = False
             for level in (3, 4):
                 part = part.replace(f'<h{level} ', f'<h{level - 1} ').replace(f'</h{level}>', f'</h{level - 1}>')
             out.append(part)
@@ -485,7 +492,7 @@ def render_log(pages, published):
         href = published.get(page.path.stem, f'{page.path.stem}.html')
         decided = [r for r in table_rows(section(page.body, 'Decisions')) if len(r) > 1 and r[1]]
         questions = question_titles(section(page.body, 'Open questions'))
-        open_q = [] if page.meta.get('status') == 'decided' else [q for q in questions if not q[2]]
+        open_q = [q for q in questions if not q[2]]
         carried = table_rows(section(page.body, 'Carried to later areas'))
         totals[0] += len(decided)
         totals[1] += len(open_q)
