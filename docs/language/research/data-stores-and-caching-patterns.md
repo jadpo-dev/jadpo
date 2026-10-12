@@ -16,18 +16,16 @@ document's own inference and count as opinion.
 
 | System | How a model names its store | What holds across stores |
 |---|---|---|
-| Rails | An abstract base class calls `connects_to` with writing and reading roles, and models inherit from it. The guide says to connect one abstract class per database, not each model, because every connection spec multiplies open connections. ([documented](https://guides.rubyonrails.org/active_record_multiple_databases.html)) | Associations across databases need `disable_joins: true`. Rails then issues separate queries and sorts in memory for ordered or limited queries. The guide says nothing about transactions across databases. ([documented](https://guides.rubyonrails.org/active_record_multiple_databases.html)) |
-| Django | Routers decide at run time (`db_for_read`, `db_for_write`, `allow_relation`, `allow_migrate`). They are asked in order, and `default` is the fallback. ([documented](https://docs.djangoproject.com/en/5.1/topics/db/multi-db/)) | Foreign keys and many-to-many relations "must be internal to a single database". Unless a router says otherwise, only relations within one database are allowed. `auth` must live with `contenttypes`. ([documented](https://docs.djangoproject.com/en/5.1/topics/db/multi-db/)) |
+| Rails | An abstract base class calls `connects_to` with writing and reading roles, and models inherit from it. ([documented](https://guides.rubyonrails.org/active_record_multiple_databases.html)) | Associations across databases need `disable_joins: true`. Rails then issues separate queries and sorts in memory for ordered or limited queries. The guide says nothing about transactions across databases. ([documented](https://guides.rubyonrails.org/active_record_multiple_databases.html)) |
+| Django | Routers decide at run time (`db_for_read`, `db_for_write`, `allow_relation`, `allow_migrate`). They are asked in order, and `default` is the fallback. ([documented](https://docs.djangoproject.com/en/5.1/topics/db/multi-db/)) | Foreign keys and many-to-many relations "must be internal to a single database". Unless a router says otherwise, only relations within one database are allowed. ([documented](https://docs.djangoproject.com/en/5.1/topics/db/multi-db/)) |
 | Ecto | The schema doesn't name a store. The call site picks the repo (`Repo.insert`, `Repo.replica().get!`), and replicas are `read_only: true` repos. ([documented](https://ecto.hexdocs.pm/replicas-and-dynamic-repositories.html)) | Not covered. A write inside a transaction is invisible to other connections until it commits, so a replica can't see sandboxed test writes. ([documented](https://ecto.hexdocs.pm/replicas-and-dynamic-repositories.html)) |
 | Prisma | `@@schema("name")` on each model, for several schemas inside **one** PostgreSQL, CockroachDB or SQL Server database. SQLite and MySQL aren't supported. ([documented](https://www.prisma.io/docs/orm/prisma-schema/data-model/multi-schema)) A schema file has exactly one `datasource`. ([documented](https://www.prisma.io/docs/orm/reference/prisma-schema-reference)) | Relations and foreign keys work across schemas because they stay inside one database. ([documented](https://www.prisma.io/docs/orm/prisma-schema/data-model/multi-schema)) |
-| Ash | `data_layer:` on `use Ash.Resource`. ([documented](https://ash.hexdocs.pm/relationships.html)) Each data layer declares what it can do through `can?/2`: `:transact`, `{:join, resource}`, `{:aggregate, kind}`, `:through_relationship` and so on. ([documented](https://ash.hexdocs.pm/Ash.DataLayer.html)) ETS is "not recommended for production". ([documented](https://ash.hexdocs.pm/Ash.DataLayer.Ets.html)) | A relationship is loaded by filtering the target with keys from the source records. Non-SQL layers rely on manual relationships or calculations. The maintainer describes the goal as "a superset of multiple kinds of storage layers". ([practitioner](https://elixirforum.com/t/need-help-adding-relationship-support-to-sanity-datalayer/59176)) |
+| Ash | `data_layer:` on `use Ash.Resource`. ([documented](https://ash.hexdocs.pm/relationships.html)) Each data layer declares what it can do through `can?/2`: `:transact`, `{:join, resource}`, `{:aggregate, kind}`, `:through_relationship` and so on. ([documented](https://ash.hexdocs.pm/Ash.DataLayer.html)) | A relationship is loaded by filtering the target with keys from the source records. Non-SQL layers rely on manual relationships or calculations. The maintainer describes the goal as "a superset of multiple kinds of storage layers". ([practitioner](https://elixirforum.com/t/need-help-adding-relationship-support-to-sanity-datalayer/59176)) |
 | Cloudflare | Each store is a separate binding with its own API. ([documented](https://developers.cloudflare.com/workers/platform/storage-options/)) | Nothing spans stores. Each one has its own consistency model (table below). |
 
 **Jadpo reading.** Every framework here stops at the database boundary for
-foreign keys, joins and transactions. None offers a transaction across two
-stores. Ash is the one precedent for a planner that asks a store what it
-supports and refuses a query the store can't run. That is the shape a
-compiler-checked store declaration would take.
+foreign keys, joins and transactions. Ash is the one precedent for a planner
+that asks a store what it supports and refuses what it can't run.
 
 ### Each store has its own consistency model (Cloudflare as a worked example)
 
@@ -35,7 +33,7 @@ compiler-checked store declaration would take.
 |---|---|---|
 | Workers KV | Eventually consistent. A write "may take up to 60 seconds or more" to show in other locations, and even in the same location this is "not guaranteed". Missing keys are cached too, so a newly created key is as slow to appear as an updated one. | [documented](https://developers.cloudflare.com/kv/concepts/how-kv-works/) |
 | D1 | SQLite. Statements in a `batch()` run as one transaction and roll back together if one fails. Outside a batch each statement auto-commits. | [documented](https://developers.cloudflare.com/d1/worker-api/d1-database/) |
-| D1 transactions | Interactive `BEGIN`/`COMMIT` is reported as rejected, for example by Drizzle's `transaction()`. | [practitioner](https://github.com/drizzle-team/drizzle-orm/issues/2463) |
+| D1 transactions | Drizzle's `transaction()` fails on D1; users are told to use `batch()`. | [practitioner](https://github.com/drizzle-team/drizzle-orm/issues/2463) |
 | D1 replicas | The Sessions API uses bookmarks to give sequential consistency, including read-your-writes across replicas. Without a session, every query goes to the primary. | [documented](https://developers.cloudflare.com/d1/best-practices/read-replication/) |
 | Durable Objects | Strongly consistent. Each object is single-threaded and has one live instance per ID. | [documented](https://developers.cloudflare.com/workers/platform/storage-options/) |
 | R2 | Strongly consistent per object. | [documented](https://developers.cloudflare.com/workers/platform/storage-options/) |
@@ -55,7 +53,7 @@ SQLite locally and PostgreSQL in production".
 - SQLite's own quirks list includes flexible typing, no boolean or datetime type, foreign keys off by default, NULLs allowed in primary keys, double-quoted strings accepted as literals, "dubious SQL" accepted without error, and ASCII-only case folding ([documented](https://www.sqlite.org/quirks.html)). STRICT tables (3.37.0) restore type checking ([documented](https://www.sqlite.org/stricttables.html)).
 - SQLite allows one writer at a time ([documented](https://www.sqlite.org/whentouse.html)), so local runs won't surface write-contention and locking behaviour.
 - D1 is not plain SQLite either: atomic writes go through `batch()` (above).
-- Practitioner reports describe queries that "don't line up" and bugs that only appear in production ([practitioner](https://dev.to/johntellsall/re-using-sqlite-for-dev-and-postgres-for-production-18e4)).
+- A practitioner reports that "sometimes bugs would only appear in production" and recommends Postgres locally ([practitioner](https://dev.to/johntellsall/re-using-sqlite-for-dev-and-postgres-for-production-18e4)).
 
 No quantified incident data turned up. *Still needs checking.*
 
@@ -82,12 +80,9 @@ acceptance gate on PostgreSQL. "Runs the same" should not be promised.
 | HTTP / CDN | `Cache-Control`, `Vary`, `stale-while-revalidate` ([RFC 9111](https://www.rfc-editor.org/rfc/rfc9111.html), [RFC 5861](https://www.rfc-editor.org/rfc/rfc5861.html)). Fastly `Surrogate-Key` ([documented](https://www.fastly.com/documentation/guides/full-site-delivery/purging/working-with-surrogate-keys/)). Cloudflare `Cache-Tag`, about 1,000 tags in 16 KB ([documented](https://developers.cloudflare.com/cache/how-to/purge-cache/purge-by-tags/)). | Purging by key or tag, or TTL. |
 | Client-side (in-process) | Redis tracking sends invalidation messages for the keys a client has read ([documented](https://redis.io/docs/latest/develop/reference/client-side-caching/)). | Server push. |
 
-**Write strategies.** In cache-aside the app reads the cache, falls back to
-the store on a miss and fills the cache. On a write it updates the store
-*then* deletes the cache entry. Deleting first opens a window in which a
-reader can cache the old value. Cache-aside "doesn't guarantee consistency".
-Write-through updates both at once, so readers see the new value straight
-away. Microsoft advises against caching sensitive data in a shared cache at
+**Write strategies.** Cache-aside fills on a miss and, on write, updates the
+store *then* deletes the entry; deleting first lets a reader re-cache the old
+value. It "doesn't guarantee consistency"; write-through updates both at once. Microsoft advises against caching sensitive data in a shared cache at
 all ([documented](https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside)).
 Facebook deletes rather than sets on write "because deletes are idempotent"
 ([evidence](https://www.usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf)).
@@ -115,9 +110,9 @@ Facebook deletes rather than sets on write "because deletes are idempotent"
 | Cold start | An empty cache sends the full load to the store. | Facebook's cold-cluster warm-up uses a 2 s hold-off on deletes, and Gutter pools absorb failed servers ([evidence](https://www.usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf)). |
 | Cache poisoning | An unkeyed input such as `X-Forwarded-Host` changes the response, and that response is stored for everyone. | Key every input, or strip it. "The most robust defense against cache poisoning is to disable caching" ([practitioner](https://portswigger.net/research/practical-web-cache-poisoning)). |
 
-Meta measures consistency from the client side. Its Polaris tool raised TAO
-from six to ten nines of cache writes consistent within five minutes. It
-calls cache inconsistency "almost as bad as data loss"
+Meta's client-side checker, Polaris, helped take TAO from six to ten nines of
+cache writes consistent within five minutes; Meta calls cache inconsistency
+"almost as bad as data loss"
 ([evidence](https://engineering.fb.com/2022/06/08/core-infra/cache-made-consistent/)).
 
 ## 4. Authorisation and shared caches
@@ -129,12 +124,12 @@ calls cache inconsistency "almost as bad as data loss"
 | Steam, 25 Dec 2015 | During a DoS attack, a caching configuration "incorrectly cached web traffic for authenticated users". Store pages for about 34k users were served to others for 90 minutes, showing billing addresses, purchase history, emails and partial card numbers. | [evidence](https://store.steampowered.com/news/19852/) |
 | Railway, 30 Mar 2026 | A CDN configuration change turned on caching for domains that had the CDN off. GET responses on about 0.05% of those domains were cached for 52 minutes, and users "may have seen pages intended for other users". | [evidence](https://blog.railway.com/p/incident-report-march-30-2026-authenticated-user-data-cached) |
 | ChatGPT, 20 Mar 2023 | A redis-py bug: cancelled requests corrupted pooled connections, which returned another user's cached data. Chat titles were exposed, plus payment details for 1.2% of active Plus subscribers in a nine-hour window. OpenAI's fix added checks "that the data returned by our Redis cache matches the requesting user". | [evidence](https://openai.com/blog/march-20-chatgpt-outage), reported by [The Hacker News](https://thehackernews.com/2023/03/openai-reveals-redis-bug-behind-chatgpt.html) |
-| GitHub, Mar 2021 | Not a cache, but the same class of bug: a background thread kept a reference to an earlier request's environment hash, which Unicorn reused, and wrote one user's session cookie into another user's response. | [evidence](https://github.blog/security/vulnerability-research/how-we-found-and-fixed-a-rare-race-condition-in-our-session-handling/) |
+| GitHub, Mar 2021 | Not a cache, but the same class: a background thread held an earlier request's reused environment hash and wrote one user's session cookie into another's response. | [evidence](https://github.blog/security/vulnerability-research/how-we-found-and-fixed-a-rare-race-condition-in-our-session-handling/) |
 | Web cache deception (PayPal and others, 2017) | `/account/x.css` is served dynamically by the origin, and the CDN caches it as static. | [practitioner](https://portswigger.net/web-security/web-cache-deception) |
 
-Klarna's May 2021 exposure is often described as a CDN caching fault, but
-Klarna's own report, as quoted by others, says "configuration change". Not
-verified as a cache incident ([practitioner](https://www.verdict.co.uk/klarna-incident/)).
+Klarna's May 2021 exposure is sometimes called a CDN caching fault, but press
+coverage quotes Klarna blaming "a human error" with no mention of caching. It is
+not counted here ([practitioner](https://www.verdict.co.uk/klarna-incident/)).
 
 ### Why the defaults don't protect you
 
@@ -160,23 +155,22 @@ verified as a cache incident ([practitioner](https://www.verdict.co.uk/klarna-in
 | Consistent prefix | You never see writes out of order. Transactional batches appear together. | Cosmos ([documented](https://learn.microsoft.com/en-us/azure/cosmos-db/consistency-levels)). |
 | Eventual | No bound. | DynamoDB's default, KV. Cosmos suggests it for counts like likes ([documented](https://learn.microsoft.com/en-us/azure/cosmos-db/consistency-levels)). |
 
-**Jadpo reading.** These are the right words for cached reads. Each one is a
-property of the read, not of the cache. Cosmos and DynamoDB let a single
-request ask for a stronger level than the default, so the guarantee goes on
-the read, not on the entity.
+**Jadpo reading.** Cosmos and DynamoDB let a single request ask for a
+stronger level than the default, so the guarantee belongs on the read, not
+on the entity or the cache.
 
 ## 6. Design principles
 
-1. **One authority per entity, and every other store is a copy.** No framework surveyed gives transactions or foreign keys across stores (§1). Area 5's "never a second place to write" matches every precedent.
+1. **One authority per entity; every other store is a copy.** No framework surveyed gives transactions or foreign keys across stores (§1).
 2. **A store declares its capabilities, and the compiler refuses queries the store can't run.** Ash's `can?/2` is the precedent. The D1 batch-only and KV models show how far stores diverge (§1).
-3. **Develop on one engine, but gate on the production engine.** Twelve-factor, Django and SQLite's quirks all point this way (§1). Generate only the shared SQL, with STRICT tables and foreign keys on.
+3. **Gate on the production engine.** Twelve-factor, Django and SQLite's quirks (§1).
 4. **Store data before authorisation and run policy on every read, including cache hits.** TAO (§4). The policy decision itself is never cached in a shared cache.
 5. **If a shared cache holds results after authorisation, its key includes every input the policy reads, and nothing else.** Hasura (§4). Extra inputs fragment the cache, and missing ones leak data.
 6. **Responses are `private, no-store` unless the compiler proves they don't depend on the principal.** Steam and Railway (§4) show that CDN configuration fails open.
 7. **Check ownership at the boundary as a second line of defence.** ChatGPT's fix (§4).
 8. **Delete on write, never set, and fill under a lease or version.** Facebook's leases and Meta's versioning (§3).
 9. **Invalidate from the commit, not from application code.** mcsqueal and Debezium (§3). IdentityCache's lost invalidations show that hooks miss writes.
-10. **Derive invalidation from read dependencies.** A cached list, count or parent must be invalidated by writes to every entity it read. Apollo, Rails `touch` and Hasura's TTL-only approach show what happens when this is manual (§2–3).
+10. **Derive invalidation from read dependencies.** A cached list, count or parent is invalidated by writes to every entity it read; Apollo, Rails `touch` and Hasura show the manual alternative (§2–3).
 11. **Every cached read states its guarantee:** strong, session or bounded(T), using the Cosmos vocabulary (§5). Session is the default after the caller's own writes (Rails, GitLab, D1).
 12. **Coalesce misses and serve stale data while revalidating.** Leases cut the peak database load 13× (§3).
 13. **Cache "not found" only with a short TTL and with invalidation on create** (KV, IdentityCache, §3).
@@ -188,7 +182,7 @@ the read, not on the entity.
 **Jadpo reading**, each tied to the evidence above:
 
 - **Principal leakage.** The compiler sees the policy, so it can compute the cache key's principal and tenant inputs. It should refuse a shared cache of post-authorisation results that lacks them. *Steam, Railway, Hasura.*
-- **Policy drift.** When a policy changes, every entry cached under the old one must be invalidated. Include a policy version in keys. *Inference from the Hasura key design, unverified elsewhere.*
+- **Policy drift.** A policy change invalidates entries cached under the old policy; put a policy version in keys. *Inference, unverified.*
 - **Invalidation reach.** For each cached query, derive the set of entities and fields it read, including joins, aggregates and filters. Invalidate on any committed write to them, including deletes and inserts that newly match a filter. *Apollo lists, Rails `touch`.*
 - **Stale fills.** Generate the lease/version protocol, not a plain get-then-set. *Meta and Facebook.*
 - **Ordering.** Delete after commit, never before, and never inside an uncommitted transaction. Skip cached reads inside a transaction. *Microsoft, IdentityCache.*
