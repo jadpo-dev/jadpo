@@ -741,7 +741,11 @@ build/
   second file in the domain uses one, it moves to the domain's `types/` or
   `libraries/`; when a second domain does, it moves to `shared/` (pure types
   and libraries only). The compiler enforces this both ways and
-  `jadpo fmt --layout` makes the move.
+  `jadpo fmt --layout` makes the move. Promotion is a move, not a rewrite: the
+  library keeps its name, so calls such as `rounding.half_even(x)` and the
+  function text stay identical and behaviour cannot change. Location does not
+  affect discovery, because the generated catalogue lists every library
+  wherever it lives, along with the domains that call it.
 - Tests sit beside their subject as `<name>.test.jadpo`. Scenarios that span
   several domains, and test data they share, go in the root `tests/`. The
   kind of test (pure, integration, route, schedule) is known from what it
