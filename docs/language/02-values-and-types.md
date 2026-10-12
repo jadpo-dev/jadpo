@@ -1256,6 +1256,27 @@ output OrderView from Order {       // data sent back
 }
 ```
 
+#### Q19: no anonymous objects
+
+```jadpo fragment
+type Product {
+    size: Object {                  // rejected: an unnamed shape
+        width: Millimetres
+        height: Millimetres
+    }
+}
+
+type Dimensions {                   // name the shape once
+    width: Millimetres
+    height: Millimetres
+}
+
+type Product {
+    size: Dimensions
+    variants: List<Dimensions>
+}
+```
+
 ### Open questions
 
 1. **How does a runtime `Type(value)` failure reach the caller?** Today it
@@ -1420,6 +1441,14 @@ output OrderView from Order {       // data sent back
     they mean more than a shape. This replaces question 10's suggestion to
     keep `value`.
 
+19. **Remove `Object` altogether?** After question 18, `Object { ... }`'s only
+    remaining use is an unnamed shape written inline, as a field type or
+    inside `List<...>`. *Recommendation:* remove it, so every object shape is
+    a named `type`. Error messages, API documentation and reviews can then
+    always name a shape, a shape can be reused instead of copied, and there is
+    one way to write it. The cost is a short declaration for small nested
+    shapes. The golden app uses no inline objects.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -1442,3 +1471,4 @@ output OrderView from Order {       // data sent back
 | Variable types | | |
 | Setting options | | |
 | Record keyword | `value` is dropped. An object used inside the application is `type Name { fields }`; `type Name = Base { rules }` adds rules to an existing type; `input` and `output` stay for boundary data | 2026-10-12 |
+| `Object` | | |
