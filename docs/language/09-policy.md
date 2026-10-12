@@ -1,7 +1,7 @@
 ---
 title: Policy
 area: 9
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - policy.*
@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> In review. The permission model (question 1) was decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 8 and this page's recommendations; each recommendation names its open question. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 9. Today's compiled syntax is collapsed beneath each section that changes.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -1264,7 +1264,7 @@ the code generated for `examples/golden-todo-migration` and
    *Recommendation:* yes. Every reachable create, read, update or delete
    needs a grant from the first line of code, so an application cannot ship
    with policy forgotten. Ash refuses by default too; Supabase row-level
-   security only once it is switched on per table, a known source of leaks.
+   security only once it is switched on per table, a known source of leaks. *Decided 2026-10-12:* yes, as recommended.
 3. **How is tenancy declared?** *Recommendation:* `tenant: Company` in root
    `policy.jadpo`. Every entity then needs one reference to the tenant, or
    names it with `tenant: source_company_id` if it has two, or says
@@ -1272,14 +1272,14 @@ the code generated for `examples/golden-todo-migration` and
    tenants, `Access.authenticated` included. This is the one setting that
    stops a new entity leaking across customers. Rails' `acts_as_tenant` and
    Supabase policies do the same per model or table, where it can be
-   forgotten.
+   forgotten. *Decided 2026-10-12:* yes, as recommended.
 4. **Where does permission to call an action live?** Area 3 removed action
    settings. *Recommendation:* every action takes its permission from the
    entities it touches; the few that touch none, or need different people,
    are listed in root `policy.jadpo` under
    `actions: { domain.action: [...] }`, with the same three kinds of who. One
    place answers "which actions are exceptions?", and `invoke` and entity
-   `operations { }` go.
+   `operations { }` go. *Decided 2026-10-12:* yes, as recommended.
 5. **How does a grant choose between two references to a membership's
    scope?** An entity such as a team handover has `from_team_id` and
    `to_team_id`, both `Team.id`, so `TeamRole.lead` is ambiguous.
@@ -1288,7 +1288,7 @@ the code generated for `examples/golden-todo-migration` and
    references, and the compiler says so otherwise. It matches how area 3
    names a variant's data in brackets. The alternatives are a `scope:` member
    for the whole policy (cannot grant leads of either team) or an `on`
-   keyword like Oso's `"lead" on "from_team"` (a new word for one case).
+   keyword like Oso's `"lead" on "from_team"` (a new word for one case). *Decided 2026-10-12:* yes, as recommended.
 6. **How does a grant require an OAuth scope?** Area 8 decided that scopes
    from any token narrow what policy allows. *Recommendation:* a `scopes:`
    member in the entity's `policy:`, keyed by the same four names:
@@ -1301,22 +1301,22 @@ the code generated for `examples/golden-todo-migration` and
    `external_token` method narrows only if it declares the scopes it reads.
    It is a separate member because grant lists mean "any of" and a scope
    must hold as well. GitHub and Google scopes work the same way: the token
-   never exceeds the person.
+   never exceeds the person. *Decided 2026-10-12:* yes, as recommended.
 7. **Is a policy refusal listed in `fails`?** *Recommendation:* no. Like
    `unauthenticated`, `not_permitted` from policy is raised by the runtime
    with a fixed code, and the API description lists the 403 wherever it can
    happen. A business refusal an action raises itself is still an ordinary
-   `kind: FailureKind.not_permitted` failure.
+   `kind: FailureKind.not_permitted` failure. *Decided 2026-10-12:* yes, as recommended.
 8. **Who may issue, list and revoke service keys?** (carried from area 8)
    *Recommendation:* the `Service` record's own grants: `update` on the
    service to issue or revoke a key (`Service.issue_key`,
    `Service.revoke_key`), `read` to list them (`Service.keys`). A service
    owned through `owner_id` is then managed by its owner, with no new
-   concept.
+   concept. *Decided 2026-10-12:* yes, as recommended.
 9. **Who may call an integration?** (carried from area 11) *Recommendation:*
    whoever may run the action that calls it; no separate grant, and today's
    `external_effect` block goes. An action that only calls an integration
-   touches no entity, so it is listed under `actions:` anyway.
+   touches no entity, so it is listed under `actions:` anyway. *Decided 2026-10-12:* yes, as recommended.
 10. **Is a policy weakening accepted with area 7's shared acceptance
     form?** *Decided 2026-10-12:* yes, already decided in area 7: one
     acceptance file per change in `acceptances/`, the same form as breaking
@@ -1343,13 +1343,13 @@ the code generated for `examples/golden-todo-migration` and
 | Public routes | Carried from area 8: a route opts out with `authentication: RouteAuthentication.none` | 2026-10-12 |
 | OAuth scopes | Carried from area 8: scopes from any token (`oauth_token`, `external_token`) narrow what policy allows | 2026-10-12 |
 | Policy model | Grants keyed by effect in `policy: { create: read: update: delete: }`; who is a user field on the record, a membership role, or `Access.authenticated` / `Access.public`; role enums only beside the membership that stores them, used elsewhere by full name; a membership role applies through the reference to its scope; user fields named in policy cannot change by ordinary update, transfer is a listed action; field restrictions in the same shape plus `FieldAccess.server_only`; a lifecycle transition is an update except `delete`; generated `build/report/permissions.md` and `.json` matrix shown in the approval review; root `policy.jadpo` keeps tenancy and `actions:` (Richard) | 2026-10-12 |
-| Policy always on | | |
-| Tenancy | | |
-| Action permission | | |
-| Two references to a scope | | |
-| OAuth scopes in grants | | |
-| Refusals in `fails` | | |
-| Service key management | | |
-| Calling integrations | | |
+| Policy always on | Yes: every reachable create, read, update or delete needs a grant from the first line of code | 2026-10-12 |
+| Tenancy | `tenant: Company` in root `policy.jadpo`; each entity has one reference to the tenant, names it with `tenant: field` if it has two, or says `tenant: Tenancy.shared`; grants apply only inside the caller's tenants | 2026-10-12 |
+| Action permission | From the entities an action touches; exceptions listed under `actions: { domain.action: [...] }` in `policy.jadpo`; `invoke` and `operations { }` go | 2026-10-12 |
+| Two references to a scope | Name the field in brackets, `TeamRole.lead(from_team_id)`, only when two references exist | 2026-10-12 |
+| OAuth scopes in grants | `scopes: { read: OAuthScope.x ... }` in the entity's `policy:`; scoped tokens need the grant and the scope; an effect with no scope is refused to scoped tokens | 2026-10-12 |
+| Refusals in `fails` | Never listed; the runtime raises `not_permitted` and the API description lists the 403 | 2026-10-12 |
+| Service key management | Follows the `Service` record's grants: `update` to issue or revoke, `read` to list | 2026-10-12 |
+| Calling integrations | Whoever may run the action; no separate grant; `external_effect` goes | 2026-10-12 |
 | Accepting policy weakening | Carried from area 7: one acceptance file per weakening in `acceptances/`, the shared form | 2026-10-12 |
 | Personal data and log redaction | Designed in area 15 (Personal data); erase needs `delete`, export needs `read` | 2026-10-12 |
