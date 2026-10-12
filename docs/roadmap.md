@@ -15,7 +15,8 @@ and specifications, not here.
    accepts today with compiled examples, every error the area can produce,
    consistency with the rest of the language, and open questions; Richard
    comments on the rendered page. Outcome per area: keep, change or drop.
-   Area 1 now covers project layout as well as modules, absorbing the old
+   Area 15 (Personal data: GDPR support out of the box) was added on
+   2026-10-12. Area 1 now covers project layout as well as modules, absorbing the old
    LAYOUT-001 work. Replaces the old RM-222, RM-224 and RM-225 and absorbs the
    open E02 language/tooling gaps.
 3. **Rework the areas the review flags.** Keep `python3 tools/verify.py` and
@@ -87,9 +88,6 @@ Still missing: JOB-001–004, CONFIG-001–003, BOUNDARY-001 and REL-003.
 
 ## Later — parked
 
-- GDPR support out of the box: personal-data marking, erasure across stores
-  and caches, subject-access export, retention and a personal-data report
-  (raised 2026-10-12; needs its own review).
 - Cloudflare D1 as a store engine, which first needs a Workers runtime.
 
 Scope for each is in the
