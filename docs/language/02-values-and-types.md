@@ -1441,4 +1441,4 @@ output OrderView from Order {       // data sent back
 | Literal typing | | |
 | Variable types | | |
 | Setting options | | |
-| Record keyword | | |
+| Record keyword | `value` is dropped. An object used inside the application is `type Name { fields }`; `type Name = Base { rules }` adds rules to an existing type; `input` and `output` stay for boundary data | 2026-10-12 |
