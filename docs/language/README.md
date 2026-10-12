@@ -25,6 +25,7 @@ python3 tools/language_docs.py           # check and render
   The page shows the compiler's real output, so error wording is reviewed as
   users see it.
 - A line starting with `>` renders as a note, used to mark sections a decision will change before the rework lands.
+- Once `status: decided`, the rendered page leads with the `Decided …` and `Decisions` sections and collapses today's reference body and the remaining review notes.
 - `## Review` holds status, consistency notes, open questions (a numbered list
   of `**Question?** context *Recommendation:* …`) and decisions. Generated
   public documentation leaves it out.

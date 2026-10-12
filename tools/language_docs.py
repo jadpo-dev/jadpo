@@ -185,7 +185,7 @@ class Renderer:
         self.in_errors = False
         self.in_review = False
         self.in_questions = False
-        self.block_index = 0
+        self.review_mode = False
 
     def code_block(self, block):
         attrs, result = block['attrs'], self.page.results.get(block['attrs']['project'])
@@ -220,7 +220,7 @@ class Renderer:
                         '<p class="review-note">For the language review only. Generated public documentation leaves this section out.</p>')
             self.toc.append((anchor, re.sub(r'<[^>]+>', '', rendered), ''))
         if level == 3:
-            if self.in_review and text.strip().lower() == 'open questions':
+            if (self.in_review or self.review_mode) and text.strip().lower() == 'open questions':
                 self.in_questions = True
                 return f'<h3 id="{anchor}">{rendered}</h3><ol class="questions">'
         if level == 3 and self.in_errors and re.fullmatch(r'`[a-z_.]+`', text.strip()):
@@ -255,17 +255,18 @@ class Renderer:
         items = ''.join(f'<li><code>{html.escape(r)}</code> {html.escape(self.page.catalogue[r]["summary"])}</li>' for r in missing)
         return f'<div class="gap"><h3>Errors without an example yet</h3><ul>{items}</ul></div>'
 
-    def render(self):
+    def render(self, start=0, end=None):
         lines = self.page.body.splitlines()
+        end = len(lines) if end is None else end
         blocks = {b['line']: b for b in self.page.blocks}
-        out, i, para = [], 0, []
+        out, i, para = [], start, []
 
         def flush():
             if para:
                 out.append(f'<p>{inline(" ".join(para))}</p>')
                 para.clear()
 
-        while i < len(lines):
+        while i < end:
             line = lines[i]
             if line.startswith('```'):
                 flush()
@@ -340,6 +341,35 @@ class Renderer:
         out.append(self.close_sections())
         return '\n'.join(out)
 
+    def render_decided(self):
+        """Lead with the decisions; collapse today's behaviour and the review notes."""
+        lines = self.page.body.splitlines()
+        heading = lambda i, level: lines[i].startswith('#' * level + ' ')
+        review = next(i for i, line in enumerate(lines) if line.strip() == '## Review')
+        first_h2 = next(i for i, line in enumerate(lines) if heading(i, 2))
+        h3 = [i for i in range(review + 1, len(lines)) if heading(i, 3)] + [len(lines)]
+        sections = [(h3[k], h3[k + 1], lines[h3[k]][4:].strip()) for k in range(len(h3) - 1)]
+        decided = [x for x in sections if x[2].lower().startswith('decided') or x[2].lower() == 'decisions']
+        notes = [x for x in sections if x not in decided]
+        out = [self.render(0, first_h2)]
+        for a, b, title in decided:
+            self.toc.append((slug(title), title, ''))
+            part = self.render(a, b)
+            for level in (3, 4):
+                part = part.replace(f'<h{level} ', f'<h{level - 1} ').replace(f'</h{level}>', f'</h{level - 1}>')
+            out.append(part)
+        today = Renderer(self.page)
+        out.append('<details class="collapsed" id="today"><summary>How the compiler works today, before the rework</summary>'
+                   + today.render(first_h2, review) + '</details>')
+        self.toc.append(('today', 'Today (collapsed)', ''))
+        review_notes = Renderer(self.page)
+        review_notes.review_mode = True
+        body = ''.join(review_notes.render(a, b) for a, b, _ in notes)
+        out.append('<details class="collapsed review" id="review"><summary>Review notes: status, consistency and the questions as asked</summary>'
+                   + body + '</details>')
+        self.toc.append(('review', 'Review notes (collapsed)', 'review-link'))
+        return '\n'.join(out)
+
     def question(self, number, text):
         title, _, rest = text.partition('** ')
         title = title.lstrip('*').rstrip('*')
@@ -353,7 +383,7 @@ class Renderer:
 def render_page(page, pages):
     template = TEMPLATE.read_text()
     renderer = Renderer(page)
-    content = renderer.render()
+    content = renderer.render_decided() if page.meta.get('status') == 'decided' else renderer.render()
     nav = []
     titles = {int(p.meta.get('area', 0)): p for p in pages}
     published = {}
