@@ -1,7 +1,7 @@
 ---
 title: Identity
 area: 8
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - semantic.application_principal_shape
@@ -20,7 +20,7 @@ ways a caller proves who they are, how code reads the caller, service
 credentials, revocation, and the failures authentication produces. Who may do
 what is policy, area 9.
 
-> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 5 and this page's recommendations; each recommendation names its open question. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code on this page shows the language after the rework, applying the decisions from areas 1 to 8. Today's compiled syntax is collapsed beneath each section that changes.
 
 The rules underneath all of it were accepted in the AUTH-001 contract and are
 not reopened here:
@@ -2470,8 +2470,8 @@ suites), not rerun for this page.
     create a user or link an existing one, and linking by email is allowed
     only when the provider says the email is verified. The existing `oidc`
     method is renamed `external_token`, so the two are not confused.
-    *Decided 2026-10-12:* yes, as recommended; acting as an OAuth provider is
-    in scope (Richard: "that'll be a requirement"), question 13.
+    *Decided 2026-10-12:* yes, as recommended; acting as an OAuth provider
+    was briefly put in scope, then left out (question 13).
 12. **Should authentication checks read a cache?** *Recommendation:* no.
     Area 5 already decided that authentication always reads the database.
     The strict default is one primary-key read of the session joined to the
@@ -2499,6 +2499,8 @@ suites), not rerun for this page.
     scopes narrow what policy allows (area 9): a grant can require a scope,
     and a token never allows more than the person could do themselves.
     Designed now; built after the golden todo, which does not need it.
+    *Decided 2026-10-12:* out of scope (Richard). A Jadpo application does
+    not act as an OAuth provider.
 
 ### Decisions
 
@@ -2521,6 +2523,6 @@ suites), not rerun for this page.
 | Route setting spelling | `authentication: RouteAuthentication.none` / `.fresh`; each API lists the methods it accepts | 2026-10-12 |
 | Starting and ending sessions | `sessions.start(user_id)` and `sessions.end()` from actions a route runs; the compiler sets and clears the cookie and CSRF token | 2026-10-12 |
 | Callers in tests, fixtures and seeds | `Principal.user(user)` in tests, fixtures and seeds only, with `as:` | 2026-10-12 |
-| Sign-in providers | Built-in `sign_in_providers:` with presets and generic OpenID Connect; generated start and callback routes; linked accounts stored by the language; `on_first_sign_in:` action decides create or link, email linking only when verified; `oidc` renamed `external_token`; acting as an OAuth provider in scope (question 13) | 2026-10-12 |
+| Sign-in providers | Built-in `sign_in_providers:` with presets and generic OpenID Connect; generated start and callback routes; linked accounts stored by the language; `on_first_sign_in:` action decides create or link, email linking only when verified; `oidc` renamed `external_token`; acting as an OAuth provider out of scope | 2026-10-12 |
 | Caching authentication | Never: authentication always reads the database; `revocation_delay` is the speed setting | 2026-10-12 |
-| Acting as an OAuth provider | | |
+| Acting as an OAuth provider | Out of scope (Richard) | 2026-10-12 |
