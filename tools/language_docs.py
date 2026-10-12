@@ -361,6 +361,21 @@ class Renderer:
         sections = [(h3[k], h3[k + 1], lines[h3[k]][4:].strip()) for k in range(len(h3) - 1)]
         decided = [x for x in sections if x[2].lower().startswith(('decided', 'carried')) or x[2].lower() == 'decisions']
         notes = [x for x in sections if x not in decided]
+        inline_decisions = not any(t.lower().startswith('decided') for _, _, t in sections)
+        if inline_decisions:
+            # Decisions live in the sections they change: keep the body, with today's syntax already collapsed.
+            out = [self.render(0, review)]
+            self.toc = [(a, t, c) for a, t, c in self.toc]
+            for a, b, title in decided:
+                self.toc.append((slug(title), title, ''))
+                out.append(self.render(a, b))
+            review_notes = Renderer(self.page)
+            review_notes.review_mode = True
+            body = ''.join(review_notes.render(a, b) for a, b, _ in notes)
+            out.append('<details class="collapsed review" id="review"><summary>Review notes: status, consistency and the questions as asked</summary>'
+                       + body + '</details>')
+            self.toc.append(('review', 'Review notes (collapsed)', 'review-link'))
+            return '\n'.join(out)
         out = [self.render(0, first_h2)]
         for a, b, title in decided:
             self.toc.append((slug(title), title, ''))

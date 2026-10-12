@@ -1,7 +1,7 @@
 ---
 title: Logic
 area: 3
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - effect.*
@@ -31,7 +31,7 @@ How behaviour is written: functions and actions, variables, statements,
 operators, `match`, `attempt`, loops, and what the language says about passing
 functions, recursion and generic code.
 
-> Proposed code on this page assumes every recommendation in the Review is accepted, together with the decisions from areas 1 and 2: `let` instead of `var` (question 2), `->` match arms (question 1), one `match` (question 8) and literals taking the type they go into. Today's compiled syntax is collapsed beneath each proposal.
+> Decided on 2026-10-12. Code on this page shows the language after the rework, applying the decisions from areas 1 to 3. Today's compiled syntax is collapsed beneath each section that changes.
 
 ## Functions and actions
 
@@ -115,16 +115,13 @@ Parameters are positional and every one has a type; the result type follows
 (`temporal.resolve(date: d, zone: z, ...)`); your own callables are called
 positionally. Parameters have no defaults.
 
-The proposal (question 15) puts the whole signature on the header line and
-every setting at the top of the body, one per line:
+Decided (question 15): the whole signature is on the header line and an
+action has no settings, because the safe choice is the default: every action
+is all-or-nothing, writes check for concurrent change, and reads are current.
+Who may call it is policy (area 9).
 
 ```jadpo fragment
 action reschedule(todo_id: Todo.id, due_at: DueAt) fails TodoNotFound, DueDateInPast -> TodoView {
-    consistency: atomic
-    policy {
-        TodoRole.owner: [invoke]
-    }
-
     var todo: Todo = attempt Todo.get(todo_id)
     ...
 }
@@ -185,7 +182,7 @@ authored callable is called bare.
 
 ## Variables
 
-> Question 2 proposes `let` and `var mut` in place of `var` and `var mut`. Area 2 decided that every variable states its type.
+> Decided: `var` stays, immutable by default, with `var mut` when it can change (question 2), and every variable states its type (area 2).
 
 ```jadpo fragment
 var subtotal: Pence = line_total(price, quantity)
@@ -193,13 +190,13 @@ var mut total: Pence = subtotal
 total = Pence(total + delivery)
 ```
 
-- `let` names a value that never changes. `var mut` names one that can be
+- `var` names a value that never changes. `var mut` names one that can be
    pointed at a new value of the same type with `name = value`.
 - Only a `var mut` local can be assigned. Parameters, fields and
    declarations cannot (area 2: values never change).
 - A variable is visible from its declaration to the end of its block.
-- Question 3 proposes that a name already in scope, including a parameter,
-   cannot be declared again.
+- A name already in scope, including a parameter, cannot be declared again
+   (decided, question 3), and an unused variable is an error (question 4).
 
 ::: today
 
@@ -234,8 +231,8 @@ A body is a list of statements, one per line, with no semicolons:
 | Loop | `for item in items { }` (decided in area 2) |
 | Test only | `assert`, `advance clock by` (area 13) |
 
-There is no `throw`. Question 4 proposes three more statements, so that a
-result nobody needs no longer has to be bound to a name:
+There is no `throw`. Decided (question 4): three more statements may stand
+alone, so a result nobody needs never has to be bound to a name:
 
 ```jadpo fragment
 action archive_todo(todo_id: Todo.id) fails TodoNotFound -> Unit {
@@ -550,9 +547,9 @@ attempt Todo.get(todo_id)                             // on its own (question 4)
 var total: Pence = Pence(attempt price(a) + attempt price(b))   // rejected: inside an expression
 ```
 
-Question 11 proposes that `attempt` only starts a statement, so every point
-where a callable can stop early is at the start of a line, and that `attempt`
-on a call that cannot fail is an error.
+Decided (question 11): `attempt` only starts a statement, so every point
+where a callable can stop early is at the start of a line, and `attempt` on
+a call that cannot fail is an error.
 
 ::: today
 
@@ -607,7 +604,7 @@ function order_total(lines: List<OrderLine>) -> Pence {
 }
 ```
 
-Question 12 proposes that `for` over a list is the only loop: no `while`,
+Decided (question 12): `for` over a list is the only loop: no `while`,
 `break` or `continue`, with `return` allowed inside the body. Today there are
 no loops at all; `for` and `while` are syntax errors (see
 `syntax.expected_statement`).
@@ -615,7 +612,7 @@ no loops at all; `for` and `while` are syntax errors (see
 ## Passing functions
 
 Area 2 decided on `collection.map` and `collection.filter`, which need a
-function as an argument. Question 13 proposes inline functions only as
+function as an argument. Decided (question 13): inline functions are allowed only as
 arguments to standard-library collection operations, using `->` for
 "produces":
 
@@ -646,7 +643,7 @@ function reply_count(comment: Comment) -> ReplyCount {
 }
 ```
 
-Question 14 proposes allowing recursion in functions only, with a runtime
+Decided (question 14): recursion is allowed in functions only, with a runtime
 depth limit that ends in a defined fault. Today recursion is accepted
 everywhere, including actions, with no limit:
 
@@ -692,7 +689,7 @@ function party_label(party: PartyId) -> PartyLabel {
 ```
 
 `function first<T>(items: List<T>) -> T` and `Customer.id | Supplier.id` are
-syntax errors today; question 16 recommends keeping it that way.
+syntax errors today; question 16 decided to keep it that way.
 
 ## Errors
 
@@ -1789,9 +1786,12 @@ function fail_loudly(note: Note) -> Note {
 | Whether a runtime construction the declared ranges prove safe (`Pence(price * quantity)` with both minimums at 0 or above and no maximum) still needs `attempt ... invalid:` | 4 | Open |
 | `fails` sets, `reject`, `propagate` and failure arms' mapping rules; how overflow, division by zero and recursion depth faults are reported | 4 | Input to area 4 |
 | Calling actions or queries inside a `for` loop (one query per item, transaction scope) | 6 | Input to area 6 |
-| Callable settings' values (`consistency:`, `freshness:`, `guard:`) | 6 | Placement proposed here (question 15) |
+| Callable settings (`consistency:`, `freshness:`, `guard:`) become defaults; reading a cache or projection is declared on the cache | 6 | Follows from a decision |
 | Recursive types (`replies: List<Comment>`) are accepted and were not discussed in area 2; storing them | 5 | Input to area 5 |
 | `assert` and `advance clock by` | 13 | Input to area 13 |
+| `set: { }` and `initial: { }` become sections (`set { }`, `initial { }`) under the colon and block rule | 6 | Follows from a decision |
+| `path: { }`, `headers: { }` and inline `action: { }` leave routes under the colon and block rule (the syntax review already proposes typed path placeholders and `run:` a named action) | 7 | Follows from a decision |
+| Entities: `identity: id` and one-value `persistence { store: primary role: authority }` become defaults, leaving `entity Customer { id: Uuid }` (syntax review) | 5 | Proposed |
 
 ### Open questions
 
@@ -1859,6 +1859,7 @@ function fail_loudly(note: Note) -> Note {
    match: brackets after a case name the data it carries. The alternative is
    narrowing, as in TypeScript and Kotlin: no name at all, and inside the
    `paid` arm `outcome.receipt_id` simply works.
+   *Decided 2026-10-12:* the arm names the data in brackets.
 
 10. **May `_` cover the rest of an enum?** Today it may, so adding a variant
     silently falls into an existing arm. *Decided 2026-10-12:* no: on enums,
@@ -1892,17 +1893,19 @@ function fail_loudly(note: Note) -> Note {
     because repeating effects has no data reason and an unbounded one never
     finishes. Add a runtime depth limit that ends in a defined fault instead
     of a crash, and correct grammar §16.
-15. **Where do a callable's settings go?** Today `consistency:`, `guard:`
-    and `freshness:` sit in the header between the parameters and `fails`, and
-    `policy { }` starts the body. *Recommendation:* remove them by making the
-    safe choice the default, so an action is only its signature and its logic.
-    `consistency:` goes: since long-running work became subscribers (area 1),
-    the only choice left is all-or-nothing, so every action is atomic.
-    `guard:` goes: a write to a loaded entity always checks it was not changed
-    in the meantime. `freshness:` goes: every read is current unless it reads
-    a cache or projection, which is declared where that cache is (area 6).
-    Who may call an action is decided in area 9 (policy).
-
+15. **Where do a callable's settings go?** *Decided 2026-10-12:* nowhere: the
+    safe choice is the default, so an action is only its signature and its
+    logic. Every action is all-or-nothing (long-running work became
+    subscribers in area 1); a write to a loaded entity always checks it was not
+    changed in the meantime; every read is current unless it reads a cache or
+    projection, declared where that cache is (area 6). Who may call an action
+    is decided in area 9. The cases this does not fit have better answers
+    already: a large batch that should keep partial progress is a schedule or
+    subscriber handling one item per action (resumable as well); a call to an
+    external provider runs after the commit, never inside it (areas 11 and
+    12); a counter or "last seen" field that must not conflict is updated by
+    the database in one step (`count + 1`) rather than read and rewritten
+    (area 6).
 16. **Should your own functions be generic, or accept unions?** Area 2 left
     this open. *Decided 2026-10-12:* neither. The standard library stays generic;
     a parameter that accepts several types is an enum whose variants carry
@@ -1912,6 +1915,8 @@ function fail_loudly(note: Note) -> Note {
     payment application shows repeated helpers that differ by type alone.
 
 ### Decisions
+
+Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
 
 | Topic | Decision | Date |
 |---|---|---|
@@ -1923,11 +1928,12 @@ function fail_loudly(note: Note) -> Note {
 | Operator operand types | `+`, `-` and comparisons need the same named type (or a literal); `*` and `%` may mix; ordering only on numbers and time values | 2026-10-12 |
 | Division | `/` on the same named type; `Int` drops the remainder; `Decimal` exact, rounded half to even into a fixed scale; `decimal.divide`/`integer.divide` for mixed types or other rounding; the divisor's type must exclude zero, checked by the compiler | 2026-10-12 |
 | One `match` | One `match` for values and call outcomes; failure arms have no `failure` prefix | 2026-10-12 |
-| Payload binding | | |
+| Payload binding | A `match` arm names a variant's data in brackets, `PaymentOutcome.paid(payment) -> payment.receipt_id`, like `some(x)` and `success(value)` | 2026-10-12 |
 | Wildcard on closed types | No `_` on enums, `Bool` or nullable values; every case listed | 2026-10-12 |
 | `attempt` placement | Only at the start of a statement, and only on a call that can fail | 2026-10-12 |
 | Loops | `for` over a `List` only, `return` allowed inside; no `while`, `break` or `continue` | 2026-10-12 |
 | Passing functions | Inline `x -> expression` only as an argument to standard-library collection operations; no function types in your own signatures or variables | 2026-10-12 |
 | Recursion | Functions only, with a runtime depth limit that ends in a defined fault; actions and queries in a call cycle are errors | 2026-10-12 |
-| Callable settings | | |
+| Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
+| Colon and block rule (language-wide) | `name: X` means name is or has X, a single thing (a type, a value, a named option or a `[ ]` list); `name { ... }` is a named section or member holding declarations or settings; `name: { ... }` is never written | 2026-10-12 |

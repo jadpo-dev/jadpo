@@ -39,6 +39,13 @@ and specifications, not here.
    construction running field rules; input-only `optional`; list literals,
    `for` and first collection functions; `Set`/`Map` JSON; full-match linear
    patterns and constraint validation; signature-rule scope; structural `==`.
+   Area 3 (decided 2026-10-12) needs: bracketed conditions and `else if`;
+   unused-variable, shadowing and missing-return errors; standalone
+   statements; operator type rules; `/` semantics with non-zero divisor types;
+   one `match` with `->`, bracket data binding and no closed-type wildcard;
+   `attempt` placement; `for` loops and inline collection functions;
+   recursion limits; removal of callable settings; the colon and block rule
+   across the grammar.
 4. **Finish the golden todo** on the reviewed language. Done means
    `python3 tools/verify.py --require-golden` passes 88/88 (44 cases × SQLite
    and PostgreSQL) on one commit, plus one independent review of the combined

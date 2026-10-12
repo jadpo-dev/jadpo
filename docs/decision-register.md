@@ -8,6 +8,24 @@ item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
 
+### Logic — 2026-10-12
+
+Richard decided area 3 of the language review; the decisions and examples
+are in [area 3](language/03-logic.md#decisions). In short: `var` stays,
+immutable by default, with `var mut`; conditions are always bracketed with
+`else if`; no shadowing; unused variables are errors and `Unit` calls,
+`attempt call(...)` and bare `return` may stand alone; `+`, `-`, `/` and
+comparisons need one named type, `*` and `%` may mix; `/` drops `Int`
+remainders, rounds `Decimal` half to even into a fixed scale, and its
+divisor's type must exclude zero; one `match` with `->` arms, no `failure`
+prefix, data named in brackets (`paid(payment)`) and no `_` on closed
+types; `attempt` only starts a statement; `for` over lists only; inline
+functions only for collection operations; recursion in functions only with a
+depth limit; no user generics or unions; callables have no settings because
+the safe choice is the default. Language-wide, `name: X` means "is or has X"
+and `name { ... }` is a named section; `name: { ... }` is never written.
+Not yet implemented.
+
 ### Values and types — 2026-10-12
 
 Richard decided area 2 of the language review; the full decisions and worked
