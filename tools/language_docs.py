@@ -303,6 +303,16 @@ class Renderer:
                 trs = ''.join('<tr>' + ''.join(f'<td>{inline(c)}</td>' for c in r) + '</tr>' for r in body)
                 out.append(f'<div class="table-wrap"><table><thead><tr>{cells}</tr></thead><tbody>{trs}</tbody></table></div>')
                 continue
+            if line.strip() == '::: today':
+                flush()
+                out.append('<details class="today"><summary>Today\'s syntax, before the rework (still compiled and checked)</summary>')
+                i += 1
+                continue
+            if line.strip() == ':::':
+                flush()
+                out.append('</details>')
+                i += 1
+                continue
             if line.startswith('>'):
                 flush()
                 quote = []

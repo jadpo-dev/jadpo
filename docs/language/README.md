@@ -24,6 +24,7 @@ python3 tools/language_docs.py           # check and render
 - Under `## Errors`, each `### \`rule.id\`` heading is followed by its example.
   The page shows the compiler's real output, so error wording is reviewed as
   users see it.
+- `::: today` … `:::` wraps today's syntax for something already decided; it renders collapsed and its examples are still compiled.
 - A line starting with `>` renders as a note, used to mark sections a decision will change before the rework lands.
 - Once `status: decided`, the rendered page leads with the `Decided …` and `Decisions` sections and collapses today's reference body and the remaining review notes.
 - `## Review` holds status, consistency notes, open questions (a numbered list

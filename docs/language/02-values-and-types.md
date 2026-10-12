@@ -42,8 +42,6 @@ types silently.
 
 ## Built-in types
 
-> **Changing.** Decided on 2026-10-12: `Object` becomes only a base for `type Name = Object { ... }`; see [One form for every type](#proposal-one-form-for-every-type).
-
 These types exist without being declared, and their names cannot be reused.
 
 | Kind | Types | Notes |
@@ -51,7 +49,8 @@ These types exist without being declared, and their names cannot be reused.
 | Representation | `Bool`, `Int`, `Decimal`, `Text`, `Bytes`, `Uuid` | The raw material for your own types. `Int` and `Decimal` are currently JavaScript numbers at runtime (see Review). |
 | Validated text | `Email`, `Url`, `IpAddress` | Ready-made named types built on `Text`. |
 | Time | `Instant`, `CalendarDate`, `Time`, `Duration`, `Zone`, `Locale`, `Weekday` and the formatting types | Described in area 10, Configuration and time. |
-| Containers | `List<T>`, `Set<T>`, `Map<K, V>`, `Object { ... }` | Described below. |
+| Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
+| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration (decided 2026-10-12). |
 | Nothing | `Unit` | What an action returns when it returns nothing. |
 
 Literals are `true` and `false`, whole numbers (`25`, `-3`), decimals (`1.25`),
@@ -197,9 +196,46 @@ allowed. Inside a body, locals can still hold built-in types.
 
 ## Objects
 
-> **Changing.** Decided on 2026-10-12: `value`, `input` and `output` are replaced by `type Name = Object { ... }`, `type Name = Input { ... }` and `type Name = Output { ... }`, and anonymous `Object { ... }` is removed; see [One form for every type](#proposal-one-form-for-every-type). The examples below show the compiler today.
+> **Decided on 2026-10-12.** Every object type is `type Name = Base { ... }`. Today's `value`, `input` and `output` keywords are shown collapsed below until the rework lands.
 
-An object is a fixed set of named fields. Four declaration forms create one:
+An object is a fixed set of named fields. The base after `=` says what the
+object is for:
+
+```jadpo fragment
+type Money = Object {               // used inside the application
+    amount: Pence
+}
+
+type CreateProduct = Input {        // arrives from outside, such as a request body
+    name: ProductName
+    price: Pence
+}
+
+type ProductView = Output {         // sent back, such as a response
+    name: ProductName
+    price: Money
+}
+```
+
+Only an `Input` may leave fields out or give them defaults. A route accepts
+only an `Input` and returns only an `Output`. There is no unnamed object: a
+nested shape is declared once, with a name, and used by that name.
+
+An object value is written with its type name and every field:
+
+```jadpo fragment
+function view(name: ProductName, price: Pence) -> ProductView {
+    return ProductView {
+        name: name
+        price: price
+    }
+}
+```
+
+Every declared field must be given, and unknown fields are errors. Fields can
+hold other objects and lists, nested as deeply as needed.
+
+::: today
 
 ```jadpo project=records
 type ProductName = Text {
@@ -231,12 +267,8 @@ type Dimensions = Object {
 }
 ```
 
-`value` is for data used inside the application, `input` for request bodies
-and other data arriving from outside, and `output` for responses. Today the
-compiler treats all four alike except in a few query and update positions
-(area 6); any of them can be used at either boundary.
-
-An object value is written with its type name and every field:
+Today `value`, `input`, `output` and `type X = Object` all declare the same
+thing, and any of them can be used at either boundary.
 
 ```jadpo project=records-build
 type ProductName = Text {
@@ -261,9 +293,7 @@ function view(name: ProductName, price: Pence) -> ProductView {
 }
 ```
 
-Every declared field must be given, and unknown fields are errors. Fields can
-hold other objects, lists, or an anonymous `Object { ... }`, nested as deeply
-as needed.
+:::
 
 ### Field types
 
@@ -305,6 +335,16 @@ field as a constructor, as in `Customer.email(email)`.
 
 A field can add rules of its own in a block after its type:
 
+```jadpo fragment
+type Badge = Object {
+    label: ProductName {
+        max_length: 12
+    }
+}
+```
+
+::: today
+
 ```jadpo project=field-rules
 type ProductName = Text {
     min_length: 1
@@ -318,16 +358,38 @@ value Badge {
 }
 ```
 
+:::
+
 Reading through a nested object gives the inner object's field type:
 `customer.billing_address.postal_code` has type `Address.postal_code`, whether
 it came from the billing or the shipping address.
 
 ## Absent values
 
-> **Changing.** Inputs become `type Name = Input { ... }` (decided 2026-10-12), and question 20 proposes moving `optional` and `default` into a settings block.
+> **Decided on 2026-10-12.** Objects and inputs use `type Name = Object { ... }` and `type Name = Input { ... }`; today's spelling is collapsed below. Question 20 proposes moving `optional` and `default` into a settings block.
 
 There is no `null` or `undefined`. A type followed by `?` may hold `none`, and
 reading it means handling both cases, usually with `match` (area 3).
+
+```jadpo fragment
+type Listing = Object {
+    name: ProductName
+    subtitle: ProductName?
+}
+
+function headline(listing: Listing) -> ProductName {
+    match listing.subtitle {
+        some(subtitle) => {
+            return subtitle
+        }
+        none => {
+            return listing.name
+        }
+    }
+}
+```
+
+::: today
 
 ```jadpo project=nullable
 type ProductName = Text {
@@ -352,9 +414,25 @@ function headline(listing: Listing) -> ProductName {
 }
 ```
 
+:::
+
 A nullable field is still required: a `Listing` must say `subtitle: none`
 explicitly. Being allowed to leave a field out is a separate idea that belongs
 to inputs:
+
+```jadpo fragment
+type ListProducts = Input {
+    name: ProductName optional
+    page_size: PageSize default 25
+}
+
+type RenameProduct = Input {
+    name: ProductName
+    subtitle: ProductName? default none
+}
+```
+
+::: today
 
 ```jadpo project=inputs
 type ProductName = Text {
@@ -378,6 +456,8 @@ input RenameProduct {
 }
 ```
 
+:::
+
 - `optional` means the request may leave the field out. Leaving it out is
   different from sending `none`, which lets an update tell "don't change this"
   from "clear this" (area 6).
@@ -390,10 +470,24 @@ A value can widen through `?`: a `Customer.email?` can be used where an
 
 ## Enums
 
-> **Changing.** Decided on 2026-10-12: `enum Name { ... }` becomes `type Name = Enum { ... }`; see [One form for every type](#proposal-one-form-for-every-type).
+> **Decided on 2026-10-12.** Enums are `type Name = Enum { ... }`; today's `enum Name { ... }` is collapsed below.
 
 An enum is a closed list of named alternatives. Variants are always written
 with their enum's name.
+
+```jadpo fragment
+type TicketStatus = Enum {
+    open
+    waiting
+    closed
+}
+
+function reopen() -> TicketStatus {
+    return TicketStatus.open
+}
+```
+
+::: today
 
 ```jadpo project=enums
 enum TicketStatus {
@@ -407,8 +501,45 @@ function reopen() -> TicketStatus {
 }
 ```
 
+:::
+
 A variant can carry its own fields, which makes an enum a tagged union: each
 value is exactly one variant and has only that variant's fields.
+
+```jadpo fragment
+type PaymentOutcome = Enum {
+    pending
+    paid {
+        receipt_id: ReceiptId
+        paid_at: Instant
+    }
+    declined {
+        reason: DeclineReason
+    }
+}
+
+function decline(reason: DeclineReason) -> PaymentOutcome {
+    return PaymentOutcome.declined {
+        reason: reason
+    }
+}
+
+function label(outcome: PaymentOutcome) -> OutcomeLabel {
+    match outcome {
+        PaymentOutcome.pending => {
+            return OutcomeLabel("pending")
+        }
+        PaymentOutcome.paid { receipt_id, paid_at } => {
+            return OutcomeLabel("paid")
+        }
+        PaymentOutcome.declined { reason } => {
+            return OutcomeLabel("declined")
+        }
+    }
+}
+```
+
+::: today
 
 ```jadpo project=tagged
 type ReceiptId = Uuid {}
@@ -454,6 +585,8 @@ function label(outcome: PaymentOutcome) -> OutcomeLabel {
 }
 ```
 
+:::
+
 The only way to read a variant's fields is to `match` on it. Payload fields
 have field types too, written `PaymentOutcome.declined.reason`.
 
@@ -467,6 +600,22 @@ no methods or display labels.
 
 `List<T>`, `Set<T>` and `Map<K, V>` can be used as field types, parameter
 types and boundary types, nested in each other or holding objects.
+
+```jadpo fragment
+type BasketLine = Object {
+    tag: Tag
+    price: Pence
+}
+
+type Basket = Output {
+    lines: List<BasketLine>
+    tags: List<Tag> {
+        max_length: 10
+    }
+}
+```
+
+::: today
 
 ```jadpo project=collections
 type Tag = Text {
@@ -490,6 +639,8 @@ output Basket {
     }
 }
 ```
+
+:::
 
 A collection keeps its element type: a `List<Customer.email>` is not a
 `List<Email>`. Collections are written as types today, but there are no list
@@ -521,6 +672,22 @@ lets anyone else change it. A local declared with `var mut` can be pointed at a
 new value of the same type, but fields cannot be assigned: to change an object,
 build a new one.
 
+```jadpo fragment
+type Product = Object {
+    name: ProductName
+    price: Pence
+}
+
+function reprice(product: Product, price: Pence) -> Product {
+    return Product {
+        name: product.name
+        price: price
+    }
+}
+```
+
+::: today
+
 ```jadpo project=immutable
 type ProductName = Text {
     min_length: 1
@@ -544,7 +711,11 @@ function reprice(product: Product, price: Pence) -> Product {
 }
 ```
 
+:::
+
 ## Errors
+
+> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
 
 Every error this area can produce, with an example that triggers it and the
 compiler's actual output.
