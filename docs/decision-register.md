@@ -8,6 +8,19 @@ item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
 
+### Failures — 2026-10-12
+
+Richard decided area 4 of the language review; decisions and examples are in
+[area 4](language/04-failures.md#decisions). In short: failures are
+`type Name = Failure { ... }`; codes derive from the name; `client: { }` and
+`internal: { }` say who sees each field; applications declare seven
+lower_snake_case kinds and the runtime owns the rest; invalid input reports
+`{ field, rule }` per problem; `fails` lists domain failures only; one
+`condition: Failure` mapping form, always keeping the original as an internal
+cause; overflow and recursion limits are defects; concealed records report
+`not_found`; logs keep identifiers and hash text; clients translate by code.
+Not yet implemented.
+
 ### Logic — 2026-10-12
 
 Richard decided area 3 of the language review; the decisions and examples

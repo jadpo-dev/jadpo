@@ -1255,7 +1255,7 @@ compiled; exact syntax for logic is settled in area 3.
 #### Q1: a runtime check that can fail
 
 ```jadpo fragment
-failure QuantityOutOfRange {
+type QuantityOutOfRange = Failure {
     kind: invalid_value
     code: "quantity_out_of_range"
 }
@@ -1459,7 +1459,7 @@ type PartnerRef = Uuid {
     version: v4
 }
 
-failure TodoNotFound {
+type TodoNotFound = Failure {
     kind: not_found             // was: kind: NotFound
     code: "todo_not_found"
 }
