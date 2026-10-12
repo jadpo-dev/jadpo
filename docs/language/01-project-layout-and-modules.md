@@ -597,6 +597,12 @@ type Label = Text {
 - **Declaration headers differ.** `type Name = Base { }` uses `=`, while
   `entity Name { }`, `failure Name { }` and `service Name { }` do not. This
   spans several areas and is flagged for the end-of-review syntax pass.
+- **Separation risks duplication, not breakage.** With no imports every
+  reference resolves wherever it lives, but an agent working in one domain
+  can write a helper that already exists in another. Placement cannot prevent
+  two copies. Mitigations: agents look things up in the compiler's project map
+  (`jadpo inspect`, the language server) rather than browsing folders, and a
+  possible compiler warning for near-identical functions or types.
 - **The formatter keeps your blank lines and import order.** Two people can
   format the same file differently and both pass `jadpo fmt --check`.
 
@@ -776,10 +782,18 @@ migration workflow (area 5). The layout only reserves their folders.
    *Recommendation:* keep `domains/`. Every root entry is then fixed by the
    language and projects differ only inside it, so nobody has to tell a domain
    from a reserved folder.
-2. **Libraries called with their name, `rounding.half_even(x)`?** This
-   reverses the current rule that your own functions are called without a
-   prefix. *Recommendation:* yes. It matches the standard library, and a call
-   shows where its function lives.
+2. **Should the dot always name the owner of what you call?**
+   `temporal.in_zone(x)` for the standard library, `rounding.half_even(x)` for
+   your libraries, `Todo.get(id)` for an entity, `catalogue.product_listing()`
+   for another domain's public query, and a bare `checkout(cart)` only for
+   your own domain's actions and queries. This reverses the current rule that
+   your own functions are called without a prefix. *Recommendation:* yes.
+   Libraries then read exactly like the standard library, imports disappear
+   because every call says where its function lives, cross-domain
+   dependencies are visible in the code, and searching for `rounding.` finds
+   every use. The cost is longer calls and renames that touch every call
+   site, which the compiler can make for you. Exact syntax is confirmed in
+   area 3.
 3. **How is policy protected from agent edits?** Entity policy lives in the
    entity file. *Recommendation:* protect it through the approval check,
    which already fingerprints policy, so any policy change needs human
