@@ -1,7 +1,7 @@
 ---
 title: Configuration and time
 area: 10
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - configuration.binding_empty
@@ -32,7 +32,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 5 and this page's recommendations; each recommendation names its open question. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 10. Today's compiled syntax is collapsed beneath each section that changes.
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -186,7 +186,8 @@ The runtime opens the store only through that field.
 Production values come from the platform's environment (or its secret
 manager, which sets the same variables). Locally there is one git-ignored
 file, `.env.local`; Jadpo defines no `.env`, `.env.development` or layering.
-Tests get their values from test fixtures (area 13).
+Tests use each field's `test:` value, and `jadpo test` generates random
+secrets; a single test can override a value (area 13).
 
 A secret is never typed into a chat with an agent. The agent asks you to run:
 
@@ -446,19 +447,19 @@ test "human formats require a resolved zone" {
 
 ## Locales
 
-An application lists the languages it supports, once, in `app.jadpo`. The
-list creates the `Locale` enum (`Locale.en_gb`), and formatting accepts only
-those. The server's own locale is never used.
+`Locale` is a built-in enum of the standard locales (`Locale.en_gb`,
+`Locale.fr_fr`). An application lists the ones it supports, once, in
+`app.jadpo`; formatting and translations accept only those, and using any
+other is a compile error. The server's own locale is never used.
 
 ```jadpo fragment
-locales {
-    default: en_gb
-    supported: [en_gb, en_us, fr_fr]
+locales: {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.en_us, Locale.fr_fr]
 }
 ```
 
-Proposed (question 8): write locales as option names, the same names code
-uses, and drop `unsupported:`. A request field typed `Locale` is decoded like
+There is no `unsupported:` setting. A request field typed `Locale` is decoded like
 any enum, so an unsupported tag is an `invalid_value` failure; choosing a
 language from an `Accept-Language` header is a library call that falls back to
 `default`.
@@ -977,33 +978,33 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    `MAIL_SENDER`), keep `binding:` only to differ, and show a changed variable
    name in the approval review as a deployment change, through the shared
    "accept a reviewed change" mechanism carried to area 7. Rails credentials
-   and Spring Boot's relaxed binding derive names the same way.
+   and Spring Boot's relaxed binding derive names the same way. *Decided 2026-10-12:* yes, as recommended.
 2. **Which types can a setting have?** Today text-based, number, boolean,
    UUID, email, URL, IP, duration, instant and date types. *Recommendation:*
    add enums, written `Type.value`, and `Zone` and `Locale`, so a log level or
    business time zone is checked at startup instead of parsed by hand; keep
-   lists and objects out (one variable, one value).
+   lists and objects out (one variable, one value). *Decided 2026-10-12:* yes, as recommended.
 3. **How is a database address typed?** `Url` cannot hold `postgres://`, so
    area 5's `url: config.database_url` cannot work. *Recommendation:*
    built-in `PostgresUrl` and `RedisUrl`, each checking its schemes, always
    secret, with a store's `url:` required to match its `engine:`; the runtime
    connects only through it. Also make the startup and `config check`
-   validators the same code, so they cannot disagree again.
+   validators the same code, so they cannot disagree again. *Decided 2026-10-12:* yes, as recommended.
 4. **One duration spelling, and does `d` stay?** *Recommendation:* `500ms`,
    `30s`, `5m`, `2h` and `30d` everywhere in source, including constraints
    (`max: 30s`), with ISO 8601 only in JSON. Keep `d` as exactly 24 hours,
    because retention and token lifetimes are elapsed time and `720h` is
    unreadable; calendar days stay a date operation. Go has no `d` and
-   Rust's `humantime` has it; no `w`, months or years, which vary.
+   Rust's `humantime` has it; no `w`, months or years, which vary. *Decided 2026-10-12:* yes, as recommended.
 5. **Rename `Time` to `ZonedTime`?** Java, Temporal and Elixir all use "time"
    for a time of day, so `Time` will be misread by people and agents.
    *Recommendation:* yes, `ZonedTime` (Temporal says `ZonedDateTime`, jiff
-   `Zoned`), with the wire form unchanged.
+   `Zoned`), with the wire form unchanged. *Decided 2026-10-12:* yes, as recommended.
 6. **Does adding a duration keep the instant's named type?** Today
    `due_at - notice` is a plain `Instant` and must be rebuilt.
    *Recommendation:* yes for `+` and `-` with a `Duration`, the one mixed
    case area 3's operator rule did not cover; `Instant - Instant` gives
-   `Duration`.
+   `Duration`. *Decided 2026-10-12:* yes, as recommended.
 7. **Should the time library and formatting be simplified?** About 35
    functions, six option enums, two daylight-saving options on every call, a
    two-step format and an anonymous components object.
@@ -1011,24 +1012,33 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    [time and formatting proposals](research/10-configuration-and-time-proposals.md):
    `temporal.format(value, zone:, locale:, format:)` with named built-in or
    declared formats, `format_relative` without a profile, one `dst:` option
-   that defaults to failing, and about 20 functions.
+   that defaults to failing, and about 20 functions. *Decided 2026-10-12:* yes, as recommended.
 8. **Locales as names, and drop `unsupported:`?** *Recommendation:* yes,
-   `default: en_gb` and `supported: [en_gb, fr_fr]`, in `app.jadpo`. An
+   `default: Locale.en_gb` and `supported: [Locale.en_gb, Locale.fr_fr]`, in
+   `app.jadpo`, with `Locale` a built-in enum of the standard locales. An
    unsupported tag in a request is an ordinary `invalid_value` like any
-   enum; header negotiation is a library call that falls back to `default`.
+   enum; header negotiation is a library call that falls back to `default`. *Decided 2026-10-12:* yes, as recommended.
 9. **What format does `translations/` use?** *Recommendation:* one JSON file
    per supported locale with ICU MessageFormat messages (what FormatJS, Java
    and translation services such as Crowdin and Lokalise use), typed calls
    generated from the default locale's keys, and missing keys or
    placeholders in other locales as compile errors. Build it when the first
-   email template needs it (area 11), not before.
+   email template needs it (area 11), not before. *Decided 2026-10-12:* yes, as recommended.
 10. **How are signing keys rotated?** (carried from area 8) Area 8 keeps
     signing keys, the OIDC issuer and audience in configuration. How does a
     deployment replace a signing key without signing everyone out?
+    *Decided 2026-10-12:* a built-in `SigningKey` type. `session_signing_key`
+    reads `SESSION_SIGNING_KEY` and an optional `SESSION_SIGNING_KEY_PREVIOUS`;
+    new tokens are signed with the current key and both are accepted. Rotate
+    by setting the new key and moving the old one to `_PREVIOUS`, then remove
+    it once the longest token lifetime has passed.
 11. **Do configuration fields carry `test:` values?** (carried from area 13)
     Area 13 has tests take each configuration field's `test:` value, while
     "Values on your machine and in production" above says tests get their
     values from fixtures. Which does configuration declare?
+    *Decided 2026-10-12:* a field may carry a `test:` value in `config.jadpo`;
+    secrets need none, because `jadpo test` generates random ones; a single
+    test can override a value.
 
 ### Decisions
 
@@ -1041,14 +1051,14 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | Store addresses | Carried from area 5: stores are declared in `app.jadpo` and take `url: config.<field>` | 2026-10-12 |
 | Signature types | Carried from area 2: signatures use named types built on `Instant`, `CalendarDate`, `Time` and `Duration`; `Zone`, `Locale` and `Weekday` may be used directly | 2026-10-12 |
 | Option names | Carried from area 2: closed options in settings are lower_snake_case names; in code, enum values are qualified (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
-| Environment variable names | | |
-| Setting types | | |
-| Database address type | | |
-| Duration spelling | | |
-| `Time` name | | |
-| Instant arithmetic | | |
-| Time library and formatting | | |
-| Locales declaration | | |
-| Translations format | | |
-| Signing key rotation | | |
-| Test values for settings | | |
+| Environment variable names | Derived from the field name (`mail_sender` reads `MAIL_SENDER`); `binding:` only to differ; a changed name shows in the approval review | 2026-10-12 |
+| Setting types | Adds enums, `Zone` and `Locale`; no lists or objects | 2026-10-12 |
+| Database address type | Built-in `PostgresUrl` and `RedisUrl`, always secret, matching the store's engine; startup and `config check` share one validator | 2026-10-12 |
+| Duration spelling | `500ms`, `30s`, `5m`, `2h`, `30d` everywhere in source, `d` exactly 24 hours; ISO 8601 only in JSON | 2026-10-12 |
+| `Time` name | Renamed `ZonedTime` | 2026-10-12 |
+| Instant arithmetic | Adding or subtracting a `Duration` keeps the named type; `Instant - Instant` gives `Duration` | 2026-10-12 |
+| Time library and formatting | Option B: `temporal.format(value, zone:, locale:, format:)` with named formats, one `dst:` option failing by default, about 20 functions | 2026-10-12 |
+| Locales declaration | `locales: { default: Locale.en_gb supported: [...] }` in `app.jadpo`; `Locale` built in; no `unsupported:` | 2026-10-12 |
+| Translations format | One JSON file per locale with ICU MessageFormat; typed calls from the default locale's keys; missing keys or placeholders are compile errors; built with the first email template | 2026-10-12 |
+| Signing key rotation | Built-in `SigningKey` reading `NAME` and optional `NAME_PREVIOUS`; sign with current, accept both | 2026-10-12 |
+| Test values for settings | `test:` on the field; random secrets generated by `jadpo test`; per-test override | 2026-10-12 |
