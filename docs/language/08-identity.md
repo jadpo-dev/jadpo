@@ -2469,8 +2469,9 @@ suites), not rerun for this page.
     receiving the provider's profile; the application decides whether to
     create a user or link an existing one, and linking by email is allowed
     only when the provider says the email is verified. The existing `oidc`
-    method is renamed `external_token`, so the two are not confused. Being
-    an OAuth provider for other people's applications is out of scope.
+    method is renamed `external_token`, so the two are not confused.
+    *Decided 2026-10-12:* yes, as recommended; acting as an OAuth provider is
+    in scope (Richard: "that'll be a requirement"), question 13.
 12. **Should authentication checks read a cache?** *Recommendation:* no.
     Area 5 already decided that authentication always reads the database.
     The strict default is one primary-key read of the session joined to the
@@ -2478,7 +2479,26 @@ suites), not rerun for this page.
     all, which is faster than any cache. A cached session would also survive
     a revocation made while the cache was unreachable, turning a cache
     outage into a security gap. `revocation_delay` stays the one speed
-    setting.
+    setting. *Decided 2026-10-12:* yes, as recommended.
+13. **How does an application act as an OAuth provider?** Richard expects
+    other people's applications to sign users in through a Jadpo
+    application and call its API on their behalf. *Recommendation:* built
+    in, following OAuth 2.1 and OpenID Connect, the way Doorkeeper (Rails),
+    Passport (Laravel) and django-oauth-toolkit add it to a framework. An
+    `oauth_provider: { scopes: { ... } }` block in `authentication.jadpo`
+    declares the scopes, each with a description shown to the person. The
+    runtime generates the authorization, token, revocation and discovery
+    endpoints and the signing keys' public set; only the authorization code
+    flow with PKCE, refresh tokens that rotate, and client credentials for
+    server-to-server clients; no implicit or password grants. Registered
+    client applications are stored by the language, with generated
+    `OAuthClient.register`, `OAuthClient.list` and `OAuthClient.revoke`, as
+    service keys are. The consent screen is a route the application writes,
+    because it is branded UI; it calls a generated `oauth.approve(...)`. A
+    token arrives through a new `AuthenticationMethod.oauth_token`, and its
+    scopes narrow what policy allows (area 9): a grant can require a scope,
+    and a token never allows more than the person could do themselves.
+    Designed now; built after the golden todo, which does not need it.
 
 ### Decisions
 
@@ -2501,5 +2521,6 @@ suites), not rerun for this page.
 | Route setting spelling | `authentication: RouteAuthentication.none` / `.fresh`; each API lists the methods it accepts | 2026-10-12 |
 | Starting and ending sessions | `sessions.start(user_id)` and `sessions.end()` from actions a route runs; the compiler sets and clears the cookie and CSRF token | 2026-10-12 |
 | Callers in tests, fixtures and seeds | `Principal.user(user)` in tests, fixtures and seeds only, with `as:` | 2026-10-12 |
-| Sign-in providers | | |
-| Caching authentication | | |
+| Sign-in providers | Built-in `sign_in_providers:` with presets and generic OpenID Connect; generated start and callback routes; linked accounts stored by the language; `on_first_sign_in:` action decides create or link, email linking only when verified; `oidc` renamed `external_token`; acting as an OAuth provider in scope (question 13) | 2026-10-12 |
+| Caching authentication | Never: authentication always reads the database; `revocation_delay` is the speed setting | 2026-10-12 |
+| Acting as an OAuth provider | | |
