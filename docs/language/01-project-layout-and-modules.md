@@ -603,6 +603,9 @@ type Label = Text {
   two copies. Mitigations: agents look things up in the compiler's project map
   (`jadpo inspect`, the language server) rather than browsing folders, and a
   possible compiler warning for near-identical functions or types.
+  The compiler also generates a catalogue of every library function with its
+  signature and documentation comment; the Jadpo agent skill tells agents to
+  consult it before writing a helper. Nothing is maintained by hand.
 - **The formatter keeps your blank lines and import order.** Two people can
   format the same file differently and both pass `jadpo fmt --check`.
 
@@ -698,8 +701,15 @@ build/
 #### Domains
 
 - Every project has at least one domain, and all code outside the root files
-  lives in one. The folder name is the domain's name. Domains do not nest; a
+  lives in one. The folder name is the domain's name; nothing in the code
+  declares it, so the two cannot disagree. Renaming the folder renames every
+  cross-domain call, which the compiler can do for you. Domains do not nest; a
   domain that grows too large is split into two.
+- Guardrails against misuse: generic names (`misc`, `common`, `utils`,
+  `helpers`, `core`) are rejected, because a domain must be a business area;
+  and the compiler warns when the reference graph shows a domain falling into
+  separate clusters ("these 12 entities never reference these 9"). One domain
+  is still correct for a small application.
 - A domain contains only these folders, each named after its declaration
   keyword: `entities/`, `types/`, `actions/`, `queries/`, `libraries/`,
   `routes/`, `schedules/`, `events/`, `subscribers/` and `integrations/`. A
