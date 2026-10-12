@@ -3276,7 +3276,7 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 ### Open questions
 
 1. **Is the identity always one generated field called `id`?** Today it is
-   declared four ways and generation is opt-in. *Recommendation:* yes:
+   declared four ways and generation is opt-in. *Decided 2026-10-12:* yes:
    every entity has `id`, based on `Uuid`, generated as version 7 on create
    (or the version its named type pins), never supplied by a caller; only
    seeds and migration backfills may set one. No compound identity: a join
@@ -3284,6 +3284,12 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
    `identity:`, `generated: identity` and trailing `identity`. Rails,
    Django and Ecto all default to a single `id`; Prisma allows compound
    `@@id`, which every reference to that table must then repeat.
+   A many-to-many link is its own entity with its own `id`, two references
+   and a compound unique rule (`Enrollment` with `student_course:
+   [student, course]`); a natural composite key on any entity becomes a
+   unique rule, and every reference is the single `X.id` column. Mapping an
+   existing database whose tables use composite keys is out of scope.
+
 2. **Is every entity stored in the application's database?** Today storage
    depends on the identity spelling, and `persistence { store: primary
    role: authority }` is required ritual. *Recommendation:* yes: `entity`
@@ -3346,12 +3352,22 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
    this way; Rails and Django would need a separate table per list.
 9. **Who decides indexes?** Today the compiler derives some from queries,
    warns about others, and `schema index-accept` edits the source.
-   *Recommendation:* the compiler creates every index its named queries
+   *Decided 2026-10-12:* the compiler creates every index its named queries
    need and lists each with the query that needs it in the build output;
    `index: true` remains for lookups outside the application, and the
    warning and source-editing command go. Jadpo can do this because raw
    queries are not allowed, so it sees every read; Rails, Django, Ecto and
    Prisma leave indexes to the author because they cannot.
+   Multi-column indexes are derived from queries the same way, and compound
+   unique rules create their own. Indexes for lookups outside the
+   application use the list form, `indexes: { by_tenant_created: [tenant,
+   created_at] }`. Special kinds (full-text, JSON, partial, geographic) are an
+   index with a named `kind:` option, allowed only when the entity's store
+   supports it; a partial index for the lifecycle's `visible:` rule is
+   derived. Every index change appears in its migration, and the build output
+   includes a generated schema report listing every table, column and index
+   with the query that needed it.
+
 10. **Do entity operations need a `self` receiver?** *Decided 2026-10-12:* no.
     Parameters are ordinary (`todo: Todo` for a snapshot, `todo_id: Todo.id`
     for a reference) and calls are `Todo.complete(todo_id)`, as area 1
@@ -3411,7 +3427,7 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 | Derived types | Carried from area 2: `type X = Output from Todo { pick: [...] }`; generated fields never in an `Input` | 2026-10-12 |
 | Calls and settings | Carried from areas 1 and 3: the dot names the owner (`Todo.get(id)`); actions have no settings and every write checks for concurrent change | 2026-10-12 |
 | Mapping form | Carried from area 4: write conflicts map with `condition: Failure`, a hidden record reports the same `not_found` failure | 2026-10-12 |
-| Identity | | |
+| Identity | One field `id`, `Uuid`, generated as version 7, never supplied by callers; no composite identity: many-to-many links are entities with their own `id` and a compound unique rule | 2026-10-12 |
 | Stored entities | | |
 | Caches and projections | | |
 | Compound unique rules | A named list in the entity's `unique: { }` section, `tenant_owner: [tenant, owner_email]`; the name is used by failure mapping | 2026-10-12 |
@@ -3419,7 +3435,7 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 | Inverses | Parents do not declare children; a query includes children by naming the child's reference field (syntax in area 6) | 2026-10-12 |
 | Lifecycle form | The general lifecycle stays, in the colon form (`visible:`, `transitions:`, `purge: { after: since: }`); no soft-delete shorthand for now | 2026-10-12 |
 | Storage types | | |
-| Indexes | | |
+| Indexes | Derived from named queries, including multi-column; `indexes: { name: [fields] }` for outside lookups; special kinds via a `kind:` option when the store supports it; indexes shown in migrations and in a generated schema report | 2026-10-12 |
 | Receivers | No `self`; ordinary parameters (`todo: Todo`, `todo_id: Todo.id`) and calls such as `Todo.complete(todo_id)`; `Todo.Ref` and `guard:` go | 2026-10-12 |
 | Migration workflow | | |
 | Removing data | Two migrations: retire (code stops using it, column stays), then drop; a drop needs explicit acceptance (the shared mechanism carried to area 7) | 2026-10-12 |
