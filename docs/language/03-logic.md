@@ -672,10 +672,10 @@ enum whose variants carry each one (from area 2):
 
 ```jadpo fragment
 type PartyId = Enum {
-    customer {
+    customer: {
         id: Customer.id
     }
-    supplier {
+    supplier: {
         id: Supplier.id
     }
 }
@@ -1789,8 +1789,8 @@ function fail_loudly(note: Note) -> Note {
 | Callable settings (`consistency:`, `freshness:`, `guard:`) become defaults; reading a cache or projection is declared on the cache | 6 | Follows from a decision |
 | Recursive types (`replies: List<Comment>`) are accepted and were not discussed in area 2; storing them | 5 | Input to area 5 |
 | `assert` and `advance clock by` | 13 | Input to area 13 |
-| `set: { }` and `initial: { }` become sections (`set { }`, `initial { }`) under the colon and block rule | 6 | Follows from a decision |
-| `path: { }`, `headers: { }` and inline `action: { }` leave routes under the colon and block rule (the syntax review already proposes typed path placeholders and `run:` a named action) | 7 | Follows from a decision |
+| Sections gain a colon under the colon rule (`policy: { }`, `persistence: { }`, `lifecycle: { }`); `set: { }` and `initial: { }` already follow it | 5, 6, 9 | Follows from a decision |
+| Route sections follow the colon rule; the syntax review separately proposes removing `path: { }`, `headers: { }` and inline `action: { }` | 7 | Input to area 7 |
 | Entities: `identity: id` and one-value `persistence { store: primary role: authority }` become defaults, leaving `entity Customer { id: Uuid }` (syntax review) | 5 | Proposed |
 
 ### Open questions
@@ -1905,7 +1905,10 @@ function fail_loudly(note: Note) -> Note {
     external provider runs after the commit, never inside it (areas 11 and
     12); a counter or "last seen" field that must not conflict is updated by
     the database in one step (`count + 1`) rather than read and rewritten
-    (area 6).
+    (area 6). Illustrative shapes, decided in their own areas:
+    `subscriber import_row { on: ImportEvent.row_received(row) -> attempt Product.import(row) }`;
+    `emit OrderEvent.placed(order)` in the action, with a subscriber calling
+    the provider; `set: { view_count: Post.view_count + 1 }`.
 16. **Should your own functions be generic, or accept unions?** Area 2 left
     this open. *Decided 2026-10-12:* neither. The standard library stays generic;
     a parameter that accepts several types is an enum whose variants carry
@@ -1936,4 +1939,4 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Recursion | Functions only, with a runtime depth limit that ends in a defined fault; actions and queries in a call cycle are errors | 2026-10-12 |
 | Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
-| Colon and block rule (language-wide) | `name: X` means name is or has X, a single thing (a type, a value, a named option or a `[ ]` list); `name { ... }` is a named section or member holding declarations or settings; `name: { ... }` is never written | 2026-10-12 |
+| Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |

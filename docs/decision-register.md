@@ -22,8 +22,9 @@ prefix, data named in brackets (`paid(payment)`) and no `_` on closed
 types; `attempt` only starts a statement; `for` over lists only; inline
 functions only for collection operations; recursion in functions only with a
 depth limit; no user generics or unions; callables have no settings because
-the safe choice is the default. Language-wide, `name: X` means "is or has X"
-and `name { ... }` is a named section; `name: { ... }` is never written.
+the safe choice is the default. Language-wide, every member inside braces is
+`name: value`, where a value is one thing or a `{ ... }` block
+(`paid: { ... }`, `persistence: { ... }`).
 Not yet implemented.
 
 ### Values and types — 2026-10-12

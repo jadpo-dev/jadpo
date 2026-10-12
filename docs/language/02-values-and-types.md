@@ -509,11 +509,11 @@ value is exactly one variant and has only that variant's fields.
 ```jadpo fragment
 type PaymentOutcome = Enum {
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
         paid_at: Instant
     }
-    declined {
+    declined: {
         reason: DeclineReason
     }
 }
@@ -1118,10 +1118,10 @@ type OrderStatus = Enum {              // variants
 
 type PaymentOutcome = Enum {           // variants that carry fields
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
     }
-    declined {
+    declined: {
         reason: DeclineReason
     }
 }
@@ -1502,10 +1502,10 @@ which keeps the choice explicit:
 
 ```jadpo fragment
 type PartyId = Enum {
-    customer {
+    customer: {
         id: Customer.id
     }
-    supplier {
+    supplier: {
         id: Supplier.id
     }
 }

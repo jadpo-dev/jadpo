@@ -907,9 +907,7 @@ schedule overdue_reminders {
 
 // domains/notifications/subscribers/send_order_confirmation.jadpo
 subscriber send_order_confirmation {
-    on OrderEvent.placed(order) {
-        attempt postmark.send(confirmation_for(order))
-    }
+    on: OrderEvent.placed(order) -> attempt postmark.send(confirmation_for(order))
 }
 
 // domains/payments/integrations/stripe_v2024.jadpo
