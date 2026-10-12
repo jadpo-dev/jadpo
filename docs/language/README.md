@@ -24,6 +24,7 @@ python3 tools/language_docs.py           # check and render
 - Under `## Errors`, each `### \`rule.id\`` heading is followed by its example.
   The page shows the compiler's real output, so error wording is reviewed as
   users see it.
+- A line starting with `>` renders as a note, used to mark sections a decision will change before the rework lands.
 - `## Review` holds status, consistency notes, open questions (a numbered list
   of `**Question?** context *Recommendation:* …`) and decisions. Generated
   public documentation leaves it out.

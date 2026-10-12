@@ -300,6 +300,14 @@ class Renderer:
                 trs = ''.join('<tr>' + ''.join(f'<td>{inline(c)}</td>' for c in r) + '</tr>' for r in body)
                 out.append(f'<div class="table-wrap"><table><thead><tr>{cells}</tr></thead><tbody>{trs}</tbody></table></div>')
                 continue
+            if line.startswith('>'):
+                flush()
+                quote = []
+                while i < len(lines) and lines[i].startswith('>'):
+                    quote.append(lines[i][1:].strip())
+                    i += 1
+                out.append(f'<blockquote class="note"><p>{inline(" ".join(quote))}</p></blockquote>')
+                continue
             item = re.match(r'^(\s*)(- |\d+\. )(.*)$', line)
             if item:
                 flush()

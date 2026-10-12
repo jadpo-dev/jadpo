@@ -32,6 +32,8 @@ another, and the naming rules every name follows.
 
 ## Project layout
 
+> **Changing.** Decided on 2026-10-12 to replace this with a fixed root and domain folders; see [Decided layout](#decided-layout). This section describes the compiler today.
+
 A project is every `.jadpo` file under the folder you give the compiler. A few
 folder names have a recognised role. The golden todo app is laid out like this:
 
@@ -77,6 +79,8 @@ means or its database identity.
 
 ## Source files
 
+> **Changing.** All code will live in domain folders and names stay unique project-wide; see [Decided layout](#decided-layout).
+
 File order and declaration order never matter: a declaration can refer to one
 defined later or in another file. Without module headers the whole project
 shares one namespace, and every declaration is visible everywhere. The golden
@@ -86,6 +90,8 @@ Each name can be declared once per project. A second `Count` in another file is
 an error (see `semantic.duplicate_declaration` below).
 
 ## Modules
+
+> **Being removed.** Decided on 2026-10-12: `module`, `import` and module-level `public` are replaced by domain folders, owner-qualified calls and public declarations per domain; see [Decided layout](#decided-layout).
 
 A file opts into modules by starting with a `module` header. Declarations are
 private to their module unless marked `public`, and another module uses them
@@ -129,6 +135,8 @@ The rules:
 
 ## Naming
 
+> **Changing.** Module names go away, consecutive capitals will be rejected (`VatRate`, not `VATRate`) and calls will name their owner; see [Decided layout](#decided-layout).
+
 Every name has one spelling, decided by what kind of thing it names.
 
 | Kind of name | Form | Examples |
@@ -144,6 +152,8 @@ digit. The compiler checks the case and suggests the right spelling.
 
 ## Comments
 
+> **Changing.** `///` documentation comments were decided on 2026-10-12; see [Decided layout](#decided-layout).
+
 Line comments start with `//`. They carry no meaning and are kept for tooling.
 There are no block comments and no documentation comments yet.
 
@@ -154,6 +164,8 @@ should act on it, plus a stable rule ID with a help link. Tools read the same
 fields as JSON with `jadpo check <project> --diagnostic-format=json`.
 
 ## Errors
+
+> **Changing.** The `module.*` and import errors below go away with modules, and new layout and naming errors arrive with the rework; see [Decided layout](#decided-layout).
 
 Every error this area can produce, with an example that triggers it and the
 compiler's actual output.
