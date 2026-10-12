@@ -76,7 +76,9 @@ type QuantityUnavailable = Failure {
   left out the kind's generic message is used.
 - `client: { }` holds fields sent to the caller in the response's `details`
   (question 2); `internal: { }` holds fields that never leave the server. A
-  field name cannot be in both.
+  field name cannot be in both. Fields exist only inside these two blocks, so
+  leaving `client` out means the caller gets only the code, message and
+  request id.
 - Context fields are ordinary fields: `T?` is allowed, `optional` and
   `default` are not (area 2 limits them to `Input`).
 - Where a failure lives was decided in area 1: in the file that raises it, in
@@ -1090,6 +1092,10 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    problem mapped by the integration to a declared `unavailable` failure; how
    long to wait is a setting on the integration or route (areas 7 and 11), and
    the runtime raises the timeout kind itself.
+   For example, an integration with a five-second limit maps its timeout to
+   the application's own failure, which callers handle like any other:
+   `timeout: 5s` and `timed_out: ChargeUnavailable` on the integration
+   (area 11), then `ChargeUnavailable -> ...` in a `match`.
 
 4. **What does a client see when request input breaks a rule?** Today
    `invalid_input` with no detail, so a form cannot show which field is
@@ -1175,3 +1181,6 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Internal fields in logs | Identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never | 2026-10-12 |
 | Message translation | The client translates by `code`; `message` stays fixed English | 2026-10-12 |
 | Failure declaration form | `type Name = Failure { ... }`, like every other type; a declaration with its own folder has its own keyword, anything in `types/` is a `type` | 2026-10-12 |
+| Failure fields | A failure's fields exist only in `client: { }` or `internal: { }`; a block left out means no fields of that kind, so nothing reaches the client unless it is listed under `client` | 2026-10-12 |
+| Request id | Every error response carries `request_id` (also the `x-request-id` header), and every failure, expected ones included, is logged with it, so a client can quote it and a developer can trace it | 2026-10-12 |
+| Kind is an enum | `kind:` takes a value of the closed `FailureKind` enum, written by its name (`kind: not_found`) because the setting fixes the list, per area 2's setting-options decision; never a string | 2026-10-12 |

@@ -1257,7 +1257,6 @@ compiled; exact syntax for logic is settled in area 3.
 ```jadpo fragment
 type QuantityOutOfRange = Failure {
     kind: invalid_value
-    code: "quantity_out_of_range"
 }
 
 action double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity {
@@ -1461,7 +1460,6 @@ type PartnerRef = Uuid {
 
 type TodoNotFound = Failure {
     kind: not_found             // was: kind: NotFound
-    code: "todo_not_found"
 }
 ```
 
