@@ -742,11 +742,11 @@ build/
 
 | Folder | Holds | Notes |
 |---|---|---|
-| `entities/` | One entity per file, with its own actions, queries, failures and policy | The entity's dossier |
+| `entities/` | One entity per file: its fields, unique rules, lifecycle, policy and record caches, plus its actions | Queries moved to `queries/` (area 5, 2026-10-12); failures to `failures/` (area 4) |
 | `types/` | Types used by more than one file in the domain | Single-use ones live beside their user |
 | `failures/` | One failure per file, every failure the domain raises | Added 2026-10-12 (area 4); failures raised by two or more domains go in `shared/failures/` |
 | `actions/` | Actions that change several entities in one transaction | Called by triggers or, if `public`, by other domains |
-| `queries/` | Reads across several entities | |
+| `queries/` | Every query, one per file, whatever it reads; a query's cache sits in its file | Decided in area 5 (2026-10-12) |
 | `libraries/` | Named groups of helper functions, e.g. `library rounding` | Called like the standard library: `rounding.half_even(x)` |
 | `routes/` | Named route groups with a prefix the compiler checks | HTTP trigger: the URL is written in the source |
 | `schedules/` | Time triggers: when to run which action | Replaces "jobs" |

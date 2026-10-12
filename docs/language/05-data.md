@@ -3273,7 +3273,7 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 | `migration.*` rules raised only by `jadpo schema` commands (snapshot, diff, decision, plan and SQL errors, registry read and write failures, `migration.identity_registry_missing`, `migration.identity_registry_exists`, `migration.identity_additions_have_removal`, rename errors), `index.accept_*` and `index.recommendation_*` other than the check warning, `cli.schema_*`, and `toolchain.target_store_not_implemented` (raised by `jadpo build`); none can be triggered by `jadpo check` on source | 14 | Input to area 14 |
 | The `jadpo migrate` and `jadpo rename` commands themselves (question 11) | 14 | Depends on question 11 |
 | GDPR support as its own review: personal-data marking on fields, erasure across every store and cache, export of everything held about a person, retention, and a build report of where personal data lives (Richard: strong out-of-the-box compliance helps adoption) | 5, 9, 10 | Raised |
-| Where queries live: with the entity they start from, in a domain `queries/` folder, or elsewhere | 5, 6 | Open, scenarios first |
+| Whether actions should also all live in the domain's `actions/` folder, for consistency with queries | 1, 6 | Raised |
 
 ### Open questions
 
@@ -3435,3 +3435,4 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 | Removing data | Two migrations: retire (code stops using it, column stays), then drop; a drop needs explicit acceptance (the shared mechanism carried to area 7) | 2026-10-12 |
 | Seeds | `database/seeds/` files create data through the application's own actions and refuse to run against production; reference data production needs is a migration backfill | 2026-10-12 |
 | Store declaration | Stores declared in `app.jadpo`; PostgreSQL `main` implied; same engine in every environment; D1 on the roadmap | 2026-10-12 |
+| Query placement | Every query lives in its domain's `queries/` folder, one per file, whatever it reads; entity files hold the data definition; generated operations (`Todo.get`, create, update, delete) stay on the entity; a query's cache sits in its file (Richard, after scenarios) | 2026-10-12 |
