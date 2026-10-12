@@ -1,7 +1,7 @@
 ---
 title: HTTP
 area: 7
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - route.*
@@ -23,7 +23,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 5 and this page's recommendations; each names its open question. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 7. Today's compiled syntax is collapsed beneath each section that changes.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -109,9 +109,12 @@ routes Todos {
 - A route's path follows the prefix: `GET /{todo_id: Todo.id}` answers
   `GET /todos/{todo_id}`.
 - The prefix's fixed segments joined with `_` give the file name: `/todos`
-  is `todos.jadpo`, `/admin/orders` is `admin_orders.jadpo` (question 1).
-  Prefixes never repeat or nest, so a URL from a log leads to one file; a
-  nested resource such as `/users/{user_id}/todos` sits in `Users`.
+  is `todos.jadpo`, `/admin/orders` is `admin_orders.jadpo`.
+- A prefix may hold typed placeholders, available to every route in the
+  group: `prefix: /projects/{project_id: Project.id}/todos` lives in
+  `projects_todos.jadpo`. Prefixes may share a start, but every URL matches
+  exactly one group, which the compiler checks, so a URL from a log leads to
+  one file.
 - Routes are never `public` (area 1); who may call one is authentication's
   and policy's job (areas 8 and 9).
 
@@ -1022,7 +1025,7 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
    (`/projects` and `/projects/{project_id}/todos`), so the rule becomes:
    every URL matches exactly one group, checked by the compiler. Without
    this, a multi-tenant app's routes (`/orgs/{org_id}/...`) would all pile
-   into one group in the wrong domain.
+   into one group in the wrong domain. *Decided 2026-10-12:* the revised recommendation.
 2. **One input per route, with placeholders typed in the path?** Today
    `path:`, `query:`, `headers:` and `input:`. *Recommendation:* yes:
    `GET /{todo_id: Todo.id}`, the value read as `todo_id`; one `input:` whose
@@ -1119,7 +1122,7 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
     name a route. A named form (`route get_todo { method: Method.get path:
     ... }`) adds a third name to keep in step with the action and the URL,
     and hides the URL among settings. The colon rule names this as its one
-    exception.
+    exception. *Decided 2026-10-12:* yes, as recommended.
 17. **Are writes idempotent out of the box?** Nothing on this page covers a
     client retrying a write after a timeout. *Recommendation:* yes, for every
     method except `GET` (`POST`, `PUT`, `PATCH` and `DELETE`): HTTP calls
@@ -1136,7 +1139,7 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
     Successes and failures the action returns are stored; `unavailable` and
     internal failures are not, so a retry runs again. Integration calls in
     the action send keys derived from it (area 11). An API can require the
-    key with `idempotency: Idempotency.required`; OpenAPI lists the header.
+    key with `idempotency: Idempotency.required`; OpenAPI lists the header. *Decided 2026-10-12:* yes, as recommended.
 
 ### Decisions
 
@@ -1146,11 +1149,11 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
 | Triggers | Carried from area 1: routes call actions; routes are never `public` | 2026-10-12 |
 | Documentation comments | Carried from area 1: `///` comments feed OpenAPI | 2026-10-12 |
 | Route types | Carried from area 2: routes accept `Input` and return `Output` | 2026-10-12 |
-| Colon rule | Carried from area 3: every route item is `name: value` | 2026-10-12 |
+| Colon rule | Carried from area 3: every route item is `name: value`; a route entry, keyed by method and path, is the one exception | 2026-10-12 |
 | Failure responses | Carried from area 4: one envelope with `code`, `message`, `request_id` and client `details`; status from the kind; no status mapping on routes; `x-request-id` header | 2026-10-12 |
 | Invalid input | Carried from area 4: each problem as `{ field, rule }`, never the value; area 7 sets the field format | 2026-10-12 |
 | Shared acceptance | Carried from areas 1 and 5: new domains, policy changes and database drops need an explicit acceptance; area 7 designs the shared mechanism | 2026-10-12 |
-| Route groups and prefix check | | |
+| Route groups and prefix check | `routes Todos { prefix: ... }`; file name from the prefix's fixed segments; prefixes may hold typed placeholders; every URL matches exactly one group | 2026-10-12 |
 | One input and typed placeholders | Placeholders typed in the path; one `input:` whose source follows the method; headers as `header:` on `Input` fields | 2026-10-12 |
 | `status:` and checked `output:` | `status: SuccessStatus.x`; `output:` must be an `Output` and exactly the action's result type, required unless `no_content` | 2026-10-12 |
 | What `run:` calls | A `GET` calls a named query, every other method a named action; no inline route actions | 2026-10-12 |
@@ -1165,5 +1168,5 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
 | Accepted authentication methods per API | `authentication: [...]` in each API's entry in `apis: { }`; groups and routes may only narrow it | 2026-10-12 |
 | Route URL shown | Hover shows a route's full method and path; `jadpo routes` lists every route with path, file, API, authentication and what it runs (Richard) | 2026-10-12 |
 | Route test request and `Response` | Owned by area 13; this page links to it | 2026-10-12 |
-| Route declaration form | | |
-| Idempotent writes | | |
+| Route declaration form | `GET /path { }` entries inside a `routes` group, keyed by method and path; the one exception to the colon rule | 2026-10-12 |
+| Idempotent writes | Every non-`GET` route honours `Idempotency-Key`, handled entirely by the runtime: stored with the response in the action's transaction for 24 hours, scoped to the caller; reuse with a different request is 422, in flight is 409; `unavailable` and internal failures not stored; `idempotency: Idempotency.required` per API | 2026-10-12 |
