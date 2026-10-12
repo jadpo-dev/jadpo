@@ -218,8 +218,9 @@ from the report, because Article 15 asks for that too.
 ```jadpo fragment
 // domains/accounts/actions/export_my_data.jadpo
 /// Gives the signed-in user a copy of everything held about them.
-action export_my_data() -> PersonalDataExport {
-    return User.export(current_principal.id)
+/// The route passes the caller in: `run: export_my_data(current_principal.id)`.
+action export_my_data(user_id: User.id) -> PersonalDataExport {
+    return User.export(user_id)
 }
 ```
 

@@ -209,6 +209,7 @@ build/
   report/
     database.md               every table, column and index, with the query that needs it
     queries.md                each query call: store or cache, row bound, queries per request
+    permissions.md            who can do what to every entity and field, and the actions listed apart
   diagnostics/                the error catalogue
   inventory/                  routes and callables
   audit/                      failures, entities, transactions, configuration, policy
@@ -218,8 +219,8 @@ build/
   target/                     the runnable app (jadpo build only)
 ```
 
-The catalogues and the schema report are decided (areas 1, 4 and 5) and
-not built; the query report is area 6's input, kept beside the schema report
+The catalogues, the schema report and the permissions report are decided
+(areas 1, 4, 5 and 9) and not built; the query report is area 6's input, kept beside the schema report
 because a reviewer reads them together. Each is written as Markdown, which an agent can search, with a `.json`
 twin for tools (question 10).
 
@@ -640,6 +641,7 @@ what other areas carried here and where this page answers it.
 | Seeds | Carried from area 5: `jadpo seed <name>` runs a seed through the application's actions and refuses production | 2026-10-12 |
 | Route listing | Carried from area 7: hover shows a route's full path; `jadpo routes` lists every route | 2026-10-12 |
 | Query SQL | Carried from area 6: `jadpo sql <query>` (with `--explain`) and an editor hover show a query's generated SQL; never written into source | 2026-10-12 |
+| Permissions report | Carried from area 9: the build writes `build/report/permissions.md` and a `.json` twin, a matrix of who can do what to every entity and field; changes to it appear in the approval review | 2026-10-12 |
 | Optional project path | | |
 | `--json` | | |
 | `check` writes derived files | | |

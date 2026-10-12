@@ -10,30 +10,104 @@ rules:
 
 # Policy
 
-Who may do what to which records: roles, where a role comes from, what each
-role may do to an entity and its fields, who may call an action, tenancy, and
+Who may do what to which records: grants on entities and fields, tenancy,
+actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 5 and this page's recommendations; each recommendation names its open question. Today's compiled syntax is collapsed beneath each section that changes.
+> In review. The permission model (question 1) was decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 8 and this page's recommendations; each recommendation names its open question. Today's compiled syntax is collapsed beneath each section that changes.
 
-The rule behind all of it: **policy is written once, beside the data it
-protects, and the compiler applies it to every read and write.** Code never
-checks permissions by hand and never filters by owner or tenant itself.
+**Each entity lists, for each thing you can do to it, who may do it, and the
+compiler applies that list to every read and write.**
 
-| Concept | What it says | Where it is written |
+```jadpo fragment
+// domains/todos/entities/todo.jadpo
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.restricted
+    }
+    title: TodoTitle
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+        update: [owner_id]
+        delete: [owner_id]
+    }
+}
+```
+
+"Who" is always one of three things:
+
+| Who | Written | Means |
 |---|---|---|
-| Role | A named kind of authority, such as `CompanyRole.editor` | an `Enum` in `types/` |
-| Role source | Who holds a role: an owner field, or a membership record | the entity's file |
-| Grant | What a role may do to an entity: `create`, `read`, `update`, `delete` | the entity's `policy:` |
-| Field restriction | A field only some of those roles may read or change | the field's block |
-| Application policy | Tenancy and grants for actions that touch no entity | root `policy.jadpo` |
+| A user field on the record | `owner_id` | the user that field points to |
+| A membership role | `CompanyRole.editor` | a user with that role in the record's company |
+| Everyone | `Access.authenticated`, `Access.public` | anyone signed in; anyone at all |
 
-## Roles
+## Grants
 
-A role is a variant of an `Enum`, always written with its type:
-`CompanyRole.editor`, never `editor`. The type names where the role means
-something: you are an editor *of a company*. A role grants nothing until an
-entity's policy says what it may do.
+An entity's `policy:` has up to four lists: `create`, `read`, `update` and
+`delete`. Each names who may do that; anyone in the list is enough, and
+anything not listed is refused. So "who can delete a project?" is one line.
+
+A lifecycle transition is an update, with one exception from area 6:
+`Todo.delete(todo)` needs `delete` whether it removes the record or runs the
+lifecycle's `delete` transition, so a soft delete is still a delete.
+
+Nobody writes which grant an action needs. The compiler sees what each query
+and action reads and writes: every action that updates a `Todo` needs
+`update` on it, so ten actions that edit todos share one line of policy. An
+action that reaches several entities needs a grant on each, and a call to
+another domain's action is checked against that action's entities with the
+same caller.
+
+Policy is always on (question 2): from the first line of code, every
+reachable create, read, update or delete needs a grant.
+
+::: today
+
+Grants are keyed by role, `TodoRole.owner: [create, read, update, delete]`,
+and each role needs an enum and a field or membership that gives it out
+(`policy.role_unbound`). Policy only starts once something in the project
+declares one, so a project with none compiles every read and write
+unprotected.
+
+:::
+
+## A user field on the record
+
+Naming a reference to the user entity, such as `owner_id`, grants the user it
+points to. Creating checks the new record, so `create: [owner_id]` means a
+caller can only create a todo they own; a request naming someone else is
+refused.
+
+A user field named anywhere in a policy cannot be changed by an ordinary
+update, so it needs no `immutable:`. Handing a record to someone else is a
+named action listed in root `policy.jadpo` (see Actions).
+
+::: today
+
+The field carries a role, and `immutable: true` must be written, the only
+value allowed (`policy.role_field_update_forbidden` without it,
+`policy.binding_mutable` with `false`):
+
+```text
+owner_id: User.id {
+    role: TodoRole.owner
+    immutable: true
+}
+```
+
+:::
+
+## A membership role
+
+A role exists only where it is stored: in a membership entity, whose
+`membership:` section says which record the role is held in (`scope`), who
+holds it (`member`) and which field holds the role. The role enum lives
+beside it in the same domain, and other domains use it by its full name. There
+is no global roles file.
 
 ```jadpo fragment
 // domains/accounts/types/company_role.jadpo
@@ -42,51 +116,8 @@ type CompanyRole = Enum {
     editor
     viewer
 }
-```
 
-Two built-in subjects need no role: `Access.authenticated` is anyone signed
-in, and `Access.public` is anyone at all (the route must also say
-`auth: none`, area 7). There is no role hierarchy and no administrator who
-bypasses policy: an owner who may also edit is listed under both.
-
-::: today
-
-Roles are `enum TodoRole { owner }` declarations.
-
-:::
-
-## Where a role comes from
-
-Roles come only from data the application stores, never from a token, a
-header or request input. There are two sources.
-
-**An owner field.** `role:` in a reference field's block says that the user it
-points to holds that role for this record. A role field cannot be changed by
-an ordinary update, so it needs no `immutable:` (question 5); moving
-ownership is a named action with its own grant.
-
-```jadpo fragment
-entity Todo {
-    id: Uuid
-    owner_id: User.id {
-        on_delete: OnDelete.restricted
-        role: TodoRole.owner
-    }
-    title: TodoTitle
-
-    policy: {
-        TodoRole.owner: [Effect.create, Effect.read, Effect.update, Effect.delete]
-    }
-}
-```
-
-**A membership record.** An entity with a `membership:` section gives its
-`member` the stored `role` within its `scope`: a company, or `application`
-for roles that hold everywhere. Only current records count: a membership the
-lifecycle hides (expired, removed) grants nothing, and removing it takes
-effect on the next request.
-
-```jadpo fragment
+// domains/accounts/entities/company_membership.jadpo
 entity CompanyMembership {
     id: Uuid
     company_id: Company.id {
@@ -104,16 +135,47 @@ entity CompanyMembership {
     }
 
     policy: {
-        CompanyRole.owner: [Effect.create, Effect.read, Effect.update, Effect.delete]
+        create: [CompanyRole.owner]
+        read: [CompanyRole.owner, user_id]
+        update: [CompanyRole.owner]
+        delete: [CompanyRole.owner, user_id]
     }
 }
 ```
 
+A role applies to another entity through its reference to the scope, the
+same reference tenancy uses:
+
+```jadpo fragment
+// domains/projects/entities/project.jadpo
+entity Project {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    name: ProjectName
+
+    policy: {
+        create: [CompanyRole.editor]
+        read: [CompanyRole.viewer, CompanyRole.editor]
+        update: [CompanyRole.editor]
+        delete: [CompanyRole.owner]
+    }
+}
+```
+
+- There is no hierarchy: an owner who may also edit is listed under both.
+- Only current memberships count. One the lifecycle hides grants nothing, and
+  removing one takes effect on the next request.
+- A role held across the whole application, such as staff, uses
+  `scope: MembershipScope.application`.
+- If an entity has two references to the scope, each grant names the one it
+  means: `TeamRole.lead(from_team_id)` (question 5).
+
 ::: today
 
-The same, without colons, and `immutable: true` must be written on every role
-field (`policy.role_field_update_forbidden` without it,
-`policy.binding_mutable` with `false`):
+The same, with role enums declared as `enum`, no colons, and an owner role
+given out by a field:
 
 ```jadpo project=today-membership
 enum CompanyRole {
@@ -158,79 +220,24 @@ entity CompanyMembership {
 
 :::
 
-## Granting access to an entity
+## Anyone signed in, or anyone
 
-An entity's `policy:` lists each role with what it may do. The four effects
-are `create`, `read`, `update` and `delete`; deleting includes a lifecycle
-delete such as a soft delete, and `update` cannot set `deleted_at` itself.
-Anything not listed is refused. Several roles on one entity are alternatives:
-any one of them is enough.
+`Access.authenticated` is anyone signed in, and `Access.public` is anyone at
+all. A public read also needs a route that says
+`authentication: RouteAuthentication.none` (area 8); either alone is not
+enough. There is no administrator who bypasses policy.
 
 ```jadpo fragment
 entity Article {
-    id: Uuid
-    company_id: Company.id {
-        on_delete: OnDelete.cascade
-    }
-    title: ArticleTitle
-
+    ...
     policy: {
-        CompanyRole.owner: [Effect.create, Effect.read, Effect.update, Effect.delete]
-        CompanyRole.editor: [Effect.read, Effect.update]
-        CompanyRole.viewer: [Effect.read]
+        read: [Access.public]
+        create: [CompanyRole.editor]
+        update: [CompanyRole.editor]
+        delete: [CompanyRole.owner]
     }
 }
 ```
-
-Nobody writes which effect an action needs. The compiler sees what each query
-and action reads and writes, and every one of them that updates an `Article`
-needs `update` on it. Ten actions that edit articles share one line of policy.
-An action that reaches several entities needs a grant on each; a call to
-another domain's action carries the caller's identity and that action's own
-policy applies.
-
-Policy is always on (question 2). Today it only starts once something in the
-project declares a policy, so a project with none compiles every read and
-write unprotected, including from a public route.
-
-## Which records a caller sees
-
-The compiler adds policy to every query and write, so a caller only ever
-touches records their roles cover. The read below is all an author writes
-(its syntax is area 6); the owner or membership condition is added to its
-SQL `WHERE`:
-
-```jadpo fragment
-var article: Article = attempt Article.get(article_id)    // policy adds: and the caller holds a role in its company
-```
-
-- **Scope.** An entity using `CompanyRole` must reach `Company` through
-  exactly one reference, which the compiler finds itself (`Article.company_id`
-  above). With two references to `Company`, `scope: source_company_id` in the
-  `policy:` section picks one.
-- **Lists** leave out records the caller may not see, before paging, so page
-  sizes and counts never reveal them.
-- **Single records** the caller may not see fail with the query's own
-  `missing:` failure, exactly like a record that does not exist (area 4).
-- **Creating** checks the new record before it is saved: an article in a
-  company where the caller has no role is refused.
-- **Writes** check in the same statement as the change, so a membership
-  removed a moment earlier cannot slip through.
-- **Children** are checked on their own: reading a company does not grant
-  reading its articles.
-
-::: today
-
-This works (read from generated code). The golden todo application still
-passes the principal into every action and filters by owner by hand,
-`where: owner_id == Todo.owner_id(principal.user_id)`, which repeats what
-policy already adds. The generated condition for `Todo` is:
-
-```text
-UPDATE "todo" SET ... WHERE "todo"."id" = $1 AND ("todo"."owner_id" = $2)
-```
-
-:::
 
 ## Tenancy
 
@@ -245,12 +252,12 @@ policy {
 }
 ```
 
-Every entity must then reach `Company` through exactly one reference, and
-every grant on it, `Access.authenticated` included, applies only within
-companies where the caller holds a role. An entity that is shared by all
-tenants (a list of countries, the `User` record itself) says
-`tenant: none` in its `policy:`, which shows in the approval review. A new
-entity an agent adds is tenant-scoped unless someone approves otherwise.
+Every entity must then have one reference to `Company` (a task carries its
+own `company_id`, not only its project's), and every grant on it,
+`Access.authenticated` included, applies only within companies where the
+caller has a membership. An entity shared by every tenant, such as a list of
+countries or `User` itself, says `tenant: Tenancy.shared` in its `policy:`.
+A new entity is tenant-scoped unless someone accepts otherwise.
 
 ::: today
 
@@ -261,42 +268,88 @@ does not compile (`syntax.expected_declaration`). It is retired.
 
 :::
 
-## Fields
+## Actions
 
-A field follows its entity's policy unless its block narrows it. A field
-restriction can only take away: it cannot give a role an effect the entity
-does not (`policy.field_widens_entity`). A field no client may read or write
-says so by name (question 6):
+An action takes its permission from the entities it touches. Root
+`policy.jadpo` lists the few that cannot, under `actions:` (question 4):
+
+- an action that touches no entity, such as an operator's health report,
+  which is otherwise refused;
+- an action that needs different people from its entity's grants, such as
+  handing a todo to someone else, or creating a company together with its
+  first owner's membership.
 
 ```jadpo fragment
-entity Article {
+// policy.jadpo
+policy {
+    tenant: Company
+    actions: {
+        todos.transfer_todo: [Todo.owner_id]
+        accounts.create_company: [Access.authenticated]
+        monitoring.health_report: [StaffRole.operator]
+    }
+}
+```
+
+`Todo.owner_id` means the current owner of the todo the action changes. For
+that action, the listed people replace the entity grants on what it reaches; field restrictions and tenancy still apply. Calling an integration
+needs nothing extra: permission to run the action covers it (question 9).
+
+::: today
+
+A non-entity action states `policy { Role: [invoke] }` as the first item in
+its body, and an exception sits in the entity's `policy { operations { } }`
+block: two places for one idea, the first a setting area 3 removed.
+
+```jadpo project=today-invoke
+output Health {
+    ok: Bool
+}
+
+action health_report() -> Health {
+    policy {
+        Access.authenticated: [invoke]
+    }
+    return Health { ok: true }
+}
+```
+
+:::
+
+## Field restrictions
+
+A field follows its entity's grants unless its block narrows them, in the
+same shape. A field can only take away: it cannot grant anyone more than the
+entity does (`policy.field_widens_entity`). A field no client may read or
+write says so by name.
+
+```jadpo fragment
+entity Project {
     ...
-    billing_reference: Text? {
+    budget: ProjectBudget {
         policy: {
-            CompanyRole.owner: [Effect.read, Effect.update]     // editors may update the article, not this
+            read: [CompanyRole.editor]
+            update: [CompanyRole.editor]
         }
     }
-    authentication_subject: Text {
-        policy: FieldAccess.server_only           // set by the server, never read or written by a client
+    import_reference: Text {
+        policy: FieldAccess.server_only
     }
 }
 ```
 
 - **Writes.** If a request changes a field the caller may not change, the
-  whole write is refused; nothing is dropped silently and nothing partial is
-  saved. `immutable: true` fields, generated fields and lifecycle fields are
-  never caller-writable, whatever the grant (area 5).
-- **Outputs.** An output type has one shape for everyone. If any role allowed
+  whole write is refused; nothing is dropped silently.
+- **Outputs.** An output type has one shape for everyone. If anyone allowed
   to call a query cannot read one of its output fields, the query does not
-  compile (`policy.output_field_unproved`); the fix is a second query and
-  output for the narrower audience, such as `ArticleBillingView`.
-- **Copies.** Passing a value through a variable, an input or a wider type
-  does not escape the field's rules; the compiler tracks where it came from.
+  compile (`policy.output_field_unproved`); the fix is a second query with a
+  narrower output.
+- **Copies.** Passing a value through a variable or another type does not
+  escape the field's rules; the compiler tracks where it came from.
 
 ::: today
 
-`policy {}` with nothing inside marks a server-only field, the same block
-that elsewhere lists roles:
+`policy {}` with nothing inside marks a server-only field:
 
 ```jadpo project=today-fields
 enum UserRole {
@@ -323,127 +376,97 @@ entity User {
 
 :::
 
-## Who may call an action
+## The permissions report
 
-Decided in area 3: an action has no settings, and who may call it is policy.
-Most actions need nothing: their permission comes from the entities they
-touch. Two cases need a grant, and both go in root `policy.jadpo` under
-`actions:` (question 4):
+Policy is written beside each entity, so nobody has to keep a central copy.
+The compiler writes the global view, `build/report/permissions.md` with a
+`.json` twin: who can do what to every entity and field, and which actions
+are listed separately.
 
-- an action that touches no entity, such as an operator's health report or a
-  data export, which is otherwise refused;
-- an action that needs different roles from its entity's grants, such as
-  `disable_user`, which a user may run on their own account although they may
-  not otherwise update it. These are rare and always reviewed.
+Part of the report for `Project`, with `CompanyRole` shortened:
 
-```jadpo fragment
-// policy.jadpo
-policy {
-    tenant: Company
-    actions: {
-        monitoring.administrative_health: [ApplicationRole.operator]
-        accounts.disable_user: [UserRole.self]
-    }
-}
-```
+| `projects.Project` | create | read | update | delete |
+|---|---|---|---|---|
+| the record | editor | viewer, editor | editor | owner |
+| `budget` | | editor | editor | |
+| `import_reference` | | server only | server only | |
 
-The roles listed may call the action, and for that action they replace the
-entity grants on what it reaches; field rules and scope still apply. A route
-with `auth: none` may call an action only when everything it reaches allows
-`Access.public`.
+Changes to this matrix appear in the approval review in plain terms
+("viewers can now read `budget`").
+
+## Protecting policy
+
+Decided in area 1: an agent can edit policy, but the change cannot ship
+without a person's approval, wherever it is written. The compiler compares
+the whole application before and after, because access also widens when an
+output gains a field, a route becomes public or an action starts touching
+another entity. Each widening needs an acceptance file in `acceptances/`, the
+form area 7 decided for breaking API changes and database drops.
+
+Who schedules and subscribers act as is area 12's question; whatever is
+decided shows in the permissions report. The compiler's own purge of
+soft-deleted records (area 5) is the only operation outside policy.
 
 ::: today
 
-A non-entity action states `policy { Role: [invoke] }` as the first item in its
-body, and an exception sits in the entity's `policy { operations { } }`
-block. These are two places for one idea, and the first is a setting area 3
-removed:
-
-```jadpo project=today-invoke
-output Health {
-    ok: Bool
-}
-
-action health_report() -> Health {
-    policy {
-        Access.authenticated: [invoke]
-    }
-    return Health { ok: true }
-}
-```
+`build/approval/subject.json` lists every grant, binding, scope and
+reachable effect, and `jadpo approval --before` compares two versions.
+Nothing stops an unapproved release.
 
 :::
 
 ## When policy says no
 
+The compiler adds policy to the SQL `WHERE` of every query and write (area
+6), and indexes every field a policy condition filters on.
+
 | Situation | The client sees |
 |---|---|
 | Not signed in, on a route that needs it | 401 `unauthenticated` (area 8) |
 | A record the caller may not see, read or changed by id | the code's own `not_found` failure, as if it did not exist |
-| A list | the records the caller may see |
+| A list | only the records the caller may see, filtered before paging |
 | A create, or an action they may not call | 403 `not_permitted` |
 
-Decided in area 4: a hidden record reports the same `not_found` failure the
-code already maps, and the log records that policy concealed it. A refusal
-that reveals no record is raised by the runtime with the fixed code
-`not_permitted`; it is never listed in `fails` (question 7), and the generated
-API description lists the 403 for every route that can reach it.
+A hidden record reports the same `not_found` failure the code already maps,
+and the log records that policy concealed it (area 4). `not_permitted` is
+raised by the runtime and never listed in `fails` (question 7); the generated
+API description lists the 403 wherever it can happen. Writes are checked in
+the same statement as the change, so a membership removed a moment earlier
+cannot slip through.
+
+A token issued to another application (area 8) carries scopes, and scopes
+only narrow: the token may do what both the person's grants and its scopes
+allow (question 6).
 
 ::: today
 
-Both work (read from generated code), but nothing is logged: a concealed
-record and a missing one leave the same trace.
+Concealment and refusals work (read from generated code), but nothing is
+logged: a concealed record and a missing one leave the same trace. The golden
+todo actions still filter by owner by hand, repeating what policy adds:
+
+```text
+UPDATE "todo" SET ... WHERE "todo"."id" = $1 AND ("todo"."owner_id" = $2)
+```
 
 :::
 
-## Caches
+## Caches and personal data
 
-Decided in area 5: caches hold copies for display reads only. A record cache
-holds records before policy and applies policy on every read, exactly as the
-database does; a query-result cache is keyed by the tenant and by every input
-policy used, so one caller's results never reach another. Policy itself, role
-lookups included, always reads the database, so a removed membership takes
-effect at once.
+Decided in area 5: a record cache applies policy on every read, a
+query-result cache is keyed by the tenant and every input policy used, and
+policy itself always reads the database.
 
-## Personal data
-
-GDPR support is designed in area 15 (Personal data). Policy needs one fact
-from it: which fields hold personal data, marked in the field's block. Policy then
-keeps those values out of logs and failure details (area 4 hashes text
-today) and out of any output not covered by a grant, and erasure can find
-every copy. The marking itself is designed in that review.
-
-## Protecting policy
-
-Decided in area 1: an agent can edit policy, but the change cannot ship
-without human approval, wherever the policy is written. The compiler compares
-the whole application before and after, not just `policy:` blocks, because
-access also widens when an output gains a field, an input reaches a new
-field, a route becomes public or an action starts touching another entity.
-Each such change is listed for a person to accept, in plain terms ("viewers
-can now read `billing_reference`").
-
-Schedules and subscribers act as a declared service principal with its own
-roles (areas 8 and 12); being internal bypasses nothing. The one exception is
-the compiler's own purge of soft-deleted records past their retention (area
-5), which no application code can call.
-
-::: today
-
-`build/approval/subject.json` lists every grant, binding, scope and
-reachable effect, and `jadpo approval --before` compares two versions. The
-protected sign-off that would stop an unapproved release is not built.
-
-:::
+Area 15 owns personal data. Policy supplies its permissions: erasing a
+person's data needs `delete` on their record and exporting it needs `read`.
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
+> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands. Under the decided model, `policy.binding_duplicate`, `policy.binding_mutable`, `policy.role_field_update_forbidden`, `policy.invoke_context`, `policy.operation_unknown` and `policy.operation_effect_mismatch` disappear; the rest keep their meaning in the new vocabulary.
 
 Every error this area can produce, with an example that triggers it and the
 compiler's actual output.
 
-### Where roles come from
+### Owner fields and memberships
 
 ### `policy.role_unbound`
 
@@ -951,7 +974,7 @@ action public_health() -> Health {
 
 ### `policy.public_grant_missing`
 
-A route with `auth: none` reaches an entity that does not grant `Access.public`:
+A route that needs no sign-in reaches an entity that does not grant `Access.public`:
 
 ```jadpo project=e-public-grant-missing expect=policy.public_grant_missing
 entity Article {
@@ -1183,118 +1206,125 @@ the code generated for `examples/golden-todo-migration` and
 
 | Feature | Status |
 |---|---|
-| Roles, owner fields, memberships, grants | Work, with the errors below (compiled). `Access.public` and `Access.authenticated` work. |
-| Policy on by default | **Gap (compiled):** policy only starts once something declares one. A project with no policy compiles a `GET /notes/{id}` route with `auth: none` that reads any note; adding one `policy` anywhere makes the same read `policy.effect_ungranted`. |
-| Scoping reads and writes | Works: the owner or membership condition is added to the SQL of reads, updates and deletes, and a create is checked against the new record (read from generated code). An entity with no grants is refused every create. |
+| Roles, owner fields, memberships, grants | Work in today's role-keyed form, with the errors above (compiled). `Access.public` and `Access.authenticated` work. The decided model is not built. |
+| Policy on by default | **Gap (compiled):** policy only starts once something declares one. A project with no policy compiles a public `GET /notes/{id}` route that reads any note; adding one `policy` anywhere makes the same read `policy.effect_ungranted`. |
+| Scoping reads and writes | Works: the owner or membership condition is added to the SQL of reads, updates and deletes, and a create is checked against the new record (read from generated code). |
 | Hand-written filters | The golden todo actions take `principal: Principal.user` and filter `where: owner_id == Todo.owner_id(principal.user_id)` by hand, repeating policy (read from source). |
-| Concealment | A hidden record fails with the query's `missing:` failure, the same as absence (read from generated code). **Gap:** nothing is logged, so concealment cannot be told from absence afterwards. |
+| Concealment | A hidden record fails with the query's `missing:` failure (read from generated code). **Gap:** nothing is logged. |
 | Refusals | 403 `not_permitted`, "This operation is not permitted.", for a refused create or action (read from generated code). |
-| Fields | Narrowing, server-only (`policy {}`), whole-write refusal and output checks work (compiled; `policy.output_field_unproved`). |
-| Role fields | Must say `immutable: true`, the only value allowed (compiled). |
+| Fields | Narrowing, server-only (`policy {}`), whole-write refusal and output checks work (compiled). |
 | Action grants | Two places: `policy { Role: [invoke] }` inside an action's body, and `operations { }` inside an entity's policy (compiled). |
 | Root `policy.jadpo` | Design-only sentence language; `syntax.expected_declaration` (compiled). No tenancy declaration exists. |
-| Approval | `build/approval/subject.json` and `jadpo approval --before` describe policy changes; the protected sign-off that blocks a release is not built (approval protocol). |
-| Caches, personal data | Nothing to check: caches were removed in area 5, and there is no personal-data marking. |
+| Permissions report | Not built. `build/approval/subject.json` lists grants for the approval review; nothing blocks a release. |
 
 ### Consistency with the rest of the language
 
-- **Colon rule.** `policy { }`, `membership { }` and `operations { }` lack
-  the colon area 3 decided for sections.
-- **An action setting survives.** `policy { }` as the first item of an
-  action body is a setting, which area 3 removed from actions.
-- **Ritual line.** `immutable: true` on a role field restates the only value
-  allowed (syntax review §4, "settings with one legal value").
-- **An empty block means something.** `policy {}` on a field means "no
-  client", while an absent block means "as the entity" (syntax review #51).
-- **Two effect vocabularies.** Entities use `create`, `read`, `update`,
-  `delete`; actions use `invoke`. The proposed `actions:` grants list roles
-  only, so `invoke` goes.
-- **`scope:` beside grants.** `scope: source_company_id` sits in the same
-  block as role lines; it is a different kind of member, though the qualified
-  role names keep them apart.
-- **`role` means two things.** A field setting (`role: CompanyRole.owner`)
-  and a membership's stored field (`role: role`); with `persistence` gone
-  (area 5) these are the only two.
+- **Fewer concepts.** The decided model removes role enums that store
+  nothing, the `role:` field setting, the "role source", `invoke`,
+  `operations { }` and the `Effect` values. `role` now has one meaning: the
+  membership field that stores it.
+- **Colon rule and enum values.** Every section is `name: { }`, and fixed
+  options are `Type.value`: `OnDelete.cascade`, `FieldAccess.server_only`,
+  `MembershipScope.application`, `Tenancy.shared`.
+- **One setting, two kinds of value.** `scope:` takes a field or
+  `MembershipScope.application`; an entity's `tenant:` takes a field (when it
+  has two references to the tenant) or `Tenancy.shared`. Both read as "where
+  this belongs", so they are kept.
+- **Grant lists mean "any of".** That is why an OAuth scope, which must hold
+  as well as a grant, is not put in the same list (question 6).
 - **Policy repeated in code.** Hand-written owner filters and principal
-  parameters duplicate what policy adds, and drift from it when policy
-  changes.
+  parameters duplicate what policy adds. Area 8 passes `current_principal`
+  to actions as a parameter for the action's own use; policy never needs it.
 
 ### Carried to later areas
 
 | Item | Area | Status |
 |---|---|---|
-| How an action reaches the signed-in principal without a `principal` parameter; policy never needs it passed | 8 | Input to area 8 |
-| `auth: none` and fresh sign-in on routes; a public route needs both `auth: none` and `Access.public` | 7, 8 | Input to areas 7 and 8 |
-| The service principal and roles that schedules and subscribers act as | 8, 12 | Input to areas 8 and 12 |
+| Who schedules and subscribers act as, and how policy applies to them | 12 | Depends on area 12 question 8 |
 | Event and subscriber policy (today's candidate `policy { scope: f  Role: [invoke, read] }`, syntax review #52) | 12 | Input to area 12 |
-| Includes apply each child's own policy; children of a soft-deleted parent are a lifecycle question, not policy (area 5 carried it to 6 and 9) | 6 | Input to area 6 |
-| Generated query plans, indexes for policy conditions, and PostgreSQL row-level security as optional defence in depth generated from the same policy | 6 | Input to area 6 |
-| One "accept a reviewed change" mechanism for policy, public API, drops and domains (area 4 carried it to area 7) | 7 | Input to area 7 |
 | Testing policy: calling an action as a given user and expecting `not_found` or `not_permitted` | 13 | Input to area 13 |
-| The approval command, its report and the protected sign-off | 14 | Input to area 14 |
-| Personal-data marking on fields, erasure, export, retention and log redaction (GDPR review) | 15 | Moved to area 15 |
+| The permissions report (`build/report/permissions.md` and `.json`) and its place in the approval review | 14 | Carried to area 14 |
+| The protected sign-off that stops an unaccepted release | 14 | Area 14 question 12 |
+| Personal-data marking, erasure, export, retention and log redaction | 15 | Moved to area 15 |
 
 ### Open questions
 
-1. **Keep the role model, tidied, or move to rules written as conditions or
-   as relationships?** Today's model has five concepts (role, role source,
-   grant, field restriction, action grant) and the compiler proves every
-   query and write against them. *Recommendation:* keep it, with the
-   simplifications below; see
-   [the proposals](research/09-policy-proposals.md). Condition rules
-   (Pundit, Supabase row-level security) read naturally but let every rule
-   differ; relationship models (OpenFGA, Oso) add inheritance between roles
-   that most business applications do not need yet.
+1. **Which permission model?** Today's model has five concepts (role, role
+   source, grant, field restriction, action grant). *Recommendation:* keep
+   it, tidied; see [the proposals](research/09-policy-proposals.md).
+   *Decided 2026-10-12:* a simpler model (Richard). Grants are keyed by what
+   you do (`create`, `read`, `update`, `delete`); "who" is a user field on the
+   record, a membership role, or `Access.authenticated` / `Access.public`;
+   role enums exist only beside the membership that stores them; a user field
+   named in policy cannot be changed by an ordinary update; field
+   restrictions use the same shape, with `FieldAccess.server_only`; the global
+   view is the generated permissions report; root `policy.jadpo` keeps only
+   tenancy and `actions:`.
 2. **Is policy always on?** Today a project with no policy has none.
    *Recommendation:* yes. Every reachable create, read, update or delete
    needs a grant from the first line of code, so an application cannot ship
-   with policy forgotten. Ash and Supabase row-level security also refuse by
-   default, but Supabase only once a table has it switched on, which is a
-   known source of leaks.
+   with policy forgotten. Ash refuses by default too; Supabase row-level
+   security only once it is switched on per table, a known source of leaks.
 3. **How is tenancy declared?** *Recommendation:* `tenant: Company` in root
-   `policy.jadpo`. Every entity must then reach the tenant through one
-   reference or say `tenant: none`, and every grant applies only inside the
-   caller's tenants, `Access.authenticated` included. This is the one setting
-   that stops a new entity leaking across customers. Rails' `acts_as_tenant`
-   and Supabase policies do the same per model or table, where it can be
+   `policy.jadpo`. Every entity then needs one reference to the tenant, or
+   names it with `tenant: source_company_id` if it has two, or says
+   `tenant: Tenancy.shared`; every grant applies only inside the caller's
+   tenants, `Access.authenticated` included. This is the one setting that
+   stops a new entity leaking across customers. Rails' `acts_as_tenant` and
+   Supabase policies do the same per model or table, where it can be
    forgotten.
 4. **Where does permission to call an action live?** Area 3 removed action
    settings. *Recommendation:* every action takes its permission from the
-   entities it touches; the few that touch none, or need different roles,
+   entities it touches; the few that touch none, or need different people,
    are listed in root `policy.jadpo` under
-   `actions: { domain.action: [Role, ...] }`. One place answers "who may call
-   this?", and `invoke` and entity `operations { }` go. The alternative,
-   keeping exceptions in the entity file, splits action grants across two
-   kinds of file.
-5. **Is a role field immutable without saying so?** *Recommendation:* yes.
-   `role:` already makes the field unchangeable by ordinary updates; writing
-   `immutable: true` adds nothing, and `immutable: false` is an error today.
-   Transferring ownership is a named action granted in `actions:`.
-6. **How is a field no client may touch written?** *Recommendation:*
-   `policy: FieldAccess.server_only`, a named option instead of an empty block, so "no
-   access" never looks like an accident (syntax review #51).
+   `actions: { domain.action: [...] }`, with the same three kinds of who. One
+   place answers "which actions are exceptions?", and `invoke` and entity
+   `operations { }` go.
+5. **How does a grant choose between two references to a membership's
+   scope?** An entity such as a team handover has `from_team_id` and
+   `to_team_id`, both `Team.id`, so `TeamRole.lead` is ambiguous.
+   *Recommendation:* name the field in brackets, `TeamRole.lead(from_team_id)`,
+   read as "lead of the from-team"; only needed when there are two
+   references, and the compiler says so otherwise. It matches how area 3
+   names a variant's data in brackets. The alternatives are a `scope:` member
+   for the whole policy (cannot grant leads of either team) or an `on`
+   keyword like Oso's `"lead" on "from_team"` (a new word for one case).
+6. **How does a grant require an OAuth scope?** Area 8 decided that scopes
+   from any token narrow what policy allows. *Recommendation:* a `scopes:`
+   member in the entity's `policy:`, keyed by the same four names:
+   `scopes: { read: OAuthScope.todos_read  update: OAuthScope.todos_write }`,
+   where `OAuthScope` is generated from the scopes declared in
+   `authentication.jadpo`. A caller whose token carries scopes needs both a
+   grant and the scope; signed-in browsers and service keys are unaffected.
+   An effect with no scope listed is refused to scoped tokens, so a new
+   entity is never exposed to other applications by accident; an
+   `external_token` method narrows only if it declares the scopes it reads.
+   It is a separate member because grant lists mean "any of" and a scope
+   must hold as well. GitHub and Google scopes work the same way: the token
+   never exceeds the person.
 7. **Is a policy refusal listed in `fails`?** *Recommendation:* no. Like
-   `unauthenticated`, `not_permitted` from policy is raised by the runtime with
-   a fixed code, and the API description lists the 403 wherever it can happen.
-   Listing it would add the same name to most actions and say nothing a
-   reader can act on. A business refusal an action raises itself is still an
-   ordinary `kind: FailureKind.not_permitted` failure.
+   `unauthenticated`, `not_permitted` from policy is raised by the runtime
+   with a fixed code, and the API description lists the 403 wherever it can
+   happen. A business refusal an action raises itself is still an ordinary
+   `kind: FailureKind.not_permitted` failure.
 8. **Who may issue, list and revoke service keys?** (carried from area 8)
-   Area 8 generates `Service.issue_key`, `Service.keys` and
-   `Service.revoke_key`; which callers may use them?
-9. **Who may call an integration?** (carried from area 11) This replaces
-   today's `external_effect` policy block. Is calling an integration covered
-   by the grants on the entities an action touches, by the `actions:` list,
-   or by its own grant?
+   *Recommendation:* the `Service` record's own grants: `update` on the
+   service to issue or revoke a key (`Service.issue_key`,
+   `Service.revoke_key`), `read` to list them (`Service.keys`). A service
+   owned through `owner_id` is then managed by its owner, with no new
+   concept.
+9. **Who may call an integration?** (carried from area 11) *Recommendation:*
+   whoever may run the action that calls it; no separate grant, and today's
+   `external_effect` block goes. An action that only calls an integration
+   touches no entity, so it is listed under `actions:` anyway.
 10. **Is a policy weakening accepted with area 7's shared acceptance
-    form?** (carried from area 7) "Protecting policy" above lists each
-    widening for a person to accept but does not say how the acceptance is
-    recorded. Does it use the same `acceptances/` file as database drops,
-    breaking API changes and new domains?
+    form?** *Decided 2026-10-12:* yes, already decided in area 7: one
+    acceptance file per change in `acceptances/`, the same form as breaking
+    API changes, database drops and new domains.
 11. **Who owns personal-data marking and the classification of internal
-    fields for log redaction?** (carried from areas 4 and 5) "Personal data"
-    above defers both to a GDPR review that no area owns. Which area designs
-    it? *Decided 2026-10-12:* area 15, Personal data.
+    fields for log redaction?** (carried from areas 4 and 5) *Decided
+    2026-10-12:* area 15, Personal data. Erase maps to the `delete` grant and
+    export to `read`.
 
 ### Decisions
 
@@ -1304,18 +1334,22 @@ the code generated for `examples/golden-todo-migration` and
 | Root file | Carried from area 1: `policy.jadpo` holds application-wide policy, such as tenancy; it is an unnamed singleton | 2026-10-12 |
 | Action settings | Carried from area 3: actions have no settings; who may call an action is decided by policy | 2026-10-12 |
 | Colon rule | Carried from area 3: sections are `name: { ... }` (`policy: { }`, `membership: { }`) | 2026-10-12 |
-| Setting options and lists | Carried from area 2: closed options are lower_snake_case names; lists are `[ ]` (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
+| Setting options and lists | Carried from area 2: fixed options are enum values written `Type.value`; lists are `[ ]` | 2026-10-12 |
 | Concealment | Carried from area 4: a record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |
 | Caches | Carried from area 5: caches serve display reads only; keys include tenant and policy inputs; reads inside policy never use a cache; erasure wipes cached copies | 2026-10-12 |
 | Placement | Carried from areas 1 and 5: an entity's policy is in its file; actions and queries are in their own folders | 2026-10-12 |
-| Policy model | | |
+| Policy in queries | Carried from area 6: policy is compiled into each query's `WHERE`; fields a policy condition filters on get indexes; row-level security later, opt-in | 2026-10-12 |
+| The caller | Carried from area 8: policy gets the caller from the runtime; `current_principal` exists in routes only; principal fields are `id`, `subject`, `strength` | 2026-10-12 |
+| Public routes | Carried from area 8: a route opts out with `authentication: RouteAuthentication.none` | 2026-10-12 |
+| OAuth scopes | Carried from area 8: scopes from any token (`oauth_token`, `external_token`) narrow what policy allows | 2026-10-12 |
+| Policy model | Grants keyed by effect in `policy: { create: read: update: delete: }`; who is a user field on the record, a membership role, or `Access.authenticated` / `Access.public`; role enums only beside the membership that stores them, used elsewhere by full name; a membership role applies through the reference to its scope; user fields named in policy cannot change by ordinary update, transfer is a listed action; field restrictions in the same shape plus `FieldAccess.server_only`; a lifecycle transition is an update except `delete`; generated `build/report/permissions.md` and `.json` matrix shown in the approval review; root `policy.jadpo` keeps tenancy and `actions:` (Richard) | 2026-10-12 |
 | Policy always on | | |
 | Tenancy | | |
 | Action permission | | |
-| Role fields | | |
-| Server-only fields | | |
+| Two references to a scope | | |
+| OAuth scopes in grants | | |
 | Refusals in `fails` | | |
 | Service key management | | |
 | Calling integrations | | |
-| Accepting policy weakening | | |
-| Personal data and log redaction | Designed in area 15 (Personal data) | 2026-10-12 |
+| Accepting policy weakening | Carried from area 7: one acceptance file per weakening in `acceptances/`, the shared form | 2026-10-12 |
+| Personal data and log redaction | Designed in area 15 (Personal data); erase needs `delete`, export needs `read` | 2026-10-12 |

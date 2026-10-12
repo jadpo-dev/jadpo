@@ -1,7 +1,8 @@
 # Policy: simplification proposals
 
 **Status:** research for [area 9](../09-policy.md), question 1, 2026-10-12.
-This decides nothing.
+Richard chose a simpler model than the options below the same day; see
+[The chosen model](#the-chosen-model) at the end.
 
 ## What is complicated today
 
@@ -196,3 +197,54 @@ already prove. Revisit role hierarchy (Option C's `roles:`) only if the order
 and payment application shows matrices repeating the same role lists; revisit
 conditions (Option B) only for public-by-state cases, and then as a lifecycle
 `visible:` rule rather than policy.
+
+## The chosen model
+
+Decided by Richard on 2026-10-12, in place of Option A. It keeps Option A's
+safety (default deny, tenancy, list filtering from the same rule, one place
+for action exceptions) but turns the grant table round and drops the role
+plumbing:
+
+```jadpo fragment
+entity Todo {
+    owner_id: User.id {
+        on_delete: OnDelete.restricted
+    }
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+        update: [owner_id]
+        delete: [owner_id]
+    }
+}
+
+entity Project {
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    policy: {
+        read: [CompanyRole.viewer, CompanyRole.editor]
+        create: [CompanyRole.editor]
+        update: [CompanyRole.editor]
+        delete: [CompanyRole.owner]
+    }
+}
+```
+
+- **Grants keyed by what you do.** "Who can delete a project?" is one line
+  to read, where the role-keyed table made a reader scan every role's list.
+  It is also how a reviewer and a permissions bug are usually phrased.
+- **Three kinds of who.** A user field on the record, a membership role, or
+  `Access.authenticated` / `Access.public`. The owner case drops from three
+  steps (declare `TodoRole`, mark the field `role: TodoRole.owner` with
+  `immutable: true`, grant the role) to one: name the field.
+- **Roles only where they are stored.** A role enum exists beside the
+  membership entity that stores it, in that domain; there is no global roles
+  file and no "role source" concept.
+- **The global view is generated.** Option A's central view (POLICY-D41)
+  becomes `build/report/permissions.md` and `.json`, and its changes appear
+  in the approval review, so beside-the-entity writing loses nothing a
+  central file would give.
+
+Option C's role hierarchy is still not adopted; revisit it only if real
+applications show the same role lists repeated on every line.
