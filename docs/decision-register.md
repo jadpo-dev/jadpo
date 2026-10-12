@@ -8,7 +8,7 @@ item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
 
-### Failures — 2026-10-12 (partly decided)
+### Failures — 2026-10-12
 
 Richard decided most of area 4 of the language review; see
 [area 4](language/04-failures.md#decisions). Decided: `client: { }` and
@@ -21,8 +21,9 @@ overflow and recursion limits are defects; concealed records report
 `kind` is a closed enum, never a string; every error response carries a
 request id that is also logged; failures are `type Name = Failure { ... }`
 with fields only in `client` and `internal`; applications declare seven
-kinds and the runtime owns the rest. Still open: derived codes and where
-failures live in the folders. Not yet implemented.
+kinds and the runtime owns the rest; codes default to the failure name and
+`code:` overrides, unique per failure; one failure per file in each domain's
+`failures/` folder or `shared/failures/`. Not yet implemented.
 
 ### Logic — 2026-10-12
 

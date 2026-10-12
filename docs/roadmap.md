@@ -46,12 +46,12 @@ and specifications, not here.
    `attempt` placement; `for` loops and inline collection functions;
    recursion limits; removal of callable settings; the colon and block rule
    across the grammar.
-   Area 4 (mostly decided 2026-10-12) needs: `client`/`internal` blocks;
+   Area 4 (decided 2026-10-12) needs: `client`/`internal` blocks;
    `{ field, rule }` input details and complete OpenAPI error responses; the
    single mapping form with kept causes; overflow and recursion-limit
    defects; concealment as `not_found`; failure logging with hashed text and
-   request ids; enum kinds; code validation. Open questions remain on the
-   page.
+   request ids; enum kinds; codes defaulting to failure names with
+   uniqueness checks; `failures/` folders and `type X = Failure` declarations.
 4. **Finish the golden todo** on the reviewed language. Done means
    `python3 tools/verify.py --require-golden` passes 88/88 (44 cases × SQLite
    and PostgreSQL) on one commit, plus one independent review of the combined

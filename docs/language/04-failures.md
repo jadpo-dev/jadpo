@@ -1,7 +1,7 @@
 ---
 title: Failures
 area: 4
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - failure.context_field_overlap
@@ -1065,17 +1065,19 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | Runtime diagnostics `runtime.unhandled_fault`, `runtime.outcome_unknown` and `runtime.startup_failed`, which `jadpo check` cannot trigger | 14 | Input to area 14 |
 | Streaming responses that fail after headers are sent (ROUTE-002) | 7 | Deferred |
 | Whether `event` should also become `type X = Event { ... }`, by the same reasoning as failures | 12 | Raised |
+| A committed record of the public API (routes, fields, failure codes) so breaking changes are caught at review, accepted explicitly: the compiler flags the change and the build passes only once a person records an acceptance. Design one "accept a reviewed change" mechanism shared with database drops (area 5), policy (area 9) and domain changes (area 1) (Richard's idea) | 7 | Raised |
 
 ### Open questions
 
-1. **Should the public code come from the failure's name?** Every failure in
-   the repository writes `code: "todo_not_found"` beside `TodoNotFound`.
-   *Recommendation:* derive it (lower_snake_case of the name), and write
-   `code:` only to keep a published code after a rename. The compatibility
-   file already treats a changed code as breaking, so a rename that changes
-   the code is caught at review rather than shipped. Stripe and GitHub
-   publish stable snake_case codes; deriving keeps that without the
-   repetition.
+1. **Should the public code come from the failure's name?** *Decided
+   2026-10-12 (Richard):* yes by default: `QuantityUnavailable` has the code
+   `quantity_unavailable`. `code: "..."` overrides it when a different code is
+   needed, such as keeping a published code after a rename. The compiler
+   checks every code is lower_snake_case and unique across all failures (one
+   code, one failure: a client relies on a code always meaning the same
+   status, message and fields). Detecting that a published code changed needs
+   a committed record of the public API, carried to area 7.
+
 2. **Rename the `public` block to `client`?** `public` already means
    cross-domain visibility. *Decided 2026-10-12:* yes, `client: { }` and
    `internal: { }`, which say who sees each field.
@@ -1182,6 +1184,8 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 
 ### Decisions
 
+Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
+
 | Topic | Decision | Date |
 |---|---|---|
 | Kind names | Carried from area 2 (Richard, 2026-10-12): kinds are lower_snake_case option names, `kind: not_found` | 2026-10-12 |
@@ -1190,7 +1194,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | `attempt` placement | Carried from area 3: only at the start of a statement, and only on a call that can fail | 2026-10-12 |
 | Signature | Carried from area 3: the whole signature on the header line, `fails` before `->` | 2026-10-12 |
 | Colon rule | Carried from area 3: failure members are `name: value`, so context blocks are written `internal: { ... }` | 2026-10-12 |
-| Public code | | |
+| Public code | Defaults to the failure name in lower_snake_case; `code:` overrides it; every code unique and lower_snake_case, one code per failure; detecting a changed published code is carried to area 7 | 2026-10-12 |
 | `client` block | `client: { }` (sent to the caller) and `internal: { }` (never leaves the server) | 2026-10-12 |
 | Declarable kinds | `invalid_value`, `not_found`, `not_permitted`, `conflict`, `rejected`, `rate_limited`, `unavailable`; the other eight are runtime-only; 422 for `invalid_value` and `rejected`, 400 for unreadable requests; time limits are settings on integrations and routes, and a timeout an application cares about is mapped to its own failure | 2026-10-12 |
 | Invalid input detail | Each problem as `{ field, rule }` under `details`, never the value | 2026-10-12 |
