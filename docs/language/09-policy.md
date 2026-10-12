@@ -69,13 +69,13 @@ ownership is a named action with its own grant.
 entity Todo {
     id: Uuid
     owner_id: User.id {
-        on_delete: restrict
+        on_delete: OnDelete.restricted
         role: TodoRole.owner
     }
     title: TodoTitle
 
     policy: {
-        TodoRole.owner: [create, read, update, delete]
+        TodoRole.owner: [Effect.create, Effect.read, Effect.update, Effect.delete]
     }
 }
 ```
@@ -90,10 +90,10 @@ effect on the next request.
 entity CompanyMembership {
     id: Uuid
     company_id: Company.id {
-        on_delete: cascade
+        on_delete: OnDelete.cascade
     }
     user_id: User.id {
-        on_delete: cascade
+        on_delete: OnDelete.cascade
     }
     role: CompanyRole
 
@@ -104,7 +104,7 @@ entity CompanyMembership {
     }
 
     policy: {
-        CompanyRole.owner: [create, read, update, delete]
+        CompanyRole.owner: [Effect.create, Effect.read, Effect.update, Effect.delete]
     }
 }
 ```
@@ -170,14 +170,14 @@ any one of them is enough.
 entity Article {
     id: Uuid
     company_id: Company.id {
-        on_delete: cascade
+        on_delete: OnDelete.cascade
     }
     title: ArticleTitle
 
     policy: {
-        CompanyRole.owner: [create, read, update, delete]
-        CompanyRole.editor: [read, update]
-        CompanyRole.viewer: [read]
+        CompanyRole.owner: [Effect.create, Effect.read, Effect.update, Effect.delete]
+        CompanyRole.editor: [Effect.read, Effect.update]
+        CompanyRole.viewer: [Effect.read]
     }
 }
 ```
@@ -201,12 +201,7 @@ touches records their roles cover. The read below is all an author writes
 SQL `WHERE`:
 
 ```jadpo fragment
-var article: Article = attempt query required Article {
-    where: Article.id == article_id    // policy adds: and the caller holds a role in its company
-    missing: ArticleNotFound {
-        article_id: article_id
-    }
-}
+var article: Article = attempt Article.get(article_id)    // policy adds: and the caller holds a role in its company
 ```
 
 - **Scope.** An entity using `CompanyRole` must reach `Company` through
@@ -278,11 +273,11 @@ entity Article {
     ...
     billing_reference: Text? {
         policy: {
-            CompanyRole.owner: [read, update]     // editors may update the article, not this
+            CompanyRole.owner: [Effect.read, Effect.update]     // editors may update the article, not this
         }
     }
     authentication_subject: Text {
-        policy: server_only                       // set by the server, never read or written by a client
+        policy: FieldAccess.server_only           // set by the server, never read or written by a client
     }
 }
 ```
@@ -1276,14 +1271,30 @@ the code generated for `examples/golden-todo-migration` and
    `immutable: true` adds nothing, and `immutable: false` is an error today.
    Transferring ownership is a named action granted in `actions:`.
 6. **How is a field no client may touch written?** *Recommendation:*
-   `policy: server_only`, a named option instead of an empty block, so "no
+   `policy: FieldAccess.server_only`, a named option instead of an empty block, so "no
    access" never looks like an accident (syntax review #51).
 7. **Is a policy refusal listed in `fails`?** *Recommendation:* no. Like
    `unauthenticated`, `not_permitted` from policy is raised by the runtime with
    a fixed code, and the API description lists the 403 wherever it can happen.
    Listing it would add the same name to most actions and say nothing a
    reader can act on. A business refusal an action raises itself is still an
-   ordinary `kind: not_permitted` failure.
+   ordinary `kind: FailureKind.not_permitted` failure.
+8. **Who may issue, list and revoke service keys?** (carried from area 8)
+   Area 8 generates `Service.issue_key`, `Service.keys` and
+   `Service.revoke_key`; which callers may use them?
+9. **Who may call an integration?** (carried from area 11) This replaces
+   today's `external_effect` policy block. Is calling an integration covered
+   by the grants on the entities an action touches, by the `actions:` list,
+   or by its own grant?
+10. **Is a policy weakening accepted with area 7's shared acceptance
+    form?** (carried from area 7) "Protecting policy" above lists each
+    widening for a person to accept but does not say how the acceptance is
+    recorded. Does it use the same `acceptances/` file as database drops,
+    breaking API changes and new domains?
+11. **Who owns personal-data marking and the classification of internal
+    fields for log redaction?** (carried from areas 4 and 5) "Personal data"
+    above defers both to a GDPR review that no area owns. Which area designs
+    it?
 
 ### Decisions
 
@@ -1293,7 +1304,7 @@ the code generated for `examples/golden-todo-migration` and
 | Root file | Carried from area 1: `policy.jadpo` holds application-wide policy, such as tenancy; it is an unnamed singleton | 2026-10-12 |
 | Action settings | Carried from area 3: actions have no settings; who may call an action is decided by policy | 2026-10-12 |
 | Colon rule | Carried from area 3: sections are `name: { ... }` (`policy: { }`, `membership: { }`) | 2026-10-12 |
-| Setting options and lists | Carried from area 2: closed options are lower_snake_case names; lists are `[ ]` | 2026-10-12 |
+| Setting options and lists | Carried from area 2: closed options are lower_snake_case names; lists are `[ ]` (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
 | Concealment | Carried from area 4: a record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |
 | Caches | Carried from area 5: caches serve display reads only; keys include tenant and policy inputs; reads inside policy never use a cache; erasure wipes cached copies | 2026-10-12 |
 | Placement | Carried from areas 1 and 5: an entity's policy is in its file; actions and queries are in their own folders | 2026-10-12 |
@@ -1304,3 +1315,7 @@ the code generated for `examples/golden-todo-migration` and
 | Role fields | | |
 | Server-only fields | | |
 | Refusals in `fails` | | |
+| Service key management | | |
+| Calling integrations | | |
+| Accepting policy weakening | | |
+| Personal data and log redaction | | |

@@ -152,7 +152,7 @@ application {
 This one setting replaces today's `mode:` and `maximum_delay:` (question 4),
 and leaving it out gives the strict behaviour. Three paths always
 check the record whatever the setting: external OIDC tokens, service keys used
-directly, and routes marked `authentication: fresh` (below).
+directly, and routes marked `authentication: RouteAuthentication.fresh` (below).
 
 ::: today
 
@@ -392,22 +392,22 @@ Every route requires a signed-in caller. A route says only when that changes:
 
 ```jadpo fragment
 GET /health/live {
-    authentication: none      // anyone may call it; no credential is read
+    authentication: RouteAuthentication.none     // anyone may call it; no credential is read
     output: Health
     run: live()
 }
 
 DELETE /users/{user_id} {
-    authentication: fresh     // check the caller's record now, even with a revocation delay
+    authentication: RouteAuthentication.fresh    // check the caller's record now, even with a revocation delay
     run: disable_user(user_id, current_principal.user)
 }
 ```
 
-- `authentication: none` skips credential checks entirely. It does not skip
+- `authentication: RouteAuthentication.none` skips credential checks entirely. It does not skip
   input validation, policy or limits, and nothing it reaches may use the
   caller (`type.auth_public_principal`). Area 9 still decides whether the
   action may be invoked publicly.
-- `authentication: fresh` is for disabling accounts, changing permissions,
+- `authentication: RouteAuthentication.fresh` is for disabling accounts, changing permissions,
   billing and exports.
 - Any other value is an error that offers both fixes without guessing which
   was meant, because one keeps the route protected and the other opens it.
@@ -421,11 +421,11 @@ inside it can only narrow that:
 apis: {
     main: {
         prefix: /
-        authentication: [browser_session, api_token]
+        authentication: [AuthenticationMethod.browser_session, AuthenticationMethod.api_token]
     }
     partners: {
         prefix: /partners
-        authentication: [service_key]
+        authentication: [AuthenticationMethod.service_key]
     }
 }
 ```
@@ -444,11 +444,11 @@ a time, and overlap so a key can be rotated without downtime. A key is shown
 once when issued and stored only as a verifier.
 
 ```jadpo fragment
-// domains/integrations/entities/service.jadpo
+// domains/identity/entities/service.jadpo
 entity Service {
     id: Uuid
     owner_id: User.id {
-        on_delete: restrict
+        on_delete: OnDelete.restricted
     }
     name: Text {
         unique: true
@@ -2378,9 +2378,9 @@ suites), not rerun for this page.
 
 | Item | Area | Status |
 |---|---|---|
-| Route syntax around `authentication: none` and `fresh`; `route.auth_value_invalid` (a `route.*` rule, left to area 7's page) | 7 | Input to area 7 |
+| Route syntax around `authentication: RouteAuthentication.none` and `.fresh`; `route.auth_value_invalid` (a `route.*` rule, left to area 7's page) | 7 | Input to area 7 |
 | Generated `POST /auth/exchange` in the route inventory and OpenAPI, and the security schemes per route | 7 | Input to area 7 |
-| Each API's accepted methods (`authentication: [browser_session, api_token]` in area 7's `apis: { }`); a route only narrows them | 7 | Input to area 7 |
+| Each API's accepted methods (`authentication: [AuthenticationMethod.browser_session, AuthenticationMethod.api_token]` in area 7's `apis: { }`); a route only narrows them | 7 | Input to area 7 |
 | Webhook signature checks as a route's authentication (`authentication: stripe.signature`) | 11 | Input to area 11 |
 | Policy reads the caller and the entity named by `subject:`; `Access.public` versus `authentication: none`; custom roles and tenants come from entities, not the principal | 9 | Input to area 9 |
 | Which callers may issue, list and revoke service keys | 9 | Depends on question 7 |
@@ -2439,7 +2439,8 @@ suites), not rerun for this page.
    key management screens. The application declares only `Service`.
 8. **What does a route say about authentication?** Today `auth: none` or
    `auth: fresh`, and every route accepts every method. *Recommendation:*
-   spell it `authentication: none` and `authentication: fresh` (syntax review
+   spell it `authentication: RouteAuthentication.none` and
+   `authentication: RouteAuthentication.fresh` (syntax review
    #41), the one word a reviewer must not miss on a public route; each of area
    7's APIs lists the methods it accepts, so an admin API can refuse service
    keys without per-route lines.
@@ -2449,6 +2450,11 @@ suites), not rerun for this page.
    compiler setting and clearing the cookie and CSRF token. Passwords stay out;
    checking the person is the application's job. Without this, every
    application needs a second program just to log people in.
+10. **How do tests, fixtures and seeds name a caller?** (carried from area
+    13) Area 13 builds callers with `Principal.user(user)` and signs in with
+    `as:`, but on this page a caller only comes from signing in.
+    *Recommendation:* keep `Principal.user(user)` test-only (tests, fixtures,
+    seeds), and describe it with `as:` alongside how the caller is read.
 
 ### Decisions
 
@@ -2457,7 +2463,7 @@ suites), not rerun for this page.
 | Unnamed singletons | Carried from area 1 (and the owner's 2026-10-04 selection): `application { }` and `principal { }` carry no name; the application's principal setting is removed | 2026-10-12 |
 | Root files | Carried from area 1: `app.jadpo` holds the application and principal; `authentication.jadpo` holds the methods | 2026-10-12 |
 | Colon rule | Carried from area 3: every member is `name: value`, so `user: { }`, `browser_session: { }` | 2026-10-12 |
-| Setting options | Carried from area 2: closed options are lower_snake_case names, never strings | 2026-10-12 |
+| Setting options | Carried from area 2: closed options are lower_snake_case names, never strings (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
 | Runtime kinds | Carried from area 4: `unauthenticated` and `misconfigured` are raised only by the runtime; authentication failures are never listed in `fails` | 2026-10-12 |
 | Mapping form | Carried from area 4: `condition: Failure` everywhere, as in `inactive: UserDisabled` | 2026-10-12 |
 | Principal in failures | Carried from area 4: the signed-in principal cannot be put in a failure's fields | 2026-10-12 |
@@ -2470,3 +2476,4 @@ suites), not rerun for this page.
 | Service key storage | | |
 | Route setting spelling | | |
 | Starting and ending sessions | | |
+| Callers in tests, fixtures and seeds | | |

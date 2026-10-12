@@ -305,7 +305,7 @@ children (area 5).
 
 ```jadpo fragment
 // domains/planning/queries/project_board.jadpo
-query project_board(project_id: Project.id) fails ProjectNotFound -> ProjectBoard {
+query project_board(project_id: Project.id) fails ProjectNotFound -> ProjectBoardView {
     from: Project
     where: Project.id == project_id
     missing: ProjectNotFound
@@ -320,8 +320,7 @@ query project_board(project_id: Project.id) fails ProjectNotFound -> ProjectBoar
     }
 }
 
-// domains/planning/types/project_board.jadpo
-type ProjectBoard = Output from Project {
+type ProjectBoardView = Output from Project {
     pick: [id, name]
     owner: UserView
     todos: List<TodoView>
@@ -3168,7 +3167,7 @@ database.
   all give field values in a `set:` block.
 - **Two not-found mappings.** `Todo.get` reports the entity's own failure,
   while a query maps `missing:` itself, because a query can be about
-  something other than one record (`ProjectBoard`).
+  something other than one record (`ProjectBoardView`).
 - **`Page<T>` is a standard generic type,** like `List<T>`; area 3 ruled out
   generics only in your own code.
 - **`order:` replaces `order_by:`** and is a list, following area 2's list
@@ -3262,6 +3261,14 @@ database.
     authentication goes to the store, and a client that just wrote skips
     caches by its revision. This makes the call site, not a `freshness:`
     setting, decide, as area 3 decided.
+13. **Do policy conditions shape query plans and indexes, and is PostgreSQL
+    row-level security generated?** (carried from area 9) Area 9 sends
+    generated query plans, indexes for policy conditions, and row-level
+    security as optional defence in depth generated from the same policy to
+    this page. Which of these does the compiler generate?
+14. **How do caches behave in tests?** (carried from area 13) Once the Redis
+    adapter exists, do tests read through declared caches or straight from
+    the store, and how does a test check a cached read?
 
 ### Decisions
 
@@ -3290,3 +3297,5 @@ in earlier areas and bind this page.
 | Hidden parents | | |
 | Reads in loops | | |
 | Cache reads | | |
+| Policy in query plans | | |
+| Caches in tests | | |

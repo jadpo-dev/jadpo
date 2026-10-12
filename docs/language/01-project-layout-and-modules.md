@@ -49,6 +49,8 @@ routes/todos.jadpo       HTTP routes
 
 Here is the smallest project that uses the role folders:
 
+::: today
+
 ```jadpo project=layout file=entities/customer.jadpo
 entity Customer {
     id: Uuid
@@ -62,6 +64,8 @@ type CustomerName = Text {
     max_length: 120
 }
 ```
+
+:::
 
 What the compiler checks today:
 
@@ -909,7 +913,8 @@ schedule overdue_reminders {
 
 // domains/notifications/subscribers/send_order_confirmation.jadpo
 subscriber send_order_confirmation {
-    on: OrderEvent.placed(order) -> attempt postmark.send(confirmation_for(order))
+    on: OrderPlaced
+    run: send_order_confirmation_email(event)
 }
 
 // domains/payments/integrations/stripe_v2024.jadpo
@@ -978,6 +983,10 @@ migration workflow (area 5). The layout only reserves their folders.
 9. **Formatter owns layout within a file.** *Recommendation:* the formatter
    decides blank lines (one between declarations) and section order within a
    file, so equivalent code always looks identical.
+10. **Root `api/` and `acceptances/` folders** (carried from area 7). Area 7
+   keeps each API's record in `api/` and a person's acceptance of a breaking
+   change in `acceptances/`, but the decided root list allows only the entries
+   above. *Recommendation:* add both folders to the fixed root.
 
 ### Decisions
 
@@ -1007,3 +1016,4 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Keywords match folders | `schedule` (folder `schedules/`), `integration` (`integrations/`) and `library` (`libraries/`) replace `job` and `service` | 2026-10-12 |
 | Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` | 2026-10-12 |
 | Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
+| Root `api/` and `acceptances/` folders | | |

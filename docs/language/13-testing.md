@@ -42,7 +42,7 @@ domains/planning/
   actions/     create_todo.jadpo        create_todo.test.jadpo
   routes/      todos.jadpo              todos.test.jadpo
   schedules/   overdue_reminders.jadpo  overdue_reminders.test.jadpo
-  fixtures/    sample_todos.jadpo
+  fixtures/    alice_with_todos.jadpo
 tests/         sign_up_to_first_reminder.test.jadpo
 ```
 
@@ -121,7 +121,7 @@ test "a due date in the past is rejected" {
 
     var alice: Principal.user = alice_with_todos()
     var response: Response = request {
-        method: post
+        method: HttpMethod.post
         path: "/todos"
         as: alice
         input: CreateTodo {
@@ -146,7 +146,7 @@ test "an overdue todo gets one reminder" {
 
     one_overdue_todo()
     overdue_reminders.run()
-    assert ReminderMail.send_overdue_reminder.requests.count == 1
+    assert collection.count(ReminderMail.send_overdue_reminder.requests) == 1
 }
 ```
 
@@ -221,7 +221,7 @@ advancing changes what the next call sees, not a call already running.
 The clock only moves forward. `clock.advance` is an error outside a test.
 
 ```jadpo fragment
-// domains/planning/actions/overdue_todos.test.jadpo
+// domains/planning/queries/overdue_todos.test.jadpo
 test "a todo due in an hour becomes overdue" {
     clock: "2026-01-15T12:00:00Z"
 
@@ -230,9 +230,9 @@ test "a todo due in an hour becomes overdue" {
         title: "Pay rent"
         due_at: "2026-01-15T13:00:00Z"
     }, alice)
-    assert overdue_todos(alice).count == 0
+    assert collection.count(overdue_todos(alice)) == 0
     clock.advance(1h)
-    assert overdue_todos(alice).count == 1
+    assert collection.count(overdue_todos(alice)) == 1
 }
 ```
 
@@ -347,7 +347,7 @@ test "a rate-limited reminder is retried" {
     }
     ...
     var sent: List<ReminderMessage> = ReminderMail.send_overdue_reminder.requests
-    assert sent.count == 2
+    assert collection.count(sent) == 2
 }
 ```
 
@@ -392,7 +392,7 @@ policy apply exactly as they do for a user, and returns what the tests need
 fixture fails the test that called it, so a fixture has no `fails` list.
 
 ```jadpo fragment
-// domains/planning/fixtures/sample_todos.jadpo
+// domains/planning/fixtures/alice_with_todos.jadpo
 /// Alice, signed up, with two open todos.
 fixture alice_with_todos() -> Principal.user {
     var user: User = attempt register_user("alice@example.test")
@@ -1021,7 +1021,7 @@ Each row says how it was checked: compiled with `jadpo check`, run with
    (factory_bot, Elixir's ExMachina) are what those communities moved to.
    It is also how area 5 decided seeds work.
 5. **How do route and schedule tests call their boundary?** *Recommendation:*
-   `request { method: post path: "/todos" as: alice input: … }` returning a
+   `request { method: HttpMethod.post path: "/todos" as: alice input: … }` returning a
    typed `Response`, through the real generated HTTP boundary without a
    network; and `overdue_reminders.run()`, which runs the schedule once at
    the test clock. Advancing the clock does not run schedules by itself, so
@@ -1058,6 +1058,12 @@ Each row says how it was checked: compiled with `jadpo check`, run with
     route test signs in with `as:`, which runs the application's real
     authentication. Laravel's `actingAs` sets the user directly and skips the
     sign-in checks; signing in for real tests them too.
+11. **How does a test act as a service?** (carried from area 8) Question 10
+    covers users only. How does a test, fixture or seed make a service
+    caller, and does a route test sign in with a service key?
+12. **Can a test assert what a query costs?** (carried from area 6) Area 6
+    bounds how many records and database queries a query may cost. Can a
+    test assert those numbers, and how?
 
 ### Decisions
 
@@ -1080,3 +1086,5 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 | Test database | | |
 | Events and caches in tests | | |
 | Acting as a user | | |
+| Acting as a service | | |
+| Query cost assertions | | |

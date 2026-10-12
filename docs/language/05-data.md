@@ -76,11 +76,11 @@ subscriber.
 application {
     stores: {
         main: {
-            engine: postgres
+            engine: Engine.postgres
             url: config.database_url
         }
         cache: {
-            engine: redis
+            engine: Engine.redis
             url: config.redis_url
         }
     }
@@ -132,7 +132,7 @@ snapshot; reading a field never touches the database.
 entity Project {
     id: Uuid                    // version 7, generated on create
     owner_id: User.id {
-        on_delete: restrict
+        on_delete: OnDelete.restricted
     }
     name: ProjectName
 }
@@ -160,10 +160,10 @@ entity Todo {
     ...
     due_at: Instant?
     created_at: Instant {
-        generated: create             // set once, when the record is created
+        generated: Generated.on_create   // set once, when the record is created
     }
     updated_at: Instant {
-        generated: create_or_change   // set on create and on every change
+        generated: Generated.on_change   // set on create and on every change
     }
 }
 ```
@@ -244,18 +244,18 @@ record could be created first.
 
 | `on_delete:` | When the referenced record is deleted | Allowed on |
 |---|---|---|
-| `restrict` | The delete fails with a conflict while any record refers to it | any reference |
-| `cascade` | Records that refer to it are deleted in the same transaction | any reference |
-| `set_null` | The reference is set to `none` | an optional reference (`Project.id?`) |
+| `OnDelete.restricted` | The delete fails with a conflict while any record refers to it | any reference |
+| `OnDelete.cascade` | Records that refer to it are deleted in the same transaction | any reference |
+| `OnDelete.cleared` | The reference is set to `none` | an optional reference (`Project.id?`) |
 
 ```jadpo fragment
 entity Todo {
     ...
     owner_id: User.id {
-        on_delete: restrict         // a user with todos cannot be deleted
+        on_delete: OnDelete.restricted  // a user with todos cannot be deleted
     }
     project_id: Project.id? {
-        on_delete: set_null         // the todo stays; it leaves the project
+        on_delete: OnDelete.cleared     // the todo stays; it leaves the project
     }
 }
 ```
@@ -430,8 +430,8 @@ have.
 and writes the next folder under `database/migrations/`, one migration per
 store; `jadpo check` fails while they disagree. A change that could lose data
 stops at a decision in `changes.jadpo`. Removing a field or entity takes two
-migrations, `retire` (code stops using it, the column stays for builds still
-running) and later `drop`; a drop and a move between stores need explicit
+migrations, `FieldChange.retired` (code stops using it, the column stays for
+builds still running) and later `FieldChange.dropped`; a drop and a move between stores need explicit
 acceptance. `jadpo migrate apply` runs pending migrations as a deploy step,
 each in a transaction, and the application refuses to start against a
 database that does not match. `database/identities.json` keeps each table
@@ -444,7 +444,7 @@ migration {
     Todo.priority: {
         backfill: Priority.normal       // existing rows need a value
     }
-    Todo.legacy_flag: retire
+    Todo.legacy_flag: FieldChange.retired
 }
 ```
 
@@ -489,7 +489,7 @@ domain when public. There is no `self`: `todo: Todo` is a snapshot,
 ```jadpo fragment
 // domains/planning/failures/todo_not_found.jadpo
 type TodoNotFound = Failure {
-    kind: not_found
+    kind: FailureKind.not_found
     message: "Todo not found."
 }
 
@@ -2870,10 +2870,18 @@ running the `jadpo schema` commands; nothing was run against a live database.
     application's own actions; `jadpo seed <name>` refuses a production
     database. Reference data production needs is a migration backfill.
 14. **Where is the database itself declared?** *Decided 2026-10-12:* in
-    `app.jadpo`, `application { stores: { main: { engine: postgres url:
+    `app.jadpo`, `application { stores: { main: { engine: Engine.postgres url:
     config.database_url } } }`, with `main` on PostgreSQL implied when nothing
     is declared; each store's engine is fixed in source, so every environment
     uses the same engine. D1 is on the roadmap.
+15. **How is a Redis entity's expiry written?** (carried from area 6) An
+    entity in Redis must declare an expiry, and area 6 has expired records
+    hidden from queries and updates like `visible:`, but this page gives the
+    `expiry:` setting no syntax. What does it look like, and where does it go?
+16. **A `lifecycle { }` block on an entity written `id: Uuid identity` is
+    silently ignored today** (carried from area 8). Does it need its own fix?
+    *Recommendation:* no; it is moot once the rework lands, because the
+    trailing `identity` form goes.
 
 ### Decisions
 
@@ -2885,7 +2893,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Keyword | Carried from area 4: a declaration with its own folder keeps its keyword (`entity`); anything in `types/` is a `type` | 2026-10-12 |
 | Field settings | Carried from area 2: a field's settings go in a block after its type, one per line, including entity facts (`unique`, `generated`, the reference); only `Input` has `optional` and `default` | 2026-10-12 |
 | Colon rule | Carried from area 3: entity sections are `name: { ... }` (`lifecycle: { }`, `policy: { }`) | 2026-10-12 |
-| Setting options and lists | Carried from area 2: closed options are lower_snake_case names (`on_delete: restrict`); lists are `[ ]` | 2026-10-12 |
+| Setting options and lists | Carried from area 2: closed options are lower_snake_case names (`on_delete: restrict`); lists are `[ ]` (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
 | UUID versions | Carried from area 2: new identities are version 7; a named type can pin another version | 2026-10-12 |
 | Derived types | Carried from area 2: `type X = Output from Todo { pick: [...] }`; generated fields never in an `Input` | 2026-10-12 |
 | Calls and settings | Carried from areas 1 and 3: the dot names the owner (`Todo.get(id)`); actions have no settings and every write checks for concurrent change | 2026-10-12 |
@@ -2907,3 +2915,5 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Query placement | Every query lives in its domain's `queries/` folder, one per file, whatever it reads; entity files hold the data definition; generated operations (`Todo.get`, create, update, delete) stay on the entity; a query's cache sits in its file (Richard, after scenarios) | 2026-10-12 |
 | Action placement | Every action lives in its domain's `actions/` folder, one per file; written actions are called by name (`complete_todo(todo_id)`); generated operations stay on the entity (Richard) | 2026-10-12 |
 | Generated fields | `generated: Generated.on_create` (set once when created) or `Generated.on_change` (set when created and on every change) (Richard) | 2026-10-12 |
+| Redis entity expiry syntax | | |
+| `lifecycle { }` ignored on `id: Uuid identity` | | |

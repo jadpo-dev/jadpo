@@ -41,7 +41,7 @@ reads instead of prose (question 2).
 | `jadpo migrate new <purpose>` / `apply` / `status` | Writes, runs and lists migrations | `new` and `apply` decided in area 5; replaces `schema` (question 4) |
 | `jadpo seed <name>` | Runs a seed; refuses production | Decided in area 5, not built |
 | `jadpo config set <field>` / `check` | Sets or checks local configuration in `.env.local` | Exists |
-| `jadpo api update` | Rewrites the committed public API record (`api/main.api`) from the source | Decided in area 7, not built |
+| `jadpo api update` | Rewrites the committed public API record (`api/main.api`) from the source | Proposed in area 7 (question 10) |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Exists; sign-off is question 12 |
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries | Proposed (question 13) |
 | `jadpo incident <event-file>` | Explains a runtime event using the local build | Exists |
@@ -65,7 +65,7 @@ writes the derived files and `jadpo watch` rebuilds without running.
 ## Running tests
 
 `jadpo test` owns everything a test run needs, so nothing about it appears in
-source (decided in area 13). It starts a disposable local PostgreSQL, or uses
+source (proposed in area 13, question 8). It starts a disposable local PostgreSQL, or uses
 `JADPO_TEST_DATABASE_URL` in CI; builds one template database from the
 migrations and copies it per test, so tests run in parallel; and keeps a
 failed test's database with `--keep-failed`. `--kind route` runs one kind and
@@ -602,13 +602,22 @@ what other areas carried here and where this page answers it.
     signing or user accounts of its own; review already happens on the git
     host.
 13. **What does an operator use to deal with failed deliveries and schedule
-    runs?** Area 12 decided the states and what an operator can do.
+    runs?** Area 12 proposes the states and what an operator can do.
     *Recommendation:* commands first: `jadpo deliveries list`, `retry`,
     `dismiss`, `cancel` and `resolve <id> --done|--not-done`, run against an
     environment through its configuration, each action logged with who did
     it. Alerts are log events the hosting platform's alerting picks up. A web
     screen can come later on the same operations, as Sidekiq and Temporal
     offer both.
+14. **How is a deployable declared and built?** (carried from area 1, where
+    no area took it) Area 1 decided that deployables (API, worker,
+    back-office) are declarations in one project, each compiled from what it
+    reaches, but no area gives their syntax. Which commands build and run
+    one, and where is it declared?
+15. **Which commands manage integrations?** (carried from area 11) The
+    command table above has no `jadpo integration add` or `update`, no
+    contract diff and no adapter conformance run. Which of these does the
+    toolchain provide?
 
 ### Decisions
 
@@ -636,3 +645,5 @@ what other areas carried here and where this page answers it.
 | Build-only errors in `check` | | |
 | Sign-off | | |
 | Operator commands | | |
+| Deployables | | |
+| Integration commands | | |

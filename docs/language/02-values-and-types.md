@@ -124,6 +124,28 @@ Applying a type to a value, `Type(value)`, creates a value of that type by
 checking every rule on it and on the types it builds on. It is validation,
 never a cast.
 
+```jadpo fragment
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+type Price = Decimal {
+    scale: 2
+    min: 0.00
+}
+
+function starting_quantity() -> Quantity {
+    return 1
+}
+
+function free() -> Price {
+    return 0.00
+}
+```
+
+::: today
+
 ```jadpo project=construct
 type Quantity = Int {
     min: 1
@@ -142,6 +164,8 @@ function free() -> Price {
     return Price(0.0)
 }
 ```
+
+:::
 
 When the value is a literal, the compiler checks it while compiling:
 `Quantity(0)` is a compile error (see `type.invalid_literal` below). When the
@@ -302,6 +326,32 @@ Every field of an object, entity or enum variant is a type of its own, written
 wherever an `Email` is expected, but an `Email` is not automatically a
 `Customer.email`, and `Supplier.email` is never one.
 
+```jadpo fragment
+entity Customer {
+    id: Uuid
+    email: Email
+}
+
+entity Supplier {
+    id: Uuid
+    email: Email
+}
+
+function contact_address(email: Email) -> Email {
+    return email
+}
+
+function customer_contact(customer: Customer) -> Email {
+    return contact_address(customer.email)
+}
+
+function supplier_contact(supplier: Supplier) -> Email {
+    return contact_address(supplier.email)
+}
+```
+
+::: today
+
 ```jadpo project=field-types
 entity Customer {
     id: Uuid
@@ -327,6 +377,8 @@ function supplier_contact(supplier: Supplier) -> Email {
     return contact_address(supplier.email)
 }
 ```
+
+:::
 
 Field types are how identifiers stay apart: `Customer.id` and `Supplier.id`
 are both UUIDs, and passing one where the other is expected is
@@ -366,7 +418,7 @@ it came from the billing or the shipping address.
 
 ## Absent values
 
-> **Decided on 2026-10-12.** Objects and inputs use `type Name = Object { ... }` and `type Name = Input { ... }`; today's spelling is collapsed below. Question 20 proposes moving `optional` and `default` into a settings block.
+> **Decided on 2026-10-12.** Objects and inputs use `type Name = Object { ... }` and `type Name = Input { ... }`; today's spelling is collapsed below. Decided (question 20): `optional` and `default` go in a settings block after the field's type.
 
 There is no `null` or `undefined`. A type followed by `?` may hold `none`, and
 reading it means handling both cases, usually with `match` (area 3).
@@ -378,13 +430,9 @@ type Listing = Object {
 }
 
 function headline(listing: Listing) -> ProductName {
-    match listing.subtitle {
-        some(subtitle) => {
-            return subtitle
-        }
-        none => {
-            return listing.name
-        }
+    return match listing.subtitle {
+        some(subtitle) -> subtitle
+        none -> listing.name
     }
 }
 ```
@@ -422,13 +470,19 @@ to inputs:
 
 ```jadpo fragment
 type ListProducts = Input {
-    name: ProductName optional
-    page_size: PageSize default 25
+    name: ProductName {
+        optional: true
+    }
+    page_size: PageSize {
+        default: 25
+    }
 }
 
 type RenameProduct = Input {
     name: ProductName
-    subtitle: ProductName? default none
+    subtitle: ProductName? {
+        default: none
+    }
 }
 ```
 
@@ -458,12 +512,12 @@ input RenameProduct {
 
 :::
 
-- `optional` means the request may leave the field out. Leaving it out is
-  different from sending `none`, which lets an update tell "don't change this"
-  from "clear this" (area 6).
-- `default 25` fills in a value when the request leaves the field out. A
-  default is checked against the field's rules while compiling.
-- `default none` fills in `none` for a nullable field.
+- `optional: true` lets the request leave the field out; reading it gives
+  `T?`, and a field left out reads as `none`. Only an update's `patch:` tells
+  "left out" from "sent as `none`" (area 6).
+- `default: 25` fills in a value when the request leaves the field out,
+  checked against the field's rules while compiling.
+- `default: none` fills in `none` for a nullable field.
 
 A value can widen through `?`: a `Customer.email?` can be used where an
 `Email?` is expected.
@@ -525,16 +579,10 @@ function decline(reason: DeclineReason) -> PaymentOutcome {
 }
 
 function label(outcome: PaymentOutcome) -> OutcomeLabel {
-    match outcome {
-        PaymentOutcome.pending => {
-            return OutcomeLabel("pending")
-        }
-        PaymentOutcome.paid { receipt_id, paid_at } => {
-            return OutcomeLabel("paid")
-        }
-        PaymentOutcome.declined { reason } => {
-            return OutcomeLabel("declined")
-        }
+    return match outcome {
+        PaymentOutcome.pending -> "pending"
+        PaymentOutcome.paid -> "paid"
+        PaymentOutcome.declined -> "declined"
     }
 }
 ```
@@ -1256,8 +1304,7 @@ compiled; exact syntax for logic is settled in area 3.
 
 ```jadpo fragment
 type QuantityOutOfRange = Failure {
-    kind: invalid_value
-    code: "quantity_out_of_range"
+    kind: FailureKind.invalid_value
 }
 
 action double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity {
@@ -1299,8 +1346,9 @@ type UpdateProfile = Input {
     }
 }
 
-action update_profile(request: UpdateProfile) -> Unit {
+action update_profile(request: UpdateProfile) -> Nickname? {
     var nickname: Nickname? = request.nickname    // left out reads as none
+    return nickname
 }
 ```
 
@@ -1369,7 +1417,7 @@ type Price = Decimal {
     min: 0.00          // numeric(p, 2); JSON "12.50"
 }
 
-var share: Price = decimal.divide(total, people, rounding: half_even)
+var share: Price = decimal.divide(total, people, rounding: Rounding.half_even)
 ```
 
 #### Q9: patterns match the whole text and are checked while compiling
@@ -1420,7 +1468,7 @@ entity Order {
 }
 
 type PartnerRef = Uuid {
-    version: v4                 // accepts and generates only version 4
+    version: UuidVersion.v4     // accepts and generates only version 4
 }
 ```
 
@@ -1448,20 +1496,19 @@ for line in order.lines {       // a loop binding takes its type from the list
 }
 ```
 
-#### Q17: settings take a name from their list
+#### Q17: fixed options are written `Type.value`
 
 ```jadpo fragment
 type ContactEmail = Text {
-    format: email
+    format: TextFormat.email
 }
 
 type PartnerRef = Uuid {
-    version: v4
+    version: UuidVersion.v4
 }
 
 type TodoNotFound = Failure {
-    kind: not_found             // was: kind: NotFound
-    code: "todo_not_found"
+    kind: FailureKind.not_found  // was: kind: NotFound
 }
 ```
 
@@ -1523,7 +1570,7 @@ to when that page is written.
 |---|---|---|
 | Match arms use `->`, the same arrow as return types; `=>` is removed | 3 | Richard's call, 2026-10-12 |
 | A function argument that accepts several types: today an `Enum` whose variants carry each type; whether to add generics or unions | 3 | Open |
-| Failure `kind` values become lower_snake_case (`kind: not_found`), following the setting-options decision | 4 | Follows from a decision |
+| Failure `kind` values become lower_snake_case (`kind: FailureKind.not_found`), following the setting-options decision | 4 | Follows from a decision |
 | Entity field settings (`identity`, `unique`, `references`, `generated`) go in the field's block, following question 20 | 5 | Follows from a decision |
 | The remaining syntax-review findings (`docs/language/research/syntax-review.md`) | 3 to 14 | Input to each page |
 
@@ -1624,7 +1671,7 @@ to when that page is written.
 13. **Which UUIDs?** *Decided 2026-10-12:* any version is accepted by
     default and normalised to lowercase; new identities are version 7, which
     is time-ordered and keeps indexes compact; a named type can pin a version,
-    `type PartnerRef = Uuid { version: v4 }`, which governs both what is
+    `type PartnerRef = Uuid { version: UuidVersion.v4 }`, which governs both what is
     accepted and what is generated (for example where a version 7 ID would
     reveal sensitive creation times, or another system dictates the version).
 
@@ -1712,7 +1759,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Type spellings | Every type is `type Name = Base { ... }`, including `Object`, `Enum`, `Input` and `Output`; `value`, `enum`, `input` and `output` keywords are removed; only `Input` may have optional or default fields; routes accept `Input` and return `Output` | 2026-10-12 |
 | Signature rule scope | Applies to representation types and `Instant`, `CalendarDate`, `Time`, `Duration`; `Zone`, `Locale` and `Weekday` may be used directly; list element types are checked | 2026-10-12 |
 | Equality | `==` compares contents field by field on objects, lists and enum payloads; sets and maps compare as sets | 2026-10-12 |
-| UUID versions | Any version accepted by default, normalised to lowercase; new identities are version 7; a named type can pin one, `type PartnerRef = Uuid { version: v4 }`, governing what is accepted and generated | 2026-10-12 |
+| UUID versions | Any version accepted by default, normalised to lowercase; new identities are version 7; a named type can pin one, `type PartnerRef = Uuid { version: v4 }`, governing what is accepted and generated (Written `UuidVersion.v4` under the revised question 17.) | 2026-10-12 |
 | Derived types | `type X = Base from Source { pick/omit/optional, then new fields }`; named results only; `Output` may only `pick`; generated fields never in an `Input` | 2026-10-12 |
 | Literal typing | A literal takes the expected type where it is known and is checked while compiling; computed values need an explicit constructor | 2026-10-12 |
 | Variable types | Every `var` states its type; loop and `match` bindings take theirs from what they bind | 2026-10-12 |

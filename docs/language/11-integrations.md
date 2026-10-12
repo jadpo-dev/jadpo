@@ -48,7 +48,7 @@ integration ReminderMail {
     contract: "reminder_mail.contract.json"
     base_url: "https://mail.example.invalid"
     credential: {
-        scheme: bearer
+        scheme: CredentialScheme.bearer
         token: config.mail_api_key
     }
     timeout: 5s
@@ -73,6 +73,7 @@ integration ReminderMail {
     }
 }
 
+// domains/planning/types/reminder_message.jadpo
 type ReminderMessage = Object {
     from: Email
     to: Email
@@ -80,6 +81,7 @@ type ReminderMessage = Object {
     due_at: Todo.due_at
 }
 
+// domains/planning/types/reminder_receipt.jadpo
 type ReminderReceipt = Object {
     accepted_at: Instant
 }
@@ -340,9 +342,9 @@ reaches a URL, a body, a log or a fake's record (question 10).
 
 | `scheme:` | Sends | Settings |
 |---|---|---|
-| `bearer` | `Authorization: Bearer <token>` | `token:` |
-| `header` | the key in a named header | `name: "X-Api-Key"`, `token:` |
-| `basic` | `Authorization: Basic` (Twilio's account SID and token) | `username:`, `password:` |
+| `CredentialScheme.bearer` | `Authorization: Bearer <token>` | `token:` |
+| `CredentialScheme.header` | the key in a named header | `name: "X-Api-Key"`, `token:` |
+| `CredentialScheme.basic` | `Authorization: Basic` (Twilio's account SID and token) | `username:`, `password:` |
 
 ::: today
 
@@ -548,7 +550,7 @@ before anything is parsed, and rejects old timestamps.
 ```jadpo fragment
 // in domains/payments/integrations/stripe_v2024.jadpo
 webhooks: {
-    signature: stripe
+    signature: SignatureScheme.stripe
     secret: config.stripe_webhook_secret
 }
 
@@ -556,13 +558,14 @@ webhooks: {
 POST / {
     authentication: StripeV2024.signature
     input: StripeEvent
-    status: no_content
+    status: SuccessStatus.no_content
     run: record_stripe_event(input)
 }
 ```
 
-Built-in schemes: `stripe`, `standard_webhooks` (the shared format used by
-Svix, Twilio and others) and `hmac_sha256` with a named header for the rest.
+Built-in schemes: `SignatureScheme.stripe`, `SignatureScheme.standard_webhooks`
+(the shared format used by Svix, Twilio and others) and
+`SignatureScheme.hmac_sha256` with a named header for the rest.
 The action stores the event under a unique rule on its id, so a redelivery
 does nothing, and real work runs in a subscriber (area 12).
 
@@ -1560,15 +1563,21 @@ Each row says how it was checked: compiled with `jadpo check`, built with
    `base_url`, HTTPS only, no redirects or proxies ever; a sandbox host is a
    second listed URL chosen by configuration. `egress:`, `proxy:` and
    `redirects:` go.
-10. **Which credential schemes first?** *Recommendation:* `bearer`,
-    `header` and `basic` (Twilio), each with `token:` or
+10. **Which credential schemes first?** *Recommendation:*
+    `CredentialScheme.bearer`, `CredentialScheme.header` and
+    `CredentialScheme.basic` (Twilio), each with `token:` or
     `username:`/`password:`. OAuth client credentials and request signing
     (AWS) wait for a real app that needs them.
 11. **Where is a webhook's signature check declared?** *Recommendation:* on
-    the integration (`webhooks: { signature: stripe  secret: ... }`), used by
-    the route as `authentication: StripeV2024.signature`, with `stripe`,
-    `standard_webhooks` and `hmac_sha256` built in and a five-minute
+    the integration (`webhooks: { signature: SignatureScheme.stripe  secret: ... }`),
+    used by the route as `authentication: StripeV2024.signature`, with
+    `SignatureScheme.stripe`, `SignatureScheme.standard_webhooks` and
+    `SignatureScheme.hmac_sha256` built in and a five-minute
     timestamp tolerance, Stripe's library default.
+12. **How is a test fake checked against the provider?** (carried from area
+    13) Area 13's fakes name the provider conditions from the integration's
+    `failures:` block. Is a fake's response also checked against the
+    contract file, or against the provider's sandbox, and when?
 
 ### Decisions
 
@@ -1580,7 +1589,7 @@ Nothing is decided on this page yet.
 | Mapping form | Carried from area 4: `condition: Failure`, e.g. `timed_out: ChargeUnavailable`; time limits are integration settings | 2026-10-12 |
 | Faults | Carried from area 4: faults are never listed in `fails`; integrations map provider problems to declared failures | 2026-10-12 |
 | Calls | Carried from areas 1 and 3: the dot names the owner; `attempt` only on calls that can fail; actions have no settings | 2026-10-12 |
-| Colon rule and options | Carried from areas 2 and 3: members are `name: value`; closed options are lower_snake_case names | 2026-10-12 |
+| Colon rule and options | Carried from areas 2 and 3: members are `name: value`; closed options are lower_snake_case names (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
 | Types and fields | | |
 | Naming and calls | | |
 | Provider versions | | |
@@ -1592,3 +1601,4 @@ Nothing is decided on this page yet.
 | Outbound host | | |
 | Credential schemes | | |
 | Webhook signatures | | |
+| Checking fakes | | |

@@ -19,7 +19,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 4 and this page's recommendations; each recommendation names its open question. Today the compiler checks `job` declarations but cannot run them, and events and subscribers do not parse at all.
+> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 5 and this page's recommendations; each recommendation names its open question. Today the compiler checks `job` declarations but cannot run them, and events and subscribers do not parse at all.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -96,7 +96,8 @@ or undoes the rest (question 11).
 // domains/planning/actions/queue_overdue_reminders.jadpo
 action queue_overdue_reminders() -> Unit {
     // a query in queries/ returning at most 500 todos not yet queued
-    var todos: List<Todo> = overdue_todos(clock.now)
+    var cutoff: ReminderCutoff = ReminderCutoff(clock.now)
+    var todos: List<Todo> = overdue_todos(cutoff)
     for todo in todos {
         mark_reminder_queued(todo.id)    // sets reminder_queued_at (area 6)
         emit ReminderDue {
@@ -1079,6 +1080,18 @@ build`, or read from source and the design documents.
 12. **Are the limits right?** 1,000 events per action, 64 KB per event,
     chains 16 deep, 15 minutes per run. *Recommendation:* adopt them as
     defaults and confirm with measured runs, as ASYNC-001 requires.
+13. **Do large exports need a consistent snapshot read?** (carried from area
+    6) A schedule paging through a query for an export or report sees
+    records change between pages. Should it read one consistent snapshot,
+    and how is that declared?
+14. **What carries on after a route answers `status: SuccessStatus.accepted`?**
+    (carried from area 7) Area 7 has a route answer 202 and continue the work
+    in the background. Is that always an event and a subscriber, and how
+    does the client learn the outcome?
+15. **How do tests run schedules and subscribers?** (carried from area 13)
+    Area 13 calls `overdue_reminders.run()`, relies on subscriber delivery
+    order and needs retries of a failing subscriber. Does this page define
+    those, and in what order are subscribers delivered in tests?
 
 ### Decisions
 
@@ -1103,3 +1116,6 @@ Nothing is decided on this page yet.
 | Delayed delivery | | |
 | One changing integration call per action | | |
 | Limits | | |
+| Snapshot reads for exports | | |
+| Work after an accepted response | | |
+| Schedules and subscribers in tests | | |

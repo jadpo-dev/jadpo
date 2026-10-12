@@ -49,8 +49,12 @@ function line_total(price: Pence, quantity: Quantity) -> Pence {
 
 action complete_todo(todo_id: Todo.id) fails TodoNotFound -> TodoView {
     var todo: Todo = attempt Todo.get(todo_id)
-    var view: TodoView = attempt Todo.mark_done(todo)
-    return view
+    var done: Todo = Todo.update(todo) {
+        set: {
+            status: TodoStatus.done
+        }
+    }
+    return TodoView(done)
 }
 ```
 
@@ -226,7 +230,7 @@ A body is a list of statements, one per line, with no semicolons:
 | Assignment | `name = value` |
 | Return | `return value` |
 | Rejection | `reject Failure { ... }` (area 4) |
-| Condition | `if condition { } else { }` |
+| Condition | `if (condition) { } else if (condition) { } else { }` |
 | Match | `match value { ... }` |
 | Loop | `for item in items { }` (decided in area 2) |
 | Test only | `assert`, `advance clock by` (area 13) |
@@ -308,9 +312,9 @@ function size(count: Count, maximum: Count) -> Size {
 | Precedence | Operators | Operands | Result |
 |---|---|---|---|
 | 1 (tightest) | `not`, unary `-` | `Bool`; a number | same |
-| 2 | `*`, `/`, `%` | numbers | `Int`, or `Decimal` if either side is `Decimal`; `/` always gives `Decimal` |
-| 3 | `+`, `-` | numbers; `+` also joins two `Text` values; time arithmetic is area 10 | as above |
-| 4 | `<`, `<=`, `>`, `>=` | two numbers, two `Text` values or two time values of the same type | `Bool` |
+| 2 | `*`, `/`, `%` | `*` and `%` may mix named types; `/` needs the same named type: `Int` drops the remainder, `Decimal` is exact (question 7) | `Int`, or `Decimal` if either side is `Decimal` |
+| 3 | `+`, `-` | the same named type after widening, or a literal; `+` also joins two `Text` values | as above |
+| 4 | `<`, `<=`, `>`, `>=` | two numbers or two time values of the same named type; text has no order (question 6) | `Bool` |
 | 5 | `==`, `!=` | two values of the same type after widening, or a nullable value and `none` | `Bool` |
 | 6 | `and` | `Bool` | `Bool` |
 | 7 (loosest) | `or` | `Bool` | `Bool` |
@@ -320,6 +324,8 @@ Operators work on the representation, so their result is a plain `Int`,
 constructor (area 2). Parentheses group. `and` and `or` stop as soon as the
 answer is known. `a < b < c` is an error, because `a < b` is a `Bool`.
 Logical operators are words; `!`, `&&` and `||` are not Jadpo.
+
+::: today
 
 ```jadpo project=operators
 type Score = Int {}
@@ -351,14 +357,16 @@ function calculate(left: Score, right: Score, prefix: Phrase, suffix: Phrase, di
 }
 ```
 
+:::
+
 Questions 6 and 7 change operator typing and division:
 
 ```jadpo fragment
 var wrong: Pence = Pence(price + quantity)       // error: adds a Quantity to Pence
 var line: Pence = Pence(price * quantity)        // fine: multiplying different units
 var earlier: Bool = name < other_name             // error: text has no order; use a standard function
-var share: Price = decimal.divide(total, people, rounding: half_even)
-var boxes: BoxCount = integer.divide(items, box_size, rounding: up)   // box_size can't be zero
+var share: Price = decimal.divide(total, people, rounding: Rounding.half_even)
+var boxes: BoxCount = integer.divide(items, box_size, rounding: Rounding.up)   // box_size can't be zero
 ```
 
 ## Match
@@ -542,7 +550,7 @@ call's failures on to the caller, whose `fails` list must include them;
 
 ```jadpo fragment
 var todo: Todo = attempt Todo.get(todo_id)            // a variable
-return attempt Todo.by_id(todo_id)                    // a return
+return attempt todo_by_id(todo_id)                    // a return
 attempt Todo.get(todo_id)                             // on its own (question 4)
 var total: Pence = Pence(attempt price(a) + attempt price(b))   // rejected: inside an expression
 ```
@@ -1759,7 +1767,7 @@ function fail_loudly(note: Note) -> Note {
 - **Payload patterns break the list decision.** `PaymentOutcome.paid { receipt_id, paid_at }`
    is a comma list in braces, which area 2's list decision rules out.
 - **`var` means "immutable".** In JavaScript, C#, Kotlin and Go `var` is the
-   mutable form; `var mut` already mirrors Rust's `var mut`.
+   mutable form; `var mut` already mirrors Rust's `let mut`.
 - **Units are checked by comparison but not by addition.** `Pence + Quantity`
    compiles and `Pence == Quantity` does not, although area 2's rule is that
    named types never mix silently.
@@ -1835,7 +1843,7 @@ function fail_loudly(note: Note) -> Note {
    division is exact and is rounded half to even when the result is stored in
    a type with a fixed `scale`. Dividing values of different types, or
    choosing another rounding, uses `decimal.divide(total, people,
-   rounding: half_up)` or `integer.divide(...)`. Division by zero is ruled out
+   rounding: Rounding.half_up)` or `integer.divide(...)`. Division by zero is ruled out
    by the compiler, not left to the author: the divisor's type must exclude
    zero (`type People = Int { min: 1 }`), a literal divisor must not be `0`,
    and a computed divisor is constructed into such a type first, which is the
@@ -1869,7 +1877,7 @@ function fail_loudly(note: Note) -> Note {
     Kotlin allow the wildcard; Elixir's convention favours listing cases.
 11. **Where may `attempt` appear?** Today anywhere in an expression, and
     silently on calls that cannot fail. *Decided 2026-10-12:* only at the start of
-    a statement (`let`, assignment, `return` or on its own) and only on a call
+    a statement (`var`, assignment, `return` or on its own) and only on a call
     that can fail. Every early exit is then visible at the start of a line,
     which Rust's `?` (allowed anywhere) does not give, without Go's
     `if err != nil` repetition.
@@ -1906,8 +1914,8 @@ function fail_loudly(note: Note) -> Note {
     12); a counter or "last seen" field that must not conflict is updated by
     the database in one step (`count + 1`) rather than read and rewritten
     (area 6). Illustrative shapes, decided in their own areas:
-    `subscriber import_row { on: ImportEvent.row_received(row) -> attempt import_product(row) }`;
-    `emit OrderEvent.placed(order)` in the action, with a subscriber calling
+    `subscriber import_row { on: RowReceived  run: import_product(event) }`;
+    `emit OrderPlaced { order_id: order.id }` in the action, with a subscriber calling
     the provider; `set: { view_count: Post.view_count + 1 }`.
 16. **Should your own functions be generic, or accept unions?** Area 2 left
     this open. *Decided 2026-10-12:* neither. The standard library stays generic;

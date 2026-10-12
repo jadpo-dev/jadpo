@@ -29,7 +29,7 @@ kinds that decide how each one reaches a client, listing, raising, passing on
 and mapping failures, the faults the runtime raises by itself, and what is
 logged.
 
-> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 3 and this page's recommendations; each recommendation names its open question. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code on this page shows the language after the rework, applying the decisions from areas 1 to 4. Today's compiled syntax is collapsed beneath each section that changes.
 
 The rule behind all of it, from the failure model: **application code says
 what failed; the compiler and runtime decide how that fact is shown at each
@@ -38,7 +38,7 @@ error response.
 
 | | Declared by | Listed in `fails` | The client sees | The log gets |
 |---|---|---|---|---|
-| **Domain failure**: an expected outcome such as `TodoNotFound` | you, with `failure` | yes | its code, message and client fields | its code, where it was raised, the path it travelled and its internal fields |
+| **Domain failure**: an expected outcome such as `TodoNotFound` | you, as `type X = Failure` | yes | its code, message and client fields | its code, where it was raised, the path it travelled and its internal fields |
 | **Fault**: the database is down, a provider timed out, a write may or may not have committed | the runtime | no (question 5) | a fixed code for that fault | the cause chain |
 | **Defect**: overflow, the recursion limit, a compiler bug | the runtime | no | `internal_fault` | the cause and stack |
 
@@ -47,7 +47,7 @@ error response.
 ```jadpo fragment
 /// The todo does not exist.
 type TodoNotFound = Failure {
-    kind: not_found
+    kind: FailureKind.not_found
     message: "Todo not found."
     internal: {
         todo_id: Todo.id
@@ -55,7 +55,7 @@ type TodoNotFound = Failure {
 }
 
 type QuantityUnavailable = Failure {
-    kind: conflict
+    kind: FailureKind.conflict
     message: "The requested quantity is unavailable."
     client: {
         available: Quantity
@@ -124,9 +124,10 @@ failure QuantityUnavailable {
 
 ## Kinds
 
-Carried from area 2: kinds are lower_snake_case option names. The "raised
-by" column is question 3's recommendation; today every kind can be declared
-and rejected.
+Carried from area 2: kinds are lower_snake_case option names (superseded
+2026-10-12: written `FailureKind.not_found`; see area 2 question 17). The
+"raised by" column is decided (question 3); today every kind can still be
+declared and rejected.
 
 | Kind | HTTP | Meaning | Raised by |
 |---|---:|---|---|
@@ -148,12 +149,12 @@ and rejected.
 
 ```jadpo fragment
 type CheckoutUnavailable = Failure {
-    kind: unavailable            // fine: a business outcome callers handle
+    kind: FailureKind.unavailable    // fine: a business outcome callers handle
     message: "Checkout is temporarily unavailable."
 }
 
 type Broken = Failure {
-    kind: internal_fault         // error: only the runtime raises internal_fault (question 3)
+    kind: FailureKind.internal_fault // error: only the runtime raises internal_fault (question 3)
 }
 ```
 
@@ -410,8 +411,9 @@ call. Every mapping is written `condition: Failure` in the operation's block
 (question 7), and the failure's kind must fit the condition:
 
 ```jadpo fragment
-// a read that finds nothing (the operation's own syntax is area 6)
-var todo: Todo = attempt query required Todo {
+// a read that finds nothing: queries/todo_by_id.jadpo (area 6)
+query todo_by_id(todo_id: Todo.id) fails TodoNotFound -> TodoView {
+    from: Todo
     where: Todo.id == todo_id
     missing: TodoNotFound {
         todo_id: todo_id
@@ -422,11 +424,12 @@ var todo: Todo = attempt query required Todo {
 var quantity: Quantity = attempt Quantity(count) invalid: QuantityOutOfRange
 
 // a write that breaks a unique rule (area 6)
-var account: Account = attempt create Account {
-    ...
+var account: Account = attempt Account.create {
+    set: {
+        ...
+    }
     conflict: {
         Account.handle: HandleTaken
-        other: AccountConflict
     }
 }
 
@@ -594,12 +597,7 @@ that policy concealed it (question 10).
 
 ```jadpo fragment
 // policy (area 9) limits every read of Todo to its owner
-var todo: Todo = attempt query required Todo {
-    where: Todo.id == todo_id
-    missing: TodoNotFound {
-        todo_id: todo_id
-    }
-}
+var todo: Todo = attempt Todo.get(todo_id)
 // someone else's todo fails with TodoNotFound, exactly like a missing one;
 // the log adds `concealed_by: policy`
 ```
@@ -1020,7 +1018,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 ### Consistency with the rest of the language
 
 - **Kinds look like types.** `kind: NotFound` is UpperCamelCase like a type
-   name but is an option from a fixed set; area 2 decided `kind: not_found`.
+   name but is an option from a fixed set; area 2 decided `kind: FailureKind.not_found`.
 - **`code` repeats the name** in every failure in the repository
    (`TodoNotFound`, `"todo_not_found"`), which area 2's "explicit, never
    redundant" rule removes elsewhere.
@@ -1090,7 +1088,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    400 for unreadable requests, as GitHub's API does; changing it later is a
    breaking change for every client. This closes FAIL-003.
    A timeout an application cares about is either a business rule with its
-   own failure (`ReservationExpired` with `kind: conflict`) or a provider
+   own failure (`ReservationExpired` with `kind: FailureKind.conflict`) or a provider
    problem mapped by the integration to a declared `unavailable` failure; how
    long to wait is a setting on the integration or route (areas 7 and 11), and
    the runtime raises the timeout kind itself.
@@ -1188,7 +1186,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 
 | Topic | Decision | Date |
 |---|---|---|
-| Kind names | Carried from area 2 (Richard, 2026-10-12): kinds are lower_snake_case option names, `kind: not_found` | 2026-10-12 |
+| Kind names | Carried from area 2 (Richard, 2026-10-12): kinds are lower_snake_case option names, `kind: not_found` (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
 | Runtime construction | Carried from area 2: a runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literals are checked while compiling | 2026-10-12 |
 | Failure arms | Carried from area 3: one `match` handles call outcomes; failure arms have no `failure` prefix, every failure has an arm, and an arm recovers, `reject`s or `propagate`s | 2026-10-12 |
 | `attempt` placement | Carried from area 3: only at the start of a statement, and only on a call that can fail | 2026-10-12 |

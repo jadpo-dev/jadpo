@@ -110,16 +110,16 @@ from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`,
 and objects are rejected (`configuration.type_unsupported`): split them into
 fields.
 
-Proposed: also accept enums, written by variant name, and the built-in enums
+Proposed: also accept enums, written `Type.value`, and the built-in enums
 `Zone` and `Locale` (question 2):
 
 ```jadpo fragment
 config {
     log_level: LogLevel {        // type LogLevel = Enum { debug info warning }
-        default: info
+        default: LogLevel.info
     }
     business_zone: Zone {
-        default: europe_london
+        default: Zone.europe_london
     }
 }
 ```
@@ -160,7 +160,7 @@ Area 5 decided that stores take their address from configuration:
 application {
     stores: {
         main: {
-            engine: postgres
+            engine: Engine.postgres
             url: config.database_url
         }
     }
@@ -382,9 +382,9 @@ three, with the format either built in or declared once as a named type:
 
 ```jadpo fragment
 type ShortDate = TimeFormat {
-    day: numeric
-    month: short
-    year: numeric
+    day: ComponentStyle.numeric
+    month: ComponentStyle.short
+    year: ComponentStyle.numeric
 }
 
 var placed: PresentationText = temporal.format(
@@ -953,8 +953,8 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
   read into an action is a signature in all but name; recommend the same rule
   (`type OidcAudience = Text { }`).
 - **Policy options in code are qualified** (`overlap: LocalOverlap.reject`),
-  consistent with area 2's rule that bare names are only for settings
-  (syntax review #59).
+  consistent with area 2's rule that every option is written `Type.value`,
+  in settings and in code (syntax review #59).
 
 ### Carried to later areas
 
@@ -980,7 +980,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    and Spring Boot's relaxed binding derive names the same way.
 2. **Which types can a setting have?** Today text-based, number, boolean,
    UUID, email, URL, IP, duration, instant and date types. *Recommendation:*
-   add enums written by variant name, `Zone` and `Locale`, so a log level or
+   add enums, written `Type.value`, and `Zone` and `Locale`, so a log level or
    business time zone is checked at startup instead of parsed by hand; keep
    lists and objects out (one variable, one value).
 3. **How is a database address typed?** `Url` cannot hold `postgres://`, so
@@ -1022,6 +1022,13 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    generated from the default locale's keys, and missing keys or
    placeholders in other locales as compile errors. Build it when the first
    email template needs it (area 11), not before.
+10. **How are signing keys rotated?** (carried from area 8) Area 8 keeps
+    signing keys, the OIDC issuer and audience in configuration. How does a
+    deployment replace a signing key without signing everyone out?
+11. **Do configuration fields carry `test:` values?** (carried from area 13)
+    Area 13 has tests take each configuration field's `test:` value, while
+    "Values on your machine and in production" above says tests get their
+    values from fixtures. Which does configuration declare?
 
 ### Decisions
 
@@ -1033,7 +1040,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | Failure messages | Carried from area 4: clients translate by failure `code`; `message` stays fixed English | 2026-10-12 |
 | Store addresses | Carried from area 5: stores are declared in `app.jadpo` and take `url: config.<field>` | 2026-10-12 |
 | Signature types | Carried from area 2: signatures use named types built on `Instant`, `CalendarDate`, `Time` and `Duration`; `Zone`, `Locale` and `Weekday` may be used directly | 2026-10-12 |
-| Option names | Carried from area 2: closed options in settings are lower_snake_case names; in code, enum values are qualified | 2026-10-12 |
+| Option names | Carried from area 2: closed options in settings are lower_snake_case names; in code, enum values are qualified (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
 | Environment variable names | | |
 | Setting types | | |
 | Database address type | | |
@@ -1043,3 +1050,5 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | Time library and formatting | | |
 | Locales declaration | | |
 | Translations format | | |
+| Signing key rotation | | |
+| Test values for settings | | |

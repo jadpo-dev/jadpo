@@ -173,9 +173,16 @@ the JSON body for `POST`, `PUT` and `PATCH`.
 
 ```jadpo fragment
 type ListTodos = Input {
-    status: TodoStatus { optional: true }
-    limit: PageSize { default: 25 }
-    request_tag: RequestTag { header: "X-Request-Tag"  optional: true }
+    status: TodoStatus {
+        optional: true
+    }
+    limit: PageSize {
+        default: 25
+    }
+    request_tag: RequestTag {
+        header: "X-Request-Tag"
+        optional: true
+    }
 }
 
 GET / {
@@ -223,16 +230,16 @@ status is `status:` (question 3):
 
 | `status:` | HTTP | Needs |
 |---|---|---|
-| left out (`ok`) | 200 | `output:` |
-| `created` | 201 | `output:` |
-| `accepted` | 202 | `output:`; the work continues in the background (area 12) |
-| `no_content` | 204 | no `output:`; the action returns `Unit` |
+| left out (`SuccessStatus.ok`) | 200 | `output:` |
+| `SuccessStatus.created` | 201 | `output:` |
+| `SuccessStatus.accepted` | 202 | `output:`; the work continues in the background (area 12) |
+| `SuccessStatus.no_content` | 204 | no `output:`; the action returns `Unit` |
 
 ```jadpo fragment
 POST / {
     input: CreateTodo
     output: TodoView
-    status: created
+    status: SuccessStatus.created
     run: create_todo(input, current_principal.user)
 }
 ```
@@ -304,7 +311,7 @@ Every route has a deadline: 10 seconds unless `deadline:` says otherwise,
 and never more than 60 (question 5). When it passes, the runtime starts no
 new work, commits nothing and answers 504 `deadline_exceeded`. The deadline
 covers integration calls, which have their own shorter timeouts (area 11);
-longer work answers `status: accepted` and continues in a subscriber.
+longer work answers `status: SuccessStatus.accepted` and continues in a subscriber.
 
 ```jadpo fragment
 POST /import {
@@ -400,7 +407,7 @@ routes WebhooksStripe {
     POST / {
         authentication: stripe.signature    // checked over the raw body (areas 8 and 11)
         input: StripeEvent
-        status: no_content
+        status: SuccessStatus.no_content
         run: record_stripe_event(input)
     }
 }
@@ -484,7 +491,7 @@ acceptance written by a person. The same form accepts a database drop
 // acceptances/20261020T1400_remove_todo_priority.jadpo
 /// Priority was never shown by any client.
 acceptance {
-    change: output_field_removed
+    change: ApiChange.output_field_removed
     subject: main.TodoView.priority
 }
 ```
@@ -981,14 +988,14 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
 
 | Item | Area | Status |
 |---|---|---|
-| Route authentication: `authentication: none` and `fresh`, each API's default, how the caller is passed (`current_principal`) | 8 | Input to area 8 |
+| Route authentication: `authentication: RouteAuthentication.none` and `.fresh`, each API's default, how the caller is passed (`current_principal`) | 8 | Input to area 8 |
 | Webhook signature checking over the raw body, declared with the provider's integration | 8, 11 | Input to areas 8 and 11 |
 | Policy on routes and the `not_permitted` answer | 9 | Input to area 9 |
 | A new root folder for records and acceptances (`api/`, `acceptances/`) in area 1's fixed root list | 1 | Depends on question 10 |
 | Database drops and store moves accepted with the shared `acceptance` form | 5 | Depends on question 10 |
 | Policy weakening and new domains accepted with the shared form, enforced through the approval protocol | 9, 1 | Depends on question 10 |
 | Integration timeouts inside a route's deadline | 11 | Input to area 11 |
-| Background work after `status: accepted`; webhook events processed by subscribers | 12 | Input to area 12 |
+| Background work after `status: SuccessStatus.accepted`; webhook events processed by subscribers | 12 | Input to area 12 |
 | Calling routes in tests | 13 | Input to area 13 |
 | `toolchain.target_liveness_not_local`, raised only by `jadpo build`; the `jadpo api update` command and CI's record check | 14 | Input to area 14 |
 | `precondition_failed` for `If-Match` (from area 4); until then a concurrent change answers 409 through area 5's check | 7 | Deferred |
@@ -1014,9 +1021,11 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
    two anonymous shapes and one meaning of `query` (syntax review top 10,
    item 6). FastAPI and ASP.NET infer each parameter's source the same way.
 3. **`status:` and a checked `output:`?** *Recommendation:* rename
-   `success:` to `status:` with `ok`, `created`, `accepted` and `no_content`;
-   `output:` must be an `Output` and exactly the action's result type, and
-   is required unless the status is `no_content`. This fixes today's 500 on
+   `success:` to `status:` taking a `SuccessStatus`: `SuccessStatus.ok`,
+   `SuccessStatus.created`, `SuccessStatus.accepted` or
+   `SuccessStatus.no_content`; `output:` must be an `Output` and exactly the
+   action's result type, and is required unless the status is
+   `SuccessStatus.no_content`. This fixes today's 500 on
    a mismatch and the silent `null` body.
 4. **What may `run:` call?** Area 3 left a route calling a query to area 7.
    *Recommendation:* a `GET` calls a named query and every other method a
@@ -1059,6 +1068,24 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
     person, one per change and used once, in the same form for database
     drops, policy weakening and new domains; the `acceptances/` folder is
     owned in CODEOWNERS so the host's review records who approved it.
+11. **How does a write's revision reach the client?** (carried from area 6)
+    Area 6 lets a client that just wrote skip caches by its revision. What
+    are the response header and cookie (`jadpo-revision`) called, and must
+    non-browser clients echo the revision back?
+12. **Where do generated authentication routes and security schemes
+    appear?** (carried from area 8) Does the generated `POST /auth/exchange`
+    appear in the route inventory and OpenAPI, and how is each route's
+    security scheme shown?
+13. **How does an API declare its accepted authentication methods?**
+    (carried from area 8) Area 8 has each API list its methods,
+    `authentication: [AuthenticationMethod.browser_session, AuthenticationMethod.api_token]`,
+    with a route only narrowing them; the `apis: { }` example above shows
+    none, and the text mentions only a "default authentication". Where does
+    the list go?
+14. **What do route tests send and get back?** (carried from area 13) Area
+    13's tests use a `request { }` form returning a `Response` with its
+    `status`, `code` and typed output. Does this page define that form and
+    type?
 
 ### Decisions
 
@@ -1082,3 +1109,7 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
 | Webhooks | | |
 | Field path format | | |
 | API record and acceptance | | |
+| Write revision header | | |
+| Generated authentication routes in OpenAPI | | |
+| Accepted authentication methods per API | | |
+| Route test request and `Response` | | |
