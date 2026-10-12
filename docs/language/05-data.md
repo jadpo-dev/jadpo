@@ -435,7 +435,11 @@ query category_page(category_id: Category.id, page: PageRequest) -> Page<Product
   category pages a product moved out of and into) is a later optimisation.
 - **Only pages read caches.** Reads inside actions, policy checks and
   authentication always read the database, so a decision is never made from
-  a stale copy. If Redis is down, pages read the database instead.
+  a stale copy.
+- **A cache that cannot be reached never fails a request**, anywhere in the
+  language. Reads go to the database after a short timeout; a clear that
+  fails is retried in the background, and `keep:` bounds how stale an entry
+  can get meanwhile; readiness (area 7) does not depend on a cache.
 - **Permissions are applied on every read**, and cached results are keyed by
   tenant and the details policy depends on, so one user's results are never
   served to another. Erasing personal data clears cached copies immediately.
@@ -2964,6 +2968,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Mapping form | Carried from area 4: write conflicts map with `condition: Failure`, a hidden record reports the same `not_found` failure | 2026-10-12 |
 | Identity | One field `id`, `Uuid`, generated as version 7, never supplied by callers; no composite identity: many-to-many links are entities with their own `id` and a compound unique rule | 2026-10-12 |
 | Stores | Every entity lives in one declared store (`main` by default); no `persistence` block; never-saved things are types; Redis entities declare an expiry; an action writes at most one store | 2026-10-12 |
+| Cache outages | Every cache degrades gracefully: an unreachable cache never fails a request; reads fall back to the database after a short timeout; failed clears are retried, bounded by `keep:`; readiness ignores caches (Richard) | 2026-10-12 |
 | Caches | Today's syntax removed; record, query-result and computed caches return with Redis, beside what they copy; derived keys including tenant and policy inputs; compiler-driven invalidation; required `keep:` up to a day; display reads only; erasure wipes cached copies immediately | 2026-10-12 |
 | Compound unique rules | A named list in the entity's `unique: { }` section, `tenant_owner: [tenant, owner_email]`; the name is used by failure mapping | 2026-10-12 |
 | References | Any field typed `X.id` is a reference: the compiler creates the foreign key and index; `on_delete:` is required in the field's block with no default; no `as:` name | 2026-10-12 |

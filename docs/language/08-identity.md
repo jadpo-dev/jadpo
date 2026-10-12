@@ -2402,59 +2402,83 @@ suites), not rerun for this page.
    external OIDC tokens and service keys. *Recommendation:* A. Rails, Phoenix,
    Django, Sanctum and Auth.js all converged on "the author names the user
    record, the methods and the public routes; the framework owns the rest", and
-   today's extra flexibility does not build anyway.
+   today's extra flexibility does not build anyway. *Decided 2026-10-12:* yes, as recommended.
 2. **Are the principal's fields built in?** Today they are declared, but only
    `subject`, a UUID id and `authentication_strength` build. *Recommendation:*
    yes: `id` (typed `User.id` or `Service.id`), `subject` and `strength`.
    Anything else is read from the entity, which keeps credentials free of
    profile and permission data (an AUTH-001 rule) and fixes the UUID
-   conversions.
+   conversions. *Decided 2026-10-12:* yes, as recommended.
 3. **Is the service variant optional?** Today a principal without `service`
    is `semantic.principal_variant_required`, so every application declares
    one. *Recommendation:* yes, at least one variant; with no `service`,
-   `service_key` is an error and `current_principal` is simply a user.
+   `service_key` is an error and `current_principal` is simply a user. *Decided 2026-10-12:* yes, as recommended.
 4. **One revocation setting?** Today `revocation { mode: bounded
    maximum_delay: 5m }` or `{ mode: immediate }`. *Recommendation:*
    `revocation_delay: 5m` in `application { }`, left out for immediate. The
    strict choice is the default, as with authentication on routes, and two of
    the three revocation errors disappear. Clerk states its bound the same
-   way, as a 60-second token lifetime.
+   way, as a 60-second token lifetime. *Decided 2026-10-12:* yes, as recommended.
 5. **How does code read the caller?** Today routes use `current_principal`
    and callables can also read an implicit `principal`. *Recommendation:*
    `current_principal` in routes only, passed to actions as a typed parameter.
    Signatures then show which actions need a caller, tests pass one in, and
    schedules visibly have none. Policy (area 9) gets the caller from the
-   runtime without code passing it.
+   runtime without code passing it. *Decided 2026-10-12:* yes, as recommended.
 6. **Declared or built-in failures for a disabled caller?** Today each
    resolution names a declared failure of kind `NotPermitted` or `Rejected`.
    *Recommendation:* built-in `user_disabled` and `service_disabled`, kind
    `not_permitted` (403), with no declaration. Every application declares the
    same two today, and it removes the clash between area 1's
-   `authentication.jadpo` and area 4's `failures/` folders.
+   `authentication.jadpo` and area 4's `failures/` folders. *Decided 2026-10-12:* yes, as recommended.
 7. **Who stores service keys?** Today the application declares a
    `ServiceCredential` entity and maps six of its fields; sessions are already
    compiler-owned. *Recommendation:* the language stores keys, as Laravel
    Sanctum owns `personal_access_tokens`, and generates `Service.issue_key`,
    `Service.keys` and `Service.revoke_key` so an application can build its own
-   key management screens. The application declares only `Service`.
+   key management screens. The application declares only `Service`. *Decided 2026-10-12:* yes, as recommended.
 8. **What does a route say about authentication?** Today `auth: none` or
    `auth: fresh`, and every route accepts every method. *Recommendation:*
    spell it `authentication: RouteAuthentication.none` and
    `authentication: RouteAuthentication.fresh` (syntax review
    #41), the one word a reviewer must not miss on a public route; each of area
    7's APIs lists the methods it accepts, so an admin API can refuse service
-   keys without per-route lines.
+   keys without per-route lines. *Decided 2026-10-12:* yes, as recommended.
 9. **Can Jadpo code start and end a session?** Today only a trusted host
    program can. *Recommendation:* yes: `sessions.start(user_id)` and
    `sessions.end()`, callable only from actions run by a route, with the
    compiler setting and clearing the cookie and CSRF token. Passwords stay out;
    checking the person is the application's job. Without this, every
-   application needs a second program just to log people in.
+   application needs a second program just to log people in. *Decided 2026-10-12:* yes, as recommended.
 10. **How do tests, fixtures and seeds name a caller?** (carried from area
     13) Area 13 builds callers with `Principal.user(user)` and signs in with
     `as:`, but on this page a caller only comes from signing in.
     *Recommendation:* keep `Principal.user(user)` test-only (tests, fixtures,
-    seeds), and describe it with `as:` alongside how the caller is read.
+    seeds), and describe it with `as:` alongside how the caller is read. *Decided 2026-10-12:* yes, as recommended.
+11. **Is "Sign in with Google" built in?** The `oidc` method above only
+    accepts tokens another service has already issued (Auth0, Clerk); the
+    sign-in flow itself is left to the application. *Recommendation:* yes.
+    `sign_in_providers: { google: { ... } github: { ... } }` in
+    `authentication.jadpo`, with presets for common providers and a generic
+    OpenID Connect entry for any other. The runtime generates
+    `/auth/{provider}/start` and `/auth/{provider}/callback`, runs the
+    authorization-code flow with PKCE, state and nonce, keeps each linked
+    provider account in a compiler-owned table (provider and its user id to
+    `User.id`), and starts a session. The first sign-in calls an action the
+    application names (`on_first_sign_in: create_user_from_provider`),
+    receiving the provider's profile; the application decides whether to
+    create a user or link an existing one, and linking by email is allowed
+    only when the provider says the email is verified. The existing `oidc`
+    method is renamed `external_token`, so the two are not confused. Being
+    an OAuth provider for other people's applications is out of scope.
+12. **Should authentication checks read a cache?** *Recommendation:* no.
+    Area 5 already decided that authentication always reads the database.
+    The strict default is one primary-key read of the session joined to the
+    user's disabled flag; with `revocation_delay` set there is no read at
+    all, which is faster than any cache. A cached session would also survive
+    a revocation made while the cache was unreachable, turning a cache
+    outage into a security gap. `revocation_delay` stays the one speed
+    setting.
 
 ### Decisions
 
@@ -2467,13 +2491,15 @@ suites), not rerun for this page.
 | Runtime kinds | Carried from area 4: `unauthenticated` and `misconfigured` are raised only by the runtime; authentication failures are never listed in `fails` | 2026-10-12 |
 | Mapping form | Carried from area 4: `condition: Failure` everywhere, as in `inactive: UserDisabled` | 2026-10-12 |
 | Principal in failures | Carried from area 4: the signed-in principal cannot be put in a failure's fields | 2026-10-12 |
-| How simple authentication is | | |
-| Principal fields | | |
-| Service variant | | |
-| Revocation setting | | |
-| Reading the caller | | |
-| Disabled caller failures | | |
-| Service key storage | | |
-| Route setting spelling | | |
-| Starting and ending sessions | | |
-| Callers in tests, fixtures and seeds | | |
+| How simple authentication is | Option A: the author names the user entity, the methods and the public routes; the language owns transports, token formats, claims and lookups | 2026-10-12 |
+| Principal fields | Built in: `id` (`User.id` or `Service.id`), `subject` and `strength`; anything else is read from the entity | 2026-10-12 |
+| Service variant | Optional; with no `service`, `service_key` is an error and `current_principal` is a user | 2026-10-12 |
+| Revocation setting | `revocation_delay: 5m` in `application { }`; left out means immediate | 2026-10-12 |
+| Reading the caller | `current_principal` in routes only, passed to actions as a typed parameter; policy gets the caller from the runtime | 2026-10-12 |
+| Disabled caller failures | Built-in `user_disabled` and `service_disabled`, kind `not_permitted` (403) | 2026-10-12 |
+| Service key storage | The language stores keys and generates `Service.issue_key`, `Service.keys` and `Service.revoke_key`; the application declares only `Service` | 2026-10-12 |
+| Route setting spelling | `authentication: RouteAuthentication.none` / `.fresh`; each API lists the methods it accepts | 2026-10-12 |
+| Starting and ending sessions | `sessions.start(user_id)` and `sessions.end()` from actions a route runs; the compiler sets and clears the cookie and CSRF token | 2026-10-12 |
+| Callers in tests, fixtures and seeds | `Principal.user(user)` in tests, fixtures and seeds only, with `as:` | 2026-10-12 |
+| Sign-in providers | | |
+| Caching authentication | | |
