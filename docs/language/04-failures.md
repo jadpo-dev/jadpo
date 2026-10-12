@@ -1209,5 +1209,5 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Failure declaration form | `type Name = Failure { ... }`, the same form as every other type (Richard: consistency when writing code) | 2026-10-12 |
 | Failure fields | Fields exist only in `client: { }` and `internal: { }`; without `client` the caller gets only the code, message and request id | 2026-10-12 |
 | Request id | Every error response carries `request_id` (also the `x-request-id` header), and every failure, expected ones included, is logged with it, so a client can quote it and a developer can trace it | 2026-10-12 |
-| Kind is an enum | `kind:` takes a value of the closed `FailureKind` enum, written by its name (`kind: not_found`) because the setting fixes the list, per area 2's setting-options decision; never a string | 2026-10-12 |
+| Kind is an enum | `kind:` takes a `FailureKind` value written `FailureKind.not_found`, never a string (area 2 setting-options rule, revised 2026-10-12) | 2026-10-12 |
 | Failure placement | One failure per file in the domain's `failures/` folder, or `shared/failures/` once two or more domains raise it; `public` when another domain handles it | 2026-10-12 |

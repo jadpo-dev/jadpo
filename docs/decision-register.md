@@ -54,7 +54,7 @@ anonymous objects removed); derived types use `from` with `pick`, `omit` and
 `optional`; no sized integers, an exact 64-bit `Int` and an exact scaled
 `Decimal`; UUID version 7 by default; literals take the expected type and
 every variable states its type; field settings and closed options use
-blocks and lower_snake_case names; lists use square brackets; runtime
+blocks; closed options are enum values written `Type.value` (revised 2026-10-12); lists use square brackets; runtime
 construction can fail only through `attempt ... invalid:`; `==` compares
 contents. Not yet implemented; the current compiler remains the executable
 baseline until the rework lands.

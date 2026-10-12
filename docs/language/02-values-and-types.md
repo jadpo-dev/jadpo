@@ -1663,13 +1663,17 @@ to when that page is written.
     audience, code written by agents and reviewed by people, favours the
     explicit form.
 
-17. **Should every setting with a fixed set of options take a name from that
-    set?** *Decided 2026-10-12:* yes, everywhere: `version: v7`, not
-    `version: 7`; genuine quantities such as `min`, `max` and `scale` stay
-    numbers. In settings the bare name is written because the setting fixes
-    the list; in ordinary code enum values stay qualified
-    (`OrderStatus.paid`). Every option name is lower_snake_case, which changes
-    failures' `kind: InvalidValue` to `kind: invalid_value` (area 4).
+17. **How is a setting with a fixed set of options written?** *Decided
+    2026-10-12, revised the same day (Richard):* always as an enum value,
+    `Type.value`, the same form as in code: `version: UuidVersion.v7`,
+    `format: TextFormat.email`, `kind: FailureKind.not_found`,
+    `on_delete: OnDelete.cascade`. Genuine quantities such as `min`, `max`
+    and `scale` stay numbers. A bare word in a setting is therefore always a
+    name you declared (`store: cache`), and a fixed option is unmistakable;
+    the type name says where the choices are listed. Value names read as a
+    value or a moment, never a verb (`Generated.on_create`, not
+    `Generated.create`). This replaces the first version of this decision,
+    which wrote bare names in settings.
 
 18. **What replaces `value`?** *Decided 2026-10-12:* `value` is dropped. An
     object used inside the application is `type Name = Object { fields }`,
@@ -1712,7 +1716,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Derived types | `type X = Base from Source { pick/omit/optional, then new fields }`; named results only; `Output` may only `pick`; generated fields never in an `Input` | 2026-10-12 |
 | Literal typing | A literal takes the expected type where it is known and is checked while compiling; computed values need an explicit constructor | 2026-10-12 |
 | Variable types | Every `var` states its type; loop and `match` bindings take theirs from what they bind | 2026-10-12 |
-| Setting options | A setting with a fixed set of options takes a lower_snake_case name from that set (`version: v7`, `format: email`, `kind: not_found`); genuine quantities stay numbers | 2026-10-12 |
+| Setting options | A setting with a fixed set of options takes an enum value written `Type.value` (`version: UuidVersion.v7`, `kind: FailureKind.not_found`, `on_delete: OnDelete.cascade`); a bare word in a setting is always a declared name; option values read as values or moments, not verbs; quantities stay numbers (revised 2026-10-12, Richard) | 2026-10-12 |
 | Object keyword | `value` is dropped; objects are `type Name = Object { fields }` | 2026-10-12 |
 | `Object` | Only a base in a `type` declaration; no anonymous inline objects | 2026-10-12 |
 | Field settings | A field's settings go in a block after its type, one per line (`optional: true`, `default: 25`) | 2026-10-12 |

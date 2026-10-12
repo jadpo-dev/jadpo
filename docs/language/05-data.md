@@ -2906,3 +2906,4 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Store declaration | Stores declared in `app.jadpo`; PostgreSQL `main` implied; same engine in every environment; D1 on the roadmap | 2026-10-12 |
 | Query placement | Every query lives in its domain's `queries/` folder, one per file, whatever it reads; entity files hold the data definition; generated operations (`Todo.get`, create, update, delete) stay on the entity; a query's cache sits in its file (Richard, after scenarios) | 2026-10-12 |
 | Action placement | Every action lives in its domain's `actions/` folder, one per file; written actions are called by name (`complete_todo(todo_id)`); generated operations stay on the entity (Richard) | 2026-10-12 |
+| Generated fields | `generated: Generated.on_create` (set once when created) or `Generated.on_change` (set when created and on every change) (Richard) | 2026-10-12 |
