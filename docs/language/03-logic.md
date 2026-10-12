@@ -1910,8 +1910,9 @@ function fail_loudly(note: Note) -> Note {
     is decided in area 9. The cases this does not fit have better answers
     already: a large batch that should keep partial progress is a schedule or
     subscriber handling one item per action (resumable as well); a call to an
-    external provider runs after the commit, never inside it (areas 11 and
-    12); a counter or "last seen" field that must not conflict is updated by
+    external provider comes before any write in the action and carries an
+    idempotency key, so a retry repeats it harmlessly (amended 2026-10-12 by
+    area 11 question 7); a counter or "last seen" field that must not conflict is updated by
     the database in one step (`count + 1`) rather than read and rewritten
     (area 6). Illustrative shapes, decided in their own areas:
     `subscriber import_row { on: RowReceived  run: import_product(event) }`;

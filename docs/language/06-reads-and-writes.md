@@ -557,8 +557,9 @@ Every action is all-or-nothing (area 3): its writes, and those of the public
 actions it calls, commit together or not at all. A write to a record loaded
 earlier in the action checks that nobody changed it in between. If someone
 did, the runtime throws the attempt away and runs the whole action again,
-with fresh reads and a fresh `clock.now`. That is safe because an action
-calls no outside service before it commits (areas 11 and 12). After three
+with fresh reads and a fresh `clock.now`. That is safe because an action's
+outside call comes before its writes and carries an idempotency key, so a
+rerun repeats it harmlessly (area 11). After three
 attempts within a second, the existing retry budget, the request fails
 `unavailable` and the client may try again. Authors write nothing for this.
 

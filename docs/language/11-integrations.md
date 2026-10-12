@@ -1,7 +1,7 @@
 ---
 title: External services
 area: 11
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - semantic.service_atomic_effect
@@ -24,7 +24,7 @@ failures, idempotency keys, when a call may happen, where the app may connect,
 provider API versions, the provider's contract file, inbound webhooks and
 fakes for tests.
 
-> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 5 and this page's recommendations; each recommendation names its open question. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 11. Today's compiled syntax is collapsed beneath each section that changes.
 
 The rule behind all of it: **code calls a typed operation; the compiler owns
 the HTTP request, the secret, the destination, the retries and the mapping of
@@ -1527,57 +1527,61 @@ Each row says how it was checked: compiled with `jadpo check`, built with
    type can serve two provider versions if it fits both. Generating types
    from the contract (OpenAPI Generator, Ballerina's `bal openapi`) brings in
    hundreds of fields nobody reviews. See
-   [the proposals](research/11-integrations-proposals.md).
+   [the proposals](research/11-integrations-proposals.md). *Decided 2026-10-12:* yes, as recommended.
 2. **How is an integration named and called?** *Recommendation:*
    UpperCamelCase with the version in the name (`StripeV2024`), called
    `StripeV2024.create_payment_intent(...)` like `Todo.get`, only from
-   actions. Encore's typed service clients read the same way.
+   actions. Encore's typed service clients read the same way. *Decided 2026-10-12:* yes, as recommended.
 3. **How are provider versions handled?** *Recommendation:* one integration
    per version with its own contract, both runnable at once, upgraded by
    adding the next version and moving callers; `version_header:` sends the
    contract's version. This is Stripe's own advice: pin the version, test the
-   new one beside it.
+   new one beside it. *Decided 2026-10-12:* yes, as recommended.
 4. **Does the source keep `version:` and `sha256:`?** *Recommendation:* no:
    `contract: "file"` only. The file is in the repository, and its digest
    goes in the approval record, so a contract change is still reviewed.
    `semantic.service_import_digest_mismatch` becomes an approval-record
-   check.
+   check. *Decided 2026-10-12:* yes, as recommended.
 5. **Which conditions can be mapped, and to what?** *Recommendation:* the
    contract's error responses to any declarable failure, plus `timed_out` to
    an `unavailable` failure only on operations with an idempotency key;
    anything unmapped is a fault. Temporal marks errors non-retryable the same
-   way.
+   way. *Decided 2026-10-12:* yes, as recommended.
 6. **Who supplies the idempotency key?** *Recommendation:* the runtime: the
    delivery key in subscribers and schedules, the client's key or request id
    in routes; the operation only says where it goes. Today's
-   `ReminderIntentId` and its two clauses go.
+   `ReminderIntentId` and its two clauses go. *Decided 2026-10-12:* yes, as recommended.
 7. **May one action call a provider and also write?** Today no write at all
    is allowed. *Recommendation:* yes, if the call comes first; the writes
    commit after it returns, and a failed commit retries the call with the
-   same key. Writes before the call stay an error; that case emits an event.
+   same key. Writes before the call stay an error; that case emits an event. *Decided 2026-10-12:* yes, as recommended.
 8. **Which retry settings exist?** *Recommendation:* `timeout:` (default
    10s) and `retry: { attempts: within: }` (default 3 within 30s), the same
    words as area 12's subscriber retry; exponential backoff with full jitter
-   fixed. Temporal exposes five knobs, mostly left at defaults.
+   fixed. Temporal exposes five knobs, mostly left at defaults. *Decided 2026-10-12:* yes, as recommended.
 9. **How is the outbound host controlled?** *Recommendation:* derived from
    `base_url`, HTTPS only, no redirects or proxies ever; a sandbox host is a
    second listed URL chosen by configuration. `egress:`, `proxy:` and
-   `redirects:` go.
+   `redirects:` go. *Decided 2026-10-12:* yes, as recommended.
 10. **Which credential schemes first?** *Recommendation:*
     `CredentialScheme.bearer`, `CredentialScheme.header` and
     `CredentialScheme.basic` (Twilio), each with `token:` or
     `username:`/`password:`. OAuth client credentials and request signing
-    (AWS) wait for a real app that needs them.
+    (AWS) wait for a real app that needs them. *Decided 2026-10-12:* yes, as recommended.
 11. **Where is a webhook's signature check declared?** *Recommendation:* on
     the integration (`webhooks: { signature: SignatureScheme.stripe  secret: ... }`),
     used by the route as `authentication: StripeV2024.signature`, with
     `SignatureScheme.stripe`, `SignatureScheme.standard_webhooks` and
     `SignatureScheme.hmac_sha256` built in and a five-minute
-    timestamp tolerance, Stripe's library default.
+    timestamp tolerance, Stripe's library default. *Decided 2026-10-12:* yes, as recommended.
 12. **How is a test fake checked against the provider?** (carried from area
     13) Area 13's fakes name the provider conditions from the integration's
     `failures:` block. Is a fake's response also checked against the
     contract file, or against the provider's sandbox, and when?
+    *Decided 2026-10-12:* the compiler checks every fake response against the
+    contract file, so a fake cannot return a status or shape the provider
+    never would; `jadpo test --kind contract` runs the same cases against the
+    provider's sandbox, in CI on a schedule rather than on every run.
 
 ### Decisions
 
@@ -1590,15 +1594,15 @@ Nothing is decided on this page yet.
 | Faults | Carried from area 4: faults are never listed in `fails`; integrations map provider problems to declared failures | 2026-10-12 |
 | Calls | Carried from areas 1 and 3: the dot names the owner; `attempt` only on calls that can fail; actions have no settings | 2026-10-12 |
 | Colon rule and options | Carried from areas 2 and 3: members are `name: value`; closed options are lower_snake_case names (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
-| Types and fields | | |
-| Naming and calls | | |
-| Provider versions | | |
-| Contract pin | | |
-| Failure conditions | | |
-| Idempotency keys | | |
-| Call then write | | |
-| Retry settings | | |
-| Outbound host | | |
-| Credential schemes | | |
-| Webhook signatures | | |
-| Checking fakes | | |
+| Types and fields | Written by hand and checked against the contract; may leave out unused output fields; one type may serve two versions | 2026-10-12 |
+| Naming and calls | UpperCamelCase with the version (`StripeV2024`), called `StripeV2024.operation(...)` only from actions | 2026-10-12 |
+| Provider versions | One integration per version, both runnable at once; upgrade by adding the next and moving callers; `version_header:` | 2026-10-12 |
+| Contract pin | `contract: "file"` only; the file's digest goes in the approval report | 2026-10-12 |
+| Failure conditions | Contract error responses map to declarable failures; `timed_out` to `unavailable` only with an idempotency key; unmapped is a fault | 2026-10-12 |
+| Idempotency keys | Supplied by the runtime: delivery key in subscribers and schedules, the client's `Idempotency-Key` or request id in routes | 2026-10-12 |
+| Call then write | Allowed when the call comes first; writes commit after it; a failed commit retries the call with the same key; area 3's text amended | 2026-10-12 |
+| Retry settings | `timeout:` (10s) and `retry: { attempts: within: }` (3 within 30s); backoff fixed | 2026-10-12 |
+| Outbound host | From `base_url`, HTTPS only, no redirects or proxies; a sandbox host chosen by configuration | 2026-10-12 |
+| Credential schemes | `CredentialScheme.bearer`, `.header`, `.basic` first | 2026-10-12 |
+| Webhook signatures | On the integration (`webhooks: { signature: SignatureScheme.x secret: }`), used as `authentication: StripeV2024.signature`; five-minute tolerance | 2026-10-12 |
+| Checking fakes | Fakes checked against the contract by the compiler; `jadpo test --kind contract` against the sandbox in scheduled CI | 2026-10-12 |
