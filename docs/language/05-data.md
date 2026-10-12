@@ -3302,7 +3302,7 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
    one exists.
 4. **How are compound unique rules written?** Today
    `constraint tenant_owner: unique(tenant, owner_email)`, the language's
-   only call-shaped declaration. *Recommendation:* a named list in the
+   only call-shaped declaration. *Decided 2026-10-12:* a named list in the
    entity's `unique: { }` section, `tenant_owner: [tenant, owner_email]`,
    following the colon and list rules. The name stays because conflict
    mapping refers to it. Rails (`index ..., unique: true, name:`), Django
@@ -3310,7 +3310,7 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
    name: "...")`) all name compound rules for the same reason.
 5. **Is every field typed `X.id` a reference, with `on_delete:` required?**
    Today a field typed `User.id` has no foreign key unless a separate
-   `references` line repeats the target. *Recommendation:* yes: the type
+   `references` line repeats the target. *Decided 2026-10-12:* yes: the type
    already says what is referenced, so the compiler creates the foreign key
    and index, and `on_delete:` goes in the field's block with no default.
    Django made `on_delete` mandatory in 2.0 because its silent cascade
@@ -3319,14 +3319,14 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
    field.
 6. **Should a parent declare its children?** Today
    `inverse todos: many Todo via: Todo.owner_id` restates the child's
-   reference. *Recommendation:* no: a query includes children by naming the
+   reference. *Decided 2026-10-12:* no: a query includes children by naming the
    child's reference field, and it gets a list, or at most one record when
    that field is unique. One place states each relationship; nothing on the
    parent can drift from the child. Django derives the reverse relation the
    same way; Rails, Ecto and Prisma require both sides and report
    mismatches. Area 6 settles the include syntax.
 7. **Keep the lifecycle general, in the colon form?** Most lifecycles are
-   soft delete, which takes about ten lines. *Recommendation:* keep the
+   soft delete, which takes about ten lines. *Decided 2026-10-12:* keep the
    general form (User's disable uses it too), written `visible:`,
    `transitions: { delete: { when: ... set: { } } }` and
    `purge: { after: ... since: ... }`, with no soft-delete shorthand for now.
@@ -3352,7 +3352,7 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
    warning and source-editing command go. Jadpo can do this because raw
    queries are not allowed, so it sees every read; Rails, Django, Ecto and
    Prisma leave indexes to the author because they cannot.
-10. **Do entity operations need a `self` receiver?** *Recommendation:* no.
+10. **Do entity operations need a `self` receiver?** *Decided 2026-10-12:* no.
     Parameters are ordinary (`todo: Todo` for a snapshot, `todo_id: Todo.id`
     for a reference) and calls are `Todo.complete(todo_id)`, as area 1
     decided. `self: ref`, `self: value`, `Todo.Ref` and `guard:` go; area 3
@@ -3372,13 +3372,13 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
     code. Applying at app startup was rejected because several instances
     would race.
 12. **What does removing data need?** Today removals fail closed and cannot
-    even be recorded. *Recommendation:* two migrations. The first `retire`s
+    even be recorded. *Decided 2026-10-12:* two migrations. The first `retire`s
     the field: the code stops using it and the column stays, so servers on
     the previous build keep working during a rolling deploy. A later
     migration `drop`s it, and a drop appears in the approval review like a
     policy change. Removing an entity works the same way. Rails'
     `ignored_columns` followed by a drop is the same two-step, done by hand.
-13. **What is a seed, and can it run in production?** *Recommendation:* a
+13. **What is a seed, and can it run in production?** *Decided 2026-10-12:* a
     `seed { }` file in `database/seeds/` that creates data by calling the
     application's own actions, so validation, lifecycle and policy apply;
     `jadpo seed <name>` refuses a production database. Reference data that
@@ -3414,14 +3414,14 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 | Identity | | |
 | Stored entities | | |
 | Caches and projections | | |
-| Compound unique rules | | |
-| References | | |
-| Inverses | | |
-| Lifecycle form | | |
+| Compound unique rules | A named list in the entity's `unique: { }` section, `tenant_owner: [tenant, owner_email]`; the name is used by failure mapping | 2026-10-12 |
+| References | Any field typed `X.id` is a reference: the compiler creates the foreign key and index; `on_delete:` is required in the field's block with no default; no `as:` name | 2026-10-12 |
+| Inverses | Parents do not declare children; a query includes children by naming the child's reference field (syntax in area 6) | 2026-10-12 |
+| Lifecycle form | The general lifecycle stays, in the colon form (`visible:`, `transitions:`, `purge: { after: since: }`); no soft-delete shorthand for now | 2026-10-12 |
 | Storage types | | |
 | Indexes | | |
-| Receivers | | |
+| Receivers | No `self`; ordinary parameters (`todo: Todo`, `todo_id: Todo.id`) and calls such as `Todo.complete(todo_id)`; `Todo.Ref` and `guard:` go | 2026-10-12 |
 | Migration workflow | | |
-| Removing data | | |
-| Seeds | | |
+| Removing data | Two migrations: retire (code stops using it, column stays), then drop; a drop needs explicit acceptance (the shared mechanism carried to area 7) | 2026-10-12 |
+| Seeds | `database/seeds/` files create data through the application's own actions and refuse to run against production; reference data production needs is a migration backfill | 2026-10-12 |
 | Database declaration | | |
