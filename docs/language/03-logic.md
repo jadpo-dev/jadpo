@@ -1807,13 +1807,13 @@ function fail_loudly(note: Note) -> Note {
    parameters, extending area 1's rule that locals cannot reuse domain and
    library names. Rust encourages shadowing; Go and Kotlin warn about it; for
    a reviewer reading a diff, one name meaning one value is worth more.
-4. **Which statements may stand alone?** Today a call result must be bound,
-   so code binds values it never uses, and a `Unit` action cannot return
-   early. *Recommendation:* allow three forms: a call whose result is `Unit`;
-   `attempt call(...)` with any result, which reads as "this must succeed";
-   and a bare `return` in a `Unit` callable. A pure call whose value is thrown
-   away stays an error, because it cannot do anything (compare Rust's
-   `#[must_use]` and Swift's unused-result warning).
+4. **Which statements may stand alone?** *Decided 2026-10-12:* an unused
+   variable is a compile error, so a value nobody needs is never bound to a
+   name. Three forms may stand alone instead: a call whose result is `Unit`;
+   `attempt call(...)` with any result, meaning "this must succeed"; and a
+   bare `return` in a `Unit` callable. A pure call whose value is thrown away
+   is also an error, because it cannot do anything.
+
 5. **How are conditions written?** *Decided 2026-10-12 (Richard):* always in
    brackets, `if (total > limit) { ... }`, with `else if` chains. The brackets
    end the condition before the block, which also removes today's parsing bug
@@ -1829,27 +1829,37 @@ function fail_loudly(note: Note) -> Note {
    values only; text order depends on locale and belongs in a standard
    function. This is F#'s units-of-measure idea with the types Jadpo already
    has.
-7. **How does division work?** Area 2 made `Decimal` exact and required
-   rounding modes, and today `/` silently produces a float. *Recommendation:*
-   remove `/` as an operator: `decimal.divide(a, b, rounding: half_even)` and
-   `integer.divide(a, b, rounding: down)`, with the rounding mode required.
-   The divisor's type must exclude zero (`type People = Int { min: 1 }`), so
-   division can never fail at runtime; a computed divisor is constructed into
-   such a type first. Keep `%` for `Int` only, truncating like Rust, Go and
-   JavaScript.
-8. **One `match` for values and outcomes?** *Recommendation:* yes: the
+7. **How does division work?** *Decided 2026-10-12:* `/` divides two values
+   of the same named type, like `+` and `-`. `Int` division drops the
+   remainder (`10 / 3` is `3`), as in Rust, Go, Java and C#; `Decimal`
+   division is exact and is rounded half to even when the result is stored in
+   a type with a fixed `scale`. Dividing values of different types, or
+   choosing another rounding, uses `decimal.divide(total, people,
+   rounding: half_up)` or `integer.divide(...)`. Division by zero is ruled out
+   by the compiler, not left to the author: the divisor's type must exclude
+   zero (`type People = Int { min: 1 }`), a literal divisor must not be `0`,
+   and a computed divisor is constructed into such a type first, which is the
+   one place the zero case has to be handled. `%` stays `Int`-only.
+
+8. **One `match` for values and outcomes?** *Decided 2026-10-12:* yes: the
    subject's type decides which patterns apply, every `match` works as a
    statement or an expression, an arm is an expression, `reject`, `propagate`
    or a block, and failure arms drop the `failure` prefix because failure
    names are already unique types. `attempt` remains the short form for
    passing every failure on.
-9. **How are a variant's fields bound?** Today `PaymentOutcome.paid { receipt_id, paid_at }`,
-   a comma list in braces that area 2's list decision rules out.
-   *Recommendation:* `PaymentOutcome.paid(paid)` binds the whole payload,
-   read as `paid.receipt_id`, the same shape as `some(x)` and `success(x)`;
-   leave off `(paid)` when the arm does not read it. Rust and Kotlin
-   destructure fields by name instead, which repeats every field name in every
-   arm.
+9. **How is a variant's data read in a `match` arm?** A variant can carry
+   data (`paid` carries `receipt_id` and `paid_at`); a `match` arm has to
+   open it. Today the arm lists field names in braces,
+   `PaymentOutcome.paid { receipt_id, paid_at }`, a comma list in braces that
+   area 2's list decision rules out, repeated in every arm.
+   *Recommendation:* the arm names the variant's data in brackets, the same
+   shape as `some(subtitle)` and `success(value)`:
+   `PaymentOutcome.paid(payment) -> payment.receipt_id`, where `payment` is a
+   name you choose and holds that variant's fields. One rule for every kind of
+   match: brackets after a case name the data it carries. The alternative is
+   narrowing, as in TypeScript and Kotlin: no name at all, and inside the
+   `paid` arm `outcome.receipt_id` simply works.
+
 10. **May `_` cover the rest of an enum?** Today it may, so adding a variant
     silently falls into an existing arm. *Decided 2026-10-12:* no: on enums,
     `Bool` and nullable values every case is listed; `_` is only for text and
@@ -1857,7 +1867,7 @@ function fail_loudly(note: Note) -> Note {
     must consider it, which is the review prompt a new state needs. Rust and
     Kotlin allow the wildcard; Elixir's convention favours listing cases.
 11. **Where may `attempt` appear?** Today anywhere in an expression, and
-    silently on calls that cannot fail. *Recommendation:* only at the start of
+    silently on calls that cannot fail. *Decided 2026-10-12:* only at the start of
     a statement (`let`, assignment, `return` or on its own) and only on a call
     that can fail. Every early exit is then visible at the start of a line,
     which Rust's `?` (allowed anywhere) does not give, without Go's
@@ -1882,13 +1892,17 @@ function fail_loudly(note: Note) -> Note {
     because repeating effects has no data reason and an unbounded one never
     finishes. Add a runtime depth limit that ends in a defined fault instead
     of a crash, and correct grammar §16.
-15. **Where do a callable's settings go?** Today `consistency:`,
-    `freshness:` and `guard:` sit between the parameters and `fails`, and
-    `policy { }` is the first item in the body. *Recommendation:* the
-    signature on the header line (`action name(params) fails A, B -> R {`)
-    and every setting at the top of the body, one per line, before the first
-    statement; reject `-> R fails F`. This is area 2's settings-block rule
-    applied to callables.
+15. **Where do a callable's settings go?** Today `consistency:`, `guard:`
+    and `freshness:` sit in the header between the parameters and `fails`, and
+    `policy { }` starts the body. *Recommendation:* remove them by making the
+    safe choice the default, so an action is only its signature and its logic.
+    `consistency:` goes: since long-running work became subscribers (area 1),
+    the only choice left is all-or-nothing, so every action is atomic.
+    `guard:` goes: a write to a loaded entity always checks it was not changed
+    in the meantime. `freshness:` goes: every read is current unless it reads
+    a cache or projection, which is declared where that cache is (area 6).
+    Who may call an action is decided in area 9 (policy).
+
 16. **Should your own functions be generic, or accept unions?** Area 2 left
     this open. *Decided 2026-10-12:* neither. The standard library stays generic;
     a parameter that accepts several types is an enum whose variants carry
@@ -1904,14 +1918,14 @@ function fail_loudly(note: Note) -> Note {
 | Match arm arrow | Carried from area 2 (Richard, 2026-10-12): `->` for match arms and result types; `=>` removed | 2026-10-12 |
 | `var` or `let` | Keep `var`, immutable by default; `var mut` when it can change (Richard) | 2026-10-12 |
 | Shadowing | A name in scope cannot be declared again, parameters included | 2026-10-12 |
-| Standalone statements | | |
+| Standalone statements | Unused variables are compile errors; a `Unit` call, `attempt call(...)` and a bare `return` may stand alone; a discarded pure call is an error | 2026-10-12 |
 | Conditions | Always in brackets, `if (condition) { }`, with `else if`; `if` is a statement (Richard) | 2026-10-12 |
 | Operator operand types | `+`, `-` and comparisons need the same named type (or a literal); `*` and `%` may mix; ordering only on numbers and time values | 2026-10-12 |
-| Division | | |
-| One `match` | | |
+| Division | `/` on the same named type; `Int` drops the remainder; `Decimal` exact, rounded half to even into a fixed scale; `decimal.divide`/`integer.divide` for mixed types or other rounding; the divisor's type must exclude zero, checked by the compiler | 2026-10-12 |
+| One `match` | One `match` for values and call outcomes; failure arms have no `failure` prefix | 2026-10-12 |
 | Payload binding | | |
 | Wildcard on closed types | No `_` on enums, `Bool` or nullable values; every case listed | 2026-10-12 |
-| `attempt` placement | | |
+| `attempt` placement | Only at the start of a statement, and only on a call that can fail | 2026-10-12 |
 | Loops | `for` over a `List` only, `return` allowed inside; no `while`, `break` or `continue` | 2026-10-12 |
 | Passing functions | Inline `x -> expression` only as an argument to standard-library collection operations; no function types in your own signatures or variables | 2026-10-12 |
 | Recursion | Functions only, with a runtime depth limit that ends in a defined fault; actions and queries in a call cycle are errors | 2026-10-12 |
