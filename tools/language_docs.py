@@ -25,6 +25,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'docs/language'
 COMPILER = ROOT / 'jadpo/target/debug/jadpo'
 TEMPLATE = Path(__file__).resolve().parent / 'language_docs_template.html'
+OUT_DEFAULT = ROOT / 'build/language-site'
+# Optional build/language-site/published.json maps page stems to published URLs for cross-page links.
 FENCE = re.compile(r'^```(\S*)(.*)$')
 
 
@@ -354,10 +356,15 @@ def render_page(page, pages):
     content = renderer.render()
     nav = []
     titles = {int(p.meta.get('area', 0)): p for p in pages}
+    published = {}
+    links = Path(OUT_DEFAULT) / 'published.json'
+    if links.exists():
+        published = json.loads(links.read_text())
     for number, name in AREAS:
         if number in titles:
             current = ' class="current" aria-current="page"' if titles[number] is page else ''
-            nav.append(f'<li><a{current} href="{titles[number].path.stem}.html"><span class="n">{number:02d}</span>{name}</a></li>')
+            href = published.get(titles[number].path.stem, f'{titles[number].path.stem}.html')
+            nav.append(f'<li><a{current} href="{href}"><span class="n">{number:02d}</span>{name}</a></li>')
         else:
             nav.append(f'<li><span><span class="n">{number:02d}</span>{name}</span></li>')
     toc = ''.join(f'<li><a class="{cls}" href="#{a}">{html.escape(t)}</a></li>' for a, t, cls in renderer.toc)
@@ -381,7 +388,7 @@ AREAS = [
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--check', action='store_true', help='verify examples without writing pages')
-    parser.add_argument('--out', default=str(ROOT / 'build/language-site'))
+    parser.add_argument('--out', default=str(OUT_DEFAULT))
     args = parser.parse_args()
     if not COMPILER.exists():
         sys.exit('build the compiler first: cargo build --manifest-path jadpo/Cargo.toml -p jadpo-cli')
