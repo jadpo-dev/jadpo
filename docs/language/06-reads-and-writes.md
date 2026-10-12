@@ -107,7 +107,9 @@ come back, so there is no separate word for it:
 The element type is the entity or a type derived from it
 (`type TodoView = Output from Todo { pick: [...] }`, area 2); the compiler
 reads only the fields that type needs. Records hidden by the entity's
-lifecycle are left out of every query. A query writes nothing and calls no
+lifecycle are left out of every query. The generated SQL selects only the
+columns the result type needs, plus the `order:` fields a page cursor needs
+and any field a policy condition checks outside the database. A query writes nothing and calls no
 actions (area 3). It is called like an action: bare in its own domain,
 `planning.todos_for_owner(...)` from another domain when it is `public`.
 
@@ -198,8 +200,11 @@ at all. The page example is under the next section.
 the compiler adds `id` as the last field, so equal values never swap places
 between pages. Every list is bounded: `limit:` is a number, or a value whose
 type has a `max:`. A page uses keyset pagination: `Page<T>` is a standard
-type holding `items` and `next`, an opaque `PageCursor` the client sends
-back as `after:` to get the next page. There is no offset, because a large
+type holding `items: List<T>` and `next: PageCursor?`, an opaque cursor the
+client sends back as `after:` to get the next page. `Page<T>`, `PageCursor`
+and `PageSize` (an `Int` from 1 to 100) are built in; an app that needs a
+different maximum declares its own `Int` type with a `max:`, because a page
+size must have an upper limit. There is no offset, because a large
 offset is slow and skips or repeats records when rows are added.
 
 ```jadpo fragment
@@ -3266,6 +3271,10 @@ database.
     generated query plans, indexes for policy conditions, and row-level
     security as optional defence in depth generated from the same policy to
     this page. Which of these does the compiler generate?
+    *Decided 2026-10-12 (row-level security only):* not now. Policy compiled
+    into each query's `WHERE` is the protection; row-level security comes
+    later as an opt-in setting on a PostgreSQL store, generated from the same
+    policy. Query plans and indexes for policy conditions stay open.
 14. **How do caches behave in tests?** (carried from area 13) Once the Redis
     adapter exists, do tests read through declared caches or straight from
     the store, and how does a test check a cached read?
@@ -3287,6 +3296,9 @@ in earlier areas and bind this page.
 | Loops | Carried from area 3: `for` over a `List` only | 2026-10-12 |
 | Query shape | One declarative read: `from:`, stacked `where:`, `order:`, `limit:` or `page:`, `include:`, `missing:`; the result type sets how many records come back | 2026-10-12 |
 | Filters | | |
+| Selected columns | The generated SQL selects only the columns the result type needs, plus `order:` fields for the cursor and fields a policy checks outside the database | 2026-10-12 |
+| Page types | `Page<T>` (items and next), `PageCursor` and `PageSize` (1 to 100) are built in; an app may declare its own `Int` type with a `max:` for a different limit | 2026-10-12 |
+| Row-level security | Not now; later an opt-in setting on a PostgreSQL store, generated from policy. The compiled `WHERE` is the protection | 2026-10-12 |
 | Order and pages | | |
 | Includes | | |
 | Entity operations | | |

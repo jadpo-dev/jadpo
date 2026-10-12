@@ -89,6 +89,8 @@ Still missing: JOB-001–004, CONFIG-001–003, BOUNDARY-001 and REL-003.
 ## Later — parked
 
 - Cloudflare D1 as a store engine, which first needs a Workers runtime.
+- PostgreSQL row-level security as an opt-in store setting, generated from
+  policy (decided in language area 6, 2026-10-12).
 
 Scope for each is in the
 [archived roadmap](archive/implementation-roadmap-2026-10-11.md); revisit after
