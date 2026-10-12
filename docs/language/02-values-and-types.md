@@ -913,8 +913,9 @@ record: a create input without the generated fields, a patch input where every
 field is optional, a public view without private fields, a list summary with
 fewer fields than the detail view, a v2 response that adds a field. Today each
 is written out field by field (`title: Todo.title`). The proposal adds `from`
-to the three record kinds (`value` for data used inside the application,
-`input` for data arriving from outside, `output` for responses) with four
+to the three ways of declaring a record (`type` for data used inside the
+application, as proposed in question 18, `input` for data arriving from
+outside, `output` for responses) with four
 operations and nothing else. New fields are simply listed after the
 operations, exactly as in any other record.
 
@@ -949,15 +950,15 @@ anywhere else. A new field's type can be any type, including another
 entity's field type:
 
 ```jadpo fragment
-value TodoReminder from Todo {
+type TodoReminder from Todo {
     pick: id, title, due_at
     owner_email: User.email
     days_overdue: DayCount
 }
 ```
 
-`value TodoReminder` is the plain "just a new type" case: the same rules
-apply whichever of `value`, `input` or `output` you derive.
+`type TodoReminder` is the plain "just a new type" case: the same rules
+apply whichever of `type`, `input` or `output` you derive.
 
 **Records inside records and lists.** Picking a field keeps its whole type, so
 `pick: lines` on an order keeps `List<OrderLine>`. To change what a nested
@@ -1038,7 +1039,7 @@ type BadgeName = Text {
     max_length: 12
 }
 
-record Badge {
+type Badge {
     name: BadgeName
 }
 
@@ -1064,7 +1065,7 @@ action update_profile(request: UpdateProfile) -> Unit {
 }
 ```
 
-`record Profile { nickname: Nickname optional }` would be an error: a record
+`type Profile { nickname: Nickname optional }` would be an error: a record
 built inside the application always states every field.
 
 #### Q4: lists you can build, count and loop over
@@ -1149,7 +1150,7 @@ type Odd = Text {
 #### Q10: one spelling per kind of record
 
 ```jadpo fragment
-record Dimensions {             // was: type Dimensions = Object { ... }
+type Dimensions {               // was: type Dimensions = Object { ... }
     width: Millimetres
     height: Millimetres
 }
@@ -1229,12 +1230,21 @@ failure TodoNotFound {
 }
 ```
 
-#### Q18: `record` instead of `value`
+#### Q18: `type` instead of `value`
 
 ```jadpo fragment
-record Money {                      // was: value Money
+type Money {                        // a new shape with fields; was: value Money
     amount: Pence
     currency: Currency
+}
+
+type Price = Decimal {              // an existing type with extra rules
+    scale: 2
+}
+
+var price: Money = Money {          // a variable: one actual Money
+    amount: 500
+    currency: Currency.gbp
 }
 
 input CreateOrder {                 // data arriving from outside
@@ -1323,7 +1333,8 @@ output OrderView from Order {       // data sent back
    and contradictory or repeated bounds are errors.
 10. **One spelling per kind of record?** *Recommendation:* remove
     `type X = Object { }` and `type X = Enum { }`, so `type ... =` only ever
-    refines a scalar; keep `value`, `input`, `output` and `enum`. Give `input`
+    refines a scalar; keep `input`, `output` and `enum` (see question 18 for
+    plain records). Give `input`
     and `output` a meaning: only `input` fields may use `optional` and
     `default`, a route's `input:` must name an `input`, and its `output:` an
     `output`. This amends the decision-register line that boundary roles are
@@ -1395,15 +1406,19 @@ output OrderView from Order {       // data sent back
     (`OrderStatus.paid`). Every option name is lower_snake_case, which changes
     failures' `kind: InvalidValue` to `kind: invalid_value` (area 4).
 
-18. **Rename `value` to `record`?** `value Money { ... }` declares a plain
-    record used inside the application: fixed fields, no identity, compared by
-    contents (the name comes from "value object" in domain-driven design).
-    `input` and `output` are the same shape with a boundary role. The word
-    `value` is vague to most developers and is also usable as a variable
-    name, so `var value: Money` sits next to `value Money { }`.
-    *Recommendation:* rename it `record`, the term C# and Java use for the same
-    thing. Every record kind and named type lives in a domain's `types/`
-    folder, which holds all type declarations whatever their keyword.
+18. **Replace `value` with `type`?** `value Money { ... }` is not a variable:
+    it declares a shape, a kind of record with fixed fields, from which
+    variables are made (`var price: Money = Money { ... }`). TypeScript writes
+    this as `type` or `interface`, Rust as `struct`. The word `value` comes
+    from "value object" in domain-driven design, is vague to most developers,
+    and is also usable as a variable name. *Recommendation:* declare records
+    with `type` and no `=`: `type Money { amount: Pence }` has these fields,
+    while `type Price = Decimal { scale: 2 }` is an existing type with extra
+    rules. Every plain type declaration then starts with `type`, matching the
+    `types/` folder. `input` and `output` stay because they carry rules
+    (optional fields, pick-only outputs); `entity` and `enum` stay because
+    they mean more than a shape. This replaces question 10's suggestion to
+    keep `value`.
 
 ### Decisions
 
@@ -1426,4 +1441,4 @@ output OrderView from Order {       // data sent back
 | Literal typing | | |
 | Variable types | | |
 | Setting options | | |
-| `value` keyword | | |
+| Record keyword | | |
