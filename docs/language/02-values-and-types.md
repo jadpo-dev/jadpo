@@ -42,6 +42,8 @@ types silently.
 
 ## Built-in types
 
+> **Changing.** Decided on 2026-10-12: `Object` becomes only a base for `type Name = Object { ... }`; see [One form for every type](#proposal-one-form-for-every-type).
+
 These types exist without being declared, and their names cannot be reused.
 
 | Kind | Types | Notes |
@@ -190,12 +192,14 @@ function edited(before: CustomerNote, after: CustomerNote) -> NoteWasEdited {
 }
 ```
 
-`Email`, `Url`, `IpAddress`, records, enums, field types and `Unit` are
+`Email`, `Url`, `IpAddress`, objects, enums, field types and `Unit` are
 allowed. Inside a body, locals can still hold built-in types.
 
-## Records
+## Objects
 
-A record is a fixed set of named fields. Four declaration forms create one:
+> **Changing.** Decided on 2026-10-12: `value`, `input` and `output` are replaced by `type Name = Object { ... }`, `type Name = Input { ... }` and `type Name = Output { ... }`, and anonymous `Object { ... }` is removed; see [One form for every type](#proposal-one-form-for-every-type). The examples below show the compiler today.
+
+An object is a fixed set of named fields. Four declaration forms create one:
 
 ```jadpo project=records
 type ProductName = Text {
@@ -232,7 +236,7 @@ and other data arriving from outside, and `output` for responses. Today the
 compiler treats all four alike except in a few query and update positions
 (area 6); any of them can be used at either boundary.
 
-A record value is written with its type name and every field:
+An object value is written with its type name and every field:
 
 ```jadpo project=records-build
 type ProductName = Text {
@@ -258,12 +262,12 @@ function view(name: ProductName, price: Pence) -> ProductView {
 ```
 
 Every declared field must be given, and unknown fields are errors. Fields can
-hold other records, lists, or an anonymous `Object { ... }`, nested as deeply
+hold other objects, lists, or an anonymous `Object { ... }`, nested as deeply
 as needed.
 
 ### Field types
 
-Every field of a record, entity or enum variant is a type of its own, written
+Every field of an object, entity or enum variant is a type of its own, written
 `Owner.field`. `Customer.email` is a refinement of `Email`: it can be used
 wherever an `Email` is expected, but an `Email` is not automatically a
 `Customer.email`, and `Supplier.email` is never one.
@@ -314,11 +318,13 @@ value Badge {
 }
 ```
 
-Reading through a nested record gives the inner record's field type:
+Reading through a nested object gives the inner object's field type:
 `customer.billing_address.postal_code` has type `Address.postal_code`, whether
 it came from the billing or the shipping address.
 
 ## Absent values
+
+> **Changing.** Inputs become `type Name = Input { ... }` (decided 2026-10-12), and question 20 proposes moving `optional` and `default` into a settings block.
 
 There is no `null` or `undefined`. A type followed by `?` may hold `none`, and
 reading it means handling both cases, usually with `match` (area 3).
@@ -383,6 +389,8 @@ A value can widen through `?`: a `Customer.email?` can be used where an
 `Email?` is expected.
 
 ## Enums
+
+> **Changing.** Decided on 2026-10-12: `enum Name { ... }` becomes `type Name = Enum { ... }`; see [One form for every type](#proposal-one-form-for-every-type).
 
 An enum is a closed list of named alternatives. Variants are always written
 with their enum's name.
@@ -458,7 +466,7 @@ no methods or display labels.
 ## Collections
 
 `List<T>`, `Set<T>` and `Map<K, V>` can be used as field types, parameter
-types and boundary types, nested in each other or holding records.
+types and boundary types, nested in each other or holding objects.
 
 ```jadpo project=collections
 type Tag = Text {
@@ -501,7 +509,7 @@ queries and request bodies (Review, question 4).
   a named type to the named type it builds on.
 - **No silent narrowing.** Going from a general type to a specific one always
   goes through a constructor, which re-checks the rules.
-- **Same shape is not same type.** Two records with identical fields are still
+- **Same shape is not same type.** Two objects with identical fields are still
   different types.
 - **Nothing unwraps.** A named type never becomes its built-in representation
   except through arithmetic and comparison operators.
@@ -510,7 +518,7 @@ queries and request bodies (Review, question 4).
 
 Every value is immutable. Passing a value to a function or returning it never
 lets anyone else change it. A local declared with `var mut` can be pointed at a
-new value of the same type, but fields cannot be assigned: to change a record,
+new value of the same type, but fields cannot be assigned: to change an object,
 build a new one.
 
 ```jadpo project=immutable
@@ -859,22 +867,22 @@ enum TicketStatus {}
 | Constraint checking | Partial. Literals are checked at compile time for `min`, `max`, `min_length`, `max_length`, `format: email` and the time types, but not for `pattern`. At runtime, `pattern` is enforced only for the exact text `[a-z0-9_]+` and `format` only for `email`; every other pattern or format is silently dropped from the generated validator. Constraints that do not fit the base (`min` on `Text` becomes a string-to-number comparison at runtime), contradictory bounds (`min_length: 10`, `max_length: 3`), repeated constraints, negative lengths and invalid regular expressions are all accepted. Duration bounds cannot be written (`min: 1s` is a syntax error). |
 | `Type(value)` construction | Works for literals. Runtime construction validates, but its failure is undeclared: the generated code throws a `ValidationError` that route handlers only catch around input decoding, so a failure inside behaviour escapes as an internal fault (inferred from generated code, not run). `Uuid`-based types cannot be built from any literal, while `Instant`-based ones can. `TicketStatus("open")` is rejected, but with the generic "can't be constructed from `Text`" message rather than "enums are not constructed from text". |
 | Primitive-signature rule | Works for bare and nullable built-ins. Gaps: `List<Text>` and inline `Object { a: Int }` parameters pass, and a field declared as `Text` gives a usable `Owner.field` type. Prelude enums (`Zone`, `Weekday`, `Locale`) and `Instant` are rejected and need wrapping. |
-| Records | Works in general. Two bugs: record construction checks each field against its declared type rather than its field type, so `Badge { label: name }` skips the field's own `max_length: 12` (no runtime check is generated), while entity `create` demands the exact field type; and a field given twice in a record (`Product { name: a name: b }`) is accepted, although the same mistake in an enum variant is an error. |
+| Objects | Works in general. Two bugs: object construction checks each field against its declared type rather than its field type, so `Badge { label: name }` skips the field's own `max_length: 12` (no runtime check is generated), while entity `create` demands the exact field type; and a field given twice in an object (`Product { name: a name: b }`) is accepted, although the same mistake in an enum variant is an error. |
 | `optional` and `default` | Partial and unsound outside inputs. `optional` is accepted on `value` and `output` fields; such a field can be left out at construction and then read as a non-nullable `T`, which is `undefined` at runtime. On an input, an `optional` field reads as `T` and cannot be matched with `some`/`none`. `default` on a `value` is accepted but construction still requires the field. `name: Name default none` on a non-nullable field reports "`none` can't be used where `Name?` is required", which contradicts itself. |
 | Enums and tagged unions | Works in general for typing, matching and boundary decoding. Storage and migration of payload variants is designed in area 5. `type X = Enum { ... }` is a second accepted spelling. |
-| Collections | Types only. `List<T>` works at boundaries and in records. `Set<T>` and `Map<K, V>` compile at HTTP boundaries, but the generated decoder requires a JavaScript `Set`/`Map`, which JSON never produces, so every request containing one is rejected with 422 (read from generated code, not run). No literals, iteration or `collection.*` functions exist; the `collection` namespace is reserved but empty. The formatter writes `List<Object { ... } >` with a stray space. |
+| Collections | Types only. `List<T>` works at boundaries and in objects. `Set<T>` and `Map<K, V>` compile at HTTP boundaries, but the generated decoder requires a JavaScript `Set`/`Map`, which JSON never produces, so every request containing one is rejected with 422 (read from generated code, not run). No literals, iteration or `collection.*` functions exist; the `collection` namespace is reserved but empty. The formatter writes `List<Object { ... } >` with a stray space. |
 | Compatibility rules | Works in general: widening, sibling rejection, invariance and nullable lifting all behave as documented. |
-| Equality | Bug. `==` on records and lists compiles to JavaScript `===`, which compares object identity, so two equal records built separately are unequal. |
+| Equality | Bug. `==` on objects and lists compiles to JavaScript `===`, which compares object identity, so two equal objects built separately are unequal. |
 | Value semantics | Works in general: no field assignment, `var mut` rebinding only. |
 
 ### Consistency with the rest of the language
 
-- **Two spellings for records and enums.** `value X { }` and
+- **Two spellings for objects and enums.** `value X { }` and
   `type X = Object { }` produce the same thing, as do `enum X { }` and
   `type X = Enum { }`. The golden app uses only the keyword forms.
 - **`input` and `output` are keywords without a meaning.** The decision register
   says boundary roles "are not type categories", yet `input` and `output`
-  declare records, and nothing stops an `output` being a route's input.
+  declare objects, and nothing stops an `output` being a route's input.
 - **`=` appears only in `type`.** `type Pence = Int { }` uses `=`; `value`,
   `enum`, `entity` and `failure` do not. Flagged in area 1 for the syntax pass.
 - **The block after a field's type changes vocabulary.** On a `value`,
@@ -889,7 +897,7 @@ enum TicketStatus {}
   name, `pattern: "..."` a string, `min: 0` a number. List size reuses
   `max_length`.
 - **Five ways to make a value.** `Quantity(1)` for named types,
-  `Customer.email(x)` for field types, `Product { ... }` for records,
+  `Customer.email(x)` for field types, `Product { ... }` for objects,
   `TicketStatus.open` for plain variants and `PaymentOutcome.paid { ... }` for
   payload variants. Each is deliberate, but `Type(...)` works for every named
   type except enums.
@@ -949,7 +957,9 @@ type PaymentOutcome = Enum {           // variants that carry fields
 
 type CreateOrder = Input {             // an object arriving from outside
     lines: List<OrderLineRequest>
-    note: OrderNote optional
+    note: OrderNote {
+        optional: true
+    }
 }
 
 type OrderView = Output {              // an object sent back
@@ -1113,7 +1123,9 @@ action make_badge(user: User) fails BadgeNameTooLong -> Badge {
 
 ```jadpo fragment
 type UpdateProfile = Input {
-    nickname: Nickname optional
+    nickname: Nickname {
+        optional: true
+    }
 }
 
 action update_profile(request: UpdateProfile) -> Unit {
@@ -1121,7 +1133,7 @@ action update_profile(request: UpdateProfile) -> Unit {
 }
 ```
 
-`type Profile = Object { nickname: Nickname optional }` is an error: an object
+`optional: true` on a field of a `type Profile = Object { ... }` is an error: an object
 built inside the application always states every field.
 
 #### Q4: lists you can build, count and loop over
@@ -1282,6 +1294,55 @@ failure TodoNotFound {
 }
 ```
 
+#### Q20: field settings in a block
+
+```jadpo fragment
+type ListProducts = Input {
+    name: ProductName {
+        optional: true
+    }
+    page_size: PageSize {
+        default: 25
+    }
+}
+
+type RenameProduct = Input {
+    name: ProductName
+    subtitle: ProductName? {
+        default: none
+    }
+}
+```
+
+This is the form configuration already uses:
+
+```jadpo fragment
+mail_sender: Email {
+    binding: "MAIL_SENDER"
+}
+```
+
+#### Deferred to area 3: one argument, several types
+
+`Customer.id` and `Supplier.id` stay distinct even when both are version 4
+UUIDs, so neither can be passed where the other is expected. A function that
+genuinely accepts either would take an enum whose variants carry each one,
+which keeps the choice explicit:
+
+```jadpo fragment
+type PartyId = Enum {
+    customer {
+        id: Customer.id
+    }
+    supplier {
+        id: Supplier.id
+    }
+}
+```
+
+Whether functions should also accept several types directly (generics or
+unions) is a logic question and is settled in area 3.
+
 ### Open questions
 
 1. **How does a runtime `Type(value)` failure reach the caller?** Today it
@@ -1294,8 +1355,8 @@ failure TodoNotFound {
    stays infallible because it is checked while compiling. This mirrors Rust's
    `TryFrom` (failure is in the signature) rather than Kotlin's `require`
    (an exception), and closes TYPE-001.
-2. **Should building a record check fields against their declared type or
-   their field type?** Record construction uses the declared type and skips
+2. **Should building an object check fields against their declared type or
+   their field type?** Object construction uses the declared type and skips
    field rules; `create` demands the exact field type, which is why the golden
    app writes `Todo.status(TodoStatus.open)`. *Recommendation:* one rule for
    both: accept the declared type or anything that widens to it, and run the
@@ -1370,10 +1431,10 @@ failure TodoNotFound {
     `Int`), allow the closed prelude enums `Zone`, `Locale` and `Weekday`, and
     close the gaps: check collection element types and reject inline `Object`
     parameters.
-12. **What does `==` mean on records, lists and payload variants?**
+12. **What does `==` mean on objects, lists and payload variants?**
     *Recommendation:* structural equality, field by field, with sets and maps
     compared as sets, as in Rust's derived `PartialEq`, Kotlin data classes and
-    Elixir. The alternative of rejecting `==` on records would force agents to
+    Elixir. The alternative of rejecting `==` on objects would force agents to
     write field-by-field comparisons by hand.
 
 13. **Which UUIDs?** Today only canonical hyphenated text with versions 1 to
@@ -1440,12 +1501,23 @@ failure TodoNotFound {
     only used as a base in a `type` declaration; an unnamed shape written
     inline as a field type or inside `List<...>` is an error.
 
+20. **Should field settings go in a block?** Today an input field's settings
+    trail its type separated by spaces (`name: ProductName optional`,
+    `page_size: PageSize default 25`), while configuration fields already use
+    a block (`mail_sender: Email { binding: "MAIL_SENDER" }`).
+    *Recommendation:* one rule everywhere: a field's settings go in a block
+    after its type, one `name: value` per line (`optional: true`,
+    `default: 25`, `default: none`). It reads like every other block in the
+    language and gives later settings an obvious place. Entity field settings
+    (`identity`, `unique`, `references`, `generated`) follow the same rule,
+    to be confirmed in area 5.
+
 ### Decisions
 
 | Topic | Decision | Date |
 |---|---|---|
 | Runtime construction failure | | |
-| Record construction narrowing | | |
+| Object construction narrowing | | |
 | `optional` and `default` | | |
 | Collection operations | | |
 | `Set` and `Map` encoding | | |
@@ -1461,5 +1533,6 @@ failure TodoNotFound {
 | Literal typing | | |
 | Variable types | | |
 | Setting options | | |
-| Record keyword | `value` is dropped; objects are `type Name = Object { fields }` | 2026-10-12 |
+| Object keyword | `value` is dropped; objects are `type Name = Object { fields }` | 2026-10-12 |
 | `Object` | Only a base in a `type` declaration; no anonymous inline objects | 2026-10-12 |
+| Field settings | | |
