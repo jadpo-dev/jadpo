@@ -35,6 +35,7 @@ reads instead of prose (question 2).
 | `jadpo build` | Writes the runnable app into `build/target/` | Exists |
 | `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Exists; `--no-run` replaces `watch` (question 3) |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Exists |
+| `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Decided in area 7, not built |
 | `jadpo sql <query>` | Prints a query's generated SQL for PostgreSQL and SQLite; `--explain` runs it on a disposable database and shows the plan | Decided in area 6, not built |
 | `jadpo impact <name>` | Lists what a change to `name` reaches | Decided in area 1, not built |
 | `jadpo rename <old> <new>` | Renames a declaration or field everywhere, keeping stored data | Proposed (question 5) |
@@ -637,6 +638,7 @@ what other areas carried here and where this page answers it.
 | Migration workflow | Carried from area 5: `jadpo migrate new` / `apply`, one migration per store, check fails on drift, the app refuses a mismatched database | 2026-10-12 |
 | Schema report | Carried from area 5: the build includes a report of every table, column and index with the query that needs it | 2026-10-12 |
 | Seeds | Carried from area 5: `jadpo seed <name>` runs a seed through the application's actions and refuses production | 2026-10-12 |
+| Route listing | Carried from area 7: hover shows a route's full path; `jadpo routes` lists every route | 2026-10-12 |
 | Query SQL | Carried from area 6: `jadpo sql <query>` (with `--explain`) and an editor hover show a query's generated SQL; never written into source | 2026-10-12 |
 | Optional project path | | |
 | `--json` | | |

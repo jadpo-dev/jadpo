@@ -366,6 +366,7 @@ application {
     apis: {
         main: {
             prefix: /v1
+            authentication: [AuthenticationMethod.browser_session, AuthenticationMethod.api_token]
         }
         admin: {
             prefix: /admin
@@ -1013,52 +1014,61 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
    one file. This is area 1's research rule K5 without its separate
    "surface" naming. Rails and Laravel group routes the same way
    (`scope "/admin"`, `Route::prefix('admin')`) but check nothing.
+   *Richard asked (2026-10-12)* how a prefix with a placeholder works
+   (`/projects/{project_id}/todos`). *Revised recommendation:* a prefix may
+   hold typed placeholders, `prefix: /projects/{project_id: Project.id}/todos`,
+   available to every route in the group; the file name joins the fixed
+   segments (`projects_todos.jadpo`). Prefixes may then share a start
+   (`/projects` and `/projects/{project_id}/todos`), so the rule becomes:
+   every URL matches exactly one group, checked by the compiler. Without
+   this, a multi-tenant app's routes (`/orgs/{org_id}/...`) would all pile
+   into one group in the wrong domain.
 2. **One input per route, with placeholders typed in the path?** Today
    `path:`, `query:`, `headers:` and `input:`. *Recommendation:* yes:
    `GET /{todo_id: Todo.id}`, the value read as `todo_id`; one `input:` whose
    source follows the method (query string for `GET` and `DELETE`, body
    otherwise); headers as `header:` settings on `Input` fields. This removes
    two anonymous shapes and one meaning of `query` (syntax review top 10,
-   item 6). FastAPI and ASP.NET infer each parameter's source the same way.
+   item 6). FastAPI and ASP.NET infer each parameter's source the same way. *Decided 2026-10-12:* yes, as recommended.
 3. **`status:` and a checked `output:`?** *Recommendation:* rename
    `success:` to `status:` taking a `SuccessStatus`: `SuccessStatus.ok`,
    `SuccessStatus.created`, `SuccessStatus.accepted` or
    `SuccessStatus.no_content`; `output:` must be an `Output` and exactly the
    action's result type, and is required unless the status is
    `SuccessStatus.no_content`. This fixes today's 500 on
-   a mismatch and the silent `null` body.
+   a mismatch and the silent `null` body. *Decided 2026-10-12:* yes, as recommended.
 4. **What may `run:` call?** Area 3 left a route calling a query to area 7.
    *Recommendation:* a `GET` calls a named query and every other method a
    named action, so a `GET` never writes (HTTP's "safe" methods), and no
    wrapper action is needed for a read. Inline route actions and calls to
-   plain functions go.
+   plain functions go. *Decided 2026-10-12:* yes, as recommended.
 5. **Default deadline and body limit?** Today neither. *Recommendation:* a
    10-second deadline unless `deadline:` says otherwise, at most 60 seconds;
    a 1 MB body limit answering 413, with no setting until an application
    needs one. Fastify defaults to a 1 MB body and Express to 100 KB; a hung
-   request without a deadline holds a database connection.
+   request without a deadline holds a database connection. *Decided 2026-10-12:* yes, as recommended.
 6. **Should health be generated only?** *Recommendation:* yes: fixed
    `/health/live` and `/health/ready`, readiness from the stores declared in
    `app.jadpo` with a two-second check, no authored liveness and no
-   `health { }` syntax. Everything it needs is already declared.
+   `health { }` syntax. Everything it needs is already declared. *Decided 2026-10-12:* yes, as recommended.
 7. **How are audiences and versions declared?** *Recommendation:* an
    `apis: { }` block in `application`, `main` at `/` implied; a group names
    its API with `api:`; one OpenAPI document, record and default
    authentication per API. A new major version is another API, declared only
    when a break must coexist with the old version. Stripe's dated versions
    with response rewriting suit a large public API and are not worth their
-   cost here.
+   cost here. *Decided 2026-10-12:* yes, as recommended.
 8. **How are inbound webhooks written?** *Recommendation:* as ordinary routes
    in a `webhooks` API, with the provider's signature check as their
    authentication (areas 8 and 11), a unique rule on the provider's event id
    so redeliveries do nothing, and the work in a subscriber. No webhook
-   keyword.
+   keyword. *Decided 2026-10-12:* yes, as recommended.
 9. **How is a field named in `{ field, rule }`?** Area 4 left the format to
    area 7. *Recommendation:* the `Input` field's path, with list positions as
    numbers (`lines.2.quantity`), the names the OpenAPI schema uses; a header
    field by its field name. JSON Pointer (`/lines/2/quantity`, used in
    RFC 9457 examples) is more standard but reads worse beside a form field;
-   Stripe uses `lines[2][quantity]`.
+   Stripe uses `lines[2][quantity]`. *Decided 2026-10-12:* yes, as recommended.
 10. **How are breaking API changes caught and accepted?** Area 4 carried the
     record here, with Richard's idea of one acceptance mechanism.
     *Recommendation:* option C in [the proposals](research/07-http-proposals.md):
@@ -1067,25 +1077,61 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
     changes that can break a client need an `acceptance` file written by a
     person, one per change and used once, in the same form for database
     drops, policy weakening and new domains; the `acceptances/` folder is
-    owned in CODEOWNERS so the host's review records who approved it.
+    owned in CODEOWNERS so the host's review records who approved it. *Decided 2026-10-12:* yes, as recommended.
 11. **How does a write's revision reach the client?** (carried from area 6)
     Area 6 lets a client that just wrote skip caches by its revision. What
     are the response header and cookie (`jadpo-revision`) called, and must
     non-browser clients echo the revision back?
+    *Decided 2026-10-12:* every write returns a `Jadpo-Revision` header and
+    browsers get the same value as a cookie; a client that sends it back skips
+    caches; one that does not may see a cached copy up to its `keep:`.
 12. **Where do generated authentication routes and security schemes
     appear?** (carried from area 8) Does the generated `POST /auth/exchange`
     appear in the route inventory and OpenAPI, and how is each route's
     security scheme shown?
+    *Decided 2026-10-12:* yes: generated routes appear in the route list and
+    OpenAPI like any route, marked generated; every route shows its security
+    scheme in OpenAPI.
 13. **How does an API declare its accepted authentication methods?**
     (carried from area 8) Area 8 has each API list its methods,
     `authentication: [AuthenticationMethod.browser_session, AuthenticationMethod.api_token]`,
     with a route only narrowing them; the `apis: { }` example above shows
     none, and the text mentions only a "default authentication". Where does
     the list go?
+    *Decided 2026-10-12:* in each API's entry in `apis: { }`, as
+    `authentication: [...]`; a route group or route may only narrow it.
 14. **What do route tests send and get back?** (carried from area 13) Area
     13's tests use a `request { }` form returning a `Response` with its
     `status`, `code` and typed output. Does this page define that form and
     type?
+    *Decided 2026-10-12:* area 13 owns the `request { }` form and the
+    `Response` type (`status`, `code`, typed output, headers); this page links
+    to it.
+15. **Does a route show the URL it answers?** *Decided 2026-10-12
+    (Richard):* yes: hovering over a route shows its full method and path,
+    and `jadpo routes` lists every route with its full path, file, API,
+    authentication and the query or action it runs.
+16. **Is a route written `GET /path { }`?** Every other declaration starts
+    with a keyword and a name; a route entry starts with its method and path
+    and has no colon. *Recommendation:* keep it. The group is the declaration
+    (`routes Todos { }`, keyword first); routes are its entries, keyed by
+    method and path, which is how HTTP, OpenAPI, logs and every framework
+    name a route. A named form (`route get_todo { method: Method.get path:
+    ... }`) adds a third name to keep in step with the action and the URL,
+    and hides the URL among settings. The colon rule names this as its one
+    exception.
+17. **Are writes idempotent out of the box?** Nothing on this page covers a
+    client retrying a `POST` after a timeout. *Recommendation:* yes, for
+    `POST` and `PATCH` on every API: a client may send `Idempotency-Key`
+    (the IETF draft Stripe's design became); the runtime stores the key, a
+    hash of the request and the response in the main store, in the same
+    transaction as the action's writes, for 24 hours. A repeat returns the
+    stored response; the same key with a different request fails
+    `idempotency_key_reused` (422); a repeat while the first is still running
+    fails `conflict` (409). An API can make the key required with
+    `idempotency: Idempotency.required`. Integration calls inside the action
+    derive their own idempotency keys from it (area 11). `PUT` and `DELETE`
+    are idempotent by definition and need nothing.
 
 ### Decisions
 
@@ -1100,16 +1146,19 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
 | Invalid input | Carried from area 4: each problem as `{ field, rule }`, never the value; area 7 sets the field format | 2026-10-12 |
 | Shared acceptance | Carried from areas 1 and 5: new domains, policy changes and database drops need an explicit acceptance; area 7 designs the shared mechanism | 2026-10-12 |
 | Route groups and prefix check | | |
-| One input and typed placeholders | | |
-| `status:` and checked `output:` | | |
-| What `run:` calls | | |
-| Deadline and body limit | | |
-| Health | | |
-| APIs and versions | | |
-| Webhooks | | |
-| Field path format | | |
-| API record and acceptance | | |
-| Write revision header | | |
-| Generated authentication routes in OpenAPI | | |
-| Accepted authentication methods per API | | |
-| Route test request and `Response` | | |
+| One input and typed placeholders | Placeholders typed in the path; one `input:` whose source follows the method; headers as `header:` on `Input` fields | 2026-10-12 |
+| `status:` and checked `output:` | `status: SuccessStatus.x`; `output:` must be an `Output` and exactly the action's result type, required unless `no_content` | 2026-10-12 |
+| What `run:` calls | A `GET` calls a named query, every other method a named action; no inline route actions | 2026-10-12 |
+| Deadline and body limit | 10-second default deadline, `deadline:` up to 60 seconds; 1 MB body limit answering 413 | 2026-10-12 |
+| Health | Generated only: `/health/live` and `/health/ready`, readiness from the declared stores | 2026-10-12 |
+| APIs and versions | `apis: { }` in `application`, `main` at `/` implied; a group names its API with `api:`; one OpenAPI document and record per API; a new major version is another API | 2026-10-12 |
+| Webhooks | Ordinary routes in a `webhooks` API; the provider's signature check as authentication; a unique rule on the provider's event id; work in a subscriber | 2026-10-12 |
+| Field path format | The `Input` field's dotted path with list positions as numbers (`lines.2.quantity`) | 2026-10-12 |
+| API record and acceptance | Committed readable record per API (`api/main.api`) compared by `jadpo check`; breaking changes need a person-written acceptance file, one per change, the same form for drops, policy weakening and new domains; `acceptances/` owned in CODEOWNERS | 2026-10-12 |
+| Write revision header | `Jadpo-Revision` header on every write, a cookie for browsers; sending it back skips caches | 2026-10-12 |
+| Generated authentication routes in OpenAPI | Listed like any route, marked generated; every route shows its security scheme | 2026-10-12 |
+| Accepted authentication methods per API | `authentication: [...]` in each API's entry in `apis: { }`; groups and routes may only narrow it | 2026-10-12 |
+| Route URL shown | Hover shows a route's full method and path; `jadpo routes` lists every route with path, file, API, authentication and what it runs (Richard) | 2026-10-12 |
+| Route test request and `Response` | Owned by area 13; this page links to it | 2026-10-12 |
+| Route declaration form | | |
+| Idempotent writes | | |
