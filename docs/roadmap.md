@@ -30,6 +30,15 @@ and specifications, not here.
    blank lines and section order; the library catalogue, `jadpo impact`,
    similar-helper warning and domain commands; then the scaffold, compile
    tests, examples and golden app moved to the new layout.
+   Area 2 (decided 2026-10-12) needs: the `type Name = Base { ... }` form
+   with `Object`, `Enum`, `Input` and `Output` bases and removal of the old
+   keywords and anonymous objects; derived types; exact 64-bit `Int` and
+   scaled `Decimal` with JSON and storage mapping; UUID versions; literal
+   typing and mandatory variable types; field settings blocks and named
+   options; bracket lists; fallible runtime construction; object
+   construction running field rules; input-only `optional`; list literals,
+   `for` and first collection functions; `Set`/`Map` JSON; full-match linear
+   patterns and constraint validation; signature-rule scope; structural `==`.
 4. **Finish the golden todo** on the reviewed language. Done means
    `python3 tools/verify.py --require-golden` passes 88/88 (44 cases × SQLite
    and PostgreSQL) on one commit, plus one independent review of the combined

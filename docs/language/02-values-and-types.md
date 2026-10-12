@@ -1,7 +1,7 @@
 ---
 title: Values and types
 area: 2
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - type.constructor_argument_count
@@ -1085,7 +1085,7 @@ enum TicketStatus {}
   requires `Todo.status(TodoStatus.open)`; building a `value` accepts
   `TicketStatus.open` directly.
 
-### Proposal: one form for every type
+### Decided: one form for every type
 
 Decided on 2026-10-12 (questions 10, 18 and 19). Every type is declared the
 same way: `type Name = Base { ... }`. The base says what the type is built
@@ -1147,7 +1147,7 @@ type OrderView = Output {              // an object sent back
 - `value`, `enum`, `input` and `output` disappear as keywords, and the
   `types/` folder holds only `type` declarations.
 
-### Proposal: derived types
+### Decided: derived types
 
 Most object types in a real application are slices of an entity or of another
 object: a create input without the generated fields, a patch input where every
@@ -1246,11 +1246,11 @@ Rules:
   closes the mirror-image mass-assignment bug.
 - Policy checks still apply to every derived output.
 
-### Proposals in examples
+### Decided changes in examples
 
-Each open question below, shown as code with every other proposal on this
-page applied. These are proposals, so they are shown without being compiled;
-exact syntax for logic is settled in area 3.
+Every decision on this page, shown as code with all the others applied.
+They describe the language after the rework, so they are shown without being
+compiled; exact syntax for logic is settled in area 3.
 
 #### Q1: a runtime check that can fail
 
@@ -1532,7 +1532,7 @@ to when that page is written.
 1. **How does a runtime `Type(value)` failure reach the caller?** Today it
    escapes as an internal fault. The language already maps expected failures
    with clauses on fallible operations (`missing: TodoNotFound`,
-   `conflict: TodoMutationConflict`). *Recommendation:* make runtime
+   `conflict: TodoMutationConflict`). *Decided 2026-10-12:* make runtime
    construction a fallible operation that needs `attempt` and an
    `invalid: SomeFailure` clause naming an `InvalidValue`-kind failure, as in
    `attempt Quantity(count) invalid: QuantityOutOfRange`. Literal construction
@@ -1542,31 +1542,31 @@ to when that page is written.
 2. **Should building an object check fields against their declared type or
    their field type?** Object construction uses the declared type and skips
    field rules; `create` demands the exact field type, which is why the golden
-   app writes `Todo.status(TodoStatus.open)`. *Recommendation:* one rule for
+   app writes `Todo.status(TodoStatus.open)`. *Decided 2026-10-12:* one rule for
    both: accept the declared type or anything that widens to it, and run the
    field's own rules at that point (fallible under question 1 only when the
    field adds rules). Identifier safety is unaffected, because a reference
    field's declared type is itself a field type (`customer_id: Customer.id`
    still rejects `supplier.id`), and the noise disappears from the golden app.
 3. **Where may `optional` be used, and what type does reading it give?**
-   *Recommendation:* only on `input` fields, and reading one gives `T?`
+   *Decided 2026-10-12:* only on `input` fields, and reading one gives `T?`
    (absent reads as `none`). Only the update `patch:` form keeps the
    omitted-versus-`none` distinction. `default` is likewise input-only. This
    removes the `undefined` leak; TypeScript's `field?: T` reading as
    `T | undefined` is the same idea.
 4. **Which collection operations come first?** Collections are declared but
-   cannot be built, counted or iterated. *Recommendation:* build list
+   cannot be built, counted or iterated. *Decided 2026-10-12:* build list
    literals (`[a, b]`), `for item in items` (already the recommended loop form
    in the decision register) and a small namespaced set:
    `collection.count`, `collection.contains`, `collection.map`,
    `collection.filter`. Keep collections invariant (Kotlin and Rust do;
    TypeScript's covariant arrays are unsound). Closes TYPE-002 for lists.
 5. **How are `Set` and `Map` written in JSON?** They compile at boundaries but
-   are always rejected. *Recommendation:* a `Set<T>` is a JSON array that is
+   are always rejected. *Decided 2026-10-12:* a `Set<T>` is a JSON array that is
    rejected if it has duplicates; a `Map<K, V>` is a JSON object and is allowed
    only when `K` is text-based or `Uuid`-based. Other key types are a compile
    error at a boundary.
-6. **Transparent aliases (TYPE-003)?** *Recommendation:* no, and close the
+6. **Transparent aliases (TYPE-003)?** *Decided 2026-10-12:* no, and close the
    issue. Every `type` stays a new type. Also reject the block-less
    `type OrderId = Uuid`: in TypeScript, Rust and Kotlin that shape is a
    transparent alias, so an agent or reviewer will misread it. Require
@@ -1574,7 +1574,7 @@ to when that page is written.
 7. **Is explicit construction the only way to reach a value's
    representation (TYPE-004)?** Today any named type converts to any other
    with the same representation through its constructor, re-checking rules,
-   and operators work on the representation. *Recommendation:* yes, and close
+   and operators work on the representation. *Decided 2026-10-12:* yes, and close
    the issue: no `as` cast and no unwrap escape hatch. The golden app has not
    needed one.
 8. **Which number types, and what are they at runtime?** `Int` silently
@@ -1595,7 +1595,7 @@ to when that page is written.
    measurement, and then as its own explicit type so money can never use it
    by accident. Compare C#'s `decimal`, Java's `BigDecimal` and Python's
    unbounded `int`.
-9. **What do `pattern` and `format` mean exactly?** *Recommendation:* a
+9. **What do `pattern` and `format` mean exactly?** *Decided 2026-10-12:* a
    pattern must match the whole text, uses a regular-expression subset with
    no backreferences or lookaround (RE2-style, so it runs in linear time and
    behaves the same on every target), is compiled and checked at compile time,
@@ -1609,14 +1609,14 @@ to when that page is written.
     only an `Output`. This amends the decision-register line that boundary
     roles are not type categories.
 
-11. **Which built-in types does the signature rule cover?** *Recommendation:*
+11. **Which built-in types does the signature rule cover?** *Decided 2026-10-12:*
     keep it for representation types and `Instant`, `CalendarDate`, `Time` and
     `Duration` (a bare `Instant` parameter has the same ambiguity as a bare
     `Int`), allow the closed prelude enums `Zone`, `Locale` and `Weekday`, and
     close the gaps: check collection element types and reject inline `Object`
     parameters.
 12. **What does `==` mean on objects, lists and payload variants?**
-    *Recommendation:* structural equality, field by field, with sets and maps
+    *Decided 2026-10-12:* structural equality, field by field, with sets and maps
     compared as sets, as in Rust's derived `PartialEq`, Kotlin data classes and
     Elixir. The alternative of rejecting `==` on objects would force agents to
     write field-by-field comparisons by hand.
@@ -1692,20 +1692,22 @@ to when that page is written.
 
 ### Decisions
 
+Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
+
 | Topic | Decision | Date |
 |---|---|---|
-| Runtime construction failure | | |
-| Object construction narrowing | | |
-| `optional` and `default` | | |
-| Collection operations | | |
-| `Set` and `Map` encoding | | |
-| Transparent aliases | | |
-| Representation access | | |
+| Runtime construction failure | A runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literal construction is checked while compiling and never fails at runtime | 2026-10-12 |
+| Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point | 2026-10-12 |
+| `optional` and `default` | Only on `Input` fields; reading an optional field gives `T?`; only the update `patch:` form keeps omitted and `none` apart | 2026-10-12 |
+| Collection operations | List literals, `for item in items`, `collection.count` and `collection.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
+| `Set` and `Map` encoding | A `Set` is a JSON array rejected if it has duplicates; a `Map` is a JSON object with text- or UUID-based keys only | 2026-10-12 |
+| Transparent aliases | None; every `type` is a new type; `type X = Uuid` without a block is rejected | 2026-10-12 |
+| Representation access | No cast and no unwrap; constructing is the only conversion | 2026-10-12 |
 | Number types | No sized types; ranges set storage; `Int` is exact 64-bit with overflow an error; `Decimal` is exact with a required `scale`; JSON carries large `Int` and every `Decimal` as strings; no `Float` until needed | 2026-10-12 |
-| `pattern` and `format` | | |
+| `pattern` and `format` | A pattern matches the whole text, uses a linear-time subset with no backreferences or lookaround, is checked while compiling and applies to literals; `format` accepts only `email`; constraints must fit their base and contradictions are errors | 2026-10-12 |
 | Type spellings | Every type is `type Name = Base { ... }`, including `Object`, `Enum`, `Input` and `Output`; `value`, `enum`, `input` and `output` keywords are removed; only `Input` may have optional or default fields; routes accept `Input` and return `Output` | 2026-10-12 |
-| Signature rule scope | | |
-| Equality | | |
+| Signature rule scope | Applies to representation types and `Instant`, `CalendarDate`, `Time`, `Duration`; `Zone`, `Locale` and `Weekday` may be used directly; list element types are checked | 2026-10-12 |
+| Equality | `==` compares contents field by field on objects, lists and enum payloads; sets and maps compare as sets | 2026-10-12 |
 | UUID versions | Any version accepted by default, normalised to lowercase; new identities are version 7; a named type can pin one, `type PartnerRef = Uuid { version: v4 }`, governing what is accepted and generated | 2026-10-12 |
 | Derived types | `type X = Base from Source { pick/omit/optional, then new fields }`; named results only; `Output` may only `pick`; generated fields never in an `Input` | 2026-10-12 |
 | Literal typing | A literal takes the expected type where it is known and is checked while compiling; computed values need an explicit constructor | 2026-10-12 |

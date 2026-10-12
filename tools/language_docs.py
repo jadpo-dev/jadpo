@@ -359,7 +359,7 @@ class Renderer:
         first_h2 = next(i for i, line in enumerate(lines) if heading(i, 2))
         h3 = [i for i in range(review + 1, len(lines)) if heading(i, 3)] + [len(lines)]
         sections = [(h3[k], h3[k + 1], lines[h3[k]][4:].strip()) for k in range(len(h3) - 1)]
-        decided = [x for x in sections if x[2].lower().startswith('decided') or x[2].lower() == 'decisions']
+        decided = [x for x in sections if x[2].lower().startswith(('decided', 'carried')) or x[2].lower() == 'decisions']
         notes = [x for x in sections if x not in decided]
         out = [self.render(0, first_h2)]
         for a, b, title in decided:

@@ -8,6 +8,21 @@ item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
 
+### Values and types — 2026-10-12
+
+Richard decided area 2 of the language review; the full decisions and worked
+examples are in [area 2](language/02-values-and-types.md#decisions). In
+short: every type is `type Name = Base { ... }` with `Object`, `Enum`, `Input`
+and `Output` as bases (`value`, `enum`, `input`, `output` keywords and
+anonymous objects removed); derived types use `from` with `pick`, `omit` and
+`optional`; no sized integers, an exact 64-bit `Int` and an exact scaled
+`Decimal`; UUID version 7 by default; literals take the expected type and
+every variable states its type; field settings and closed options use
+blocks and lower_snake_case names; lists use square brackets; runtime
+construction can fail only through `attempt ... invalid:`; `==` compares
+contents. Not yet implemented; the current compiler remains the executable
+baseline until the rework lands.
+
 ### Project layout, domains and call naming — 2026-10-12
 
 Richard decided the project layout and module replacement in the language
