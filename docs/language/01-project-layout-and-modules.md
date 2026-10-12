@@ -602,150 +602,192 @@ type Label = Text {
 
 ### Proposed layout (preliminary)
 
-Based on three pieces of research in `docs/language/research/`: what
-developers like and dislike in other frameworks' layouts
-(`layout-patterns.md`), six realistic applications from this todo app up to a
-72-entity, eight-team platform (`layout-scenarios.md`), and three candidate
-layouts tested against all of them (`layout-mapping.md`). Everything here is a
-proposal for review; nothing is built.
+Shaped in discussion with Richard on 2026-10-11 and 12, on top of three
+pieces of research in `docs/language/research/`: what developers like and
+dislike in other frameworks' layouts (`layout-patterns.md`), six realistic
+applications from this todo app up to a 72-entity, eight-team platform
+(`layout-scenarios.md`), and candidate layouts tested against them
+(`layout-mapping.md`). Nothing here is built yet.
 
-**The shape.** Role folders, as today, while the app is small. When an app
-grows into separate business areas, it declares domains, and the same role
-folders move one level down into a folder per domain. A todo app never sees a
-domain folder; a 72-entity app has one folder per team.
+**The shape.** Every project has the same shape at every size. The root holds
+a fixed set of files and folders. All application code lives in business
+areas (domains) under `domains/`, and every domain contains the same fixed
+folders. Within those folders there are no subfolders, so a file's path
+follows from two facts: its domain and what kind of declaration it is.
 
 ```text
-app.jadpo                  application, principal, readiness
-config.jadpo               configuration
+app.jadpo                  application, principal, health and readiness
+config.jadpo               configuration: names, types, bindings, defaults
 authentication.jadpo       authentication methods and their failures
-entities/
-  todo.jadpo               Todo, plus the types and failures only it uses
-  todo.test.jadpo          its tests, beside it
-  user.jadpo
-  service.jadpo
-  service_credential.jadpo
-values/
-  todo_view.jadpo          promoted: used by Todo and User
-  user_status.jadpo        promoted: used by User and authentication
-workflows/
-  send_due_reminders.jadpo
-routes/
-  api_todos.jadpo          every /todos route
-  api_todos.test.jadpo
-  api_users.jadpo          every /users route
-  api_health.jadpo
-jobs/
-  overdue_reminders.jadpo
-services/
-  reminder_mail.jadpo      the mail provider, its messages and failures
-  reminder_mail.contract.json
-.jadpo/                    committed compiler data (schema identities)
-build/                     generated output, never edited
+domains/
+  todos/
+    entities/
+      todo.jadpo           Todo with its actions, queries, policy and the types only it uses
+      todo.test.jadpo      its tests, beside it
+      user.jadpo
+      user.test.jadpo
+      service.jadpo
+      service_credential.jadpo
+    types/
+      todo_view.jadpo      shared within the domain: used by Todo and User
+    actions/
+      send_due_reminders.jadpo
+    routes/
+      todos.jadpo          route group Todos: every /todos route
+      todos.test.jadpo
+      users.jadpo
+    schedules/
+      overdue_reminders.jadpo
+    integrations/
+      reminder_mail.jadpo
+      reminder_mail.contract.json
+database/
+  identities.json          stable identity of every table and column
+  migrations/
+    2026-10-12_initial/
+build/                     generated output, never committed
 ```
 
-The same rules at scale, once domains are declared:
+The same rules for a large application:
 
 ```text
-app.jadpo  config.jadpo  authentication.jadpo  policy.jadpo
+app.jadpo  config.jadpo  authentication.jadpo
 shared/
-  values/       money.jadpo  country_code.jadpo  address.jadpo
+  types/          money.jadpo  country_code.jadpo  address.jadpo
+  libraries/      rounding.jadpo
 domains/
   ordering/
-    entities/   cart.jadpo  order.jadpo  order.test.jadpo  order_line.jadpo
-    queries/    order_history.jadpo
-    workflows/  checkout.jadpo
-    routes/     v1_orders.jadpo  v2_orders.jadpo  backoffice_orders.jadpo
-    events/     order_event.jadpo
+    entities/     cart.jadpo  order.jadpo  order.test.jadpo
+    actions/      checkout.jadpo
+    queries/      order_history.jadpo
+    routes/       orders.jadpo  admin_orders.jadpo
+    events/       order_event.jadpo
+    subscribers/  cancel_unpaid_orders.jadpo
+    schedules/    expire_quotes.jadpo
   payments/
-    services/   stripe.jadpo  stripe.contract.json
-    routes/     webhooks_stripe.jadpo
+    integrations/ stripe_2024_06.jadpo  stripe_2024_06.contract.json
+    routes/       stripe_webhooks.jadpo
+  notifications/
+    integrations/ postmark.jadpo
+    subscribers/  send_order_confirmation.jadpo
   catalogue/  fulfilment/  identity/
+database/
+  identities.json
+  migrations/     2026-09-01_initial/  2026-10-12_add_order_channel/
+translations/
+tests/            checkout_to_delivery.test.jadpo
+build/
 ```
 
-#### Where things go
+#### The root
 
-- Every kind of declaration has exactly one home. Entities in `entities/`,
-  cross-entity reads in `queries/`, multi-entity actions in `workflows/`,
-  routes in `routes/`, and likewise `events/`, `subscribers/`, `services/`,
-  `jobs/` and `migrations/`.
-- One main declaration per file, and the file is named after it:
-  `ServiceCredential` lives in `service_credential.jadpo`.
-- Types, failures and helper functions live in the one file that uses them.
-  When a second file starts using one, it moves to `values/` or `functions/`.
-  The compiler enforces this in both directions and `jadpo fmt --layout` does
-  the move, so `values/` only ever holds things that are genuinely shared.
-- Routes are filed by audience and URL: `api_todos.jadpo` holds every `/todos`
-  route. Audiences and API versions (`admin`, `partner`, `v1`, `v2`,
-  `webhooks`) are declared once with their URL prefix, so `/admin/orders`
-  lives in `admin_orders.jadpo`. The URL in a log line tells you the file.
-- Tests sit beside their subject as `<name>.test.jadpo`. Non-Jadpo files
-  (provider contracts, email templates, search mappings) sit beside the file
-  that uses them and must be referenced from it.
-- Fixed root files: `app.jadpo`, `config.jadpo`, `authentication.jadpo` and
-  `policy.jadpo`. A tiny project may keep everything in a single `app.jadpo`.
-- A `.jadpo` file anywhere else is an error. Folders without `.jadpo` files
+- Only these entries: `app.jadpo`, `config.jadpo`, `authentication.jadpo`,
+  `domains/`, `shared/`, `database/`, `translations/`, `tests/` and `build/`.
+- A `.jadpo` file anywhere else is an error. Folders with no `.jadpo` files
   (`docs/`, `.github/`) are ignored.
+- There is no `env.jadpo`. `config.jadpo` declares every setting; values come
+  from the platform environment in production and from one git-ignored
+  `.env.local` file locally, with secrets entered through `jadpo config set`.
 
-#### Names
+#### Domains
 
+- Every project has at least one domain, and all code outside the root files
+  lives in one. The folder name is the domain's name. Domains do not nest; a
+  domain that grows too large is split into two.
+- A domain contains only these folders, each named after its declaration
+  keyword: `entities/`, `types/`, `actions/`, `queries/`, `libraries/`,
+  `routes/`, `schedules/`, `events/`, `subscribers/` and `integrations/`. A
+  folder exists only when it has files. No subfolders.
+
+| Folder | Holds | Notes |
+|---|---|---|
+| `entities/` | One entity per file, with its own actions, queries, failures and policy | The entity's dossier |
+| `types/` | Types used by more than one file in the domain | Types used once live beside their user |
+| `actions/` | Actions that change several entities in one transaction | Called by triggers |
+| `queries/` | Reads across several entities | |
+| `libraries/` | Named groups of helper functions, e.g. `library rounding` | Called like the standard library: `rounding.half_even(x)` |
+| `routes/` | Named route groups | HTTP trigger: the URL is written in the source |
+| `schedules/` | Time triggers: when to run which action | Replaces "jobs" |
+| `events/` | Event definitions | |
+| `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
+| `integrations/` | Third-party APIs, one file per provider version, contract beside it | Replaces "services" |
+
+#### Files and names
+
+- One named declaration per file, and the file is named after it:
+  `ServiceCredential` lives in `service_credential.jadpo`. Route groups and
+  libraries are named declarations, so the same rule covers them.
 - A name must convert to its file name and back unchanged, so consecutive
-  capitals are not allowed: `VatRate`, not `VATRate`. This avoids the acronym
-  problem Rails has with file-name mapping.
-- Names stay unique across the whole project and across kinds, so every file
-  name is unique too: no screen full of identical tab names.
+  capitals are not allowed: `VatRate`, not `VATRate`.
+- Names are unique across the whole project and across kinds, so every file
+  name is unique: no screen full of identical tab names.
+- Types, failures and helpers used by one file live in that file. When a
+  second file in the domain uses one, it moves to the domain's `types/` or
+  `libraries/`; when a second domain does, it moves to `shared/` (pure types
+  and libraries only). The compiler enforces this both ways and
+  `jadpo fmt --layout` makes the move.
+- Tests sit beside their subject as `<name>.test.jadpo`. Scenarios that span
+  several domains, and test data they share, go in the root `tests/`. The
+  kind of test (pure, integration, route, schedule) is known from what it
+  calls, so it is not a folder; `jadpo test --kind route` runs one kind.
+- Non-Jadpo files (provider contracts, email templates, search mappings) sit
+  beside the file that uses them and must be referenced from it.
 
-#### Domains replace modules
+#### Ownership replaces modules
 
-- A domain folder is the owner of everything in it and the visibility
-  boundary. Declarations are private to their domain unless marked `public`.
-- Only data, queries, events and pure functions can be public. One domain can
-  read another's data through its public queries, but can only cause changes
-  in another domain by emitting an event.
-- `shared/` holds only pure types and functions used across domains.
+- A domain owns everything in it and is the visibility boundary.
+  Declarations are private to their domain unless marked `public`.
+- Only entity identities, types, failures, events, queries and libraries can
+  be public. One domain reads another's data through public queries, and
+  causes changes in another domain only by emitting an event. Sending email
+  for orders, say, is a subscriber in a `notifications` domain reacting to an
+  order event.
 - There are no `module` headers and no `import` lists.
-- Moving a file within a domain changes nothing. Moving it to another domain
-  changes its owner, and that shows up in review.
+
+#### Database
+
+- `database/identities.json` is the registry that gives every table, column
+  and index a stable identity, so renaming a field renames its column instead
+  of dropping it. Compiler-maintained, committed and reviewed (today it is
+  `schema.identities.json` at the root).
+- Each schema change is a folder under `database/migrations/`, named by date
+  and purpose, holding your decisions on destructive changes, the generated
+  SQL for each database and any data backfill written in Jadpo. Applied in
+  order, committed, reviewed.
 
 #### What the compiler would check
 
-New errors would include `layout.unknown_location`, `layout.wrong_home`,
+New errors would include `layout.unknown_location`, `layout.wrong_folder`,
 `layout.file_name_mismatch`, `layout.supporting_home`,
-`layout.route_file_mismatch`, `layout.test_without_subject`,
-`layout.asset_unreferenced`, `naming.round_trip`, `naming.folded_collision`,
+`layout.test_without_subject`, `layout.asset_unreferenced`,
+`naming.round_trip`, `naming.folded_collision`,
 `visibility.private_cross_domain` and `layout.call_direction`. Most have
 exactly one fix, which `jadpo fmt --layout` applies.
 
-#### Hard to reverse
+#### Decided in later areas
 
-Domains as owners, the name-to-file rule, route files keyed by audience and
-URL, and project-wide unique names. Everything else is a mechanical move,
-because moving a file never changes a declaration's meaning or database
-identity.
+Route group syntax (area 7), the `schedule` keyword (area 12), integrations
+and provider API versions (area 11), translation file format (area 10) and the
+migration workflow (area 5). The layout only reserves their folders.
 
 ### Open questions
 
-1. **Adopt the proposed layout?** Role folders while small, domain folders
-   above them when an app grows, one home per kind, files named after their
-   declaration, and single-use types kept beside their user.
-   *Recommendation:* yes. A small app looks like today's layout, a large one
-   gets one folder per team, and an agent never has to choose where a new file
-   goes.
-2. **Should domain folders replace modules?** This deletes `module` and
-   `import`, and reverses the event design's current rule that owners come
-   from module names rather than folders. *Recommendation:* yes. Otherwise
-   ownership needs a second hand-maintained mapping, which is the "two ways
-   to organise a project" problem this page already flags.
-3. **How is policy protected from agent edits?** The original golden app kept
-   policy in a separate human-owned file. Under this layout, entity policy
-   lives in the entity file. *Recommendation:* protect it through the approval
-   check, which already fingerprints policy, so any policy change needs human
-   approval wherever it lives. Protection by file path would need a policy file
-   beside every entity.
+1. **`domains/` folder, or domains directly at the root?**
+   *Recommendation:* keep `domains/`. Every root entry is then fixed by the
+   language and projects differ only inside it, so nobody has to tell a domain
+   from a reserved folder.
+2. **Libraries called with their name, `rounding.half_even(x)`?** This
+   reverses the current rule that your own functions are called without a
+   prefix. *Recommendation:* yes. It matches the standard library, and a call
+   shows where its function lives.
+3. **How is policy protected from agent edits?** Entity policy lives in the
+   entity file. *Recommendation:* protect it through the approval check,
+   which already fingerprints policy, so any policy change needs human
+   approval wherever it lives.
 4. **Multiple deployables (API, worker, back-office) as declarations in one
    project, not separate projects?** *Recommendation:* declarations. Each
-   deployable selects its audiences and entry points and is compiled from what
-   it reaches. Separate projects would need a package system that doesn't
-   exist.
+   deployable selects its routes, schedules and subscribers and is compiled
+   from what it reaches.
 5. **Large entity files.** An order entity in a real shop could reach 800
    lines. *Recommendation:* no companion files for now; the formatter keeps a
    fixed section order. Revisit with measured sizes from the order/payment app.
@@ -761,13 +803,14 @@ identity.
 
 ### Decisions
 
-| Question | Decision | Date |
+Provisional decisions from discussion; confirmed when this page is reviewed.
+
+| Topic | Decision | Date |
 |---|---|---|
-| 1 | | |
-| 2 | | |
-| 3 | | |
-| 4 | | |
-| 5 | | |
-| 6 | | |
-| 7 | | |
-| 8 | | |
+| Shape | Same at every size: fixed root, all code in domains, the same fixed folders in every domain, no subfolders | 2026-10-12 |
+| Folder names | Each folder is its declaration keyword in plural; `values/` becomes `types/`, `workflows/` becomes `actions/` | 2026-10-12 |
+| Triggers | Routes, schedules (replacing "jobs") and subscribers each call actions; durable workflows are subscribers | 2026-10-12 |
+| Root files | `app.jadpo`, `config.jadpo`, `authentication.jadpo`; no `env.jadpo` | 2026-10-12 |
+| Compiler data | Visible `database/` folder for the identity registry and migrations, not a hidden folder | 2026-10-12 |
+| Tests | Beside their subject; cross-domain scenarios in root `tests/`; no folder per test kind | 2026-10-12 |
+| 1–8 | | |
