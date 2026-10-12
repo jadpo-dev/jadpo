@@ -85,7 +85,7 @@ type QuantityUnavailable = Failure {
   the domain's `types/` once a second file raises it, and `public` when another
   domain sees it.
 
-Proposed (question 13): a failure is declared like every other type,
+Decided (question 13): a failure is declared like every other type,
 `type TodoNotFound = Failure { ... }`. Failures live in the file that raises
 them or in a domain's `types/` folder, so the keyword matches the folder; the
 rule across the language is that a declaration with its own folder has its own
@@ -1080,7 +1080,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    cross-domain visibility. *Decided 2026-10-12:* yes, `client: { }` and
    `internal: { }`, which say who sees each field.
 3. **Which kinds can an application declare?** Today all 15, and
-   `reject Unavailable` compiles but answers 500. *Recommendation:* you may
+   `reject Unavailable` compiles but answers 500. *Decided 2026-10-12:* you may
    declare `invalid_value`, `not_found`, `not_permitted`, `conflict`,
    `rejected`, `rate_limited` and `unavailable`; the other eight are raised
    only by the runtime, and the standard kinds are never failure names in
@@ -1157,17 +1157,28 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
     failure declaration.
 
 13. **Should a failure be a `type`?** Today `failure TodoNotFound { ... }`
-    is its own keyword. *Recommendation:* `type TodoNotFound = Failure { ... }`.
+    is its own keyword. *Decided 2026-10-12:* `type TodoNotFound = Failure { ... }`.
     Area 1 put shared failures in the `types/` folder and folders match
     keywords, so the rule becomes: a declaration with its own folder keeps its
     own keyword (`entity`, `event`, `schedule`), and anything in `types/` is a
     `type`. `Failure` as a base brings `kind`, `message`, `client` and
     `internal`, as `Input` brings optional fields.
 14. **What does a failure without a `client` block show?**
-    *Recommendation:* fields exist only inside `client: { }` and
+    *Decided 2026-10-12:* fields exist only inside `client: { }` and
     `internal: { }`, so a block left out means no fields of that kind and the
     caller gets only the code, message and request id; nothing reaches the
     client unless it is listed under `client`.
+
+15. **Where do failures live in the folders: centralised, per domain, or
+    both?** *Recommendation:* both, decided by where a failure is raised,
+    exactly like types and libraries (area 1): in the file that raises it;
+    in the domain's `types/` once a second file in that domain raises it; in
+    `shared/types/` once a second domain raises it. A failure that another
+    domain only handles (in a `match`) stays where it is raised and is marked
+    `public`. The central view comes from the compiler, not a folder: the
+    generated failure catalogue lists every code with its status, message,
+    client fields and where it is raised, for documentation and API
+    consumers.
 
 ### Decisions
 
@@ -1181,7 +1192,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | Colon rule | Carried from area 3: failure members are `name: value`, so context blocks are written `internal: { ... }` | 2026-10-12 |
 | Public code | | |
 | `client` block | `client: { }` (sent to the caller) and `internal: { }` (never leaves the server) | 2026-10-12 |
-| Declarable kinds | | |
+| Declarable kinds | `invalid_value`, `not_found`, `not_permitted`, `conflict`, `rejected`, `rate_limited`, `unavailable`; the other eight are runtime-only; 422 for `invalid_value` and `rejected`, 400 for unreadable requests; time limits are settings on integrations and routes, and a timeout an application cares about is mapped to its own failure | 2026-10-12 |
 | Invalid input detail | Each problem as `{ field, rule }` under `details`, never the value | 2026-10-12 |
 | Faults in `fails` | Never; `fails` lists domain failures; integrations map provider problems to declared failures | 2026-10-12 |
 | Construction proven safe | No `attempt` when declared ranges prove a construction cannot fail; the compiler decides and reports call sites that flip | 2026-10-12 |
@@ -1191,7 +1202,8 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | Concealment | A record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |
 | Internal fields in logs | Identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never | 2026-10-12 |
 | Message translation | The client translates by `code`; `message` stays fixed English | 2026-10-12 |
-| Failure declaration form | | |
-| Failure fields | | |
+| Failure declaration form | `type Name = Failure { ... }`; a declaration with its own folder keeps its own keyword, anything in `types/` is a `type` | 2026-10-12 |
+| Failure fields | Fields exist only in `client: { }` and `internal: { }`; without `client` the caller gets only the code, message and request id | 2026-10-12 |
 | Request id | Every error response carries `request_id` (also the `x-request-id` header), and every failure, expected ones included, is logged with it, so a client can quote it and a developer can trace it | 2026-10-12 |
 | Kind is an enum | `kind:` takes a value of the closed `FailureKind` enum, written by its name (`kind: not_found`) because the setting fixes the list, per area 2's setting-options decision; never a string | 2026-10-12 |
+| Failure placement | | |

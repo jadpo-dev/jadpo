@@ -19,9 +19,10 @@ internal cause; no `attempt` where declared ranges prove a construction safe;
 overflow and recursion limits are defects; concealed records report
 `not_found`; logs keep identifiers and hash text; clients translate by code;
 `kind` is a closed enum, never a string; every error response carries a
-request id that is also logged. Still open: derived codes, which kinds an
-application may declare, whether failures become `type X = Failure`, and what
-a failure without a `client` block shows. Not yet implemented.
+request id that is also logged; failures are `type Name = Failure { ... }`
+with fields only in `client` and `internal`; applications declare seven
+kinds and the runtime owns the rest. Still open: derived codes and where
+failures live in the folders. Not yet implemented.
 
 ### Logic — 2026-10-12
 
