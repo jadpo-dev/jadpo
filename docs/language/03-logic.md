@@ -1906,7 +1906,7 @@ function fail_loudly(note: Note) -> Note {
     12); a counter or "last seen" field that must not conflict is updated by
     the database in one step (`count + 1`) rather than read and rewritten
     (area 6). Illustrative shapes, decided in their own areas:
-    `subscriber import_row { on: ImportEvent.row_received(row) -> attempt Product.import(row) }`;
+    `subscriber import_row { on: ImportEvent.row_received(row) -> attempt import_product(row) }`;
     `emit OrderEvent.placed(order)` in the action, with a subscriber calling
     the provider; `set: { view_count: Post.view_count + 1 }`.
 16. **Should your own functions be generic, or accept unions?** Area 2 left

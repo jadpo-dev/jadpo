@@ -603,8 +603,8 @@ type Label = Text {
   holds a comma list on one line.
 - **Three call spellings, by rule.** Your own functions are called bare
   (`add_delivery(x)`), the standard library is always qualified
-  (`temporal.in_zone(x)`), and entity operations go through the entity
-  (`Todo.get(id)`). This is deliberate (the qualifier shows who owns the
+  (`temporal.in_zone(x)`), and the generated entity operations go through
+  the entity (`Todo.get(id)`). This is deliberate (the qualifier shows who owns the
   operation) and consistently enforced.
 - **Declaration headers differ.** `type Name = Base { }` uses `=`, while
   `entity Name { }`, `failure Name { }` and `service Name { }` do not. This
@@ -644,16 +644,20 @@ policy.jadpo               application-wide policy, such as tenancy
 domains/
   planning/
     entities/
-      todo.jadpo           Todo with its actions, queries, policy and the types only it uses
+      todo.jadpo           Todo: fields, unique rules, lifecycle, policy
       todo.test.jadpo      its tests, beside it
       user.jadpo
-      user.test.jadpo
       service.jadpo
       service_credential.jadpo
     types/
-      todo_view.jadpo      shared within the domain: used by Todo and User
+      todo_view.jadpo      shared within the domain: used by more than one file
+    queries/
+      todos_for_owner.jadpo     every query, one per file
     actions/
+      complete_todo.jadpo       every action, one per file
       send_due_reminders.jadpo
+    failures/
+      todo_not_found.jadpo      every failure, one per file
     routes/
       todos.jadpo          route group Todos, prefix /todos: every /todos route
       todos.test.jadpo
@@ -742,10 +746,10 @@ build/
 
 | Folder | Holds | Notes |
 |---|---|---|
-| `entities/` | One entity per file: its fields, unique rules, lifecycle, policy and record caches, plus its actions | Queries moved to `queries/` (area 5, 2026-10-12); failures to `failures/` (area 4) |
+| `entities/` | One entity per file: its fields, unique rules, lifecycle, policy and record caches; the generated operations (`Todo.get`, create, update, delete) belong to it | Queries, actions and failures each have their own folder (areas 4 and 5, 2026-10-12) |
 | `types/` | Types used by more than one file in the domain | Single-use ones live beside their user |
 | `failures/` | One failure per file, every failure the domain raises | Added 2026-10-12 (area 4); failures raised by two or more domains go in `shared/failures/` |
-| `actions/` | Actions that change several entities in one transaction | Called by triggers or, if `public`, by other domains |
+| `actions/` | Every action, one per file | Called by name (`complete_todo(todo_id)`); called by triggers or, if `public`, by other domains (decided 2026-10-12) |
 | `queries/` | Every query, one per file, whatever it reads; a query's cache sits in its file | Decided in area 5 (2026-10-12) |
 | `libraries/` | Named groups of helper functions, e.g. `library rounding` | Called like the standard library: `rounding.half_even(x)` |
 | `routes/` | Named route groups with a prefix the compiler checks | HTTP trigger: the URL is written in the source |
@@ -825,9 +829,10 @@ build/
   never rolls back an order.
 - The dot names the owner of what you call: `temporal.in_zone(x)`,
   `rounding.half_even(x)`, `Todo.get(id)`, `inventory.reserve_stock(...)`.
-  Your own domain's actions and queries are called bare. Searching for
-  `inventory.` finds calls into that domain, but not entity operations such as
-  `Order.find`, which are named by their entity.
+  Your own domain's actions and queries are called bare
+  (`complete_todo(todo_id)`). Searching for `inventory.` finds calls into that
+  domain, but not generated entity operations such as `Order.get`, which are
+  named by their entity.
 - There are no `module` headers and no `import` lists.
 - This reverses parts of two accepted contracts, which must be updated if it
   is adopted: the naming contract (NAME-D03 module names, NAME-D04 bare calls
@@ -869,16 +874,12 @@ A public action called inside another domain's transaction (areas 1 and 6):
 
 ```jadpo fragment
 // domains/inventory/actions/reserve_for_cart.jadpo
-public action reserve_for_cart(cart: Cart.Ref)
-    fails OutOfStock -> Reservation { ... }
+public action reserve_for_cart(cart_id: Cart.id) fails OutOfStock -> Reservation { ... }
 
 // domains/ordering/actions/checkout.jadpo
-action checkout(cart: Cart.Ref)
-    consistency: atomic
-    fails OutOfStock, CartEmpty -> Order
-{
-    var reservation: Reservation = attempt inventory.reserve_for_cart(cart)
-    var order: Order = attempt Order.place(cart, reservation)
+action checkout(cart_id: Cart.id) fails OutOfStock, CartEmpty -> Order {
+    var reservation: Reservation = attempt inventory.reserve_for_cart(cart_id)
+    var order: Order = attempt place_order(cart_id, reservation)
     return order
 }
 ```
@@ -1005,3 +1006,4 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Formatting | The formatter owns blank lines and section order within a file | 2026-10-12 |
 | Keywords match folders | `schedule` (folder `schedules/`), `integration` (`integrations/`) and `library` (`libraries/`) replace `job` and `service` | 2026-10-12 |
 | Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` | 2026-10-12 |
+| Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
