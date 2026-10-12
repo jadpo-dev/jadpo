@@ -312,13 +312,10 @@ include: {
 
 ## Lifecycle
 
-A lifecycle states which records are `visible:`; hidden ones are left out of
-every read before limits apply and read as missing (`not_found`). `initial:`
-sets the fields it owns, and only a named transition changes them: a `when:`
-condition and a fixed `set:`, on one record by `id`, never bringing a hidden
-record back. `purge:` lets the runtime delete records hidden longer than a
-configured duration since a timestamp, in audited batches; code cannot
-hard-delete an entity that has a lifecycle.
+A lifecycle describes the stages a record goes through and when it drops
+out of normal view. The common case is soft delete: deleting a todo hides it
+everywhere at once but keeps it for 30 days, so it can be investigated or
+restored, and then removes it for good.
 
 ```jadpo fragment
 entity Todo {
@@ -326,25 +323,45 @@ entity Todo {
     deleted_at: Instant?
 
     lifecycle: {
-        initial: {
-            deleted_at: none
-        }
-        visible: deleted_at == none
+        visible: deleted_at == none          // which records normal reads can see
         transitions: {
-            delete: {
-                when: deleted_at == none
+            delete: {                        // a named, allowed stage change
+                when: deleted_at == none     // only allowed when this is true
                 set: {
-                    deleted_at: clock.now
+                    deleted_at: clock.now    // what the change sets
                 }
             }
         }
-        purge: {
+        purge: {                             // permanent deletion of hidden records
             after: config.soft_delete_retention
             since: deleted_at
         }
     }
 }
 ```
+
+- **`visible:`** Every read, list and count leaves out records that are not
+  visible, and reading one by `id` reports `not_found`. Nothing else needs to
+  remember to filter them.
+- **`transitions:`** The only way to change the fields a lifecycle owns. Each
+  has a name, an optional `when:` and a fixed `set:`. The generated
+  operation `Todo.delete(todo_id)` runs it.
+- **`purge:`** The application deletes hidden records once they have been
+  hidden for the configured time, in small audited batches. Code cannot
+  hard-delete a record that has a lifecycle.
+
+`visible:` and `when:` are conditions on the record's own fields: comparisons
+(`==`, `!=`, `<`, `<=`, `>`, `>=`), `and`, `or`, `none` checks and
+`clock.now`, so scheduled publishing works:
+
+```jadpo fragment
+lifecycle: {
+    visible: published_at != none and published_at <= clock.now
+}
+```
+
+They cannot mention other records or who is asking: that is policy (area 9),
+which keeps lifecycle conditions simple enough to become database indexes.
 
 ::: today
 
@@ -383,19 +400,52 @@ edits the source to add `index` to a field.
 
 ## Caches
 
-A cache is a copy held in a Redis store and kept current by the compiler;
-code never writes it or names its keys. A **record** cache (in the entity's
-file) holds records by `id` and unique fields; a **query result** or
-**computed** cache (in the query's file) holds what a query returns. Keys are
-derived and include tenant and policy inputs, committed writes invalidate
-what they touch, and a required `keep:` of at most a day bounds an entry's
-age. Only display reads from routes use caches, never reads in actions,
-policy or authentication, and erasing personal data wipes cached copies
-immediately.
+A cache keeps a copy of data in a Redis store so busy pages read it quickly.
+Nothing is cached unless you add it, on an entity (single records) or on a
+query (its results):
 
-The shop above would cache product records and category pages in its `cache`
-store. The syntax comes with the Redis adapter; projections (search, graph,
-edge) return with their first engine.
+```jadpo fragment
+entity Product {
+    ...
+    caches: {
+        records: {                     // single products, looked up by id
+            store: cache               // a Redis store declared in app.jadpo
+            keep: 1h                   // the oldest an entry can be
+        }
+    }
+}
+
+query category_page(category_id: Category.id, page: PageRequest) -> Page<ProductCard> {
+    from: Product
+    where: Product.category_id == category_id
+    cache: {                           // this query's results
+        store: cache
+        keep: 10m
+    }
+}
+```
+
+- **Writes always go to the database**, never to the cache; code never names
+  cache keys.
+- **The running application keeps caches current.** The compiler generates
+  the code that, after every committed change, clears each cached entry the
+  change could affect. By default a change to a `Product` clears every cached
+  result of every query that reads products: some extra database reads, but
+  never a stale list. Clearing only the affected entries (for example the
+  category pages a product moved out of and into) is a later optimisation.
+- **Only pages read caches.** Reads inside actions, policy checks and
+  authentication always read the database, so a decision is never made from
+  a stale copy. If Redis is down, pages read the database instead.
+- **Permissions are applied on every read**, and cached results are keyed by
+  tenant and the details policy depends on, so one user's results are never
+  served to another. Erasing personal data clears cached copies immediately.
+- **Each entry is stored as one JSON value**, the same JSON the API sends, so
+  every Jadpo type maps cleanly: money as `"12.50"`, large integers as
+  strings, sets as arrays, enums tagged.
+
+A record that lives in Redis rather than being copied there (a session, a
+cart) uses `store: sessions` on the entity instead, and can only be looked up
+by `id` or a unique field.
 
 ## Storage types
 
@@ -426,19 +476,20 @@ have.
 
 ## Migrations
 
-`jadpo migrate new <purpose>` compares the source with the latest migration
-and writes the next folder under `database/migrations/`, one migration per
-store; `jadpo check` fails while they disagree. A change that could lose data
-stops at a decision in `changes.jadpo`. Removing a field or entity takes two
-migrations, `FieldChange.retired` (code stops using it, the column stays for
-builds still running) and later `FieldChange.dropped`; a drop and a move between stores need explicit
-acceptance. `jadpo migrate apply` runs pending migrations as a deploy step,
-each in a transaction, and the application refuses to start against a
-database that does not match. `database/identities.json` keeps each table
-and column's identity, so a rename keeps its data.
+Entities describe the schema you want; a migration records each step from
+one version of the database to the next. `jadpo migrate new add_priority`
+compares the entities with the previous migration's snapshot and writes the
+next folder:
+
+```text
+database/migrations/20261020T1400_add_priority/
+  snapshot.json        generated: the whole schema at this point
+  postgres.sql         generated: the difference from the previous snapshot
+  changes.jadpo        only when a decision is needed
+```
 
 ```jadpo fragment
-// database/migrations/20261020T1400_add_priority/changes.jadpo
+// changes.jadpo
 /// Adds a priority to every todo and retires the legacy flag.
 migration {
     Todo.priority: {
@@ -447,6 +498,19 @@ migration {
     Todo.legacy_flag: FieldChange.retired
 }
 ```
+
+- **Renames keep their data**: `database/identities.json` gives each table
+  and column a stable identity, so renaming a field renames its column.
+- **Decisions only where needed**: a value for existing rows, or retiring a
+  field. Removing a field takes two migrations, `FieldChange.retired` (code
+  stops using it, the column stays for servers still running the old build)
+  and later `FieldChange.dropped`, which needs explicit acceptance.
+- **Forgetting is caught at once**: `jadpo check` fails while the entities
+  and the latest snapshot disagree, naming what changed and the command to
+  run, so the editor, the build and CI all stop.
+- **`jadpo migrate apply`** runs pending migrations as a deploy step, each in
+  a transaction, one per store; the application refuses to start against a
+  database that does not match.
 
 ::: today
 
@@ -2917,3 +2981,6 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Generated fields | `generated: Generated.on_create` (set once when created) or `Generated.on_change` (set when created and on every change) (Richard) | 2026-10-12 |
 | Redis entity expiry syntax | | |
 | `lifecycle { }` ignored on `id: Uuid identity` | | |
+| Lifecycle conditions | `visible:` and `when:` may use comparisons, `and`, `or`, `none` checks and `clock.now` on the record's own fields; never other records or the caller (Richard) | 2026-10-12 |
+| Cache configuration | Opt-in: `caches: { records: { store: keep: } }` on an entity, `cache: { store: keep: }` on a query; by default a change clears every cached result reading that entity; precise clearing later; entries are one JSON value each (Richard) | 2026-10-12 |
+| Migration snapshots | Each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; the compiler diffs consecutive snapshots; `jadpo check` fails with the command to run when entities and the latest snapshot disagree (Richard) | 2026-10-12 |
