@@ -746,6 +746,21 @@ build/
   function text stay identical and behaviour cannot change. Location does not
   affect discovery, because the generated catalogue lists every library
   wherever it lives, along with the domains that call it.
+- A helper that depends on one domain's types (`order_math.total(order)`)
+  stays in that domain and becomes public when another domain calls it; it
+  is never duplicated or split automatically. Depending on two domains'
+  types is an error that needs a design decision. Making a helper generic,
+  for example extracting `money.sum(amounts)` so `ordering` and `payments`
+  share it, is a deliberate refactor, prompted by the near-duplicate warning
+  and the catalogue rather than done by the compiler.
+- A function's description is written once, as a `///` comment above it.
+  The catalogue, the caller list and the domains that use it are computed
+  and shown in the editor; they are never written into source files.
+- Before shared or public code changes, its reach is visible three ways:
+  find-references in the editor (available today), a `jadpo impact <name>`
+  command listing calling domains, entry points and covering tests, and
+  `jadpo check` itself reporting which domains a change affects and running
+  their tests.
 - Tests sit beside their subject as `<name>.test.jadpo`. Scenarios that span
   several domains, and test data they share, go in the root `tests/`. The
   kind of test (pure, integration, route, schedule) is known from what it
