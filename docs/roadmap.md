@@ -87,6 +87,11 @@ Still missing: JOB-001–004, CONFIG-001–003, BOUNDARY-001 and REL-003.
 
 ## Later — parked
 
+- GDPR support out of the box: personal-data marking, erasure across stores
+  and caches, subject-access export, retention and a personal-data report
+  (raised 2026-10-12; needs its own review).
+- Cloudflare D1 as a store engine, which first needs a Workers runtime.
+
 Scope for each is in the
 [archived roadmap](archive/implementation-roadmap-2026-10-11.md); revisit after
 the golden todo.

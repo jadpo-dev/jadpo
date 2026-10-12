@@ -3272,6 +3272,8 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 | Test fixtures versus seeds | 13 | Input to area 13 |
 | `migration.*` rules raised only by `jadpo schema` commands (snapshot, diff, decision, plan and SQL errors, registry read and write failures, `migration.identity_registry_missing`, `migration.identity_registry_exists`, `migration.identity_additions_have_removal`, rename errors), `index.accept_*` and `index.recommendation_*` other than the check warning, `cli.schema_*`, and `toolchain.target_store_not_implemented` (raised by `jadpo build`); none can be triggered by `jadpo check` on source | 14 | Input to area 14 |
 | The `jadpo migrate` and `jadpo rename` commands themselves (question 11) | 14 | Depends on question 11 |
+| GDPR support as its own review: personal-data marking on fields, erasure across every store and cache, export of everything held about a person, retention, and a build report of where personal data lives (Richard: strong out-of-the-box compliance helps adoption) | 5, 9, 10 | Raised |
+| Where queries live: with the entity they start from, in a domain `queries/` folder, or elsewhere | 5, 6 | Open, scenarios first |
 
 ### Open questions
 
@@ -3292,20 +3294,23 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 
 2. **Is every entity stored in the application's database?** Today storage
    depends on the identity spelling, and `persistence { store: primary
-   role: authority }` is required ritual. *Recommendation:* yes: `entity`
-   means a stored record, and the `persistence` block goes. Something with an
-   identity that is not stored (a request-scoped actor) is a value; the
-   entity model's "persistence is optional" (DATA-007) is reversed, because
-   nothing in the repository uses a non-stored entity and the split creates
-   the Status bug. Rails, Django, Ecto and Prisma models are all stored by
-   definition.
+   role: authority }` is required ritual. *Decided 2026-10-12:* every entity lives in exactly one declared store,
+   `main` unless its file says `store: name`; the `persistence` block goes;
+   anything never saved is a `type`; an entity stored in an engine that can
+   lose data (Redis) must declare an expiry. An action writes to at most one
+   store; work across stores goes through an event and a subscriber. See
+   `docs/language/research/data-stores-and-caching-mapping.md`.
+
 3. **Keep `cache` and `projection` before any store can run them?** Today
-   they parse and check, and the build emits nothing for them.
-   *Recommendation:* remove their syntax now and design it with the first
-   real adapter, keeping the rule that a copy is never written directly.
-   Declarations that do nothing mislead both agents and reviewers; area 3's
-   "reads are current unless they read a declared cache" still holds once
-   one exists.
+   they parse and check, and the build emits nothing for them. *Decided 2026-10-12:* today's `cache` and `projection` syntax, which
+   builds nothing, is removed. Caches return in the new form (record, query
+   result and computed caches beside what they copy, with derived keys that
+   include tenant and policy inputs, compiler-driven invalidation, a required
+   `keep:` of at most a day) with the Redis adapter; projections return with
+   the first search, graph or edge engine. Display reads from routes may use
+   caches; reads inside actions, policy and authentication never do. Erasing
+   personal data wipes its cached copies immediately.
+
 4. **How are compound unique rules written?** Today
    `constraint tenant_owner: unique(tenant, owner_email)`, the language's
    only call-shaped declaration. *Decided 2026-10-12:* a named list in the
@@ -3341,15 +3346,11 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
    delete to libraries (`discard`, `django-safedelete`), each with its own
    rules.
 8. **How are structured fields stored, and which column types?** Today
-   objects and lists become `BLOB`, which PostgreSQL rejects.
-   *Recommendation:* native types where the database has one (`uuid`,
-   `boolean`, `numeric`, `date`, `timestamptz`, `bytea`), integer widths
-   from the declared range, and structured fields (enums with data,
-   objects, lists, sets, maps, recursive types) as `jsonb` on PostgreSQL and
-   JSON text on SQLite, in the HTTP boundary's JSON. Field rules are checked
-   by the application on write and on read rather than copied into `CHECK`
-   constraints. Ecto's `embeds_many` and Prisma's `Json` store embedded data
-   this way; Rails and Django would need a separate table per list.
+   objects and lists become `BLOB`, which PostgreSQL rejects. *Decided 2026-10-12:* each store uses its own engine's native column
+   types (on PostgreSQL `uuid`, `numeric`, `timestamptz`, `jsonb`, integer
+   widths from declared ranges); structured fields are `jsonb`; caches and
+   Redis entities store the same JSON as API responses.
+
 9. **Who decides indexes?** Today the compiler derives some from queries,
    warns about others, and `schema index-accept` edits the source.
    *Decided 2026-10-12:* the compiler creates every index its named queries
@@ -3375,18 +3376,13 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
     already made every write check for concurrent change. Ecto and Django's
     functions taking the record as an argument read the same way.
 11. **How are migrations created and applied?** Today nothing is applied,
-    and decisions are a JSON evidence file. *Recommendation:*
-    `jadpo migrate new <purpose>` writes the next folder (schema, SQL for
-    both databases, and `changes.jadpo` when a decision is needed);
-    `jadpo check` fails while the source and the latest migration disagree;
-    `jadpo migrate apply` runs pending migrations as a deploy step, each in a
-    transaction, and a build refuses to start against a database that does
-    not match. Renames go through the language server or `jadpo rename`,
-    which change source and registry together. This is the shape of Django's
-    `makemigrations`/`migrate`, Prisma's `migrate dev`/`migrate deploy` and
-    Rails' generated migrations, with Jadpo-typed backfills instead of raw
-    code. Applying at app startup was rejected because several instances
-    would race.
+    and decisions are a JSON evidence file. *Decided 2026-10-12:* `jadpo migrate new <purpose>` writes the next
+   migration, one per store; `jadpo check` fails while source and the latest
+   migration disagree; `jadpo migrate apply` runs pending migrations as a
+   deploy step, each in a transaction, and the application refuses to start
+   against a database that does not match; moving an entity between stores
+   needs explicit acceptance.
+
 12. **What does removing data need?** Today removals fail closed and cannot
     even be recorded. *Decided 2026-10-12:* two migrations. The first `retire`s
     the field: the code stops using it and the column stays, so servers on
@@ -3406,13 +3402,11 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
     app uses PostgreSQL when a `DATABASE_URL` environment variable exists and
     SQLite otherwise, the `primary` store entities name is never declared, and
     `config.jadpo`'s `database_url` is ignored in favour of the raw
-    environment variable. *Recommendation:* declare it once in `app.jadpo`,
-    `database: { engine: postgres, url: config.database_url }` with `engine` a
-    named option (`postgres` or `sqlite`); one engine for the application in
-    development and production, avoiding the familiar "works locally, breaks
-    live" gap; the connection always comes from configuration; tables,
-    columns and indexes still come from entities. Fast throwaway databases for
-    tests are area 13's question.
+    environment variable. *Decided 2026-10-12:* stores are declared in `app.jadpo`
+   (`application { stores: { main: { engine: postgres url: config.database_url } } }`),
+   with `main` on PostgreSQL implied when nothing is declared; each store's
+   engine is fixed in source, so development and production use the same
+   engine. D1 is on the roadmap.
 
 ### Decisions
 
@@ -3428,16 +3422,16 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 | Calls and settings | Carried from areas 1 and 3: the dot names the owner (`Todo.get(id)`); actions have no settings and every write checks for concurrent change | 2026-10-12 |
 | Mapping form | Carried from area 4: write conflicts map with `condition: Failure`, a hidden record reports the same `not_found` failure | 2026-10-12 |
 | Identity | One field `id`, `Uuid`, generated as version 7, never supplied by callers; no composite identity: many-to-many links are entities with their own `id` and a compound unique rule | 2026-10-12 |
-| Stored entities | | |
-| Caches and projections | | |
+| Stores | Every entity lives in one declared store (`main` by default); no `persistence` block; never-saved things are types; Redis entities declare an expiry; an action writes at most one store | 2026-10-12 |
+| Caches | Today's syntax removed; record, query-result and computed caches return with Redis, beside what they copy; derived keys including tenant and policy inputs; compiler-driven invalidation; required `keep:` up to a day; display reads only; erasure wipes cached copies immediately | 2026-10-12 |
 | Compound unique rules | A named list in the entity's `unique: { }` section, `tenant_owner: [tenant, owner_email]`; the name is used by failure mapping | 2026-10-12 |
 | References | Any field typed `X.id` is a reference: the compiler creates the foreign key and index; `on_delete:` is required in the field's block with no default; no `as:` name | 2026-10-12 |
 | Inverses | Parents do not declare children; a query includes children by naming the child's reference field (syntax in area 6) | 2026-10-12 |
 | Lifecycle form | The general lifecycle stays, in the colon form (`visible:`, `transitions:`, `purge: { after: since: }`); no soft-delete shorthand for now | 2026-10-12 |
-| Storage types | | |
+| Storage types | Native column types per engine; structured fields as `jsonb`; caches use API JSON | 2026-10-12 |
 | Indexes | Derived from named queries, including multi-column; `indexes: { name: [fields] }` for outside lookups; special kinds via a `kind:` option when the store supports it; indexes shown in migrations and in a generated schema report | 2026-10-12 |
 | Receivers | No `self`; ordinary parameters (`todo: Todo`, `todo_id: Todo.id`) and calls such as `Todo.complete(todo_id)`; `Todo.Ref` and `guard:` go | 2026-10-12 |
-| Migration workflow | | |
+| Migration workflow | `jadpo migrate new` / `apply`, one migration per store, check fails on drift, app refuses a mismatched database, moving stores needs acceptance | 2026-10-12 |
 | Removing data | Two migrations: retire (code stops using it, column stays), then drop; a drop needs explicit acceptance (the shared mechanism carried to area 7) | 2026-10-12 |
 | Seeds | `database/seeds/` files create data through the application's own actions and refuse to run against production; reference data production needs is a migration backfill | 2026-10-12 |
-| Database declaration | | |
+| Store declaration | Stores declared in `app.jadpo`; PostgreSQL `main` implied; same engine in every environment; D1 on the roadmap | 2026-10-12 |
