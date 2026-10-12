@@ -915,7 +915,8 @@ fewer fields than the detail view, a v2 response that adds a field. Today each
 is written out field by field (`title: Todo.title`). The proposal adds `from`
 to the three record kinds (`value` for data used inside the application,
 `input` for data arriving from outside, `output` for responses) with four
-operations and nothing else.
+operations and nothing else. New fields are simply listed after the
+operations, exactly as in any other record.
 
 **`pick`** keeps the listed fields, with their types and validation rules:
 
@@ -943,16 +944,15 @@ input PatchTodo from Todo {
 }
 ```
 
-**`add`** declares new fields, written exactly like fields anywhere else. A
-new field's type can be any type, including another entity's field type:
+**New fields** are listed after the operations, written exactly like fields
+anywhere else. A new field's type can be any type, including another
+entity's field type:
 
 ```jadpo fragment
 value TodoReminder from Todo {
     pick: id, title, due_at
-    add {
-        owner_email: User.email
-        days_overdue: DayCount
-    }
+    owner_email: User.email
+    days_overdue: DayCount
 }
 ```
 
@@ -961,7 +961,8 @@ apply whichever of `value`, `input` or `output` you derive.
 
 **Records inside records and lists.** Picking a field keeps its whole type, so
 `pick: lines` on an order keeps `List<OrderLine>`. To change what a nested
-field holds, leave it out and add a field of the same name with the new type.
+field holds, leave it out of `pick` and list a field of the same name with the
+new type.
 This is the only way to change a field's type, and it is visible in the
 declaration:
 
@@ -972,9 +973,7 @@ output OrderLineView from OrderLine {
 
 output OrderView from Order {
     pick: id, placed_at, total
-    add {
-        lines: List<OrderLineView>
-    }
+    lines: List<OrderLineView>
 }
 ```
 
@@ -988,18 +987,17 @@ output TodoSummary from TodoView {
 
 output TodoViewV2 from TodoView {
     pick: id, title, status, due_at
-    add {
-        tags: List<TagName>
-    }
+    tags: List<TagName>
 }
 ```
 
 Rules:
 
-- Four operations only: `pick`, `omit`, `optional` and `add`. `pick` and
-  `omit` cannot both appear. No renaming. `add` cannot reuse the name of a
-  field that was picked, but can reuse one that was left out, which is how a
-  field's type is changed.
+- Three operations only: `pick`, `omit` and `optional`, followed by any new
+  fields. `pick` and `omit` cannot both appear. No renaming. A new field
+  cannot reuse the name of a field that was picked, but can reuse one that was
+  left out, which is how a field's type is changed. `pick`, `omit` and
+  `optional` are reserved and cannot be used as field names.
 - Picked fields follow their source: renaming `Todo.title` renames it in
   every record that picked it, and its validation rules come with it.
 - Every derived record has a name. There are no inline `Pick<...>` types in
@@ -1113,11 +1111,12 @@ Rules:
     it is currently rejected. *Recommendation:* by default accept any RFC 9562
     version, normalise to lowercase, generate version 7 for new identities and
     store PostgreSQL `uuid`. A named type can pin a version with a constraint,
-    `type ExternalRef = Uuid { version: 4 }`, which then governs both what is
+    `type ExternalRef = Uuid { version: v4 }`, which then governs both what is
     accepted and what is generated; use it where a version 7 ID would reveal
     sensitive creation times, or where another system dictates the version.
 14. **Adopt derived records?** See the proposal above. *Recommendation:* yes,
-    with exactly `pick`, `omit`, `optional` and `add`, named results only, and
+    with exactly `pick`, `omit` and `optional` plus listed new fields, named
+    results only, and
     outputs restricted to `pick`. This covers create, patch, view, summary and
     versioned shapes without TypeScript's anonymous type algebra, whose
     expanded types reviewers and error messages cannot name.
@@ -1149,6 +1148,17 @@ Rules:
     audience, code written by agents and reviewed by people, favours the
     explicit form.
 
+17. **Should every setting with a fixed set of options take a name from that
+    set?** Some already do (`format: email`, `consistency: atomic`,
+    `auth: none`). *Recommendation:* yes, everywhere: `version: v7`, not
+    `version: 7`; genuine quantities such as `min`, `max` and `scale` stay
+    numbers. The compiler knows each list, so the editor offers the choices,
+    generated docs list them and a typo is an error that names the valid
+    options. In settings the bare name is written because the setting fixes
+    the list; in ordinary code enum values stay qualified
+    (`OrderStatus.paid`). Every option name is lower_snake_case, which changes
+    failures' `kind: InvalidValue` to `kind: invalid_value` (area 4).
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -1169,3 +1179,4 @@ Rules:
 | Derived records | | |
 | Literal typing | | |
 | Variable types | | |
+| Setting options | | |
