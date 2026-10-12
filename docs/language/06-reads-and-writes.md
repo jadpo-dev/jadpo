@@ -3199,7 +3199,7 @@ database.
    its result type. Composition happens in actions. This is Ecto's and
    Prisma's shape rather than a SQL-like expression language; see
    [the query proposals](research/06-reads-and-writes-proposals.md) for the
-   alternatives.
+   alternatives. *Decided 2026-10-12:* yes, as recommended.
 2. **How are filters written?** *Recommendation:* fields qualified with
    their entity; each `where:` line must hold; comparisons, `and`, `or`,
    `not`, `== none` and `in`; `where_present:` for a request's optional
@@ -3285,7 +3285,7 @@ in earlier areas and bind this page.
 | Mapping form | Carried from area 4: `condition: Failure` inside the operation's block; the original failure kept as the internal cause | 2026-10-12 |
 | Stores and caches | Carried from area 5: an action writes at most one store; caches are copies for display reads only, with a required `keep:` | 2026-10-12 |
 | Loops | Carried from area 3: `for` over a `List` only | 2026-10-12 |
-| Query shape | | |
+| Query shape | One declarative read: `from:`, stacked `where:`, `order:`, `limit:` or `page:`, `include:`, `missing:`; the result type sets how many records come back | 2026-10-12 |
 | Filters | | |
 | Order and pages | | |
 | Includes | | |
