@@ -743,7 +743,8 @@ build/
 | Folder | Holds | Notes |
 |---|---|---|
 | `entities/` | One entity per file, with its own actions, queries, failures and policy | The entity's dossier |
-| `types/` | Types and failures used by more than one file in the domain | Single-use ones live beside their user |
+| `types/` | Types used by more than one file in the domain | Single-use ones live beside their user |
+| `failures/` | One failure per file, every failure the domain raises | Added 2026-10-12 (area 4); failures raised by two or more domains go in `shared/failures/` |
 | `actions/` | Actions that change several entities in one transaction | Called by triggers or, if `public`, by other domains |
 | `queries/` | Reads across several entities | |
 | `libraries/` | Named groups of helper functions, e.g. `library rounding` | Called like the standard library: `rounding.half_even(x)` |
@@ -984,7 +985,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Topic | Decision | Date |
 |---|---|---|
 | Shape | Same at every size: fixed root, all code in one level of domains, the same fixed folders in every domain, no subfolders | 2026-10-12 |
-| Folder names | Each folder is its declaration keyword in plural; `values/` becomes `types/`, `workflows/` becomes `actions/` | 2026-10-12 |
+| Folder names | Each folder is named for what its files contain, usually the declaration keyword in plural; `values/` becomes `types/`, `workflows/` becomes `actions/`; `failures/` holds `type X = Failure` declarations (area 4) | 2026-10-12 |
 | Triggers | Routes, schedules (replacing "jobs") and subscribers each call actions; durable workflows are subscribers | 2026-10-12 |
 | Root files | `app.jadpo`, `config.jadpo`, `authentication.jadpo`, `policy.jadpo`; no `env.jadpo` | 2026-10-12 |
 | Compiler data | Visible `database/` folder for the identity registry, migrations and seeds, not a hidden folder | 2026-10-12 |

@@ -81,16 +81,15 @@ type QuantityUnavailable = Failure {
   request id.
 - Context fields are ordinary fields: `T?` is allowed, `optional` and
   `default` are not (area 2 limits them to `Input`).
-- Where a failure lives was decided in area 1: in the file that raises it, in
-  the domain's `types/` once a second file raises it, and `public` when another
-  domain sees it.
+- Each failure has its own file in its domain's `failures/` folder
+  (`domains/planning/failures/todo_not_found.jadpo`), or in
+  `shared/failures/` once two or more domains raise it (question 15). It is
+  marked `public` when another domain handles it.
 
-Decided (question 13): a failure is declared like every other type,
-`type TodoNotFound = Failure { ... }`. Failures live in the file that raises
-them or in a domain's `types/` folder, so the keyword matches the folder; the
-rule across the language is that a declaration with its own folder has its own
-keyword (`entity`, `event`, `schedule`), and anything that lives in `types/` is
-a `type`. `Failure` as a base brings `kind`, `message`, `client` and `internal`.
+Decided (question 13): a failure is written like every other type,
+`type TodoNotFound = Failure { ... }`, so code reads the same everywhere.
+`Failure` as a base brings `kind`, `message`, `client` and `internal`, as
+`Input` brings optional fields.
 
 ::: today
 
@@ -1065,6 +1064,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | Asserting that a call fails with a given failure in tests | 13 | Input to area 13 |
 | Runtime diagnostics `runtime.unhandled_fault`, `runtime.outcome_unknown` and `runtime.startup_failed`, which `jadpo check` cannot trigger | 14 | Input to area 14 |
 | Streaming responses that fail after headers are sent (ROUTE-002) | 7 | Deferred |
+| Whether `event` should also become `type X = Event { ... }`, by the same reasoning as failures | 12 | Raised |
 
 ### Open questions
 
@@ -1157,11 +1157,11 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
     failure declaration.
 
 13. **Should a failure be a `type`?** Today `failure TodoNotFound { ... }`
-    is its own keyword. *Decided 2026-10-12:* `type TodoNotFound = Failure { ... }`.
-    Area 1 put shared failures in the `types/` folder and folders match
-    keywords, so the rule becomes: a declaration with its own folder keeps its
-    own keyword (`entity`, `event`, `schedule`), and anything in `types/` is a
-    `type`. `Failure` as a base brings `kind`, `message`, `client` and
+    is its own keyword. *Decided 2026-10-12:* `type TodoNotFound = Failure { ... }`,
+    the same form as every other type, so people and agents write code one
+    way (Richard). It also matches how mainstream languages model errors, as a
+    type built on an error base (`class X extends Error` in TypeScript,
+    `struct X: Error` in Swift). `Failure` as a base brings `kind`, `message`, `client` and
     `internal`, as `Input` brings optional fields.
 14. **What does a failure without a `client` block show?**
     *Decided 2026-10-12:* fields exist only inside `client: { }` and
@@ -1170,15 +1170,15 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
     client unless it is listed under `client`.
 
 15. **Where do failures live in the folders: centralised, per domain, or
-    both?** *Recommendation:* both, decided by where a failure is raised,
-    exactly like types and libraries (area 1): in the file that raises it;
-    in the domain's `types/` once a second file in that domain raises it; in
-    `shared/types/` once a second domain raises it. A failure that another
-    domain only handles (in a `match`) stays where it is raised and is marked
-    `public`. The central view comes from the compiler, not a folder: the
-    generated failure catalogue lists every code with its status, message,
-    client fields and where it is raised, for documentation and API
-    consumers.
+    both?** *Decided 2026-10-12 (Richard):* one failure per file, always in
+    the raising domain's own `failures/` folder, or in `shared/failures/`
+    once two or more domains raise it. Failures are numerous, are part of the
+    public contract and are looked for as a group, so they get a folder of
+    their own rather than sitting in `types/`. A failure another domain only
+    handles stays where it is raised and is marked `public`. Generic
+    behaviour comes from `kind`, and the runtime owns the built-in failures.
+    The compiler also generates a catalogue of every failure for
+    documentation and API consumers.
 
 ### Decisions
 
@@ -1202,8 +1202,8 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | Concealment | A record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |
 | Internal fields in logs | Identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never | 2026-10-12 |
 | Message translation | The client translates by `code`; `message` stays fixed English | 2026-10-12 |
-| Failure declaration form | `type Name = Failure { ... }`; a declaration with its own folder keeps its own keyword, anything in `types/` is a `type` | 2026-10-12 |
+| Failure declaration form | `type Name = Failure { ... }`, the same form as every other type (Richard: consistency when writing code) | 2026-10-12 |
 | Failure fields | Fields exist only in `client: { }` and `internal: { }`; without `client` the caller gets only the code, message and request id | 2026-10-12 |
 | Request id | Every error response carries `request_id` (also the `x-request-id` header), and every failure, expected ones included, is logged with it, so a client can quote it and a developer can trace it | 2026-10-12 |
 | Kind is an enum | `kind:` takes a value of the closed `FailureKind` enum, written by its name (`kind: not_found`) because the setting fixes the list, per area 2's setting-options decision; never a string | 2026-10-12 |
-| Failure placement | | |
+| Failure placement | One failure per file in the domain's `failures/` folder, or `shared/failures/` once two or more domains raise it; `public` when another domain handles it | 2026-10-12 |
