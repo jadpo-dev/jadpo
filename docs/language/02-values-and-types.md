@@ -912,44 +912,104 @@ Most record types in a real application are slices of an entity or of another
 record: a create input without the generated fields, a patch input where every
 field is optional, a public view without private fields, a list summary with
 fewer fields than the detail view, a v2 response that adds a field. Today each
-is written out field by field (`title: Todo.title`). The proposal is a small,
-fixed vocabulary on the declaration itself:
+is written out field by field (`title: Todo.title`). The proposal adds `from`
+to the three record kinds (`value` for data used inside the application,
+`input` for data arriving from outside, `output` for responses) with four
+operations and nothing else.
+
+**`pick`** keeps the listed fields, with their types and validation rules:
 
 ```jadpo fragment
-input CreateTodo from Todo {
-    pick: title, due_at
+output TodoView from Todo {
+    pick: id, title, status, due_at
 }
+```
 
+**`omit`** keeps every field except the listed ones (inputs and values only):
+
+```jadpo fragment
+input ImportTodo from Todo {
+    omit: id, owner_id, created_at, deleted_at
+}
+```
+
+**`optional`** makes the listed fields, or `all` of them, optional (inputs
+only, because only incoming data can leave fields out):
+
+```jadpo fragment
 input PatchTodo from Todo {
     pick: title, due_at
     optional: all
 }
+```
 
-output TodoView from Todo {
-    pick: id, title, status, due_at
-}
+**`add`** declares new fields, written exactly like fields anywhere else. A
+new field's type can be any type, including another entity's field type:
 
-output TodoSummary from TodoView {
-    pick: id, title
+```jadpo fragment
+value TodoReminder from Todo {
+    pick: id, title, due_at
     add {
-        overdue: Bool
+        owner_email: User.email
+        days_overdue: DayCount
     }
 }
 ```
 
-- Four operations only: `pick` (keep these fields), `omit` (drop these),
-  `optional` (make listed or all fields optional, inputs only) and `add` (new
-  fields). No renaming and no changing a field's type.
-- Derived fields keep their type and validation rules, and follow the source:
-  renaming `Todo.title` renames it everywhere it was picked.
+`value TodoReminder` is the plain "just a new type" case: the same rules
+apply whichever of `value`, `input` or `output` you derive.
+
+**Records inside records and lists.** Picking a field keeps its whole type, so
+`pick: lines` on an order keeps `List<OrderLine>`. To change what a nested
+field holds, leave it out and add a field of the same name with the new type.
+This is the only way to change a field's type, and it is visible in the
+declaration:
+
+```jadpo fragment
+output OrderLineView from OrderLine {
+    pick: product_name, quantity, line_total
+}
+
+output OrderView from Order {
+    pick: id, placed_at, total
+    add {
+        lines: List<OrderLineView>
+    }
+}
+```
+
+**Deriving from a derived record** works the same way, so versions and
+summaries build on each other:
+
+```jadpo fragment
+output TodoSummary from TodoView {
+    pick: id, title
+}
+
+output TodoViewV2 from TodoView {
+    pick: id, title, status, due_at
+    add {
+        tags: List<TagName>
+    }
+}
+```
+
+Rules:
+
+- Four operations only: `pick`, `omit`, `optional` and `add`. `pick` and
+  `omit` cannot both appear. No renaming. `add` cannot reuse the name of a
+  field that was picked, but can reuse one that was left out, which is how a
+  field's type is changed.
+- Picked fields follow their source: renaming `Todo.title` renames it in
+  every record that picked it, and its validation rules come with it.
 - Every derived record has a name. There are no inline `Pick<...>` types in
   signatures, so OpenAPI schemas and error messages always have a name, and
   the editor and generated docs show the expanded fields.
 - An `output` may only use `pick`. With `omit`, adding a sensitive field to
   the entity later (a password hash, an internal note) would silently expose
-  it in every response; an allowlist cannot leak by addition. Inputs may use
-  either, but generated fields such as `id` and `created_at` can never appear
-  in an input, which closes the mirror-image mass-assignment bug.
+  it in every response; an allowlist cannot leak by addition. Generated
+  fields such as `id` and `created_at` can never appear in an `input`, which
+  closes the mirror-image mass-assignment bug.
 - Policy checks still apply to every derived output.
 
 ### Open questions
@@ -1050,10 +1110,12 @@ output TodoSummary from TodoView {
     5 is accepted, and new identities are random version 4. Version 7
     (RFC 9562, 2024) is time-ordered, which keeps database indexes compact and
     sorts IDs by creation, and an ID arriving from a system that already uses
-    it is currently rejected. *Recommendation:* accept any RFC 9562 version,
-    normalise to lowercase, generate version 7 for new identities and store
-    PostgreSQL `uuid`. A version 7 ID reveals roughly when it was created; an
-    entity where that matters can opt into random version 4.
+    it is currently rejected. *Recommendation:* by default accept any RFC 9562
+    version, normalise to lowercase, generate version 7 for new identities and
+    store PostgreSQL `uuid`. A named type can pin a version with a constraint,
+    `type ExternalRef = Uuid { version: 4 }`, which then governs both what is
+    accepted and what is generated; use it where a version 7 ID would reveal
+    sensitive creation times, or where another system dictates the version.
 14. **Adopt derived records?** See the proposal above. *Recommendation:* yes,
     with exactly `pick`, `omit`, `optional` and `add`, named results only, and
     outputs restricted to `pick`. This covers create, patch, view, summary and
@@ -1072,6 +1134,20 @@ output TodoSummary from TodoView {
     `var price = Price(0.0)` to that form. Rust adapts literals to built-in
     integer types but not to its newtypes; this goes one step further because
     the check still happens at compile time.
+
+16. **Must every variable declare its type?** Today `var total = price * quantity`
+    is allowed and infers a plain `Int`; the mismatch only surfaces later,
+    where `total` is returned as `Pence`. *Recommendation:* yes: every `var`
+    states its type (`var total: Pence = Pence(price * quantity)`), while
+    loop and `match` bindings take theirs from what they bind. The reader sees
+    each value's type where it is introduced, a wrong type is reported on the
+    line that made it, and there is one rule with no exceptions to remember.
+    The cost is verbosity, which falls on the agent writing the code rather
+    than the person reviewing it, and literal typing (question 15) removes
+    most of the repetition: `var price: Price = 0.0`. Most modern languages
+    (TypeScript, Rust, Go, Kotlin) infer local types instead; Jadpo's
+    audience, code written by agents and reviewed by people, favours the
+    explicit form.
 
 ### Decisions
 
@@ -1092,3 +1168,4 @@ output TodoSummary from TodoView {
 | UUID versions | | |
 | Derived records | | |
 | Literal typing | | |
+| Variable types | | |
