@@ -2862,7 +2862,7 @@ running the `jadpo schema` commands; nothing was run against a live database.
 | Test fixtures versus seeds | 13 | Input to area 13 |
 | `migration.*` rules raised only by `jadpo schema` commands (snapshot, diff, decision, plan and SQL errors, registry read and write failures, `migration.identity_registry_missing`, `migration.identity_registry_exists`, `migration.identity_additions_have_removal`, rename errors), `index.accept_*` and `index.recommendation_*` other than the check warning, `cli.schema_*`, and `toolchain.target_store_not_implemented` (raised by `jadpo build`); none can be triggered by `jadpo check` on source | 14 | Input to area 14 |
 | The `jadpo migrate` and rename commands themselves (question 11) | 14 | Input to area 14 |
-| GDPR support as its own review: personal-data marking on fields, erasure across every store and cache, export of everything held about a person, retention, and a build report of where personal data lives (Richard: strong out-of-the-box compliance helps adoption) | 5, 9, 10 | Raised |
+| GDPR support as its own review: personal-data marking on fields, erasure across every store and cache, export of everything held about a person, retention, and a build report of where personal data lives (Richard: strong out-of-the-box compliance helps adoption) | 15 | Moved to area 15 |
 
 ### Open questions
 

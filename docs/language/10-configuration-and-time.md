@@ -510,8 +510,8 @@ var subject: PresentationText = translations.order_shipped(
 
 Retention periods are ordinary settings (`soft_delete_retention: Duration`)
 read by a lifecycle's `purge: { after: config.soft_delete_retention }`
-(area 5). How retention fits the wider GDPR review (personal-data marking,
-erasure, export) is carried from area 5 and not decided here.
+(area 5). How retention fits the wider GDPR support (personal-data marking,
+erasure, export) is designed in area 15 (Personal data).
 
 ## Errors
 
@@ -966,7 +966,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 | Integration credentials and authentication signing keys as the only secret sinks; their setting names (`token:`, `signing_key:`) | 8, 11 | Input to areas 8 and 11 |
 | Mail templates using translations and `PresentationText` | 11 | Input to area 11 |
 | `config.typo` should report the configuration field, not `__jadpo_config`; `jadpo fmt` writes `temporal.format (` with a space | 14 | Bug |
-| GDPR: retention periods as settings, alongside personal-data marking, erasure and export | 5, 9, 10 | Carried from area 5; not decided here |
+| GDPR: retention periods as settings, alongside personal-data marking, erasure and export | 15 | Moved to area 15 |
 
 ### Open questions
 

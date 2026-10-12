@@ -407,8 +407,8 @@ effect at once.
 
 ## Personal data
 
-GDPR support is its own future review (area 5). Policy needs one fact from
-it: which fields hold personal data, marked in the field's block. Policy then
+GDPR support is designed in area 15 (Personal data). Policy needs one fact
+from it: which fields hold personal data, marked in the field's block. Policy then
 keeps those values out of logs and failure details (area 4 hashes text
 today) and out of any output not covered by a grant, and erasure can find
 every copy. The marking itself is designed in that review.
@@ -1232,7 +1232,7 @@ the code generated for `examples/golden-todo-migration` and
 | One "accept a reviewed change" mechanism for policy, public API, drops and domains (area 4 carried it to area 7) | 7 | Input to area 7 |
 | Testing policy: calling an action as a given user and expecting `not_found` or `not_permitted` | 13 | Input to area 13 |
 | The approval command, its report and the protected sign-off | 14 | Input to area 14 |
-| Personal-data marking on fields, erasure, export, retention and log redaction (GDPR review) | 5, 9, 10 | Raised |
+| Personal-data marking on fields, erasure, export, retention and log redaction (GDPR review) | 15 | Moved to area 15 |
 
 ### Open questions
 
@@ -1294,7 +1294,7 @@ the code generated for `examples/golden-todo-migration` and
 11. **Who owns personal-data marking and the classification of internal
     fields for log redaction?** (carried from areas 4 and 5) "Personal data"
     above defers both to a GDPR review that no area owns. Which area designs
-    it?
+    it? *Decided 2026-10-12:* area 15, Personal data.
 
 ### Decisions
 
@@ -1318,4 +1318,4 @@ the code generated for `examples/golden-todo-migration` and
 | Service key management | | |
 | Calling integrations | | |
 | Accepting policy weakening | | |
-| Personal data and log redaction | | |
+| Personal data and log redaction | Designed in area 15 (Personal data) | 2026-10-12 |
