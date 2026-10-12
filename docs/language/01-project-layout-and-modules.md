@@ -846,6 +846,80 @@ build/
   compiler keeps a record of the latest migration so history stays linear.
 - `database/seeds/` holds local demonstration and development data.
 
+#### What it looks like in code
+
+Illustrative; the exact syntax of each piece is settled in the area named.
+
+A library, its documentation comment and a call from another domain (areas 1
+and 3):
+
+```jadpo fragment
+// shared/libraries/rounding.jadpo
+/// Rounds to the nearest whole penny, ties to the even penny.
+library rounding {
+    function half_even(amount: Price) -> Price { ... }
+}
+
+// domains/ordering/actions/checkout.jadpo
+var total: Price = rounding.half_even(subtotal)
+```
+
+A public action called inside another domain's transaction (areas 1 and 6):
+
+```jadpo fragment
+// domains/inventory/actions/reserve_for_cart.jadpo
+public action reserve_for_cart(cart: Cart.Ref)
+    fails OutOfStock -> Reservation { ... }
+
+// domains/ordering/actions/checkout.jadpo
+action checkout(cart: Cart.Ref)
+    consistency: atomic
+    fails OutOfStock, CartEmpty -> Order
+{
+    var reservation: Reservation = attempt inventory.reserve_for_cart(cart)
+    var order: Order = attempt Order.place(cart, reservation)
+    return order
+}
+```
+
+A named route group with a checked prefix (area 7):
+
+```jadpo fragment
+// domains/planning/routes/todos.jadpo
+routes Todos {
+    prefix: /todos
+
+    GET / { ... }
+    GET /{todo_id} { ... }
+    PATCH /{todo_id} { ... }
+}
+```
+
+A schedule, a subscriber in another domain, and an integration pinned to a
+provider version (areas 11 and 12):
+
+```jadpo fragment
+// domains/planning/schedules/overdue_reminders.jadpo
+schedule overdue_reminders {
+    every: 15m
+    run: send_due_reminders()
+}
+
+// domains/notifications/subscribers/send_order_confirmation.jadpo
+subscriber send_order_confirmation {
+    on OrderEvent.placed(order) {
+        attempt postmark.send(confirmation_for(order))
+    }
+}
+
+// domains/payments/integrations/stripe_v2024.jadpo
+integration StripeV2024 {
+    base_url: "https://api.stripe.com"
+    api_version: "2024-06-20"
+    ...
+}
+```
+
 #### What the compiler would check
 
 New errors would include `layout.unknown_location`, `layout.wrong_folder`,

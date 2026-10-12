@@ -1010,6 +1010,242 @@ Rules:
   closes the mirror-image mass-assignment bug.
 - Policy checks still apply to every derived output.
 
+### Proposals in examples
+
+Each open question below, shown as code. These are proposals, so they are
+shown without being compiled; exact syntax for logic is settled in area 3.
+
+#### Q1: a runtime check that can fail
+
+```jadpo fragment
+failure QuantityOutOfRange {
+    kind: invalid_value
+    code: "quantity_out_of_range"
+}
+
+action double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity {
+    var doubled: Quantity = attempt Quantity(quantity * 2) invalid: QuantityOutOfRange
+    return doubled
+}
+```
+
+A literal needs no `attempt`: `Quantity(0)` is rejected while compiling.
+
+#### Q2: building a record runs its fields' rules
+
+```jadpo fragment
+type BadgeName = Text {
+    max_length: 12
+}
+
+record Badge {
+    name: BadgeName
+}
+
+action make_badge(user: User) fails BadgeNameTooLong -> Badge {
+    // user.display_name allows 80 characters; the field allows 12,
+    // so this check can fail and must say how.
+    var badge: Badge = attempt Badge {
+        name: user.display_name
+    } invalid: BadgeNameTooLong
+    return badge
+}
+```
+
+#### Q3: `optional` only on inputs, read as nullable
+
+```jadpo fragment
+input UpdateProfile {
+    nickname: Nickname optional
+}
+
+action update_profile(request: UpdateProfile) -> Unit {
+    var nickname: Nickname? = request.nickname    // left out reads as none
+}
+```
+
+`record Profile { nickname: Nickname optional }` would be an error: a record
+built inside the application always states every field.
+
+#### Q4: lists you can build, count and loop over
+
+```jadpo fragment
+var tags: List<TagName> = ["urgent", "home"]
+var count: TagCount = TagCount(collection.count(tags))
+var has_urgent: Bool = collection.contains(tags, "urgent")
+
+for tag in tags {
+    // tag is a TagName
+}
+```
+
+`collection.map` and `collection.filter` take a function as an argument, which
+depends on area 3's answer on passing functions.
+
+#### Q5: sets and maps in JSON
+
+```jadpo fragment
+input RetagTodo {
+    tags: Set<TagName>
+    weights: Map<TagName, Weight>
+}
+```
+
+```text
+{ "tags": ["urgent", "home"], "weights": { "urgent": 3, "home": 1 } }
+```
+
+`["urgent", "urgent"]` is rejected as a duplicate. `Map<Instant, Weight>` at a
+boundary is a compile error, because JSON object keys are text.
+
+#### Q6: no transparent aliases
+
+```jadpo fragment
+type OrderId = Uuid {}    // a new type: an OrderId is not a CustomerId
+type OrderId = Uuid       // rejected: reads like an alias in other languages
+```
+
+#### Q7: converting between types only by constructing
+
+```jadpo fragment
+var total: Pence = Pence(price * quantity)    // the only way across
+var raw: Int = price as Int                    // rejected: there is no cast
+```
+
+#### Q8: numbers by range and scale
+
+```jadpo fragment
+type Quantity = Int {
+    min: 1
+    max: 1000          // fits a smallint column; JSON number
+}
+
+type LedgerAmount = Int {
+    min: 0             // no max: bigint column; JSON string when large
+}
+
+type Price = Decimal {
+    scale: 2
+    min: 0.00          // numeric(p, 2); JSON "12.50"
+}
+
+var share: Price = decimal.divide(total, people, rounding: half_even)
+```
+
+#### Q9: patterns match the whole text and are checked while compiling
+
+```jadpo fragment
+type Sku = Text {
+    pattern: "[A-Z]{3}-[0-9]{4}"
+}
+
+var sku: Sku = "ABC-1234"       // checked while compiling
+var bad: Sku = "ABC-1234x"      // compile error: the whole text must match
+type Odd = Text {
+    pattern: "(a+)+\\1"         // rejected: backreferences are not allowed
+}
+```
+
+#### Q10: one spelling per kind of record
+
+```jadpo fragment
+record Dimensions {             // was: type Dimensions = Object { ... }
+    width: Millimetres
+    height: Millimetres
+}
+
+route POST /products {
+    input: CreateProduct        // must be an input
+    output: ProductView         // must be an output
+    run: Product.create(input)
+}
+```
+
+#### Q11: which built-in types a signature may use
+
+```jadpo fragment
+function opening_hours(zone: Zone) -> OpeningHours { ... }      // allowed: closed enum
+function remind_at(at: Instant) -> Reminder { ... }             // rejected: what instant?
+function remind_at(at: ReminderTime) -> Reminder { ... }        // type ReminderTime = Instant {}
+function tag_all(tags: List<Text>) -> TagSet { ... }            // rejected: element is raw Text
+```
+
+#### Q12: `==` compares contents
+
+```jadpo fragment
+var a: Money = Money { amount: 500 }
+var b: Money = Money { amount: 500 }
+var same: Bool = a == b     // true: same contents (false today)
+```
+
+#### Q13: UUID versions
+
+```jadpo fragment
+entity Order {
+    id: Uuid                        // generated as version 7
+}
+
+type PartnerRef = Uuid {
+    version: v4                     // accepts and generates only version 4
+}
+```
+
+#### Q15: literals take the type they go into
+
+```jadpo fragment
+var price: Price = 0.00                          // checked while compiling
+var line: OrderLine = OrderLine { quantity: 1 }  // 1 becomes a Quantity
+
+function first_quantity() -> Quantity {
+    return 1
+}
+```
+
+#### Q16: every variable states its type
+
+```jadpo fragment
+var total: Pence = Pence(price * quantity)
+var todo: Todo = attempt Todo.get(id)
+
+for line in order.lines {          // a loop binding takes its type from the list
+    var subtotal: Pence = line.total
+}
+```
+
+#### Q17: settings take a name from their list
+
+```jadpo fragment
+type ContactEmail = Text {
+    format: email
+}
+
+type PartnerRef = Uuid {
+    version: v4
+}
+
+failure TodoNotFound {
+    kind: not_found                 // was: kind: NotFound
+    code: "todo_not_found"
+}
+```
+
+#### Q18: `record` instead of `value`
+
+```jadpo fragment
+record Money {                      // was: value Money
+    amount: Pence
+    currency: Currency
+}
+
+input CreateOrder {                 // data arriving from outside
+    lines: List<OrderLineRequest>
+}
+
+output OrderView from Order {       // data sent back
+    pick: id, total, placed_at
+}
+```
+
 ### Open questions
 
 1. **How does a runtime `Type(value)` failure reach the caller?** Today it
@@ -1159,6 +1395,16 @@ Rules:
     (`OrderStatus.paid`). Every option name is lower_snake_case, which changes
     failures' `kind: InvalidValue` to `kind: invalid_value` (area 4).
 
+18. **Rename `value` to `record`?** `value Money { ... }` declares a plain
+    record used inside the application: fixed fields, no identity, compared by
+    contents (the name comes from "value object" in domain-driven design).
+    `input` and `output` are the same shape with a boundary role. The word
+    `value` is vague to most developers and is also usable as a variable
+    name, so `var value: Money` sits next to `value Money { }`.
+    *Recommendation:* rename it `record`, the term C# and Java use for the same
+    thing. Every record kind and named type lives in a domain's `types/`
+    folder, which holds all type declarations whatever their keyword.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -1180,3 +1426,4 @@ Rules:
 | Literal typing | | |
 | Variable types | | |
 | Setting options | | |
+| `value` keyword | | |
