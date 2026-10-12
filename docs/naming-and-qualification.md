@@ -13,6 +13,8 @@ This contract applies across the whole language. A library may add domain
 vocabulary, but it may not invent a new casing system, import model, method
 style, parameter-order convention, or alias for an existing operation.
 
+> **Superseded in part (2026-10-12):** module names, imports and bare calls within a module (NAME-D03, NAME-D04, NAME-D09) are replaced by domain folders and owner-qualified calls. See the [decision register](decision-register.md#project-layout-domains-and-call-naming--2026-10-12).
+
 ## 1. Governing rule
 
 Every name has one semantic owner, and that owner determines how the name is

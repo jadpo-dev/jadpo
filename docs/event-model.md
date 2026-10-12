@@ -12,6 +12,8 @@ preserves motivation, decisions, alternatives and scheduling. Its older command/
 fact API examples are superseded by the one-event authoring direction here.
 There is no claim that planning has removed every implementation risk.
 
+> **Superseded in part (2026-10-12):** ownership now follows domain folders rather than module names, and public actions may change another domain inside the caller's transaction. See the [decision register](decision-register.md#project-layout-domains-and-call-naming--2026-10-12).
+
 ## 1. Small authoring model
 
 Use a specialised nominal event type, typed variants, one `emit_event(...)`

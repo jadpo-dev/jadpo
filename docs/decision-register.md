@@ -8,6 +8,28 @@ item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
 
+### Project layout, domains and call naming — 2026-10-12
+
+Richard decided the project layout and module replacement in the language
+review; the full rules are in [area 1](language/01-project-layout-and-modules.md#decided-layout)
+and the evidence in [docs/language/research](language/research/). In short:
+every project has a fixed root (`app.jadpo`, `config.jadpo`,
+`authentication.jadpo`, `policy.jadpo`, `domains/`, `shared/`, `database/`,
+`translations/`, `tests/`, `build/`); all code lives in one level of domain
+folders named after business areas, each holding the same keyword-named
+folders with no subfolders; one primary declaration per file, named after it;
+single-use supporting declarations live with their user and promotion is
+required but never reversed automatically.
+
+Domains replace modules as owner and visibility boundary. `module` and
+`import` are removed; the dot names the owner of every call; public actions
+let one domain change another inside the caller's transaction, and events are
+for reactions that need not be all-or-nothing. This **supersedes** NAME-D03,
+NAME-D04 and NAME-D09 in the [naming contract](naming-and-qualification.md)
+and the [event model](event-model.md)'s rule that ownership follows module
+names. Not yet implemented; the current compiler remains the executable
+baseline until the rework lands.
+
 ### Golden reminder execution and lease profile — 2026-10-06
 
 The owner approved a **60-second execution limit and a renewable 40-second

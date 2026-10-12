@@ -1,7 +1,7 @@
 ---
 title: Project layout and modules
 area: 1
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-11)
 rules:
   - data.project_role_invalid
@@ -609,14 +609,14 @@ type Label = Text {
 - **The formatter keeps your blank lines and import order.** Two people can
   format the same file differently and both pass `jadpo fmt --check`.
 
-### Proposed layout (preliminary)
+### Decided layout
 
 Shaped in discussion with Richard on 2026-10-11 and 12, on top of three
 pieces of research in `docs/language/research/` (what developers like and
 dislike in other frameworks' layouts, six realistic applications from this
 todo app up to a 72-entity platform, and candidate layouts tested against
 them) and an independent review of this proposal against that research and
-fresh evidence. Nothing here is built yet.
+fresh evidence. Decided on 2026-10-12; nothing here is built yet.
 
 **The shape.** Every project has the same shape at every size. The root holds
 a fixed set of files and folders. All application code lives in business
@@ -895,7 +895,7 @@ migration workflow (area 5). The layout only reserves their folders.
 
 ### Decisions
 
-Provisional decisions from discussion; confirmed when this page is reviewed.
+Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
 
 | Topic | Decision | Date |
 |---|---|---|
@@ -909,4 +909,12 @@ Provisional decisions from discussion; confirmed when this page is reviewed.
 | Cross-domain writes | Public actions, sharing the caller's transaction; events for reactions that need not be all-or-nothing | 2026-10-12 |
 | Promotion | Required with a one-step fix; demotion never forced | 2026-10-12 |
 | Helpers | Descriptions written once as `///`; catalogue, callers and impact computed; duplicates flagged by `jadpo check` | 2026-10-12 |
-| 1–9 | | |
+| Domains folder | Domains live in `domains/`, so every root entry is fixed by the language | 2026-10-12 |
+| Call naming | The dot names the owner of what you call; own-domain actions and queries are bare; no imports | 2026-10-12 |
+| New domains | Creating or renaming a domain appears in the approval review, like a policy change | 2026-10-12 |
+| Policy protection | Through the approval check wherever policy lives, not by file path | 2026-10-12 |
+| Deployables | Declarations in one project, each compiled from what it reaches | 2026-10-12 |
+| Large entities | No companion files for now; revisit with measured sizes from the order/payment app | 2026-10-12 |
+| Reserved words | Control-flow and declaration words fully reserved, with a short explicit list of usable names | 2026-10-12 |
+| Documentation comments | `///` comments attach to the next declaration and feed generated docs, the library catalogue and OpenAPI | 2026-10-12 |
+| Formatting | The formatter owns blank lines and section order within a file | 2026-10-12 |

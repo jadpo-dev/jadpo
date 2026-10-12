@@ -21,6 +21,15 @@ and specifications, not here.
 3. **Rework the areas the review flags.** Keep `python3 tools/verify.py` and
    the passing golden cases green throughout. Rebuild only what the review says
    is wrong.
+   Area 1 (decided 2026-10-12) needs: the domain layout and its layout
+   checks; domain ownership and `public` (including public actions sharing
+   the caller's transaction) replacing `module`/`import`; owner-qualified
+   calls and named libraries; route groups with checked prefixes; the
+   `database/` folder, line-per-entry registry and timestamped migrations;
+   single-file checking; reserved-word policy; `///` comments; formatter
+   blank lines and section order; the library catalogue, `jadpo impact`,
+   similar-helper warning and domain commands; then the scaffold, compile
+   tests, examples and golden app moved to the new layout.
 4. **Finish the golden todo** on the reviewed language. Done means
    `python3 tools/verify.py --require-golden` passes 88/88 (44 cases × SQLite
    and PostgreSQL) on one commit, plus one independent review of the combined
