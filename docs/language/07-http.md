@@ -1121,17 +1121,22 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
     and hides the URL among settings. The colon rule names this as its one
     exception.
 17. **Are writes idempotent out of the box?** Nothing on this page covers a
-    client retrying a `POST` after a timeout. *Recommendation:* yes, for
-    `POST` and `PATCH` on every API: a client may send `Idempotency-Key`
-    (the IETF draft Stripe's design became); the runtime stores the key, a
-    hash of the request and the response in the main store, in the same
-    transaction as the action's writes, for 24 hours. A repeat returns the
-    stored response; the same key with a different request fails
-    `idempotency_key_reused` (422); a repeat while the first is still running
-    fails `conflict` (409). An API can make the key required with
-    `idempotency: Idempotency.required`. Integration calls inside the action
-    derive their own idempotency keys from it (area 11). `PUT` and `DELETE`
-    are idempotent by definition and need nothing.
+    client retrying a write after a timeout. *Recommendation:* yes, for every
+    method except `GET` (`POST`, `PUT`, `PATCH` and `DELETE`): HTTP calls
+    `PUT` and `DELETE` idempotent, but a retried `DELETE` answers 404 where
+    the first answered 204, and the action behind any write may raise events
+    or call providers. A client may send `Idempotency-Key` (the IETF draft
+    Stripe's design became). The runtime handles it entirely; the action
+    never sees the key. Before the action runs it looks the key up, scoped to
+    the caller; after, it stores the key, a hash of the request and the
+    response in the main store, in the same transaction as the action's
+    writes and events, for 24 hours. A repeat returns the stored response;
+    the same key with a different request fails `idempotency_key_reused`
+    (422); a repeat while the first is running fails `conflict` (409).
+    Successes and failures the action returns are stored; `unavailable` and
+    internal failures are not, so a retry runs again. Integration calls in
+    the action send keys derived from it (area 11). An API can require the
+    key with `idempotency: Idempotency.required`; OpenAPI lists the header.
 
 ### Decisions
 
