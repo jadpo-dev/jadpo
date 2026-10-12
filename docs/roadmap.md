@@ -89,6 +89,8 @@ Still missing: JOB-001–004, CONFIG-001–003, BOUNDARY-001 and REL-003.
 ## Later — parked
 
 - Cloudflare D1 as a store engine, which first needs a Workers runtime.
+- Acting as an OAuth provider, with scopes narrowing policy (decided in
+  language area 8, 2026-10-12; needed for AI connectors and integrations).
 - PostgreSQL row-level security as an opt-in store setting, generated from
   policy (decided in language area 6, 2026-10-12).
 
