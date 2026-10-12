@@ -1,7 +1,7 @@
 ---
 title: Reads and writes
 area: 6
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - data.atomic_domain_mismatch
@@ -85,7 +85,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Proposed. Code on this page shows the language after the rework, applying the decisions from areas 1 to 5 and this page's recommendations; none of it compiles yet. Today's compiled syntax is collapsed beneath each section. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Code on this page shows the language after the rework, applying the decisions from areas 1 to 6; none of it compiles yet. Today's compiled syntax is collapsed beneath each section. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -3209,46 +3209,46 @@ database.
    their entity; each `where:` line must hold; comparisons, `and`, `or`,
    `not`, `== none` and `in`; `where_present:` for a request's optional
    filters, replacing `matches optional` and `<= optional`; only conditions
-   an index can serve.
+   an index can serve. *Decided 2026-10-12:* yes, as recommended.
 3. **How are order and pages written?** *Recommendation:* `order: [field
    direction]` with `id` added as the tie-break, so
    `type.query_order_not_deterministic` goes; every list bounded by a
    literal or a type's `max:`; keyset pages only, through the standard
    `Page<T>` and an opaque `PageCursor`; no offset. Relay and Prisma
-   both recommend cursors over offsets for the same reasons.
+   both recommend cursors over offsets for the same reasons. *Decided 2026-10-12:* yes, as recommended.
 4. **How are children and parents included?** *Recommendation:* an
    `include:` block whose entries name a reference field: this entity's own
    reference gives the parent, another entity's reference gives children (a
    list needing `order:` and `limit:`, or one record when the reference is
    unique). Nesting up to two levels, within the domain, and across stores
-   only by `id`. Other domains' data comes from their public queries.
+   only by `id`. Other domains' data comes from their public queries. *Decided 2026-10-12:* yes, as recommended.
 5. **Which operations does every entity get?** *Recommendation:* `get`,
    `create`, `update` (with `set:` or `patch:`), `delete`, and one per
    lifecycle transition, called through the entity; only actions in the
    owning domain may call the writing ones, which replaces today's rule
-   that only entity-owned actions write.
+   that only entity-owned actions write. *Decided 2026-10-12:* yes, as recommended.
 6. **What do failed writes report?** *Recommendation:* a missing record
    reports the entity's `<Entity>NotFound`, provided by the compiler unless
    the domain declares it; every unique rule and `restrict` reference a
    write can break is mapped in `conflict:`, keyed by the rule, with no
    catch-all and no `TodoMutationConflict`. Rails and Django raise one
    generic error per constraint type and leave mapping to the developer;
-   here the compiler knows the rules, so it can insist.
+   here the compiler knows the rules, so it can insist. *Decided 2026-10-12:* yes, as recommended.
 7. **Does an empty patch fail?** *Recommendation:* no: it changes nothing
    and succeeds, as JSON Merge Patch (RFC 7396) specifies, so `empty:` and
    `failure.patch_empty_not_invalid_value` go. Conditional writes become
-   `when_supplied: { field: { ... } }`, replacing `x when input.f supplied`.
+   `when_supplied: { field: { ... } }`, replacing `x when input.f supplied`. *Decided 2026-10-12:* yes, as recommended.
 8. **What happens when a record changed since it was loaded?**
    *Recommendation:* the runtime reruns the whole action within the
    existing retry budget, then fails `unavailable`; on PostgreSQL through
    repeatable-read isolation. Rails (`lock_version`) and Entity Framework
    raise an error the developer must handle; Jadpo can rerun because an
-   action has no outside effects before it commits.
+   action has no outside effects before it commits. *Decided 2026-10-12:* yes, as recommended.
 9. **How are counters updated?** *Recommendation:* an update by `id` whose
    values use `Entity.field` for the stored value
    (`Post.view_count + 1`), computed by the database in one step and never
    rerun; PostgreSQL's own documentation recommends exactly this for
-   increments.
+   increments. *Decided 2026-10-12:* yes, as recommended.
 10. **Are children hidden with their parent?** Today they stay visible, and
     a required include of a hidden parent reads as missing.
     *Recommendation:* visibility never spreads: a child stays visible until
@@ -3256,16 +3256,16 @@ database.
     parent even when hidden, because the reference still holds. The action
     that hides a parent runs its children's transitions when they should go
     too. Rails' `paranoia` gem hides deleted parents from associations by
-    default and the resulting `nil` parents are its most common complaint.
+    default and the resulting `nil` parents are its most common complaint. *Decided 2026-10-12:* yes, as recommended.
 11. **Are reads inside a loop allowed?** *Recommendation:* no: a query or
     `get` inside `for` is a compile error, and the fix is one query with
     `in`. Rails needed `strict_loading` to catch the same "one read per
-    item" mistake after the fact.
+    item" mistake after the fact. *Decided 2026-10-12:* yes, as recommended.
 12. **Where may a cache serve a read?** *Recommendation:* only a query a
     route runs directly; every read inside an action, policy and
     authentication goes to the store, and a client that just wrote skips
     caches by its revision. This makes the call site, not a `freshness:`
-    setting, decide, as area 3 decided.
+    setting, decide, as area 3 decided. *Decided 2026-10-12:* yes, as recommended.
 13. **Do policy conditions shape query plans and indexes, and is PostgreSQL
     row-level security generated?** (carried from area 9) Area 9 sends
     generated query plans, indexes for policy conditions, and row-level
@@ -3274,15 +3274,18 @@ database.
     *Decided 2026-10-12 (row-level security only):* not now. Policy compiled
     into each query's `WHERE` is the protection; row-level security comes
     later as an opt-in setting on a PostgreSQL store, generated from the same
-    policy. Query plans and indexes for policy conditions stay open.
+    policy. *Decided 2026-10-12 (the rest):* fields a policy condition
+    filters on get indexes, as `where:` fields do.
 14. **How do caches behave in tests?** (carried from area 13) Once the Redis
     adapter exists, do tests read through declared caches or straight from
-    the store, and how does a test check a cached read?
+    the store, and how does a test check a cached read? *Decided 2026-10-12:*
+    `jadpo test` supplies an in-memory cache that behaves like Redis and is
+    emptied between tests, so tests run production's code paths; a test
+    checks a cached read by reading, writing elsewhere and reading again.
 
 ### Decisions
 
-Nothing on this page is decided yet. The rows marked "Carried" were decided
-in earlier areas and bind this page.
+The rows marked "Carried" were decided in earlier areas and bind this page.
 
 | Topic | Decision | Date |
 |---|---|---|
@@ -3295,19 +3298,19 @@ in earlier areas and bind this page.
 | Stores and caches | Carried from area 5: an action writes at most one store; caches are copies for display reads only, with a required `keep:` | 2026-10-12 |
 | Loops | Carried from area 3: `for` over a `List` only | 2026-10-12 |
 | Query shape | One declarative read: `from:`, stacked `where:`, `order:`, `limit:` or `page:`, `include:`, `missing:`; the result type sets how many records come back | 2026-10-12 |
-| Filters | | |
+| Filters | Fields qualified with their entity; every `where:` line must hold; comparisons, `and`, `or`, `not`, `== none`, `in`; `where_present:` for optional filters; only conditions an index can serve | 2026-10-12 |
 | Selected columns | The generated SQL selects only the columns the result type needs, plus `order:` fields for the cursor and fields a policy checks outside the database | 2026-10-12 |
 | Page types | `Page<T>` (items and next), `PageCursor` and `PageSize` (1 to 100) are built in; an app may declare its own `Int` type with a `max:` for a different limit | 2026-10-12 |
 | Row-level security | Not now; later an opt-in setting on a PostgreSQL store, generated from policy. The compiled `WHERE` is the protection | 2026-10-12 |
-| Order and pages | | |
-| Includes | | |
-| Entity operations | | |
-| Write failures | | |
-| Empty patch | | |
-| Concurrent change | | |
-| Counters | | |
-| Hidden parents | | |
-| Reads in loops | | |
-| Cache reads | | |
-| Policy in query plans | | |
-| Caches in tests | | |
+| Order and pages | `order: [field direction]` with `id` added as the tie-break; every list bounded by a literal or a type's `max:`; keyset pages only, no offset | 2026-10-12 |
+| Includes | `include:` names a reference field: own reference gives the parent, another entity's gives children (ordered and limited); two levels, within the domain, across stores only by `id` | 2026-10-12 |
+| Entity operations | `get`, `create`, `update` (`set:` or `patch:`), `delete` and one per lifecycle transition; only actions in the owning domain call the writing ones | 2026-10-12 |
+| Write failures | Missing record gives `<Entity>NotFound` (provided unless declared); every unique rule and restricted reference a write can break mapped in `conflict:`, no catch-all | 2026-10-12 |
+| Empty patch | Succeeds and changes nothing (RFC 7396); conditional writes use `when_supplied: { }` | 2026-10-12 |
+| Concurrent change | The runtime reruns the whole action within the retry budget, then fails `unavailable`; repeatable-read isolation on PostgreSQL | 2026-10-12 |
+| Counters | An update by `id` using `Entity.field` for the stored value (`Post.view_count + 1`), done by the database in one step | 2026-10-12 |
+| Hidden parents | Visibility never spreads; an include of a hidden parent returns it; the action that hides a parent runs its children's transitions when they should go too | 2026-10-12 |
+| Reads in loops | A query or `get` inside `for` is a compile error; the fix is one query with `in` | 2026-10-12 |
+| Cache reads | Only a query a route runs directly may be served from a cache; reads in actions, policy and authentication go to the store; a client that just wrote skips caches | 2026-10-12 |
+| Policy in query plans | Policy compiled into each query's `WHERE`; fields a policy condition filters on get indexes; row-level security later, opt-in | 2026-10-12 |
+| Caches in tests | `jadpo test` supplies an in-memory cache that behaves like Redis, emptied between tests | 2026-10-12 |
