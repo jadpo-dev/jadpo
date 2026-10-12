@@ -3386,6 +3386,18 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
     validation and Rails' `seeds.rb` runs anything; going through actions
     keeps seeds from creating records the application could never create.
 
+14. **Where is the database itself declared?** Today nowhere: the generated
+    app uses PostgreSQL when a `DATABASE_URL` environment variable exists and
+    SQLite otherwise, the `primary` store entities name is never declared, and
+    `config.jadpo`'s `database_url` is ignored in favour of the raw
+    environment variable. *Recommendation:* declare it once in `app.jadpo`,
+    `database: { engine: postgres, url: config.database_url }` with `engine` a
+    named option (`postgres` or `sqlite`); one engine for the application in
+    development and production, avoiding the familiar "works locally, breaks
+    live" gap; the connection always comes from configuration; tables,
+    columns and indexes still come from entities. Fast throwaway databases for
+    tests are area 13's question.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -3412,3 +3424,4 @@ database; the lifecycle runtime evidence is RM-206's record, not re-run.
 | Migration workflow | | |
 | Removing data | | |
 | Seeds | | |
+| Database declaration | | |
