@@ -906,40 +906,97 @@ enum TicketStatus {}
   requires `Todo.status(TodoStatus.open)`; building a `value` accepts
   `TicketStatus.open` directly.
 
-### Proposal: derived records
+### Proposal: one form for every type
 
-Most record types in a real application are slices of an entity or of another
-record: a create input without the generated fields, a patch input where every
+Decided on 2026-10-12 (questions 10, 18 and 19). Every type is declared the
+same way: `type Name = Base { ... }`. The base says what the type is built
+from, and the block holds the details: rules for a number or text, fields for
+an object, variants for an enum. `entity` stays separate because an entity is
+more than a type (storage, actions, queries and policy).
+
+```jadpo fragment
+type Price = Decimal {                 // rules on a number
+    scale: 2
+    min: 0.00
+}
+
+type Sku = Text {                      // rules on text
+    pattern: "[A-Z]{3}-[0-9]{4}"
+}
+
+type OrderId = Uuid {}                 // a new identity type with no extra rules
+
+type Money = Object {                  // fields
+    amount: Price
+    currency: Currency
+}
+
+type OrderStatus = Enum {              // variants
+    pending
+    paid
+    shipped
+}
+
+type PaymentOutcome = Enum {           // variants that carry fields
+    pending
+    paid {
+        receipt_id: ReceiptId
+    }
+    declined {
+        reason: DeclineReason
+    }
+}
+
+type CreateOrder = Input {             // an object arriving from outside
+    lines: List<OrderLineRequest>
+    note: OrderNote optional
+}
+
+type OrderView = Output {              // an object sent back
+    id: Order.id
+    total: Price
+}
+```
+
+- `Object`, `Enum`, `Input` and `Output` are only ever used as a base here.
+  There is no anonymous object written inline; every shape has a name.
+- `Input` objects may have `optional` and `default` fields and are the only
+  objects a route accepts. `Output` objects are the only objects a route
+  returns, and when derived they may only `pick`.
+- `value`, `enum`, `input` and `output` disappear as keywords, and the
+  `types/` folder holds only `type` declarations.
+
+### Proposal: derived types
+
+Most object types in a real application are slices of an entity or of another
+object: a create input without the generated fields, a patch input where every
 field is optional, a public view without private fields, a list summary with
 fewer fields than the detail view, a v2 response that adds a field. Today each
-is written out field by field (`title: Todo.title`). The proposal adds `from`
-to the three ways of declaring a record (`type` for data used inside the
-application, as proposed in question 18, `input` for data arriving from
-outside, `output` for responses) with four
-operations and nothing else. New fields are simply listed after the
-operations, exactly as in any other record.
+is written out field by field (`title: Todo.title`). The proposal adds
+`from <source>` after the base, three operations, and new fields listed after
+them.
 
 **`pick`** keeps the listed fields, with their types and validation rules:
 
 ```jadpo fragment
-output TodoView from Todo {
+type TodoView = Output from Todo {
     pick: id, title, status, due_at
 }
 ```
 
-**`omit`** keeps every field except the listed ones (inputs and values only):
+**`omit`** keeps every field except the listed ones (never on an `Output`):
 
 ```jadpo fragment
-input ImportTodo from Todo {
+type ImportTodo = Input from Todo {
     omit: id, owner_id, created_at, deleted_at
 }
 ```
 
-**`optional`** makes the listed fields, or `all` of them, optional (inputs
-only, because only incoming data can leave fields out):
+**`optional`** makes the listed fields, or `all` of them, optional (only on an
+`Input`, because only incoming data can leave fields out):
 
 ```jadpo fragment
-input PatchTodo from Todo {
+type PatchTodo = Input from Todo {
     pick: title, due_at
     optional: all
 }
@@ -947,46 +1004,43 @@ input PatchTodo from Todo {
 
 **New fields** are listed after the operations, written exactly like fields
 anywhere else. A new field's type can be any type, including another
-entity's field type:
+entity's field type. With `Object` as the base, the result is a plain object
+used inside the application:
 
 ```jadpo fragment
-type TodoReminder from Todo {
+type TodoReminder = Object from Todo {
     pick: id, title, due_at
     owner_email: User.email
     days_overdue: DayCount
 }
 ```
 
-`type TodoReminder` is the plain "just a new type" case: the same rules
-apply whichever of `type`, `input` or `output` you derive.
-
-**Records inside records and lists.** Picking a field keeps its whole type, so
-`pick: lines` on an order keeps `List<OrderLine>`. To change what a nested
+**Objects inside objects, and lists.** Picking a field keeps its whole type,
+so `pick: lines` on an order keeps `List<OrderLine>`. To change what a nested
 field holds, leave it out of `pick` and list a field of the same name with the
-new type.
-This is the only way to change a field's type, and it is visible in the
-declaration:
+new type. This is the only way to change a field's type, and it is visible in
+the declaration:
 
 ```jadpo fragment
-output OrderLineView from OrderLine {
+type OrderLineView = Output from OrderLine {
     pick: product_name, quantity, line_total
 }
 
-output OrderView from Order {
+type OrderView = Output from Order {
     pick: id, placed_at, total
     lines: List<OrderLineView>
 }
 ```
 
-**Deriving from a derived record** works the same way, so versions and
+**Deriving from a derived type** works the same way, so versions and
 summaries build on each other:
 
 ```jadpo fragment
-output TodoSummary from TodoView {
+type TodoSummary = Output from TodoView {
     pick: id, title
 }
 
-output TodoViewV2 from TodoView {
+type TodoViewV2 = Output from TodoView {
     pick: id, title, status, due_at
     tags: List<TagName>
 }
@@ -1000,21 +1054,22 @@ Rules:
   left out, which is how a field's type is changed. `pick`, `omit` and
   `optional` are reserved and cannot be used as field names.
 - Picked fields follow their source: renaming `Todo.title` renames it in
-  every record that picked it, and its validation rules come with it.
-- Every derived record has a name. There are no inline `Pick<...>` types in
+  every type that picked it, and its validation rules come with it.
+- Every derived type has a name. There are no inline `Pick<...>` types in
   signatures, so OpenAPI schemas and error messages always have a name, and
   the editor and generated docs show the expanded fields.
-- An `output` may only use `pick`. With `omit`, adding a sensitive field to
+- An `Output` may only use `pick`. With `omit`, adding a sensitive field to
   the entity later (a password hash, an internal note) would silently expose
   it in every response; an allowlist cannot leak by addition. Generated
-  fields such as `id` and `created_at` can never appear in an `input`, which
+  fields such as `id` and `created_at` can never appear in an `Input`, which
   closes the mirror-image mass-assignment bug.
 - Policy checks still apply to every derived output.
 
 ### Proposals in examples
 
-Each open question below, shown as code. These are proposals, so they are
-shown without being compiled; exact syntax for logic is settled in area 3.
+Each open question below, shown as code with every other proposal on this
+page applied. These are proposals, so they are shown without being compiled;
+exact syntax for logic is settled in area 3.
 
 #### Q1: a runtime check that can fail
 
@@ -1030,16 +1085,17 @@ action double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity 
 }
 ```
 
-A literal needs no `attempt`: `Quantity(0)` is rejected while compiling.
+A literal needs no `attempt`: `var quantity: Quantity = 0` is rejected while
+compiling.
 
-#### Q2: building a record runs its fields' rules
+#### Q2: building an object runs its fields' rules
 
 ```jadpo fragment
 type BadgeName = Text {
     max_length: 12
 }
 
-type Badge {
+type Badge = Object {
     name: BadgeName
 }
 
@@ -1056,7 +1112,7 @@ action make_badge(user: User) fails BadgeNameTooLong -> Badge {
 #### Q3: `optional` only on inputs, read as nullable
 
 ```jadpo fragment
-input UpdateProfile {
+type UpdateProfile = Input {
     nickname: Nickname optional
 }
 
@@ -1065,7 +1121,7 @@ action update_profile(request: UpdateProfile) -> Unit {
 }
 ```
 
-`type Profile { nickname: Nickname optional }` would be an error: a record
+`type Profile = Object { nickname: Nickname optional }` is an error: an object
 built inside the application always states every field.
 
 #### Q4: lists you can build, count and loop over
@@ -1086,7 +1142,7 @@ depends on area 3's answer on passing functions.
 #### Q5: sets and maps in JSON
 
 ```jadpo fragment
-input RetagTodo {
+type RetagTodo = Input {
     tags: Set<TagName>
     weights: Map<TagName, Weight>
 }
@@ -1142,52 +1198,46 @@ type Sku = Text {
 
 var sku: Sku = "ABC-1234"       // checked while compiling
 var bad: Sku = "ABC-1234x"      // compile error: the whole text must match
-type Odd = Text {
+
+type Doubled = Text {
     pattern: "(a+)+\\1"         // rejected: backreferences are not allowed
-}
-```
-
-#### Q10: one spelling per kind of record
-
-```jadpo fragment
-type Dimensions {               // was: type Dimensions = Object { ... }
-    width: Millimetres
-    height: Millimetres
-}
-
-route POST /products {
-    input: CreateProduct        // must be an input
-    output: ProductView         // must be an output
-    run: Product.create(input)
 }
 ```
 
 #### Q11: which built-in types a signature may use
 
 ```jadpo fragment
+type ReminderTime = Instant {}
+
 function opening_hours(zone: Zone) -> OpeningHours { ... }      // allowed: closed enum
 function remind_at(at: Instant) -> Reminder { ... }             // rejected: what instant?
-function remind_at(at: ReminderTime) -> Reminder { ... }        // type ReminderTime = Instant {}
+function remind_at(at: ReminderTime) -> Reminder { ... }        // allowed: named
 function tag_all(tags: List<Text>) -> TagSet { ... }            // rejected: element is raw Text
 ```
 
 #### Q12: `==` compares contents
 
 ```jadpo fragment
-var a: Money = Money { amount: 500 }
-var b: Money = Money { amount: 500 }
-var same: Bool = a == b     // true: same contents (false today)
+var a: Money = Money {
+    amount: 5.00
+    currency: Currency.gbp
+}
+var b: Money = Money {
+    amount: 5.00
+    currency: Currency.gbp
+}
+var same: Bool = a == b         // true: same contents (false today)
 ```
 
 #### Q13: UUID versions
 
 ```jadpo fragment
 entity Order {
-    id: Uuid                        // generated as version 7
+    id: Uuid                    // generated as version 7
 }
 
 type PartnerRef = Uuid {
-    version: v4                     // accepts and generates only version 4
+    version: v4                 // accepts and generates only version 4
 }
 ```
 
@@ -1195,7 +1245,9 @@ type PartnerRef = Uuid {
 
 ```jadpo fragment
 var price: Price = 0.00                          // checked while compiling
-var line: OrderLine = OrderLine { quantity: 1 }  // 1 becomes a Quantity
+var line: OrderLine = OrderLine {
+    quantity: 1                                  // 1 becomes a Quantity
+}
 
 function first_quantity() -> Quantity {
     return 1
@@ -1208,7 +1260,7 @@ function first_quantity() -> Quantity {
 var total: Pence = Pence(price * quantity)
 var todo: Todo = attempt Todo.get(id)
 
-for line in order.lines {          // a loop binding takes its type from the list
+for line in order.lines {       // a loop binding takes its type from the list
     var subtotal: Pence = line.total
 }
 ```
@@ -1225,55 +1277,8 @@ type PartnerRef = Uuid {
 }
 
 failure TodoNotFound {
-    kind: not_found                 // was: kind: NotFound
+    kind: not_found             // was: kind: NotFound
     code: "todo_not_found"
-}
-```
-
-#### Q18: `type` instead of `value`
-
-```jadpo fragment
-type Money {                        // a new shape with fields; was: value Money
-    amount: Pence
-    currency: Currency
-}
-
-type Price = Decimal {              // an existing type with extra rules
-    scale: 2
-}
-
-var price: Money = Money {          // a variable: one actual Money
-    amount: 500
-    currency: Currency.gbp
-}
-
-input CreateOrder {                 // data arriving from outside
-    lines: List<OrderLineRequest>
-}
-
-output OrderView from Order {       // data sent back
-    pick: id, total, placed_at
-}
-```
-
-#### Q19: no anonymous objects
-
-```jadpo fragment
-type Product {
-    size: Object {                  // rejected: an unnamed shape
-        width: Millimetres
-        height: Millimetres
-    }
-}
-
-type Dimensions {                   // name the shape once
-    width: Millimetres
-    height: Millimetres
-}
-
-type Product {
-    size: Dimensions
-    variants: List<Dimensions>
 }
 ```
 
@@ -1352,14 +1357,13 @@ type Product {
    and is applied to literals. `format` accepts only `email`; `Url` and
    `IpAddress` are types, not formats. Every constraint must fit its base type,
    and contradictory or repeated bounds are errors.
-10. **One spelling per kind of record?** *Recommendation:* remove
-    `type X = Object { }` and `type X = Enum { }`, so `type ... =` only ever
-    refines a scalar; keep `input`, `output` and `enum` (see question 18 for
-    plain records). Give `input`
-    and `output` a meaning: only `input` fields may use `optional` and
-    `default`, a route's `input:` must name an `input`, and its `output:` an
-    `output`. This amends the decision-register line that boundary roles are
-    not type categories.
+10. **One spelling per kind of type?** *Decided 2026-10-12:* every type is
+    `type Name = Base { ... }`, including `Object`, `Enum`, `Input` and
+    `Output`; see "One form for every type" above. Only `Input` objects may
+    use `optional` and `default`, a route accepts only an `Input` and returns
+    only an `Output`. This amends the decision-register line that boundary
+    roles are not type categories.
+
 11. **Which built-in types does the signature rule cover?** *Recommendation:*
     keep it for representation types and `Instant`, `CalendarDate`, `Time` and
     `Duration` (a bare `Instant` parameter has the same ambiguity as a bare
@@ -1382,12 +1386,13 @@ type Product {
     `type ExternalRef = Uuid { version: v4 }`, which then governs both what is
     accepted and what is generated; use it where a version 7 ID would reveal
     sensitive creation times, or where another system dictates the version.
-14. **Adopt derived records?** See the proposal above. *Recommendation:* yes,
-    with exactly `pick`, `omit` and `optional` plus listed new fields, named
-    results only, and
-    outputs restricted to `pick`. This covers create, patch, view, summary and
-    versioned shapes without TypeScript's anonymous type algebra, whose
-    expanded types reviewers and error messages cannot name.
+14. **Adopt derived types?** See "Derived types" above. *Recommendation:*
+    yes, with exactly `pick`, `omit` and `optional` plus listed new fields,
+    named results only, and outputs restricted to `pick`. This covers create,
+    patch, view, summary and versioned shapes without TypeScript's anonymous
+    type algebra, whose expanded types reviewers and error messages cannot
+    name.
+
 15. **Should a literal take on the type it is going into?** Today
     `var price: Price = 0.0`, `return 0.0` and `Item { price: 0.0 }` are all
     errors; you must write `Price(0.0)`. *Recommendation:* yes, for literals
@@ -1427,27 +1432,13 @@ type Product {
     (`OrderStatus.paid`). Every option name is lower_snake_case, which changes
     failures' `kind: InvalidValue` to `kind: invalid_value` (area 4).
 
-18. **Replace `value` with `type`?** `value Money { ... }` is not a variable:
-    it declares a shape, a kind of record with fixed fields, from which
-    variables are made (`var price: Money = Money { ... }`). TypeScript writes
-    this as `type` or `interface`, Rust as `struct`. The word `value` comes
-    from "value object" in domain-driven design, is vague to most developers,
-    and is also usable as a variable name. *Recommendation:* declare records
-    with `type` and no `=`: `type Money { amount: Pence }` has these fields,
-    while `type Price = Decimal { scale: 2 }` is an existing type with extra
-    rules. Every plain type declaration then starts with `type`, matching the
-    `types/` folder. `input` and `output` stay because they carry rules
-    (optional fields, pick-only outputs); `entity` and `enum` stay because
-    they mean more than a shape. This replaces question 10's suggestion to
-    keep `value`.
+18. **What replaces `value`?** *Decided 2026-10-12:* `value` is dropped. An
+    object used inside the application is `type Name = Object { fields }`,
+    the same form as every other type (question 10).
 
-19. **Remove `Object` altogether?** After question 18, `Object { ... }`'s only
-    remaining use is an unnamed shape written inline, as a field type or
-    inside `List<...>`. *Recommendation:* remove it, so every object shape is
-    a named `type`. Error messages, API documentation and reviews can then
-    always name a shape, a shape can be reused instead of copied, and there is
-    one way to write it. The cost is a short declaration for small nested
-    shapes. The golden app uses no inline objects.
+19. **Remove anonymous `Object`?** *Decided 2026-10-12:* yes. `Object` is
+    only used as a base in a `type` declaration; an unnamed shape written
+    inline as a field type or inside `List<...>` is an error.
 
 ### Decisions
 
@@ -1462,13 +1453,13 @@ type Product {
 | Representation access | | |
 | Number types | | |
 | `pattern` and `format` | | |
-| Record spellings | | |
+| Type spellings | Every type is `type Name = Base { ... }`, including `Object`, `Enum`, `Input` and `Output`; `value`, `enum`, `input` and `output` keywords are removed; only `Input` may have optional or default fields; routes accept `Input` and return `Output` | 2026-10-12 |
 | Signature rule scope | | |
 | Equality | | |
 | UUID versions | | |
-| Derived records | | |
+| Derived types | | |
 | Literal typing | | |
 | Variable types | | |
 | Setting options | | |
-| Record keyword | `value` is dropped. An object used inside the application is `type Name { fields }`; `type Name = Base { rules }` adds rules to an existing type; `input` and `output` stay for boundary data | 2026-10-12 |
-| `Object` | | |
+| Record keyword | `value` is dropped; objects are `type Name = Object { fields }` | 2026-10-12 |
+| `Object` | Only a base in a `type` declaration; no anonymous inline objects | 2026-10-12 |
