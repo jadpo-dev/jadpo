@@ -1,7 +1,7 @@
 ---
 title: Failures
 area: 4
-status: decided
+status: in-review
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - failure.context_field_overlap
@@ -85,7 +85,7 @@ type QuantityUnavailable = Failure {
   the domain's `types/` once a second file raises it, and `public` when another
   domain sees it.
 
-Decided (2026-10-12): a failure is declared like every other type,
+Proposed (question 13): a failure is declared like every other type,
 `type TodoNotFound = Failure { ... }`. Failures live in the file that raises
 them or in a domain's `types/` folder, so the keyword matches the folder; the
 rule across the language is that a declaration with its own folder has its own
@@ -1070,7 +1070,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 
 1. **Should the public code come from the failure's name?** Every failure in
    the repository writes `code: "todo_not_found"` beside `TodoNotFound`.
-   *Decided 2026-10-12:* derive it (lower_snake_case of the name), and write
+   *Recommendation:* derive it (lower_snake_case of the name), and write
    `code:` only to keep a published code after a rename. The compatibility
    file already treats a changed code as breaking, so a rename that changes
    the code is caught at review rather than shipped. Stripe and GitHub
@@ -1080,7 +1080,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    cross-domain visibility. *Decided 2026-10-12:* yes, `client: { }` and
    `internal: { }`, which say who sees each field.
 3. **Which kinds can an application declare?** Today all 15, and
-   `reject Unavailable` compiles but answers 500. *Decided 2026-10-12:* you may
+   `reject Unavailable` compiles but answers 500. *Recommendation:* you may
    declare `invalid_value`, `not_found`, `not_permitted`, `conflict`,
    `rejected`, `rate_limited` and `unavailable`; the other eight are raised
    only by the runtime, and the standard kinds are never failure names in
@@ -1156,9 +1156,20 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
     can be added later in area 10, keyed by the same code, without changing a
     failure declaration.
 
-### Decisions
+13. **Should a failure be a `type`?** Today `failure TodoNotFound { ... }`
+    is its own keyword. *Recommendation:* `type TodoNotFound = Failure { ... }`.
+    Area 1 put shared failures in the `types/` folder and folders match
+    keywords, so the rule becomes: a declaration with its own folder keeps its
+    own keyword (`entity`, `event`, `schedule`), and anything in `types/` is a
+    `type`. `Failure` as a base brings `kind`, `message`, `client` and
+    `internal`, as `Input` brings optional fields.
+14. **What does a failure without a `client` block show?**
+    *Recommendation:* fields exist only inside `client: { }` and
+    `internal: { }`, so a block left out means no fields of that kind and the
+    caller gets only the code, message and request id; nothing reaches the
+    client unless it is listed under `client`.
 
-Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
+### Decisions
 
 | Topic | Decision | Date |
 |---|---|---|
@@ -1168,9 +1179,9 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | `attempt` placement | Carried from area 3: only at the start of a statement, and only on a call that can fail | 2026-10-12 |
 | Signature | Carried from area 3: the whole signature on the header line, `fails` before `->` | 2026-10-12 |
 | Colon rule | Carried from area 3: failure members are `name: value`, so context blocks are written `internal: { ... }` | 2026-10-12 |
-| Public code | Derived from the name in lower_snake_case; `code:` only to keep a published code after a rename | 2026-10-12 |
+| Public code | | |
 | `client` block | `client: { }` (sent to the caller) and `internal: { }` (never leaves the server) | 2026-10-12 |
-| Declarable kinds | `invalid_value`, `not_found`, `not_permitted`, `conflict`, `rejected`, `rate_limited`, `unavailable`; the other eight are runtime-only; 422 for `invalid_value` and `rejected`, 400 for unreadable requests | 2026-10-12 |
+| Declarable kinds | | |
 | Invalid input detail | Each problem as `{ field, rule }` under `details`, never the value | 2026-10-12 |
 | Faults in `fails` | Never; `fails` lists domain failures; integrations map provider problems to declared failures | 2026-10-12 |
 | Construction proven safe | No `attempt` when declared ranges prove a construction cannot fail; the compiler decides and reports call sites that flip | 2026-10-12 |
@@ -1180,7 +1191,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Concealment | A record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |
 | Internal fields in logs | Identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never | 2026-10-12 |
 | Message translation | The client translates by `code`; `message` stays fixed English | 2026-10-12 |
-| Failure declaration form | `type Name = Failure { ... }`, like every other type; a declaration with its own folder has its own keyword, anything in `types/` is a `type` | 2026-10-12 |
-| Failure fields | A failure's fields exist only in `client: { }` or `internal: { }`; a block left out means no fields of that kind, so nothing reaches the client unless it is listed under `client` | 2026-10-12 |
+| Failure declaration form | | |
+| Failure fields | | |
 | Request id | Every error response carries `request_id` (also the `x-request-id` header), and every failure, expected ones included, is logged with it, so a client can quote it and a developer can trace it | 2026-10-12 |
 | Kind is an enum | `kind:` takes a value of the closed `FailureKind` enum, written by its name (`kind: not_found`) because the setting fixes the list, per area 2's setting-options decision; never a string | 2026-10-12 |
