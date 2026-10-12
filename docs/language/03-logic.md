@@ -43,13 +43,13 @@ actions. A **query** is a read-only operation, described in area 6.
 ```jadpo fragment
 /// Total for one order line before discounts.
 function line_total(price: Pence, quantity: Quantity) -> Pence {
-    let total: Pence = Pence(price * quantity)
+    var total: Pence = Pence(price * quantity)
     return total
 }
 
 action complete_todo(todo_id: Todo.id) fails TodoNotFound -> TodoView {
-    let todo: Todo = attempt Todo.get(todo_id)
-    let view: TodoView = attempt Todo.mark_done(todo)
+    var todo: Todo = attempt Todo.get(todo_id)
+    var view: TodoView = attempt Todo.mark_done(todo)
     return view
 }
 ```
@@ -125,7 +125,7 @@ action reschedule(todo_id: Todo.id, due_at: DueAt) fails TodoNotFound, DueDateIn
         TodoRole.owner: [invoke]
     }
 
-    let todo: Todo = attempt Todo.get(todo_id)
+    var todo: Todo = attempt Todo.get(todo_id)
     ...
 }
 ```
@@ -173,11 +173,11 @@ library rounding {
     function half_even(amount: Price) -> Price { ... }
 }
 
-let total: Price = rounding.half_even(subtotal)                    // a library
-let line: Pence = line_total(price, quantity)                      // a helper in this file
-let stock: Reservation = attempt inventory.reserve_for_cart(cart)  // another domain
-let todo: Todo = attempt Todo.get(todo_id)                         // an entity
-let local: Time = temporal.in_zone(at, zone)                       // the standard library
+var total: Price = rounding.half_even(subtotal)                    // a library
+var line: Pence = line_total(price, quantity)                      // a helper in this file
+var stock: Reservation = attempt inventory.reserve_for_cart(cart)  // another domain
+var todo: Todo = attempt Todo.get(todo_id)                         // an entity
+var local: Time = temporal.in_zone(at, zone)                       // the standard library
 ```
 
 A library holds only functions. Today there is no `library` keyword and every
@@ -185,17 +185,17 @@ authored callable is called bare.
 
 ## Variables
 
-> Question 2 proposes `let` and `let mut` in place of `var` and `var mut`. Area 2 decided that every variable states its type.
+> Question 2 proposes `let` and `var mut` in place of `var` and `var mut`. Area 2 decided that every variable states its type.
 
 ```jadpo fragment
-let subtotal: Pence = line_total(price, quantity)
-let mut total: Pence = subtotal
+var subtotal: Pence = line_total(price, quantity)
+var mut total: Pence = subtotal
 total = Pence(total + delivery)
 ```
 
-- `let` names a value that never changes. `let mut` names one that can be
+- `let` names a value that never changes. `var mut` names one that can be
    pointed at a new value of the same type with `name = value`.
-- Only a `let mut` local can be assigned. Parameters, fields and
+- Only a `var mut` local can be assigned. Parameters, fields and
    declarations cannot (area 2: values never change).
 - A variable is visible from its declaration to the end of its block.
 - Question 3 proposes that a name already in scope, including a parameter,
@@ -225,7 +225,7 @@ A body is a list of statements, one per line, with no semicolons:
 
 | Statement | Form |
 |---|---|
-| Variable | `let name: T = value`, `let mut name: T = value` |
+| Variable | `var name: T = value`, `var mut name: T = value` |
 | Assignment | `name = value` |
 | Return | `return value` |
 | Rejection | `reject Failure { ... }` (area 4) |
@@ -240,7 +240,7 @@ result nobody needs no longer has to be bound to a name:
 ```jadpo fragment
 action archive_todo(todo_id: Todo.id) fails TodoNotFound -> Unit {
     attempt Todo.get(todo_id)         // fails or carries on; the value is not needed
-    if already_archived(todo_id) {
+    if (already_archived(todo_id)) {
         return                        // leaves a Unit action early
     }
     notify_owner(todo_id)             // a Unit action called for its effect
@@ -270,16 +270,16 @@ action record_twice(note: Note) -> Unit {
 ### Conditions
 
 ```jadpo fragment
-if due_at <= clock.now {
+if (due_at <= clock.now) {
     reject DueDateInPast
-} else if due_at > latest_due_at {
+} else if (due_at > latest_due_at) {
     reject DueDateTooFar
 }
 ```
 
 The condition must be a `Bool` (or a type built on `Bool`), and there is no
 truthiness. `if` is a statement; a choice between two values is a `match`.
-Question 5 proposes `else if` and conditions without parentheses.
+Decided (question 5): conditions are always in brackets, and `else if` chains are allowed.
 
 ::: today
 
@@ -357,11 +357,11 @@ function calculate(left: Score, right: Score, prefix: Phrase, suffix: Phrase, di
 Questions 6 and 7 change operator typing and division:
 
 ```jadpo fragment
-let wrong: Pence = Pence(price + quantity)       // error: adds a Quantity to Pence
-let line: Pence = Pence(price * quantity)        // fine: multiplying different units
-let earlier: Bool = name < other_name             // error: text has no order; use a standard function
-let share: Price = decimal.divide(total, people, rounding: half_even)
-let boxes: BoxCount = integer.divide(items, box_size, rounding: up)   // box_size can't be zero
+var wrong: Pence = Pence(price + quantity)       // error: adds a Quantity to Pence
+var line: Pence = Pence(price * quantity)        // fine: multiplying different units
+var earlier: Bool = name < other_name             // error: text has no order; use a standard function
+var share: Price = decimal.divide(total, people, rounding: half_even)
+var boxes: BoxCount = integer.divide(items, box_size, rounding: up)   // box_size can't be zero
 ```
 
 ## Match
@@ -544,10 +544,10 @@ call's failures on to the caller, whose `fails` list must include them;
 `match` on the call handles them instead.
 
 ```jadpo fragment
-let todo: Todo = attempt Todo.get(todo_id)            // a variable
+var todo: Todo = attempt Todo.get(todo_id)            // a variable
 return attempt Todo.by_id(todo_id)                    // a return
 attempt Todo.get(todo_id)                             // on its own (question 4)
-let total: Pence = Pence(attempt price(a) + attempt price(b))   // rejected: inside an expression
+var total: Pence = Pence(attempt price(a) + attempt price(b))   // rejected: inside an expression
 ```
 
 Question 11 proposes that `attempt` only starts a statement, so every point
@@ -599,7 +599,7 @@ takes its type from the list.
 
 ```jadpo fragment
 function order_total(lines: List<OrderLine>) -> Pence {
-    let mut total: Pence = 0
+    var mut total: Pence = 0
     for line in lines {
         total = Pence(total + line.subtotal)
     }
@@ -620,8 +620,8 @@ arguments to standard-library collection operations, using `->` for
 "produces":
 
 ```jadpo fragment
-let open: List<Todo> = collection.filter(todos, todo -> todo.status == TodoStatus.open)
-let titles: List<TodoTitle> = collection.map(todos, todo -> todo.title)
+var open: List<Todo> = collection.filter(todos, todo -> todo.status == TodoStatus.open)
+var titles: List<TodoTitle> = collection.map(todos, todo -> todo.title)
 ```
 
 The inline function is one expression, takes its parameter's type from the
@@ -638,7 +638,7 @@ to walk them:
 
 ```jadpo fragment
 function reply_count(comment: Comment) -> ReplyCount {
-    let mut count: ReplyCount = 0
+    var mut count: ReplyCount = 0
     for reply in comment.replies {
         count = ReplyCount(count + 1 + reply_count(reply))
     }
@@ -1762,7 +1762,7 @@ function fail_loudly(note: Note) -> Note {
 - **Payload patterns break the list decision.** `PaymentOutcome.paid { receipt_id, paid_at }`
    is a comma list in braces, which area 2's list decision rules out.
 - **`var` means "immutable".** In JavaScript, C#, Kotlin and Go `var` is the
-   mutable form; `var mut` already mirrors Rust's `let mut`.
+   mutable form; `var mut` already mirrors Rust's `var mut`.
 - **Units are checked by comparison but not by addition.** `Pence + Quantity`
    compiles and `Pence == Quantity` does not, although area 2's rule is that
    named types never mix silently.
@@ -1796,14 +1796,14 @@ function fail_loudly(note: Note) -> Note {
 ### Open questions
 
 1. **Which arrow do match arms use?** *Decided 2026-10-12 (Richard, carried from area 2):* `->`, the same arrow as result types; `=>` is removed and the formatter rewrites it.
-2. **Rename `var` to `let`?** `var x` is immutable today, the opposite of
-   `var` in JavaScript, Kotlin, C# and Go, and the reader of agent-written code
-   is likely to know one of those. *Recommendation:* yes: `let x: T` and
-   `let mut x: T`, exactly Rust's pair. Do it in the same mechanical rewrite
-   as area 2's required types, so every body changes once.
+2. **Rename `var` to `let`?** *Decided 2026-10-12 (Richard):* no. Keep `var`
+   ("variable"), immutable by default, and `var mut` when it can change. Every
+   keyword choice carries baggage from another language (`let` is mutable in
+   JavaScript), and `var` plus an explicit `mut` reads clearly on its own.
+
 3. **May a local reuse a name already in scope?** Today a local can shadow a
    parameter or an outer local, and two parameters may share a name.
-   *Recommendation:* no: a name in scope cannot be declared again, including
+   *Decided 2026-10-12:* no: a name in scope cannot be declared again, including
    parameters, extending area 1's rule that locals cannot reuse domain and
    library names. Rust encourages shadowing; Go and Kotlin warn about it; for
    a reviewer reading a diff, one name meaning one value is worth more.
@@ -1814,14 +1814,15 @@ function fail_loudly(note: Note) -> Note {
    and a bare `return` in a `Unit` callable. A pure call whose value is thrown
    away stays an error, because it cannot do anything (compare Rust's
    `#[must_use]` and Swift's unused-result warning).
-5. **How are conditions written?** *Recommendation:* fix the parser so a
-   condition never starts an object (Rust has the same rule), make the
-   formatter drop the parentheses, and add `else if` chains, which every
-   comparable language has. `if` stays a statement; choosing a value is a
-   `match`.
+5. **How are conditions written?** *Decided 2026-10-12 (Richard):* always in
+   brackets, `if (total > limit) { ... }`, with `else if` chains. The brackets
+   end the condition before the block, which also removes today's parsing bug
+   where `b {` is read as the start of an object. `if` stays a statement;
+   choosing a value is a `match`.
+
 6. **Which operand types do operators accept?** Today arithmetic mixes any
    named types while comparison does not, and text is ordered by JavaScript
-   string comparison. *Recommendation:* `+`, `-` and every comparison need
+   string comparison. *Decided 2026-10-12:* `+`, `-` and every comparison need
    both sides to be the same named type after widening (or one a literal);
    `*` and `%` may mix types, since multiplying a price by a quantity is
    meaningful and adding them is not. Ordering applies to numbers and time
@@ -1850,7 +1851,7 @@ function fail_loudly(note: Note) -> Note {
    destructure fields by name instead, which repeats every field name in every
    arm.
 10. **May `_` cover the rest of an enum?** Today it may, so adding a variant
-    silently falls into an existing arm. *Recommendation:* no: on enums,
+    silently falls into an existing arm. *Decided 2026-10-12:* no: on enums,
     `Bool` and nullable values every case is listed; `_` is only for text and
     numbers. Adding a variant then fails to compile at every `match` that
     must consider it, which is the review prompt a new state needs. Rust and
@@ -1861,14 +1862,14 @@ function fail_loudly(note: Note) -> Note {
     that can fail. Every early exit is then visible at the start of a line,
     which Rust's `?` (allowed anywhere) does not give, without Go's
     `if err != nil` repetition.
-12. **Which loops?** Area 2 decided `for item in items`. *Recommendation:*
+12. **Which loops?** Area 2 decided `for item in items`. *Decided 2026-10-12:*
     `for` over a `List` only, with `return` allowed inside; no `while`,
     `break` or `continue`. Every loop then ends after its list, which keeps
     request deadlines predictable, and searching or stopping early is
     `collection.filter` or a `return`. Go manages with one loop form; Elixir
     with none.
 13. **How are functions passed to `collection.map` and `collection.filter`?**
-    *Recommendation:* inline functions only as arguments to standard-library
+    *Decided 2026-10-12:* inline functions only as arguments to standard-library
     collection operations, written `todo -> todo.title`: one expression, pure,
     parameter type taken from the list. No function types in your own
     signatures and no functions stored in variables. Capturing surrounding
@@ -1876,7 +1877,7 @@ function fail_loudly(note: Note) -> Note {
     shape (`fn todo -> todo.title end`); TypeScript's general closures are
     more than application code needs.
 14. **Is recursion allowed?** It is accepted today with no limit, and
-    recursive types such as comment threads need it. *Recommendation:* allow
+    recursive types such as comment threads need it. *Decided 2026-10-12:* allow
     it in functions only; an action or query in a call cycle is an error,
     because repeating effects has no data reason and an unbounded one never
     finishes. Add a runtime depth limit that ends in a defined fault instead
@@ -1889,7 +1890,7 @@ function fail_loudly(note: Note) -> Note {
     statement; reject `-> R fails F`. This is area 2's settings-block rule
     applied to callables.
 16. **Should your own functions be generic, or accept unions?** Area 2 left
-    this open. *Recommendation:* neither. The standard library stays generic;
+    this open. *Decided 2026-10-12:* neither. The standard library stays generic;
     a parameter that accepts several types is an enum whose variants carry
     them, which keeps every value's type named and keeps identifiers apart.
     No user generics also means no type-parameter errors for agents to fight.
@@ -1901,18 +1902,18 @@ function fail_loudly(note: Note) -> Note {
 | Topic | Decision | Date |
 |---|---|---|
 | Match arm arrow | Carried from area 2 (Richard, 2026-10-12): `->` for match arms and result types; `=>` removed | 2026-10-12 |
-| `var` or `let` | | |
-| Shadowing | | |
+| `var` or `let` | Keep `var`, immutable by default; `var mut` when it can change (Richard) | 2026-10-12 |
+| Shadowing | A name in scope cannot be declared again, parameters included | 2026-10-12 |
 | Standalone statements | | |
-| Conditions | | |
-| Operator operand types | | |
+| Conditions | Always in brackets, `if (condition) { }`, with `else if`; `if` is a statement (Richard) | 2026-10-12 |
+| Operator operand types | `+`, `-` and comparisons need the same named type (or a literal); `*` and `%` may mix; ordering only on numbers and time values | 2026-10-12 |
 | Division | | |
 | One `match` | | |
 | Payload binding | | |
-| Wildcard on closed types | | |
+| Wildcard on closed types | No `_` on enums, `Bool` or nullable values; every case listed | 2026-10-12 |
 | `attempt` placement | | |
-| Loops | | |
-| Passing functions | | |
-| Recursion | | |
+| Loops | `for` over a `List` only, `return` allowed inside; no `while`, `break` or `continue` | 2026-10-12 |
+| Passing functions | Inline `x -> expression` only as an argument to standard-library collection operations; no function types in your own signatures or variables | 2026-10-12 |
+| Recursion | Functions only, with a runtime depth limit that ends in a defined fault; actions and queries in a call cycle are errors | 2026-10-12 |
 | Callable settings | | |
-| Generics and unions | | |
+| Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
