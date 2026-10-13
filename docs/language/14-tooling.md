@@ -24,14 +24,21 @@ they cannot disagree with `jadpo check`.
 One command with a short list of subcommands. Every subcommand finds the
 project by walking up from the current folder to `app.jadpo`, so a path is
 optional (question 1), and every subcommand takes `--json` for output an agent
-reads instead of prose (question 2).
+reads instead of prose (question 2), except the interactive modes, which need
+a terminal. Commands have plain synonyms (`fmt` and `format`), complete on Tab,
+and ask for a missing argument with a searchable list (questions 16 and 17).
 
 | Command | Does | Status |
 |---|---|---|
 | `jadpo new <name>` | Creates a project that passes `check`, `fmt --check` and `test` | Exists; scaffold changes (question 9) |
 | `jadpo check` | Checks everything and writes the derived files in `build/` | Exists; writing files is question 3 |
 | `jadpo fmt` | Formats; `--check` only reports; `--layout` also applies promotion moves | Exists; `--layout` decided in area 1 |
-| `jadpo test` | Builds and runs tests; `--kind route` runs one kind; `--affected` runs the tests a change reaches | Exists; `--affected` is question 7 |
+| `jadpo test` | Runs every test | Exists |
+| `jadpo test <file>` / `<file>:<line>` | Runs one test file, or the test at that line | Decided in area 13, not built |
+| `jadpo test --name <text>` / `--kind route` / `--failed` / `--affected` | Runs tests whose names match, one kind, last run's failures, or the tests a change reaches | `--kind` exists; the rest decided in area 13 and question 7 |
+| `jadpo test --watch` | Reruns the affected tests on every save | Decided in area 13, not built |
+| `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built |
+| `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | Decided in area 13, not built |
 | `jadpo build` | Writes the runnable app into `build/target/` | Exists |
 | `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Exists; `--no-run` replaces `watch` (question 3) |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Exists |
@@ -46,6 +53,9 @@ reads instead of prose (question 2).
 | `jadpo api update` | Rewrites the committed public API record (`api/main.api`) from the source | Proposed in area 7 (question 10) |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Exists; sign-off is question 12 |
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries | Proposed (question 13) |
+| `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` | Decided in area 12, not built |
+| `jadpo provider add` / `import` / `record` / `update` | Adds, imports, confirms and upgrades provider packages | Decided in area 11; question 15 |
+| `jadpo trace <id>` / `jadpo why <name>` / `jadpo call` / `jadpo console` | Debugging (area 17) | Proposed in area 17 |
 | `jadpo incident <event-file>` | Explains a runtime event using the local build | Exists |
 | `jadpo lsp` | Runs the language server for editors | Exists |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere | Proposed (bug below) |
@@ -626,6 +636,20 @@ what other areas carried here and where this page answers it.
     command table above has no `jadpo integration add` or `update`, no
     contract diff and no adapter conformance run. Which of these does the
     toolchain provide?
+16. **Should commands have synonyms?** Raised by Richard (2026-10-13).
+    *Decided 2026-10-13:* yes, plain synonyms where people reach for either
+    word (`fmt` and `format`, `delivery` and `deliveries`, `provider` and
+    `providers`), and an unknown command suggests the nearest one ("did you
+    mean `format`?"). No cryptic single letters; help and docs show the
+    canonical name.
+17. **Should arguments complete and prompt?** Raised by Richard
+    (2026-10-13). *Decided 2026-10-13:* yes, in two ways. Tab completion for
+    zsh, bash and fish (`jadpo completions zsh`) completes commands, flags
+    and the project's own names: queries for `jadpo sql`, routes, schedules,
+    test files and test names, connections, fields for `jadpo impact`. And a
+    command missing a required argument in a terminal opens a searchable
+    list (`jadpo sql` alone lists every query); without a terminal it fails
+    with the valid values listed, so agents get the choices too.
 
 ### Decisions
 
@@ -658,3 +682,5 @@ what other areas carried here and where this page answers it.
 | Operator commands | | |
 | Deployables | | |
 | Integration commands | | |
+| Command synonyms | Plain synonyms (`fmt`/`format`), nearest-command suggestions, no single-letter aliases (Richard) | 2026-10-13 |
+| Completion and prompts | Tab completion of commands, flags and project names; a missing argument opens a searchable list in a terminal and lists valid values otherwise (Richard) | 2026-10-13 |
