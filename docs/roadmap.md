@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-11. This page is the only list of outstanding work. Keep it
+**Updated:** 2026-10-13. This page is the only list of outstanding work. Keep it
 to one page; record decisions in the [decision register](decision-register.md)
 and specifications, not here.
 
@@ -19,9 +19,15 @@ and specifications, not here.
    2026-10-12. Area 1 now covers project layout as well as modules, absorbing the old
    LAYOUT-001 work. Replaces the old RM-222, RM-224 and RM-225 and absorbs the
    open E02 language/tooling gaps.
-3. **Rework the areas the review flags.** Keep `python3 tools/verify.py` and
-   the passing golden cases green throughout. Rebuild only what the review says
-   is wrong.
+3. **Decide how to build, then rework the areas the review flags.** Before
+   any compiler work, Richard decides between reworking the current compiler
+   and the proposed rebuild around a graph-centred core
+   ([compiler-runtime §1.1](compiler-runtime.md#11-graph-centred-compiler-open-2026-10-13)),
+   which also lists the planned features the graph must carry (areas 16 and
+   17 proposals). Bring that page to him with a recommendation; do not start
+   either path without his answer. If rework: keep `python3 tools/verify.py`
+   and the passing golden cases green throughout, and rebuild only what the
+   review says is wrong. The per-area lists below apply either way.
    Area 1 (decided 2026-10-12) needs: the domain layout and its layout
    checks; domain ownership and `public` (including public actions sharing
    the caller's transaction) replacing `module`/`import`; owner-qualified

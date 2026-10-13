@@ -54,9 +54,59 @@ readings of the source.
 3. **The graph as the source** (Unison's content-addressed code). Rejected:
    models, git and reviewers work in text.
 
-**Proposed:** option 2, moved over one declaration kind at a time (routes
-and actions first, because spans and path IDs need them), starting before
-roadmap item 3's rework reaches the generator, so that rework is done once.
+**Proposed:** option 2, built as a new compiler core rather than by moving
+the existing generator over. Not yet decided: the owner will decide once
+the language review (roadmap item 2) is finished, before any build work
+starts.
+
+Why a rebuild rather than a migration (read, 2026-10-13):
+
+- The language review's decisions for areas 1–4 alone change nearly every
+  syntax form, so the parser and type checker would be largely rewritten
+  in rework anyway.
+- The generator reads the syntax tree, the opposite of option 2; writing a
+  generator for the graph is less work than moving 14,000 lines onto it.
+- The compiler is tuned to the golden app: the formatter hard-codes the
+  reminder payload fields (`core/src/formatter.rs`, `todo_title`,
+  `due_at`), and only the golden service is accepted, matched line by line.
+  The passing golden cases overstate what works.
+
+What the rebuild keeps: the language specifications, whose compiled
+examples and error coverage (`tools/language_docs.py`) become the feature
+tests; the golden contract and `tools/verify.py`; the diagnostics
+catalogue; and the existing runtime (outbox and delivery, JWT
+authentication, migration identity) as reference design. The old compiler
+stays in the repository as reference until the new one passes the golden
+todo, then is archived.
+
+How it is built, so it does not repeat the failure:
+
+1. Feature by feature from the area specifications; each area's examples
+   and errors pass before the next. The golden todo is the final
+   integration check, not the target being steered towards.
+2. A verifier check fails when compiler source contains identifiers from
+   the example applications, catching special cases mechanically.
+3. The graph is the spine from the first commit: parse, resolve and
+   type-check into the graph with stable identities; everything else reads
+   the graph.
+
+**Features the graph must be designed for.** These are proposals in the
+language areas, and the graph's shape has to carry them even where they
+are built later:
+
+| Feature | Needs from the graph | Where |
+|---|---|---|
+| `.jadpo` source maps and mapped stacks | Source range per node, generated line per node | Area 17 question 1 |
+| Incidents across builds | Stable identity for actions, queries, routes | Area 17 question 2 |
+| Spans named by declaration | Node per route, action, query, integration call, delivery | Area 16 question 10 |
+| Path IDs | Control flow inside callables; stable branch identity; loop and recursion rule | Area 16 question 13 |
+| Threshold-driven telemetry and generated monitoring rules | Thresholds attached to nodes and paths; build manifest | Area 16 questions 14–16 |
+| `jadpo why` | Policy, lifecycle, concealment and cache decisions as nodes with sources | Area 17 question 4 |
+| Path coverage, production in review, query cost per path | Path enumeration; queries per path | Area 17 questions 11, 12 and 14 |
+| Production replay | Every effect boundary (clock, random, integration, store read) as a node | Area 17 question 13 |
+| Exact review paths | Branch-level reachability instead of may-call | Area 17 question 9 |
+| Application graph, console and MCP | The graph itself as versioned JSON | Area 17 question 8; roadmap E11 |
+| Second target (WASM, native) | A target-independent graph | Roadmap E09 |
 
 **What else it enables during development:**
 

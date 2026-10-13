@@ -970,7 +970,8 @@ These are recommended but must survive the golden applications:
 
 ## 5. Open implementation questions
 
-- semantic graph and proof representation;
+- semantic graph and proof representation (proposed graph-centred rebuild, to
+  decide after the language review: [compiler-runtime §1.1](compiler-runtime.md#11-graph-centred-compiler-open-2026-10-13));
 - source-map/metadata format and monitoring integration;
 - Postgres schema-diff and migration strategy;
 - target deployment environments;
