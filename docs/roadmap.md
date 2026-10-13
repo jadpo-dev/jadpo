@@ -88,7 +88,7 @@ optimisation) are `xhigh`.
   self-describing help, `--json`, completion skeleton.
 - [x] **1.2 Parser, syntax tree and formatter** `opus · high` for the decided grammar.
 - [x] **1.3 Project layout and domains** `opus · high` (area 1).
-- [ ] **1.4 Values and types** `opus · high` (area 2).
+- [x] **1.4 Values and types** `opus · high` (area 2).
 - [ ] **1.5 Logic** `opus · high` (area 3).
 - [ ] **1.6 Failures** `opus · high` (area 4).
 - [ ] **1.7 The graph, identity and manifest:** `opus · xhigh` `jadpo check` writes
