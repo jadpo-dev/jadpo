@@ -1803,18 +1803,18 @@ type Weight = Int {
     min: 0
 }
 
-type Schedule = Output {
+type DueWeights = Output {
     weights: Map<DueAt, Weight>
 }
 ```
 
 ```text output
-error: `Schedule` holds a map keyed by `DueAt`
+error: `DueWeights` holds a map keyed by `DueAt`
  --> main.jadpo:8:14
   |
 8 |     weights: Map<DueAt, Weight>
   |              ^^^^^^^^^^^^^^^^^^ keys are `DueAt`
-  reason: `Schedule` crosses a boundary as JSON, where a map is an object and its keys are text; `DueAt` is built on `Instant`.
+  reason: `DueWeights` crosses a boundary as JSON, where a map is an object and its keys are text; `DueAt` is built on `Instant`.
   next: Key the map by a type built on `Text` or `Uuid`, or send a list of objects instead (agent)
   rule: type.map_key_boundary
   help: docs/language/02-values-and-types.html#type-map-key-boundary

@@ -1602,12 +1602,12 @@ never part of a value (question 11):
 ```jadpo check project=e-reject-placement expect=failure.reject_placement
 type Count = Int {}
 
-type TooMany = Failure {
+type CountRefused = Failure {
     kind: FailureKind.rejected
 }
 
-function capped(count: Count) fails TooMany -> Count {
-    var checked: Count = reject TooMany
+function capped(count: Count) fails CountRefused -> Count {
+    var checked: Count = reject CountRefused
     return checked
 }
 ```
@@ -1616,7 +1616,7 @@ function capped(count: Count) fails TooMany -> Count {
 error: `reject` can only start a statement
  --> main.jadpo:8:26
   |
-8 |     var checked: Count = reject TooMany
+8 |     var checked: Count = reject CountRefused
   |                          ^^^^^^ inside an expression
   reason: Every place a callable can stop early is at the start of a line: `reject` is a statement of its own, or the result of a `match` arm, never part of a value.
   next: Move `reject` to a line of its own, under an `if` or as a `match` arm (agent)
