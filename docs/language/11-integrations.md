@@ -1,7 +1,7 @@
 ---
 title: External services
 area: 11
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - semantic.service_atomic_effect
@@ -1900,7 +1900,7 @@ are open.
     review, always with the same parts: a native API, standard types, a
     local driver, a fake and a conformance suite. Packages cannot invent
     capabilities. Dapr and Encore also own a fixed list; Dapr shows that a
-    generic escape hatch (its "bindings") undoes the point.
+    generic escape hatch (its "bindings") undoes the point. *Decided 2026-10-13:* yes, as recommended.
 20. **Do `stores:` and `providers:` become one `connections:` block?**
     Raised 2026-10-13. *Recommendation:* yes. Each entry is
     `driver: Driver.x` (built in) or `package: X.vN`, with typed settings
@@ -1908,7 +1908,7 @@ are open.
     serves: `store:` on entities, caches and `File` fields; `email:`, `sms:`
     and `publishing:` in `application { }`. One connection per resource
     (bucket, queue), not per vendor account, following Cloudflare's
-    bindings: R2 and Queues need different credentials, and cron none.
+    bindings: R2 and Queues need different credentials, and cron none. *Decided 2026-10-13:* yes, as recommended.
 21. **How does a package provide a capability?** Raised 2026-10-13.
     *Recommendation:* `provides:` in the index names a `provide <capability>`
     file mapping each standard operation, standard event and optional
@@ -1917,21 +1917,21 @@ are open.
     through typed connection settings and the package's own API, never
     through the capability. Protocol drivers, signing and webhook checks are
     built into the runtime, so packages stay declarations only. An `erase`
-    mapping generates area 15's `PersonErased` subscriber.
+    mapping generates area 15's `PersonErased` subscriber. *Decided 2026-10-13:* yes, as recommended.
 22. **How is a capability package proven, and how is it faked?** Raised
     2026-10-13. *Recommendation:* one conformance suite per capability, run
     by `jadpo provider conform` against the sandbox or an emulator; the
     registry lists a capability only with a passing run pinned to the
     digest, and local packages run it in scheduled CI. Tests get one fake
     per capability (`email.sent`, `sms.sent`, `published`), whatever the
-    provider; a package's own operations keep their generated fake.
+    provider; a package's own operations keep their generated fake. *Decided 2026-10-13:* yes, as recommended.
 23. **What runs in development?** Raised 2026-10-13. *Recommendation:*
     nothing leaves the machine: mail and SMS to the local inbox, files to
     local disk with local signed links, published events to a log in the
     dev console, schedules on the local timer. The database runs its real
     engine; the cache runs in memory. That narrows area 5's "same engine in
     every environment" for caches, which is safe because a cache cannot
-    change what a request returns. Encore and Rails do the same.
+    change what a request returns. Encore and Rails do the same. *Decided 2026-10-13:* yes, as recommended.
 24. **How do targets limit drivers?** Raised 2026-10-13 with the native
     and WebAssembly targets. *Recommendation:* every driver and package
     lists the targets it runs on; `jadpo check` refuses a deployable that
@@ -1939,7 +1939,7 @@ are open.
     target's: an in-process timer natively, Cloudflare cron on Workers
     (generated into the Wrangler config, also sweeping the outbox), or an
     external tick. On Workers: TCP works but port 25 is blocked, so SMTP
-    needs port 587; there is no local disk; bindings exist only there.
+    needs port 587; there is no local disk; bindings exist only there. *Decided 2026-10-13:* yes, as recommended.
 25. **How are the gaps the modelled packages found closed?** Raised
     2026-10-13. *Recommendation:* five small additions, each built with the
     first package that needs it:
@@ -1953,7 +1953,7 @@ are open.
     - new webhook checks: basic auth (Postmark, which signs nothing),
       Twilio's HMAC-SHA1 and AWS SNS certificates;
     - `connection.webhook_url` as a mapping value (Twilio's status
-      callback).
+      callback). *Decided 2026-10-13:* yes, as recommended.
 
 ### Decisions
 
@@ -1994,10 +1994,10 @@ are open.
 | Package naming | `Stripe.v2024_06_20`; types `Stripe.PaymentIntent`, versioned names only while two versions are connected | 2026-10-13 |
 | Connection naming | lower_snake_case, chosen by the app, sharing a namespace with domains and libraries | 2026-10-13 |
 | Calling domains | Each connection lists `domains: [...]`; other domains go through that domain's public actions | 2026-10-13 |
-| Capabilities | | |
-| Connections | | |
-| Providing a capability | | |
-| Conformance and fakes | | |
-| Development drivers | | |
-| Targets | | |
-| Gaps from the modelled packages | | |
+| Capabilities | Seven in the first build: `database`, `cache`, `files`, `email`, `sms`, `publishing`, `schedules`; event delivery stays in the runtime; adding one is a language change; packages cannot invent capabilities | 2026-10-13 |
+| Connections | One `connections:` block replaces `stores:` and `providers:`; built-in `driver:` or `package:`; the use site says which capability it serves; one connection per resource | 2026-10-13 |
+| Providing a capability | `provides:` maps standard operations and events declaratively; provider extras through typed settings or the package's own API; protocols, signing and webhook checks built into the runtime | 2026-10-13 |
+| Conformance and fakes | One conformance suite per capability, required by the registry; one fake per capability in tests | 2026-10-13 |
+| Development drivers | Nothing leaves the machine: local inbox, local disk, published-event log, in-memory cache; the database runs its real engine | 2026-10-13 |
+| Targets | Drivers list the targets they run on; `jadpo check` refuses mismatches; the schedule tick comes from the target | 2026-10-13 |
+| Gaps from the modelled packages | Test-credential sandboxes, placeholder hosts, credential shape by scheme, more webhook checks, `connection.webhook_url`, each built with the first package needing it | 2026-10-13 |

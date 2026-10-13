@@ -1,7 +1,7 @@
 ---
 title: Built-in services
 area: 16
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules: []
 ---
@@ -12,7 +12,7 @@ Which common backend features Jadpo should provide itself, rather than
 leaving each application to install a library or write its own: feature
 flags, rate limits, files, audit trails, tracing, email and search.
 
-> In review. Nothing on this page exists in the compiler yet: every example is a proposal, written with the decisions from areas 1 to 9, and each names its open question. What other frameworks ship, and the options considered, are in [the proposals](research/16-built-in-services-proposals.md).
+> Decided on 2026-10-13. Nothing on this page is built yet; examples apply the decisions from areas 1 to 16.
 
 **The test for "native".** A feature is built in only when the compiler
 gains something by knowing about it: a mistake becomes a compile error, a
@@ -556,7 +556,7 @@ that is an integration, as Laravel Scout's other engines are.
 1. **Are flags declared in a root `flags.jadpo`, with type, default, owner
    and expiry?** *Recommendation:* yes, `Bool` or an `Enum`, with `expires:`
    required. Laravel Pennant defines flags in code with no list or expiry,
-   and teams lose track of them; one file is the list a reviewer reads.
+   and teams lose track of them; one file is the list a reviewer reads. *Decided 2026-10-13:* yes, as recommended.
 2. **Is flag state stored in the application's database and changed with
    `jadpo flags`?** *Recommendation:* yes, no flag service. Pennant also
    stores flags in the app's database; LaunchDarkly or Unleash would be a
@@ -564,17 +564,17 @@ that is an integration, as Laravel Scout's other engines are.
    can come later on the same operations.
    *Revised 2026-10-13 (Richard):* the store is named, never assumed:
    `flags: { store: main }` in `app.jadpo`; without it, using a flag is a
-   compile error (the area 5 rule for every system feature).
+   compile error (the area 5 rule for every system feature). *Decided 2026-10-13:* as revised.
 3. **Which targeting rules?** *Recommendation:* named users, named tenants
    (once area 9 decides tenancy), a percentage by a hash of flag name and
    user `id`, then everyone; first match wins. No attribute rules
    ("country is FR") until an app needs them; Firebase and Unleash start
-   from the same percentage rule.
+   from the same percentage rule. *Decided 2026-10-13:* yes, as recommended.
 4. **What does the compiler check?** *Recommendation:* unknown flags are
    errors; tests must cover every value of each flag read; expired flags are
    warnings; "fully rolled out" comes from `jadpo flags list`, because the
    compiler cannot see production; `jadpo flags remove --keep` rewrites the
-   source.
+   source. *Decided 2026-10-13:* yes, as recommended.
 5. **Should Jadpo support OpenFeature?** *Recommendation:* not now. Jadpo
    evaluates its own flags, so it needs no OpenFeature provider. Client
    flags go out on a plain generated `GET /flags`; adopt OpenFeature's remote
@@ -584,7 +584,7 @@ that is an integration, as Laravel Scout's other engines are.
    `GET /flags` returns every flag marked `client: true`, evaluated for the
    caller (their user, tenant and rollout bucket), so a frontend shows
    exactly what this user has. Flags without `client: true` never leave the
-   server.
+   server. *Decided 2026-10-13:* as revised.
 6. **Are rate limits `rate_limit: { requests: within: by: }` on an API or
    route, counted in Redis with an in-memory fallback?** *Recommendation:*
    yes, keyed by caller or address, with built-in limits on the generated
@@ -601,7 +601,7 @@ that is an integration, as Laravel Scout's other engines are.
    dropped first), and `jadpo check` warns that limits are then per
    instance, multiplied by the number running, and recommends Redis. On
    Workers there is no lasting memory, so a Redis connection (or
-   Cloudflare's rate-limiting binding as a driver) is required.
+   Cloudflare's rate-limiting binding as a driver) is required. *Decided 2026-10-13:* as revised.
 7. **Are files a `File` field with a file store, direct uploads through a
    signed slot, and signed links in outputs?** *Recommendation:* yes, S3
    protocol only. It is how Rails Active Storage and Laravel work, and the
@@ -611,23 +611,23 @@ that is an integration, as Laravel Scout's other engines are.
    is a connection providing `files`: the built-in S3 driver, or a package
    that is a preset over it (R2's upload slots still need S3 keys, even on
    Workers); local disk in development and tests; `store.put(bytes, type)`
-   for files the application makes.
+   for files the application makes. *Decided 2026-10-13:* as revised.
 8. **Should outgoing webhooks and field encryption be built in?**
    *Recommendation:* yes, both later. Outgoing webhooks are events with
    signed, retried delivery to a customer's address, which the compiler can
    type from the event and document; field encryption (Rails has
    `encrypts`) belongs in area 15, which knows sensitive fields. Neither is
-   needed by the golden todo.
+   needed by the golden todo. *Decided 2026-10-13:* yes, as recommended.
 9. **Is the audit trail an opt-in `audit:` section, written in the same
    transaction, with personal fields hashed?** *Recommendation:* yes, opt-in
    per entity, history readable with `read` on the record. Rails and Django
    need a library (PaperTrail, django-simple-history) for this, and those
-   cannot hash personal fields or know the request.
+   cannot hash personal fields or know the request. *Decided 2026-10-13:* yes, as recommended.
 10. **Is OpenTelemetry generated for everything, configured by the standard
     variables?** *Recommendation:* yes, traces and metrics with no syntax and
     no values in spans. Phoenix generates telemetry for every request and
     query the same way; using the standard variables means any monitoring
-    tool works.
+    tool works. *Decided 2026-10-13:* yes, with its settings declared in `config.jadpo` like any setting, bound to the standard `OTEL_*` variable names (area 10).
 11. **Is email built in as `type X = EmailMessage`, emitted after commit and sent
     over SMTP?** *Recommendation:* yes, templates from `translations/`, SMTP
     only, provider APIs as integrations. This replaces the golden app's
@@ -660,33 +660,33 @@ that is an integration, as Laravel Scout's other engines are.
     `{{ include button(label: t.open_app, url: app_url) }}`. Templates may
     only read fields, translations and formatting functions: no variables,
     no `attempt`, no other calls. Razor does the same with C#; one syntax
-    means one thing for agents to learn and one parser and type checker.
+    means one thing for agents to learn and one parser and type checker. *Decided 2026-10-13:* the revisions above, with Jadpo's own syntax inside `{{ }}` for conditions, loops and typed partials.
 12. **Is search a `search:` section using PostgreSQL full-text search?**
     *Recommendation:* yes, one language per entity, with search services as
     integrations. Django's `SearchVector` and Laravel Scout's database engine
-    do the same with more hand-written setup.
+    do the same with more hand-written setup. *Decided 2026-10-13:* yes, as recommended.
 13. **Does every request carry a path ID?** *Recommendation:* yes, two:
     a Ball–Larus `path` number that decodes against the build's graph, and
     a `path_key` hash of stable identities for comparing builds; loops
     record which inner paths ran, recursion its first entry. Sentry groups
     errors by guessing from stacks; the compiler can name the path exactly.
-    Needs control flow in the compiler's graph.
+    Needs control flow in the compiler's graph. *Decided 2026-10-13:* yes, as recommended.
 14. **Does the runtime decide how much to send per request?**
     *Recommendation:* yes: buffer each request, send the full trace on a
     crossed threshold, failure, fault or new path, otherwise metrics plus
     one sample per path per minute. This is tail sampling done in the
     process, which generic tools cannot do because they do not know what a
-    new path is.
+    new path is. *Decided 2026-10-13:* yes, as recommended.
 15. **Are thresholds declared in source, and are monitoring rules
     generated?** *Recommendation:* yes, one monitoring file per domain, so
     a reviewer sees the set; per-request thresholds act in the runtime,
     across-request ones become OpenSLO and Prometheus rules in
     `build/monitoring/` and in the build manifest. OpenSLO and Sloth keep
     SLOs as code beside the app, where a renamed route breaks them silently;
-    here the compiler checks every threshold names something that exists.
+    here the compiler checks every threshold names something that exists. *Decided 2026-10-13:* yes, as recommended.
 16. **Does loosening a threshold need a person?** *Recommendation:* yes,
     an acceptance file and a line in the approval report; tightening does
-    not. Otherwise an agent fixes a noisy alert by raising its limit.
+    not. Otherwise an agent fixes a noisy alert by raising its limit. *Decided 2026-10-13:* yes, as recommended.
 
 ### Decisions
 
@@ -699,22 +699,22 @@ that is an integration, as Laravel Scout's other engines are.
 | Reading the caller | Carried from area 8: `current_principal` in routes only; policy gets the caller from the runtime | 2026-10-12 |
 | Third-party services | Carried from area 8: the language owns a feature rather than relying on a third-party service where it reasonably can | 2026-10-12 |
 | Policy model | Carried from area 9: grants keyed by `create`, `read`, `update`, `delete` | 2026-10-12 |
-| Flag declaration | | |
+| Flag declaration | Root `flags.jadpo`: `Bool` or enum, default, owner, required `expires:` | 2026-10-13 |
 | Flag storage and changes | In the app's own database, named explicitly (`flags: { store: main }`); changed with `jadpo flags`; no flag service | 2026-10-13 |
-| Flag targeting | | |
-| Flag checks | | |
+| Flag targeting | Named users, named tenants, percentage by hash of flag and user id, then everyone; first match wins | 2026-10-13 |
+| Flag checks | Unknown flags are errors; tests cover every value read; expired flags warn; `jadpo flags list` shows rollout; `jadpo flags remove --keep` | 2026-10-13 |
 | OpenFeature | Not now; `GET /flags` returns `client: true` flags evaluated for the caller (Richard) | 2026-10-13 |
 | Rate limits | On by default for every route with sensible limits; `rate_limit:` adjusts; turning off needs an acceptance; Redis when named, otherwise bounded memory with a warning; Redis or a platform binding required on Workers (Richard) | 2026-10-13 |
-| Files | | |
-| Outgoing webhooks and field encryption | | |
-| Audit trail | | |
-| Tracing and metrics | | |
-| Email | `emails/` folder per domain: type, HTML and text templates, shared layout; no MJML; a small typed template language (values, translations, if, each, partials, formatting); delivered through the `email` capability (Richard) | 2026-10-13 |
-| Search | | |
-| Path IDs | | |
-| Detail by threshold | | |
-| Thresholds in source | | |
-| Loosening thresholds | | |
+| Files | A connection providing `files` (built-in S3 driver or a preset package); signed upload slots and links; local disk in development and tests | 2026-10-13 |
+| Outgoing webhooks and field encryption | Both later; encryption with area 15's sensitive fields | 2026-10-13 |
+| Audit trail | Opt-in `audit:` per entity, same transaction, personal fields hashed, readable with `read` on the record | 2026-10-13 |
+| Tracing and metrics | OpenTelemetry generated for everything, no values in spans; settings in `config.jadpo` bound to `OTEL_*` names | 2026-10-13 |
+| Email | `emails/` folder per domain: type, HTML and text templates, shared layout; no MJML; templates use Jadpo syntax inside `{{ }}` (values, translations, `if`, `for`, typed `include`, formatting), read-only; delivered through the `email` capability (Richard) | 2026-10-13 |
+| Search | `search:` section with PostgreSQL full-text search, one language per entity; search services as packages | 2026-10-13 |
+| Path IDs | Every request carries a path number and a stable path key | 2026-10-13 |
+| Detail by threshold | Full traces on threshold, failure, fault or new path; otherwise metrics plus one sample per path per minute | 2026-10-13 |
+| Thresholds in source | One monitoring file per domain, checked by the compiler; rules generated into `build/monitoring/` | 2026-10-13 |
+| Loosening thresholds | Needs an acceptance; tightening does not | 2026-10-13 |
 | Local inbox in development | `jadpo dev` catches all mail: browser view in the dev console (rendered, locale, working links, trace link) and `jadpo email list/show/links/open/clear` for agents (Richard) | 2026-10-13 |
 | Mail health score | Deterministic content checks per mail in the dev inbox and `jadpo email show`, optional SpamAssassin rules, `jadpo email check-domain` for SPF/DKIM/DMARC; every score states it is an early indication, cannot predict inbox placement and must not be relied on (Richard) | 2026-10-13 |
 | Email naming | Folder `emails/`, capability `email`, base type `EmailMessage` (`Email` stays the address type), commands `jadpo email ...`, app setting `email: { connection: }` (Richard) | 2026-10-13 |
