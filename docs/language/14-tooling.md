@@ -107,6 +107,13 @@ spacing, blank lines (one between declarations, none doubled) and the order of
 sections inside a declaration. It writes one member per line (question 8).
 `jadpo fmt --check` fails when a file differs, and the editor formats on save.
 
+Sections go in one order: a failure's `kind`, `code`, `message`, `client`,
+`internal`; a route's `authentication`, `rate_limit`, `input`, `output`,
+`status`, `deadline`, `run`; an entity's fields, then `identity`,
+`persistence`, `lifecycle`, `membership`, `policy`, `freshness`, `guard`,
+`person`. Anything else keeps its written order after these, fields are never
+reordered, and a section's comments move with it.
+
 Promotion is the one layout change that moves code between files: when a
 second file uses a type or helper, the compiler reports
 `layout.promotion_required` with a one-step fix. That fix is applied through
@@ -696,6 +703,7 @@ what other areas carried here and where this page answers it.
 | Error messages | Relative paths, impact lines only when useful, repairs carry their edit, JSON line and column, help links to these pages | 2026-10-13 |
 | Affected tests | `check` reports affected tests; `jadpo test --affected` runs them | 2026-10-13 |
 | One member per line | Formatter writes one member per line and a blank line between declarations; short lists stay on one line | 2026-10-13 |
+| Section order | The formatter orders sections: a failure's `kind`, `code`, `message`, `client`, `internal`; a route's `authentication`, `rate_limit`, `input`, `output`, `status`, `deadline`, `run`; an entity's fields (in written order), then `identity`, `persistence`, `lifecycle`, `membership`, `policy`, `freshness`, `guard`, `person`; other sections follow in written order (Richard) | 2026-10-13 |
 | Scaffold | `jadpo new` creates the fixed root, one small domain and passing tests of each kind; no hidden folders | 2026-10-13 |
 | Catalogue form | Markdown in `build/catalogue/` and `build/report/` with `.json` twins, plus `jadpo impact` | 2026-10-13 |
 | Build-only errors in `check` | `toolchain.target_*` errors come from `check` | 2026-10-13 |
