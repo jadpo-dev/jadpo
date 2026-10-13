@@ -669,9 +669,16 @@ each example converted to a `check` block; `jadpo check` printing them.
    store: main } }`, required only when such an action exists, as area 5
    names stores for other system features. The runtime sweeps every store
    holding an outbox.
+   *Decided 2026-10-13 (Richard):* area 5's rule, with nothing defaulting to
+   a store called `main` or any other: the outbox, delivery records and
+   idempotency keys go in each store an action writes (correctness requires
+   it, and the build report shows where), and an action that writes no store
+   but emits or takes an idempotency key needs the store named explicitly in
+   `events: { store: <connection> }`; without it, a compile error names the
+   action and the setting.
 2. **Where do `flags.jadpo` and the per-domain monitoring file live?** Area
    1 fixes the root entries and a domain's folders and makes any other
    `.jadpo` file an error; area 16 adds a root `flags.jadpo` and "one
    monitoring file per domain" without saying where. *Recommendation:* add
    `flags.jadpo` to area 1's fixed root, and allow one `monitoring.jadpo`
-   directly in a domain folder.
+   directly in a domain folder. *Decided 2026-10-13 (Richard):* as recommended.

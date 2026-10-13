@@ -54,7 +54,7 @@ before starting the second half.
   outside the language and links to the area pages for the rest;
   `AGENTS.md` and `docs/README.md` are rewritten for this roadmap. Done when
   every live document is current and linked from `docs/README.md`.
-- [ ] **0.4 Architecture plan.** One session designing what every later chunk
+- [x] **0.4 Architecture plan.** One session designing what every later chunk
   builds on: the Rust workspace and crates; the graph's node and edge kinds,
   stable identity and canonical JSON; the incremental query engine; the
   executor interface shared by interpreter and code generator; the runtime

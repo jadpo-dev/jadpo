@@ -1018,3 +1018,4 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
 | Root `api/` and `acceptances/` folders | Added to the fixed root, with `providers/` and `jadpo.lock` (areas 11 and 18) | 2026-10-13 |
 | Emails folder | Each domain may have `emails/`, holding email types and their templates (from area 16) | 2026-10-13 |
+| Flags and monitoring files | `flags.jadpo` joins the fixed root; each domain may hold one `monitoring.jadpo` directly in its folder (Richard, from the architecture plan) | 2026-10-13 |
