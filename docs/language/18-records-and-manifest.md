@@ -163,7 +163,11 @@ renaming a domain or an entity is one line.
 > promotion moves a declaration to `shared/` without a registry line, which
 > a domain in the key would turn into a removal and an addition. Question 8
 > asks Richard to confirm it. The registry is read once `jadpo rename`
-> writes it; until then every born name is the name now.
+> writes it; until then every born name is the name now. A test's key is the
+> file it sits beside and its sentence, `test create_todo "rejects a blank
+> title"`, with no path, so moving its domain keeps it; two tests with one
+> sentence anywhere in the project are `semantic.duplicate_declaration`
+> (decided in the Phase 1 review, built in chunk 1.9).
 
 ## Comparing two builds
 

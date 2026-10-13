@@ -59,7 +59,10 @@ check where they are.
 
 ## Writing a test
 
-A test is a sentence and a body. The body is ordinary code plus `assert`,
+A test is a sentence and a body. The sentence names it, once in the whole
+project: a second test with the same sentence is
+`semantic.duplicate_declaration` (area 18 keys a test by the file it sits
+beside and its sentence). The body is ordinary code plus `assert`,
 which fails the test when its condition is false. Each test starts from
 nothing: its own empty database, its own clock and its own fakes, so tests
 never depend on each other and can run in any order.

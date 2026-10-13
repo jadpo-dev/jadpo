@@ -350,6 +350,12 @@ function size(count: Count, maximum: Count) -> Size {
 | 6 | `and` | `Bool` | `Bool` |
 | 7 (loosest) | `or` | `Bool` | `Bool` |
 
+In `+`, `-` and `/` a literal takes the other side's type exactly as it does
+in `==`, so `price + 3` with a `Decimal` price is an error as `price == 3`
+is (write `3.00`), and `+` joins two `Text` values only when they are the
+same named type after widening, or one is a literal, as `==` compares them
+(chunk 1.9, reading the table above conservatively). `*` and `%` still mix.
+
 Operators work on the representation, so their result is a plain `Int`,
 `Decimal`, `Text` or `Bool`, and turning it back into a named type is a
 constructor (area 2). Parentheses group. `and` and `or` stop as soon as the
@@ -655,7 +661,10 @@ var total: Pence = Pence(attempt price(a) + attempt price(b))   // rejected: ins
 
 Decided (question 11): `attempt` only starts a statement, so every point
 where a callable can stop early is at the start of a line, and `attempt` on
-a call that cannot fail is an error.
+a call that cannot fail is an error. `reject` and `propagate` follow the same
+rule: each starts a statement or is the result of a `match` arm, never part
+of a value (`failure.reject_placement`, `failure.propagate_placement`; chunk
+1.9).
 
 ::: today
 

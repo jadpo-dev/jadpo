@@ -410,6 +410,10 @@ domains call that domain's public actions.
 | `Todo.delete(todo)` | removes the record, or runs the lifecycle's `delete` transition |
 | `User.disable(user)` | runs a lifecycle transition, named after it |
 
+Nothing else is an entity operation: `Todo.fetch(todo_id)` is
+`semantic.unknown_callee` (checked since chunk 1.9), while `Todo.title(value)`
+still builds a value of the field's type (area 2).
+
 `TodoNotFound` is the domain's failure of that name in `failures/`, or one
 the compiler provides with kind `not_found` when the domain declares none.
 A write that cannot fail needs no `attempt` (area 3).

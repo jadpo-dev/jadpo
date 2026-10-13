@@ -89,6 +89,17 @@ function catalogue_name(name: ShortProductName) -> ProductName {
 Each constraint is written `name: value`, one per line. There are no other
 constraints and no custom validation functions.
 
+Built in chunk 1.9: a refinement can only add to the rules of the type it
+builds on, so a `max` below an inherited `min` (or the other way round, for
+lengths and durations too) is `type.constraint_contradiction`, and so is a
+`Decimal` refinement whose `scale` differs from the one it inherits, since
+the scale decides how the value is stored and sent. The same settings rules
+hold for the fields of every type with fields, entities and events included;
+the settings later areas add to an entity's or event's fields (`generated`,
+`on_delete`, `unique`, `immutable`, `role`, `personal`, `erase`,
+`retention`) are left to those areas. A number literal with more digits than
+an exact number holds (38) is `type.invalid_literal`.
+
 Today the compiler accepts constraints in some places where they have no
 effect: `min` on text, `min_length` on a number, a `pattern` other than
 `[a-z0-9_]+`, and any `format` other than `email` are all accepted but not
@@ -2211,6 +2222,8 @@ Rules:
   `Input`.
 - **Copied fields follow their source.** Renaming `Todo.title` renames it in
   every type that copies it, and its validation rules come with it.
+- **No type includes itself.** An `include` that leads back to its own type,
+  directly or through another, is `type.copy_cycle` (chunk 1.9).
 - **Every built type has a name;** there are no inline types in signatures.
   Hover and `jadpo inspect TodoDetail` show the final fields and where each
   came from (`title ← Todo.title`, `lines ← written, replaces Order.lines`).
@@ -2328,7 +2341,10 @@ type RetagTodo = Input {
 ```
 
 `["urgent", "urgent"]` is rejected as a duplicate. `Map<Instant, Weight>` at a
-boundary is a compile error, because JSON object keys are text.
+boundary is a compile error, because JSON object keys are text. Built in
+chunk 1.9: a map in an `Input` or `Output`, however nested, is keyed by a type
+built on `Text` or `Uuid` (`type.map_key_boundary`), and a set literal that
+repeats a value is `type.invalid_literal`.
 
 #### Q6: no transparent aliases
 

@@ -295,10 +295,16 @@ the arguments at each call; `Number` is any type built on `Int` or
 `Decimal`, and a built-in representation such as `Int` in a parameter is
 any type built on it, since operations work on the representation as
 operators do (so `integer.divide` takes values built on `Int`, and
-`decimal.divide` numbers). A type variable no argument fixes is a checked
+`decimal.divide` numbers). A parameter the table marks `never_zero` (the
+divisions' `divisor`) is checked as `/`'s divisor is: a literal isn't `0` and
+a value's type excludes zero (chunk 1.9). A type variable no argument fixes is a checked
 unknown: it accepts anything where it stands, but the container around it
 is still checked, so a `List<T>` parameter takes only a list. Enums that Rust code interprets (`Rounding`, `TextFormat`,
-`UuidVersion`) are declared once, in `jadpo-std`.
+`UuidVersion`, `Weekday`, and `Zone` and `Locale` from their tables) are
+declared once, in `jadpo-std`. The namespaces the compiler fills from the
+project or the platform (`clock`, `config`, `translations`, `sessions`,
+`oauth`) list in `std/names.txt` the members built so far (`clock.now`);
+any other member is `toolchain.not_built_yet`.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from
@@ -317,7 +323,11 @@ token by one rule (leading to the next token, trailing to the last token
 on its line), as [Biome](https://biomejs.dev/internals/architecture) does,
 so the formatter needs none of the comment-placement repairs Ruff's
 AST-based formatter carries. The parser recovers at declaration and member
-boundaries, never panics, and is fuzzed. The grammar is one
+boundaries, never panics, and is fuzzed. Nesting, an `else if` chain and
+template tags included, is limited to 96 levels, past which the rest is
+skipped with one error rather than recursing; a byte-order mark opening a
+file is whitespace, and a line ended by a carriage return alone is an error
+(chunk 1.9). The grammar is one
 `jadpo.ungram`; the typed AST is generated from it and committed, with a
 test that fails when they drift. *Rejected:* tree-sitter or LALR
 generators, with weaker recovery and messages, and a second lossless tree
@@ -326,6 +336,10 @@ still needed.
 **Formatter.** Syntax tree to a document algebra to a printer, owning
 indentation, blank lines and member order (areas 1 and 14). Every example
 is checked to be idempotent and to parse to the same AST after formatting.
+Since chunk 1.9 the formatter also reads its own output back: when it
+doesn't parse to the same tokens, nodes and comments, or doesn't format to
+itself, it writes nothing and reports `format.unsafe`, a formatter mistake;
+a fuzz test feeds it the parser fuzz test's edits of every example.
 
 **Item trees.** Each file is summarised into its declarations and
 signatures without bodies (rust-analyzer's `ItemTree`), so editing a body
@@ -350,7 +364,9 @@ id, owning area, severity, summary, who decides, help anchor), used through
 typed constants, so a misspelt rule does not compile. A diagnostic carries
 the rule, primary and secondary spans, reason, next step with optional
 edits, and who decides (`agent` or `human`). `jadpo-term` renders it rich
-or plain per the design language; `--json` carries `schemaVersion`,
+or plain per the design language, writing control characters and
+bidirectional overrides from source as `\u{...}` so they can't restyle the
+terminal or reorder code (chunk 1.9); `--json` carries `schemaVersion`,
 project-relative paths, and line and column beside byte offsets. The
 catalogue is part of `jadpo help --json`, which the docs check reads.
 *Rejected:* v0's `build.rs` scan of emitter strings, which let codes drift.
@@ -630,7 +646,8 @@ the same traits.
   ([limits](https://developers.cloudflare.com/workers/platform/limits/)),
   counted by the runtime across database, providers and SMTP.
 - A panic aborts the instance, so runtime crates deny `unwrap`, `expect`
-  and `panic!` by lint, and faults are values.
+  and `panic!` by lint, and faults are values; the crate-graph test holds
+  every shared and runtime crate to the lint (chunk 1.9).
 - `wasm32-unknown-unknown` with wasm-bindgen; Cloudflare documents no
   component-model support and only experimental WASI. Each deployable links only the drivers it reaches, which keeps
   start-up inside the one-second limit.
@@ -669,8 +686,12 @@ name appears in any case style as an identifier or string in
 `Session`) goes to `tools/example-type-names.txt` instead, and may not stand
 as a name in a string literal without spaces (`"Order"`), the sign of
 special-casing, while the word stays usable in identifiers and prose
-(Richard, 2026-10-13). Tests, including inline `#[cfg(test)]` modules, may
-use them.
+(Richard, 2026-10-13). Since chunk 1.9 that holds for every example type,
+not only entities, except the few the language itself also names
+(`tools/example-type-names-allowed.txt`), and the standard library's Jadpo
+stubs and names list are scanned too. Tests, including inline
+`#[cfg(test)] mod` blocks (the attribute itself, not a comment mentioning
+it), may use them.
 
 | Phase | `tools/verify.py` adds |
 |---|---|

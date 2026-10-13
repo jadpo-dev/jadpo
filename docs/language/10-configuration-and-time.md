@@ -242,6 +242,21 @@ recovers (health checks are area 11).
 - Types never convert to each other or to `Text` silently; signatures use
   named types built on them (decided in area 2), such as
   `type DueAt = Instant {}`.
+- Built in chunk 1.9 (decided in the Phase 1 review): an `Instant` literal is
+  ISO 8601 with a `Z` or an offset, to the millisecond
+  (`"2026-10-25T08:30:00Z"`), a `CalendarDate` literal a real date
+  (`"2026-10-25"`), both checked while compiling; a `Duration` is written only
+  with a unit (`15m`), and `min:` and `max:` on a `Duration` type are
+  enforced; a `Time` has no literal. `Zone`, `Weekday` and `Locale` are
+  built-in enums: `Zone` has a variant for each zone in the IANA database's
+  `zone.tab` (2026d) plus `utc`, named in lower_snake_case
+  (`Zone.america_argentina_buenos_aires`); `Locale` has one for each
+  standard language and region locale (`Locale.en_gb`, 83 of them). Both
+  tables live in `jadpo-std` and change only in a change of their own.
+- `clock.now` in a function, a library function or an inline function is
+  `type.clock_context`; any other member of `clock`, `config`,
+  `translations`, `sessions` or `oauth` is `toolchain.not_built_yet` until
+  its area is built.
 
 ## Durations
 
