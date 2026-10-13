@@ -22,7 +22,7 @@ and specifications, not here.
 3. **Decide how to build, then rework the areas the review flags.** Before
    any compiler work, Richard decides between reworking the current compiler
    and the proposed rebuild around a graph-centred core
-   ([compiler-runtime §1.1](compiler-runtime.md#11-graph-centred-compiler-open-2026-10-13)),
+   ([compiler-runtime §1.1](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)),
    which also lists the planned features the graph must carry (areas 16 and
    17 proposals). Bring that page to him with a recommendation; do not start
    either path without his answer. If rework: keep `python3 tools/verify.py`

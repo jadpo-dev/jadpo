@@ -8,6 +8,18 @@ item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
 
+### Build approach — 2026-10-13
+
+Richard: build a new compiler around one graph (compiler-runtime §1.1–1.2)
+and archive the current one, tagged `archive/compiler-v0` and deleted from
+`main`, referenced through git. Two executors share one runtime crate: an
+interpreter inside `jadpo` for development and tests, and compiled Rust for
+deployables, native and WebAssembly; every test runs both ways. The first
+build is the graph core, both executors and what the golden todo uses. A
+performance phase compares native, WebAssembly and an equivalent Bun app and
+optimises WebAssembly towards Bun. The delivery plan is the
+[roadmap](roadmap.md).
+
 ### Runtime targets — 2026-10-13
 
 Richard: the TypeScript/Bun target is to be dropped. Jadpo targets native Rust
@@ -983,7 +995,7 @@ These are recommended but must survive the golden applications:
 ## 5. Open implementation questions
 
 - semantic graph and proof representation (proposed graph-centred rebuild, to
-  decide after the language review: [compiler-runtime §1.1](compiler-runtime.md#11-graph-centred-compiler-open-2026-10-13));
+  decide after the language review: [compiler-runtime §1.1](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13));
 - source-map/metadata format and monitoring integration;
 - Postgres schema-diff and migration strategy;
 - target deployment environments;

@@ -24,7 +24,7 @@ source
 The valuable component is the semantic model and its checks. The parser and
 target are replaceable implementation choices.
 
-### 1.1 Graph-centred compiler (open, 2026-10-13)
+### 1.1 Graph-centred compiler (decided, 2026-10-13)
 
 **Today (read):** the compiler builds a semantic graph
 (`build_semantic_graph` in `jadpo/crates/semantic/src/lib.rs`) of
