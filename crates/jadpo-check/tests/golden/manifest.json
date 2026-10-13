@@ -67,6 +67,30 @@
     },
     {
       "domain": "notes",
+      "file": "domains/notes/actions/save_note.jadpo",
+      "id": "branch save_note.0",
+      "kind": "branch",
+      "lines": [
+        2,
+        6
+      ],
+      "name": "save_note.0",
+      "parent": "action save_note"
+    },
+    {
+      "domain": "notes",
+      "file": "domains/notes/actions/save_note.jadpo",
+      "id": "branch save_note.1",
+      "kind": "branch",
+      "lines": [
+        2,
+        6
+      ],
+      "name": "save_note.1",
+      "parent": "action save_note"
+    },
+    {
+      "domain": "notes",
       "id": "domain notes",
       "kind": "domain",
       "name": "notes"
@@ -310,6 +334,42 @@
         6
       ],
       "name": "wording"
+    },
+    {
+      "domain": "notes",
+      "file": "domains/notes/actions/save_note.jadpo",
+      "id": "site save_note.10",
+      "kind": "site",
+      "lines": [
+        8,
+        8
+      ],
+      "name": "save_note.10",
+      "parent": "action save_note"
+    },
+    {
+      "domain": "notes",
+      "file": "domains/notes/actions/save_note.jadpo",
+      "id": "site save_note.3",
+      "kind": "site",
+      "lines": [
+        2,
+        2
+      ],
+      "name": "save_note.3",
+      "parent": "action save_note"
+    },
+    {
+      "domain": "notes",
+      "file": "domains/notes/actions/save_note.jadpo",
+      "id": "site save_note.6",
+      "kind": "site",
+      "lines": [
+        3,
+        5
+      ],
+      "name": "save_note.6",
+      "parent": "action save_note"
     },
     {
       "base": "Text",

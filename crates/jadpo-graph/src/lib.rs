@@ -13,6 +13,7 @@
 //!   [`catalogue`] renders the views `check` writes; [`diff`] compares two
 //!   graphs.
 
+pub mod body;
 pub mod catalogue;
 pub mod diff;
 mod graph;

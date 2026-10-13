@@ -4,18 +4,21 @@
 //! never finishes. Queries have no statement bodies, so they call nothing
 //! (area 6).
 //!
-//! Each file's action-to-action calls are collected by name, without
-//! positions, so a body edit that keeps its calls stops invalidation
-//! there; the cycles are found once for the project, and each file reports
-//! the calls in it that close one.
+//! Each file's action-to-action calls are read from its typed bodies, by
+//! name and without positions, so a body edit that keeps its calls stops
+//! invalidation there; the cycles are found once for the project, and each
+//! file reports the calls in it that close one.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use jadpo_db::{Db, File, ItemKind, Project, Symbols, symbols};
+use jadpo_db::{Db, File, Project};
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_syntax::ast::{self, AstNode, Decl, Expr};
+use jadpo_graph::Kind;
+use jadpo_graph::body::Callee;
+use jadpo_syntax::ast::{self, AstNode};
 
-use crate::tree::{self, dotted, node_span};
+use super::body::{callables_of, typed_body};
+use crate::tree::{self, node_span};
 
 /// One action calling another, by name.
 type Call = (String, String);
@@ -27,63 +30,44 @@ pub struct Cycles {
     pub closing: BTreeMap<Call, Vec<String>>,
 }
 
-/// The action a call names, if it names one: `reserve(...)` or
-/// `inventory.reserve(...)`.
-fn called_action(call: &ast::CallExpr, symbols: &Symbols) -> Option<String> {
-    let callee = call.expr()?;
-    let (first, rest) = dotted(&callee)?;
-    let name = match rest.as_slice() {
-        [] => tree::name_ref_text(&first)?,
-        [member] => {
-            let qualifier = tree::name_ref_text(&first)?;
-            if !symbols.domains.contains(&qualifier) {
-                return None;
-            }
-            tree::name_ref_text(member)?
-        }
-        _ => return None,
-    };
-    let is_action = symbols.declarations.get(&name).is_some_and(|found| {
-        found
-            .iter()
-            .any(|symbol| symbol.library.is_none() && symbol.kind == ItemKind::Action)
-    });
-    is_action.then_some(name)
-}
+/// One action's name, with each action it calls and where: the call's
+/// range.
+type ActionCalls = (String, Vec<(String, (u32, u32))>);
 
-/// Each action declared in a file, with its body.
-fn actions(source: &ast::SourceFile) -> Vec<(String, ast::Block)> {
-    source
-        .decls()
-        .filter_map(|decl| match decl {
-            Decl::ActionDecl(action) => Some((
-                action.name().as_ref().and_then(tree::name_text)?,
-                action.block()?,
-            )),
-            _ => None,
-        })
-        .collect()
-}
-
-fn calls_in(block: &ast::Block, symbols: &Symbols) -> Vec<(String, ast::CallExpr)> {
-    block
-        .syntax()
-        .descendants()
-        .filter_map(ast::CallExpr::cast)
-        .filter_map(|call| Some((called_action(&call, symbols)?, call)))
-        .collect()
+/// Each action in `file`, with the actions its typed body calls.
+fn actions(db: &dyn Db, project: Project, file: File) -> Vec<ActionCalls> {
+    let mut out = Vec::new();
+    for callable in callables_of(db, file) {
+        let checked = typed_body(db, project, callable);
+        let Some(caller) = checked
+            .key
+            .as_ref()
+            .filter(|key| key.kind() == Some(Kind::Action))
+        else {
+            continue;
+        };
+        let calls = checked
+            .body
+            .calls()
+            .filter_map(|(site, callee)| match callee {
+                Callee::Action(callee) => {
+                    let site = checked.body.site(site);
+                    Some((callee.name().to_string(), (site.start, site.end)))
+                }
+                _ => None,
+            })
+            .collect();
+        out.push((caller.name().to_string(), calls));
+    }
+    out
 }
 
 /// The actions each action in `file` calls.
 #[salsa::tracked(returns(ref))]
 pub fn action_calls(db: &dyn Db, project: Project, file: File) -> BTreeSet<Call> {
-    let Some(source) = tree::source(db, file) else {
-        return BTreeSet::new();
-    };
-    let symbols = symbols(db, project);
     let mut out = BTreeSet::new();
-    for (caller, block) in actions(&source) {
-        for (callee, _) in calls_in(&block, symbols) {
+    for (caller, calls) in actions(db, project, file) {
+        for (callee, _) in calls {
             out.insert((caller.clone(), callee));
         }
     }
@@ -158,12 +142,21 @@ pub fn recursion_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diag
     let Some(source) = tree::source(db, file) else {
         return Vec::new();
     };
-    let symbols = symbols(db, project);
     let path = file.path(db);
+    // Each call's callee, by the call's range, for where to report.
+    let callees: BTreeMap<(u32, u32), ast::Expr> = source
+        .syntax()
+        .descendants()
+        .filter_map(ast::CallExpr::cast)
+        .filter_map(|call| {
+            let span = node_span(path, call.syntax());
+            Some(((span.start, span.end), call.expr()?))
+        })
+        .collect();
     let mut out = Vec::new();
-    for (caller, block) in actions(&source) {
+    for (caller, calls) in actions(db, project, file) {
         let mut reported = BTreeSet::new();
-        for (callee, call) in calls_in(&block, symbols) {
+        for (callee, at) in calls {
             let key = (caller.clone(), callee.clone());
             let Some(cycle) = cycles.closing.get(&key) else {
                 continue;
@@ -171,9 +164,9 @@ pub fn recursion_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diag
             if !reported.insert(key) {
                 continue;
             }
-            let span = call.expr().map_or_else(
-                || node_span(path, call.syntax()),
-                |e: Expr| node_span(path, e.syntax()),
+            let span = callees.get(&at).map_or_else(
+                || jadpo_diag::Span::new(path, at.0, at.1),
+                |callee| node_span(path, callee.syntax()),
             );
             let shown: Vec<String> = cycle.iter().map(|name| format!("`{name}`")).collect();
             let message = if cycle.len() <= 2 {

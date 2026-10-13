@@ -8,11 +8,12 @@
 //! Lower-case names used as values (`total`, `todo.title`) are area 3's to
 //! check, with types.
 
-use jadpo_db::{Base, Db, File, ItemKind, Ownership, Project, Symbol, Symbols, location, symbols};
+use jadpo_db::{Base, Db, File, ItemKind, Ownership, Project, Symbol, location};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, MemberItem, Pat, Stmt, Type};
 
 use crate::case::{is_lower_snake, starts_upper, to_snake};
+use crate::lookups::{Lookup, NameView};
 use crate::naming::{name_case, reserved};
 use crate::std_lib::{Namespace, StdNames};
 use crate::tree::{self, dotted, node_span};
@@ -31,10 +32,11 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
         return Vec::new();
     };
     let location = location(db, project, file);
+    let lookup = Lookup::new(db, project);
     let mut resolver = Resolver {
         path: file.path(db),
         ownership: &location.ownership,
-        table: symbols(db, project),
+        table: &lookup,
         names: StdNames::get(),
         scopes: Vec::new(),
         library: None,
@@ -49,7 +51,9 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
 struct Resolver<'a> {
     path: &'a str,
     ownership: &'a Ownership,
-    table: &'a Symbols,
+    /// The symbol table, read name by name (docs/compiler-runtime.md
+    /// §2.4); suggestions on a mistake read it whole.
+    table: &'a dyn NameView,
     names: &'static StdNames,
     /// Locals in scope, with where each is declared.
     scopes: Vec<Vec<(String, Span)>>,
@@ -244,8 +248,8 @@ impl Resolver<'_> {
                 .reason("A name in scope can't be declared again, parameters included, so one name means one value wherever it is read.")
                 .next(format!("Give this {word} a name of its own")),
             );
-        } else if self.table.domains.contains(&text) || self.table.library(&text).is_some() {
-            let what = if self.table.domains.contains(&text) {
+        } else if self.table.is_domain(&text) || self.table.library(&text).is_some() {
+            let what = if self.table.is_domain(&text) {
                 "domain"
             } else {
                 "library"
@@ -289,7 +293,7 @@ impl Resolver<'_> {
                     .flat_map(|path| path.name_refs())
                     .collect();
                 if let Some(first) = names.first() {
-                    let packaged = names.len() > 1 && self.table.packages.contains(&text(first));
+                    let packaged = names.len() > 1 && self.table.is_package(&text(first));
                     if !packaged {
                         self.type_name(first, want);
                     }
@@ -314,7 +318,7 @@ impl Resolver<'_> {
             Expr::NameRef(name) => self.type_name(name, want),
             Expr::FieldExpr(_) => {
                 if let Some((first, _)) = dotted(expr)
-                    && !self.table.packages.contains(&text(&first))
+                    && !self.table.is_package(&text(&first))
                 {
                     self.type_name(&first, want);
                 }
@@ -387,6 +391,7 @@ impl Resolver<'_> {
     fn type_names(&self, want: Want) -> Vec<String> {
         let mut names: Vec<String> = self
             .table
+            .all()
             .declarations
             .iter()
             .filter(|(_, found)| {
@@ -405,13 +410,13 @@ impl Resolver<'_> {
 
     /// What a lower-case name that owns calls is, if it is one.
     fn qualifier_kind(&self, name: &str) -> Option<&'static str> {
-        if self.table.domains.contains(name) {
+        if self.table.is_domain(name) {
             Some("domain")
         } else if self.table.library(name).is_some() {
             Some("library")
         } else if self.names.reserved(name) {
             Some("standard-library namespace")
-        } else if self.table.connections.contains(name) {
+        } else if self.table.is_connection(name) {
             Some("connection")
         } else {
             None
@@ -655,7 +660,8 @@ impl Resolver<'_> {
             ));
             return;
         }
-        if let Some(found) = self.table.declarations.get(&text) {
+        let found = self.table.declared(&text);
+        if !found.is_empty() {
             let symbol = found
                 .iter()
                 .find(|symbol| {
@@ -716,6 +722,7 @@ impl Resolver<'_> {
         }
         let candidates: Vec<String> = self
             .table
+            .all()
             .declarations
             .iter()
             .filter(|(_, found)| {
@@ -833,7 +840,7 @@ impl Resolver<'_> {
             return;
         }
         let Some(symbol) = self.table.get(&text).cloned() else {
-            if !self.table.packages.contains(&text) {
+            if !self.table.is_package(&text) {
                 let candidates = self.type_names(Want::Type);
                 let near =
                     nearest(&text, candidates.iter().map(String::as_str)).map(str::to_string);
@@ -888,7 +895,7 @@ impl Resolver<'_> {
     fn type_qualifier(&mut self, name: &ast::NameRef, calls: bool) {
         let text = text(name);
         let span = self.span(name);
-        if self.names.is_type(&text) || self.table.packages.contains(&text) {
+        if self.names.is_type(&text) || self.table.is_package(&text) {
             return;
         }
         let Some(symbol) = self.table.get(&text).cloned() else {
@@ -958,6 +965,7 @@ impl Resolver<'_> {
             {
                 let functions: Vec<String> = self
                     .table
+                    .all()
                     .declarations
                     .values()
                     .flatten()
@@ -979,24 +987,25 @@ impl Resolver<'_> {
             }
             return;
         }
-        if self.table.domains.contains(&qualifier) {
+        if self.table.is_domain(&qualifier) {
             let Some((member, span)) = member else {
                 return;
             };
             let in_domain =
                 |symbol: &&Symbol| symbol.ownership == Ownership::Domain(qualifier.clone());
-            let found = self.table.declarations.get(&member).and_then(|found| {
-                found
-                    .iter()
-                    .filter(in_domain)
-                    .find(|symbol| matches!(symbol.kind, ItemKind::Action | ItemKind::Query))
-                    .cloned()
-            });
+            let found = self
+                .table
+                .declared(&member)
+                .iter()
+                .filter(in_domain)
+                .find(|symbol| matches!(symbol.kind, ItemKind::Action | ItemKind::Query))
+                .cloned();
             match found {
                 Some(symbol) => self.access(&symbol, span),
                 None => {
                     let operations: Vec<String> = self
                         .table
+                        .all()
                         .declarations
                         .values()
                         .flatten()
@@ -1015,19 +1024,21 @@ impl Resolver<'_> {
             }
             return;
         }
-        if self.table.connections.contains(&qualifier)
+        if self.table.is_connection(&qualifier)
             || self
                 .table
-                .declarations
-                .get(&qualifier)
-                .is_some_and(|found| found.iter().any(|symbol| symbol.kind == ItemKind::Schedule))
+                .declared(&qualifier)
+                .iter()
+                .any(|symbol| symbol.kind == ItemKind::Schedule)
         {
             return;
         }
-        let mut qualifiers: Vec<String> = self.table.domains.iter().cloned().collect();
-        qualifiers.extend(self.table.connections.iter().cloned());
+        let all = self.table.all();
+        let mut qualifiers: Vec<String> = all.domains.iter().cloned().collect();
+        qualifiers.extend(all.connections.iter().cloned());
         qualifiers.extend(
             self.table
+                .all()
                 .declarations
                 .values()
                 .flatten()

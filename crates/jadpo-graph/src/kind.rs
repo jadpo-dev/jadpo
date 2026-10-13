@@ -131,8 +131,8 @@ kinds! {
     Fixture: "fixture", Behaviour, Declared, 13;
     Seed: "seed", Behaviour, Declared, 5;
     Test: "test", Behaviour, Declared, 13;
-    Site: "site", Behaviour, Reserved, 18;
-    Branch: "branch", Behaviour, Reserved, 16;
+    Site: "site", Behaviour, Built, 18;
+    Branch: "branch", Behaviour, Built, 16;
 
     Api: "api", Triggers, Reserved, 7;
     RouteGroup: "route_group", Triggers, Declared, 7;
@@ -173,6 +173,13 @@ kinds! {
 }
 
 impl Kind {
+    /// Whether nodes of this kind are numbered per build rather than
+    /// known by a stable identity: a callable's sites and branches (area
+    /// 18), which a diff leaves to the callable's own change.
+    pub fn per_build(self) -> bool {
+        matches!(self, Kind::Site | Kind::Branch)
+    }
+
     /// Whether nodes of this kind are written in source and can be called
     /// by name: functions, actions, queries and fixtures.
     pub fn is_callable(self) -> bool {

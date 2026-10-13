@@ -519,10 +519,30 @@ impl TypeTable {
         table.defs.extend(ruled);
         table
     }
+}
+
+impl TypeView for TypeTable {
+    fn def(&self, name: &str) -> Option<&Def> {
+        self.defs.get(name)
+    }
+}
+
+/// Reading types: what each name means, through [`TypeView::def`], and the
+/// compatibility rules built on that. The whole [`TypeTable`] is one view;
+/// a body reads through the per-name lookups instead, so it depends only
+/// on the declarations it reads (docs/compiler-runtime.md §2.4).
+pub trait TypeView {
+    /// What `name` means, if it is a type of the project or the stubs.
+    fn def(&self, name: &str) -> Option<&Def>;
+
+    /// Whether `name` is declared in the project or the stubs.
+    fn contains(&self, name: &str) -> bool {
+        self.def(name).is_some()
+    }
 
     /// The rules a block of settings adds to values of `ty`; settings that
     /// don't apply are left out here and reported by the declaration check.
-    pub fn rules_from(&self, ty: &Ty, settings: &[Setting]) -> Rules {
+    fn rules_from(&self, ty: &Ty, settings: &[Setting]) -> Rules {
         let subject = self.subject(ty);
         let mut out = Rules::default();
         for (name, value) in settings {
@@ -531,35 +551,24 @@ impl TypeTable {
         out
     }
 
-    // --- reading the table --------------------------------------------------
-
-    pub fn def(&self, name: &str) -> Option<&Def> {
-        self.defs.get(name)
-    }
-
-    /// Whether `name` is declared in the project or the stubs.
-    pub fn contains(&self, name: &str) -> bool {
-        self.defs.contains_key(name)
-    }
-
     /// The fields of an object, input, output, event, email, failure or
     /// entity.
-    pub fn fields(&self, name: &str) -> Option<&[FieldDef]> {
-        match self.defs.get(name)? {
+    fn fields(&self, name: &str) -> Option<&[FieldDef]> {
+        match self.def(name)? {
             Def::Fields { fields, .. } => Some(fields),
             _ => None,
         }
     }
 
-    pub fn base(&self, name: &str) -> Option<FieldsBase> {
-        match self.defs.get(name)? {
+    fn base(&self, name: &str) -> Option<FieldsBase> {
+        match self.def(name)? {
             Def::Fields { base, .. } => Some(*base),
             _ => None,
         }
     }
 
-    pub fn variants(&self, name: &str) -> Option<&[VariantDef]> {
-        match self.defs.get(name)? {
+    fn variants(&self, name: &str) -> Option<&[VariantDef]> {
+        match self.def(name)? {
             Def::Enum { variants } => Some(variants),
             _ => None,
         }
@@ -567,8 +576,8 @@ impl TypeTable {
 
     /// The field `owner.path`: an object's or entity's field, or a payload
     /// field `Enum.variant.field`.
-    pub fn field(&self, host: &str, path: &[String]) -> Option<&FieldDef> {
-        match (self.defs.get(host)?, path) {
+    fn field(&self, host: &str, path: &[String]) -> Option<&FieldDef> {
+        match (self.def(host)?, path) {
             (Def::Fields { fields, .. }, [name]) => fields.iter().find(|f| f.name == *name),
             (Def::Enum { variants }, [variant, name]) => variants
                 .iter()
@@ -583,13 +592,13 @@ impl TypeTable {
 
     /// The type a written type stands for; `Error` for anything not a type,
     /// which the declaration check or resolution reports.
-    pub fn resolve(&self, written: &TypeRef) -> Ty {
+    fn resolve(&self, written: &TypeRef) -> Ty {
         self.resolve_with(written, false)
     }
 
     /// As [`TypeTable::resolve`], reading single capital letters and
     /// `Function<T, U>` as a standard-library signature does.
-    pub fn resolve_std(&self, written: &TypeRef) -> Ty {
+    fn resolve_std(&self, written: &TypeRef) -> Ty {
         self.resolve_with(written, true)
     }
 
@@ -650,7 +659,7 @@ impl TypeTable {
         if BASES.contains(&name) {
             return Ty::Error;
         }
-        if self.defs.contains_key(name) {
+        if self.def(name).is_some() {
             return if args.is_empty() {
                 Ty::Named(name.to_string())
             } else {
@@ -665,7 +674,7 @@ impl TypeTable {
 
     /// Whether a value of this type may be `none`: a `T?`, or a field type
     /// whose declared type is one.
-    pub fn is_nullable(&self, ty: &Ty) -> bool {
+    fn is_nullable(&self, ty: &Ty) -> bool {
         let mut current = ty.clone();
         for _ in 0..DEPTH {
             match &current {
@@ -683,13 +692,13 @@ impl TypeTable {
     /// One declared widening step (area 2): a field type to its declared
     /// type, a named type to the named type it builds on. Never from a
     /// named type to a built-in representation.
-    pub fn parent(&self, ty: &Ty) -> Option<Ty> {
+    fn parent(&self, ty: &Ty) -> Option<Ty> {
         match ty {
             Ty::Field(host, path) => {
                 let declared = self.field(host, path)?.declared.strip_nullable().clone();
                 (!declared.is_error()).then_some(declared)
             }
-            Ty::Named(name) => match self.defs.get(name)? {
+            Ty::Named(name) => match self.def(name)? {
                 Def::Scalar { parent, .. } => match parent {
                     Ty::Prim(prim) if prim.is_representation() => None,
                     Ty::Error => None,
@@ -703,7 +712,7 @@ impl TypeTable {
 
     /// The built-in type at the bottom of a scalar's chain: `Email` for a
     /// type built on `Email`, `Int` for `Customer.age`.
-    pub fn base_prim(&self, ty: &Ty) -> Option<Prim> {
+    fn base_prim(&self, ty: &Ty) -> Option<Prim> {
         let mut current = ty.strip_nullable().clone();
         for _ in 0..DEPTH {
             match &current {
@@ -711,7 +720,7 @@ impl TypeTable {
                 Ty::Field(host, path) => {
                     current = self.field(host, path)?.declared.strip_nullable().clone();
                 }
-                Ty::Named(name) => match self.defs.get(name)? {
+                Ty::Named(name) => match self.def(name)? {
                     Def::Scalar { parent, .. } => current = parent.strip_nullable().clone(),
                     _ => return None,
                 },
@@ -723,14 +732,14 @@ impl TypeTable {
 
     /// The type with field types and refinements followed to what they
     /// are built from: `List<Tag>` for a field declared `List<Tag>`.
-    pub fn structure(&self, ty: &Ty) -> Ty {
+    fn structure(&self, ty: &Ty) -> Ty {
         let mut current = ty.strip_nullable().clone();
         for _ in 0..DEPTH {
             let next = match &current {
                 Ty::Field(host, path) => self
                     .field(host, path)
                     .map(|f| f.declared.strip_nullable().clone()),
-                Ty::Named(name) => match self.defs.get(name) {
+                Ty::Named(name) => match self.def(name) {
                     Some(Def::Scalar { parent, .. }) => Some(parent.strip_nullable().clone()),
                     _ => None,
                 },
@@ -746,12 +755,12 @@ impl TypeTable {
 
     /// What a value of this type is made of: the validated text types are
     /// text.
-    pub fn representation(&self, ty: &Ty) -> Option<Prim> {
+    fn representation(&self, ty: &Ty) -> Option<Prim> {
         self.base_prim(ty).map(Prim::representation)
     }
 
     /// What constraints on this type apply to.
-    pub fn subject(&self, ty: &Ty) -> Subject {
+    fn subject(&self, ty: &Ty) -> Subject {
         let mut current = ty.strip_nullable().clone();
         for _ in 0..DEPTH {
             match &current {
@@ -761,7 +770,7 @@ impl TypeTable {
                     Some(field) => current = field.declared.strip_nullable().clone(),
                     None => return Subject::Other,
                 },
-                Ty::Named(name) => match self.defs.get(name) {
+                Ty::Named(name) => match self.def(name) {
                     Some(Def::Scalar { parent, .. }) => current = parent.strip_nullable().clone(),
                     _ => return Subject::Other,
                 },
@@ -774,7 +783,7 @@ impl TypeTable {
     /// Every rule a value of this type must follow, with the declaration
     /// that adds it, most specific first: a field's own rules, then its
     /// declared type's, then the types that one builds on.
-    pub fn rule_chain(&self, ty: &Ty) -> Vec<(String, &Rules)> {
+    fn rule_chain(&self, ty: &Ty) -> Vec<(String, &Rules)> {
         let mut chain = Vec::new();
         let mut current = ty.strip_nullable().clone();
         for _ in 0..DEPTH {
@@ -786,7 +795,7 @@ impl TypeTable {
                     chain.push((current.to_string(), &field.rules));
                     current = field.declared.strip_nullable().clone();
                 }
-                Ty::Named(name) => match self.defs.get(name) {
+                Ty::Named(name) => match self.def(name) {
                     Some(Def::Scalar { parent, rules }) => {
                         chain.push((name.clone(), rules));
                         current = parent.strip_nullable().clone();
@@ -802,7 +811,7 @@ impl TypeTable {
     /// Whether a value of type `actual` may be used where `expected` is
     /// required, without a constructor (area 2, "When one type can stand in
     /// for another").
-    pub fn assignable(&self, actual: &Ty, expected: &Ty) -> bool {
+    fn assignable(&self, actual: &Ty, expected: &Ty) -> bool {
         // A type variable no argument fixed accepts anything, but the
         // containers around it are still checked.
         if expected.has_unknown() && !self.same_shape(actual, expected) {
@@ -836,7 +845,7 @@ impl TypeTable {
 
     /// Whether `actual` is the container `expected` is, all the way down to
     /// the positions a type variable no argument fixed holds.
-    pub fn same_shape(&self, actual: &Ty, expected: &Ty) -> bool {
+    fn same_shape(&self, actual: &Ty, expected: &Ty) -> bool {
         if actual.has_error() {
             return true;
         }
@@ -883,7 +892,7 @@ impl TypeTable {
     /// Whether two field types refine a common type, as `Customer.id` and
     /// `Supplier.id` both refine `Uuid`: passing one for the other is a
     /// sibling mismatch.
-    pub fn siblings(&self, actual: &Ty, expected: &Ty) -> bool {
+    fn siblings(&self, actual: &Ty, expected: &Ty) -> bool {
         let (a, b) = (actual.strip_nullable(), expected.strip_nullable());
         if !matches!(a, Ty::Field(..)) || !matches!(b, Ty::Field(..)) {
             return false;

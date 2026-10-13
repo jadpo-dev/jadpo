@@ -15,7 +15,8 @@ use super::super::shape::FieldsBase;
 use super::super::signatures::Sig;
 use super::super::table::Def;
 use super::super::ty::{Prim, Ty};
-use super::{Body, CallKind, Context, Fallible, LocalKind, capital, is_literal, text};
+use super::facts::Reach;
+use super::{Body, CallKind, Context, Fallible, LocalKind, capital, is_literal, node_key, text};
 use crate::case::starts_upper;
 use crate::std_lib::{Namespace, Operation, StdNames};
 use crate::tree::{self, dotted};
@@ -35,6 +36,10 @@ impl Body<'_> {
     pub(super) fn call(&mut self, call: &ast::CallExpr, expected: Option<&Ty>) -> Ty {
         let (ty, kind) = self.call_kind(call, expected);
         self.last_call = kind;
+        let fallible = self.call_fallible(call);
+        self.facts
+            .fallible
+            .insert(node_key(call.syntax()), fallible);
         self.unhandled(call);
         ty
     }
@@ -44,60 +49,91 @@ impl Body<'_> {
         call: &ast::CallExpr,
         expected: Option<&Ty>,
     ) -> (Ty, CallKind) {
+        let (ty, kind, reach) = self.resolve_call(call, expected);
+        self.facts.reaches.insert(node_key(call.syntax()), reach);
+        (ty, kind)
+    }
+
+    /// The one place a call is resolved: what it reaches, checked, with its
+    /// result and kind. The typed body, the graph's `calls` edges, recursion
+    /// and the language server read what this records.
+    fn resolve_call(
+        &mut self,
+        call: &ast::CallExpr,
+        expected: Option<&Ty>,
+    ) -> (Ty, CallKind, Reach) {
         match call.expr() {
             Some(Expr::NameRef(name)) => {
                 let callee = text(&name);
                 if starts_upper(&callee) {
                     let ty = self.construct(&callee, None, call);
-                    return (ty, CallKind::Pure(format!("{callee}(...)")));
+                    let reach = if ty.has_error() {
+                        Reach::Unknown
+                    } else {
+                        Reach::Construct(ty.clone())
+                    };
+                    return (ty, CallKind::Pure(format!("{callee}(...)")), reach);
                 }
                 if self.is_local(&callee) {
                     // Functions aren't values, so a local is never called;
                     // resolution reports it (area 1).
-                    self.read(&callee);
+                    self.read(&name);
                     self.args_only(call);
-                    return (Ty::Error, CallKind::Other);
+                    return (Ty::Error, CallKind::Other, Reach::Unknown);
                 }
                 if let Some(library) = self.library.clone()
-                    && let Some(sig) = self.calls.library.get(&(library, callee.clone())).cloned()
+                    && let Some(sig) = self.calls.library_signature(&library, &callee).cloned()
                 {
                     self.args(&sig, call, &callee);
-                    return (sig.result, CallKind::Pure(callee));
+                    let reach = Reach::Library {
+                        library,
+                        function: callee.clone(),
+                        fails: sig.fails.clone(),
+                    };
+                    return (sig.result, CallKind::Pure(callee), reach);
                 }
-                let Some(sig) = self.calls.plain.get(&callee).cloned() else {
+                let Some(sig) = self.calls.signature(&callee).cloned() else {
                     self.args_only(call);
-                    return (Ty::Error, CallKind::Other);
+                    return (Ty::Error, CallKind::Other, Reach::Unknown);
                 };
                 let kind = self.callable_kind(&callee);
                 let span = self.span(&name);
                 self.may_call(span, &callee, kind.as_ref());
                 self.args(&sig, call, &callee);
+                let reach = match &kind {
+                    Some(kind) => Reach::Callable {
+                        kind: kind.clone(),
+                        name: callee.clone(),
+                        fails: sig.fails.clone(),
+                    },
+                    None => Reach::Unknown,
+                };
                 let call_kind = match kind {
                     Some(ItemKind::Function) => CallKind::Pure(callee),
                     _ => CallKind::Effect(callee),
                 };
-                (sig.result, call_kind)
+                (sig.result, call_kind, reach)
             }
             Some(callee @ Expr::FieldExpr(_)) => self.dotted_call(&callee, call, expected),
             Some(other) => {
                 self.infer(&other);
                 self.args_only(call);
-                (Ty::Error, CallKind::Other)
+                (Ty::Error, CallKind::Other, Reach::Unknown)
             }
-            None => (Ty::Error, CallKind::Other),
+            None => (Ty::Error, CallKind::Other, Reach::Unknown),
         }
     }
 
-    pub(super) fn dotted_call(
+    fn dotted_call(
         &mut self,
         callee: &Expr,
         call: &ast::CallExpr,
         expected: Option<&Ty>,
-    ) -> (Ty, CallKind) {
+    ) -> (Ty, CallKind, Reach) {
         let Some((first, rest)) = dotted(callee) else {
             self.infer(callee);
             self.args_only(call);
-            return (Ty::Error, CallKind::Other);
+            return (Ty::Error, CallKind::Other, Reach::Unknown);
         };
         let head = text(&first);
         let rest: Vec<String> = rest.iter().map(text).collect();
@@ -106,7 +142,8 @@ impl Body<'_> {
             if self.table.field(&head, &rest).is_some() {
                 let target = Ty::Field(head.clone(), rest.clone());
                 let ty = self.construct(&written, Some(target), call);
-                return (ty, CallKind::Pure(format!("{written}(...)")));
+                let reach = Reach::Construct(Ty::Field(head.clone(), rest.clone()));
+                return (ty, CallKind::Pure(format!("{written}(...)")), reach);
             }
             if self.callable_kind(&head) == Some(ItemKind::Entity) {
                 // An entity's operations read and write stored data
@@ -116,68 +153,78 @@ impl Body<'_> {
                     self.persistence(span, &written);
                 }
                 self.args_only(call);
-                return (Ty::Error, CallKind::Effect(written));
+                let reach = Reach::Entity {
+                    entity: head.clone(),
+                    operation: rest.join("."),
+                };
+                return (Ty::Error, CallKind::Effect(written), reach);
             }
             self.args_only(call);
-            return (Ty::Error, CallKind::Other);
+            return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
         if self.is_local(&head) {
             // Values have no methods; resolution and area 2 own `x.f(...)`.
-            self.read(&head);
+            self.read(&first);
             self.args_only(call);
-            return (Ty::Error, CallKind::Other);
+            return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
         let [member] = rest.as_slice() else {
             self.args_only(call);
-            return (Ty::Error, CallKind::Effect(written));
+            return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
         };
         let names = StdNames::get();
         if names.namespace(&head) == Some(Namespace::Standard) {
             if let Some(operation) = names.operation(&head, member) {
                 let ty = self.std_call(operation, call, &written, expected);
-                return (ty, CallKind::Pure(written));
+                let reach = jadpo_std::operation(&head, member)
+                    .map_or(Reach::Unknown, |operation| Reach::Std(operation.op));
+                return (ty, CallKind::Pure(written), reach);
             }
             if names.name_only(&head, member) {
                 let span = self.span(callee);
                 self.not_built_yet(span, &written);
             }
             self.args_only(call);
-            return (Ty::Error, CallKind::Pure(written));
+            return (Ty::Error, CallKind::Pure(written), Reach::Unknown);
         }
         if self.symbols.library(&head).is_some() {
-            return match self
-                .calls
-                .library
-                .get(&(head.clone(), member.clone()))
-                .cloned()
-            {
+            return match self.calls.library_signature(&head, member).cloned() {
                 Some(sig) => {
                     self.args(&sig, call, &written);
-                    (sig.result, CallKind::Pure(written))
+                    let reach = Reach::Library {
+                        library: head.clone(),
+                        function: member.clone(),
+                        fails: sig.fails.clone(),
+                    };
+                    (sig.result, CallKind::Pure(written), reach)
                 }
                 None => {
                     self.args_only(call);
-                    (Ty::Error, CallKind::Other)
+                    (Ty::Error, CallKind::Other, Reach::Unknown)
                 }
             };
         }
-        if self.symbols.domains.contains(&head) {
+        if self.symbols.is_domain(&head) {
             let kind = self.callable_kind(member);
             if let Some(sig) = self
                 .calls
-                .plain
-                .get(member)
+                .signature(member)
                 .filter(|_| matches!(kind, Some(ItemKind::Action | ItemKind::Query)))
                 .cloned()
             {
                 let span = self.span(callee);
                 self.may_call(span, &written, kind.as_ref());
                 self.args(&sig, call, &written);
-                return (sig.result, CallKind::Effect(written));
+                let reach = Reach::Callable {
+                    kind: kind.unwrap_or(ItemKind::Action),
+                    name: member.clone(),
+                    fails: sig.fails.clone(),
+                };
+                return (sig.result, CallKind::Effect(written), reach);
             }
         }
         self.args_only(call);
-        (Ty::Error, CallKind::Effect(written))
+        (Ty::Error, CallKind::Effect(written), Reach::Unknown)
     }
 
     /// A standard-library operation the language declares but nothing runs
@@ -200,8 +247,7 @@ impl Body<'_> {
     /// library functions.
     pub(super) fn callable_kind(&self, name: &str) -> Option<ItemKind> {
         self.symbols
-            .declarations
-            .get(name)?
+            .declared(name)
             .iter()
             .find(|symbol| symbol.library.is_none())
             .map(|symbol| symbol.kind.clone())
@@ -410,6 +456,9 @@ impl Body<'_> {
             }
             slots.push(slot);
         }
+        self.facts
+            .slots
+            .insert(node_key(call.syntax()), slots.clone());
         let mut bound: BTreeMap<String, Ty> = BTreeMap::new();
         let mut actual: Vec<Option<Ty>> = Vec::new();
         for (arg, slot) in args.iter().zip(&slots) {
@@ -704,8 +753,9 @@ impl Body<'_> {
         call: &ast::CallExpr,
     ) -> Ty {
         let (ty, verdict) = self.construct_checked(written, field, call);
-        self.constructions
-            .insert(super::key(call.syntax()), verdict);
+        self.facts
+            .constructions
+            .insert(node_key(call.syntax()), verdict);
         ty
     }
 

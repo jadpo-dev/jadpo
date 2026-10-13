@@ -141,7 +141,9 @@ fn the_schema_lists_every_kind_with_reserved_ones_marked() {
     for kind in EdgeKind::ALL {
         assert_eq!(EdgeKind::from_word(kind.word()), Some(*kind));
     }
-    assert_eq!(Kind::Site.status(), Status::Reserved);
+    assert_eq!(Kind::Site.status(), Status::Built);
+    assert!(Kind::Site.per_build() && Kind::Branch.per_build() && !Kind::Action.per_build());
+    assert_eq!(Kind::Deployable.status(), Status::Reserved);
 }
 
 #[test]

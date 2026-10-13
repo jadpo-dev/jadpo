@@ -462,7 +462,19 @@ fn editing_a_body_reruns_only_its_own_failure_set() {
     };
     assert!(jadpo_check::check(&db, project).is_empty());
     check_sets(&db);
-    db.take_executions();
+    let cold = db.take_executions();
+    for query in [
+        "callables",
+        "failure_table",
+        "typed_body",
+        "failure_set",
+        "failure_sets",
+    ] {
+        assert!(
+            cold.iter().any(|key| key.starts_with(&format!("{query}("))),
+            "{query} runs: {cold:?}"
+        );
+    }
 
     // A body edit in `lookup` keeps its `fails` list: the caller's checks
     // and failure set are reused.
@@ -480,7 +492,12 @@ fn editing_a_body_reruns_only_its_own_failure_set() {
     };
     assert_eq!(count("callables"), 0, "signatures are unchanged: {log:?}");
     assert_eq!(count("failure_table"), 0, "failures are unchanged: {log:?}");
-    assert_eq!(count("body_check"), 1, "only lookup's body: {log:?}");
+    assert_eq!(count("typed_body"), 1, "only lookup's body: {log:?}");
+    assert_eq!(
+        count("failure_set"),
+        1,
+        "lookup's set is taken again: {log:?}"
+    );
     assert_eq!(
         count("failure_sets"),
         0,
@@ -505,7 +522,7 @@ fn editing_a_body_reruns_only_its_own_failure_set() {
             .filter(|key| key.starts_with(&format!("{query}(")))
             .count()
     };
-    assert_eq!(count("body_check"), 1, "only lookup's body: {log:?}");
+    assert_eq!(count("typed_body"), 1, "only lookup's body: {log:?}");
     assert_eq!(count("failure_sets"), 1, "only lookup's set: {log:?}");
 
     // Removing a failure from `lookup`'s `fails` list changes what callers

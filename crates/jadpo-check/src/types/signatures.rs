@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use jadpo_db::{Db, ItemKind, Project, Signature, item_tree};
 
-use super::table::type_table;
+use super::table::{TypeView, type_table};
 use super::ty::{Prim, Ty, TypeRef};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

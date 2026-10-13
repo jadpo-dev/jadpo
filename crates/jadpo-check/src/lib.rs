@@ -12,6 +12,7 @@ mod case;
 mod failures;
 pub mod graph;
 mod layout;
+pub mod lookups;
 mod naming;
 mod resolve;
 mod std_lib;

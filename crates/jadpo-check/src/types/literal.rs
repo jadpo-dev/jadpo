@@ -6,7 +6,7 @@
 use jadpo_diag::{Diagnostic, Span, rule};
 
 use super::rules::{Broken, Const, check_builtin, check_rules};
-use super::table::{Def, TypeTable};
+use super::table::{Def, TypeView};
 use super::ty::{Prim, Ty};
 
 /// Why a literal can't be the expected type.
@@ -21,7 +21,7 @@ pub enum Problem {
 }
 
 /// Checks a constant against the type it goes into.
-pub fn check(table: &TypeTable, expected: &Ty, value: &Const) -> Result<(), Problem> {
+pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), Problem> {
     if expected.has_error() || matches!(expected, Ty::Var(_) | Ty::Opaque(..)) {
         return Ok(());
     }
@@ -112,7 +112,7 @@ pub fn check(table: &TypeTable, expected: &Ty, value: &Const) -> Result<(), Prob
 }
 
 /// What a type is, for a reason line: "built on `Int`", "an enum".
-pub fn what(table: &TypeTable, ty: &Ty) -> String {
+pub fn what(table: &dyn TypeView, ty: &Ty) -> String {
     match ty.strip_nullable() {
         Ty::Prim(prim) if prim.is_representation() => "a built-in type".to_string(),
         Ty::Prim(prim) => format!("built on `{}`", prim.representation().name()),
@@ -139,7 +139,7 @@ pub fn what(table: &TypeTable, ty: &Ty) -> String {
 /// `constructor` names the type being constructed, whose wrong-kind error is
 /// `type.constructor_input`.
 pub fn diagnostic(
-    table: &TypeTable,
+    table: &dyn TypeView,
     problem: Problem,
     written: &str,
     expected: &Ty,

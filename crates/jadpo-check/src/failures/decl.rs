@@ -11,9 +11,10 @@ use jadpo_db::{Db, File, Project};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
-use super::table::{FailureTable, failure_table, is_failure_decl};
+use super::table::is_failure_decl;
 use super::{DECLARABLE_KINDS, MEMBERS, RUNTIME_CODES};
 use crate::case::{is_lower_snake, to_snake};
+use crate::lookups::{FailureView, Lookup};
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 use crate::types::Const;
@@ -24,9 +25,10 @@ pub fn failure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
     let Some(source) = tree::source(db, file) else {
         return Vec::new();
     };
+    let lookup = Lookup::new(db, project);
     let mut checker = Checker {
         path: file.path(db),
-        table: failure_table(db, project),
+        table: &lookup,
         out: Vec::new(),
     };
     for (index, decl) in source.decls().enumerate() {
@@ -41,7 +43,8 @@ pub fn failure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
 
 struct Checker<'a> {
     path: &'a str,
-    table: &'a FailureTable,
+    /// The declared failures, read name by name and code by code.
+    table: &'a Lookup<'a>,
     out: Vec<Diagnostic>,
 }
 
@@ -358,7 +361,7 @@ impl Checker<'_> {
     }
 
     fn duplicate_code(&mut self, name: &str, index: u32, span: Span) {
-        let Some(info) = self.table.get(name) else {
+        let Some(info) = self.table.failure_info(name) else {
             return;
         };
         if info.path != self.path || info.index != index {
@@ -389,7 +392,7 @@ impl Checker<'_> {
             );
             return;
         }
-        let Some(first) = self.table.with_code(&code).first() else {
+        let Some(first) = self.table.failures_with_code(&code).first() else {
             return;
         };
         if first.name == name {

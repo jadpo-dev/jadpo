@@ -153,11 +153,16 @@ fn targets(graph: &Graph, id: NodeId, kind: EdgeKind) -> BTreeSet<Key> {
         .collect()
 }
 
-/// What changed from `before` to `after`.
+/// What changed from `before` to `after`. Sites and branches are numbered
+/// per build (area 18): only declarations and fields are recognised across
+/// builds, so a change inside a callable shows as that callable's change.
 pub fn diff(before: &Graph, after: &Graph) -> Diff {
     let mut changes = Vec::new();
     for id in before.ids() {
         let node = before.node(id);
+        if node.kind.per_build() {
+            continue;
+        }
         if after.find(&node.key).is_none() {
             changes.push(Change {
                 key: node.key.clone(),
@@ -169,6 +174,9 @@ pub fn diff(before: &Graph, after: &Graph) -> Diff {
     }
     for id in after.ids() {
         let node = after.node(id);
+        if node.kind.per_build() {
+            continue;
+        }
         let Some(old_id) = before.find(&node.key) else {
             let needs = match node.kind {
                 Kind::Domain => vec!["DomainChange.created".to_string()],

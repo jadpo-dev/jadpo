@@ -351,7 +351,18 @@ fn editing_a_body_rechecks_only_that_files_bodies() {
     let project = support::project(&db, Layout::Loose, &[("a.jadpo", A), ("b.jadpo", B)]);
     let a = project.files(&db)[0];
     assert!(jadpo_check::check(&db, project).is_empty());
-    db.take_executions();
+    let cold = db.take_executions();
+    for query in [
+        "typed_body",
+        "action_calls",
+        "action_cycles",
+        "recursion_problems",
+    ] {
+        assert!(
+            cold.iter().any(|key| key.starts_with(&format!("{query}("))),
+            "{query} runs: {cold:?}"
+        );
+    }
     a.set_text(&mut db).to(A.replace(
         "    return x\n",
         "    var same: Count = x\n    return same\n",
@@ -363,7 +374,7 @@ fn editing_a_body_rechecks_only_that_files_bodies() {
             .filter(|key| key.starts_with(&format!("{query}(")))
             .count()
     };
-    assert_eq!(count("body_check"), 1, "only a's bodies: {log:?}");
+    assert_eq!(count("typed_body"), 1, "only a's body: {log:?}");
     assert_eq!(count("action_calls"), 1, "only a's calls: {log:?}");
     assert_eq!(
         count("action_cycles"),
@@ -371,6 +382,19 @@ fn editing_a_body_rechecks_only_that_files_bodies() {
         "a still calls nothing, so the cycles are reused: {log:?}"
     );
     assert_eq!(count("recursion_problems"), 0, "{log:?}");
+
+    // The control: a new call between actions finds the cycles again.
+    a.set_text(&mut db)
+        .to(A.replace("    return x\n", "    return total(x)\n"));
+    jadpo_check::check(&db, project);
+    let log = db.take_executions();
+    assert_eq!(
+        log.iter()
+            .filter(|key| key.starts_with("action_cycles("))
+            .count(),
+        1,
+        "{log:?}"
+    );
 }
 
 #[test]

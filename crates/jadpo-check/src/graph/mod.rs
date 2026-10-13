@@ -11,7 +11,7 @@
 
 mod lookup;
 mod part;
-mod paths;
+pub(crate) mod paths;
 mod similar;
 mod text;
 
@@ -20,7 +20,11 @@ pub use part::{FilePart, file_part};
 pub use similar::{FunctionShape, function_shapes, similar_problems};
 pub use text::LineIndex;
 
-use jadpo_db::{Db, ItemKind, Project, Symbols, symbols};
+use jadpo_db::{Db, ItemKind, Project, symbols};
+use jadpo_syntax::ast::Decl;
+
+use crate::lookups::NameView;
+use crate::tree;
 use jadpo_graph::{Builder, Graph, Key, Kind, Node, Registry, TypeRef};
 
 use crate::types::Ty;
@@ -59,10 +63,9 @@ pub fn kind_of(kind: &ItemKind) -> Option<Kind> {
 
 /// The key of the project declaration called `name` (not a library
 /// function), when it has a node.
-pub fn declaration_key(symbols: &Symbols, name: &str) -> Option<Key> {
+pub fn declaration_key(symbols: &dyn NameView, name: &str) -> Option<Key> {
     let symbol = symbols
-        .declarations
-        .get(name)?
+        .declared(name)
         .iter()
         .find(|symbol| symbol.library.is_none())?;
     let kind = kind_of(&symbol.kind)?;
@@ -111,7 +114,7 @@ pub fn variant_key(host: &str, variant: &str) -> Key {
 /// A checker type as the graph holds it: declared types, entities, fields
 /// and variants by key, the standard library's by name, and a type already
 /// reported as wrong as it is written.
-pub fn type_ref(symbols: &Symbols, ty: &Ty) -> TypeRef {
+pub fn type_ref(symbols: &dyn NameView, ty: &Ty) -> TypeRef {
     let boxed = |inner: &Ty| Box::new(type_ref(symbols, inner));
     match ty {
         Ty::Prim(builtin) => TypeRef::Builtin(*builtin),
@@ -131,6 +134,39 @@ pub fn type_ref(symbols: &Symbols, ty: &Ty) -> TypeRef {
         Ty::Error | Ty::Var(_) | Ty::Unknown(_) | Ty::Number | Ty::Function(..) => {
             TypeRef::Written(ty.to_string())
         }
+    }
+}
+
+/// The key of the callable declaration `decl` in the file at `path`, or of
+/// its library's function `function`.
+pub fn callable_key(
+    symbols: &dyn NameView,
+    path: &str,
+    decl: &Decl,
+    function: Option<u32>,
+) -> Option<Key> {
+    match (decl, function) {
+        (Decl::LibraryDecl(library), Some(index)) => {
+            let name = library.name().as_ref().and_then(tree::name_text)?;
+            let function = tree::library_functions(library)
+                .into_iter()
+                .nth(index as usize)?;
+            let function = function.name().as_ref().and_then(tree::name_text)?;
+            Some(library_function_key(&name, &function))
+        }
+        (Decl::TestDecl(test), None) => {
+            let name = test.string_token()?.text().trim_matches('"').to_string();
+            Some(registry().key(Kind::Test, &format!("{path} \"{name}\""), None))
+        }
+        (Decl::SeedDecl(seed), None) => {
+            let name = seed.name().as_ref().and_then(tree::name_text)?;
+            Some(registry().key(Kind::Seed, &name, None))
+        }
+        (decl, None) => {
+            let name = tree::decl_name(decl).as_ref().and_then(tree::name_text)?;
+            declaration_key(symbols, &name)
+        }
+        _ => None,
     }
 }
 

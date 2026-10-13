@@ -14,7 +14,7 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::rules::{Const, Num, Rules};
 use super::super::ty::Ty;
-use super::{Body, key};
+use super::{Body, node_key};
 
 /// One end of a range: unbounded below, a number, or unbounded above.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -268,7 +268,7 @@ impl Body<'_> {
                 }),
                 high: End::Above,
             },
-            other => match self.types.get(&key(other.syntax())) {
+            other => match self.facts.types.get(&node_key(other.syntax())) {
                 Some(ty) => self.type_interval(ty),
                 None => Interval::ANY,
             },

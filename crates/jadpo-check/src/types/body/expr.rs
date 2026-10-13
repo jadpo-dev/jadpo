@@ -13,7 +13,7 @@ use super::super::rules::{Const, Rules};
 use super::super::shape::FieldsBase;
 use super::super::table::{Def, FieldDef};
 use super::super::ty::{Prim, Ty};
-use super::{Body, did_you_mean, is_literal, text};
+use super::{Body, did_you_mean, is_literal, node_key, text};
 use crate::case::starts_upper;
 use crate::std_lib::StdNames;
 use crate::tree::{self, dotted};
@@ -21,8 +21,7 @@ use crate::tree::{self, dotted};
 impl Body<'_> {
     // --- checking against an expected type -------------------------------
 
-    /// Checks `expr` where `expected` is required.
-    pub(super) fn check(&mut self, expr: &Expr, expected: &Ty) {
+    fn check_value(&mut self, expr: &Expr, expected: &Ty) {
         if let Expr::ParenExpr(paren) = expr {
             if let Some(inner) = paren.expr() {
                 self.check(&inner, expected);
@@ -67,12 +66,25 @@ impl Body<'_> {
         }
         if let Expr::CallExpr(call) = expr {
             let actual = self.call(call, Some(expected));
-            self.types.insert(super::key(expr.syntax()), actual.clone());
+            self.facts
+                .types
+                .insert(node_key(expr.syntax()), actual.clone());
             self.require(expr, &actual, expected);
             return;
         }
         let actual = self.infer(expr);
         self.require(expr, &actual, expected);
+    }
+
+    /// Checks `expr` where `expected` is required, and records the type it
+    /// takes there when nothing else did: a literal's is the type it goes
+    /// into.
+    pub(super) fn check(&mut self, expr: &Expr, expected: &Ty) {
+        self.check_value(expr, expected);
+        self.facts
+            .types
+            .entry(node_key(expr.syntax()))
+            .or_insert_with(|| expected.clone());
     }
 
     /// Reports `actual` where `expected` is required, unless it widens.
@@ -193,7 +205,7 @@ impl Body<'_> {
     /// construction can be proved safe from its parts (area 4, question 6).
     pub(super) fn infer(&mut self, expr: &Expr) -> Ty {
         let ty = self.infer_expr(expr);
-        self.types.insert(super::key(expr.syntax()), ty.clone());
+        self.facts.types.insert(node_key(expr.syntax()), ty.clone());
         ty
     }
 
@@ -265,7 +277,7 @@ impl Body<'_> {
         if starts_upper(&head) {
             return self.type_member(&head, &rest, expr);
         }
-        let Some(mut receiver) = self.read(&head) else {
+        let Some(mut receiver) = self.read(&first) else {
             if !self.is_qualifier(&head) {
                 self.unknown_value(&first);
             }
@@ -301,6 +313,10 @@ impl Body<'_> {
                 Ty::Error
             }
             Some(found) => {
+                self.facts.variants.insert(
+                    node_key(expr.syntax()),
+                    (host.to_string(), found.name.clone()),
+                );
                 if let Some(fields) = &found.fields
                     && !fields.is_empty()
                 {
@@ -383,7 +399,14 @@ impl Body<'_> {
         let field = text(name);
         let span = self.span(name);
         if let Ty::Variant(host, variant) = receiver {
-            return self.variant_field(host, variant, &field, span);
+            let ty = self.variant_field(host, variant, &field, span);
+            if !ty.has_error() {
+                self.facts.fields.insert(
+                    node_key(node.syntax()),
+                    (host.clone(), vec![variant.clone(), field.clone()]),
+                );
+            }
+            return ty;
         }
         let value = node
             .expr()
@@ -427,6 +450,9 @@ impl Body<'_> {
         let fields = self.table.fields(&host).unwrap_or(&[]);
         match fields.iter().find(|f| f.name == field) {
             Some(found) => {
+                self.facts
+                    .fields
+                    .insert(node_key(node.syntax()), (host.clone(), vec![field.clone()]));
                 let ty = Ty::Field(host, vec![field]);
                 if found.optional { ty.nullable() } else { ty }
             }
@@ -492,6 +518,10 @@ impl Body<'_> {
                     return Ty::Error;
                 }
                 let fields = fields.clone();
+                self.facts.builds.insert(
+                    node_key(record.syntax()),
+                    super::facts::BuildFact::Object(name.clone()),
+                );
                 let input = *base == FieldsBase::Input;
                 let rules = self.fields_given(record, &name, &[], &fields, input, head_span);
                 self.object_built(record, &name, rules);
@@ -513,6 +543,10 @@ impl Body<'_> {
                     self.unknown_variant(&name, variant);
                     return Ty::Error;
                 };
+                self.facts.builds.insert(
+                    node_key(record.syntax()),
+                    super::facts::BuildFact::Variant(name.clone(), variant_name.clone()),
+                );
                 match &found.fields {
                     Some(fields) => {
                         let fields = fields.clone();
@@ -674,8 +708,9 @@ impl Body<'_> {
                 let before = self.out.len();
                 self.check(&value, &expected);
                 let actual = self
+                    .facts
                     .types
-                    .get(&super::key(value.syntax()))
+                    .get(&node_key(value.syntax()))
                     .cloned()
                     .unwrap_or(Ty::Error);
                 if field.rules != Rules::default()
@@ -717,12 +752,14 @@ impl Body<'_> {
     /// nothing handles it. Entity writes (`create`, `update`'s `set:`)
     /// follow the same rule and are checked with area 6.
     fn object_built(&mut self, record: &ast::RecordExpr, shown: &str, unproved: Vec<String>) {
-        let at = super::key(record.syntax());
+        let at = node_key(record.syntax());
         if unproved.is_empty() {
-            self.constructions.insert(at, super::Fallible::Never);
+            self.facts.constructions.insert(at, super::Fallible::Never);
             return;
         }
-        self.constructions.insert(at, super::Fallible::Construction);
+        self.facts
+            .constructions
+            .insert(at, super::Fallible::Construction);
         if self.handled.contains(&at) {
             return;
         }
@@ -752,7 +789,7 @@ impl Body<'_> {
             // Types and failures as values are resolution's (area 1).
             return Ty::Error;
         }
-        match self.read(&written) {
+        match self.read(name) {
             Some(ty) => ty,
             None => {
                 self.unknown_value(name);
@@ -766,14 +803,14 @@ impl Body<'_> {
     /// connection or a schedule (area 1 resolves those).
     pub(super) fn is_qualifier(&self, name: &str) -> bool {
         StdNames::get().namespace(name).is_some()
-            || self.symbols.domains.contains(name)
-            || self.symbols.connections.contains(name)
+            || self.symbols.is_domain(name)
+            || self.symbols.is_connection(name)
             || self.symbols.library(name).is_some()
             || self
                 .symbols
-                .declarations
-                .get(name)
-                .is_some_and(|found| found.iter().any(|symbol| symbol.kind == ItemKind::Schedule))
+                .declared(name)
+                .iter()
+                .any(|symbol| symbol.kind == ItemKind::Schedule)
     }
 
     /// `type.unknown_value`: a name that isn't a local (area 3; area 14's
