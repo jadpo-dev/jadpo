@@ -1,7 +1,7 @@
 ---
 title: Debugging and review
 area: 17
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules: []
 ---
@@ -16,7 +16,7 @@ what it does to the application (who can now do what to which data) before
 reading it line by line. This page covers both: where errors point, how to
 see what a request did and why, and how a change is reviewed.
 
-> In review. Nothing here exists except `jadpo incident` and the approval report; every other command is a proposal and names its open question. What other frameworks do, and the options considered, are in [the proposals](research/17-debugging-and-review-proposals.md). Commands, `--json` and the build folder are area 14's; logging is area 4's; tracing is area 16's.
+> Decided on 2026-10-13. Nothing here exists except `jadpo incident` and the approval report. What other frameworks do, and the options considered, are in [the proposals](research/17-debugging-and-review-proposals.md). Commands, `--json` and the build folder are area 14's; logging is area 4's; tracing is area 16's.
 
 **One rule behind all of it.** The command line, the developer console and
 the agent's MCP server are three views of one set of evidence, produced by
@@ -85,7 +85,7 @@ takes that event and answers two things (question 2):
 1. **Where it happened**, in the source of that build: file, line and the
    lines around it. `jadpo build` records the git commit in
    `build/app.meta.json`, and the runtime logs it with every event, so the
-   command can read the old source from git.
+   command can read the old source from git. *Decided 2026-10-13:* yes, as recommended.
 2. **Where that is now**: the same declaration on the current branch,
    matched by its stable identity (area 5's identity registry, extended to
    actions, queries and routes), or "changed", "removed" or "split", stated
@@ -299,12 +299,12 @@ order, as Markdown and JSON, and a static web view of the same report:
    ("viewers can now read `Project.budget`"), with whether its acceptance
    file exists in `acceptances/`.
 2. **Paths.** For each decision, the actor → route → action or query →
-   field → output path that makes it true, expandable into its surroundings.
+   field → output path that makes it true, expandable into its surroundings. *Decided 2026-10-13:* yes, as recommended.
 3. **Newly reachable code.** Declarations that did not change but are now
-   reached from a new place, which a line diff never shows.
+   reached from a new place, which a line diff never shows. *Decided 2026-10-13:* yes, as recommended.
 4. **Other behaviour.** API record changes (area 7), schema and migrations
    (area 5), failures, events and subscribers, integrations, and the
-   permissions and personal-data reports' differences (areas 9 and 15).
+   permissions and personal-data reports' differences (areas 9 and 15). *Decided 2026-10-13:* yes, as recommended.
 5. **Source,** grouped by declaration rather than by file.
 
 ```text
@@ -454,30 +454,36 @@ or read from source or generated code (the golden todo, built with
    line per request, the last 500 timelines in `build/dev/`, `jadpo trace
    <id>` for one, SQL with placeholders and parameters under area 4's rule.
    Telescope, Rails' query log and Encore's dashboard all show this locally,
-   and the spans already exist (area 16).
+   and the spans already exist (area 16). *Decided 2026-10-13:* yes, as recommended.
 6. **Does `jadpo test new --from <request id>` write a replay test?**
    *Recommendation:* yes: a route test with fixtures for the data read,
    fakes for integration calls, personal fields replaced, asserting what
    was observed so the author edits it to the expected outcome. It turns
-   "reproduce first" into one step an agent always takes.
+   "reproduce first" into one step an agent always takes. *Decided 2026-10-13:* yes, as recommended.
 7. **Interactive console or one-shot `jadpo call`; may it write, and does
    policy apply?** *Recommendation:* one-shot `jadpo call <name> --as <user>`
    with JSON in and out; writes allowed locally, `--rollback` like Rails'
    `--sandbox`, production refused; policy always applies, no bypass. An
-   interactive console can come later on the same mechanism.
+   interactive console can come later on the same mechanism. *Decided 2026-10-13:* yes, as recommended.
 8. **What are the developer console and MCP server?** *Recommendation:*
    local and read-only: a page served by `jadpo dev` (requests, errors, slow
    routes, deliveries, reports, the application graph with live overlays)
    and `jadpo mcp` with the same evidence as read-only tools. Acting stays
    in commands; production stays with OpenTelemetry tools. Both are roadmap
-   E11 product work, after the evidence they read exists.
+   E11 product work, after the evidence they read exists. *Decided 2026-10-13:* yes, with the CLI first. Agents that can run
+   commands (Claude Code, Codex, Cursor) use `jadpo` with `--json` and
+   `jadpo help --json`; that is enough for building. The MCP server comes
+   later for agents with no shell, mainly investigating production from a
+   chat or hosted tool, generated from the same command reference so it can
+   never drift, read-only, and protected with the application's own OAuth
+   (area 8).
 9. **What does a reviewer see first?** *Recommendation:* `jadpo approval
    --before <ref>` ordered as decisions needing a person, the paths that make
    each true, newly reachable unchanged code, other behaviour, then source by
    declaration; Markdown and JSON, plus a static web view with the change
    graph and agent-revision interdiffs, published by CI. It records no
    approvals: acceptances stay in `acceptances/` (area 7). The web view is
-   roadmap E06.
+   roadmap E06. *Decided 2026-10-13:* yes, as recommended.
 10. **What is decided in this review, and in what order is it built?**
     *Recommendation:* the contract is the evidence: `.jadpo` locations,
     build and commit identity on every event, the versioned JSON for faults,
@@ -485,23 +491,23 @@ or read from source or generated code (the golden todo, built with
     `why`, `trace`, `call` and `test new --from`. The console, MCP server,
     review web view and any breakpoints are product work. Build order:
     mapped stacks, the timeline and `trace`, `why`, `test new --from`, `call`,
-    the review report's order, MCP, the console, then the review web view.
+    the review report's order, MCP, the console, then the review web view. *Decided 2026-10-13:* yes, as recommended.
 11. **Is test coverage measured by path, and compared with production?**
     *Recommendation:* yes: paths run by tests, paths run in production with
     no test ordered by traffic, and paths unseen for 90 days. Line coverage
-    says a branch ran once; path coverage says which combinations ran.
+    says a branch ran once; path coverage says which combinations ran. *Decided 2026-10-13:* yes, as recommended.
 12. **Does the approval report use production counts when given them?**
     *Recommendation:* yes, as an optional input; the report is complete
     without it. It is the one view nobody else can build, because nobody
-    else has the meaning of the change.
+    else has the meaning of the change. *Decided 2026-10-13:* yes, as recommended.
 13. **Can a production request be recorded and replayed locally?**
     *Recommendation:* yes, opt-in per deployment, failing requests only,
     personal fields replaced by area 15's marks, recordings expiring like
     logs. Record-and-replay is hard in most languages because effects are
-    everywhere; in Jadpo they are declared.
+    everywhere; in Jadpo they are declared. *Decided 2026-10-13:* yes, as recommended.
 14. **Does the approval report count queries per path?** *Recommendation:*
     yes, from the compiler alone, ranked by production traffic when given.
-    It catches the extra query before it ships, not on a dashboard after.
+    It catches the extra query before it ships, not on a dashboard after. *Decided 2026-10-13:* yes, as recommended.
 
 ### Decisions
 
@@ -512,17 +518,17 @@ or read from source or generated code (the golden todo, built with
 | Acceptances | Carried from area 7: breaking changes, drops, policy weakening and new domains need a person-written file in `acceptances/`, owned in CODEOWNERS | 2026-10-12 |
 | Reading the caller | Carried from area 8: `current_principal` in routes only | 2026-10-12 |
 | Permissions report | Carried from area 9: `build/report/permissions.md` and `.json`, shown in the approval review | 2026-10-12 |
-| `.jadpo` locations | | |
-| Production incidents | | |
-| Breakpoints | | |
-| `jadpo why` | | |
-| Request timeline | | |
-| Tests from requests | | |
-| `jadpo call` | | |
-| Developer console and MCP | | |
-| Review report and view | | |
-| Contract and order | | |
-| Coverage by path | | |
-| Production in review | | |
-| Production replay | | |
-| Query cost of a change | | |
+| `.jadpo` locations | Always `.jadpo` file and line on every target; the runtime maps its own frames; internal frames as `runtime: <component>` | 2026-10-13 |
+| Production incidents | Events carry build and commit; `jadpo incident` shows the line then and now, or changed, removed or split | 2026-10-13 |
+| Breakpoints | Not now; revisit on the Rust and WebAssembly targets | 2026-10-13 |
+| `jadpo why` | One command explaining policy, lifecycle, concealment, cache use and subscriber runs, ending at the responsible `.jadpo` line | 2026-10-13 |
+| Request timeline | Last 500 requests in `jadpo dev`; `jadpo trace <id>` | 2026-10-13 |
+| Tests from requests | `jadpo test new --from <request id>` writes a replay test | 2026-10-13 |
+| `jadpo call` | One-shot `jadpo call <name> --as <user>`, JSON in and out, local writes with `--rollback`, production refused, policy always applies | 2026-10-13 |
+| Developer console and MCP | Local, read-only console in `jadpo dev`; CLI first for agents; MCP later for agents without a shell, generated from the command reference, read-only, OAuth-protected | 2026-10-13 |
+| Review report and view | `jadpo approval` ordered decisions first; Markdown and JSON; the graph web view later (E06); acceptances stay files | 2026-10-13 |
+| Contract and order | The evidence and commands are decided; console, MCP, review view and breakpoints are product work; build order as listed | 2026-10-13 |
+| Coverage by path | Paths run by tests, untested production paths by traffic, paths unseen for 90 days | 2026-10-13 |
+| Production in review | Optional production counts in the approval report | 2026-10-13 |
+| Production replay | Opt-in, failing requests only, personal fields replaced, recordings expire | 2026-10-13 |
+| Query cost of a change | Queries per path computed by the compiler in the approval report | 2026-10-13 |
