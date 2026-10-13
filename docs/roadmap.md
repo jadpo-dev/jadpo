@@ -22,20 +22,36 @@ and the [language pages](language/README.md), not here.
 
 ## How a session works
 
-1. Take the first chunk below that is not ticked. Chunks marked **needs
+Saying **"continue the roadmap"** starts this routine; it runs unattended.
+
+1. Take the first chunk below that is not ticked. Its tag (`opus · high`)
+   is the model and effort it needs. Say in one line which chunk is next and
+   its tag, then carry on without waiting. The building is done by a
+   subagent started with exactly that model and effort, so the tag applies
+   whatever the session itself runs on; the session plans, reviews the
+   result, runs the gate and merges. Chunks marked **needs
    Richard** stop for him at the point named; every other chunk runs
    unattended.
 2. Plan it in the session, not in a document: read its area pages, list the
    examples and errors it must make pass, and write those as failing tests
    first.
 3. Build until its "done when" holds and the gate (`tools/verify.py`) passes.
-4. Open a pull request for the chunk, merge it when CI passes, tick it here.
+4. Open a pull request from a branch named `chunk-<number>`, merge it when CI
+   passes, and tick it here in the same pull request.
    If the chunk needs a language decision that is not on the pages, stop and
    ask Richard with a recommendation; never special-case the compiler for an
    example.
+5. Then take the next chunk the same way. Stop at the end of a phase, at a
+   **needs Richard** point, when a language question needs him, or when the
+   session's context is getting long; the next session picks up from the
+   roadmap. Before starting a chunk, check that no other session is on it:
+   skip it if an open pull request or a branch named `chunk-<number>` pushed
+   in the last three hours exists.
 
 A chunk is sized for one session. If one turns out larger, split it here
-before starting the second half.
+before starting the second half. Tags: `opus` or `sonnet`; effort `medium`,
+`high` or `xhigh`; the hardest chunks (graph, interpreter, concurrency,
+policy, compiled targets, WebAssembly optimisation) are `xhigh`.
 
 ## Phase 0 — Reset
 
@@ -66,15 +82,15 @@ before starting the second half.
 
 ## Phase 1 — Graph core (areas 1–4)
 
-- [ ] **1.1 Workspace and CLI shell:** `jadpo` with the agreed
+- [ ] **1.1 Workspace and CLI shell:** `opus · medium` `jadpo` with the agreed
   [design language](language/research/14-cli-design-language.md),
   self-describing help, `--json`, completion skeleton.
-- [ ] **1.2 Parser, syntax tree and formatter** for the decided grammar.
-- [ ] **1.3 Project layout and domains** (area 1).
-- [ ] **1.4 Values and types** (area 2).
-- [ ] **1.5 Logic** (area 3).
-- [ ] **1.6 Failures** (area 4).
-- [ ] **1.7 The graph, identity and manifest:** `jadpo check` writes
+- [ ] **1.2 Parser, syntax tree and formatter** `opus · high` for the decided grammar.
+- [ ] **1.3 Project layout and domains** `opus · medium` (area 1).
+- [ ] **1.4 Values and types** `opus · high` (area 2).
+- [ ] **1.5 Logic** `opus · high` (area 3).
+- [ ] **1.6 Failures** `opus · medium` (area 4).
+- [ ] **1.7 The graph, identity and manifest:** `opus · xhigh` `jadpo check` writes
   `build/manifest.json`; the language server gives diagnostics and hover.
 
 Done when areas 1–4's decided examples check, and each area's errors are
@@ -83,79 +99,79 @@ reference only).
 
 ## Phase 2 — Interpreter and tests (area 13)
 
-- [ ] **2.1 Interpreter** for pure logic, with errors at `.jadpo` lines.
-- [ ] **2.2 Test runner:** file, line, name, seed, failure reports as decided,
+- [ ] **2.1 Interpreter** `opus · xhigh` for pure logic, with errors at `.jadpo` lines.
+- [ ] **2.2 Test runner:** `opus · medium` file, line, name, seed, failure reports as decided,
   `--json`.
-- [ ] **2.3 Watch mode** under the 1-second target on a fixture project.
+- [ ] **2.3 Watch mode** `opus · high` under the 1-second target on a fixture project.
 
 ## Phase 3 — Data (areas 5, 6)
 
-- [ ] **3.1 Entities, migrations and PostgreSQL:** snapshots, system tables,
+- [ ] **3.1 Entities, migrations and PostgreSQL:** `opus · high` snapshots, system tables,
   the test database template.
-- [ ] **3.2 Queries:** filters, order, pages, includes, selected columns,
+- [ ] **3.2 Queries:** `opus · high` filters, order, pages, includes, selected columns,
   `jadpo sql`.
-- [ ] **3.3 Writes:** entity operations, conflicts, concurrent-change rerun,
+- [ ] **3.3 Writes:** `opus · xhigh` entity operations, conflicts, concurrent-change rerun,
   counters.
-- [ ] **3.4 Lifecycle and purge.**
+- [ ] **3.4 Lifecycle and purge.** `opus · medium`
 
 ## Phase 4 — HTTP, identity and policy (areas 7–9)
 
-- [ ] **4.1 Routes:** groups, inputs, outputs, statuses, OpenAPI, the API
+- [ ] **4.1 Routes:** `opus · high` groups, inputs, outputs, statuses, OpenAPI, the API
   record, default rate limits.
-- [ ] **4.2 Request guarantees:** idempotency, deadlines, body limits, health.
-- [ ] **4.3 Sign-in:** sessions, API tokens, service keys.
-- [ ] **4.4 Policy:** grants compiled into queries, tenancy, the permissions
+- [ ] **4.2 Request guarantees:** `opus · high` idempotency, deadlines, body limits, health.
+- [ ] **4.3 Sign-in:** `opus · high` sessions, API tokens, service keys.
+- [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
   report.
-- [ ] **4.5 Early performance spike.** One route compiled to native and to
+- [ ] **4.5 Early performance spike.** `opus · high` One route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, so a Wasm gap is found now, not at the end. **Needs
   Richard** if Wasm is more than 25% behind Bun.
 
 ## Phase 5 — Configuration, time and translations (area 10)
 
-- [ ] **5.1 Configuration:** `config.jadpo`, environments, secrets, signing
+- [ ] **5.1 Configuration:** `sonnet · medium` `config.jadpo`, environments, secrets, signing
   keys.
-- [ ] **5.2 Time:** durations, instants, formatting.
-- [ ] **5.3 Translations and locales.**
+- [ ] **5.2 Time:** `opus · medium` durations, instants, formatting.
+- [ ] **5.3 Translations and locales.** `sonnet · medium`
 
 ## Phase 6 — Events and schedules (area 12)
 
-- [ ] **6.1 Events:** outbox, subscribers, retries, `Access.system`, trace
+- [ ] **6.1 Events:** `opus · high` outbox, subscribers, retries, `Access.system`, trace
   context.
-- [ ] **6.2 Schedules:** leases, the native tick, schedule monitoring basics.
+- [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics.
 
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
-- [ ] **7.1 Packages and connections:** the package format, lazy loading,
+- [ ] **7.1 Packages and connections:** `opus · high` the package format, lazy loading,
   `connections:`, the network report.
-- [ ] **7.2 Importing and faking:** the OpenAPI importer, hand-written
+- [ ] **7.2 Importing and faking:** `opus · medium` the OpenAPI importer, hand-written
   packages, generated fakes, `jadpo provider record`.
-- [ ] **7.3 Email:** the capability, SMTP driver, `emails/` templates, the dev
+- [ ] **7.3 Email:** `opus · medium` the capability, SMTP driver, `emails/` templates, the dev
   inbox, the health score.
 
 ## Phase 8 — Compiled deployables
 
-- [ ] **8.1 Native:** graph to Rust; every test passes interpreted and
+- [ ] **8.1 Native:** `opus · xhigh` graph to Rust; every test passes interpreted and
   compiled.
-- [ ] **8.2 WebAssembly on Workers:** the cron tick, outbox delivery after
+- [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling.
 
 ## Phase 9 — Performance
 
 Richard, 2026-10-13: developers won't touch this if it's slower.
 
-- [ ] **9.1 Benchmarks:** the golden todo plus focused workloads (reads,
+- [ ] **9.1 Benchmarks:** `opus · high` the golden todo plus focused workloads (reads,
   writes, signed-in lists, large rows, cold start) on native, Wasm under
   wasmtime and on Workers, against an equivalent Bun and TypeScript app and
   Node; results published with the method.
-- [ ] **9.2 Optimise WebAssembly** until it matches the Bun app on throughput
+- [ ] **9.2 Optimise WebAssembly** `opus · xhigh` until it matches the Bun app on throughput
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
   ([optimisation results](experiments/wasm-optimization-results.md)).
 
 ## Phase 10 — Golden todo
 
-- [ ] **10.1 The golden todo end to end** on both targets, rewritten in the
+- [ ] **10.1 The golden todo end to end** `opus · high` on both targets, rewritten in the
   decided language, its contract cases passing. One independent review of
   the whole first build.
 
