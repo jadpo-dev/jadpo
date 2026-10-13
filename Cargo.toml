@@ -16,6 +16,7 @@ jadpo-fmt = { path = "crates/jadpo-fmt" }
 jadpo-db = { path = "crates/jadpo-db" }
 jadpo-check = { path = "crates/jadpo-check" }
 jadpo-value = { path = "crates/jadpo-value" }
+jadpo-graph = { path = "crates/jadpo-graph" }
 rowan = "=0.16.1"
 ungrammar = "=1.16.1"
 serde_json = "1"
@@ -24,6 +25,13 @@ serde_json = "1"
 regex = "=1.11.1"
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).
 salsa = { version = "=0.28.5", default-features = false, features = ["macros", "inventory"] }
+# Node digests (docs/compiler-runtime.md §2.3). `pure` keeps the build free of
+# C and assembly, so the compiler crates stay buildable for a browser later.
+blake3 = { version = "=1.8.7", default-features = false, features = ["std", "pure"] }
+# The language server's protocol (jadpo-lsp only): rust-analyzer's own
+# transport and the protocol's types.
+lsp-server = "=0.10.0"
+lsp-types = "=0.97.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

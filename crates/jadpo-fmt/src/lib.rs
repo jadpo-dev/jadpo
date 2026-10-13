@@ -5,10 +5,12 @@
 //! identical (areas 1 and 14). A file with
 //! syntax errors is not formatted: its errors are returned instead.
 
+mod canonical;
 mod doc;
 mod format;
 mod sections;
 
+pub use canonical::canonical_tokens;
 use jadpo_syntax::{SyntaxError, SyntaxNode, parse_file, parse_snippet};
 
 /// The longest line the formatter writes where it has a choice.
