@@ -34,6 +34,14 @@ name = "jadpo-diag"
 version = "0.1.0"
 
 [[package]]
+name = "jadpo-fmt"
+version = "0.1.0"
+dependencies = [
+ "jadpo-syntax",
+ "rowan",
+]
+
+[[package]]
 name = "jadpo-syntax"
 version = "0.1.0"
 dependencies = [

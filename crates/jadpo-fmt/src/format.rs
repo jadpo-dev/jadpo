@@ -1,0 +1,476 @@
+//! Syntax tree to document. Every significant token is printed once, in
+//! order, with the spacing its node asks for; every comment is printed with
+//! the token it belongs to (the sink's rule: trailing comments stay at the
+//! end of their token's line, leading comments on their own lines before
+//! it).
+
+use std::collections::HashSet;
+
+use jadpo_syntax::SyntaxKind::{self, *};
+use jadpo_syntax::{SyntaxElement, SyntaxNode, SyntaxToken};
+use rowan::{NodeOrToken, TextSize};
+
+use crate::doc::{Doc, concat, group, indent, nil, text};
+
+/// The gap before a trailing comment.
+const COMMENT_GAP: &str = "  ";
+
+pub(crate) struct Formatter {
+    printed: HashSet<TextSize>,
+}
+
+/// One comment before a token, and whether a blank line follows it.
+struct Leading {
+    token: SyntaxToken,
+    blank_after: bool,
+}
+
+fn newlines(token: &SyntaxToken) -> usize {
+    if token.kind() == WHITESPACE {
+        token.text().matches('\n').count()
+    } else {
+        0
+    }
+}
+
+fn is_comment(kind: SyntaxKind) -> bool {
+    matches!(kind, COMMENT | DOC_COMMENT)
+}
+
+/// The trivia between the previous significant token and `token`, in order.
+fn trivia_before(token: &SyntaxToken) -> (Vec<SyntaxToken>, bool) {
+    let mut run = Vec::new();
+    let mut current = token.prev_token();
+    while let Some(t) = current {
+        if !t.kind().is_trivia() {
+            run.reverse();
+            return (run, true);
+        }
+        current = t.prev_token();
+        run.push(t);
+    }
+    run.reverse();
+    (run, false)
+}
+
+/// The trivia after `token` up to the next significant token, in order.
+fn trivia_after(token: &SyntaxToken) -> Vec<SyntaxToken> {
+    let mut run = Vec::new();
+    let mut current = token.next_token();
+    while let Some(t) = current {
+        if !t.kind().is_trivia() {
+            break;
+        }
+        current = t.next_token();
+        run.push(t);
+    }
+    run
+}
+
+/// The comment on the same line after `token`, if any.
+fn trailing_comment(token: &SyntaxToken) -> Option<SyntaxToken> {
+    let after = trivia_after(token);
+    let mut iter = after.into_iter();
+    match iter.next() {
+        Some(t) if is_comment(t.kind()) => Some(t),
+        Some(t) if t.kind() == WHITESPACE && !t.text().contains('\n') => {
+            iter.next().filter(|t| is_comment(t.kind()))
+        }
+        _ => None,
+    }
+}
+
+/// The trivia before `token` that belongs to it: everything after the
+/// previous token's trailing comment.
+fn own_trivia(token: &SyntaxToken) -> Vec<SyntaxToken> {
+    let (run, has_previous) = trivia_before(token);
+    if !has_previous {
+        return run;
+    }
+    // Skip the previous token's trailing comment: same-line whitespace and
+    // the first comment.
+    let mut start = 0;
+    if run
+        .first()
+        .is_some_and(|t| t.kind() == WHITESPACE && !t.text().contains('\n'))
+    {
+        start = 1;
+    }
+    if run.get(start).is_some_and(|t| is_comment(t.kind())) {
+        return run[start + 1..].to_vec();
+    }
+    run
+}
+
+/// Whether the source has a blank line before `token` (and its leading
+/// comments).
+pub(crate) fn blank_before(token: &SyntaxToken) -> bool {
+    own_trivia(token)
+        .iter()
+        .take_while(|t| t.kind() == WHITESPACE)
+        .map(newlines)
+        .sum::<usize>()
+        >= 2
+}
+
+fn leading_comments(token: &SyntaxToken) -> Vec<Leading> {
+    let run = own_trivia(token);
+    let mut out: Vec<Leading> = Vec::new();
+    for (i, t) in run.iter().enumerate() {
+        if !is_comment(t.kind()) {
+            continue;
+        }
+        let gap: usize = run[i + 1..]
+            .iter()
+            .take_while(|t| t.kind() == WHITESPACE)
+            .map(newlines)
+            .sum();
+        out.push(Leading {
+            token: t.clone(),
+            blank_after: gap >= 2,
+        });
+    }
+    out
+}
+
+pub(crate) fn first_token(node: &SyntaxNode) -> Option<SyntaxToken> {
+    node.descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .find(|token| !token.kind().is_trivia())
+}
+
+fn significant_children(node: &SyntaxNode) -> Vec<SyntaxElement> {
+    node.children_with_tokens()
+        .filter(|element| !element.kind().is_trivia())
+        .collect()
+}
+
+fn is_decl(kind: SyntaxKind) -> bool {
+    matches!(
+        kind,
+        TYPE_DECL
+            | FUNCTION_DECL
+            | ACTION_DECL
+            | QUERY_DECL
+            | FIXTURE_DECL
+            | ENTITY_DECL
+            | LIBRARY_DECL
+            | ROUTES_DECL
+            | SCHEDULE_DECL
+            | SUBSCRIBER_DECL
+            | TEST_DECL
+            | SEED_DECL
+            | PACKAGE_DECL
+            | RESOURCE_DECL
+            | PROVIDE_DECL
+            | SINGLETON_DECL
+    )
+}
+
+/// Nodes whose parts are written with no spaces between them.
+fn tight(kind: SyntaxKind) -> bool {
+    matches!(
+        kind,
+        FIELD_EXPR
+            | CALL_EXPR
+            | PATH
+            | PATH_TYPE
+            | ROUTE_PATH
+            | ROUTE_SEGMENT
+            | PATH_PARAM
+            | MEMBER_KEY
+            | CONDITION
+            | PAREN_EXPR
+            | CASE_PAT
+            | PAT_BINDING
+            | LITERAL_PAT
+            | GENERIC_EXPR
+            | NULLABLE_EXPR
+            | NULLABLE_TYPE
+            | GENERIC_ARG_LIST
+            | ROUTE_PATH_EXPR
+    )
+}
+
+fn space_between(parent: SyntaxKind, left: SyntaxKind, right: SyntaxKind) -> bool {
+    if matches!(left, COMMA | COLON) {
+        return true;
+    }
+    if tight(parent) {
+        return false;
+    }
+    if matches!(
+        right,
+        COMMA
+            | COLON
+            | R_PAREN
+            | R_BRACK
+            | R_ANGLE
+            | QUESTION
+            | DOT
+            | PARAM_LIST
+            | ARG_LIST
+            | GENERIC_ARG_LIST
+            | PAT_BINDING
+    ) {
+        return false;
+    }
+    if matches!(left, L_PAREN | L_BRACK | L_ANGLE | DOT) {
+        return false;
+    }
+    !(parent == PREFIX_EXPR && left == MINUS)
+}
+
+impl Formatter {
+    pub(crate) fn new() -> Formatter {
+        Formatter {
+            printed: HashSet::new(),
+        }
+    }
+
+    /// The number of comments in `node` that were not printed: zero once
+    /// formatting is right.
+    pub(crate) fn unprinted_comments(&self, node: &SyntaxNode) -> usize {
+        node.descendants_with_tokens()
+            .filter_map(|e| e.into_token())
+            .filter(|t| is_comment(t.kind()) && !self.printed.contains(&t.text_range().start()))
+            .count()
+    }
+
+    fn comment(&mut self, token: &SyntaxToken) -> Doc {
+        self.printed.insert(token.text_range().start());
+        text(token.text().trim_end())
+    }
+
+    /// A token's leading comments, each on its own line, keeping one blank
+    /// line where the source had any.
+    fn leading(&mut self, token: &SyntaxToken) -> Doc {
+        let comments = leading_comments(token);
+        let mut docs = Vec::new();
+        for comment in comments {
+            if self.printed.contains(&comment.token.text_range().start()) {
+                continue;
+            }
+            docs.push(self.comment(&comment.token));
+            docs.push(Doc::HardLine);
+            if comment.blank_after {
+                docs.push(Doc::HardLine);
+            }
+        }
+        concat(docs)
+    }
+
+    fn trailing(&mut self, token: &SyntaxToken) -> Doc {
+        match trailing_comment(token) {
+            Some(comment) if !self.printed.contains(&comment.text_range().start()) => {
+                self.printed.insert(comment.text_range().start());
+                Doc::LineSuffix(format!("{COMMENT_GAP}{}", comment.text().trim_end()))
+            }
+            _ => nil(),
+        }
+    }
+
+    /// A token with its comments.
+    fn token(&mut self, token: &SyntaxToken) -> Doc {
+        let leading = self.leading(token);
+        let trailing = self.trailing(token);
+        concat([leading, text(token.text()), trailing])
+    }
+
+    /// Only a dropped token's comments (a trailing comma).
+    fn comments_only(&mut self, token: &SyntaxToken) -> Doc {
+        let leading = self.leading(token);
+        let trailing = self.trailing(token);
+        concat([leading, trailing])
+    }
+
+    fn element(&mut self, element: &SyntaxElement) -> Doc {
+        match element {
+            NodeOrToken::Node(node) => self.node(node),
+            NodeOrToken::Token(token) => self.token(token),
+        }
+    }
+
+    pub(crate) fn node(&mut self, node: &SyntaxNode) -> Doc {
+        match node.kind() {
+            SOURCE_FILE => self.file(node, false),
+            SNIPPET => self.file(node, true),
+            MEMBER_LIST | BLOCK | MATCH_ARM_LIST => self.braces(node),
+            PARAM_LIST | ARG_LIST => self.bracketed(node, true),
+            LIST_EXPR => self.bracketed(node, false),
+            _ => self.sequence(node),
+        }
+    }
+
+    /// Children with the spacing their node asks for.
+    fn sequence(&mut self, node: &SyntaxNode) -> Doc {
+        let parent = node.kind();
+        let children = significant_children(node);
+        let mut docs = Vec::new();
+        let mut previous: Option<SyntaxKind> = None;
+        for child in &children {
+            if let Some(left) = previous
+                && space_between(parent, left, child.kind())
+            {
+                docs.push(text(" "));
+            }
+            docs.push(self.element(child));
+            previous = Some(child.kind());
+        }
+        concat(docs)
+    }
+
+    /// Declarations, one blank line apart; in a snippet, other items keep
+    /// one blank line where the source had any.
+    fn file(&mut self, node: &SyntaxNode, snippet: bool) -> Doc {
+        let items: Vec<SyntaxNode> = node.children().collect();
+        let mut docs = Vec::new();
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                let blank = !snippet
+                    || is_decl(item.kind())
+                    || is_decl(items[i - 1].kind())
+                    || first_token(item).is_some_and(|t| blank_before(&t));
+                docs.push(Doc::HardLine);
+                if blank {
+                    docs.push(Doc::HardLine);
+                }
+            }
+            docs.push(self.node(item));
+        }
+        // Comments after the last token, or in a file with no tokens.
+        let dangling: Vec<SyntaxToken> = node
+            .descendants_with_tokens()
+            .filter_map(|e| e.into_token())
+            .filter(|t| is_comment(t.kind()) && !self.printed.contains(&t.text_range().start()))
+            .collect();
+        for comment in dangling {
+            if !docs.is_empty() {
+                docs.push(Doc::HardLine);
+                let blank = comment
+                    .prev_token()
+                    .is_some_and(|t| newlines(&t) >= 2 && t.prev_token().is_some());
+                if blank {
+                    docs.push(Doc::HardLine);
+                }
+            }
+            docs.push(self.comment(&comment));
+        }
+        if !docs.is_empty() {
+            docs.push(Doc::HardLine);
+        }
+        concat(docs)
+    }
+
+    /// `{ ... }` holding one item per line: members, statements or arms.
+    fn braces(&mut self, node: &SyntaxNode) -> Doc {
+        let mut open = None;
+        let mut close = None;
+        let mut items = Vec::new();
+        for element in significant_children(node) {
+            match element {
+                NodeOrToken::Token(token) if token.kind() == L_BRACE && open.is_none() => {
+                    open = Some(token)
+                }
+                NodeOrToken::Token(token) if token.kind() == R_BRACE => close = Some(token),
+                other => items.push(other),
+            }
+        }
+        let open_doc = match &open {
+            Some(token) => self.token(token),
+            None => nil(),
+        };
+        let mut body = Vec::new();
+        for (i, item) in items.iter().enumerate() {
+            body.push(Doc::HardLine);
+            let first = match item {
+                NodeOrToken::Node(node) => first_token(node),
+                NodeOrToken::Token(token) => Some(token.clone()),
+            };
+            if i > 0 && first.is_some_and(|t| blank_before(&t)) {
+                body.push(Doc::HardLine);
+            }
+            body.push(self.element(item));
+        }
+        let (close_leading, close_doc) = match &close {
+            Some(token) => {
+                let comments = leading_comments(token);
+                let mut docs = Vec::new();
+                for (i, comment) in comments.iter().enumerate() {
+                    docs.push(Doc::HardLine);
+                    let blank = if i == 0 {
+                        !items.is_empty() && blank_before(token)
+                    } else {
+                        comments[i - 1].blank_after
+                    };
+                    if blank {
+                        docs.push(Doc::HardLine);
+                    }
+                    docs.push(self.comment(&comment.token));
+                }
+                let trailing = self.trailing(token);
+                (concat(docs), concat([text("}"), trailing]))
+            }
+            None => (nil(), nil()),
+        };
+        if items.is_empty() && close_leading.is_empty() {
+            return concat([open_doc, close_doc]);
+        }
+        concat([
+            open_doc,
+            indent(concat([concat(body), close_leading])),
+            Doc::HardLine,
+            close_doc,
+        ])
+    }
+
+    /// `( ... )` or `[ ... ]`: on one line when it fits, otherwise one item
+    /// per line; no trailing comma either way.
+    fn bracketed(&mut self, node: &SyntaxNode, _call: bool) -> Doc {
+        let children = significant_children(node);
+        let mut open = nil();
+        let mut close = nil();
+        let mut items: Vec<Doc> = Vec::new();
+        let mut i = 0;
+        while i < children.len() {
+            match &children[i] {
+                NodeOrToken::Token(token)
+                    if matches!(token.kind(), L_PAREN | L_BRACK) && i == 0 =>
+                {
+                    open = self.token(token);
+                }
+                NodeOrToken::Token(token)
+                    if matches!(token.kind(), R_PAREN | R_BRACK) && i == children.len() - 1 =>
+                {
+                    close = self.token(token);
+                }
+                NodeOrToken::Token(token) if token.kind() == COMMA => {
+                    let last_item = !children[i + 1..].iter().any(|c| c.as_node().is_some());
+                    let doc = if last_item {
+                        self.comments_only(token)
+                    } else {
+                        self.token(token)
+                    };
+                    if let Some(item) = items.last_mut() {
+                        let previous = std::mem::replace(item, nil());
+                        *item = concat([previous, doc]);
+                    }
+                }
+                other => items.push(self.element(other)),
+            }
+            i += 1;
+        }
+        if items.is_empty() {
+            return concat([open, close]);
+        }
+        let mut inner = vec![Doc::SoftLine];
+        let count = items.len();
+        for (index, item) in items.into_iter().enumerate() {
+            inner.push(item);
+            if index + 1 < count {
+                inner.push(Doc::Line);
+            }
+        }
+        group(concat([open, indent(concat(inner)), Doc::SoftLine, close]))
+    }
+}
