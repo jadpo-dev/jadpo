@@ -323,8 +323,8 @@ from area 4 (question 7):
 | `outcome_unknown`: an outside call may have happened | Parked; never retried automatically |
 | A defect (`internal_fault`, overflow) | Failed; not retried until someone fixes the code |
 
-- Retries wait longer each time, with randomness so many failures do not
-  retry together. By default a subscriber gets 10 attempts within 24 hours,
+- Retries wait longer each time, with full random jitter, so many failures do
+  not retry together; a `Retry-After` from a provider is honoured. By default a subscriber gets 10 attempts within 24 hours,
   then fails.
 - A subscriber can change its budget; schedules cannot, since the next tick
   is their retry.
@@ -356,6 +356,32 @@ Each failed or unknown item keeps the event, the subscriber, every attempt
 with its failure code and internal fields (area 4's logging rules), and the
 request that emitted it. A `failed` or `outcome_unknown` item writes a log
 event and counts towards an alert. The screens and commands are area 14's.
+
+### Watching schedules
+
+Schedules fail quietly in most frameworks: a job that stops running produces
+no error at all. Jadpo records and checks every part of a schedule's life
+(Richard, 2026-10-13):
+
+- **Every run is recorded** in a system table: due time, start, end,
+  duration, lateness (start minus due), outcome with its failure, items
+  processed, events emitted, and the trace id, so a run opens as one trace
+  (question 17).
+- **Every tick is recorded too,** including skipped ones and why (lease held,
+  paused), and the last tick received from an external adapter.
+- **`jadpo schedules`** lists each schedule with its last run, next due time,
+  lease holder, recent failures and the adapter's last tick; `run <name>`
+  starts one now (still respecting the lease), `pause` and `resume` stop and
+  start it, and `history <name>` shows past runs.
+- **`jadpo why <schedule>`** answers "why didn't it run?": paused, lease held
+  by a run started at a given time, adapter not ticking since a given time,
+  or the run failed.
+- **Metrics** (area 16's telemetry): run duration, lateness, skipped ticks,
+  failures and items per run, per schedule.
+- **Alerts with no setup:** no successful run within twice the interval;
+  ticks stopped arriving from an external adapter; a run past 80% of the
+  15-minute limit; three failures in a row; a lease held past its expiry.
+- The console (area 17) shows each schedule's timeline of runs and ticks.
 
 ## Limits and runtime faults
 
@@ -1039,68 +1065,77 @@ build`, or read from source and the design documents.
    not queued, and there is no option to allow overlap (Richard asked,
    2026-10-13); work too large for one run emits one event per item.
    Rails' Solid Queue (`schedule: every day at 9am`) and Oban's cron plugin
-   also offer calendar times; add them only when an application needs them.
+   also offer calendar times; add them only when an application needs them. *Decided 2026-10-13:* yes, as recommended.
 2. **Delete the delivery descriptor?** It is 45 lines of closed syntax for
    one feature, duplicates a query and can never pass checking.
    *Recommendation:* yes, with its 14 syntax and 6 type rules; the batch
-   pattern does the same with ordinary code.
+   pattern does the same with ordinary code. *Decided 2026-10-13:* yes, as recommended.
 3. **Is an event `type TodoCompleted = Event { ... }`, one type per event?**
    Carried from area 4. *Recommendation:* yes, one per file in `events/`, no
    families and no per-event policy. It matches failures, and Laravel and
    Rails also define one class per event or job. See the
-   [proposals](research/12-jobs-and-events-proposals.md).
+   [proposals](research/12-jobs-and-events-proposals.md). *Decided 2026-10-13:* yes, as recommended.
 4. **Is emitting `emit TodoCompleted { ... }`, a statement with no
    `attempt`, allowed only in actions and delivered after commit?**
    *Recommendation:* yes. It mirrors `reject`, and areas 3 and 4 already rule
-   out `attempt` on something that cannot fail.
+   out `attempt` on something that cannot fail. *Decided 2026-10-13:* yes, as recommended.
 5. **Is a subscriber `subscriber name { on: Event  run: action(event) }`,
    one event each?** *Recommendation:* yes. It has the same shape as routes
    and schedules; several events in one subscriber would read as "all of
-   them" to some readers and "any of them" to others.
+   them" to some readers and "any of them" to others. *Decided 2026-10-13:* yes, as recommended.
 6. **Is delivery order promised?** ASYNC-001 promised order per key for jobs,
    which needs per-key queues and lets one stuck item block the rest.
    *Recommendation:* no order promised. Sidekiq, Laravel and EventBridge
    promise none either; subscribers read current state, which retries need
-   anyway. This changes ASYNC-001.
+   anyway. This changes ASYNC-001. *Decided 2026-10-13:* yes, as recommended.
 7. **Retries by failure kind, with a default budget?** *Recommendation:* the
    table above: `unavailable`, `rate_limited` and pre-commit faults retry;
    other failures and defects fail at once; `outcome_unknown` is parked.
    Default 10 attempts within 24 hours, changeable per subscriber with
    `retry: { attempts:  within: }`. Sidekiq defaults to 25 retries over
    about 20 days and Oban to 20 attempts; a day suits an outage, and a
-   payment webhook can ask for more.
+   payment webhook can ask for more. *Decided 2026-10-13:* yes, as recommended.
 8. **Who does a subscriber act as?** The candidate design checks both a
    worker's and the original user's permissions on every delivery.
    *Recommendation:* the application itself, limited to its own domain; the
    event carries the user's id when the reaction needs it. Rails, Laravel and
    Sidekiq jobs have no user either. Area 9 confirms.
+   *Decided 2026-10-13:* replaced. Schedules and subscribers act as
+   `Access.system`, a fourth kind of "who" (area 9) that an entity must grant
+   explicitly (`update: [owner_id, Access.system]`); a subscriber is limited
+   to the tenant its event came from; the permissions report shows what
+   background work can touch.
 9. **Should lifecycle transitions emit events automatically?** The candidate
    design publishes facts from transitions so no write path can skip them.
    *Recommendation:* no for now: emit in the action that makes the change,
-   one way to do it. Revisit if reviews find a missed emit.
+   one way to do it. Revisit if reviews find a missed emit. *Decided 2026-10-13:* yes, as recommended.
 10. **Can an event be delivered later (`in 24h`)?** Sidekiq, Laravel and
     Inngest can delay jobs. *Recommendation:* not now. A schedule querying a
-    due field covers it, rereads current state, and keeps one way to wait.
+    due field covers it, rereads current state, and keeps one way to wait. *Decided 2026-10-13:* yes, as recommended.
 11. **May an action call more than one integration operation that changes
     something?** *Recommendation:* no, a compile error. After a lost reply
     the runtime must know which single call to ask about; batch work emits one
     event per item instead. Inngest makes each outside call its own step for
-    the same reason.
+    the same reason. *Decided 2026-10-13:* yes, as recommended.
 12. **Are the limits right?** 1,000 events per action, 64 KB per event,
     chains 16 deep, 15 minutes per run. *Recommendation:* adopt them as
-    defaults and confirm with measured runs, as ASYNC-001 requires.
+    defaults and confirm with measured runs, as ASYNC-001 requires. *Decided 2026-10-13:* yes, as recommended.
 13. **Do large exports need a consistent snapshot read?** (carried from area
     6) A schedule paging through a query for an export or report sees
     records change between pages. Should it read one consistent snapshot,
-    and how is that declared?
+    and how is that declared? *Decided 2026-10-13:* yes, as recommended.
 14. **What carries on after a route answers `status: SuccessStatus.accepted`?**
     (carried from area 7) Area 7 has a route answer 202 and continue the work
     in the background. Is that always an event and a subscriber, and how
-    does the client learn the outcome?
+    does the client learn the outcome? *Decided 2026-10-13:* yes, as recommended.
 15. **How do tests run schedules and subscribers?** (carried from area 13)
     Area 13 calls `overdue_reminders.run()`, relies on subscriber delivery
     order and needs retries of a failing subscriber. Does this page define
     those, and in what order are subscribers delivered in tests?
+    *Decided 2026-10-13:* `schedule.run()` runs a schedule under the test
+    clock; events are delivered after each commit; a fake can fail a
+    subscriber to test retries; delivery order is shuffled with a printed
+    seed, so a test that depends on order fails visibly.
 16. **Where does a schedule's tick come from on each host?** Raised by
     Richard (2026-10-13) with the move to native Rust and WebAssembly
     targets. Cloudflare's cron triggers can fire more than once and do not
@@ -1146,7 +1181,16 @@ build`, or read from source and the design documents.
     between Jadpo applications pass the context on. Each event also records
     what caused it (request id or parent event), which the 16-deep chain
     limit already needs. `jadpo trace <request id>` and the console (area 17)
-    show the whole tree; area 16's OpenTelemetry export carries it.
+    show the whole tree; area 16's OpenTelemetry export carries it. *Decided 2026-10-13:* yes, as recommended.
+18. **Should deliveries pause when a provider keeps failing?** Jitter stops
+    retries arriving together, but 5,000 deliveries all calling a provider
+    that is down still retry 10 times each. *Recommendation:* a circuit
+    breaker per connection: after a run of `unavailable` failures from one
+    provider, deliveries that call it are held rather than attempted, one
+    probe delivery is tried after a pause, and success releases the rest.
+    Held deliveries do not spend their retry budget. Shown in
+    `jadpo deliveries` and alerted. Resilience4j and Polly offer the same
+    pattern; built in, nobody has to remember it.
 
 ### Decisions
 
@@ -1159,20 +1203,22 @@ Nothing is decided on this page yet.
 | Cross-domain changes | Carried from area 1: public actions inside the caller's transaction, or events for reactions that need not be all-or-nothing | 2026-10-12 |
 | Actions | Carried from area 3: every action is all-or-nothing and has no settings; `attempt` only on calls that can fail | 2026-10-12 |
 | Faults | Carried from area 4: faults are never listed in `fails` or matched; integrations map provider problems to declared failures | 2026-10-12 |
-| Schedule form | | |
-| Delivery descriptor | | |
-| Event declaration | | |
-| Emitting | | |
-| Subscriber form | | |
-| Ordering | | |
-| Retries | | |
-| Subscriber identity | | |
-| Automatic events from transitions | | |
-| Delayed delivery | | |
-| One changing integration call per action | | |
-| Limits | | |
-| Snapshot reads for exports | | |
-| Work after an accepted response | | |
-| Schedules and subscribers in tests | | |
+| Schedule form | `schedule name { every: 15m  run: action() }`; runs never overlap, a busy tick is skipped; the next tick retries; calendar times later | 2026-10-13 |
+| Delivery descriptor | Deleted with its 14 syntax and 6 type rules | 2026-10-13 |
+| Event declaration | `type X = Event { ... }`, one per file in `events/` | 2026-10-13 |
+| Emitting | `emit X { ... }` in actions only, delivered after commit, no `attempt` | 2026-10-13 |
+| Subscriber form | `subscriber name { on: Event  run: action(event) }`, one event each | 2026-10-13 |
+| Ordering | No order promised; reverses ASYNC-001 (2026-10-04) | 2026-10-13 |
+| Retries | By failure kind; default 10 attempts within 24 hours; `retry: { attempts: within: }`; exponential backoff with full jitter; `Retry-After` honoured | 2026-10-13 |
+| Subscriber identity | `Access.system`, granted explicitly by entities; limited to the event's tenant | 2026-10-13 |
+| Automatic events from transitions | No; the action that makes the change emits | 2026-10-13 |
+| Delayed delivery | No; a schedule over a due field instead | 2026-10-13 |
+| One changing integration call per action | Yes, a compile error otherwise | 2026-10-13 |
+| Limits | 1,000 events per action, 64 KB per event, chains 16 deep, 15 minutes per run, confirmed by measurement | 2026-10-13 |
+| Snapshot reads for exports | None; keyset pages; area 15's export reads in one transaction | 2026-10-13 |
+| Work after an accepted response | An event and subscriber; the client reads a record with a status field | 2026-10-13 |
+| Schedules and subscribers in tests | `schedule.run()`, delivery after commit, fakes fail subscribers, shuffled order with a printed seed | 2026-10-13 |
 | Schedule ticks on every host | Schedule adapters, many and chosen in `app.jadpo`: an adapter supplies the tick and may supply the lease (default: main database); a schedule or event with no store for its state is a compile error; system tables (`jadpo_` prefix) are in migration snapshots (Richard) | 2026-10-13 |
-| Tracing through events | | |
+| Tracing through events | Always on: events carry the emitting action's trace context; subscriber runs continue it; `jadpo trace <request id>` | 2026-10-13 |
+| Schedule monitoring | Every run and tick recorded; `jadpo schedules` (list, run, pause, resume, history); `jadpo why <schedule>`; metrics; alerts with no setup (no success in twice the interval, ticks stopped, near the time limit, three failures, stuck lease); console timeline (Richard) | 2026-10-13 |
+| Circuit breaker | | |
