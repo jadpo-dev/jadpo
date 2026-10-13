@@ -1120,6 +1120,22 @@ build`, or read from source and the design documents.
     Cloudflare's per-account cron limit is never reached. Duplicate ticks
     are harmless because the lease decides. Durable Objects stay a possible
     later optimisation, not the design.
+    *Richard (2026-10-13):* design it as adapters, built for many, chosen in
+    configuration. *Decided 2026-10-13 (Richard's requirements):*
+    - a schedule adapter supplies the tick and may supply the lease; the
+      default lease lives in the main database; adapters are many and named
+      in `app.jadpo` (`ScheduleTrigger.native` by default; external ticks
+      such as Cloudflare cron, Kubernetes CronJob or AWS EventBridge; a
+      Durable Objects adapter that also holds the lease later), and an
+      adapter may generate its host's configuration;
+    - declaring a schedule (or an event, which needs the outbox) with no
+      store the chosen adapter can keep state in is a compile error that
+      says which store to add;
+    - the generated system tables (schedule state, the event outbox,
+      delivery records, idempotency keys, sessions) are part of the
+      migration snapshots like any entity, prefixed `jadpo_`, so
+      `jadpo migrate new` creates and changes them and `jadpo check` reports
+      drift in them too.
 17. **Can a request's whole effect be traced through events?** Raised by
     Richard (2026-10-13). *Recommendation:* yes, always on. An event is
     stored with the trace context of the action that emitted it (W3C
@@ -1158,5 +1174,5 @@ Nothing is decided on this page yet.
 | Snapshot reads for exports | | |
 | Work after an accepted response | | |
 | Schedules and subscribers in tests | | |
-| Schedule ticks on every host | | |
+| Schedule ticks on every host | Schedule adapters, many and chosen in `app.jadpo`: an adapter supplies the tick and may supply the lease (default: main database); a schedule or event with no store for its state is a compile error; system tables (`jadpo_` prefix) are in migration snapshots (Richard) | 2026-10-13 |
 | Tracing through events | | |
