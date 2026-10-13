@@ -98,7 +98,16 @@ fn destination(ownership: &Ownership, item: &Item) -> Option<String> {
         }
         ItemKind::Singleton | ItemKind::Test => None,
         ItemKind::Function => Some(format!("a library in `{domain}/libraries/`")),
-        kind => home(kind).map(|folder| format!("`{domain}/{}/{file}.jadpo`", folder.name())),
+        kind => home(kind).map(|folder| {
+            // `shared/` holds only types, libraries and failures; anything
+            // else moves into a domain.
+            let owner = if *ownership == Ownership::Shared && !Folder::SHARED.contains(&folder) {
+                "domains/<domain>"
+            } else {
+                domain.as_str()
+            };
+            format!("`{owner}/{}/{file}.jadpo`", folder.name())
+        }),
     }
 }
 
@@ -259,7 +268,10 @@ fn unknown_location(path: &str, stray: &Stray, location: &Location, items: &[Ite
         .iter()
         .find(|item| !supporting(&item.kind))
         .or(items.first());
-    let next = match main.and_then(|item| destination(&location.ownership, item)) {
+    let next = match main
+        .and_then(|item| destination(&location.ownership, item))
+        .filter(|place| place.trim_matches('`') != path)
+    {
         Some(place) if !matches!(stray, Stray::NotATest) => format!("Move the file to {place}"),
         _ if matches!(stray, Stray::NotATest) => {
             format!(

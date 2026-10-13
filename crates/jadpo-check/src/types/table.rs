@@ -30,6 +30,9 @@ pub struct FieldDef {
     pub default: bool,
     /// Brought in by `include` or `pick`.
     pub copied: bool,
+    /// For a written field that replaces one an `include` or `pick` above
+    /// brought in: the type that field came from.
+    pub replaces: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -104,6 +107,8 @@ pub struct RawField {
     pub source: Source,
     pub optional: bool,
     pub default: bool,
+    /// The type a copied field it replaced came from.
+    pub replaces: Option<String>,
 }
 
 /// What a name in a copying line turned out to be.
@@ -172,10 +177,15 @@ pub fn derive(
                     },
                     optional: input && setting_is_true(settings, "optional"),
                     default: input && settings.iter().any(|(key, _)| key == "default"),
+                    replaces: None,
                 };
                 match fields.iter().position(|f| f.name == *name) {
                     Some(at) if matches!(fields[at].source, Source::Copied { .. }) => {
-                        fields[at] = field;
+                        let replaces = match &fields[at].source {
+                            Source::Copied { host } => Some(host.clone()),
+                            Source::Written { .. } => None,
+                        };
+                        fields[at] = RawField { replaces, ..field };
                     }
                     Some(_) => problem(None, LineKind::Duplicate(name.clone())),
                     None => fields.push(field),
@@ -305,6 +315,7 @@ fn copy(fields: &mut Vec<RawField>, host: &str, name: &str, problem: &mut dyn Fn
         },
         optional: false,
         default: false,
+        replaces: None,
     });
 }
 
@@ -383,6 +394,7 @@ impl TypeTable {
             optional: raw.optional,
             default: raw.default,
             copied: matches!(raw.source, Source::Copied { .. }),
+            replaces: raw.replaces.clone(),
         };
         let variant_fields = |lines: &[Line]| -> Vec<RawField> {
             derive(FieldsBase::Object, lines, &mut |_| Found::Unknown).0

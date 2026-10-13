@@ -598,3 +598,30 @@ fn declaration_words_never_name_anything() {
         CLEAN
     );
 }
+
+#[test]
+fn a_move_suggestion_never_names_where_the_file_already_is() {
+    let db = jadpo_db::Database::default();
+    let project = support::project(
+        &db,
+        Layout::Project,
+        &[
+            support::APP,
+            (
+                "shared/actions/x.jadpo",
+                "type Count = Int {}\n\naction x(n: Count) -> Count {\n    return n\n}\n",
+            ),
+        ],
+    );
+    let problems = jadpo_check::check(&db, project);
+    let location = problems
+        .iter()
+        .find(|d| d.rule.id == "layout.unknown_location")
+        .expect("unknown location");
+    let next = location
+        .next
+        .as_ref()
+        .map(|n| n.text.clone())
+        .unwrap_or_default();
+    assert_eq!(next, "Move the file to `domains/<domain>/actions/x.jadpo`");
+}
