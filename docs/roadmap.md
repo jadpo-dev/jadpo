@@ -49,9 +49,10 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    in the last three hours exists.
 
 A chunk is sized for one session. If one turns out larger, split it here
-before starting the second half. Tags: `opus` or `sonnet`; effort `medium`,
-`high` or `xhigh`; the hardest chunks (graph, interpreter, concurrency,
-policy, compiled targets, WebAssembly optimisation) are `xhigh`.
+before starting the second half. Tags: `opus` or `sonnet`; effort `high`
+or `xhigh`, never lower (Richard, 2026-10-13); the hardest chunks (graph,
+interpreter, concurrency, policy, compiled targets, WebAssembly
+optimisation) are `xhigh`.
 
 ## Phase 0 — Reset
 
@@ -82,14 +83,14 @@ policy, compiled targets, WebAssembly optimisation) are `xhigh`.
 
 ## Phase 1 — Graph core (areas 1–4)
 
-- [ ] **1.1 Workspace and CLI shell:** `opus · medium` `jadpo` with the agreed
+- [ ] **1.1 Workspace and CLI shell:** `opus · high` `jadpo` with the agreed
   [design language](language/research/14-cli-design-language.md),
   self-describing help, `--json`, completion skeleton.
 - [ ] **1.2 Parser, syntax tree and formatter** `opus · high` for the decided grammar.
-- [ ] **1.3 Project layout and domains** `opus · medium` (area 1).
+- [ ] **1.3 Project layout and domains** `opus · high` (area 1).
 - [ ] **1.4 Values and types** `opus · high` (area 2).
 - [ ] **1.5 Logic** `opus · high` (area 3).
-- [ ] **1.6 Failures** `opus · medium` (area 4).
+- [ ] **1.6 Failures** `opus · high` (area 4).
 - [ ] **1.7 The graph, identity and manifest:** `opus · xhigh` `jadpo check` writes
   `build/manifest.json`; the language server gives diagnostics and hover.
 
@@ -100,7 +101,7 @@ reference only).
 ## Phase 2 — Interpreter and tests (area 13)
 
 - [ ] **2.1 Interpreter** `opus · xhigh` for pure logic, with errors at `.jadpo` lines.
-- [ ] **2.2 Test runner:** `opus · medium` file, line, name, seed, failure reports as decided,
+- [ ] **2.2 Test runner:** `opus · high` file, line, name, seed, failure reports as decided,
   `--json`.
 - [ ] **2.3 Watch mode** `opus · high` under the 1-second target on a fixture project.
 
@@ -112,7 +113,7 @@ reference only).
   `jadpo sql`.
 - [ ] **3.3 Writes:** `opus · xhigh` entity operations, conflicts, concurrent-change rerun,
   counters.
-- [ ] **3.4 Lifecycle and purge.** `opus · medium`
+- [ ] **3.4 Lifecycle and purge.** `opus · high`
 
 ## Phase 4 — HTTP, identity and policy (areas 7–9)
 
@@ -129,10 +130,10 @@ reference only).
 
 ## Phase 5 — Configuration, time and translations (area 10)
 
-- [ ] **5.1 Configuration:** `sonnet · medium` `config.jadpo`, environments, secrets, signing
+- [ ] **5.1 Configuration:** `sonnet · high` `config.jadpo`, environments, secrets, signing
   keys.
-- [ ] **5.2 Time:** `opus · medium` durations, instants, formatting.
-- [ ] **5.3 Translations and locales.** `sonnet · medium`
+- [ ] **5.2 Time:** `opus · high` durations, instants, formatting.
+- [ ] **5.3 Translations and locales.** `sonnet · high`
 
 ## Phase 6 — Events and schedules (area 12)
 
@@ -144,9 +145,9 @@ reference only).
 
 - [ ] **7.1 Packages and connections:** `opus · high` the package format, lazy loading,
   `connections:`, the network report.
-- [ ] **7.2 Importing and faking:** `opus · medium` the OpenAPI importer, hand-written
+- [ ] **7.2 Importing and faking:** `opus · high` the OpenAPI importer, hand-written
   packages, generated fakes, `jadpo provider record`.
-- [ ] **7.3 Email:** `opus · medium` the capability, SMTP driver, `emails/` templates, the dev
+- [ ] **7.3 Email:** `opus · high` the capability, SMTP driver, `emails/` templates, the dev
   inbox, the health score.
 
 ## Phase 8 — Compiled deployables
