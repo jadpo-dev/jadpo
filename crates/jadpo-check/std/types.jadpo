@@ -30,3 +30,25 @@ public type Rounding = Enum {
     half_up
     up
 }
+
+/// How a failure reaches a client and how background work treats it
+/// (area 4). An application declares only `invalid_value`, `not_found`,
+/// `not_permitted`, `conflict`, `rejected`, `rate_limited` and
+/// `unavailable`; the runtime raises the rest (question 3).
+public type FailureKind = Enum {
+    invalid_request
+    invalid_value
+    unauthenticated
+    not_permitted
+    not_visible
+    not_found
+    conflict
+    precondition_failed
+    rejected
+    rate_limited
+    unavailable
+    timed_out
+    outcome_unknown
+    misconfigured
+    internal_fault
+}

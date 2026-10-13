@@ -93,7 +93,7 @@ fn division_needs_a_divisor_that_excludes_zero() {
     );
     assert_eq!(
         with_names(
-            "type People = Int {\n    min: 1\n}\n\nfunction share(total: People, people: People) -> People {\n    return People(total / people)\n}\n"
+            "type People = Int {\n    min: 1\n}\n\ntype Portion = Int {\n    min: 0\n}\n\nfunction share(total: People, people: People) -> Portion {\n    return Portion(total / people)\n}\n"
         ),
         CLEAN
     );
@@ -363,7 +363,7 @@ fn editing_a_body_rechecks_only_that_files_bodies() {
             .filter(|key| key.starts_with(&format!("{query}(")))
             .count()
     };
-    assert_eq!(count("body_problems"), 1, "only a's bodies: {log:?}");
+    assert_eq!(count("body_check"), 1, "only a's bodies: {log:?}");
     assert_eq!(count("action_calls"), 1, "only a's calls: {log:?}");
     assert_eq!(
         count("action_cycles"),

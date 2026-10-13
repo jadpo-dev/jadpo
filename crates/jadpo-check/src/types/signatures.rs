@@ -13,6 +13,10 @@ use super::ty::{Prim, Ty, TypeRef};
 pub struct Sig {
     pub params: Vec<(String, Ty)>,
     pub result: Ty,
+    /// The failures its `fails` list names, as written and in order
+    /// (area 4). Callers handle these: the callable's own check makes sure
+    /// the list is exactly what can leave it.
+    pub fails: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -45,6 +49,7 @@ pub fn callables(db: &dyn Db, project: Project) -> Callables {
             .map_or(Ty::Prim(Prim::Unit), |result| {
                 table.resolve(&TypeRef::parse(result))
             }),
+        fails: signature.fails.clone(),
     };
     let mut out = Callables::default();
     for &file in project.files(db) {

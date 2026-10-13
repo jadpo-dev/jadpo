@@ -11,7 +11,7 @@
 InstantRange Zone Locale Weekday
 Page PageCursor
 File Principal Response Access
-FailureKind TimeFormat LocalGap LocalOverlap
+TimeFormat LocalGap LocalOverlap
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol HttpMethod
 AuthenticationMethod RouteAuthentication FieldAccess OnDelete Generated FieldChange
 ApiChange PersonalData Erasure FileType SuccessStatus SearchLanguage RateLimitKey

@@ -9,7 +9,7 @@ use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, Expr, MemberItem};
 
 use super::super::literal;
-use super::super::rules::Const;
+use super::super::rules::{Const, Rules};
 use super::super::shape::FieldsBase;
 use super::super::table::{Def, FieldDef};
 use super::super::ty::{Prim, Ty};
@@ -67,6 +67,7 @@ impl Body<'_> {
         }
         if let Expr::CallExpr(call) = expr {
             let actual = self.call(call, Some(expected));
+            self.types.insert(super::key(expr.syntax()), actual.clone());
             self.require(expr, &actual, expected);
             return;
         }
@@ -188,7 +189,15 @@ impl Body<'_> {
 
     // --- the type of an expression ----------------------------------------
 
+    /// The type of an expression, remembered by position so a
+    /// construction can be proved safe from its parts (area 4, question 6).
     pub(super) fn infer(&mut self, expr: &Expr) -> Ty {
+        let ty = self.infer_expr(expr);
+        self.types.insert(super::key(expr.syntax()), ty.clone());
+        ty
+    }
+
+    fn infer_expr(&mut self, expr: &Expr) -> Ty {
         match expr {
             Expr::Literal(_) => match Const::from_expr(expr) {
                 Const::Number { decimal: true, .. } => Ty::Prim(Prim::Decimal),
@@ -224,23 +233,18 @@ impl Body<'_> {
                 Ty::List(Box::new(item))
             }
             Expr::BinExpr(binary) => self.binary(binary),
-            Expr::AttemptExpr(attempt) => {
-                for mapping in attempt.mappings() {
-                    if let Some(value) = mapping.expr() {
-                        self.failure_value(&value);
-                    }
-                }
-                attempt.expr().map_or(Ty::Error, |inner| self.infer(&inner))
-            }
+            Expr::AttemptExpr(attempt) => self.attempt(attempt, None),
             Expr::MatchExpr(subject) => self.match_value(subject, None),
             Expr::LambdaExpr(lambda) => {
                 self.misplaced_inline(lambda);
                 Ty::Error
             }
             Expr::RejectExpr(reject) => {
-                if let Some(inner) = reject.expr() {
-                    self.failure_value(&inner);
-                }
+                self.reject(reject);
+                Ty::Error
+            }
+            Expr::PropagateExpr(propagate) => {
+                self.propagate(propagate);
                 Ty::Error
             }
             _ => Ty::Error,
@@ -489,7 +493,8 @@ impl Body<'_> {
                 }
                 let fields = fields.clone();
                 let input = *base == FieldsBase::Input;
-                self.fields_given(record, &name, &[], &fields, input, head_span);
+                let rules = self.fields_given(record, &name, &[], &fields, input, head_span);
+                self.object_built(record, &name, rules);
                 Ty::Named(name)
             }
             ([], Some(Def::Scalar { .. })) | ([], None)
@@ -511,7 +516,8 @@ impl Body<'_> {
                 match &found.fields {
                     Some(fields) => {
                         let fields = fields.clone();
-                        self.fields_given(
+                        let shown = format!("{name}.{variant_name}");
+                        let rules = self.fields_given(
                             record,
                             &name,
                             &[variant_name],
@@ -519,6 +525,7 @@ impl Body<'_> {
                             false,
                             head_span,
                         );
+                        self.object_built(record, &shown, rules);
                     }
                     None => {
                         self.not_record(record, &format!("{name}.{variant_name}"), "plain variant")
@@ -576,7 +583,11 @@ impl Body<'_> {
     }
 
     /// The fields given in a block: each one declared, none twice, every
-    /// required one present, each value checked against its field.
+    /// required one present, each value checked against its field. A value
+    /// may be anything that widens to the field's declared type; when the
+    /// field adds rules of its own, they run as the object is built (area 2,
+    /// question 2). Returns the fields whose own rules the declared ranges
+    /// don't prove a computed value follows, so building can fail.
     pub(super) fn fields_given(
         &mut self,
         record: &ast::RecordExpr,
@@ -585,7 +596,8 @@ impl Body<'_> {
         fields: &[FieldDef],
         input: bool,
         head_span: Span,
-    ) {
+    ) -> Vec<String> {
+        let mut unproved: Vec<String> = Vec::new();
         let is_variant = !variant.is_empty();
         let shown = if is_variant {
             format!("{host}.{}", variant.join("."))
@@ -659,7 +671,20 @@ impl Body<'_> {
                 if field.optional {
                     expected = expected.nullable();
                 }
+                let before = self.out.len();
                 self.check(&value, &expected);
+                let actual = self
+                    .types
+                    .get(&super::key(value.syntax()))
+                    .cloned()
+                    .unwrap_or(Ty::Error);
+                if field.rules != Rules::default()
+                    && self.out.len() == before
+                    && !actual.has_error()
+                    && !self.proves(&value, &actual, &field_ty)
+                {
+                    unproved.push(name_of(&field_ty));
+                }
             }
         }
         let missing: Vec<String> = fields
@@ -669,7 +694,7 @@ impl Body<'_> {
             .map(|f| format!("`{}`", f.name))
             .collect();
         if missing.is_empty() {
-            return;
+            return unproved;
         }
         let rule = if is_variant {
             &rule::TYPE_MISSING_VARIANT_FIELD
@@ -684,6 +709,39 @@ impl Body<'_> {
                     "Every field of `{shown}` is given when a value is built; a field that may be absent is declared `T?` and given as `none`."
                 ))
                 .next(format!("Add `{first}: ...` to the block")),
+        );
+        unproved
+    }
+
+    /// Records whether building an object can fail, and reports it when
+    /// nothing handles it. Entity writes (`create`, `update`'s `set:`)
+    /// follow the same rule and are checked with area 6.
+    fn object_built(&mut self, record: &ast::RecordExpr, shown: &str, unproved: Vec<String>) {
+        let at = super::key(record.syntax());
+        if unproved.is_empty() {
+            self.constructions.insert(at, super::Fallible::Never);
+            return;
+        }
+        self.constructions.insert(at, super::Fallible::Construction);
+        if self.handled.contains(&at) {
+            return;
+        }
+        let listed: Vec<String> = unproved.iter().map(|f| format!("`{f}`")).collect();
+        let span = super::line_span(self.path, record.syntax());
+        self.flow.open = true;
+        self.out.push(
+            Diagnostic::new(
+                &rule::FAILURE_ATTEMPT_REQUIRED,
+                format!("Building `{shown}` can fail at runtime, and nothing handles it"),
+            )
+            .at(span, "checked when it runs")
+            .reason(format!(
+                "{} adds rules of its own, which run as the object is built, and the declared ranges don't prove the value follows them.",
+                crate::and_list(&listed)
+            ))
+            .next(format!(
+                "Write `attempt {shown} {{ ... }} invalid: SomeFailure` naming an `invalid_value` failure"
+            )),
         );
     }
 
@@ -787,4 +845,9 @@ impl Body<'_> {
         self.unknown_field(&format!("{host}.{variant}"), field, &fields, span, true);
         Ty::Error
     }
+}
+
+/// A field type as written: `Badge.name`.
+fn name_of(ty: &Ty) -> String {
+    ty.to_string()
 }

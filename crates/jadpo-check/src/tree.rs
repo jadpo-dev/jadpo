@@ -66,9 +66,23 @@ pub fn name_span(source: &ast::SourceFile, path: &str, index: u32, function: Opt
     }
 }
 
+/// A node's span without the comments and whitespace kept beside its
+/// tokens, so a label never runs on into a trailing comment.
 pub fn node_span(path: &str, node: &SyntaxNode) -> Span {
     let range = node.text_range();
-    Span::new(path, range.start().into(), range.end().into())
+    let mut tokens = node
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| !token.kind().is_trivia());
+    let Some(first) = tokens.next() else {
+        return Span::new(path, range.start().into(), range.end().into());
+    };
+    let last = tokens.last().unwrap_or_else(|| first.clone());
+    Span::new(
+        path,
+        first.text_range().start().into(),
+        last.text_range().end().into(),
+    )
 }
 
 /// A span covering a whole file: the location prints the path alone.

@@ -19,7 +19,9 @@ mod signatures;
 mod table;
 mod ty;
 
-pub use body::body_problems;
+pub use body::{
+    BodyCheck, FailureSet, FailureSets, Fallible, body_check, body_problems, failure_sets,
+};
 pub use decl::type_problems;
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{Const, Num, Rules};

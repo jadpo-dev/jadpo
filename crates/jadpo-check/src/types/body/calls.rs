@@ -15,7 +15,7 @@ use super::super::shape::FieldsBase;
 use super::super::signatures::Sig;
 use super::super::table::Def;
 use super::super::ty::{Prim, Ty};
-use super::{Body, CallKind, Context, LocalKind, capital, is_literal, text};
+use super::{Body, CallKind, Context, Fallible, LocalKind, capital, is_literal, text};
 use crate::case::starts_upper;
 use crate::std_lib::{Namespace, Operation, StdNames};
 use crate::tree::{self, dotted};
@@ -35,6 +35,7 @@ impl Body<'_> {
     pub(super) fn call(&mut self, call: &ast::CallExpr, expected: Option<&Ty>) -> Ty {
         let (ty, kind) = self.call_kind(call, expected);
         self.last_call = kind;
+        self.unhandled(call);
         ty
     }
 
@@ -585,6 +586,19 @@ impl Body<'_> {
         field: Option<Ty>,
         call: &ast::CallExpr,
     ) -> Ty {
+        let (ty, verdict) = self.construct_checked(written, field, call);
+        self.constructions
+            .insert(super::key(call.syntax()), verdict);
+        ty
+    }
+
+    /// `Type(value)` checked, with whether it can fail at runtime.
+    fn construct_checked(
+        &mut self,
+        written: &str,
+        field: Option<Ty>,
+        call: &ast::CallExpr,
+    ) -> (Ty, Fallible) {
         self.last_call = CallKind::Pure(format!("{written}(...)"));
         let target = match field {
             Some(field) => field,
@@ -592,7 +606,7 @@ impl Body<'_> {
                 if let Some(prim) = Prim::from_name(written) {
                     if prim == Prim::Unit {
                         self.args_only(call);
-                        return Ty::Prim(Prim::Unit);
+                        return (Ty::Prim(Prim::Unit), Fallible::Never);
                     }
                     Ty::Prim(prim)
                 } else {
@@ -601,13 +615,13 @@ impl Body<'_> {
                         Some(Def::Enum { variants }) => {
                             let variants = variants.clone();
                             self.enum_constructor(written, &variants, call);
-                            return Ty::Named(written.to_string());
+                            return (Ty::Named(written.to_string()), Fallible::Unknown);
                         }
                         Some(Def::Fields { base, .. }) => {
                             if matches!(base, FieldsBase::Entity | FieldsBase::Failure) {
                                 // Resolution reports these (area 1).
                                 self.args_only(call);
-                                return Ty::Error;
+                                return (Ty::Error, Fallible::Unknown);
                             }
                             self.args_only(call);
                             let span = call
@@ -624,11 +638,11 @@ impl Body<'_> {
                                 ))
                                 .next(format!("Write `{written} {{ ... }}` with each field")),
                             );
-                            return Ty::Named(written.to_string());
+                            return (Ty::Named(written.to_string()), Fallible::Unknown);
                         }
                         None => {
                             self.args_only(call);
-                            return Ty::Error;
+                            return (Ty::Error, Fallible::Unknown);
                         }
                     }
                 }
@@ -651,16 +665,22 @@ impl Body<'_> {
                 ))
                 .next(format!("Pass one value to `{written}(...)`")),
             );
-            return target;
+            return (target, Fallible::Unknown);
         }
         let value = &args[0].1;
         if is_literal(value) {
+            // Checked while compiling (area 2).
             self.literal(value, &target, true);
-            return target;
+            return (target, Fallible::Never);
         }
+        let before = self.out.len();
         let actual = self.infer(value);
-        if actual.has_error() || self.table.assignable(&actual, &target) {
-            return target;
+        // A value already reported as wrong proves nothing either way.
+        if actual.has_error() || target.has_error() || self.out.len() > before {
+            return (target, Fallible::Unknown);
+        }
+        if self.table.assignable(&actual, &target) {
+            return (target, Fallible::Never);
         }
         if let Ty::Prim(prim) = &target
             && prim.is_representation()
@@ -679,7 +699,7 @@ impl Body<'_> {
                 ))
                 .next(format!("Use the `{actual}` value as it is")),
             );
-            return target;
+            return (target, Fallible::Unknown);
         }
         let from = self.table.representation(&actual);
         let to = self.table.representation(&target);
@@ -703,8 +723,14 @@ impl Body<'_> {
                 ))
                 .next(format!("Pass a value built on `{target_rep}`")),
             );
+            return (target, Fallible::Unknown);
         }
-        target
+        let verdict = if self.proves(value, &actual, &target) {
+            Fallible::Never
+        } else {
+            Fallible::Construction
+        };
+        (target, verdict)
     }
 
     /// `Enum(value)`: an enum is never built from a value.

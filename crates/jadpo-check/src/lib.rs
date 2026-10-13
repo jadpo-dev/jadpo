@@ -1,13 +1,15 @@
 //! Checking a Jadpo project (docs/compiler-runtime.md §2.2): the rules of
-//! each language area as salsa queries over `jadpo-db`. Areas 1 to 3 are
+//! each language area as salsa queries over `jadpo-db`. Areas 1 to 4 are
 //! built: layout, naming, visibility and resolution, then values and types
-//! and the logic of bodies ([`types`]). Later chunks add failures (area 4)
-//! and build the graph.
+//! and the logic of bodies ([`types`]), and failures (`failures`, with the
+//! body rules beside the others in [`types`]). A later chunk builds the
+//! graph.
 //!
 //! [`check`] assembles every diagnostic for a project, sorted by file and
 //! position so the same source always gives the same output.
 
 mod case;
+mod failures;
 mod layout;
 mod naming;
 mod resolve;
@@ -16,6 +18,7 @@ mod tree;
 pub mod types;
 mod usage;
 
+pub use failures::{FailureInfo, FailureTable, failure_problems, failure_table};
 pub use layout::layout_problems;
 pub use naming::{domain_problems, naming_problems};
 pub use resolve::resolve_file;
@@ -60,6 +63,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(resolve_file(db, project, file).iter().cloned());
             out.extend(usage_problems(db, project, file).iter().cloned());
             out.extend(types::type_problems(db, project, file).iter().cloned());
+            out.extend(failure_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());
             out.extend(types::recursion_problems(db, project, file).iter().cloned());
         }

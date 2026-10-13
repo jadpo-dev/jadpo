@@ -10,40 +10,77 @@
 //! result. Every local is tracked until its scope closes, so an unused one
 //! is reported once its callable has been read.
 //!
-//! What failures add (area 4: `fails` sets, `attempt` on calls that can
-//! fail, the failure arms of a `match`) is left to that area: where this
-//! check cannot know a type yet, it uses `Error`, which accepts everything,
-//! so nothing here reports a knock-on of something it doesn't check.
+//! Failures (area 4) are followed through the same walk: every `reject`,
+//! `attempt` and outcome `match` says which failures can leave the
+//! callable, and the `fails` list must name exactly those. Where this check
+//! cannot know a type or a failure yet (an entity's operations, area 6), it
+//! uses `Error` or an open failure set, which accept everything, so nothing
+//! here reports a knock-on of something it doesn't check.
 
 mod calls;
 mod expr;
+mod failing;
 mod matching;
 mod ops;
+mod outcome;
+mod ranges;
+
+use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, File, Project, Symbols, symbols};
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, Stmt};
+use jadpo_syntax::{SyntaxKind, SyntaxNode};
 
 use super::decl::Decls;
 use super::signatures::{Callables, callables};
 use super::table::{TypeTable, type_table};
 use super::ty::{Prim, Ty, TypeNode, TypeRef};
 use crate::case::is_lower_snake;
+use crate::failures::{FailureTable, failure_table};
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 
-/// The problems inside one file's bodies.
+pub use failing::Fallible;
+
+/// Which failures can leave one callable (area 4).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct FailureSet {
+    /// The declared failures a `reject`, an `attempt` or an outcome `match`
+    /// lets out, by name.
+    pub failures: BTreeSet<String>,
+    /// Whether something else may leave that this check can't name yet,
+    /// such as an entity operation's failure (area 6), or a mistake
+    /// already reported.
+    pub open: bool,
+}
+
+/// The failure set of every function and action in one file, by name;
+/// a library's functions as `library.function`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct FailureSets {
+    pub callables: BTreeMap<String, FailureSet>,
+}
+
+/// Everything checking one file's bodies finds.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BodyCheck {
+    pub problems: Vec<Diagnostic>,
+    pub sets: FailureSets,
+}
+
+/// Checks one file's bodies.
 #[salsa::tracked(returns(ref))]
-pub fn body_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+pub fn body_check(db: &dyn Db, project: Project, file: File) -> BodyCheck {
     let Some(source) = tree::source(db, file) else {
-        return Vec::new();
+        return BodyCheck::default();
     };
     let mut checker = Body {
         path: file.path(db),
         table: type_table(db, project),
         calls: callables(db, project),
         symbols: symbols(db, project),
+        failures: failure_table(db, project),
         scopes: Vec::new(),
         result: Ty::Prim(Prim::Unit),
         context: Context::Action,
@@ -52,12 +89,64 @@ pub fn body_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         unused: Vec::new(),
         last_call: CallKind::Other,
         dead: false,
+        flow: Flow::default(),
+        handled: Vec::new(),
+        constructions: BTreeMap::new(),
+        types: BTreeMap::new(),
+        arm: Arm::None,
+        sets: FailureSets::default(),
         out: Vec::new(),
     };
     for decl in source.decls() {
         checker.decl(&decl);
     }
-    checker.out
+    BodyCheck {
+        problems: checker.out,
+        sets: checker.sets,
+    }
+}
+
+/// The problems inside one file's bodies.
+pub fn body_problems(db: &dyn Db, project: Project, file: File) -> &Vec<Diagnostic> {
+    &body_check(db, project, file).problems
+}
+
+/// Which failures can leave each function and action in one file: a query
+/// of its own, so whatever reads the sets is reused when an edit leaves
+/// them equal.
+#[salsa::tracked(returns(ref))]
+pub fn failure_sets(db: &dyn Db, project: Project, file: File) -> FailureSets {
+    body_check(db, project, file).sets.clone()
+}
+
+/// What can leave the callable being checked.
+#[derive(Clone, Debug, Default)]
+struct Flow {
+    /// The callable's name, for messages; empty for tests and seeds.
+    name: String,
+    /// Each failure that can leave, with where it first does and how.
+    leaving: BTreeMap<String, (Span, &'static str)>,
+    /// See [`FailureSet::open`].
+    open: bool,
+}
+
+/// The `match` arm whose body is being checked, which decides what
+/// `propagate` means.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Arm {
+    /// Not in an outcome arm: `propagate` has nothing to pass on.
+    None,
+    /// The success arm of an outcome `match`.
+    Success,
+    /// A failure arm, with the failure it handles; `None` when the arm's
+    /// pattern is already reported.
+    Failure(Option<String>),
+}
+
+/// A node's position in the file, as a key.
+fn key(node: &SyntaxNode) -> (u32, u32) {
+    let range = node.text_range();
+    (range.start().into(), range.end().into())
 }
 
 /// What kind of code is being checked, which decides what it may call
@@ -129,6 +218,7 @@ struct Body<'a> {
     table: &'a TypeTable,
     calls: &'a Callables,
     symbols: &'a Symbols,
+    failures: &'a FailureTable,
     scopes: Vec<Vec<Local>>,
     /// The result type of the callable being checked.
     result: Ty,
@@ -145,7 +235,34 @@ struct Body<'a> {
     /// Whether the statements being checked are already reported as
     /// unreachable.
     dead: bool,
+    flow: Flow,
+    /// The calls an `attempt` or an outcome `match` is handling, by
+    /// position.
+    handled: Vec<(u32, u32)>,
+    /// Whether each runtime construction can fail, by the call's position.
+    constructions: BTreeMap<(u32, u32), Fallible>,
+    /// The type each expression was found to have, by position, for
+    /// proving a construction safe.
+    types: BTreeMap<(u32, u32), Ty>,
+    arm: Arm,
+    sets: FailureSets,
     out: Vec<Diagnostic>,
+}
+
+/// One callable to check.
+struct Callable {
+    context: Context,
+    /// `function`, `action`, `test` ...
+    word: &'static str,
+    /// Its name, `library.function` for a library's; `None` for tests and
+    /// seeds.
+    name: Option<String>,
+    params: Option<ast::ParamList>,
+    fails: Option<ast::FailsClause>,
+    /// Whether it states what can leave it with `fails`.
+    contract: bool,
+    result: Option<ast::RetType>,
+    body: Option<ast::Block>,
 }
 
 fn text(name: &ast::NameRef) -> String {
@@ -219,61 +336,104 @@ impl Body<'_> {
     }
 
     fn decl(&mut self, decl: &Decl) {
+        let name = tree::decl_name(decl).as_ref().and_then(tree::name_text);
+        let callable = |context, word, params, fails, contract, result, body| Callable {
+            context,
+            word,
+            name: name.clone(),
+            params,
+            fails,
+            contract,
+            result,
+            body,
+        };
         match decl {
-            Decl::FunctionDecl(d) => self.callable(
+            Decl::FunctionDecl(d) => self.callable(callable(
                 Context::Function,
                 "function",
                 d.param_list(),
+                d.fails_clause(),
+                true,
                 d.ret_type(),
                 d.block(),
-            ),
-            Decl::ActionDecl(d) => self.callable(
+            )),
+            Decl::ActionDecl(d) => self.callable(callable(
                 Context::Action,
                 "action",
                 d.param_list(),
+                d.fails_clause(),
+                true,
                 d.ret_type(),
                 d.block(),
-            ),
-            Decl::FixtureDecl(d) => self.callable(
+            )),
+            Decl::FixtureDecl(d) => self.callable(callable(
                 Context::Action,
                 "fixture",
                 d.param_list(),
+                None,
+                false,
                 d.ret_type(),
                 d.block(),
-            ),
+            )),
             Decl::LibraryDecl(d) => {
-                self.library = d.name().as_ref().and_then(tree::name_text);
+                self.library = name.clone();
                 for function in tree::library_functions(d) {
-                    self.callable(
-                        Context::Function,
-                        "function",
-                        function.param_list(),
-                        function.ret_type(),
-                        function.block(),
-                    );
+                    let function_name = function.name().as_ref().and_then(tree::name_text);
+                    self.callable(Callable {
+                        context: Context::Function,
+                        word: "function",
+                        name: function_name
+                            .map(|f| format!("{}.{f}", name.clone().unwrap_or_default())),
+                        params: function.param_list(),
+                        fails: function.fails_clause(),
+                        contract: true,
+                        result: function.ret_type(),
+                        body: function.block(),
+                    });
                 }
                 self.library = None;
             }
-            Decl::TestDecl(d) => self.callable(Context::Action, "test", None, None, d.block()),
-            Decl::SeedDecl(d) => self.callable(Context::Action, "seed", None, None, d.block()),
+            Decl::TestDecl(d) => self.callable(Callable {
+                name: None,
+                ..callable(Context::Action, "test", None, None, false, None, d.block())
+            }),
+            Decl::SeedDecl(d) => self.callable(Callable {
+                name: None,
+                ..callable(Context::Action, "seed", None, None, false, None, d.block())
+            }),
             _ => {}
         }
     }
 
-    fn callable(
-        &mut self,
-        context: Context,
-        word: &str,
-        params: Option<ast::ParamList>,
-        result: Option<ast::RetType>,
-        body: Option<ast::Block>,
-    ) {
+    fn callable(&mut self, callable: Callable) {
+        let Callable {
+            context,
+            word,
+            name,
+            params,
+            fails,
+            contract,
+            result,
+            body,
+        } = callable;
         self.context = context;
         self.unknown_name = false;
         self.unused.clear();
+        self.flow = Flow {
+            name: name.clone().unwrap_or_default(),
+            ..Flow::default()
+        };
+        self.arm = Arm::None;
         self.scopes.push(Vec::new());
         for param in params.iter().flat_map(|list| list.params()) {
-            let ty = self.resolve(param.ty());
+            let mut ty = self.resolve(param.ty());
+            // A built-in representation in a function's or action's
+            // signature is already reported (area 2, question 11): what
+            // the body does with it follows from that mistake.
+            if contract && matches!(ty.strip_nullable(), Ty::Prim(prim) if prim.is_representation())
+            {
+                ty = Ty::Error;
+            }
             self.declare(param.name(), ty, LocalKind::Param, None);
         }
         self.result = match result {
@@ -283,11 +443,11 @@ impl Body<'_> {
         let completes = self.block(body.clone());
         self.pop_scope();
         if completes
-            && let Some(body) = body
+            && let Some(body) = &body
             && !self.result.has_error()
             && self.result != Ty::Prim(Prim::Unit)
         {
-            self.missing_return(word, &body);
+            self.missing_return(word, body);
         }
         if !self.unknown_name {
             let unused = std::mem::take(&mut self.unused);
@@ -296,6 +456,18 @@ impl Body<'_> {
             }
         }
         self.unused.clear();
+        if contract {
+            self.fails_list(fails.as_ref(), params.as_ref(), word);
+        }
+        if let Some(name) = name
+            && contract
+        {
+            let flow = std::mem::take(&mut self.flow);
+            self.sets.callables.entry(name).or_insert(FailureSet {
+                failures: flow.leaving.into_keys().collect(),
+                open: flow.open,
+            });
+        }
     }
 
     // --- locals -------------------------------------------------------------
@@ -538,8 +710,18 @@ impl Body<'_> {
                 true
             }
             Stmt::AssertStmt(assert) => {
+                // `assert complete(id) fails TodoNotFound` expects the call
+                // to fail (area 13): it is handled there.
+                let handled = match (assert.expr(), assert.assert_fails()) {
+                    (Some(Expr::CallExpr(call)), Some(_)) => Some(key(call.syntax())),
+                    _ => None,
+                };
+                self.handled.extend(handled);
                 if let Some(expr) = assert.expr() {
                     self.infer(&expr);
+                }
+                if handled.is_some() {
+                    self.handled.pop();
                 }
                 true
             }
@@ -782,15 +964,15 @@ impl Body<'_> {
     fn standalone(&mut self, expr: &Expr) -> bool {
         match expr {
             Expr::RejectExpr(reject) => {
-                if let Some(inner) = reject.expr() {
-                    self.failure_value(&inner);
-                }
+                self.reject(reject);
                 false
             }
-            Expr::PropagateExpr(_) => false,
+            Expr::PropagateExpr(propagate) => {
+                self.propagate(propagate);
+                false
+            }
             Expr::AttemptExpr(attempt) => {
-                self.infer(expr);
-                let _ = attempt;
+                self.attempt(attempt, None);
                 true
             }
             Expr::MatchExpr(subject) => self.match_stmt(subject),
@@ -858,9 +1040,8 @@ impl Body<'_> {
         );
     }
 
-    /// The value after `reject`, or a block a later area checks (an
-    /// entity write's `set:`): its values are read, and the failure or the
-    /// write is that area's to check.
+    /// A block a later area checks (an entity write's `set:`): its values
+    /// are read, and the write is that area's to check.
     fn failure_value(&mut self, expr: &Expr) {
         match expr {
             Expr::RecordExpr(record) => self.member_values(record.member_list()),
