@@ -45,7 +45,7 @@ pub enum Def {
     /// A refinement: its parent and the rules it adds.
     Scalar {
         parent: Ty,
-        rules: Rules,
+        rules: Box<Rules>,
     },
     /// An object, input, output, event, email, failure or entity.
     Fields {
@@ -381,7 +381,7 @@ impl TypeTable {
             let def = match kind {
                 ShapeKind::Scalar { .. } => Def::Scalar {
                     parent: Ty::Error,
-                    rules: Rules::default(),
+                    rules: Box::default(),
                 },
                 ShapeKind::Fields { base, .. } => Def::Fields {
                     base: *base,
@@ -427,7 +427,7 @@ impl TypeTable {
             let def = match kind {
                 ShapeKind::Scalar { parent, .. } => Def::Scalar {
                     parent: table.resolve(parent),
-                    rules: Rules::default(),
+                    rules: Box::default(),
                 },
                 ShapeKind::Fields { base, .. } => Def::Fields {
                     base: *base,
@@ -483,7 +483,7 @@ impl TypeTable {
             let def = match (def, kind) {
                 (Def::Scalar { parent, .. }, ShapeKind::Scalar { settings, .. }) => Def::Scalar {
                     parent: parent.clone(),
-                    rules: table.rules_from(parent, settings),
+                    rules: Box::new(table.rules_from(parent, settings)),
                 },
                 (Def::Fields { base, fields }, _) => Def::Fields {
                     base: *base,

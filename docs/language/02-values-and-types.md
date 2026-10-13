@@ -4,21 +4,38 @@ area: 2
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
+  - type.absent_field
+  - type.base_outside_declaration
+  - type.constraint_base
+  - type.constraint_contradiction
+  - type.constraint_repeated
   - type.constructor_argument_count
   - type.constructor_input
+  - type.copy_clash
+  - type.copy_into_input
+  - type.decimal_scale_required
+  - type.duplicate_field
+  - type.duplicate_variant
   - type.duplicate_variant_field
+  - type.enum_empty
   - type.field_on_non_record
   - type.invalid_literal
+  - type.invalid_pattern
   - type.mismatch
   - type.missing_field
   - type.missing_variant_field
   - type.not_record
   - type.nullable_selection
+  - type.optional_outside_input
   - type.primitive_signature
   - type.redundant_nullability
+  - type.reserved_field_name
+  - type.setting_value
   - type.sibling_mismatch
+  - type.type_argument_count
   - type.unknown_enum_variant
   - type.unknown_field
+  - type.unknown_setting
   - type.unknown_variant_field
   - syntax.constraint_colon_required
   - syntax.enum_empty
@@ -63,7 +80,7 @@ strings (`"Hello"`, with `\"`, `\\`, `\n`, `\r` and `\t` escapes) and `none`.
 Most of a program's types are named types: a built-in representation, a name
 that says what the value means, and the rules a valid value must follow.
 
-```jadpo project=shop
+```jadpo check project=shop
 type Pence = Int {
     min: 0
 }
@@ -88,7 +105,7 @@ creates a new type; there are no aliases.
 A named type can build on another named type, adding rules. The narrower type
 can be used wherever its parent is expected, but not the other way round.
 
-```jadpo project=refine
+```jadpo check project=refine
 type ProductName = Text {
     min_length: 1
     max_length: 120
@@ -126,7 +143,7 @@ Applying a type to a value, `Type(value)`, creates a value of that type by
 checking every rule on it and on the types it builds on. It is validation,
 never a cast.
 
-```jadpo fragment
+```jadpo check project=literals
 type Quantity = Int {
     min: 1
     max: 1000
@@ -227,17 +244,28 @@ allowed. Inside a body, locals can still hold built-in types.
 An object is a fixed set of named fields. The base after `=` says what the
 object is for:
 
-```jadpo fragment
-type Money = Object {               // used inside the application
+```jadpo check project=objects file=names.jadpo hidden
+type ProductName = Text {
+    min_length: 1
+    max_length: 120
+}
+
+type Pence = Int {
+    min: 0
+}
+```
+
+```jadpo check project=objects file=main.jadpo
+type Money = Object {  // used inside the application
     amount: Pence
 }
 
-type CreateProduct = Input {        // arrives from outside, such as a request body
+type CreateProduct = Input {  // arrives from outside, such as a request body
     name: ProductName
     price: Pence
 }
 
-type ProductView = Output {         // sent back, such as a response
+type ProductView = Output {  // sent back, such as a response
     name: ProductName
     price: Money
 }
@@ -249,11 +277,13 @@ nested shape is declared once, with a name, and used by that name.
 
 An object value is written with its type name and every field:
 
-```jadpo fragment
+```jadpo check project=objects file=view.jadpo
 function view(name: ProductName, price: Pence) -> ProductView {
     return ProductView {
         name: name
-        price: price
+        price: Money {
+            amount: price
+        }
     }
 }
 ```
@@ -328,7 +358,7 @@ Every field of an object, entity or enum variant is a type of its own, written
 wherever an `Email` is expected, but an `Email` is not automatically a
 `Customer.email`, and `Supplier.email` is never one.
 
-```jadpo fragment
+```jadpo check project=fields
 entity Customer {
     id: Uuid
     email: Email
@@ -389,7 +419,14 @@ field as a constructor, as in `Customer.email(email)`.
 
 A field can add rules of its own in a block after its type:
 
-```jadpo fragment
+```jadpo check project=badge file=names.jadpo hidden
+type ProductName = Text {
+    min_length: 1
+    max_length: 120
+}
+```
+
+```jadpo check project=badge file=main.jadpo
 type Badge = Object {
     label: ProductName {
         max_length: 12
@@ -470,7 +507,19 @@ A nullable field is still required: a `Listing` must say `subtitle: none`
 explicitly. Being allowed to leave a field out is a separate idea that belongs
 to inputs:
 
-```jadpo fragment
+```jadpo check project=input-settings file=names.jadpo hidden
+type ProductName = Text {
+    min_length: 1
+    max_length: 120
+}
+
+type PageSize = Int {
+    min: 1
+    max: 100
+}
+```
+
+```jadpo check project=input-settings file=main.jadpo
 type ListProducts = Input {
     name: ProductName {
         optional: true
@@ -531,7 +580,7 @@ A value can widen through `?`: a `Customer.email?` can be used where an
 An enum is a closed list of named alternatives. Variants are always written
 with their enum's name.
 
-```jadpo fragment
+```jadpo check project=enum-values
 type TicketStatus = Enum {
     open
     waiting
@@ -651,7 +700,18 @@ no methods or display labels.
 `List<T>`, `Set<T>` and `Map<K, V>` can be used as field types, parameter
 types and boundary types, nested in each other or holding objects.
 
-```jadpo fragment
+```jadpo check project=lists file=names.jadpo hidden
+type Tag = Text {
+    min_length: 1
+    max_length: 30
+}
+
+type Pence = Int {
+    min: 0
+}
+```
+
+```jadpo check project=lists file=main.jadpo
 type BasketLine = Object {
     tag: Tag
     price: Pence
@@ -722,7 +782,18 @@ lets anyone else change it. A local declared with `var mut` can be pointed at a
 new value of the same type, but fields cannot be assigned: to change an object,
 build a new one.
 
-```jadpo fragment
+```jadpo check project=values file=names.jadpo hidden
+type ProductName = Text {
+    min_length: 1
+    max_length: 120
+}
+
+type Pence = Int {
+    min: 0
+}
+```
+
+```jadpo check project=values file=main.jadpo
 type Product = Object {
     name: ProductName
     price: Pence
@@ -765,16 +836,14 @@ function reprice(product: Product, price: Pence) -> Product {
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
-
 Every error this area can produce, with an example that triggers it and the
-compiler's actual output. The syntax errors (`syntax.*`) show the new
-compiler's output, from `jadpo fmt --check`; the rest still show the archived
-compiler's until their chunk is built.
+new compiler's actual output. Four syntax entries at the end still show the
+archived compiler's error, because the new compiler reports those mistakes
+under another rule, named in each note.
 
 ### `type.mismatch`
 
-```jadpo project=e-mismatch expect=type.mismatch
+```jadpo check project=e-mismatch expect=type.mismatch
 type Pence = Int {
     min: 0
 }
@@ -784,17 +853,29 @@ function add(a: Pence, b: Pence) -> Pence {
 }
 ```
 
+```text output
+error: `Int` can't be used where `Pence` is required
+ --> main.jadpo:6:12
+  |
+6 |     return a + b
+  |            ^^^^^ this is `Int`
+  reason: Arithmetic works on the representation, so this is a plain `Int`; only `Pence(...)` makes it a `Pence`, checking its rules.
+  next: Convert it with `Pence(a + b)` (agent)
+  rule: type.mismatch
+  help: docs/language/02-values-and-types.html#type-mismatch
+
+check failed: 1 error, 1 file
+```
+
 ### `type.sibling_mismatch`
 
-```jadpo project=e-sibling expect=type.sibling_mismatch
+```jadpo check project=e-sibling expect=type.sibling_mismatch
 entity Customer {
     id: Uuid
-    identity: id
 }
 
 entity Order {
     id: Uuid
-    identity: id
 }
 
 function customer_reference(id: Customer.id) -> Customer.id {
@@ -806,30 +887,84 @@ function misuse(order: Order) -> Customer.id {
 }
 ```
 
+```text output
+error: `Order.id` can't be used where `Customer.id` is required
+ --> main.jadpo:14:31
+   |
+14 |     return customer_reference(order.id)
+   |                               ^^^^^^^^ this is `Order.id`
+  reason: Both refine `Uuid`, but a field type widens only to its own declared type, so one type's values never stand in for another's.
+  next: Pass a `Customer.id` here (agent)
+  rule: type.sibling_mismatch
+  help: docs/language/02-values-and-types.html#type-sibling-mismatch
+
+check failed: 1 error, 1 file
+```
+
 ### `type.primitive_signature`
 
-```jadpo project=e-primitive expect=type.primitive_signature
+```jadpo check project=e-primitive expect=type.primitive_signature
 function normalise(value: Text) -> Text {
     return value
 }
 ```
 
+```text output
+error: This parameter uses `Text` directly
+ --> main.jadpo:1:27
+  |
+1 | function normalise(value: Text) -> Text {
+  |                           ^^^^ a built-in type
+  reason: Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `Text` says neither.
+  next: Declare a named type built on `Text` and use it here (agent)
+  rule: type.primitive_signature
+  help: docs/language/02-values-and-types.html#type-primitive-signature
+
+error: This result uses `Text` directly
+ --> main.jadpo:1:36
+  |
+1 | function normalise(value: Text) -> Text {
+  |                                    ^^^^ a built-in type
+  reason: Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `Text` says neither.
+  next: Declare a named type built on `Text` and use it here (agent)
+  rule: type.primitive_signature
+  help: docs/language/02-values-and-types.html#type-primitive-signature
+
+check failed: 2 errors, 1 file
+```
+
 ### `type.invalid_literal`
 
-```jadpo project=e-literal expect=type.invalid_literal
+A literal takes the type it goes into and is checked against its rules while compiling, whether it is returned, assigned, passed or written as `Quantity(0)`:
+
+```jadpo check project=e-literal expect=type.invalid_literal
 type Quantity = Int {
     min: 1
     max: 1000
 }
 
 function starting_quantity() -> Quantity {
-    return Quantity(0)
+    return 0
 }
+```
+
+```text output
+error: `0` isn't a valid `Quantity`
+ --> main.jadpo:7:12
+  |
+7 |     return 0
+  |            ^ breaks `min: 1`
+  reason: `Quantity` declares `min: 1`, and the value is below 1. A literal is checked against every rule while compiling.
+  next: Use a value that `Quantity` allows (agent)
+  rule: type.invalid_literal
+  help: docs/language/02-values-and-types.html#type-invalid-literal
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.constructor_input`
 
-```jadpo project=e-ctor-input expect=type.constructor_input
+```jadpo check project=e-ctor-input expect=type.constructor_input
 type OrderId = Uuid {}
 
 type ProductName = Text {
@@ -841,9 +976,23 @@ function order_for(name: ProductName) -> OrderId {
 }
 ```
 
+```text output
+error: `OrderId` can't be built from `ProductName`
+ --> main.jadpo:8:20
+  |
+8 |     return OrderId(name)
+  |                    ^^^^ this is `ProductName`
+  reason: `OrderId` is built on `Uuid` and `ProductName` is built on `Text`; a constructor converts only between types with the same representation, re-checking the rules.
+  next: Pass a value built on `Uuid` (agent)
+  rule: type.constructor_input
+  help: docs/language/02-values-and-types.html#type-constructor-input
+
+check failed: 1 error, 1 file
+```
+
 ### `type.constructor_argument_count`
 
-```jadpo project=e-ctor-count expect=type.constructor_argument_count
+```jadpo check project=e-ctor-count expect=type.constructor_argument_count
 type Quantity = Int {
     min: 1
 }
@@ -853,10 +1002,24 @@ function pair() -> Quantity {
 }
 ```
 
+```text output
+error: `Quantity(...)` takes one value, not 2
+ --> main.jadpo:6:12
+  |
+6 |     return Quantity(1, 2)
+  |            ^^^^^^^^^^^^^^ 2 given
+  reason: Constructing a `Quantity` checks one value against its rules.
+  next: Pass one value to `Quantity(...)` (agent)
+  rule: type.constructor_argument_count
+  help: docs/language/02-values-and-types.html#type-constructor-argument-count
+
+check failed: 1 error, 1 file
+```
+
 ### `type.missing_field`
 
-```jadpo project=e-missing-field expect=type.missing_field
-output Receipt {
+```jadpo check project=e-missing-field expect=type.missing_field
+type Receipt = Output {
     email: Email
 }
 
@@ -865,18 +1028,32 @@ function incomplete_receipt() -> Receipt {
 }
 ```
 
+```text output
+error: `Receipt` is missing `email`
+ --> main.jadpo:6:12
+  |
+6 |     return Receipt {}
+  |            ^^^^^^^ fields missing
+  reason: Every field of `Receipt` is given when a value is built; a field that may be absent is declared `T?` and given as `none`.
+  next: Add `email: ...` to the block (agent)
+  rule: type.missing_field
+  help: docs/language/02-values-and-types.html#type-missing-field
+
+check failed: 1 error, 1 file
+```
+
 ### `type.unknown_field`
 
-```jadpo project=e-unknown-field expect=type.unknown_field
+```jadpo check project=e-unknown-field expect=type.unknown_field
 type ProductName = Text {
     max_length: 120
 }
 
-value Product {
+type Product = Object {
     name: ProductName
 }
 
-function product(name: ProductName) -> Product {
+function build_product(name: ProductName) -> Product {
     return Product {
         name: name
         title: name
@@ -884,9 +1061,60 @@ function product(name: ProductName) -> Product {
 }
 ```
 
+```text output
+error: `Product` has no field `title`
+ --> main.jadpo:12:9
+   |
+12 |         title: name
+   |         ^^^^^ not declared
+  reason: `Product`'s fields are `name`.
+  next: Remove `title`, or declare it on `Product` (agent)
+  rule: type.unknown_field
+  help: docs/language/02-values-and-types.html#type-unknown-field
+
+check failed: 1 error, 1 file
+```
+
+### `type.duplicate_field`
+
+A field is given once when a value is built, and declared once in a type:
+
+```jadpo check project=e-duplicate-field expect=type.duplicate_field
+type ProductName = Text {
+    max_length: 120
+}
+
+type Product = Object {
+    name: ProductName
+}
+
+function build_product(name: ProductName) -> Product {
+    return Product {
+        name: name
+        name: name
+    }
+}
+```
+
+```text output
+error: `name` is given twice
+ --> main.jadpo:12:9
+   |
+11 |         name: name
+   |         ---- first given here
+12 |         name: name
+   |         ^^^^ given again
+  reason: Each field of `Product` is given once, so there is never a question of which value counts.
+  next: Remove one `name` (agent)
+  rule: type.duplicate_field
+  help: docs/language/02-values-and-types.html#type-duplicate-field
+
+check failed: 1 error, 1 file
+```
+
 ### `type.not_record`
 
-```jadpo project=e-not-record expect=type.not_record
+```jadpo check project=e-not-record expect=type.not_record
 type ProductName = Text {
     max_length: 120
 }
@@ -896,9 +1124,23 @@ function blank() -> ProductName {
 }
 ```
 
+```text output
+error: `ProductName` isn't built with `{ ... }`
+ --> main.jadpo:6:12
+  |
+6 |     return ProductName {}
+  |            ^^^^^^^^^^^^^^ has no fields
+  reason: Braces build objects and variants with fields; `ProductName`, built on `Text`, takes one value in brackets.
+  next: Write `ProductName(...)` with one value (agent)
+  rule: type.not_record
+  help: docs/language/02-values-and-types.html#type-not-record
+
+check failed: 1 error, 1 file
+```
+
 ### `type.field_on_non_record`
 
-```jadpo project=e-field-scalar expect=type.field_on_non_record
+```jadpo check project=e-field-scalar expect=type.field_on_non_record
 type ProductName = Text {
     max_length: 120
 }
@@ -908,42 +1150,84 @@ function raw(name: ProductName) -> ProductName {
 }
 ```
 
+```text output
+error: `ProductName` has no fields
+ --> main.jadpo:6:17
+  |
+6 |     return name.value
+  |                 ^^^^^ no such field
+  reason: `name` is a `ProductName`, built on `Text`; only objects, inputs, outputs, events, failures and entities have fields.
+  next: Use `name` itself (agent)
+  rule: type.field_on_non_record
+  help: docs/language/02-values-and-types.html#type-field-on-non-record
+
+check failed: 1 error, 1 file
+```
+
 ### `type.nullable_selection`
 
-```jadpo project=e-nullable expect=type.nullable_selection
+```jadpo check project=e-nullable expect=type.nullable_selection
 type ProductName = Text {
     max_length: 120
 }
 
-value Product {
+type Product = Object {
     name: ProductName
 }
 
-function product_name(product: Product?) -> ProductName {
+function listed_name(product: Product?) -> ProductName {
     return product.name
 }
 ```
 
+```text output
+error: `product` may be `none`, so `name` can't be read yet
+ --> main.jadpo:10:20
+   |
+10 |     return product.name
+   |                    ^^^^ may be `none`
+  reason: `product` is `Product?`; a field is read once `match` has found a value.
+  next: Match on `product` and read `name` inside `some(...)` (agent)
+  rule: type.nullable_selection
+  help: docs/language/02-values-and-types.html#type-nullable-selection
+
+check failed: 1 error, 1 file
+```
+
 ### `type.redundant_nullability`
 
-```jadpo project=e-redundant expect=type.redundant_nullability
+```jadpo check project=e-redundant expect=type.redundant_nullability
 type ProductName = Text {
     max_length: 120
 }
 
-value Listing {
+type Listing = Object {
     subtitle: ProductName?
 }
 
-value ListingPreview {
+type ListingPreview = Object {
     subtitle: Listing.subtitle?
 }
 ```
 
+```text output
+error: `Listing.subtitle` already permits `none`
+ --> main.jadpo:10:15
+   |
+10 |     subtitle: Listing.subtitle?
+   |               ^^^^^^^^^^^^^^^^^ nullable twice
+  reason: `Listing.subtitle` takes `none` from its declared type; a second `?` adds nothing.
+  next: Remove the extra `?` (agent)
+  rule: type.redundant_nullability
+  help: docs/language/02-values-and-types.html#type-redundant-nullability
+
+check failed: 1 error, 1 file
+```
+
 ### `type.unknown_enum_variant`
 
-```jadpo project=e-variant expect=type.unknown_enum_variant
-enum TicketStatus {
+```jadpo check project=e-variant expect=type.unknown_enum_variant
+type TicketStatus = Enum {
     open
     closed
 }
@@ -953,14 +1237,28 @@ function reopen() -> TicketStatus {
 }
 ```
 
+```text output
+error: `TicketStatus` has no variant `opne`
+ --> main.jadpo:7:25
+  |
+7 |     return TicketStatus.opne
+  |                         ^^^^ not a variant
+  reason: `TicketStatus`'s variants are `open` and `closed`. Did you mean `open`?
+  next: Use `TicketStatus.open` (agent)
+  rule: type.unknown_enum_variant
+  help: docs/language/02-values-and-types.html#type-unknown-enum-variant
+
+check failed: 1 error, 1 file
+```
+
 ### `type.missing_variant_field`
 
-```jadpo project=e-variant-missing expect=type.missing_variant_field
+```jadpo check project=e-variant-missing expect=type.missing_variant_field
 type ReceiptId = Uuid {}
 
-enum PaymentOutcome {
+type PaymentOutcome = Enum {
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
     }
 }
@@ -970,15 +1268,29 @@ function paid() -> PaymentOutcome {
 }
 ```
 
+```text output
+error: `PaymentOutcome.paid` is missing `receipt_id`
+ --> main.jadpo:11:12
+   |
+11 |     return PaymentOutcome.paid {}
+   |            ^^^^^^^^^^^^^^^^^^^ fields missing
+  reason: Every field of `PaymentOutcome.paid` is given when a value is built; a field that may be absent is declared `T?` and given as `none`.
+  next: Add `receipt_id: ...` to the block (agent)
+  rule: type.missing_variant_field
+  help: docs/language/02-values-and-types.html#type-missing-variant-field
+
+check failed: 1 error, 1 file
+```
+
 ### `type.unknown_variant_field`
 
-```jadpo project=e-variant-unknown expect=type.unknown_variant_field
+```jadpo check project=e-variant-unknown expect=type.unknown_variant_field
 type DeclineReason = Text {
     max_length: 200
 }
 
-enum PaymentOutcome {
-    declined {
+type PaymentOutcome = Enum {
+    declined: {
         reason: DeclineReason
     }
 }
@@ -991,15 +1303,29 @@ function decline(reason: DeclineReason) -> PaymentOutcome {
 }
 ```
 
+```text output
+error: `PaymentOutcome.declined` has no field `note`
+ --> main.jadpo:14:9
+   |
+14 |         note: reason
+   |         ^^^^ not declared
+  reason: `PaymentOutcome.declined`'s fields are `reason`.
+  next: Remove `note`, or declare it on `PaymentOutcome.declined` (agent)
+  rule: type.unknown_variant_field
+  help: docs/language/02-values-and-types.html#type-unknown-variant-field
+
+check failed: 1 error, 1 file
+```
+
 ### `type.duplicate_variant_field`
 
-```jadpo project=e-variant-duplicate expect=type.duplicate_variant_field
+```jadpo check project=e-variant-duplicate expect=type.duplicate_variant_field
 type DeclineReason = Text {
     max_length: 200
 }
 
-enum PaymentOutcome {
-    declined {
+type PaymentOutcome = Enum {
+    declined: {
         reason: DeclineReason
     }
 }
@@ -1010,6 +1336,442 @@ function decline(reason: DeclineReason) -> PaymentOutcome {
         reason: reason
     }
 }
+```
+
+```text output
+error: `reason` is given twice
+ --> main.jadpo:14:9
+   |
+13 |         reason: reason
+   |         ------ first given here
+14 |         reason: reason
+   |         ^^^^^^ given again
+  reason: Each field of `PaymentOutcome.declined` is given once, so there is never a question of which value counts.
+  next: Remove one `reason` (agent)
+  rule: type.duplicate_variant_field
+  help: docs/language/02-values-and-types.html#type-duplicate-variant-field
+
+check failed: 1 error, 1 file
+```
+
+### `type.enum_empty`
+
+```jadpo check project=e-enum-empty-type expect=type.enum_empty
+type TicketStatus = Enum {}
+```
+
+```text output
+error: `TicketStatus` has no variants
+ --> main.jadpo:1:6
+  |
+1 | type TicketStatus = Enum {}
+  |      ^^^^^^^^^^^^ an empty enum
+  reason: An enum is a closed list of named alternatives, so it needs at least one for a value to be.
+  next: Add the enum's variants, one name per line (agent)
+  rule: type.enum_empty
+  help: docs/language/02-values-and-types.html#type-enum-empty
+
+check failed: 1 error, 1 file
+```
+
+### `type.duplicate_variant`
+
+```jadpo check project=e-duplicate-variant expect=type.duplicate_variant
+type TicketStatus = Enum {
+    open
+    closed
+    open
+}
+```
+
+```text output
+error: `TicketStatus.open` is declared twice
+ --> main.jadpo:4:5
+  |
+2 |     open
+  |     ---- first declared here
+4 |     open
+  |     ^^^^ declared again
+  reason: Each variant of an enum has its own name, so a value and a `match` arm name exactly one.
+  next: Remove one `open`, or rename it (agent)
+  rule: type.duplicate_variant
+  help: docs/language/02-values-and-types.html#type-duplicate-variant
+
+check failed: 1 error, 1 file
+```
+
+### `type.unknown_setting`
+
+A type's block holds only the constraints in the table above:
+
+```jadpo check project=e-unknown-setting expect=type.unknown_setting
+type ProductName = Text {
+    min_length: 1
+    maxlength: 120
+}
+```
+
+```text output
+error: `maxlength` isn't a setting Jadpo knows
+ --> main.jadpo:3:5
+  |
+3 |     maxlength: 120
+  |     ^^^^^^^^^ unknown setting
+  reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale` and `version`. Did you mean `max_length`?
+  next: Use `max_length` instead of `maxlength` (agent)
+  rule: type.unknown_setting
+  help: docs/language/02-values-and-types.html#type-unknown-setting
+
+check failed: 1 error, 1 file
+```
+
+### `type.setting_value`
+
+A setting with a fixed set of options takes an enum value, `Type.value`; quantities take numbers of the right kind:
+
+```jadpo check project=e-setting-value expect=type.setting_value
+type ContactEmail = Text {
+    format: email
+}
+```
+
+```text output
+error: `format` takes a `TextFormat` value, such as `TextFormat.email`
+ --> main.jadpo:2:13
+  |
+2 |     format: email
+  |             ^^^^^ a name here
+  reason: `format` is a constraint, and its value must be a `TextFormat` value, such as `TextFormat.email`.
+  next: Write `TextFormat.email` (agent)
+  rule: type.setting_value
+  help: docs/language/02-values-and-types.html#type-setting-value
+
+check failed: 1 error, 1 file
+```
+
+### `type.constraint_base`
+
+```jadpo check project=e-constraint-base expect=type.constraint_base
+type Nickname = Text {
+    min: 1
+}
+```
+
+```text output
+error: `min` doesn't apply to a `Text` type
+ --> main.jadpo:2:5
+  |
+2 |     min: 1
+  |     ^^^ doesn't fit the base
+  reason: `min` constrains `Int`, `Decimal` and `Duration` types.
+  next: Remove `min`, or use a constraint that fits (agent)
+  rule: type.constraint_base
+  help: docs/language/02-values-and-types.html#type-constraint-base
+
+check failed: 1 error, 1 file
+```
+
+### `type.constraint_repeated`
+
+```jadpo check project=e-constraint-repeated expect=type.constraint_repeated
+type Nickname = Text {
+    max_length: 20
+    max_length: 30
+}
+```
+
+```text output
+error: `max_length` is given twice
+ --> main.jadpo:3:5
+  |
+2 |     max_length: 20
+  |     ---------- first given here
+3 |     max_length: 30
+  |     ^^^^^^^^^^ given again
+  reason: Each setting is given once, so there is never a question of which one counts.
+  next: Remove one `max_length` (agent)
+  rule: type.constraint_repeated
+  help: docs/language/02-values-and-types.html#type-constraint-repeated
+
+check failed: 1 error, 1 file
+```
+
+### `type.constraint_contradiction`
+
+```jadpo check project=e-contradiction expect=type.constraint_contradiction
+type Nickname = Text {
+    min_length: 10
+    max_length: 3
+}
+```
+
+```text output
+error: `max_length: 3` is below `min_length: 10`
+ --> main.jadpo:3:5
+  |
+2 |     min_length: 10
+  |     ---------- the minimum
+3 |     max_length: 3
+  |     ^^^^^^^^^^ below the minimum
+  reason: No value could follow both rules, so the type could never be built.
+  next: Correct `min_length` or `max_length` (agent)
+  rule: type.constraint_contradiction
+  help: docs/language/02-values-and-types.html#type-constraint-contradiction
+
+check failed: 1 error, 1 file
+```
+
+### `type.invalid_pattern`
+
+A pattern must match the whole text and uses a subset of regular expressions without backreferences or lookaround (question 9):
+
+```jadpo check project=e-pattern expect=type.invalid_pattern
+type Doubled = Text {
+    pattern: "(a+)+\\1"
+}
+```
+
+```text output
+error: This pattern can't be used
+ --> main.jadpo:2:14
+  |
+2 |     pattern: "(a+)+\\1"
+  |              ^^^^^^^^^^ backreferences are not allowed
+  reason: A pattern is a regular expression that must match the whole text, without backreferences or lookaround, so it runs in linear time and the same way on every target.
+  next: Rewrite the pattern without the unsupported part (agent)
+  rule: type.invalid_pattern
+  help: docs/language/02-values-and-types.html#type-invalid-pattern
+
+check failed: 1 error, 1 file
+```
+
+### `type.decimal_scale_required`
+
+```jadpo check project=e-scale expect=type.decimal_scale_required
+type Price = Decimal {
+    min: 0.00
+}
+```
+
+```text output
+error: `Price` needs a `scale`
+ --> main.jadpo:1:6
+  |
+1 | type Price = Decimal {
+  |      ^^^^^ a `Decimal` type
+  reason: A `Decimal` is exact with a fixed number of decimal places, its `scale`, which sets how it is stored and sent.
+  next: Add `scale:` with the number of decimal places, such as `scale: 2` (agent)
+  rule: type.decimal_scale_required
+  help: docs/language/02-values-and-types.html#type-decimal-scale-required
+
+check failed: 1 error, 1 file
+```
+
+### `type.optional_outside_input`
+
+```jadpo check project=e-optional expect=type.optional_outside_input
+type Nickname = Text {
+    max_length: 30
+}
+
+type Profile = Object {
+    nickname: Nickname {
+        optional: true
+    }
+}
+```
+
+```text output
+error: `Profile` isn't an `Input`, so its fields are always given
+ --> main.jadpo:7:9
+  |
+7 |         optional: true
+  |         ^^^^^^^^ only for an `Input`
+  reason: Only a request arriving from outside may leave fields out or have them filled by default; an object built inside the application states every field, using `none` for a field declared `T?`.
+  next: Remove the setting, or make the field's type `T?` if it may be absent (agent)
+  rule: type.optional_outside_input
+  help: docs/language/02-values-and-types.html#type-optional-outside-input
+
+check failed: 1 error, 1 file
+```
+
+### `type.reserved_field_name`
+
+```jadpo check project=e-reserved expect=type.reserved_field_name
+type Flag = Bool {}
+
+type Settings = Object {
+    optional: Flag
+}
+```
+
+```text output
+error: `optional` can't be a field's name
+ --> main.jadpo:4:5
+  |
+4 |     optional: Flag
+  |     ^^^^^^^^ reserved
+  reason: `include`, `pick`, `omit` and `optional` are lines that build a type's fields, so no field may take their names.
+  next: Rename the field (agent)
+  rule: type.reserved_field_name
+  help: docs/language/02-values-and-types.html#type-reserved-field-name
+
+check failed: 1 error, 1 file
+```
+
+### `type.base_outside_declaration`
+
+There is no unnamed object: `Object`, `Enum`, `Input` and `Output` appear only after `=` (question 19):
+
+```jadpo check project=e-base expect=type.base_outside_declaration
+type Basket = Object {
+    details: Object
+}
+```
+
+```text output
+error: `Object` is used as a type
+ --> main.jadpo:2:14
+  |
+2 |     details: Object
+  |              ^^^^^^ only a base
+  reason: `Object` is written only after `=` in a `type` declaration; every shape has a name, so a field or signature names that type.
+  next: Declare `type Name = Object { ... }` and use its name here (agent)
+  rule: type.base_outside_declaration
+  help: docs/language/02-values-and-types.html#type-base-outside-declaration
+
+check failed: 1 error, 1 file
+```
+
+### `type.type_argument_count`
+
+```jadpo check project=e-type-arguments expect=type.type_argument_count
+type Tag = Text {
+    max_length: 30
+}
+
+type Basket = Object {
+    tags: List<Tag, Tag>
+}
+```
+
+```text output
+error: `List` takes one type argument, as in `List<Tag>`
+ --> main.jadpo:6:11
+  |
+6 |     tags: List<Tag, Tag>
+  |           ^^^^^^^^^^^^^^ 2 given
+  reason: `List` holds values of the type in `< >`, so it needs exactly 1.
+  next: Write `List` with one type argument, as in `List<Tag>` (agent)
+  rule: type.type_argument_count
+  help: docs/language/02-values-and-types.html#type-type-argument-count
+
+check failed: 1 error, 1 file
+```
+
+### `type.copy_into_input`
+
+```jadpo check project=e-copy-input file=names.jadpo hidden
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+}
+```
+
+```jadpo check project=e-copy-input file=main.jadpo expect=type.copy_into_input
+type CreateTodo = Input {
+    include: [Todo]
+}
+```
+
+```text output
+error: `CreateTodo` is an `Input` and can't use `include`
+ --> main.jadpo:2:5
+  |
+2 |     include: [Todo]
+  |     ^^^^^^^ copies every field
+  reason: `include` would also accept every field added to the source type later, so a request could set fields nobody chose to expose.
+  next: Name the fields this input accepts with `pick: [...]` (human)
+  rule: type.copy_into_input
+  help: docs/language/02-values-and-types.html#type-copy-into-input
+
+check failed: 1 error, 2 files
+```
+
+### `type.absent_field`
+
+```jadpo check project=e-absent file=names.jadpo hidden
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+}
+```
+
+```jadpo check project=e-absent file=main.jadpo expect=type.absent_field
+type TodoView = Output {
+    pick: [Todo.id, Todo.title]
+    omit: [Todo.notes]
+}
+```
+
+```text output
+error: `TodoView` has no field `notes` at this point
+ --> main.jadpo:3:12
+  |
+3 |     omit: [Todo.notes]
+  |            ^^^^^^^^^^ not present
+  reason: `omit` names a field the lines above bring in, so a typo or a field removed since is caught; none of them brings in `notes`.
+  next: Remove `Todo.notes` from the list (agent)
+  rule: type.absent_field
+  help: docs/language/02-values-and-types.html#type-absent-field
+
+check failed: 1 error, 2 files
+```
+
+### `type.copy_clash`
+
+```jadpo check project=e-copy-clash file=names.jadpo hidden
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+}
+
+entity Note {
+    id: Uuid
+    title: TodoTitle
+}
+```
+
+```jadpo check project=e-copy-clash file=main.jadpo expect=type.copy_clash
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Note.title]
+}
+```
+
+```text output
+error: `title` is already in `TodoView`, from `Todo`
+ --> main.jadpo:2:33
+  |
+2 |     pick: [Todo.id, Todo.title, Note.title]
+  |                                 ^^^^^^^^^^ copied again
+  reason: A copied field never replaces another field, because a field added to a source type would then change this type unseen.
+  next: Remove `title` from one of them with `omit: [...]`, or write `title` as a field below them (agent)
+  rule: type.copy_clash
+  help: docs/language/02-values-and-types.html#type-copy-clash
+
+check failed: 1 error, 2 files
 ```
 
 ### `syntax.type_parent_required`
@@ -1088,7 +1850,7 @@ check failed: 1 error, 1 file
 
 ### `syntax.expected_constraint`
 
-> The archived compiler's error: a misspelt setting is now found when types are checked.
+> The archived compiler's error: a misspelt setting is now `type.unknown_setting`.
 
 ```jadpo project=e-constraint expect=syntax.expected_constraint
 type ProductName = Text {
@@ -1109,7 +1871,7 @@ type ContactEmail = Text {
 
 ### `syntax.expected_constraint_value`
 
-> The archived compiler's error: a setting's value is now checked when types are checked.
+> The archived compiler's error: a setting's value is now checked as `type.setting_value`.
 
 ```jadpo project=e-constraint-value expect=syntax.expected_constraint_value
 type Price = Decimal {
@@ -1151,7 +1913,7 @@ function product(name: ProductName) -> Product {
 
 ### `syntax.enum_empty`
 
-> The archived compiler's error: `type X = Enum {}` is now checked when types are checked.
+> The archived compiler's error: `type X = Enum {}` is now `type.enum_empty`.
 
 ```jadpo project=e-enum-empty expect=syntax.enum_empty
 enum TicketStatus {}
@@ -1223,30 +1985,56 @@ from, and the block holds the details: rules for a number or text, fields for
 an object, variants for an enum. `entity` stays separate because an entity is
 more than a type (storage, actions, queries and policy).
 
-```jadpo fragment
-type Price = Decimal {                 // rules on a number
+```jadpo check project=one-form file=names.jadpo hidden
+type Currency = Enum {
+    gbp
+    eur
+}
+
+type ReceiptId = Uuid {}
+
+type DeclineReason = Text {
+    max_length: 200
+}
+
+type OrderNote = Text {
+    max_length: 500
+}
+
+type OrderLineRequest = Input {
+    sku: Sku
+}
+
+entity Order {
+    id: Uuid
+    total: Price
+}
+```
+
+```jadpo check project=one-form file=main.jadpo
+type Price = Decimal {  // rules on a number
     scale: 2
     min: 0.00
 }
 
-type Sku = Text {                      // rules on text
+type Sku = Text {  // rules on text
     pattern: "[A-Z]{3}-[0-9]{4}"
 }
 
-type OrderId = Uuid {}                 // a new identity type with no extra rules
+type OrderId = Uuid {}  // a new identity type with no extra rules
 
-type Money = Object {                  // fields
+type Money = Object {  // fields
     amount: Price
     currency: Currency
 }
 
-type OrderStatus = Enum {              // variants
+type OrderStatus = Enum {  // variants
     pending
     paid
     shipped
 }
 
-type PaymentOutcome = Enum {           // variants that carry fields
+type PaymentOutcome = Enum {  // variants that carry fields
     pending
     paid: {
         receipt_id: ReceiptId
@@ -1256,14 +2044,14 @@ type PaymentOutcome = Enum {           // variants that carry fields
     }
 }
 
-type CreateOrder = Input {             // an object arriving from outside
+type CreateOrder = Input {  // an object arriving from outside
     lines: List<OrderLineRequest>
     note: OrderNote {
         optional: true
     }
 }
 
-type OrderView = Output {              // an object sent back
+type OrderView = Output {  // an object sent back
     id: Order.id
     total: Price
 }
@@ -1295,7 +2083,48 @@ it, **read from top to bottom**, each changing the result of the lines above:
 | `omit: [Todo.internal_note]` | removes fields present at that point |
 | `bar: User.bar` | a written field: replaces a field of the same name above, or adds a new one |
 
-```jadpo fragment
+```jadpo check project=building file=names.jadpo hidden
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type TodoStatus = Enum {
+    open
+    done
+}
+
+type DayCount = Int {
+    min: 0
+}
+
+type Quantity = Int {
+    min: 1
+}
+
+entity User {
+    id: Uuid
+    email: Email
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    status: TodoStatus
+    due_at: Instant?
+    deleted_at: Instant?
+}
+
+type OrderLineView = Output {
+    quantity: Quantity
+}
+
+entity Order {
+    id: Uuid
+    lines: List<OrderLineView>
+}
+```
+
+```jadpo check project=building file=main.jadpo
 type TodoView = Output {
     pick: [Todo.id, Todo.title, Todo.status, Todo.due_at]
 }
@@ -1313,7 +2142,7 @@ type PatchTodo = Input {
 
 type OrderView = Output {
     include: [Order]
-    lines: List<OrderLineView>          // replaces Order.lines with a view of each line
+    lines: List<OrderLineView>  // replaces Order.lines with a view of each line
 }
 
 type TodoReminder = Object {

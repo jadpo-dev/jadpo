@@ -283,7 +283,9 @@ fn parse_ref(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> TypeRef {
     let mut names = vec![String::new()];
     while let Some(&c) = chars.peek() {
         if c.is_ascii_alphanumeric() || c == '_' {
-            names.last_mut().map(|name| name.push(c));
+            if let Some(name) = names.last_mut() {
+                name.push(c);
+            }
             chars.next();
         } else if c == '.' {
             names.push(String::new());

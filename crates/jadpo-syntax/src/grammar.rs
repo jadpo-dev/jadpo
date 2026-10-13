@@ -1509,6 +1509,11 @@ fn condition(p: &mut Parser<'_>) {
     let checkpoint = p.error_count();
     p.with_records(false, |p| expr(p));
     let end = p.prev_end();
+    if end <= start {
+        // No condition at all: the expression's own error says so.
+        m.complete(p, CONDITION);
+        return;
+    }
     let text = p.text()[start as usize..end as usize].to_string();
     let error = SyntaxError::new(
         &rule::SYNTAX_CONDITION_BRACKETS,

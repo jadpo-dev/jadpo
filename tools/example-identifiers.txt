@@ -34,6 +34,7 @@ bookings
 browser_origin
 browser_session
 budget
+build_product
 bulk_quantity
 business_zone
 cancel_unpaid_orders
@@ -82,6 +83,7 @@ customer_not_visible
 customer_note
 customer_reference
 customer_view
+day_count
 days
 days_left
 days_overdue
@@ -94,6 +96,7 @@ delete_todo
 deleted_at
 delivery_state
 destination_company_id
+details
 discount
 display_name
 double_quantity
@@ -115,6 +118,7 @@ empty_note_patch
 empty_patch
 entry_count
 entry_id
+eur
 expires_at
 export_my_data
 expose_secret
@@ -127,6 +131,7 @@ finish_magic_link
 first_conflict
 first_quantity
 follow_up
+gbp
 get_patch_item_reviewer
 group_name
 handle_tenant
@@ -157,6 +162,7 @@ ledger_entry
 line_total
 list_products
 list_todos
+listed_name
 listing_pages
 listing_preview
 load_customer
@@ -197,6 +203,9 @@ open_todos
 opening_hours
 order_for
 order_id
+order_line_request
+order_line_view
+order_note
 order_status
 order_total
 order_view
