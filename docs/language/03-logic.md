@@ -3142,7 +3142,7 @@ check failed: 1 error, 1 file
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadmap chunk 1.5), except the failure side of `attempt` and `match` (area 4, chunk 1.6) and the runtime recursion limit (the interpreter, chunk 2.1).
+Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadmap chunk 1.5, with the failure side of `attempt` and `match` in chunk 1.6), except the runtime recursion limit (the interpreter, chunk 2.1).
 
 | Topic | Decision | Date |
 |---|---|---|

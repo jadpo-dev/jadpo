@@ -382,10 +382,44 @@ action reserve(product_id: ProductId, requested: Quantity, available: Quantity)
 Decided in area 3: `attempt` starts a statement, only on a call that can
 fail, and passes every failure of that call on to the caller's `fails` list.
 
-```jadpo fragment
+```jadpo check project=reorder file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=reorder file=domains/ordering/entities/order.jadpo hidden
+public entity Order {
+    id: Uuid
+}
+```
+
+```jadpo check project=reorder file=domains/ordering/failures/order_not_found.jadpo hidden
+type OrderNotFound = Failure {
+    kind: FailureKind.not_found
+}
+```
+
+```jadpo check project=reorder file=domains/inventory/types/reservation.jadpo hidden
+public type Reservation = Object {
+    order_id: Order.id
+}
+```
+
+```jadpo check project=reorder file=domains/inventory/failures/quantity_unavailable.jadpo hidden
+public type QuantityUnavailable = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=reorder file=domains/inventory/actions/reserve_for_order.jadpo hidden
+public action reserve_for_order(order: Order) fails QuantityUnavailable -> Reservation {
+    reject QuantityUnavailable
+}
+```
+
+```jadpo check project=reorder file=domains/ordering/actions/reorder.jadpo
 action reorder(order_id: Order.id) fails OrderNotFound, QuantityUnavailable -> Reservation {
-    var order: Order = attempt Order.get(order_id)          // can fail with OrderNotFound
-    return attempt inventory.reserve_for_order(order)       // can fail with QuantityUnavailable
+    var order: Order = attempt Order.get(order_id)  // can fail with OrderNotFound
+    return attempt inventory.reserve_for_order(order)  // can fail with QuantityUnavailable
 }
 ```
 
@@ -1549,7 +1583,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
+Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (roadmap chunk 1.6): declarations, kinds, codes, `fails`, `reject`, `attempt`, `invalid:` and outcome `match`. Data operations' mappings come with area 6, the client envelope and OpenAPI with area 7, and what runs (logging, causes, faults) with the interpreter (chunk 2.1).
 
 | Topic | Decision | Date |
 |---|---|---|

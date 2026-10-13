@@ -390,8 +390,14 @@ impl Body<'_> {
                 (ty, self.call_fallible(call))
             }
             Expr::RecordExpr(record) => {
+                let before = self.out.len();
                 let ty = self.infer(&inner);
-                (ty, self.record_fallible(record))
+                let fallible = if self.out.len() > before {
+                    Fallible::Unknown
+                } else {
+                    self.record_fallible(record)
+                };
+                (ty, fallible)
             }
             other => (self.infer(other), Fallible::Never),
         };
@@ -477,6 +483,9 @@ impl Body<'_> {
                     "The declared ranges prove `{written}` always follows its type's rules, so building it never fails; `attempt` marks only what can."
                 )
             }
+            Expr::CallExpr(call) if self.is_standard(call) => format!(
+                "`{written}` is a standard-library operation, which always gives its result; `attempt` marks only calls that can fail."
+            ),
             Expr::CallExpr(_) => format!(
                 "`{written}` lists no failures after `fails`, so it always gives its result; `attempt` marks only calls that can fail."
             ),
@@ -498,6 +507,18 @@ impl Body<'_> {
         }
         self.flow.open = true;
         self.out.push(problem);
+    }
+
+    /// Whether a call is to a standard-library operation.
+    fn is_standard(&self, call: &ast::CallExpr) -> bool {
+        call.expr()
+            .as_ref()
+            .and_then(dotted)
+            .is_some_and(|(first, _)| {
+                let head = text(&first);
+                !self.is_local(&head)
+                    && StdNames::get().namespace(&head) == Some(Namespace::Standard)
+            })
     }
 
     /// The mappings after a construction that can fail: `invalid:` names

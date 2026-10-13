@@ -86,21 +86,22 @@ fn lift(a: Num, b: Num) -> Option<(i128, i128, u32)> {
     Some((x, y, scale))
 }
 
+/// `a + b` for one end of a range, `low` for the lower end: an unbounded
+/// end, or a sum too large to follow, leaves that end unbounded.
 fn add(a: End, b: End, low: bool) -> End {
-    match (a, b) {
-        (End::At(a), End::At(b)) => match lift(a, b).and_then(|(x, y, scale)| {
+    let sum = match (a, b) {
+        (End::At(a), End::At(b)) => lift(a, b).and_then(|(x, y, scale)| {
             Some(Num {
                 mantissa: x.checked_add(y)?,
                 scale,
             })
-        }) {
-            Some(n) => End::At(n),
-            None if low => End::Below,
-            None => End::Above,
-        },
-        (End::Below, _) | (_, End::Below) if low => End::Below,
-        _ if low => End::Below,
-        _ => End::Above,
+        }),
+        _ => None,
+    };
+    match sum {
+        Some(n) => End::At(n),
+        None if low => End::Below,
+        None => End::Above,
     }
 }
 

@@ -218,6 +218,7 @@ order_id
 order_line
 order_line_request
 order_line_view
+order_not_found
 order_note
 order_status
 order_total
@@ -314,6 +315,7 @@ request_timeout
 reschedule_todo
 reservation
 reserve_for_cart
+reserve_for_order
 reserve_item
 reserve_stock
 retag_todo

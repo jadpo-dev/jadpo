@@ -176,7 +176,7 @@ impl Body<'_> {
                             )
                             .at(span.clone(), "matched again")
                             .also(first.clone(), "first matched here")
-                            .reason("Each failure has one arm; the first takes every `{failure}`, so this one never runs.".replace("{failure}", &failure))
+                            .reason(format!("Each failure has one arm; the first takes every `{failure}`, so this one never runs."))
                             .next("Remove this arm, or merge its body into the first"),
                         );
                         armed = None;
