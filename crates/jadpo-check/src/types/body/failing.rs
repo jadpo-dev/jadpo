@@ -369,9 +369,7 @@ impl Body<'_> {
                 format!("`{failure}` is missing {}", crate::and_list(&missing)),
             )
             .at(head_span, "fields missing")
-            .reason(format!(
-                "A failure is raised with every field its `client` and `internal` blocks declare, so the client and the log always get them."
-            ))
+            .reason("A failure is raised with every field its `client` and `internal` blocks declare, so the client and the log always get them.")
             .next(next),
         );
     }
@@ -540,9 +538,7 @@ impl Body<'_> {
                 format!("`{written}` can fail, but no failure is named for it"),
             )
             .at(span, "can fail at runtime")
-            .reason(format!(
-                "The value is only known when the program runs, and the declared ranges don't prove it follows the type's rules; `invalid:` names the `invalid_value` failure the caller gets when it doesn't."
-            ))
+            .reason("The value is only known when the program runs, and the declared ranges don't prove it follows the type's rules; `invalid:` names the `invalid_value` failure the caller gets when it doesn't.")
             .next(format!("Add `invalid: SomeFailure` after `{written}`")),
         );
     }
@@ -648,38 +644,53 @@ impl Body<'_> {
             }
             listed.insert(written.clone(), span);
         }
-        // Undeclared: in the order they can leave.
+        // Undeclared: one error for the callable, at the first place one
+        // leaves, naming every failure the list misses.
         let mut leaving: Vec<(String, Span, &'static str)> = self
             .flow
             .leaving
             .iter()
+            .filter(|(failure, _)| !listed.contains_key(*failure))
             .map(|(failure, (span, how))| (failure.clone(), span.clone(), *how))
             .collect();
         leaving.sort_by_key(|(_, span, _)| (span.start, span.end));
-        for (failure, span, how) in leaving {
-            if listed.contains_key(&failure) {
-                continue;
-            }
+        if let Some((_, first_span, first_how)) = leaving.first().cloned() {
+            let names: Vec<String> = leaving.iter().map(|(f, _, _)| format!("`{f}`")).collect();
+            let joined: Vec<&str> = leaving.iter().map(|(f, _, _)| f.as_str()).collect();
+            let joined = joined.join(", ");
             let insert = match (entries.last(), params) {
                 (Some((_, last)), _) => {
                     let end = u32::from(last.syntax().text_range().end());
-                    Some((Span::new(self.path, end, end), format!(", {failure}")))
+                    Some((Span::new(self.path, end, end), format!(", {joined}")))
                 }
                 (None, Some(params)) => {
                     let end = u32::from(params.syntax().text_range().end());
-                    Some((Span::new(self.path, end, end), format!(" fails {failure}")))
+                    Some((Span::new(self.path, end, end), format!(" fails {joined}")))
                 }
                 (None, None) => None,
             };
+            let what = crate::and_list(&names);
+            let verb = if names.len() == 1 { "can" } else { "can each" };
             let mut problem = Diagnostic::new(
                 &rule::FAILURE_UNDECLARED_PROPAGATION,
-                format!("`{failure}` can leave `{name}`, but its `fails` list doesn't say so"),
+                format!("{what} {verb} leave `{name}`, but its `fails` list doesn't say so"),
             )
-            .at(span, how)
-            .reason(format!(
-                "`fails` lists exactly the failures that can leave a {word}, so every caller knows what it must handle."
-            ))
-            .next(format!("Add `{failure}` to `{name}`'s `fails` list"));
+            .at(first_span.clone(), first_how);
+            for (_, span, how) in leaving.iter().skip(1) {
+                if *span != first_span {
+                    problem = problem.also(span.clone(), *how);
+                }
+            }
+            problem = problem
+                .reason(format!(
+                    "`fails` lists exactly the failures that can leave {}, so every caller knows what it must handle.",
+                    if word.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                        format!("an {word}")
+                    } else {
+                        format!("a {word}")
+                    }
+                ))
+                .next(format!("Add {what} to `{name}`'s `fails` list"));
             if let Some((at, text)) = insert {
                 problem = problem.edit(at, text);
             }
