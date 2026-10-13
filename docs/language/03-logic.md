@@ -1180,7 +1180,7 @@ error: Match arms use `->`
   rule: syntax.match_arrow
   help: docs/language/03-logic.html#syntax-match-arrow
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.match_pattern`
@@ -1218,7 +1218,7 @@ error: A match arm names a case's data in brackets
   rule: syntax.match_pattern
   help: docs/language/03-logic.html#syntax-match-pattern
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 The value-match examples below share a hidden file declaring
@@ -1735,7 +1735,7 @@ error: `zone:` is given twice
   rule: syntax.named_argument_duplicate
   help: docs/language/03-logic.html#syntax-named-argument-duplicate
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.positional_after_named`
@@ -1767,7 +1767,7 @@ error: A positional argument follows a named one
   rule: syntax.positional_after_named
   help: docs/language/03-logic.html#syntax-positional-after-named
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.expected_statement`
@@ -1798,7 +1798,7 @@ error: Jadpo has no `while` loop
   rule: syntax.expected_statement
   help: docs/language/03-logic.html#syntax-expected-statement
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.attempt_placement`
@@ -1838,7 +1838,7 @@ error: `attempt` can only start a statement
   rule: syntax.attempt_placement
   help: docs/language/03-logic.html#syntax-attempt-placement
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.colon_required`
@@ -1862,7 +1862,7 @@ error: `format` needs a colon before its value
   rule: syntax.colon_required
   help: docs/language/03-logic.html#syntax-colon-required
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.condition_brackets`
@@ -1893,7 +1893,7 @@ error: This condition needs brackets
   rule: syntax.condition_brackets
   help: docs/language/03-logic.html#syntax-condition-brackets
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.expected_expression`
@@ -1922,7 +1922,7 @@ error: `result` has no value
   rule: syntax.expected_expression
   help: docs/language/03-logic.html#syntax-expected-expression
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.unsupported_throw`
@@ -1946,7 +1946,7 @@ error: Jadpo has no `throw`
   rule: syntax.unsupported_throw
   help: docs/language/03-logic.html#syntax-unsupported-throw
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ## Review

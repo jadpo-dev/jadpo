@@ -6,7 +6,11 @@
 //! recommended next step with any edits, and who decides. `jadpo-term`
 //! renders it; nothing here knows about terminals.
 
+mod suggest;
+
 use std::fmt;
+
+pub use suggest::nearest;
 
 /// How serious a rule is. The severity word in a headline comes from here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -95,6 +99,8 @@ macro_rules! rules {
 }
 
 rules! {
+    CLI_CHECK_ARGUMENTS: "cli.check_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Check command has invalid arguments";
     CLI_COMPLETIONS_ARGUMENTS: "cli.completions_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Completions command has invalid arguments";
     CLI_FMT_ARGUMENTS: "cli.fmt_arguments", area 14, Error, Agent,
@@ -113,6 +119,44 @@ rules! {
         "14-tooling.html#formatting", "Source file is not formatted";
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
         "14-tooling.html#formatting", "Formatted source could not be written";
+    LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
+        "01-project-layout-and-modules.html#layout-call-direction", "Shared code depends on a domain";
+    LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#layout-file-name-mismatch", "File name does not match its declaration";
+    LAYOUT_PROMOTION_REQUIRED: "layout.promotion_required", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#layout-promotion-required", "Declaration is used beyond the file that holds it";
+    LAYOUT_ROUTE_PREFIX_MISMATCH: "layout.route_prefix_mismatch", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#layout-route-prefix-mismatch", "Route group prefix does not match its file name";
+    LAYOUT_TEST_WITHOUT_SUBJECT: "layout.test_without_subject", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#layout-test-without-subject", "Test file has no subject beside it";
+    LAYOUT_UNKNOWN_LOCATION: "layout.unknown_location", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#layout-unknown-location", "Jadpo file is outside the fixed layout";
+    LAYOUT_UNUSED_DECLARATION: "layout.unused_declaration", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#layout-unused-declaration", "Shared declaration is not used";
+    LAYOUT_WRONG_FOLDER: "layout.wrong_folder", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#layout-wrong-folder", "Declaration is in the wrong folder";
+    NAMING_FOLDED_COLLISION: "naming.folded_collision", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#naming-folded-collision", "Two names fold to the same file name";
+    NAMING_GENERIC_NAME: "naming.generic_name", area 1, Error, Human,
+        "01-project-layout-and-modules.html#naming-generic-name", "Domain or library has a generic name";
+    NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#naming-round-trip", "Name does not survive conversion to its file name";
+    SEMANTIC_DUPLICATE_DECLARATION: "semantic.duplicate_declaration", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-duplicate-declaration", "Name is declared more than once";
+    SEMANTIC_NAME_CASE: "semantic.name_case", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-name-case", "Name has the wrong case for its kind";
+    SEMANTIC_NOT_CALLABLE: "semantic.not_callable", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-not-callable", "Name cannot be called";
+    SEMANTIC_STANDARD_NAMESPACE_RESERVED: "semantic.standard_namespace_reserved", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-standard-namespace-reserved", "Name belongs to a standard-library namespace";
+    SEMANTIC_STANDARD_OPERATION_QUALIFICATION: "semantic.standard_operation_qualification", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-standard-operation-qualification", "Standard-library operation is called without its namespace";
+    SEMANTIC_UNKNOWN_CALLEE: "semantic.unknown_callee", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-unknown-callee", "Called name is not declared";
+    SEMANTIC_UNKNOWN_NAME: "semantic.unknown_name", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-unknown-name", "Name is not declared";
+    SEMANTIC_WRONG_NAME_KIND: "semantic.wrong_name_kind", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-wrong-name-kind", "Name is the wrong kind of declaration here";
     SYNTAX_ATTEMPT_PLACEMENT: "syntax.attempt_placement", area 3, Error, Agent,
         "03-logic.html#syntax-attempt-placement", "Attempt is used inside an expression";
     SYNTAX_COLON_REQUIRED: "syntax.colon_required", area 3, Error, Agent,
@@ -153,10 +197,14 @@ rules! {
         "01-project-layout-and-modules.html#syntax-unterminated-string", "String is not closed";
     SYNTAX_VARIABLE_TYPE_REQUIRED: "syntax.variable_type_required", area 2, Error, Agent,
         "02-values-and-types.html#syntax-variable-type-required", "Variable has no type";
+    TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#toolchain-empty-project", "Project declares nothing";
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
         "14-tooling.html#the-jadpo-command", "Project could not be found";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "14-tooling.html#the-jadpo-command", "Jadpo source file could not be read";
+    VISIBILITY_PRIVATE_CROSS_DOMAIN: "visibility.private_cross_domain", area 1, Error, Human,
+        "01-project-layout-and-modules.html#visibility-private-cross-domain", "Another domain uses a private declaration";
 }
 
 /// Looks a rule up by id, for tools that read ids back from JSON.

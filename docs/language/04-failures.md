@@ -701,7 +701,7 @@ error: `fails` goes before `->`
   rule: syntax.fails_after_result
   help: docs/language/04-failures.html#syntax-fails-after-result
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.failure_kind_required`

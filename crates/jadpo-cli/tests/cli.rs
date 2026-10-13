@@ -57,6 +57,7 @@ fn top_level_plain() -> String {
         "jadpo {VERSION}, a programming environment for coding agents
 
 Build and check
+  check         Check the project for errors
   fmt           Format source files
 
 Set up
@@ -101,6 +102,7 @@ fn rich_help_uses_symbols_and_the_same_grid() {
             "jadpo {VERSION} · a programming environment for coding agents
 
 Build and check
+  check         Check the project for errors
   fmt           Format source files
 
 Set up
@@ -246,8 +248,8 @@ fn help_json_is_the_whole_command_reference() {
         .iter()
         .map(|c| c["name"].as_str().expect("name"))
         .collect();
-    assert_eq!(names, ["fmt", "completions", "help", "version"]);
-    let completions = &data["commands"][1];
+    assert_eq!(names, ["check", "fmt", "completions", "help", "version"]);
+    let completions = &data["commands"][2];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -360,12 +362,12 @@ fn an_unknown_command_with_nothing_near_points_at_help() {
 
 #[test]
 fn commands_that_are_not_built_yet_are_unknown() {
-    let output = jadpo(&["check"]);
+    let output = jadpo(&["test"]);
     assert_eq!(output.code, 2);
     assert!(
         output
             .stderr
-            .starts_with("error: `check` isn't a jadpo command"),
+            .starts_with("error: `test` isn't a jadpo command"),
         "{}",
         output.stderr
     );
@@ -581,6 +583,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
     assert_eq!(
         complete(&[""]),
         [
+            "check\tCheck the project for errors",
             "fmt\tFormat source files",
             "completions\tTurn on Tab completion",
             "help\tShow commands, flags and examples",
@@ -633,7 +636,10 @@ fn tab_completes_argument_values() {
     );
     assert_eq!(
         complete(&["help", "c"]),
-        ["completions\tTurn on Tab completion"]
+        [
+            "check\tCheck the project for errors",
+            "completions\tTurn on Tab completion"
+        ]
     );
     assert!(complete(&["version", ""]).is_empty());
     assert!(complete(&["completions", "zsh", ""]).is_empty());

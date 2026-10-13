@@ -45,7 +45,10 @@ impl DiagnosticView {
         let mut frame: Vec<FrameLine> = Vec::new();
         if let Some(primary) = &diagnostic.primary {
             let path = &primary.span.path;
-            match sources.source(path) {
+            // An empty span with no label stands for the whole file: the
+            // location is the path alone, with no frame.
+            let whole_file = primary.span.start == primary.span.end && primary.text.is_empty();
+            match sources.source(path).filter(|_| !whole_file) {
                 Some(text) => {
                     let start = Position::of(text, primary.span.start);
                     location = Some(format!("{path}:{}:{}", start.line, start.column));

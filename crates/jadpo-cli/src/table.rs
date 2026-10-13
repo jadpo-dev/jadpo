@@ -151,6 +151,39 @@ pub const SHELLS: &[Value] = &[
 
 pub static COMMANDS: &[Command] = &[
     Command {
+        name: "check",
+        synonyms: &[],
+        group: "Build and check",
+        summary: "Check the project for errors",
+        description: "Check every Jadpo file in the project: where each file sits, how things are \
+                      named, what each name refers to and who may use it. Without a path, the project \
+                      is found by walking up to app.jadpo. A file or folder outside any project is \
+                      checked on its own, with the layout rules off.",
+        arguments: &[Argument {
+            name: "path",
+            description: "A project, file or folder to check",
+            required: false,
+            values: Values::Path,
+        }],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "Check the project you are in",
+                command: "jadpo check",
+            },
+            Example {
+                description: "Check one file on its own",
+                command: "jadpo check notes.jadpo",
+            },
+            Example {
+                description: "Print the problems as data for tools",
+                command: "jadpo check --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_CHECK_ARGUMENTS,
+        run: commands::check,
+    },
+    Command {
         name: "fmt",
         synonyms: &["format"],
         group: "Build and check",

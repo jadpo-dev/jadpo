@@ -1,0 +1,15 @@
+[package]
+name = "jadpo-db"
+description = "The incremental database: source files, project layout and the queries over them"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+jadpo-diag.workspace = true
+jadpo-syntax.workspace = true
+salsa.workspace = true
+
+[lints]
+workspace = true

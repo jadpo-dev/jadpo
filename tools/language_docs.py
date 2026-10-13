@@ -2,11 +2,13 @@
 """Check and render the language reference in docs/language.
 
 A ```jadpo check block is compiled by the new `jadpo` (docs/compiler-runtime.md
-§2.7). Today that means parsed and format-checked with `jadpo fmt --check`:
-a block without `expect=` must parse and be canonically formatted, and an
-`expect=rule.id` block must fail with that rule and be followed by a
+§2.7) with `jadpo check`, which grows with each roadmap chunk: a block without
+`expect=` must check cleanly and be canonically formatted (`jadpo fmt
+--check`), and an `expect=rule.id` block must fail with that rule, be
+formatted unless the rule is a syntax error, and be followed by a
 ```text output block holding the exact plain output, which `--bless`
-rewrites. Later chunks make `check` mean more as the compiler grows.
+rewrites. A project with an `app.jadpo` block is checked as a project, with
+the layout rules on; one without is checked as loose files.
 
 Every other compiled ```jadpo block shows how the archived v0 compiler treated it.
 The v0 compiler was removed on 2026-10-13 (tag archive/compiler-v0); its
@@ -176,19 +178,25 @@ class Page:
                     target = Path(tmp) / block['attrs']['file']
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(block['source'])
-                code, out = jadpo(['fmt', '--check', tmp])
+                code, out = jadpo(['check', tmp])
+                formatted, _ = jadpo(['fmt', '--check', tmp])
             out = out.replace(tmp + '/', '').replace(tmp, '.')
             rules = re.findall(r'rule: (\S+)', out)
             shown = [b for b in blocks if 'expect' in b['attrs']] or blocks
             last = shown[-1]
             if expected == 'pass':
-                ok = code == 0
-                if not ok:
-                    self.problems.append(f'{name}: expected to parse and be formatted, but jadpo fmt --check says {rules[:3] or "no"}')
+                ok = code == 0 and formatted == 0
+                if code:
+                    self.problems.append(f'{name}: expected to check cleanly, but jadpo check says {rules[:3] or "no"}')
+                elif formatted:
+                    self.problems.append(f'{name}: checks but is not canonically formatted (run jadpo fmt)')
             else:
                 ok = expected in rules
                 if not ok:
                     self.problems.append(f'{name}: expected {expected} but got {rules[:3] or "a pass"}')
+                elif formatted and not expected.startswith('syntax.'):
+                    ok = False
+                    self.problems.append(f'{name}: not canonically formatted (run jadpo fmt)')
                 written = last.get('output', {}).get('text')
                 if written != out:
                     if bless:
@@ -329,7 +337,7 @@ class Renderer:
             if not result['ok']:
                 status = '<span class="broken">✗ example does not behave as stated</span>'
             elif result['expected'] == 'pass':
-                status = '<span class="check">✓ parses · formatted</span>'
+                status = '<span class="check">✓ checks · formatted</span>'
             else:
                 status = f'<span class="check">✓ fails with {html.escape(result["expected"])}</span>'
         elif result is None:
@@ -417,7 +425,7 @@ class Renderer:
                 else:
                     label = line[3:].strip() or 'text'
                     if line.strip() == OUTPUT_FENCE:
-                        label = 'jadpo fmt --check'
+                        label = 'jadpo check'
                     out.append(f'<div class="code plain"><div class="label"><span>{html.escape(label)}</span></div>'
                                f'<pre><code>{html.escape(chr(10).join(lines[i + 1:j]))}</code></pre></div>')
                 i = j + 1

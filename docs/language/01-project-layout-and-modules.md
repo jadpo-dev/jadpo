@@ -4,25 +4,24 @@ area: 1
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-11)
 rules:
-  - data.project_role_invalid
   - toolchain.empty_project
-  - module.*
+  - layout.*
+  - naming.*
+  - visibility.*
   - semantic.duplicate_declaration
   - semantic.name_case
   - semantic.unknown_name
   - semantic.unknown_callee
   - semantic.not_callable
   - semantic.wrong_name_kind
-  - semantic.standard_*
+  - semantic.standard_namespace_reserved
+  - semantic.standard_operation_qualification
   - syntax.unexpected_character
   - syntax.unterminated_string
   - syntax.invalid_escape
   - syntax.expected_declaration
   - syntax.expected_name
   - syntax.unexpected_token
-  - syntax.empty_import
-  - syntax.import_requires_module
-  - syntax.route_export_invalid
 ---
 
 # Project layout and modules
@@ -169,49 +168,63 @@ fields as JSON with `jadpo check <project> --diagnostic-format=json`.
 
 ## Errors
 
-> **Changing.** The `module.*` and import errors below go away with modules, and new layout and naming errors arrive with the rework; see [Decided layout](#decided-layout).
-
 Every error this area can produce, with an example that triggers it and the
-compiler's actual output. The syntax errors (`syntax.*`) show the new
-compiler's output, from `jadpo fmt --check`; the rest still show the archived
-compiler's until their chunk is built.
-
-### `data.project_role_invalid`
-
-```jadpo project=e-role file=entities/customer.jadpo expect=data.project_role_invalid
-entity Customer {
-    id: Uuid
-    identity: id
-}
-
-action unrelated() -> Bool {
-    return true
-}
-```
+new compiler's real output from `jadpo check`. An example without `app.jadpo`
+is checked as loose files, one implicit domain with the layout rules off; the
+layout examples are small projects. Two decided errors are not built yet:
+`layout.asset_unreferenced` waits for the reference forms of areas 11 and
+16, and the `library.similar_exists` warning for the graph's digests
+(chunk 1.7). The `module.*` errors, `syntax.import_requires_module`,
+`syntax.empty_import`, `syntax.route_export_invalid` and
+`data.project_role_invalid` went with modules and role folders.
 
 ### `toolchain.empty_project`
 
-```jadpo project=e-empty file=notes.jadpo expect=toolchain.empty_project
+```jadpo check project=e-empty file=notes.jadpo expect=toolchain.empty_project
 // Nothing declared yet.
+```
+
+```text output
+error: This project declares nothing
+  reason: Its one `.jadpo` file holds no declarations, only comments or nothing at all.
+  next: Add a declaration, such as a `type`, `function` or `action` (agent)
+  rule: toolchain.empty_project
+  help: docs/language/01-project-layout-and-modules.html#toolchain-empty-project
+
+check failed: 1 error, 1 file
 ```
 
 ### `semantic.duplicate_declaration`
 
-```jadpo project=e-duplicate file=a.jadpo hidden
+```jadpo check project=e-duplicate file=a.jadpo hidden
 type Count = Int {
     min: 0
 }
 ```
 
-```jadpo project=e-duplicate file=b.jadpo expect=semantic.duplicate_declaration
+```jadpo check project=e-duplicate file=b.jadpo expect=semantic.duplicate_declaration
 type Count = Int {
     min: 1
 }
 ```
 
+```text output
+error: `Count` is declared twice
+ --> b.jadpo:1:6
+  |
+1 | type Count = Int {
+  |      ^^^^^ declared again here
+  reason: Names are unique across the whole project, whatever they name; `Count` is already a type in `a.jadpo`.
+  next: Rename this type, or remove it if it's a copy (agent)
+  rule: semantic.duplicate_declaration
+  help: docs/language/01-project-layout-and-modules.html#semantic-duplicate-declaration
+
+check failed: 1 error, 2 files
+```
+
 ### `semantic.name_case`
 
-```jadpo project=e-case file=checkout.jadpo expect=semantic.name_case
+```jadpo check project=e-case file=checkout.jadpo expect=semantic.name_case
 type Pence = Int {
     min: 0
 }
@@ -221,17 +234,146 @@ function orderTotal(subtotal: Pence) -> Pence {
 }
 ```
 
+```text output
+error: Function `orderTotal` isn't written in lower_snake_case
+ --> checkout.jadpo:5:10
+  |
+5 | function orderTotal(subtotal: Pence) -> Pence {
+  |          ^^^^^^^^^^ should be `order_total`
+  reason: Types, entities and route groups are written in UpperCamelCase; functions, actions, queries, fields, variables and the rest in lower_snake_case.
+  next: Rename `orderTotal` to `order_total`, here and where it's used (agent)
+  rule: semantic.name_case
+  help: docs/language/01-project-layout-and-modules.html#semantic-name-case
+
+check failed: 1 error, 1 file
+```
+
+### `naming.round_trip`
+
+```jadpo check project=e-round-trip expect=naming.round_trip
+type HTTPStatus = Int {
+    min: 100
+    max: 599
+}
+```
+
+```text output
+error: `HTTPStatus` has consecutive capitals
+ --> main.jadpo:1:6
+  |
+1 | type HTTPStatus = Int {
+  |      ^^^^^^^^^^ reads back as `HttpStatus`
+  reason: A name must convert to its file name and back unchanged: `HTTPStatus` becomes `http_status.jadpo`, which reads back as `HttpStatus`.
+  next: Rename it `HttpStatus` (agent)
+  rule: naming.round_trip
+  help: docs/language/01-project-layout-and-modules.html#naming-round-trip
+
+check failed: 1 error, 1 file
+```
+
+### `naming.folded_collision`
+
+```jadpo check project=e-folded expect=naming.folded_collision
+type DueDate = CalendarDate {}
+
+function due_date(due: DueDate) -> DueDate {
+    return due
+}
+```
+
+```text output
+error: `due_date` and `DueDate` share a file name
+ --> main.jadpo:3:10
+  |
+3 | function due_date(due: DueDate) -> DueDate {
+  |          ^^^^^^^^ also `due_date.jadpo`
+  reason: Both names become `due_date.jadpo`, so a search for one finds the other; `DueDate` is a type in `main.jadpo`.
+  next: Rename one of them so their file names differ (agent)
+  rule: naming.folded_collision
+  help: docs/language/01-project-layout-and-modules.html#naming-folded-collision
+
+check failed: 1 error, 1 file
+```
+
+### `naming.generic_name`
+
+```jadpo check project=e-generic expect=naming.generic_name
+type Pence = Int {
+    min: 0
+}
+
+library helpers {
+    function add_delivery(subtotal: Pence) -> Pence {
+        return subtotal
+    }
+}
+```
+
+```text output
+error: `helpers` is too generic for a library
+ --> main.jadpo:5:9
+  |
+5 | library helpers {
+  |         ^^^^^^^ says nothing about what it holds
+  reason: Domains and libraries are named after what they hold, because the name appears in every call; `common`, `core`, `helpers`, `misc` and `utils` say nothing.
+  next: Rename the library after what its functions do (agent)
+  rule: naming.generic_name
+  help: docs/language/01-project-layout-and-modules.html#naming-generic-name
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.standard_namespace_reserved`
+
+```jadpo check project=e-std-namespace expect=semantic.standard_namespace_reserved
+type Count = Int {
+    min: 0
+}
+
+function temporal(x: Count) -> Count {
+    return x
+}
+```
+
+```text output
+error: `temporal` is a standard-library namespace
+ --> main.jadpo:5:10
+  |
+5 | function temporal(x: Count) -> Count {
+  |          ^^^^^^^^ reserved
+  reason: Standard-library namespaces can't name a declaration, domain, library or variable, so `temporal.` always means the standard library.
+  next: Choose another name than `temporal` (agent)
+  rule: semantic.standard_namespace_reserved
+  help: docs/language/01-project-layout-and-modules.html#semantic-standard-namespace-reserved
+
+check failed: 1 error, 1 file
+```
+
 ### `semantic.unknown_name`
 
-```jadpo project=e-unknown-name expect=semantic.unknown_name
+```jadpo check project=e-unknown-name expect=semantic.unknown_name
 type Pair = Object {
     first: Missing
 }
 ```
 
+```text output
+error: `Missing` isn't declared
+ --> main.jadpo:2:12
+  |
+2 |     first: Missing
+  |            ^^^^^^^ not declared
+  reason: Nothing in this project or the standard library is called `Missing`.
+  next: Declare `Missing`, or use an existing name (agent)
+  rule: semantic.unknown_name
+  help: docs/language/01-project-layout-and-modules.html#semantic-unknown-name
+
+check failed: 1 error, 1 file
+```
+
 ### `semantic.unknown_callee`
 
-```jadpo project=e-unknown-callee expect=semantic.unknown_callee
+```jadpo check project=e-unknown-callee expect=semantic.unknown_callee
 type Count = Int {
     min: 0
 }
@@ -241,22 +383,78 @@ function f(x: Count) -> Count {
 }
 ```
 
+```text output
+error: `lookup` isn't a function, action or query
+ --> main.jadpo:6:12
+  |
+6 |     return lookup(x)
+  |            ^^^^^^ not declared
+  reason: Nothing in this project called `lookup` can be called.
+  next: Declare `lookup`, or call an existing function (agent)
+  rule: semantic.unknown_callee
+  help: docs/language/01-project-layout-and-modules.html#semantic-unknown-callee
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.standard_operation_qualification`
+
+```jadpo check project=e-std-qualify expect=semantic.standard_operation_qualification
+type DueAt = Instant {}
+
+type HomeZone = Zone {}
+
+type DueTime = Time {}
+
+function local_due(at: DueAt, zone: HomeZone) -> DueTime {
+    var local: Time = in_zone(at, zone)
+    return DueTime(local)
+}
+```
+
+```text output
+error: `in_zone` is a standard-library operation
+ --> main.jadpo:8:23
+  |
+8 |     var local: Time = in_zone(at, zone)
+  |                       ^^^^^^^ needs its namespace
+  reason: The standard library is always called through its namespace, so the dot says who owns the operation.
+  next: Call `temporal.in_zone(...)` (agent)
+  rule: semantic.standard_operation_qualification
+  help: docs/language/01-project-layout-and-modules.html#semantic-standard-operation-qualification
+
+check failed: 1 error, 1 file
+```
+
 ### `semantic.not_callable`
 
-```jadpo project=e-not-callable expect=semantic.not_callable
-failure KnownFailure {
-    kind: InvalidValue
-    code: "known_failure"
+```jadpo check project=e-not-callable expect=semantic.not_callable
+type OutOfStock = Failure {
+    kind: FailureKind.conflict
 }
 
-action invalid_call() -> Unit {
-    var second = KnownFailure()
+action reserve_item() fails OutOfStock -> Unit {
+    reject OutOfStock()
 }
+```
+
+```text output
+error: `OutOfStock` is a failure and can't be called
+ --> main.jadpo:6:12
+  |
+6 |     reject OutOfStock()
+  |            ^^^^^^^^^^ not callable
+  reason: A failure is raised with `reject OutOfStock`, with its fields in a block when it has any.
+  next: Write `OutOfStock` without `()` (agent)
+  rule: semantic.not_callable
+  help: docs/language/01-project-layout-and-modules.html#semantic-not-callable
+
+check failed: 1 error, 1 file
 ```
 
 ### `semantic.wrong_name_kind`
 
-```jadpo project=e-wrong-kind expect=semantic.wrong_name_kind
+```jadpo check project=e-wrong-kind expect=semantic.wrong_name_kind
 type Count = Int {
     min: 0
 }
@@ -270,275 +468,277 @@ type Pair = Object {
 }
 ```
 
-### `semantic.standard_namespace_reserved`
+```text output
+error: `g` is a function, not a type
+ --> main.jadpo:10:12
+   |
+10 |     first: g
+   |            ^ expected a type
+  reason: Here Jadpo expects a type, such as `Count`, `List<Count>` or `Todo.id`.
+  next: Name a type here (agent)
+  rule: semantic.wrong_name_kind
+  help: docs/language/01-project-layout-and-modules.html#semantic-wrong-name-kind
 
-```jadpo project=e-std-namespace expect=semantic.standard_namespace_reserved
-type Count = Int {
+check failed: 1 error, 1 file
+```
+
+### `visibility.private_cross_domain`
+
+```jadpo check project=e-private file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-private file=shared/types/quantity.jadpo hidden
+type Quantity = Int {
+    min: 1
+}
+```
+
+```jadpo check project=e-private file=domains/inventory/actions/reserve_stock.jadpo
+action reserve_stock(quantity: Quantity) -> Unit {}
+```
+
+```jadpo check project=e-private file=domains/ordering/actions/checkout.jadpo expect=visibility.private_cross_domain
+action checkout(quantity: Quantity) -> Unit {
+    inventory.reserve_stock(quantity)
+}
+```
+
+```text output
+error: `reserve_stock` is private to domain `inventory`
+ --> domains/ordering/actions/checkout.jadpo:2:15
+  |
+2 |     inventory.reserve_stock(quantity)
+  |               ^^^^^^^^^^^^^ private
+  reason: Another domain may use only what a domain marks `public`; `reserve_stock` is an action in `domains/inventory/actions/reserve_stock.jadpo`.
+  next: Mark `reserve_stock` `public` if `inventory` should offer it to other domains (human)
+  rule: visibility.private_cross_domain
+  help: docs/language/01-project-layout-and-modules.html#visibility-private-cross-domain
+
+check failed: 1 error, 4 files
+```
+
+### `layout.unknown_location`
+
+```jadpo check project=e-location file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-location file=domains/planning/helpers/due_dates.jadpo expect=layout.unknown_location
+type Days = Int {
     min: 0
 }
 
-function temporal(x: Count) -> Count {
-    return x
+library due_dates {
+    function days_left(days: Days) -> Days {
+        return days
+    }
 }
 ```
 
-### `semantic.standard_operation_reserved`
+```text output
+error: `helpers/` isn't a folder a domain has
+ --> domains/planning/helpers/due_dates.jadpo
+  reason: A domain holds only `entities/`, `types/`, `failures/`, `actions/`, `queries/`, `libraries/`, `routes/`, `schedules/`, `events/`, `subscribers/`, `emails/` and `fixtures/`, each named after what its files declare.
+  next: Move the file to `domains/planning/libraries/due_dates.jadpo` (agent)
+  rule: layout.unknown_location
+  help: docs/language/01-project-layout-and-modules.html#layout-unknown-location
 
-```jadpo project=e-std-operation expect=semantic.standard_operation_reserved
-type Count = Int {
-    min: 0
-}
-
-function in_zone(x: Count) -> Count {
-    return x
-}
+check failed: 1 error, 2 files
 ```
 
-### `semantic.standard_operation_qualification`
+### `layout.wrong_folder`
 
-```jadpo project=e-std-qualify expect=semantic.standard_operation_qualification
-type Flag = Bool {}
-
-action invalid_standard_call() -> Flag {
-    var elapsed = between()
-    return Flag(true)
-}
+```jadpo check project=e-folder file=app.jadpo hidden
+application {}
 ```
 
-### `module.public_requires_module`
-
-```jadpo project=e-public expect=module.public_requires_module
-public type Thing = Int {
-    min: 0
-}
+```jadpo check project=e-folder file=domains/planning/types/complete_todo.jadpo expect=layout.wrong_folder
+action complete_todo() -> Unit {}
 ```
 
-### `module.module_required`
+```text output
+error: Action `complete_todo` is in `types/`
+ --> domains/planning/types/complete_todo.jadpo:1:8
+  |
+1 | action complete_todo() -> Unit {}
+  |        ^^^^^^^^^^^^^ belongs in `actions/`
+  reason: `types/` holds types shared by several files in the domain; every action has its own file in `actions/`.
+  next: Move `complete_todo` to `domains/planning/actions/complete_todo.jadpo` (agent)
+  rule: layout.wrong_folder
+  help: docs/language/01-project-layout-and-modules.html#layout-wrong-folder
 
-```jadpo project=e-module-required file=one.jadpo hidden
-module a.one
-
-public type One = Int {
-    min: 0
-}
+check failed: 1 error, 2 files
 ```
 
-```jadpo project=e-module-required file=loose.jadpo expect=module.module_required
-type Loose = Int {
-    min: 0
-}
+### `layout.file_name_mismatch`
+
+```jadpo check project=e-file-name file=app.jadpo hidden
+application {}
 ```
 
-### `module.duplicate_module`
-
-```jadpo project=e-duplicate-module file=one.jadpo hidden
-module a.one
-
-public type One = Int {
-    min: 0
-}
+```jadpo check project=e-file-name file=domains/planning/actions/snooze_todo.jadpo hidden
+action snooze_todo(due: DueDate) -> Unit {}
 ```
 
-```jadpo project=e-duplicate-module file=also_one.jadpo expect=module.duplicate_module
-module a.one
-
-public type Two = Int {
-    min: 0
-}
+```jadpo check project=e-file-name file=domains/planning/types/due.jadpo expect=layout.file_name_mismatch
+type DueDate = CalendarDate {}
 ```
 
-### `module.unknown_module`
+```text output
+error: `DueDate` is in `due.jadpo`
+ --> domains/planning/types/due.jadpo:1:6
+  |
+1 | type DueDate = CalendarDate {}
+  |      ^^^^^^^ file name should be `due_date.jadpo`
+  reason: A file is named after the declaration it holds, so a search for a name finds its file.
+  next: Rename `due.jadpo` to `due_date.jadpo` (agent)
+  rule: layout.file_name_mismatch
+  help: docs/language/01-project-layout-and-modules.html#layout-file-name-mismatch
 
-```jadpo project=e-unknown-module file=two.jadpo expect=module.unknown_module
-module a.two
-import a.nowhere { Thing }
-
-public type Two = Int {
-    min: 0
-}
+check failed: 1 error, 3 files
 ```
 
-### `module.unknown_export`
+### `layout.promotion_required`
 
-```jadpo project=e-unknown-export file=one.jadpo hidden
-module a.one
-
-public type One = Int {
-    min: 0
-}
+```jadpo check project=e-promotion file=app.jadpo hidden
+application {}
 ```
 
-```jadpo project=e-unknown-export file=two.jadpo expect=module.unknown_export
-module a.two
-import a.one { Missing }
-
-public type Two = Int {
-    min: 0
-}
+```jadpo check project=e-promotion file=domains/planning/actions/postpone_all.jadpo
+action postpone_all(days: SnoozeDays) -> Unit {}
 ```
 
-### `module.private_import`
-
-```jadpo project=e-private file=pricing.jadpo hidden
-module shop.pricing
-
-public type Pence = Int {
-    min: 0
+```jadpo check project=e-promotion file=domains/planning/actions/snooze_todo.jadpo expect=layout.promotion_required
+type SnoozeDays = Int {
+    min: 1
+    max: 30
 }
 
-function add_delivery(subtotal: Pence) -> Pence {
-    return subtotal
-}
+action snooze_todo(days: SnoozeDays) -> Unit {}
 ```
 
-```jadpo project=e-private file=checkout.jadpo expect=module.private_import
-module shop.checkout
-import shop.pricing { Pence, add_delivery }
+```text output
+error: `SnoozeDays` is used beyond this file
+ --> domains/planning/actions/snooze_todo.jadpo:1:6
+  |
+1 | type SnoozeDays = Int {
+  |      ^^^^^^^^^^ used by another file
+  reason: A type used by one file lives in it; once another file uses it, it moves to `types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
+  next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo` (agent)
+  rule: layout.promotion_required
+  help: docs/language/01-project-layout-and-modules.html#layout-promotion-required
 
-function order_total(subtotal: Pence) -> Pence {
-    return add_delivery(subtotal)
+check failed: 1 error, 3 files
+```
+
+### `layout.unused_declaration`
+
+```jadpo check project=e-unused file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-unused file=domains/planning/types/due_window.jadpo expect=layout.unused_declaration
+type DueWindow = Int {
+    min: 1
 }
 ```
 
-### `module.import_required`
+```text output
+error: `DueWindow` isn't used
+ --> domains/planning/types/due_window.jadpo:1:6
+  |
+1 | type DueWindow = Int {
+  |      ^^^^^^^^^ nothing uses this
+  reason: A shared type exists to be used by several files; one that nothing uses is dead code. Tests don't count as users.
+  next: Remove `DueWindow` (agent)
+  rule: layout.unused_declaration
+  help: docs/language/01-project-layout-and-modules.html#layout-unused-declaration
 
-```jadpo project=e-import-required file=one.jadpo hidden
-module a.one
+check failed: 1 error, 2 files
+```
 
-public type Thing = Int {
-    min: 0
+### `layout.test_without_subject`
+
+```jadpo check project=e-test-subject file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-test-subject file=domains/planning/actions/archive_todo.test.jadpo expect=layout.test_without_subject
+test "archiving a todo hides it" {}
+```
+
+```text output
+error: `archive_todo.test.jadpo` has no `archive_todo.jadpo` beside it
+ --> domains/planning/actions/archive_todo.test.jadpo
+  reason: A test file sits beside the file it tests, named after it; scenarios across domains go in the root `tests/` folder. `actions/` has no `archive_todo.jadpo`.
+  next: Rename it after the file it tests, or move it to `tests/` (agent)
+  rule: layout.test_without_subject
+  help: docs/language/01-project-layout-and-modules.html#layout-test-without-subject
+
+check failed: 1 error, 2 files
+```
+
+### `layout.route_prefix_mismatch`
+
+```jadpo check project=e-prefix file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-prefix file=domains/planning/routes/todos.jadpo expect=layout.route_prefix_mismatch
+routes Todos {
+    prefix: /tasks
 }
 ```
 
-```jadpo project=e-import-required file=two.jadpo expect=module.import_required
-module a.two
+```text output
+error: Prefix `/tasks` doesn't match `todos.jadpo`
+ --> domains/planning/routes/todos.jadpo:2:13
+  |
+2 |     prefix: /tasks
+  |             ^^^^^^ gives `tasks.jadpo`
+  reason: A route group's file is named after its prefix's fixed segments joined with `_`, so a URL leads to one file: `/tasks` lives in `tasks.jadpo`.
+  next: Change the prefix to match `todos.jadpo`, or rename the file `tasks.jadpo` and the group `Tasks` (agent)
+  rule: layout.route_prefix_mismatch
+  help: docs/language/01-project-layout-and-modules.html#layout-route-prefix-mismatch
 
-type Pair = Object {
-    first: Thing
-}
+check failed: 1 error, 2 files
 ```
 
-### `module.duplicate_import`
+### `layout.call_direction`
 
-```jadpo project=e-duplicate-import file=one.jadpo hidden
-module a.one
-
-public type Thing = Int {
-    min: 0
-}
+```jadpo check project=e-direction file=app.jadpo hidden
+application {}
 ```
 
-```jadpo project=e-duplicate-import file=two.jadpo expect=module.duplicate_import
-module a.two
-import a.one { Thing, Thing }
-```
-
-### `module.import_conflict`
-
-```jadpo project=e-import-conflict file=one.jadpo hidden
-module a.one
-
-public type Thing = Int {
-    min: 0
-}
-```
-
-```jadpo project=e-import-conflict file=two.jadpo expect=module.import_conflict
-module a.two
-import a.one { Thing }
-
-type Thing = Int {
-    min: 0
-}
-```
-
-### `module.self_import`
-
-```jadpo project=e-self-import expect=module.self_import
-module a.one
-import a.one { Thing }
-
-public type Thing = Int {
-    min: 0
-}
-```
-
-### `module.import_cycle`
-
-```jadpo project=e-cycle file=one.jadpo hidden
-module a.one
-import a.two { Two }
-
-public type One = Int {
-    min: 0
-}
-```
-
-```jadpo project=e-cycle file=two.jadpo expect=module.import_cycle
-module a.two
-import a.one { One }
-
-public type Two = Int {
-    min: 0
-}
-```
-
-### `module.standard_namespace_import`
-
-```jadpo project=e-std-import expect=module.standard_namespace_import
-module a.one
-import temporal { in_zone }
-
-public type One = Int {
-    min: 0
-}
-```
-
-### `module.standard_namespace_reserved`
-
-```jadpo project=e-std-module expect=module.standard_namespace_reserved
-module temporal
-
-public type One = Int {
-    min: 0
-}
-```
-
-### `syntax.import_requires_module`
-
-> The archived compiler's error: the new parser has no `module` or `import`.
-
-```jadpo project=e-import-without-module expect=syntax.import_requires_module
-import a.two { Thing }
-```
-
-### `syntax.empty_import`
-
-> The archived compiler's error: the new parser has no `module` or `import`.
-
-```jadpo project=e-empty-import file=two.jadpo hidden
-module a.two
-
-public type Two = Int {
+```jadpo check project=e-direction file=domains/ordering/types/order_total.jadpo hidden
+type OrderTotal = Int {
     min: 0
 }
 ```
 
-```jadpo project=e-empty-import file=one.jadpo expect=syntax.empty_import
-module a.one
-import a.two { }
+```jadpo check project=e-direction file=domains/ordering/actions/apply_discount.jadpo hidden
+action apply_discount(discount: Discount) -> Unit {}
 ```
 
-### `syntax.route_export_invalid`
-
-> The archived compiler's error: routes are entries in a `routes` group now, and which declarations may be `public` is checked with visibility.
-
-```jadpo project=e-route-public expect=syntax.route_export_invalid
-module a.one
-
-public route GET /health {
-    auth: none
+```jadpo check project=e-direction file=shared/types/discount.jadpo expect=layout.call_direction
+type Discount = Object {
+    applies_to: OrderTotal
 }
+```
+
+```text output
+error: Shared code uses `OrderTotal` from domain `ordering`
+ --> shared/types/discount.jadpo:2:17
+  |
+2 |     applies_to: OrderTotal
+  |                 ^^^^^^^^^^ domain code
+  reason: `shared/` holds code every domain may use, so it can't depend on any one domain; `OrderTotal` is a type in `domains/ordering/types/order_total.jadpo`.
+  next: Move the shared declaration into `ordering`, or stop it depending on `OrderTotal` (human)
+  rule: layout.call_direction
+  help: docs/language/01-project-layout-and-modules.html#layout-call-direction
+
+check failed: 1 error, 4 files
 ```
 
 ### `syntax.expected_declaration`
@@ -558,7 +758,7 @@ error: `Count` doesn't start a declaration
   rule: syntax.expected_declaration
   help: docs/language/01-project-layout-and-modules.html#syntax-expected-declaration
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.expected_name`
@@ -580,7 +780,7 @@ error: This member has no name
   rule: syntax.expected_name
   help: docs/language/01-project-layout-and-modules.html#syntax-expected-name
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.unexpected_token`
@@ -607,7 +807,7 @@ error: This parameter list isn't closed
   rule: syntax.unexpected_token
   help: docs/language/01-project-layout-and-modules.html#syntax-unexpected-token
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.unexpected_character`
@@ -629,7 +829,7 @@ error: `$` isn't part of Jadpo
   rule: syntax.unexpected_character
   help: docs/language/01-project-layout-and-modules.html#syntax-unexpected-character
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.unterminated_string`
@@ -651,7 +851,7 @@ error: This string isn't closed
   rule: syntax.unterminated_string
   help: docs/language/01-project-layout-and-modules.html#syntax-unterminated-string
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.invalid_escape`
@@ -673,7 +873,7 @@ error: `\q` isn't an escape Jadpo knows
   rule: syntax.invalid_escape
   help: docs/language/01-project-layout-and-modules.html#syntax-invalid-escape
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ## Review
