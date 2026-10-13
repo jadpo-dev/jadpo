@@ -29,7 +29,7 @@ than depending on a third-party service (the rule area 8 applied to OAuth).
 | Audit trail | Yes | The compiler sees every write and its caller; personal fields hashed | `audit:` section on an entity |
 | Tracing and metrics | Yes, no syntax | Every route, query, action, job and integration call is known | Generated runtime |
 | Path IDs and monitoring thresholds | Proposed | Every path is known, so it can be named, sampled and given limits | Generated runtime; a monitoring file per domain; questions 13–16 |
-| Email | Yes, through the `mail` capability | Templates typed against translations; delivered after commit; any provider without code changes | `type X = Mail` in `events/`; a `mail` connection in `app.jadpo` |
+| Email | Yes, through the `email` capability | Templates typed against translations; delivered after commit; any provider without code changes | `type X = EmailMessage` in `emails/`; an `email` connection in `app.jadpo` |
 | Search | Yes | Index, query and migration generated from one declaration | `search:` section on an entity |
 | Outgoing webhooks | Yes | Payloads typed from events; signing and retries generated | Later area; question 8 |
 | Field encryption | Yes | Encrypted fields kept out of logs, indexes and filters | Area 15; question 8 |
@@ -363,33 +363,33 @@ OpenTelemetry stays the transport; only what is sent changes.
 ## Email
 
 Applications send a handful of messages: confirm your address, reset your
-password, an invoice. A message is a type, `type X = Mail`, whose fields are
+password, an invoice. A message is a type, `type X = EmailMessage`, whose fields are
 the values its text uses, kept with events in the `events/` folder (question
 11). Its subject and body are messages in `translations/` (area 10), under
 the type's name, and the compiler checks every placeholder against the
 fields and every locale against the default.
 
 ```jadpo fragment
-// domains/accounts/events/welcome_mail.jadpo
+// domains/accounts/events/welcome_email.jadpo
 /// Sent once a user has signed up.
-type WelcomeMail = Mail {
+type WelcomeEmail = EmailMessage {
     display_name: DisplayName
     sign_in_link: Url
 }
 
 // translations/en_gb.json
 {
-    "welcome_mail.subject": "Welcome, {display_name}",
-    "welcome_mail.body": "Sign in at {sign_in_link} to get started."
+    "welcome_email.subject": "Welcome, {display_name}",
+    "welcome_email.body": "Sign in at {sign_in_link} to get started."
 }
 ```
 
 Sending is emitting: the mail goes after the action commits, retried like
 any delivery (area 12), so a rolled-back sign-up never sends a welcome. Every
-`Mail` has `to:` and `locale:`.
+`EmailMessage` has `to:` and `locale:`.
 
 ```jadpo fragment
-emit WelcomeMail {
+emit WelcomeEmail {
     to: user.email
     locale: user.locale
     display_name: user.display_name
@@ -397,39 +397,39 @@ emit WelcomeMail {
 }
 ```
 
-- **Where it goes** is the `mail` capability (area 11, revised
+- **Where it goes** is the `email` capability (area 11, revised
   2026-10-13): `mail: { connection: postmark  from: config.mail_sender }` in
   `application { }` names a connection. SMTP is one built-in driver
   (`driver: Driver.smtp`, port 587 on Cloudflare Workers, which blocks 25);
-  a mail package (Postmark, Amazon SES, Resend) is another. The `Mail`
+  a mail package (Postmark, Amazon SES, Resend) is another. The `EmailMessage`
   types, translations and `emit` are the same whichever is chosen, so
   changing provider changes `app.jadpo` only.
 - **Bounces and complaints** come back as the standard events
-  `MailBounced` and `MailComplained` when the package maps its webhooks
+  `EmailBounced` and `EmailComplained` when the package maps its webhooks
   onto them; with SMTP there are none.
 - **Provider features** (Postmark's message streams, SES configuration
   sets) are typed settings on the connection; the provider's other
   operations (SES's suppression list) stay callable as an ordinary package
   (area 11).
-- Tests capture mail instead of sending it, and read it as `mail.sent`.
+- Tests capture mail instead of sending it, and read it as `email.sent`.
 - **`jadpo dev` catches every email in a local inbox** (Richard, 2026-10-13).
   Nothing leaves the machine. A person opens it in the browser from the dev
   console (area 17): each mail rendered as HTML and as text, in its locale,
   with its links working (so a magic link signs in locally) and a link to
   the trace of the request that sent it. An agent uses the same inbox from
-  the command line: `jadpo mail list`, `jadpo mail show <id> --json`,
-  `jadpo mail links <id>` and `jadpo mail open <id> <link>`, so it can follow
-  a sign-up or privacy-request flow end to end; `jadpo mail clear` empties
+  the command line: `jadpo email list`, `jadpo email show <id> --json`,
+  `jadpo email links <id>` and `jadpo email open <id> <link>`, so it can follow
+  a sign-up or privacy-request flow end to end; `jadpo email clear` empties
   it. Phoenix's dev mailbox and Mailpit offer the browser half; the
   agent commands and the trace link are new.
 - **A mail health score: an early indication, not a guarantee** (Richard,
-  2026-10-13). Every mail in the dev inbox, and `jadpo mail show <id>`,
+  2026-10-13). Every mail in the dev inbox, and `jadpo email show <id>`,
   shows what Jadpo's own checks found and how to fix each: no plain-text
   part, image-only content, broken HTML, links that are not absolute HTTPS,
   link shorteners, an all-capitals subject, a missing unsubscribe header on
   bulk mail, more than 102 KB (Gmail clips it). `jadpo check` warns about
   templates that would fail. When SpamAssassin is installed its open rules
-  are added. `jadpo mail check-domain` compares the sending domain's SPF,
+  are added. `jadpo email check-domain` compares the sending domain's SPF,
   DKIM and DMARC records with what the mail connection needs. What it does
   not do, said on every screen that shows a score: it cannot predict whether
   Gmail, Outlook or any other provider puts a mail in the inbox, because they
@@ -516,7 +516,7 @@ that is an integration, as Laravel Scout's other engines are.
 - **One store per action.** File bytes are written by the client and deleted
   by a generated subscriber, so no action writes two stores.
 - **Mail as an event.** Reusing `emit` and `events/` adds no new statement or
-  folder; `Mail` is a new type base beside `Event` and `Failure`.
+  folder; `EmailMessage` is a new type base beside `Event` and `Failure`.
 - **Capabilities.** Files and email follow area 11's proposed capabilities
   (questions 19–25 there): the provider is a connection in `app.jadpo`,
   and `stores:` becomes `connections:`. Search, flags, rate limits and
@@ -533,7 +533,7 @@ that is an integration, as Laravel Scout's other engines are.
 
 | Item | Area | Status |
 |---|---|---|
-| `flags.jadpo` in the fixed root list; `Mail` types in `events/` | 1 | Questions 1 and 11 |
+| `flags.jadpo` in the fixed root list; `EmailMessage` types in `emails/` | 1 | Questions 1 and 11 |
 | `5mb` size literals; `File`, `FileUpload`, `UploadSlot`, `SearchText` built-in types | 2 | Questions 7 and 12 |
 | File stores as `files` connections; `search:` replacing the full-text index `kind:` | 5, 11 | Questions 7 and 12 |
 | `matches` in queries; relevance order in keyset pages | 6 | Question 12 |
@@ -542,7 +542,7 @@ that is an integration, as Laravel Scout's other engines are.
 | Per-tenant flag targeting depends on tenancy; slot and history grants | 9 | Questions 3, 7 and 9 |
 | Translations format for mail (area 10 question 9); OpenTelemetry variables | 10 | Questions 10 and 11 |
 | Mail delivery and retries as an event; trace context through the outbox | 12 | Questions 10 and 11 |
-| `flags:` in tests and the both-values check; `mail.sent`; an in-memory file store in tests | 13 | Questions 4, 7 and 11 |
+| `flags:` in tests and the both-values check; `email.sent`; an in-memory file store in tests | 13 | Questions 4, 7 and 11 |
 | `jadpo flags` commands and source removal; the `syntax.expected_declaration` message | 14 | Question 2; Status |
 | File erasure and export; audit entries on erasure; field encryption | 15 | Questions 7, 8 and 9 |
 | Where threshold declarations live | 1 | Question 15 |
@@ -628,30 +628,39 @@ that is an integration, as Laravel Scout's other engines are.
     no values in spans. Phoenix generates telemetry for every request and
     query the same way; using the standard variables means any monitoring
     tool works.
-11. **Is email built in as `type X = Mail`, emitted after commit and sent
+11. **Is email built in as `type X = EmailMessage`, emitted after commit and sent
     over SMTP?** *Recommendation:* yes, templates from `translations/`, SMTP
     only, provider APIs as integrations. This replaces the golden app's
     `ReminderMail` integration; Rails, Django and Laravel all ship mail with
     SMTP and a test inbox.
     *Revised 2026-10-13 (capabilities, area 11 questions 19–24):* email is
-    no longer SMTP only. Sending goes through the `mail` capability: SMTP is
+    no longer SMTP only. Sending goes through the `email` capability: SMTP is
     one built-in driver and a mail package (Postmark, SES) another, chosen
-    by `mail: { connection: }` with no code change; bounces and complaints
+    by `email: { connection: }` with no code change; bounces and complaints
     come back as standard events; provider features are connection
     settings or the package's own operations. Laravel's mailers and Rails'
     delivery methods work the same way.
-   *Revised 2026-10-13 (Richard):* mails live in their domain's `mails/`
-   folder: the type (`welcome_mail.jadpo`), an HTML template
-   (`welcome_mail.html`) and a text template (`welcome_mail.txt`), plus a
+   *Revised 2026-10-13 (Richard):* mails live in their domain's `emails/`
+   folder: the type (`welcome_email.jadpo`), an HTML template
+   (`welcome_email.html`) and a text template (`welcome_email.txt`), plus a
    shared layout. No MJML: agents write plain HTML, which is safer and more
    flexible, and the health score flags what mail clients mishandle.
    Templates use a small template language, checked by the compiler against
-   the mail's type: `{{ display_name }}` (escaped), `{{ t.welcome_heading }}`
-   for translated text, `{{#if has_due_date}} ... {{else}} ... {{/if}}`,
-   `{{#each items as item}} ... {{/each}}`, `{{> button}}` for partials, and
-   the standard formatting functions (`{{ temporal.format(due_at) }}`).
+   the email's type: `{{ display_name }}` (escaped), `{{ t.welcome_heading }}`
+   for translated text, conditions, loops, partials and the standard
+   formatting functions (`{{ temporal.format(due_at) }}`); the syntax for
+   conditions and loops is the open point below.
    Nothing else: values are prepared in the mail's fields, not computed in
    the template.
+    *Template syntax (Richard asked, 2026-10-13):* recommendation, use
+    Jadpo's own syntax inside `{{ }}` rather than a second mini-language:
+    `{{ if (due_at != none) }} ... {{ else if (...) }} ... {{ else }} ...
+    {{ end }}`, `{{ for todo in todos }} ... {{ end }}`, expressions exactly
+    as in Jadpo code, and partials as typed calls,
+    `{{ include button(label: t.open_app, url: app_url) }}`. Templates may
+    only read fields, translations and formatting functions: no variables,
+    no `attempt`, no other calls. Razor does the same with C#; one syntax
+    means one thing for agents to learn and one parser and type checker.
 12. **Is search a `search:` section using PostgreSQL full-text search?**
     *Recommendation:* yes, one language per entity, with search services as
     integrations. Django's `SearchVector` and Laravel Scout's database engine
@@ -700,11 +709,12 @@ that is an integration, as Laravel Scout's other engines are.
 | Outgoing webhooks and field encryption | | |
 | Audit trail | | |
 | Tracing and metrics | | |
-| Email | `mails/` folder per domain: type, HTML and text templates, shared layout; no MJML; a small typed template language (values, translations, if, each, partials, formatting); delivered through the `mail` capability (Richard) | 2026-10-13 |
+| Email | `emails/` folder per domain: type, HTML and text templates, shared layout; no MJML; a small typed template language (values, translations, if, each, partials, formatting); delivered through the `email` capability (Richard) | 2026-10-13 |
 | Search | | |
 | Path IDs | | |
 | Detail by threshold | | |
 | Thresholds in source | | |
 | Loosening thresholds | | |
-| Local inbox in development | `jadpo dev` catches all mail: browser view in the dev console (rendered, locale, working links, trace link) and `jadpo mail list/show/links/open/clear` for agents (Richard) | 2026-10-13 |
-| Mail health score | Deterministic content checks per mail in the dev inbox and `jadpo mail show`, optional SpamAssassin rules, `jadpo mail check-domain` for SPF/DKIM/DMARC; every score states it is an early indication, cannot predict inbox placement and must not be relied on (Richard) | 2026-10-13 |
+| Local inbox in development | `jadpo dev` catches all mail: browser view in the dev console (rendered, locale, working links, trace link) and `jadpo email list/show/links/open/clear` for agents (Richard) | 2026-10-13 |
+| Mail health score | Deterministic content checks per mail in the dev inbox and `jadpo email show`, optional SpamAssassin rules, `jadpo email check-domain` for SPF/DKIM/DMARC; every score states it is an early indication, cannot predict inbox placement and must not be relied on (Richard) | 2026-10-13 |
+| Email naming | Folder `emails/`, capability `email`, base type `EmailMessage` (`Email` stays the address type), commands `jadpo email ...`, app setting `email: { connection: }` (Richard) | 2026-10-13 |

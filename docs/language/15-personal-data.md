@@ -439,7 +439,7 @@ new provider is seen by a person before it ships.
     deadline; `jadpo privacy requests` and the console list them, and one
     nearing its deadline raises an alert.
     *Revised 2026-10-13 after Richard asked for it to work with no frontend
-    built:* `privacy: { self_service: { mail: <connection> } }` in
+    built:* `privacy: { self_service: { email: <connection> } }` in
     `app.jadpo` switches on the whole flow.
     - **Out of the box:** a small generated privacy page at `/privacy`
       (accessible, translated, branded from configuration, designed with the
@@ -523,7 +523,7 @@ new provider is seen by a person before it ships.
 | Logs of marked fields | Every marked field hashed in logs, whatever its type (amends area 4) | 2026-10-13 |
 | Purpose and consent | Not in the language | 2026-10-13 |
 | Report and residency | `build/report/personal-data.md` and `.json`, shown in review when it changes; residency by deployment per region | 2026-10-13 |
-| Data request routes | `privacy: { self_service: { mail: } exports: { store: keep: } }`: a generated `/privacy` page with email verification, export by expiring link, erasure after a cooling-off period, events at every step, API routes for the person only, staff actions granted in policy | 2026-10-13 |
+| Data request routes | `privacy: { self_service: { email: } exports: { store: keep: } }`: a generated `/privacy` page with email verification, export by expiring link, erasure after a cooling-off period, events at every step, API routes for the person only, staff actions granted in policy | 2026-10-13 |
 | Unreachable personal data | A marked field that belongs to no person is a compile error; every reference into a person's records has an erasure outcome | 2026-10-13 |
 | Provider copies | Erasure emits `PersonErased`; every connection receiving marked fields needs a deleting subscriber or an accepted reason | 2026-10-13 |
 | Coverage and gaps | The report states what the language covers, what is the app's choice and what is not code; breach-notification and transfer support to add | 2026-10-13 |

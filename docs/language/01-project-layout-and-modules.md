@@ -758,7 +758,7 @@ build/
 | `events/` | Event definitions | |
 | `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
 | (none) | Third-party APIs are provider packages: connections in `app.jadpo`, packages in root `providers/` or pinned in `jadpo.lock` | Amended 2026-10-13 by area 11; the `integrations/` folder and `integration` keyword are gone |
-| `mails/` | Mail types and their templates, one mail per name (`welcome_mail.jadpo`, `welcome_mail.html`, `welcome_mail.txt`) | Added 2026-10-13 (Richard, area 16) |
+| `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`) | Added 2026-10-13 (Richard, area 16) |
 | `fixtures/` | Test data shared by several test files in the domain | |
 
 #### Files and names
@@ -1017,4 +1017,4 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` | 2026-10-12 |
 | Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
 | Root `api/` and `acceptances/` folders | | |
-| Mails folder | Each domain may have `mails/`, holding mail types and their templates (from area 16) | 2026-10-13 |
+| Emails folder | Each domain may have `emails/`, holding email types and their templates (from area 16) | 2026-10-13 |

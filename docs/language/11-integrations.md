@@ -640,7 +640,7 @@ code (question 19).
 | `database` | Entities (area 5) | PostgreSQL; D1 later | No |
 | `cache` | `caches:` (area 5) | Redis; in memory | No, at first |
 | `files` | `File` fields (area 16) | S3; local disk | Yes, as S3 presets |
-| `mail` | `type X = Mail`, emitted (area 16) | SMTP; local inbox | Yes |
+| `email` | `type X = EmailMessage`, emitted (area 16) | SMTP; local inbox | Yes |
 | `sms` | `type X = Sms`, emitted | Local inbox | Yes |
 | `publishing` | Chosen public events sent to other systems | Local log | Yes |
 | `schedules` | `schedule` (area 12) | Timer; Cloudflare cron; external tick | No |
@@ -686,7 +686,7 @@ application {
             credential: config.stripe_secret_key
         }
     }
-    mail: {
+    email: {
         connection: postmark
         from: config.mail_sender
     }
@@ -694,24 +694,24 @@ application {
 ```
 
 Entities, caches and `File` fields name a connection with `store:`;
-`mail:`, `sms:` and `publishing:` name one in `application { }`; schedules
+`email:`, `sms:` and `publishing:` name one in `application { }`; schedules
 use the target's own tick unless told otherwise. Using a connection for a
 capability its package does not provide is a compile error.
 
 **Provider features without breaking the abstraction.** Three ways in:
 typed settings the package declares (`message_stream:` above); standard
-events back (`MailBounced`, `SmsFailed`) that the package maps its webhooks
+events back (`EmailBounced`, `SmsFailed`) that the package maps its webhooks
 onto; and the package's own API, still callable as
 `connection.resource.operation(input)` from the domains the connection
 lists.
 
-**How a package provides one.** The package index says `provides: { mail:
-"mail.jadpo" }`, and that file maps each standard operation onto one of the
+**How a package provides one.** The package index says `provides: { email:
+"email.jadpo" }`, and that file maps each standard operation onto one of the
 package's operations (question 21):
 
 ```jadpo fragment
-// providers/postmark/mail.jadpo
-provide mail {
+// providers/postmark/email.jadpo
+provide email {
     send: {
         call: email.send
         input: {
@@ -740,7 +740,7 @@ formats, credential schemes, webhook checks and schedule ticks.
 `jadpo provider conform <package> <capability>` runs it against the
 provider's sandbox. The registry lists a capability only with a passing
 run pinned to the package's digest. Tests use one fake per capability,
-whatever the provider: `mail.sent`, `sms.sent`, `published` (question 22).
+whatever the provider: `email.sent`, `sms.sent`, `published` (question 22).
 
 **Development.** In `jadpo dev` nothing leaves the machine: mail and SMS go
 to the local inbox, files to local disk, published events to a log in the
@@ -1697,7 +1697,7 @@ Other points:
   before the writes (area 3's amendment cites question 7, which keeps its
   number), whoever may run the action may call (area 9), one changing call
   per action (area 12).
-- **Area 16** sends mail through the `mail` capability: SMTP is one
+- **Area 16** sends email through the `email` capability: SMTP is one
   built-in driver, a mail package another (question 19). Outgoing webhooks
   could reuse `SignatureScheme`.
 - **Capabilities (proposed) change decided text.** Area 5's `stores:` and
@@ -1905,7 +1905,7 @@ are open.
     Raised 2026-10-13. *Recommendation:* yes. Each entry is
     `driver: Driver.x` (built in) or `package: X.vN`, with typed settings
     the driver or package declares. The use site says which capability it
-    serves: `store:` on entities, caches and `File` fields; `mail:`, `sms:`
+    serves: `store:` on entities, caches and `File` fields; `email:`, `sms:`
     and `publishing:` in `application { }`. One connection per resource
     (bucket, queue), not per vendor account, following Cloudflare's
     bindings: R2 and Queues need different credentials, and cron none.
@@ -1923,7 +1923,7 @@ are open.
     by `jadpo provider conform` against the sandbox or an emulator; the
     registry lists a capability only with a passing run pinned to the
     digest, and local packages run it in scheduled CI. Tests get one fake
-    per capability (`mail.sent`, `sms.sent`, `published`), whatever the
+    per capability (`email.sent`, `sms.sent`, `published`), whatever the
     provider; a package's own operations keep their generated fake.
 23. **What runs in development?** Raised 2026-10-13. *Recommendation:*
     nothing leaves the machine: mail and SMS to the local inbox, files to
