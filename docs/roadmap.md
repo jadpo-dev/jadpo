@@ -102,9 +102,9 @@ optimisation) are `xhigh`.
   operation table in a leaf crate shared with the runtime; transitive
   crate-graph and wasm32 gates; the quadratic naming check.
 - [ ] **1.9 Phase 1 review fixes** `opus · high`: the review's correctness,
-  formatter, parser-depth, docs-gate and LSP findings. **Needs Richard** for
-  the folded-name rule against inputs named after their action
-  (`CreateTodo` beside `create_todo`) before that part is built.
+  formatter, parser-depth, docs-gate and LSP findings, and area 1's
+  decided exception letting a type fold to the name of the callable in its
+  file (`CreateTodo` beside `create_todo`).
 
 Done when areas 1–4's decided examples check, and each area's errors are
 listed on its page with the new compiler's real output (the v0 lists are
