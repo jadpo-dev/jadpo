@@ -93,6 +93,18 @@ optimisation) are `xhigh`.
 - [x] **1.6 Failures** `opus · high` (area 4).
 - [x] **1.7 The graph, identity and manifest:** `opus · xhigh` `jadpo check` writes
   `build/manifest.json`; the language server gives diagnostics and hover.
+- [ ] **1.8 Typed bodies and one resolver** `opus · xhigh`, from the Phase 1
+  review: a per-callable query giving typed bodies (site ids, types,
+  resolved callees, literal targets, fallibility, failure sets) that
+  diagnostics, graph edges, usage, cycles and the language server all derive
+  from; per-name lookups so a body depends only on what it reads; typed type
+  references in the graph; value validators and a typed standard-library
+  operation table in a leaf crate shared with the runtime; transitive
+  crate-graph and wasm32 gates; the quadratic naming check.
+- [ ] **1.9 Phase 1 review fixes** `opus · high`: the review's correctness,
+  formatter, parser-depth, docs-gate and LSP findings. **Needs Richard** for
+  the folded-name rule against inputs named after their action
+  (`CreateTodo` beside `create_todo`) before that part is built.
 
 Done when areas 1–4's decided examples check, and each area's errors are
 listed on its page with the new compiler's real output (the v0 lists are
