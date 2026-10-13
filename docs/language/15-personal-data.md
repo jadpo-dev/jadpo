@@ -438,6 +438,39 @@ new provider is seen by a person before it ships.
     verify the person. Every request is a record with its one-month legal
     deadline; `jadpo privacy requests` and the console list them, and one
     nearing its deadline raises an alert.
+    *Revised 2026-10-13 after Richard asked for it to work with no frontend
+    built:* `privacy: { self_service: { mail: <connection> } }` in
+    `app.jadpo` switches on the whole flow.
+    - **Out of the box:** a small generated privacy page at `/privacy`
+      (accessible, translated, branded from configuration, designed with the
+      design skills before it is built). A person enters their email; the
+      reply is always "if an account exists, we have emailed you", so it
+      never reveals who has an account. A single-use link proves they control
+      the address; they choose export or erasure and confirm.
+    - **Export** is delivered by email as a single-use download link that
+      expires after 7 days, never as an attachment; the file is encrypted at
+      rest, deleted on expiry, and every download is in the access records.
+    - **Erasure** waits out the cooling-off period, with a cancel link in the
+      confirmation email; the completion email says what was kept and why
+      (the law allows keeping records such as insurance policies, and the
+      person must be told).
+    - **Events** at every step: `PrivacyRequestReceived`,
+      `PrivacyExportReady` (with the download link), `PrivacyErasureScheduled`,
+      `PrivacyErasureCompleted`, `PrivacyRequestOverdue`. The built-in emails
+      are subscribers to these; an app can add its own (Slack, a CRM) or
+      replace the emails. With no mail connection, the compiler requires a
+      subscriber that delivers `PrivacyExportReady`.
+    - **Who may ask, three ways:** the person themselves, through the page
+      (email verified) or the API (`POST /privacy/export` and
+      `/privacy/erasure`, signed in recently, acting only on their own
+      record: there is no person id to pass); staff, through generated actions
+      for requests received by email or phone, granted in `policy.jadpo`
+      (`privacy.create_request: [StaffRole.support]`), recording who created
+      it and how identity was checked, with the export still going to the
+      person's own email, never to the staff member; and never a schedule or
+      subscriber, except retention purges.
+    - **Protection:** rate limits on the page and API (area 16), links
+      single-use and short-lived, every step in the access records.
 14. **How is personal data that erasure cannot reach prevented?** Raised by
     Richard (2026-10-13): no siloed data left behind. *Recommendation:* a
     compile error for any marked personal field on an entity that is not a
