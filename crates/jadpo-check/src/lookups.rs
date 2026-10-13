@@ -7,11 +7,10 @@
 //! file's resolution or its naming rules depend only on the names they
 //! read.
 //!
-//! [`Lookup`] gives a check those queries behind the same views the whole
-//! tables offer ([`TypeView`], [`NameView`], [`SigView`], [`FailureView`]),
-//! so the checking code reads the same either way. Suggestions on a
-//! mistake ("did you mean") still read a whole table, through
-//! [`NameView::all`]; only code that already found a mistake does.
+//! [`Lookup`] gives a check those queries behind views ([`TypeView`],
+//! [`NameView`], [`SigView`], [`FailureView`]). Suggestions on a mistake
+//! ("did you mean") still read a whole table, through [`NameView::all`];
+//! only code that already found a mistake does.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -20,8 +19,8 @@ use jadpo_db::{Db, ItemKind, Project, Symbol, Symbols, symbols};
 use jadpo_graph::Registry;
 
 use crate::case::to_snake;
-use crate::failures::{FailureInfo, FailureTable, failure_table};
-use crate::types::{Callables, Def, Sig, TypeTable, TypeView, callables, type_table};
+use crate::failures::{FailureInfo, failure_table};
+use crate::types::{Def, Sig, TypeView, callables, type_table};
 
 /// A name, interned so it can key a query.
 #[salsa::interned(debug)]
@@ -157,49 +156,10 @@ pub trait NameView {
     }
 }
 
-impl NameView for Symbols {
-    fn declared(&self, name: &str) -> &[Symbol] {
-        self.declarations.get(name).map_or(&[], Vec::as_slice)
-    }
-
-    fn is_domain(&self, name: &str) -> bool {
-        self.domains.contains(name)
-    }
-
-    fn is_connection(&self, name: &str) -> bool {
-        self.connections.contains(name)
-    }
-
-    fn is_package(&self, name: &str) -> bool {
-        self.packages.contains(name)
-    }
-
-    fn all(&self) -> &Symbols {
-        self
-    }
-
-    /// A table on its own knows no renames.
-    fn registry(&self) -> &Registry {
-        static EMPTY: std::sync::OnceLock<Registry> = std::sync::OnceLock::new();
-        EMPTY.get_or_init(Registry::new)
-    }
-}
-
 /// Reading callables' signatures.
 pub trait SigView {
     fn signature(&self, name: &str) -> Option<&Sig>;
     fn library_signature(&self, library: &str, function: &str) -> Option<&Sig>;
-}
-
-impl SigView for Callables {
-    fn signature(&self, name: &str) -> Option<&Sig> {
-        self.plain.get(name)
-    }
-
-    fn library_signature(&self, library: &str, function: &str) -> Option<&Sig> {
-        self.library
-            .get(&(library.to_string(), function.to_string()))
-    }
 }
 
 /// Reading declared failures.
@@ -208,12 +168,6 @@ pub trait FailureView {
 
     fn is_declared_failure(&self, name: &str) -> bool {
         self.failure_info(name).is_some()
-    }
-}
-
-impl FailureView for FailureTable {
-    fn failure_info(&self, name: &str) -> Option<&FailureInfo> {
-        self.get(name)
     }
 }
 
@@ -256,11 +210,6 @@ impl<'db> Lookup<'db> {
 
     pub fn failures_with_code(&self, code: &str) -> &'db [FailureInfo] {
         failures_with_code(self.db, self.project, self.name(code))
-    }
-
-    /// The whole type table: for suggestions on a mistake only.
-    pub fn all_types(&self) -> &'db TypeTable {
-        type_table(self.db, self.project)
     }
 }
 
