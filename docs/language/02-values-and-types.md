@@ -2263,7 +2263,13 @@ action make_badge(user: User) fails BadgeNameTooLong -> Badge {
 
 #### Q3: `optional` only on inputs, read as nullable
 
-```jadpo fragment
+```jadpo check project=q3-optional file=names.jadpo hidden
+type Nickname = Text {
+    max_length: 30
+}
+```
+
+```jadpo check project=q3-optional file=update_profile.jadpo
 type UpdateProfile = Input {
     nickname: Nickname {
         optional: true
@@ -2271,7 +2277,7 @@ type UpdateProfile = Input {
 }
 
 action update_profile(request: UpdateProfile) -> Nickname? {
-    var nickname: Nickname? = request.nickname    // left out reads as none
+    var nickname: Nickname? = request.nickname  // left out reads as none
     return nickname
 }
 ```

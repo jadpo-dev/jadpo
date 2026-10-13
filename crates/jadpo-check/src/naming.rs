@@ -28,6 +28,24 @@ fn described(symbol: &Symbol) -> String {
     format!("{} in `{}`", symbol.kind.with_a(), symbol.path)
 }
 
+/// Whether `item`, in `path`, and `other` are a type and the action, query
+/// or function declared in the same file, which may fold to one name
+/// (`CreateTodo` beside `create_todo`): only one file carries the name
+/// (area 1, decided 2026-10-13).
+fn callable_and_its_type(path: &str, item: &Item, in_library: bool, other: &Symbol) -> bool {
+    let callable = |kind: &ItemKind, library: bool| {
+        !library
+            && matches!(
+                kind,
+                ItemKind::Action | ItemKind::Query | ItemKind::Function
+            )
+    };
+    let is_type = |kind: &ItemKind| matches!(kind, ItemKind::Type(_));
+    other.path == path
+        && ((is_type(&item.kind) && callable(&other.kind, other.library.is_some()))
+            || (callable(&item.kind, in_library) && is_type(&other.kind)))
+}
+
 /// `public` on a declaration that isn't part of a domain's interface: only
 /// types (failures and events among them), entities, queries, libraries and
 /// actions are offered to other domains (area 1).
@@ -225,6 +243,7 @@ fn declaration(
         .same_file_name(&folded)
         .iter()
         .filter(|symbol| symbol.name != name)
+        .filter(|symbol| !callable_and_its_type(path, item, library.is_some(), symbol))
         .filter(|symbol| symbol_order(symbol) < here)
         .min_by_key(|symbol| symbol_order(symbol))
     {

@@ -625,3 +625,33 @@ fn a_move_suggestion_never_names_where_the_file_already_is() {
         .unwrap_or_default();
     assert_eq!(next, "Move the file to `domains/<domain>/actions/x.jadpo`");
 }
+
+// --- area 1: a type may fold to the callable in its own file ------------------
+
+#[test]
+fn a_type_may_share_its_folded_name_with_the_callable_in_its_file() {
+    let input = "type Title = Text {}\n\ntype CreateTodo = Input {\n    title: Title\n}\n\naction create_todo(request: CreateTodo) -> Title {\n    return request.title\n}\n";
+    assert_eq!(
+        rules(
+            Layout::Project,
+            &[
+                support::APP,
+                ("domains/planning/actions/create_todo.jadpo", input)
+            ]
+        ),
+        CLEAN
+    );
+    assert_eq!(
+        rules(
+            Layout::Loose,
+            &[
+                ("due.jadpo", "type DueDate = CalendarDate {}\n"),
+                (
+                    "main.jadpo",
+                    "function due_date(due: DueDate) -> DueDate {\n    return due\n}\n"
+                ),
+            ]
+        ),
+        ["naming.folded_collision"]
+    );
+}

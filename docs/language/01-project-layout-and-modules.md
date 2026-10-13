@@ -294,9 +294,15 @@ check failed: 1 error, 1 file
 
 ### `naming.folded_collision`
 
-```jadpo check project=e-folded expect=naming.folded_collision
-type DueDate = CalendarDate {}
+Two names that become the same file name are an error, except a type beside
+the action, query or function in its own file (`CreateTodo` in
+`create_todo.jadpo`):
 
+```jadpo check project=e-folded file=due.jadpo
+type DueDate = CalendarDate {}
+```
+
+```jadpo check project=e-folded file=main.jadpo expect=naming.folded_collision
 function due_date(due: DueDate) -> DueDate {
     return due
 }
@@ -304,16 +310,16 @@ function due_date(due: DueDate) -> DueDate {
 
 ```text output
 error: `due_date` and `DueDate` share a file name
- --> main.jadpo:3:10
+ --> main.jadpo:1:10
   |
-3 | function due_date(due: DueDate) -> DueDate {
+1 | function due_date(due: DueDate) -> DueDate {
   |          ^^^^^^^^ also `due_date.jadpo`
-  reason: Both names become `due_date.jadpo`, so a search for one finds the other; `DueDate` is a type in `main.jadpo`.
+  reason: Both names become `due_date.jadpo`, so a search for one finds the other; `DueDate` is a type in `due.jadpo`.
   next: Rename one of them so their file names differ (agent)
   rule: naming.folded_collision
   help: docs/language/01-project-layout-and-modules.html#naming-folded-collision
 
-check failed: 1 error, 1 file
+check failed: 1 error, 2 files
 ```
 
 ### `naming.generic_name`
@@ -1199,7 +1205,8 @@ build/
   as an action, query or function may fold to that callable's name, as an
   input does (`type CreateTodo = Input` beside `action create_todo` in
   `actions/create_todo.jadpo`), because only one file carries the name. If
-  the type is promoted to its own file, the rule applies again.
+  the type is promoted to its own file, the rule applies again. Built in
+  chunk 1.9.
 - Tests sit beside their subject as `<name>.test.jadpo`. Scenarios that span
   several domains go in the root `tests/`. The kind of test (pure,
   integration, route, schedule) is known from what it calls, so it is not a
