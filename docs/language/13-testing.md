@@ -447,6 +447,68 @@ as failed and names the failure. A route test checks `response.status`,
 `response.code` and the typed output (area 7). There are no snapshot
 assertions and no mocks of your own code.
 
+### What a failed test reports
+
+A failed test gives a person or an agent everything needed to fix it without
+rerunning it (Richard, 2026-10-13), the same standard as application failures
+(area 4). Shown readably in a terminal and as versioned JSON with
+`--json`:
+
+```text
+FAIL  a rate-limited reminder is retried
+      domains/planning/schedules/overdue_reminders.test.jadpo:31
+
+  assert collection.count(sent) == 2
+         │                │
+         1                [ReminderMessage { to: "alice@example.test", todo_title: "Buy milk", ... }]
+
+  expected  2
+  actual    1
+
+  what ran (trace t-7f3a, clock 2026-01-15T12:00:00Z, order seed 48213):
+    overdue_reminders.run()                         2 todos due
+      queue_overdue_reminders()                     committed: 2 Todo updated, 2 ReminderDue emitted
+    send_reminder (ReminderDue todo=01908f6e…)      reminders.messages.send → rate_limited → retry
+    send_reminder (ReminderDue todo=01908f6e…)      retry scheduled for 12:00:02, not yet due
+    send_reminder (ReminderDue todo=7c21d0aa…)      reminders.messages.send → accepted
+
+  fakes:  reminders.messages.send   2 scripted, 2 used
+  data:   kept as jadpo_test_7f3a (--keep-failed)
+  rerun:  jadpo test domains/planning/schedules/overdue_reminders.test.jadpo:31 --seed 48213
+```
+
+- **The assertion broken into parts:** every sub-expression's value, as
+  pytest and power-assert show; records compared field by field with a diff.
+- **For `assert … fails X`:** the failure that happened instead (with its
+  internal fields), or the value the call returned.
+- **What ran:** the test's trace in short (area 17): actions, queries, writes,
+  events delivered or pending, retries, and provider calls with what was sent
+  and answered.
+- **How to reproduce it:** the clock, the order seed, configuration
+  overrides, fake usage, the kept database and the exact rerun command.
+- Every failure has a stable code (`test.assertion_failed`,
+  `test.fake_unused`, `test.fake_exhausted`, `test.unexpected_failure`) so an
+  agent can act on it without parsing text.
+
+## Running tests
+
+- `jadpo test` runs everything; `jadpo test <file>` one file;
+  `jadpo test <file>:<line>` the test at that line; `--name <text>` tests
+  whose names match; `--kind route` one kind; `--failed` the tests that
+  failed last time.
+- **Watch mode:** `jadpo test --watch` reruns, on every save, the tests the
+  change reaches, using the compiler's own dependency graph (area 14's
+  `--affected`).
+- **Interactive mode:** `jadpo test --interactive` opens a keyboard-driven
+  view of every test in the app, grouped by domain and file, with each
+  test's last result. Type to search files and tests; run a file, a single
+  test or everything; rerun failures; open a failure's full report; toggle
+  watch mode. It needs a terminal; agents use the flags above and `--json`.
+- The editor shows a run button above each test and the last result beside
+  it (language server).
+- There is no `test.only` in source: focusing is a command-line choice, so a
+  focused test is never committed by accident.
+
 ::: today
 
 A failed assertion reports only `assertion failed at source bytes 529..542`.
@@ -1064,6 +1126,28 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 12. **Can a test assert what a query costs?** (carried from area 6) Area 6
     bounds how many records and database queries a query may cost. Can a
     test assert those numbers, and how?
+13. **Should the compiler generate data builders?** *Recommendation:* yes.
+    `make.Todo { title: "Buy milk" }` fills every other required field with
+    a valid default and goes through the real create operation, so
+    validation and policy apply (factory_bot's model, generated instead of
+    written). Fixtures remain for meaningful scenarios and return a named
+    object holding what they made (`setup.alice`, `setup.todos`), so a test
+    never has to look its own data up again.
+14. **How does a test check side effects?** *Recommendation:*
+    `assert emitted ReminderDue { todo_id: todo.id }` for events, beside the
+    fakes' `.requests` for provider calls.
+15. **How are whole values compared?** *Recommendation:* `==` on records and
+    lists, with a field-by-field diff on failure; no snapshot assertions,
+    because agents update snapshots without reading them and a failing test
+    quietly becomes a passing one.
+16. **What does a failed test leave behind?** *Recommendation:* with
+    `--keep-failed`, its database (named in the report) and its trace, so
+    `jadpo trace` and `jadpo console` can inspect exactly what it did.
+17. **Is a database copy per test fast enough?** Estimate, not measured: a
+    PostgreSQL template copy likely costs tens to a couple of hundred
+    milliseconds. *Recommendation:* the runner prepares copies in the
+    background while tests run; measure on the golden app before changing
+    the approach.
 
 ### Decisions
 
@@ -1088,3 +1172,10 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 | Acting as a user | | |
 | Acting as a service | | |
 | Query cost assertions | | |
+| Test failure output | Every failed test reports the assertion broken into sub-expression values, record diffs, the failure that happened instead, the test's trace in short, fake usage, clock, seed, kept database and the rerun command; readable and `--json`; stable `test.*` codes (Richard) | 2026-10-13 |
+| Running tests | `jadpo test` by file, `file:line`, `--name`, `--kind`, `--failed`; `--watch` reruns affected tests on save; `--interactive` keyboard view to search, navigate and run every test in the app; editor run buttons; no `test.only` (Richard) | 2026-10-13 |
+| Data builders | | |
+| Side-effect assertions | | |
+| Comparing values | | |
+| What a failed test leaves | | |
+| Speed of database copies | | |
