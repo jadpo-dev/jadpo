@@ -512,3 +512,50 @@ fn an_entity_has_only_its_operations() {
         CLEAN
     );
 }
+
+// --- finding 25: operators read literals and text alike -----------------------
+
+#[test]
+fn a_literal_takes_the_other_sides_type_in_arithmetic_as_in_comparison() {
+    let price = "type Price = Decimal {\n    scale: 2\n}\n\n";
+    assert_eq!(
+        check(&format!("{price}function f(a: Price) -> Price {{\n    return Price(a + 3)\n}}\n")),
+        ["type.arithmetic_operand"]
+    );
+    assert_eq!(
+        check(&format!("{price}type Flag = Bool {{}}\n\nfunction f(a: Price) -> Flag {{\n    return Flag(a == 3)\n}}\n")),
+        ["type.incomparable"]
+    );
+    assert_eq!(
+        check(&format!("{price}function f(a: Price) -> Price {{\n    return Price(a + 3.00)\n}}\n")),
+        CLEAN
+    );
+}
+
+#[test]
+fn joining_text_needs_the_same_type_as_comparing_it() {
+    let names = "type First = Text {}\n\ntype Last = Text {}\n\ntype Full = Text {}\n\ntype Flag = Bool {}\n\n";
+    assert_eq!(
+        check(&format!("{names}function f(a: First, b: Last) -> Full {{\n    return Full(a + b)\n}}\n")),
+        ["type.arithmetic_operand"]
+    );
+    assert_eq!(
+        check(&format!("{names}function f(a: First, b: Last) -> Flag {{\n    return Flag(a == b)\n}}\n")),
+        ["type.incomparable"]
+    );
+    assert_eq!(
+        check(&format!("{names}function f(a: First, b: First) -> Full {{\n    return Full(a + \" \" + b)\n}}\n")),
+        CLEAN
+    );
+}
+
+#[test]
+fn brackets_around_a_matched_call_only_group_it() {
+    let risky = "type Count = Int {}\n\ntype Nope = Failure {\n    kind: FailureKind.rejected\n}\n\nfunction risky(n: Count) fails Nope -> Count {\n    if (n > 3) {\n        reject Nope\n    }\n    return n\n}\n\n";
+    assert_eq!(
+        check(&format!(
+            "{risky}function f(n: Count) -> Count {{\n    return match (risky(n)) {{\n        success(v) -> v\n        Nope -> n\n    }}\n}}\n"
+        )),
+        CLEAN
+    );
+}
