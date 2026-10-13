@@ -83,7 +83,7 @@ optimisation) are `xhigh`.
 
 ## Phase 1 — Graph core (areas 1–4)
 
-- [ ] **1.1 Workspace and CLI shell:** `opus · high` `jadpo` with the agreed
+- [x] **1.1 Workspace and CLI shell:** `opus · high` `jadpo` with the agreed
   [design language](language/research/14-cli-design-language.md),
   self-describing help, `--json`, completion skeleton.
 - [ ] **1.2 Parser, syntax tree and formatter** `opus · high` for the decided grammar.
