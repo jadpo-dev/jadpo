@@ -1,7 +1,8 @@
 # Jadpo compiler and runtime architecture
 
 **Status:** the build approach is decided (§1.1–1.2, 2026-10-13); the
-detailed architecture is written in roadmap chunk 0.4 (§2).
+architecture (§2) was written in roadmap chunk 0.4 and waits for Richard's
+read before Phase 1.
 
 ## 1. Architecture follows the semantic model
 
@@ -228,12 +229,456 @@ compiled divergence (guarded by running every test both ways); PostgreSQL
 from Workers needing Cloudflare's connection pooling; and scope creep, which
 step 5's cut exists to stop.
 
-## 2. The rest of the architecture
+## 2. Architecture (chunk 0.4, 2026-10-13)
 
-Roadmap chunk 0.4 writes the new compiler's architecture here: workspace and
-crates, the graph's node and edge kinds, identity and serialisation, the
-incremental engine, the executor interface, the runtime crate and the
-capability drivers, and the gate. The v0 compiler's architecture (toolchain,
-execution strategy, build outputs, checks, runtime, source mapping and
-diagnostics) is kept for reference in
-[the archive](archive/compiler-runtime-v0.md).
+Each subsection gives the decision, the reason and the main alternative
+rejected, so a chunk can start building without redesigning. Where an area
+page's body and its Decisions table differ, the table wins: `connections:`
+replaces area 5's `stores:` (area 11), email types and templates live in
+`emails/` (area 16), and tests use an in-memory cache (area 13). The v0
+compiler's architecture is kept in [the archive](archive/compiler-runtime-v0.md)
+for reference only.
+
+### 2.1 Workspace and crates
+
+One Cargo workspace at the repository root (`Cargo.toml`, `crates/`), where
+`tools/verify.py` already runs `cargo test --workspace`. Edition 2024, with
+an exact stable toolchain pinned in `rust-toolchain.toml` (salsa 0.28 needs
+Rust 1.88 or later).
+
+| Crate | Responsibility | wasm32 |
+|---|---|---|
+| `jadpo-diag` | Rule catalogue, diagnostic model, edits | |
+| `jadpo-syntax` | Lexer, parser, lossless syntax tree, typed AST, `jadpo.ungram` | |
+| `jadpo-fmt` | Formatter | |
+| `jadpo-graph` | Node and edge model, identity keys, canonical JSON, diff | |
+| `jadpo-db` | Incremental database: inputs, project layout, packages and lock, identity registry, the before side from git | |
+| `jadpo-check` | Resolution, types, failures, effects, policy, data and layout rules, as queries that build the graph | |
+| `jadpo-plan` | What both executors need besides control flow: SQL per engine with policy compiled in, codecs and validators per type, route, schedule and subscriber tables, system-table placement, migration diffs | |
+| `jadpo-interp` | The interpreter | |
+| `jadpo-codegen` | Rust source from graph and plan; drives cargo | |
+| `jadpo-value` | Runtime values, JSON and row codecs, validation, failure envelope, standard-library implementations | yes |
+| `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
+| `jadpo-drivers` | PostgreSQL, Redis, SMTP, S3 and package (JSON over HTTP) drivers over a host-supplied transport; a cargo feature each | yes |
+| `jadpo-host-native` | tokio, hyper, rustls; timers, delivery workers, local disk and inbox | |
+| `jadpo-host-workers` | workers-rs: fetch, scheduled, `waitUntil`, sockets, bindings | only |
+| `jadpo-term` | The CLI design language: rich, plain and JSON output | |
+| `jadpo-test` | Test runner, PostgreSQL harness, differential comparison | |
+| `jadpo-lsp` | Language server | |
+| `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
+
+**Dependency direction.** Compiler crates never depend on runtime crates,
+except `jadpo-interp`, which links the runtime it shares with compiled
+code. Runtime crates never depend on compiler crates, and a generated
+application depends only on runtime crates. A workspace test reads `cargo
+metadata` and fails on any edge against this. *Rejected:* v0's single
+`core` crate, which grew to everything and let the generator read the
+syntax tree.
+
+**The standard library** (`collection`, `temporal`, `decimal` and the rest)
+is declared in Jadpo stub files embedded in `jadpo-check`, each operation
+bound to one Rust function in `jadpo-value`, so its semantics exist once
+for both executors.
+
+**wasm32.** The four runtime crates build for `wasm32-unknown-unknown`,
+checked by the gate. Compiler crates do no I/O below `jadpo-db`, which
+keeps a browser playground possible later without gating on it now.
+
+### 2.2 Source to graph
+
+**Lexer and parser.** Hand-written. The lexer has modes for route paths
+(`GET /todos/{todo_id}`), durations (`15m`) and template text (`{{ }}`).
+The recursive-descent parser emits start, finish and token events that a
+sink builds into a [rowan](https://crates.io/crates/rowan) green tree, as
+rust-analyzer does: lossless, comments and whitespace included, for the
+formatter and the language server. The sink attaches each comment to a
+token by one rule (leading to the next token, trailing to the last token
+on its line), as [Biome](https://biomejs.dev/internals/architecture) does,
+so the formatter needs none of the comment-placement repairs Ruff's
+AST-based formatter carries. The parser recovers at declaration and member
+boundaries, never panics, and is fuzzed. The grammar is one
+`jadpo.ungram`; the typed AST is generated from it and committed, with a
+test that fails when they drift. *Rejected:* tree-sitter or LALR
+generators, with weaker recovery and messages, and a second lossless tree
+still needed.
+
+**Formatter.** Syntax tree to a document algebra to a printer, owning
+indentation, blank lines and member order (areas 1 and 14). Every example
+is checked to be idempotent and to parse to the same AST after formatting.
+
+**Item trees.** Each file is summarised into its declarations and
+signatures without bodies (rust-analyzer's `ItemTree`), so editing a body
+never invalidates another file's resolution.
+
+**Resolution.** One project-wide name table, because names are unique
+across the project and across kinds (area 1). A dotted prefix resolves to
+its owner: domain, library, entity, connection, package or standard
+namespace. Visibility is the domain unless `public`. Layout rules (folder,
+kind, file name, promotion) are checked from paths.
+
+**Types.** Nominal and bidirectional: the expected type flows into
+literals (area 2). Widening is the only implicit conversion; the standard
+library's signatures are the only generics. An `Error` type absorbs
+anything built from it, so one mistake gives one error. Body checks
+follow: definite assignment, unused variables, `attempt` placement, failure
+sets, effect rules per callable kind, reads in loops, one store per action,
+calls before writes.
+
+**Diagnostics.** The catalogue is a `rules!` table in `jadpo-diag` (rule
+id, owning area, severity, summary, who decides, help anchor), used through
+typed constants, so a misspelt rule does not compile. A diagnostic carries
+the rule, primary and secondary spans, reason, next step with optional
+edits, and who decides (`agent` or `human`). `jadpo-term` renders it rich
+or plain per the design language; `--json` carries `schemaVersion`,
+project-relative paths, and line and column beside byte offsets. The
+catalogue is part of `jadpo help --json`, which the docs check reads.
+*Rejected:* v0's `build.rs` scan of emitter strings, which let codes drift.
+
+### 2.3 The graph
+
+**Representation.** Per-kind arenas with typed `u32` ids
+([la-arena](https://docs.rs/la-arena/latest/la_arena/)) and interned names,
+rebuilt rather than mutated and shared behind `Arc`; nothing is deleted in
+place, so generational keys would be wasted. In-memory ids are never
+serialised. *Rejected:* a general property graph with string labels, which
+loses the typed shape every consumer relies on.
+
+| Node group | Kinds |
+|---|---|
+| Structure | domain, library, file, deployable |
+| Types | type (base `Object`, `Enum`, `Input`, `Output`, `Failure`, `Event`, `EmailMessage` or a scalar refinement), field, variant, constraint |
+| Data | entity, unique rule, index, reference, lifecycle (visible, transition, purge), cache, store placement, system table, personal mark, retention, person |
+| Behaviour | function, action, query, fixture, seed, test, site, branch |
+| Triggers | API, route group, route, schedule, subscriber, generated route (sign-in, webhooks, health, privacy) |
+| Access | principal, authentication method, sign-in provider, grant (entity, effect, who), field restriction, tenancy, action exception, OAuth scope |
+| Outside | connection, package, resource, operation, capability mapping, host |
+| Services | config field, locale set, translation key, email template, flag, rate limit, threshold |
+| Records | API record, migration snapshot, registry entry, acceptance, lock entry |
+
+**Edges:** calls, reads and writes (entity, fields, operation), emits,
+subscribes, runs (trigger to action or query), raises, maps (failure to
+failure), references, includes, grants, scopes (tenancy), invalidates
+(write to cache), uses (type, config, connection, translation key, flag),
+provides (package to capability), reaches (deployable to node) and covers
+(test to node).
+
+**Bodies.** Each callable has a typed body: an arena of statements and
+expressions, each with a site number and source range. Effects are their
+own expression kinds (store read, store write, emit, integration call,
+clock, new identity, flag read), which replay, `why` and coverage need.
+Queries are declarative nodes, not bodies. A control-flow graph derived
+per callable gives Ball–Larus path numbers, branch coverage and exact
+review paths, with loop back edges cut as area 16 decides. Executors walk
+the structured body; reports read the control-flow graph.
+
+**Identity.** A node's key is its born qualified name through the registry
+(`planning.complete_todo`, `planning.Todo.title`,
+`planning.Todos GET /{todo_id}`). Its digest is BLAKE3 over its canonical
+form without positions or comments, so moving code changes neither. Sites
+and branches are numbered per build in source order (area 18). Every node
+records its project-relative file and byte range; the manifest prints
+lines.
+
+**Canonical JSON.** A dedicated writer rather than `serde_json`'s map
+order: sorted keys, nodes sorted by key, edges as sorted lists, two-space
+indent, LF, no floats or timestamps, a top-level `format` (area 18), its
+schema in `jadpo help --json`.
+
+**Diff.** One operation: match nodes by key, compare digests, then let each
+kind classify its change into the decided kinds (`ApiChange`, `DataChange`,
+`PolicyChange`, `DomainChange`, `PackageChange`, `ThresholdChange`), other
+behaviour, and newly reachable nodes. The before side is read from the
+base commit through `git cat-file --batch` into an in-memory file set,
+checked by the same compiler and cached in `build/before/<commit>/`.
+
+**Packages.** A package's index is always parsed, a resource file only when
+the app calls into it. A checked package subgraph is cached on disk by
+package digest and compiler version (`~/.cache/jadpo/packages/`), so an
+unchanged package costs nothing after its first check (area 11).
+
+### 2.4 Incremental engine
+
+**Decision:** [salsa](https://github.com/salsa-rs/salsa) 0.28, pinned
+exactly and confined to `jadpo-db` and `jadpo-check`. It gives early
+cut-off (a recomputed result equal to the old one stops invalidation),
+durability levels, and the cancellation the language server needs when a
+keystroke arrives mid-check; rust-analyzer and Astral's ty run on it. Its
+costs are heavy macros, breaking releases and
+[cancellation by unwinding](https://docs.rs/salsa/latest/salsa/enum.Cancelled.html),
+so the `jadpo` binary keeps `panic = "unwind"`. *Rejected:* a hand-rolled
+per-module cache, as
+[Gleam](https://gleam.run/news/v0.26-incremental-compilation-and-deno/)
+keeps by modification time: enough for `check`, too coarse for the editor,
+and invalidation is where hand-rolled caches go wrong.
+
+| Query | Keyed by | Recomputed when |
+|---|---|---|
+| `parse` | file | its text changes |
+| `item_tree` | file | its declarations or signatures change, not bodies |
+| `symbols` | project | an item tree changes |
+| `signature`, `entity`, `type_decl` | declaration | its item, or a type it names, changes |
+| `body` (resolved, typed, diagnostics) | callable | its text or a signature it uses changes |
+| `effects` | callable | its body or a callee's effects change |
+| `plan` (SQL, codecs, policy) | query, write site, type | its inputs, entity or policy change |
+| `graph`, `diagnostics` | project, file | anything above; assembly only |
+
+Inputs carry durability: standard library and packages high, root files
+medium, domain files low, so a keystroke never revalidates packages.
+`jadpo lsp`, `jadpo dev` and `jadpo test --watch` keep one database for
+their lifetime; `jadpo check` starts cold with only the package cache.
+Affected tests are those that reach a node whose digest changed, by
+reverse reachability over `calls`, `runs`, `reads` and `covers`.
+
+### 2.5 Executors
+
+**One contract.** Both executors consume the graph's typed bodies plus
+`jadpo-plan`, and every effect and standard-library operation goes through
+one per-invocation context in `jadpo-runtime`:
+
+| `Ctx` operation | Used for |
+|---|---|
+| `read`, `write` (plan, parameters) | Queries and entity operations; SQL, policy and lifecycle come from the plan |
+| `emit(event)` | Outbox row in the action's transaction |
+| `call(operation, input)` | Integration call with idempotency key, retries and failure mapping |
+| `now`, `new_id`, `flag`, `config` | Effects with one source each, recorded for replay |
+| `enter(callable, site)`, `leave`, `branch(increment)` | Frames and path numbers |
+| `fail(failure)`, `fault(kind, site)` | Failures and defects with their `.jadpo` place |
+
+The runtime, not the executor, owns the action boundary: it opens the
+transaction at the first store operation, runs the body (a closure either
+executor supplies), reruns it on a concurrent change within the budget
+(area 6), commits, then delivers the outbox and clears caches. Limits
+(recursion depth, events per action, event size, chain depth) are runtime
+constants. Only control flow and value representation differ between the
+executors, so divergence can only come from those.
+
+**Interpreter.** Functions are pure (area 3) and run synchronously. Only
+actions, queries and tests are `async`, and the checker knows which
+expressions can suspend, so only those frames are boxed futures
+(`Box::pin`, allowed for recursive `async fn` since
+[Rust 1.77](https://blog.rust-lang.org/2024/03/21/Rust-1.77.0/)). Values
+are an `Rc`-shared `Value` enum, read and written by codecs driven by the
+same type plans the generator uses. It runs on `jadpo-host-native`, so
+`dev` and `test` exercise the real HTTP, driver and outbox code.
+*Rejected:* compiling to bytecode first; a tree walker over checked bodies
+is fast enough when the real cost is I/O.
+
+**Code generation.** `quote!` into a `syn` tree, printed with
+[prettyplease](https://github.com/dtolnay/prettyplease): deterministic,
+never fails to format, about twenty times faster than rustfmt, and
+readable when the executors differ. One module per domain; a struct or
+enum per type with codecs from the type plan; functions as `fn`, actions
+and queries as `async fn(&mut Ctx, …)`; checked arithmetic that returns a
+fault, never panics. *Rejected:* string templates, whose malformed output
+only rustc catches.
+
+**Keeping rustc time down.** The runtime crates are compiled once per
+Jadpo version and target and cached, so a build compiles only the thin
+application crate. Generated code has no generics, because monomorphised
+copies drive the LLVM IR rustc must optimise
+([compile-time guide](https://nnethercote.github.io/perf-book/compile-times.html)).
+Tests run interpreted; compiled builds happen only in the differential
+run (dev profile) and for deployment (release). The differential run
+compiles every corpus project as a module of one crate: one rustc
+invocation for the corpus.
+
+**Frames.** Both executors keep a shadow stack of `(callable, site)` in
+the context; each site maps to a `.jadpo` file and line through a table
+from the graph (a static array in compiled code). A fault renders its
+frames from that stack, with `runtime: <component>` for the runtime's own
+work, so nothing depends on unwinding or debug information, which Workers
+does not keep (area 18). Path numbers come from the same branch increments
+in both.
+
+**Differential test.** Every test runs interpreted and compiled, as Gleam
+runs one
+[language test project](https://raw.githubusercontent.com/gleam-lang/gleam/main/test/language/Makefile)
+on every target. Per test it compares outcome, failure code and internal
+fields, assertion values, the effect sequence (SQL and row counts, events,
+provider calls), path numbers and the final database diff; any difference
+fails the gate and prints both sides. From Phase 8, random well-typed
+function bodies add fuzzed comparisons, as Cranelift does against its
+interpreter.
+
+### 2.6 The runtime
+
+**Single-threaded by design.** Runtime futures need not be `Send`. A
+Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
+runs one current-thread tokio runtime per core, each with its own
+connection pools, behind one listener. One code path serves both targets,
+with `Rc` instead of `Arc` and no locks on the request path. *Rejected:*
+multi-threaded tokio with `Send` bounds switched off on wasm32, which
+doubles the async signatures and lets bugs hide on one target.
+
+| Component | Does | On Workers |
+|---|---|---|
+| HTTP | Router from the route table, input decoding, body limit, deadline, health, failure envelope, `request_id` | fetch event |
+| Identity | Sessions, CSRF, API tokens, service keys, OIDC sign-in, revocation delay | same |
+| Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
+| Transactions | Repeatable read, revision checks, rerun within the budget | same |
+| Idempotency | Keys and stored responses in the action's transaction | same |
+| Outbox | Delivery, retries, circuit breaker, dead letters; native delivery workers | `waitUntil` after commit, swept by the minute tick |
+| Scheduler | Due times in the schedule's state row from its first tick, leases, run records, tick adapters; native timer | Cloudflare cron |
+| Rate limits, caches | Redis or bounded memory; cache reads with timeout, invalidation after commit | Redis or a binding required |
+| Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
+| Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
+| Flags, privacy | Evaluation; export and erasure flows | same |
+| Development | Request timeline, local inbox and disk, published-event log | none |
+
+**Capability drivers.** One trait per capability: `Database` (begin,
+query, execute, commit, rollback), `Cache`, `Email`, `Sms`, `Files`,
+`Publishing` and `ScheduleTick` (ticks and an optional lease). Drivers
+classify their own errors into the runtime's fixed set (conflict with the
+constraint name, serialisation failure, unavailable, fault), so executors
+and targets agree; the experiments found exactly this classification
+drifting between adapters
+([shared conformance](experiments/shared-rust-conformance-results.md)).
+Package-backed capabilities use one generic driver that runs the package's
+declared protocol, credentials, idempotency header, retries and error
+mapping through `Host::fetch`; packages never generate driver code. Drivers
+list their targets for `jadpo check` (area 11), and test fakes implement
+the same traits.
+
+**What differs on Workers.**
+
+- No threads, no timers between requests, no disk: delivery runs in
+  `waitUntil`, the minute cron sweeps the outbox and ticks every schedule.
+- PostgreSQL goes through Hyperdrive over `connect()` sockets with
+  tokio-postgres, as in workers-rs's
+  [example](https://raw.githubusercontent.com/cloudflare/workers-rs/main/examples/tokio-postgres/src/lib.rs),
+  one connection per request. Hyperdrive
+  [pools by transaction and caches reads](https://developers.cloudflare.com/hyperdrive/concepts/how-hyperdrive-works/)
+  without invalidating them on writes, so Jadpo requires its caching off
+  (reads are current, area 6), uses unnamed statements (`query_typed`),
+  keeps no session state outside a transaction and takes leases with rows,
+  never advisory locks. Rows reach the module as wire bytes rather than
+  JavaScript values, which should remove the conversion that held the
+  experiments to about 79% of Bun
+  ([optimisation results](experiments/wasm-optimization-results.md)): an
+  inference until the Phase 4 spike measures it.
+- Six connections at once per request
+  ([limits](https://developers.cloudflare.com/workers/platform/limits/)),
+  counted by the runtime across database, providers and SMTP.
+- A panic aborts the instance, so runtime crates deny `unwrap`, `expect`
+  and `panic!` by lint, and faults are values.
+- `wasm32-unknown-unknown` with wasm-bindgen; Cloudflare documents no
+  component-model support and only experimental WASI. Each deployable links only the drivers it reaches, which keeps
+  start-up inside the one-second limit.
+- Application and runtime are one trusted module, the "trusted
+  first-party" mode of the
+  [host trust decision](experiments/wasm-host-trust-decision.md); the
+  guest-and-monitor designs are not carried forward.
+
+### 2.7 Tests and the gate
+
+**Specification examples become tests.** A chunk turns its areas'
+`fragment` blocks into `check` blocks as it builds them; `check` blocks are
+compiled by the new `jadpo`, while unmarked blocks stay frozen v0 results
+until the chunk removes them. An `expect=rule.id` block is followed by a
+` ```text output ` block holding the exact plain output, compared byte for
+byte and rewritten by `language_docs.py --bless`, so each `## Errors` entry
+shows the new compiler's real output (Phase 1's "done when"). Projects with
+`test` declarations also run under `jadpo test --json` and are exported to
+`build/spec-corpus/` for the differential run.
+
+**PostgreSQL harness.** `JADPO_TEST_DATABASE_URL`, or a disposable server
+from the local tools (`initdb`, `pg_ctl`) on a Unix socket with `fsync`
+off. Migrations build one template per migration digest; per-test copies
+(`CREATE DATABASE … TEMPLATE`) are prepared in the background (area 13).
+
+**Example-name ban.** `tools/example_names.py` extracts every declared name
+from the language pages' code blocks and from `examples/` into the
+committed `tools/example-identifiers.txt`, minus an allowlist of generic
+words (`id`, `status`). The gate fails if the list is stale, or if a listed
+name appears in any case style as an identifier or string in
+`crates/*/src/`. Tests may use them.
+
+| Phase | `tools/verify.py` adds |
+|---|---|
+| 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
+| 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a generous ceiling |
+| 3 | Live PostgreSQL (`--profile quick` skips it) |
+| 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
+| 10 | `--require-golden`: every golden contract case on both targets |
+
+**CI.** One GitHub Actions job on Linux runs `python3 tools/verify.py` with
+a PostgreSQL service, the pinned toolchain and a cargo cache. Benchmarks
+(Phase 9) are a separate command, not the gate.
+
+### 2.8 Determinism and the build stamp
+
+- **Same source, same bytes** in `build/`: no hash-map order in output,
+  project-relative paths, no timestamps, per-build numbering in source
+  order. A gate test checks each corpus project twice and compares.
+- **The build id digests inputs, not the binary:** the canonical subgraph
+  the deployable reaches, the compiler version, the target and the lock
+  (area 18). `jadpo incident` therefore needs only `check` of the stamped
+  commit with the stamped compiler, not rustc.
+- **Toolchain pinning.** Each Jadpo release pins one Rust toolchain and
+  ships the runtime crates' `Cargo.lock`. `jadpo build` writes a
+  `rust-toolchain.toml` into the generated crate, builds `--locked` with
+  `--remap-path-prefix` and a fixed `SOURCE_DATE_EPOCH`
+  ([reproducible Rust](https://reproducible-builds.org/docs/rust/)), and
+  pins wasm-bindgen and wasm-opt through `WASM_BINDGEN_BIN` and
+  `WASM_OPT_BIN`, since `worker-build` otherwise downloads unpinned ones.
+  Bit-identical binaries are a goal checked in CI, not a dependency of
+  incidents.
+- **The stamp** (build id, commit, modified flag, compiler version,
+  deployable, target) is a constant in the binary and on every log event.
+
+### 2.9 Risks and the first chunks
+
+| Risk | Guard |
+|---|---|
+| Interpreter and compiled code diverge | One plan, one runtime, codecs from the same type plans, the differential run |
+| The runtime grows without seams | Components behind traits; capability features per deployable |
+| salsa's breaking releases and advisories | Exact pin, two crates, upgraded in its own change |
+| workers-rs is 0.x | Only `jadpo-host-workers` touches it; our own JavaScript glue where it falls short |
+| PostgreSQL from Workers, Wasm slower than Bun | Hyperdrive with caching off, unnamed statements and repeatable read, and typed codecs, measured in the Phase 4 spike rather than Phase 8 |
+| Graph shape fixed too early | Kinds for later areas reserved now; `format` changes only on removals or changed meaning |
+
+**1.1 Workspace and CLI shell.** `rust-toolchain.toml`, the root
+`Cargo.toml`, `jadpo-diag`, `jadpo-term` and `jadpo-cli`, and the
+dependency test with the whole intended graph. `jadpo-term` first: output
+modes, colour and symbol detection, the grid, JSON envelopes. Then a
+declarative command table that generates `--help` with examples, `jadpo
+help --json`, Tab completion and nearest-command suggestions; commands
+appear as they are built. The name ban and the Phase 1 gate steps.
+
+**1.2 Parser, syntax tree and formatter.** `jadpo.ungram` from the decided
+syntax of areas 1–4, with other areas' fragments as parse-only tests; the
+lexer, event parser and rowan tree; generated AST; the formatter with
+idempotence tests; `jadpo fmt`; the syntax errors' new output on the area
+pages.
+
+**1.3 Project layout and domains.** `jadpo-db` with salsa inputs for files
+and layout; discovery by walking up to `app.jadpo`; item trees and the
+symbol table; area 1's layout, naming, visibility and resolution errors,
+each example converted to a `check` block; `jadpo check` printing them.
+
+### 2.10 Questions for Richard
+
+1. **Which store holds an action's outbox rows?** Area 12 says events go
+   through "the main store's outbox"; area 5 (same day) puts the outbox,
+   delivery records and idempotency keys "in each store that actions write
+   to". They disagree when an action writes a store other than `main`, and
+   neither covers an action that writes nothing (or only Redis) but emits
+   or takes an idempotency key. *Recommendation:* area 5's rule, because an
+   outbox row must commit with the writes it announces; an action writing
+   no PostgreSQL store uses a store named in `application { events: {
+   store: main } }`, required only when such an action exists, as area 5
+   names stores for other system features. The runtime sweeps every store
+   holding an outbox.
+   *Decided 2026-10-13 (Richard):* area 5's rule, with nothing defaulting to
+   a store called `main` or any other: the outbox, delivery records and
+   idempotency keys go in each store an action writes (correctness requires
+   it, and the build report shows where), and an action that writes no store
+   but emits or takes an idempotency key needs the store named explicitly in
+   `events: { store: <connection> }`; without it, a compile error names the
+   action and the setting.
+2. **Where do `flags.jadpo` and the per-domain monitoring file live?** Area
+   1 fixes the root entries and a domain's folders and makes any other
+   `.jadpo` file an error; area 16 adds a root `flags.jadpo` and "one
+   monitoring file per domain" without saying where. *Recommendation:* add
+   `flags.jadpo` to area 1's fixed root, and allow one `monitoring.jadpo`
+   directly in a domain folder. *Decided 2026-10-13 (Richard):* as recommended.
