@@ -378,6 +378,15 @@ new provider is seen by a person before it ships.
    person's record is always deleted, and kept records (`Erasure.retained`)
    must have their own retention. A half-erased user record breaks unique
    fields and required types; invoices copy billing details anyway.
+   *Revised 2026-10-13 after Richard's Waggel case* (insurance records kept
+   at least five years): the person's own record cannot always go. Revised
+   recommendation: erasure works field by field on the person too. A field
+   marked `erase: Erasure.retained` (with the entity's `retention:`) stays;
+   every other marked field is cleared; the person can no longer sign in,
+   receives nothing, and is excluded from every query except those that
+   serve the retained purpose; when retention ends the purge schedule deletes
+   the rest automatically. Where nothing must be kept, the record is deleted
+   as before.
 5. **Are backups handled by an erasure log replayed after restore, not by
    per-person encryption keys?** *Recommendation:* yes. Deleting a person's
    key ("crypto-shredding") reaches backups but breaks unique lookups,
@@ -417,6 +426,47 @@ new provider is seen by a person before it ships.
     `build/report/personal-data.md` and `.json`, shown in the approval review
     when it changes. Residency stays a deployment per region; a region
     setting the compiler cannot verify would give false comfort.
+13. **Are there generated routes for data requests?** Raised by Richard
+    (2026-10-13). *Recommendation:* yes, switched on with
+    `privacy: { routes: true }` in `app.jadpo`. `POST /privacy/export`
+    (signed in, recent sign-in required, `RouteAuthentication.fresh`)
+    answers 202 and delivers a download link when the export is ready;
+    `POST /privacy/erasure` (same checks) records an erasure request and
+    carries it out after a cooling-off period the app sets (default 14
+    days, cancellable by the person). Requests received another way (email,
+    support) are created by staff through generated actions after they
+    verify the person. Every request is a record with its one-month legal
+    deadline; `jadpo privacy requests` and the console list them, and one
+    nearing its deadline raises an alert.
+14. **How is personal data that erasure cannot reach prevented?** Raised by
+    Richard (2026-10-13): no siloed data left behind. *Recommendation:* a
+    compile error for any marked personal field on an entity that is not a
+    person and does not belong to one through references ("erasure cannot
+    find this: reference the person, or mark the entity `person: true`").
+    With area 15's completeness check (every reference into a person's
+    records has an erasure outcome), every stored copy of personal data is
+    reachable. Files (area 16) attached to erased records are deleted with
+    them; caches are wiped (area 5); logs only hold hashes (area 4); backups
+    replay the erasure log (question 5).
+15. **How are copies held by providers erased?** *Recommendation:* erasure
+    emits a `PersonErased` event; a provider package can declare its
+    deletion operation (Stripe's customer delete, an email provider's
+    contact delete), and the compiler requires a subscriber for every
+    connection that receives marked fields, or an accepted reason it is not
+    needed (area 18). The personal-data report lists each provider and
+    whether its copy is erased automatically.
+16. **What does this not cover?** *Recommendation:* say so plainly in the
+    report. Covered by the language: minimisation and storage limitation,
+    access, rectification (ordinary updates), erasure, portability,
+    privacy by design, records of processing (most of Article 30), security
+    of processing. Supported but the application's choice: restriction and
+    objection, consent. Not code at all: lawful basis, privacy notice,
+    DPIAs, processor contracts, the DPO. Added support worth building:
+    breach notification (from the report and access records, list the
+    people whose marked data a breached store or provider held) and
+    international transfers (provider packages declare where data is
+    processed, shown in the report). Not legal advice; a privacy
+    professional reviews the report.
 
 ### Decisions
 
@@ -440,3 +490,7 @@ new provider is seen by a person before it ships.
 | Logs of marked fields | | |
 | Purpose and consent | | |
 | Report and residency | | |
+| Data request routes | | |
+| Unreachable personal data | | |
+| Provider copies | | |
+| Coverage and gaps | | |
