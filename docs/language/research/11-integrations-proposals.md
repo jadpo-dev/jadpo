@@ -3,6 +3,12 @@
 **Status:** proposals for [area 11](../11-integrations.md), 2026-10-12.
 Decides nothing.
 
+> Superseded on 2026-10-13 by [provider packages](11-integrations-rethink.md):
+> an external API is described once as a Jadpo package, imported or written
+> from the docs, and apps connect to it in `app.jadpo`. The options below
+> compared ways of writing integrations inside each app, which packages
+> replace; they are kept for the background.
+
 ## What is complicated today
 
 The compiler accepts one integration, the golden app's `ReminderMail`, by

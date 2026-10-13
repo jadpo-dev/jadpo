@@ -1,7 +1,7 @@
 ---
 title: External services
 area: 11
-status: decided
+status: in-review
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - semantic.service_atomic_effect
@@ -18,85 +18,106 @@ rules:
 
 # External services
 
-How a Jadpo program talks to third-party APIs: declaring an integration, its
-credentials, time limits and retries, turning provider errors into the app's
-failures, idempotency keys, when a call may happen, where the app may connect,
-provider API versions, the provider's contract file, inbound webhooks and
-fakes for tests.
+An external service is another company's API (Stripe, a courier, another
+Jadpo app) that an action calls. In Jadpo, each one is described once, as a
+**provider package**: Jadpo source that lists the API's operations, types,
+failures and webhook events, and says which calls change something, which
+take an idempotency key, how errors and pages come back and how webhooks are
+signed. An app connects to a package in `app.jadpo` and calls its operations
+like an SDK. The compiler owns the HTTP request, the secret, the host, the
+retries and the reading of the response; application code never builds a
+URL, sets a header or sees a raw response.
 
-> Decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 11. Today's compiled syntax is collapsed beneath each section that changes.
+> Reopened on 2026-10-13. Area 11 was decided on 2026-10-12 around
+> per-domain `integration` declarations; Richard agreed to rethink it around
+> provider packages ([the rethink](research/11-integrations-rethink.md)).
+> Questions 6, 7 and 8 stay decided; the rest are open again, with new
+> recommendations below. Today's compiled syntax is collapsed beneath each
+> section.
 
-The rule behind all of it: **code calls a typed operation; the compiler owns
-the HTTP request, the secret, the destination, the retries and the mapping of
-what came back.** Application code never builds a URL, sets a header, reads a
-credential or sees a raw provider response.
+| Topic | In short |
+|---|---|
+| Provider package | One API at one version, written in Jadpo, used by every app |
+| Where packages come from | Jadpo's registry, an importer (OpenAPI, Smithy, Postman, HAR, `.d.ts`), or written by an agent from the docs |
+| Provenance | Every operation says whether it was imported or written, and a recorded response confirms it |
+| Connecting | `providers: { }` in `app.jadpo`, beside the stores |
+| Calling | `couriers.bookings.create(request)` from actions only, failures mapped at the call |
+| Retries and keys | From the package and the runtime; the runtime supplies idempotency keys |
+| Webhooks | Generated route, signature checked, repeats dropped, published as events |
+| Compile time | Only the resources an app calls are loaded; each package checked once per digest |
+| Tests | A generated fake per package; scheduled contract runs against the sandbox |
+| Your own services | Every Jadpo API publishes a package from its API record |
 
-Today the compiler accepts exactly one integration: the golden app's
-`ReminderMail`, compared line by line with a fixed copy. Everything below
-describes the general version that replaces it.
+## Provider packages
 
-## Declaring an integration
+A package is one external API at one version. It is to Stripe what a
+TypeScript `.d.ts` file is to a JavaScript library: a description, with no
+code of its own. It is Jadpo source, one file per resource plus an index, so
+agents and people read it like any other code and the compiler parses only
+Jadpo.
 
-An integration is one third-party API at one version. It lives in its
-domain's `integrations/` folder, with the provider's contract file beside it
-(area 1). It names the contract, the address, the credential, the time limits
-and the operations the app uses.
+It records what the provider's own specification usually leaves out:
+
+- which operations change something (`POST` does not say);
+- which take an idempotency key, and where it goes;
+- the provider's errors, as failure types with a kind;
+- how lists page, and the provider's rate limits;
+- webhook events and how they are signed;
+- the live and sandbox hosts.
 
 ```jadpo fragment
-// domains/planning/integrations/reminder_mail.jadpo
-integration ReminderMail {
-    contract: "reminder_mail.contract.json"
-    base_url: "https://mail.example.invalid"
-    credential: {
-        scheme: CredentialScheme.bearer
-        token: config.mail_api_key
+// providers/acme_couriers/package.jadpo: the index, names to files
+package AcmeCouriers.v1 {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
     }
-    timeout: 5s
-    retry: {
-        attempts: 3
-        within: 30s
+    credential: CredentialScheme.bearer
+    idempotency: {
+        header: "Idempotency-Key"
     }
-    operations: {
-        send_reminder: {
-            endpoint: POST /v1/messages
-            input: ReminderMessage
-            output: ReminderReceipt
-            idempotency: {
-                header: "Idempotency-Key"
-            }
-            failures: {
-                invalid_recipient: ReminderRecipientRejected
-                rate_limited: ReminderDelayed
-                timed_out: ReminderDelayed
-            }
-        }
+    error_code: "error.code"
+    resources: {
+        bookings: "bookings.jadpo"
     }
 }
 
-// domains/planning/types/reminder_message.jadpo
-type ReminderMessage = Object {
-    from: Email
-    to: Email
-    todo_title: Todo.title
-    due_at: Todo.due_at
+// providers/acme_couriers/bookings.jadpo
+resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/api#create-booking"
+    }
 }
 
-// domains/planning/types/reminder_receipt.jadpo
-type ReminderReceipt = Object {
-    accepted_at: Instant
+type CreateBooking = Object {
+    postcode: Text
+    slot: Text
+}
+
+type Booking = Object {
+    id: Text
+    collect_at: Instant
+}
+
+type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "The collection slot is no longer available."
 }
 ```
 
-- Every member follows the colon rule (area 3): settings are `name: value`,
-  operations are named blocks inside `operations:`.
-- `input` and `output` are ordinary types you write, usually in the same
-  file. The compiler checks each one against the contract: every field must
-  exist there with a compatible type. An output may leave out fields you do
-  not use; they are dropped. Generating them instead is
-  [option B in the proposals](research/11-integrations-proposals.md)
-  (question 1).
-- Only the operations listed exist. A provider with 400 endpoints costs
-  nothing until you list one.
+Inside the package, names are bare. An app names them through the package:
+`AcmeCouriers.Booking`, `AcmeCouriers.SlotTaken` (question 16). A failure's
+code (`slot_taken`, from its name) is the provider's error code, read from
+the place `error_code:` names.
 
 ::: today
 
@@ -308,275 +329,297 @@ action deliver(mail: ReminderMessage)
 
 :::
 
-## Calling an operation
+## Where packages come from
 
-An operation is called through its integration's name, like an entity's
-generated operations (`Todo.get`): the dot names the owner (area 1). It can
-fail, so it needs `attempt` or a `match`, and its mapped failures go in the
-caller's `fails`. Only actions may call one (question 2).
+There are three sources, and they all produce the same files.
 
-```jadpo fragment
-// domains/planning/actions/send_reminder_email.jadpo
-action send_reminder_email(todo_id: Todo.id) fails TodoNotFound, ReminderRecipientRejected, ReminderDelayed -> Unit {
-    var todo: Todo = attempt Todo.get(todo_id)
-    var message: ReminderMessage = reminder_message_for(todo)
-    var receipt: ReminderReceipt = attempt ReminderMail.send_reminder(message)
-    record_reminder_sent(todo.id, receipt.accepted_at)    // writes after the call (question 7)
-}
-```
+**The registry.** Jadpo's own registry holds curated packages for common
+providers. `jadpo provider add Stripe.v2024_06_20` copies one into a local
+cache and pins it in `jadpo.lock` with its digest. A build never fetches
+anything (see "The registry" below).
 
-::: today
+**An importer.** `jadpo provider import <format> <file>` turns a published
+description into a package once, offline, in the repository's `providers/`
+folder:
 
-Called as `ReminderMail.send_overdue_reminder(mail)` (see the box above). A
-call from a function or query is `semantic.service_call_context`. The caller
-must list `Misconfigured`, `Unavailable` and `OutcomeUnknown`, which area 4
-removes.
-
-:::
-
-## Credentials
-
-The credential is a `secret: true` setting from `config.jadpo` (area 10). The
-compiler puts it in the request itself; code can never read it, and it never
-reaches a URL, a body, a log or a fake's record (question 10).
-
-| `scheme:` | Sends | Settings |
+| Format | Typical source | What it gives |
 |---|---|---|
-| `CredentialScheme.bearer` | `Authorization: Bearer <token>` | `token:` |
-| `CredentialScheme.header` | the key in a named header | `name: "X-Api-Key"`, `token:` |
-| `CredentialScheme.basic` | `Authorization: Basic` (Twilio's account SID and token) | `username:`, `password:` |
+| `openapi` | Most REST APIs (Stripe, Twilio, GitHub) | Operations, types, error responses |
+| `smithy` | AWS, one model per service | The same, plus AWS's protocols and signing |
+| `postman` | A provider's published Postman collection | Operations and example bodies; types inferred from examples |
+| `har` | A browser or proxy capture of real traffic | Operations and real responses; values stripped, shapes kept |
+| `dts` | The provider's official TypeScript SDK (`.d.ts` files) | Exact types and SDK method names; no HTTP method or path, so the agent adds those from the docs |
 
-::: today
+An agent then fills what the source leaves out: which calls change
+something, idempotency, error names. A person reviews that diff.
+Corrections to a wrong specification live in the package and survive the
+next import, because the importer merges rather than overwrites, as an
+[OpenAPI Overlay](https://spec.openapis.org/overlay/v1.0.0) does.
 
-Only `scheme: bearer` with `header: "Authorization"` and
-`secret: config.mail_api_key`; the setting must be called exactly
-`mail_api_key` and be secret.
+**Written by hand: the no-spec path.** Many APIs publish only HTML docs. A
+package is Jadpo source, so for these an agent writes the package files
+directly from the docs, in exactly the format an importer produces. Nothing
+else changes: the same compiler checks, the same fakes, the same review. A
+package needs only the operations the app uses, so it can start with one
+operation and grow (question 13).
 
-:::
+### Provenance and confirmation
 
-## Time limits and retries
+Every operation says where it came from, so a reviewer knows how far to
+trust it (question 14):
 
-`timeout:` limits one attempt (default 10s). `retry:` is the budget for one
-call: at most `attempts` tries, all finished `within` the time given
-(default 3 attempts within 30s). Waits between attempts grow exponentially
-with random jitter; that is fixed, not a setting (question 8).
-
-The runtime retries only when a repeat is safe: the request never left, the
-provider said it did nothing (`rate_limited`, honouring `Retry-After`), or
-the operation has an idempotency key. A call also stops when the route's
-deadline passes (area 7), so the budget must fit inside it; the compiler
-warns when `timeout` times `attempts` exceeds the deadline of a route that
-reaches the call.
-
-::: today
-
-Required and fixed at `timeout: 5s` and
-`retry: exponential(max_attempts: 3, max_elapsed: 30s, jitter: full)`.
-
-:::
-
-## Provider failures
-
-An operation's `failures:` block maps what went wrong to the app's own
-failures, in area 4's single form `condition: Failure`. The conditions are the
-provider's error responses named in the contract (`invalid_recipient`,
-`rate_limited`) and one the runtime adds, `timed_out` (question 5).
-
-| Condition | Comes from | May map to |
+| `source:` | Meaning | Also records |
 |---|---|---|
-| A provider error (`invalid_recipient`) | The contract's error responses | Any failure you may declare |
-| `timed_out` | No answer after every attempt | An `unavailable` failure, and only on an operation with an idempotency key |
-| Anything not mapped | | A fault, never in `fails`: `misconfigured` for a rejected credential, `unavailable` when the provider surely did nothing, `outcome_unknown` when it may have acted |
+| `PackageSource.imported` | From a published description (OpenAPI, Smithy, Postman, `.d.ts`, GraphQL introspection later) | The package index names the file and its digest |
+| `PackageSource.written` | Written from the provider's docs | `docs:` with the page's URL |
 
-`timed_out` needs an idempotency key because a request that timed out may
-already have taken effect. With a key, retrying later with the same key is
-safe, so callers can treat it as "try again". Without one, the honest answer
-is `outcome_unknown`, which area 12 parks for a person to check.
+An operation is **confirmed** when a real response has been checked against
+it. `jadpo provider record <connection> <operation>` calls the provider's
+sandbox once, then checks the operation's output type against the response,
+or writes the type if there is none yet. It saves the response, with values
+replaced by placeholders, as `providers/<package>/recordings/<resource>.<operation>.json`;
+the compiler checks the output type against it on every build. An operation
+imported from a HAR capture is confirmed from the start, since the capture
+holds real responses. `record` refuses a connection whose environment is
+live.
 
-```jadpo fragment
-failures: {
-    card_declined: PaymentDeclined
-    rate_limited: PaymentDelayed
-    timed_out: PaymentDelayed
-}
-```
-
-::: today
-
-Each mapping is a line, `maps provider.rate_limited -> ReminderTemporarilyUnavailable`
-or `maps transport.possible_dispatch_timeout -> fault OutcomeUnknown`, and all
-ten are required exactly as written.
-
-:::
-
-## Idempotency keys
-
-A provider that supports idempotency keys ignores a repeated request with the
-same key. The operation says where the key goes; the runtime supplies it
-(question 6):
-
-- in a subscriber or schedule, the delivery's key (event and subscriber,
-  area 12), so every retry of that delivery sends the same key;
-- in a route, the client's `Idempotency-Key` header if it sent one, otherwise
-  the request id.
-
-```jadpo fragment
-idempotency: {
-    header: "Idempotency-Key"     // or field: idempotency_key, for a key in the body
-}
-```
-
-A new reason to call needs a new event: moving a todo's due date emits a new
-`ReminderDue`, which gets its own key.
+Written operations that are not confirmed are allowed in every build. The
+approval report flags them, and CI requires a passing contract run against
+the sandbox for each one (see "Tests and fakes").
 
 ::: today
 
-`idempotency_key: ReminderIntentId` names a type that must be a field of the
-input, plus two sentence clauses, `request_key: input.idempotency_key equals
-header "Idempotency-Key"` and `receipt_key: response header ... equals
-request_key`. The golden app sends `todo.id`, which the service plan's review
-showed cannot send a second reminder after a date change.
+There are no packages, importers or registry. The one accepted declaration
+is a `service` naming its OpenAPI file, version and SHA-256 in an `import`
+block, and the file must be the golden app's fixed contract.
 
 :::
 
-## When a call may happen
+## The registry
 
-A request to a provider cannot be part of a database transaction: it cannot be
-rolled back. So in an action, a call that changes something comes before any
-write; the writes after it commit in their own transaction once the call has
-returned (question 7). An action makes at most one such call (area 12).
+The registry is Jadpo's own, not a third party's, in line with area 8's rule
+that the language owns a feature where it reasonably can.
 
-Work that must follow a write, such as charging for an order just placed,
-emits an event; a subscriber's action makes the call after the order has
-committed (area 12):
+- **Declarations only.** A package contains no executable code: the
+  compiler generates the client from it. A registry package cannot run an
+  install script or ship code into the app, which is how most npm
+  supply-chain attacks work. This is a real advantage, though not a complete
+  one: a malicious package could still name the wrong host or mark an
+  unsafe call idempotent. That is why hosts and every package change appear
+  in the approval report.
+- **Signed and pinned.** Packages are signed by the registry and pinned by
+  digest in `jadpo.lock`; a changed digest is a package upgrade, reviewed as
+  one.
+- **Never fetched during a build.** `jadpo provider add` and `upgrade` fetch;
+  `jadpo check` and `jadpo build` read the cache and the lock only.
+- **Local packages** live in `providers/` and are committed.
+- **Jadpo APIs publish their own** (see "Your own services").
+
+To start, a few curated packages (Stripe, Twilio and GitHub, all imported
+from their published OpenAPI) live in the Jadpo repository; a hosted
+registry, and who may publish to it, come later (question 15).
+
+## Connecting in `app.jadpo`
+
+A connection is infrastructure, declared once beside the stores. It names
+the package, the domains whose actions may call it (question 18), the
+credential from `config.jadpo`, and which of the package's hosts to use.
 
 ```jadpo fragment
-// domains/planning/subscribers/send_reminder.jadpo
-subscriber send_reminder {
-    on: ReminderDue
-    run: send_reminder_email(event.todo_id)
+// app.jadpo
+application {
+    stores: {
+        ...
+    }
+    providers: {
+        stripe: {
+            package: Stripe.v2024_06_20
+            domains: [payments]
+            credential: config.stripe_secret_key
+            environment: config.stripe_environment
+            webhooks: {
+                secret: config.stripe_webhook_secret
+            }
+        }
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 5s
+        }
+    }
 }
 ```
 
-If the write after the call fails, the delivery is retried and the call
-repeats with the same key, so the provider does nothing new and returns the
-same result.
+- `environment:` is a `ProviderEnvironment` setting, `.sandbox` or `.live`,
+  choosing between the package's hosts. HTTPS only; redirects and proxies are
+  always refused (question 9).
+- The credential is a `secret: true` setting (area 10). The package says how
+  it is sent (bearer, a named header, basic); code can never read it
+  (question 10).
+- `timeout:` and `retry:` override the defaults (question 8).
+- Two versions of one package are two connections, used side by side while
+  callers move across (question 3).
 
 ::: today
 
-Any write in the same action, before or after the call, is
-`semantic.service_atomic_effect`, so today's action cannot record the
-receipt at all.
+No connections exist. The `service` declaration itself holds the host
+(`base_url` plus a restated `egress:`), a credential that must be
+`config.mail_api_key`, and `proxy: prohibited` and `redirects: prohibited`,
+each with one legal value.
 
 :::
 
-## Where the app may connect
+## Calling
 
-The app may connect only to the host in `base_url`, over HTTPS on port 443;
-the compiler derives this from `base_url`, so nothing restates it. Redirects
-and proxies are always refused, and code cannot choose a host, path or port
-(question 9). A provider with a separate sandbox host lists both, and
-configuration picks one:
+An operation is called through its connection:
+`connection.resource.operation(input)`. Only actions may call one. It can
+fail, so it needs `attempt` or a `match`, and the package's failures are
+mapped to the app's own at the call, in area 4's form `condition: Failure`.
 
 ```jadpo fragment
-base_url: {
-    live: "https://api-m.paypal.com"
-    sandbox: "https://api-m.sandbox.paypal.com"
-    use: config.paypal_environment
+// domains/shipping/actions/book_collection.jadpo
+action book_collection(shipment: Shipment) fails CollectionSlotGone -> Shipment {
+    var request: AcmeCouriers.CreateBooking = AcmeCouriers.CreateBooking {
+        postcode: shipment.postcode
+        slot: shipment.slot
+    }
+    var booking: AcmeCouriers.Booking = attempt couriers.bookings.create(request) {
+        slot_taken: CollectionSlotGone
+    }
+    return attempt Shipment.update(shipment) {
+        set: {
+            booking_id: booking.id
+        }
+    }
 }
 ```
 
+- **Types** come from the package; the app writes none (question 1). The
+  checker compares what you send with what the operation takes. At runtime
+  a response is checked only for the fields your code reads, so a provider
+  adding or changing other fields breaks nothing.
+- **Failures** (question 5). A package failure is mapped at the call or it
+  becomes a fault. `timed_out` may map to an `unavailable` failure only on an
+  idempotent operation. Unmapped problems are faults, never in `fails`:
+  `misconfigured` for a rejected credential, `unavailable` when the provider
+  surely did nothing, `outcome_unknown` when it may have acted.
+- **Idempotency** (question 6, decided). The package says where the key goes;
+  the runtime supplies it: the delivery key in subscribers and schedules, the
+  client's `Idempotency-Key` or the request id in routes.
+- **Retries** (question 8, decided). `timeout:` (default 10s) and
+  `retry: { attempts: within: }` (default 3 within 30s), exponential backoff
+  with full jitter. Only safe repeats are retried: the request never left,
+  the provider said it did nothing (honouring `Retry-After`), or the call is
+  idempotent. The package's rate limits space calls out before the provider
+  refuses them.
+- **Pagination.** A list operation returns area 6's `Page<T>`; the package
+  says how the provider pages, and `page.next` asks for the next one. Work
+  over many pages runs one page per subscriber delivery (area 12).
+- **Order with writes** (question 7, decided). A call that changes something
+  comes before any write; the writes commit after it returns, and a failed
+  commit retries the call with the same key. An action makes at most one
+  such call (area 12). Work that must follow a write emits an event.
+
 ::: today
 
-`egress: mail.example.invalid:443` restates the host unquoted, and
-`proxy: prohibited` and `redirects: prohibited` are required settings with one
-legal value.
+Called as `ReminderMail.send_overdue_reminder(mail)`. A call from a function
+or query is `semantic.service_call_context`, and any write in the same
+action, before or after the call, is `semantic.service_atomic_effect`.
+Callers must list the faults `Misconfigured`, `Unavailable` and
+`OutcomeUnknown`, which area 4 removes. Retries are fixed at `timeout: 5s`
+and `retry: exponential(max_attempts: 3, max_elapsed: 30s, jitter: full)`.
 
 :::
 
-## Provider versions
+## Webhooks as events
 
-Each provider API version is its own integration, with its own contract file,
-named with the version: `StripeV2024` in `stripe_v2024.jadpo` beside
-`stripe_v2024.contract.json` (question 3). A provider that versions by header
-names the header, and the value comes from the contract's `info.version`:
+A package declares the provider's events and how they are signed. Giving a
+connection a webhook secret makes the runtime:
+
+1. generate `POST /webhooks/<connection>` in area 7's `webhooks` API;
+2. check the signature over the raw body, rejecting timestamps older than
+   five minutes;
+3. drop repeats by the provider's event id;
+4. publish each event as an ordinary Jadpo event (area 12).
 
 ```jadpo fragment
-// domains/payments/integrations/stripe_v2024.jadpo
-integration StripeV2024 {
-    contract: "stripe_v2024.contract.json"
-    base_url: "https://api.stripe.com"
-    version_header: "Stripe-Version"
+// domains/payments/subscribers/payment_succeeded.jadpo
+subscriber payment_succeeded {
+    on: Stripe.PaymentIntentSucceeded
+    run: mark_order_paid(event)
+}
+```
+
+No webhook route is written by hand (question 11). Signature schemes are
+built in: `SignatureScheme.stripe`, `SignatureScheme.standard_webhooks`
+(Svix, Twilio and others) and `SignatureScheme.hmac_sha256` with a named
+header for the rest.
+
+Today nothing supports webhooks.
+
+## Compile time
+
+Provider descriptions are large. Sizes checked on 2026-10-13 by
+`Content-Length` of the raw files:
+
+| File | Size |
+|---|---|
+| Stripe `openapi/spec3.json` | 8.3 MB |
+| AWS S3 Smithy model | 3.0 MB |
+| AWS EC2 Smithy model | 6.7 MB |
+
+AWS publishes about 400 such models, one per service. Parsing 8 MB takes
+milliseconds; the cost is resolving, checking and generating thousands of
+schemas on every build and every keystroke. So the compiler never reads a
+provider's description: an importer reads it once. On a build, the compiler
+reads each package's index, loads only the resources the app calls, and
+caches the check per package digest, so an unchanged package costs nothing
+after the first build. An app using S3 and SES loads two small packages and
+a handful of files from each.
+
+## Tests and fakes
+
+Every package has a generated fake. In `jadpo test`, an operation answers
+with a valid default built from its output type, and a test scripts a
+response or a failure for one call with area 13's `fakes:`. Responses still
+pass through the real retries and mapping.
+
+```jadpo fragment
+test "a taken slot is reported" {
+    fakes: {
+        couriers.bookings.create: [slot_taken]
+    }
     ...
 }
 ```
 
-Upgrading is adding the next version beside the old one:
+The compiler checks every scripted response against the package's types, so
+a fake cannot return a shape the provider never would. `jadpo test --kind
+contract` runs the same cases against the provider's sandbox, in CI on a
+schedule. Every written operation that is not confirmed must have a case in
+that run (question 12).
 
-1. Add `StripeV2025` with the new contract (`jadpo integration add`,
-   area 14). The compiler checks every listed type against it and lists what
-   changed.
-2. Move callers across one at a time; both versions run side by side. A type
-   that fits both contracts can be shared.
-3. Delete `StripeV2024` once the compiler reports nothing calls it (area 1).
+## Review
 
-Stripe signs and shapes webhook events in the version set on the endpoint, so
-each webhook route names the integration version that reads it.
+The approval report (area 17) lists, for each change:
 
-## The contract file
+- operations newly called, and the domains calling them;
+- data newly sent to a provider, with personal fields flagged (area 15);
+- package upgrades, as a diff of the operations the app uses, hosts
+  included;
+- written operations not yet confirmed.
 
-The contract is the provider's OpenAPI document (3.0 or 3.1, as JSON), kept in
-the repository and never fetched during a build (question 4). The compiler
-checks only the operations listed, so Stripe's full specification is fine,
-and an unsupported OpenAPI feature is an error only inside an operation you
-use. Changing the contract is reviewed like a policy change: its digest goes
-in the approval record (area 7), so the source carries no hash.
+## Your own services
 
-::: today
-
-`import { file: ... version: ... sha256: ... }` reuses the module-import
-word, and the file must be exactly
-`tests/assurance/service-reference-mail-v0.1.json` with one fixed digest.
-
-:::
-
-## Inbound webhooks
-
-A webhook is an ordinary route in area 7's `webhooks` API. The provider's
-signature check is declared on the integration and used as the route's
-authentication (areas 7 and 8, question 11). The check runs over the raw body
-before anything is parsed, and rejects old timestamps.
-
-```jadpo fragment
-// in domains/payments/integrations/stripe_v2024.jadpo
-webhooks: {
-    signature: SignatureScheme.stripe
-    secret: config.stripe_webhook_secret
-}
-
-// domains/payments/routes/webhooks_stripe.jadpo
-POST / {
-    authentication: StripeV2024.signature
-    input: StripeEvent
-    status: SuccessStatus.no_content
-    run: record_stripe_event(input)
-}
-```
-
-Built-in schemes: `SignatureScheme.stripe`, `SignatureScheme.standard_webhooks`
-(the shared format used by Svix, Twilio and others) and
-`SignatureScheme.hmac_sha256` with a named header for the rest.
-The action stores the event under a unique rule on its id, so a redelivery
-does nothing, and real work runs in a subscriber (area 12).
-
-Today nothing supports webhooks.
-
-## Fakes in tests
-
-Tests never reach a provider: every reachable operation needs a fake listing
-its responses, each an output value or a condition from the operation's
-`failures:` block, such as `rate_limited`. Responses still pass through the
-real retries and mapping. The syntax is area 13's.
+Every Jadpo API (area 7) publishes a package from its API record, with its
+types, failures, idempotency and events. App A connects to app B's package
+like any other and calls `orders.orders.create(request)`, with B's types for
+free. A package with no fixed host (your own services, self-hosted
+products) takes `host: config.orders_url` on the connection, and the
+approval report shows it. Internal services and third parties work the same
+way.
 
 ## Errors
 
@@ -1486,67 +1529,93 @@ Each row says how it was checked: compiled with `jadpo check`, built with
 | Failures | Callers must list the faults `Misconfigured`, `Unavailable` and `OutcomeUnknown` (compiled), which area 4 forbids. |
 | Credential | **Gap:** the setting must be named `mail_api_key` (read). |
 | Messages | **Bug:** every rule's advice names the mail provider ("Declare the mail API key", "Use ReminderIntentId"), whatever the service (read from the catalogue). |
+| Packages, importers, registry, recordings | None. |
 | Webhooks, versions, other schemes | None. |
 | Fakes | Work (area 13). |
 
 ### Consistency with the rest of the language
 
-- **Grammar used nowhere else** (syntax review #60–64): flat operation
-  lines, `equals` for `==`, call-shaped `exponential(...)`, `import` for a
-  contract, `maps ... -> fault`. The proposed form uses settings blocks only.
-- **Faults in `fails`.** Today's callers list three faults; area 4 decided
-  `fails` holds domain failures only.
-- **`secret` means a fourth thing** in `credential { secret: }`; area 10
-  keeps it for the config flag, so the credential setting becomes `token:`.
-- **The policy file restates the service.** The golden `policy.jadpo` has an
-  `external_effect ReminderMail.send_overdue_reminder` block repeating the
-  secret, the key and the caller (area 9).
-- **Area 4's `timed_out: ChargeUnavailable`** against the service plan's
-  rule that a timeout after sending is `outcome_unknown`: question 5
-  reconciles them.
+The package design changes decisions made in other areas:
+
+| Area | Decided | Change |
+|---|---|---|
+| 1 | `integration` keyword in each domain's `integrations/` folder, contract beside it ("Keywords match folders") | Connections in `app.jadpo`; packages in a root `providers/` folder and `jadpo.lock`, two entries area 1's fixed root does not list; a domain's ownership becomes the connection's `domains:` list |
+| 7 | Question 8: webhooks are hand-written routes in the `webhooks` API with a unique rule on the event id | Generated from the package; repeats dropped by the runtime |
+| 8 | A webhook route's authentication is `StripeV2024.signature` | No longer needed; the generated route checks the signature |
+| 13 | Question 7 (open): every reachable operation needs a fake, or the test does not compile | Unscripted calls answer from the generated fake; scripted lists keep area 13's leftover check |
+
+Other points:
+
+- **Two dots in a call.** `couriers.bookings.create` is the first call with
+  two dots. The dot still names the owner: the connection owns its
+  resources, a resource its operations.
+- **No anonymous objects** (area 2). The rethink's `create({ amount: ... })`
+  becomes a named package type, `AcmeCouriers.CreateBooking { ... }`.
+- **Area 4's mapping form** holds: `condition: Failure` in the call's block,
+  kind checked, the provider failure kept as the internal cause.
+- **Areas 3, 9 and 12 hold:** calls only from actions, the changing call
+  before the writes (area 3's amendment cites question 7, which keeps its
+  number), whoever may run the action may call (area 9), one changing call
+  per action (area 12).
+- **Area 16** sends built-in mail over SMTP; a mail provider's own API
+  (templates, bounces) is a package. Outgoing webhooks could reuse
+  `SignatureScheme`.
+- **Rule IDs.** The `semantic.service_*` rules below check today's
+  declaration. Under packages, the pin, digest and egress rules become
+  `jadpo.lock` and package checks (area 14).
 
 ### Carried to later areas
 
 | Item | Area | Status |
 |---|---|---|
-| Who may call an integration, replacing the `external_effect` policy block | 9 | Input to area 9 |
-| A webhook route's `authentication: StripeV2024.signature`, raw-body access, the `webhooks` API | 7, 8 | Input to areas 7 and 8 |
-| Integration time limits inside a route's deadline: the warning in "Time limits and retries" | 7 | Answered here |
-| The delivery key as the idempotency key; one changing call per action; `outcome_unknown` parked | 12 | Answered here, agreeing with area 12 |
-| Fake syntax and `.requests`; fakes name the conditions in `failures:` | 13 | Input to area 13 |
-| `jadpo integration add` and `update`, the contract diff, the approval record entry, adapter conformance runs, `runtime.outcome_unknown` | 14 | Input to area 14 |
-| Readiness does not probe integrations, as area 7 proposes; a provider outage should not take the app out of service | 7 | Answered here |
-| Magic links and OIDC code exchange (area 8) are ordinary integrations; no special feature | 8 | Answered here |
-| Mail templates and translations for message bodies; the body is an ordinary field today | 10 | Deferred |
+| Root `providers/` folder and `jadpo.lock`; `integrations/` folder and keyword removed | 1 | Input to area 1 |
+| Generated webhook routes in the `webhooks` API, replacing question 8's hand-written routes; every Jadpo API publishing a package from its API record | 7 | Input to area 7 |
+| Webhook signature as the generated route's authentication; service keys as the credential for calling another Jadpo app | 8 | Input to area 8 |
+| Integration time limits inside a route's deadline: the compiler warns when `timeout` times `attempts` exceeds a reaching route's deadline | 7 | Answered here |
+| The delivery key as the idempotency key; one changing call per action; `outcome_unknown` parked; provider events published as events | 12 | Answered here, agreeing with area 12 |
+| Fakes named `connection.resource.operation`; generated defaults; contract runs required for unconfirmed operations | 13 | Input to area 13 |
+| `jadpo provider add`, `upgrade`, `import <format>`, `record`; the registry client; `jadpo.lock`; contract runs in CI | 14 | Input to area 14 (its question 15) |
+| Connections that receive marked fields, listed in the personal-data report | 15 | Input to area 15 |
+| Approval report entries: operations, data sent, package diffs, unconfirmed operations, calling domains | 17 | Input to area 17 |
+| Readiness does not probe providers; a provider outage should not take the app out of service | 7 | Answered here |
+| Magic links and OIDC code exchange (area 8) are ordinary providers; no special feature | 8 | Answered here |
+| Mail templates and translations for message bodies | 10 | Deferred |
 
 ### Open questions
 
-1. **How are request and response types written?** Today they are written
-   by hand and checked against the contract. *Recommendation:* keep that,
-   generalised: a type may leave out output fields it does not use, and one
-   type can serve two provider versions if it fits both. Generating types
-   from the contract (OpenAPI Generator, Ballerina's `bal openapi`) brings in
-   hundreds of fields nobody reviews. See
-   [the proposals](research/11-integrations-proposals.md). *Decided 2026-10-12:* yes, as recommended.
-2. **How is an integration named and called?** *Recommendation:*
-   UpperCamelCase with the version in the name (`StripeV2024`), called
-   `StripeV2024.create_payment_intent(...)` like `Todo.get`, only from
-   actions. Encore's typed service clients read the same way. *Decided 2026-10-12:* yes, as recommended.
-3. **How are provider versions handled?** *Recommendation:* one integration
-   per version with its own contract, both runnable at once, upgraded by
-   adding the next version and moving callers; `version_header:` sends the
-   contract's version. This is Stripe's own advice: pin the version, test the
-   new one beside it. *Decided 2026-10-12:* yes, as recommended.
-4. **Does the source keep `version:` and `sha256:`?** *Recommendation:* no:
-   `contract: "file"` only. The file is in the repository, and its digest
-   goes in the approval record, so a contract change is still reviewed.
-   `semantic.service_import_digest_mismatch` becomes an approval-record
-   check. *Decided 2026-10-12:* yes, as recommended.
-5. **Which conditions can be mapped, and to what?** *Recommendation:* the
-   contract's error responses to any declarable failure, plus `timed_out` to
-   an `unavailable` failure only on operations with an idempotency key;
-   anything unmapped is a fault. Temporal marks errors non-retryable the same
-   way. *Decided 2026-10-12:* yes, as recommended.
+Questions keep their numbers, because other pages cite 6 and 7. Questions
+1 to 5 and 9 to 12 were decided on 2026-10-12 and reopened on 2026-10-13;
+13 to 18 are new.
+
+1. **How are request and response types written?** *Reopened 2026-10-13;*
+   first answered as hand-written types checked against the contract.
+   *Recommendation:* they come from the package and the app writes none; a
+   derived type (`type X = Output from Stripe.PaymentIntent { pick: [...] }`)
+   narrows one. At runtime a response is checked only for the fields the
+   code reads. TypeScript SDKs and Smithy clients work the same way.
+2. **How is an operation called?** *Reopened 2026-10-13;* first answered as
+   `StripeV2024.create_payment_intent(...)`. *Recommendation:*
+   `connection.resource.operation(input)`, only from actions, with `attempt`
+   or `match`, which reads like the provider's own SDK, so agents already
+   know it.
+3. **How are provider versions handled?** *Reopened 2026-10-13;* first
+   answered as one integration per version. *Recommendation:* one package per
+   version; two versions are two connections run side by side; upgrade by
+   adding the next, moving callers, and deleting the old. The approval
+   report shows the diff of the operations the app uses. This is still
+   Stripe's own advice.
+4. **How is a package pinned?** *Reopened 2026-10-13;* first answered as a
+   contract file whose digest goes in the approval record.
+   *Recommendation:* registry packages by digest in `jadpo.lock`, local ones
+   by being committed; never fetched during a build. Cargo and npm lock
+   files work this way.
+5. **Which failures can be mapped, and to what?** *Reopened 2026-10-13;*
+   first answered with the contract's error responses. *Recommendation:* the
+   package's failures, by code, at the call, to any declarable failure of a
+   fitting kind; `timed_out` to an `unavailable` failure only on idempotent
+   operations; anything unmapped is a fault. A package failure is never
+   listed in an app's `fails`, so a provider's codes never become part of
+   the app's API.
 6. **Who supplies the idempotency key?** *Recommendation:* the runtime: the
    delivery key in subscribers and schedules, the client's key or request id
    in routes; the operation only says where it goes. Today's
@@ -1559,50 +1628,105 @@ Each row says how it was checked: compiled with `jadpo check`, built with
    10s) and `retry: { attempts: within: }` (default 3 within 30s), the same
    words as area 12's subscriber retry; exponential backoff with full jitter
    fixed. Temporal exposes five knobs, mostly left at defaults. *Decided 2026-10-12:* yes, as recommended.
-9. **How is the outbound host controlled?** *Recommendation:* derived from
-   `base_url`, HTTPS only, no redirects or proxies ever; a sandbox host is a
-   second listed URL chosen by configuration. `egress:`, `proxy:` and
-   `redirects:` go. *Decided 2026-10-12:* yes, as recommended.
-10. **Which credential schemes first?** *Recommendation:*
-    `CredentialScheme.bearer`, `CredentialScheme.header` and
-    `CredentialScheme.basic` (Twilio), each with `token:` or
-    `username:`/`password:`. OAuth client credentials and request signing
-    (AWS) wait for a real app that needs them. *Decided 2026-10-12:* yes, as recommended.
-11. **Where is a webhook's signature check declared?** *Recommendation:* on
-    the integration (`webhooks: { signature: SignatureScheme.stripe  secret: ... }`),
-    used by the route as `authentication: StripeV2024.signature`, with
-    `SignatureScheme.stripe`, `SignatureScheme.standard_webhooks` and
-    `SignatureScheme.hmac_sha256` built in and a five-minute
-    timestamp tolerance, Stripe's library default. *Decided 2026-10-12:* yes, as recommended.
-12. **How is a test fake checked against the provider?** (carried from area
-    13) Area 13's fakes name the provider conditions from the integration's
-    `failures:` block. Is a fake's response also checked against the
-    contract file, or against the provider's sandbox, and when?
-    *Decided 2026-10-12:* the compiler checks every fake response against the
-    contract file, so a fake cannot return a status or shape the provider
-    never would; `jadpo test --kind contract` runs the same cases against the
-    provider's sandbox, in CI on a schedule rather than on every run.
+9. **How is the outbound host controlled?** *Reopened 2026-10-13;* first
+   answered as derived from `base_url`. *Recommendation:* the package lists
+   its live and sandbox hosts and the connection's `environment:` picks one;
+   a package with no fixed host takes `host: config.x`. HTTPS only, no
+   redirects or proxies, and a host change in an upgrade is flagged in the
+   approval report.
+10. **Which credential schemes first?** *Reopened 2026-10-13;* first
+    answered on the integration. *Recommendation:* the package declares the
+    scheme and the connection gives only `credential: config.x`. Bearer,
+    named header and basic first; AWS signing arrives with the Smithy
+    importer and the first AWS package; OAuth client credentials when a real
+    app needs them.
+11. **How are webhooks received?** *Reopened 2026-10-13;* first answered as
+    a hand-written route using the integration's signature check.
+    *Recommendation:* generated from the package when the connection has a
+    webhook secret: signature checked with a five-minute tolerance, repeats
+    dropped by event id, each event published as a Jadpo event. No webhook
+    route is written by hand. Area 7's question 8 is amended.
+12. **How are fakes made and checked?** *Reopened 2026-10-13;* first
+    answered as fakes checked against the contract file. *Recommendation:*
+    a fake generated per package answers with valid defaults; a test
+    scripts responses with `fakes:`; the compiler checks scripted responses
+    against the package's types; `jadpo test --kind contract` runs against
+    the sandbox in scheduled CI and must cover every unconfirmed written
+    operation.
+13. **How is a package made for an API with no published specification?**
+    *Recommendation:* an agent writes the package files from the provider's
+    docs, in exactly the format an importer produces, with only the
+    operations the app uses. Importers for a Postman collection, a HAR
+    capture and the official SDK's `.d.ts` files cover the common cases with
+    something to start from. One format means one compiler path and one
+    review.
+14. **How is an operation's origin recorded and confirmed, and do
+    production builds refuse unconfirmed ones?** *Recommendation:* `source:
+    PackageSource.imported` or `.written` (with `docs:`) on every operation;
+    `jadpo provider record` saves a placeholder-valued sandbox response that
+    the output type is checked against. Unconfirmed written operations are
+    flagged in the approval report and need a passing scheduled contract run,
+    but do not block a build: a sandbox outage should not stop a release.
+15. **What is the registry, and who publishes to it?** *Recommendation:*
+    Jadpo's own registry, declarations only, signed, pinned by digest, never
+    fetched during a build. Start with curated packages (Stripe, Twilio,
+    GitHub) in the Jadpo repository and local packages in `providers/`;
+    host a registry, and open publishing with verified namespaces, only when
+    outside demand appears. Jadpo APIs publish their own packages from the
+    API record.
+16. **How are packages and their types named?** *Recommendation:* the
+    provider in UpperCamelCase and its own version label, `Stripe.v2024_06_20`,
+    `AcmeCouriers.v1`. Types, failures and events are named by the package
+    without the version (`Stripe.PaymentIntent`), so two connections to one
+    version share types; while two versions are connected during an upgrade,
+    names carry the version (`Stripe.v2025_01_01.PaymentIntent`).
+17. **How are connections named?** *Recommendation:* lower_snake_case,
+    chosen by the app (`stripe`, `couriers`); they share one namespace with
+    domains and libraries, so a clash is a compile error. Resource and
+    operation names come from the package, following the provider's SDK where
+    the importer can map them.
+18. **Which domains may call a provider?** Area 1 put integrations in a
+    domain, so only that domain called them. *Recommendation:* the
+    connection lists them, `domains: [payments]`, required; other domains go
+    through that domain's public actions. It keeps area 1's ownership, and a
+    new caller is a one-line diff in review.
 
 ### Decisions
 
-Nothing is decided on this page yet.
-
 | Topic | Decision | Date |
 |---|---|---|
-| Keyword and folder | Carried from area 1: `integration` in `integrations/`, one declaration per provider version, contract beside it | 2026-10-12 |
+| Keyword and folder | Carried from area 1: `integration` in `integrations/`, one declaration per provider version, contract beside it (Superseded 2026-10-13: reopened by questions 15 and 18.) | 2026-10-12 |
 | Mapping form | Carried from area 4: `condition: Failure`, e.g. `timed_out: ChargeUnavailable`; time limits are integration settings | 2026-10-12 |
 | Faults | Carried from area 4: faults are never listed in `fails`; integrations map provider problems to declared failures | 2026-10-12 |
 | Calls | Carried from areas 1 and 3: the dot names the owner; `attempt` only on calls that can fail; actions have no settings | 2026-10-12 |
 | Colon rule and options | Carried from areas 2 and 3: members are `name: value`; closed options are lower_snake_case names (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
-| Types and fields | Written by hand and checked against the contract; may leave out unused output fields; one type may serve two versions | 2026-10-12 |
-| Naming and calls | UpperCamelCase with the version (`StripeV2024`), called `StripeV2024.operation(...)` only from actions | 2026-10-12 |
-| Provider versions | One integration per version, both runnable at once; upgrade by adding the next and moving callers; `version_header:` | 2026-10-12 |
-| Contract pin | `contract: "file"` only; the file's digest goes in the approval report | 2026-10-12 |
-| Failure conditions | Contract error responses map to declarable failures; `timed_out` to `unavailable` only with an idempotency key; unmapped is a fault | 2026-10-12 |
+| Setting options | Carried from area 2: fixed options are enum values written `Type.value`; every member in braces is `name: value` | 2026-10-12 |
+| Calling integrations | Carried from area 9: whoever may run the action; no separate grant | 2026-10-12 |
+| Third-party services | Carried from area 8: the language owns a feature rather than relying on a third-party service where it reasonably can | 2026-10-12 |
+| Types and fields | Written by hand and checked against the contract; may leave out unused output fields; one type may serve two versions (Superseded 2026-10-13: reopened as question 1.) | 2026-10-12 |
+| Naming and calls | UpperCamelCase with the version (`StripeV2024`), called `StripeV2024.operation(...)` only from actions (Superseded 2026-10-13: reopened as questions 2, 16 and 17.) | 2026-10-12 |
+| Provider versions | One integration per version, both runnable at once; upgrade by adding the next and moving callers; `version_header:` (Superseded 2026-10-13: reopened as question 3.) | 2026-10-12 |
+| Contract pin | `contract: "file"` only; the file's digest goes in the approval report (Superseded 2026-10-13: reopened as question 4.) | 2026-10-12 |
+| Failure conditions | Contract error responses map to declarable failures; `timed_out` to `unavailable` only with an idempotency key; unmapped is a fault (Superseded 2026-10-13: reopened as question 5.) | 2026-10-12 |
 | Idempotency keys | Supplied by the runtime: delivery key in subscribers and schedules, the client's `Idempotency-Key` or request id in routes | 2026-10-12 |
 | Call then write | Allowed when the call comes first; writes commit after it; a failed commit retries the call with the same key; area 3's text amended | 2026-10-12 |
 | Retry settings | `timeout:` (10s) and `retry: { attempts: within: }` (3 within 30s); backoff fixed | 2026-10-12 |
-| Outbound host | From `base_url`, HTTPS only, no redirects or proxies; a sandbox host chosen by configuration | 2026-10-12 |
-| Credential schemes | `CredentialScheme.bearer`, `.header`, `.basic` first | 2026-10-12 |
-| Webhook signatures | On the integration (`webhooks: { signature: SignatureScheme.x secret: }`), used as `authentication: StripeV2024.signature`; five-minute tolerance | 2026-10-12 |
-| Checking fakes | Fakes checked against the contract by the compiler; `jadpo test --kind contract` against the sandbox in scheduled CI | 2026-10-12 |
+| Outbound host | From `base_url`, HTTPS only, no redirects or proxies; a sandbox host chosen by configuration (Superseded 2026-10-13: reopened as question 9.) | 2026-10-12 |
+| Credential schemes | `CredentialScheme.bearer`, `.header`, `.basic` first (Superseded 2026-10-13: reopened as question 10.) | 2026-10-12 |
+| Webhook signatures | On the integration (`webhooks: { signature: SignatureScheme.x secret: }`), used as `authentication: StripeV2024.signature`; five-minute tolerance (Superseded 2026-10-13: reopened as question 11.) | 2026-10-12 |
+| Checking fakes | Fakes checked against the contract by the compiler; `jadpo test --kind contract` against the sandbox in scheduled CI (Superseded 2026-10-13: reopened as question 12.) | 2026-10-12 |
+| Types from the package | | |
+| Calling an operation | | |
+| Versions as connections | | |
+| Package pin | | |
+| Failures at the call | | |
+| Hosts | | |
+| Credentials | | |
+| Webhooks as events | | |
+| Fakes and contract runs | | |
+| The no-spec path | | |
+| Provenance and confirmation | | |
+| The registry | | |
+| Package naming | | |
+| Connection naming | | |
+| Calling domains | | |
