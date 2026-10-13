@@ -172,7 +172,9 @@ fields as JSON with `jadpo check <project> --diagnostic-format=json`.
 > **Changing.** The `module.*` and import errors below go away with modules, and new layout and naming errors arrive with the rework; see [Decided layout](#decided-layout).
 
 Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+compiler's actual output. The syntax errors (`syntax.*`) show the new
+compiler's output, from `jadpo fmt --check`; the rest still show the archived
+compiler's until their chunk is built.
 
 ### `data.project_role_invalid`
 
@@ -504,11 +506,15 @@ public type One = Int {
 
 ### `syntax.import_requires_module`
 
+> The archived compiler's error: the new parser has no `module` or `import`.
+
 ```jadpo project=e-import-without-module expect=syntax.import_requires_module
 import a.two { Thing }
 ```
 
 ### `syntax.empty_import`
+
+> The archived compiler's error: the new parser has no `module` or `import`.
 
 ```jadpo project=e-empty-import file=two.jadpo hidden
 module a.two
@@ -525,6 +531,8 @@ import a.two { }
 
 ### `syntax.route_export_invalid`
 
+> The archived compiler's error: routes are entries in a `routes` group now, and which declarations may be `public` is checked with visibility.
+
 ```jadpo project=e-route-public expect=syntax.route_export_invalid
 module a.one
 
@@ -535,21 +543,49 @@ public route GET /health {
 
 ### `syntax.expected_declaration`
 
-```jadpo project=e-expected-declaration expect=syntax.expected_declaration
+```jadpo check project=e-expected-declaration expect=syntax.expected_declaration
 Count = Int
+```
+
+```text output
+error: `Count` doesn't start a declaration
+ --> main.jadpo:1:1
+  |
+1 | Count = Int
+  | ^^^^^ expected a declaration
+  reason: A file holds declarations, such as `type`, `function`, `action`, `query` and `entity`, each starting a line.
+  next: Start the declaration with `type`: `type Count = ...` (agent)
+  rule: syntax.expected_declaration
+  help: docs/language/01-project-layout-and-modules.html#syntax-expected-declaration
+
+fmt failed: 1 with syntax errors
 ```
 
 ### `syntax.expected_name`
 
-```jadpo project=e-expected-name expect=syntax.expected_name
+```jadpo check project=e-expected-name expect=syntax.expected_name
 type Pair = Object {
     : Int
 }
 ```
 
+```text output
+error: This member has no name
+ --> main.jadpo:2:5
+  |
+2 |     : Int
+  |     ^ expected a name before `:`
+  reason: Every member inside braces is `name: value`.
+  next: Add the member's name before `:` (agent)
+  rule: syntax.expected_name
+  help: docs/language/01-project-layout-and-modules.html#syntax-expected-name
+
+fmt failed: 1 with syntax errors
+```
+
 ### `syntax.unexpected_token`
 
-```jadpo project=e-unexpected-token expect=syntax.unexpected_token
+```jadpo check project=e-unexpected-token expect=syntax.unexpected_token
 type Count = Int {
     min: 0
 }
@@ -559,28 +595,85 @@ function f(x: Count -> Count {
 }
 ```
 
+```text output
+error: This parameter list isn't closed
+ --> main.jadpo:5:21
+  |
+5 | function f(x: Count -> Count {
+  |                     ^^ expected `)` before `->`
+  |           - opened here
+  reason: The parameters end with `)`, before `fails`, `->` or the body.
+  next: Add `)` after `Count` (agent)
+  rule: syntax.unexpected_token
+  help: docs/language/01-project-layout-and-modules.html#syntax-unexpected-token
+
+fmt failed: 1 with syntax errors
+```
+
 ### `syntax.unexpected_character`
 
-```jadpo project=e-unexpected-character expect=syntax.unexpected_character
+```jadpo check project=e-unexpected-character expect=syntax.unexpected_character
 type Count = Int {
     min: 0 $
 }
 ```
 
+```text output
+error: `$` isn't part of Jadpo
+ --> main.jadpo:2:12
+  |
+2 |     min: 0 $
+  |            ^ not Jadpo
+  reason: Jadpo source is names, literals, brackets and operators such as `+` and `==`; this character has no meaning.
+  next: Remove `$` (agent)
+  rule: syntax.unexpected_character
+  help: docs/language/01-project-layout-and-modules.html#syntax-unexpected-character
+
+fmt failed: 1 with syntax errors
+```
+
 ### `syntax.unterminated_string`
 
-```jadpo project=e-unterminated expect=syntax.unterminated_string
+```jadpo check project=e-unterminated expect=syntax.unterminated_string
 type Label = Text {
     pattern: "abc
 }
 ```
 
+```text output
+error: This string isn't closed
+ --> main.jadpo:2:14
+  |
+2 |     pattern: "abc
+  |              ^^^^ no closing `"` on this line
+  reason: A string starts and ends with `"` on the same line.
+  next: Add `"` where the string ends (agent)
+  rule: syntax.unterminated_string
+  help: docs/language/01-project-layout-and-modules.html#syntax-unterminated-string
+
+fmt failed: 1 with syntax errors
+```
+
 ### `syntax.invalid_escape`
 
-```jadpo project=e-escape expect=syntax.invalid_escape
+```jadpo check project=e-escape expect=syntax.invalid_escape
 type Label = Text {
     pattern: "a\qb"
 }
+```
+
+```text output
+error: `\q` isn't an escape Jadpo knows
+ --> main.jadpo:2:16
+  |
+2 |     pattern: "a\qb"
+  |                ^^ unknown escape
+  reason: Inside a string, `\` starts one of `\"`, `\\`, `\n`, `\r` or `\t`.
+  next: Write `\\q` for a backslash followed by `q` (agent)
+  rule: syntax.invalid_escape
+  help: docs/language/01-project-layout-and-modules.html#syntax-invalid-escape
+
+fmt failed: 1 with syntax errors
 ```
 
 ## Review

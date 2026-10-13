@@ -5,6 +5,8 @@ use jadpo_diag::{Diagnostic, rule};
 use jadpo_term::Json;
 
 use crate::completion;
+
+pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
 use crate::run::{Call, Reply, both, either, quoted, unknown_command};
 use crate::suggest::nearest;

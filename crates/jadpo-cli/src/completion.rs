@@ -4,6 +4,8 @@
 //! the command table, and the project's own names can join them later
 //! without changing the scripts.
 
+use std::path::Path;
+
 use crate::table::{self, Flag, GLOBAL_FLAGS, Values};
 
 /// The hidden command the scripts call. Never listed in help.
@@ -56,8 +58,9 @@ pub fn script(shell: &str) -> Option<&'static str> {
     }
 }
 
-/// Candidates for the last word, given every word after `jadpo`.
-pub fn candidates(words: &[String]) -> String {
+/// Candidates for the last word, given every word after `jadpo`. Paths
+/// are completed from `cwd`.
+pub fn candidates(words: &[String], cwd: Option<&Path>) -> String {
     let (current, before) = match words.split_last() {
         Some((current, before)) => (current.as_str(), before),
         None => ("", &[][..]),
@@ -108,6 +111,7 @@ pub fn candidates(words: &[String]) -> String {
                 .map(|value| (value.name.to_string(), value.description))
                 .collect(),
             Some(Values::Commands) => commands(current),
+            Some(Values::Path) => paths(current, cwd),
             None => Vec::new(),
         }
     } else {
@@ -118,6 +122,40 @@ pub fn candidates(words: &[String]) -> String {
         .filter(|(value, _)| value.starts_with(current))
         .map(|(value, description)| format!("{value}\t{description}\n"))
         .collect()
+}
+
+/// Folders and `.jadpo` files beside the word typed so far; hidden ones
+/// only when the word asks for them.
+fn paths(current: &str, cwd: Option<&Path>) -> Vec<(String, &'static str)> {
+    let Some(cwd) = cwd else {
+        return Vec::new();
+    };
+    let (folder, prefix) = match current.rfind('/') {
+        Some(i) => (&current[..=i], &current[i + 1..]),
+        None => ("", current),
+    };
+    let Ok(entries) = std::fs::read_dir(cwd.join(folder)) else {
+        return Vec::new();
+    };
+    let mut found: Vec<(String, &'static str)> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            if !name.starts_with(prefix) || (name.starts_with('.') && !prefix.starts_with('.')) {
+                return None;
+            }
+            let kind = entry.file_type().ok()?;
+            if kind.is_dir() {
+                Some((format!("{folder}{name}/"), "Folder"))
+            } else if name.ends_with(".jadpo") {
+                Some((format!("{folder}{name}"), "Jadpo file"))
+            } else {
+                None
+            }
+        })
+        .collect();
+    found.sort();
+    found
 }
 
 /// Canonical names; synonyms only when no canonical name fits the prefix.

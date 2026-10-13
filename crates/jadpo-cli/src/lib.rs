@@ -4,6 +4,7 @@
 
 mod commands;
 mod completion;
+mod fmt;
 mod help;
 mod run;
 mod suggest;

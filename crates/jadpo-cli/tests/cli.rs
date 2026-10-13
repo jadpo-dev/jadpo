@@ -56,6 +56,9 @@ fn top_level_plain() -> String {
     format!(
         "jadpo {VERSION}, a programming environment for coding agents
 
+Build and check
+  fmt           Format source files
+
 Set up
   completions   Turn on Tab completion        zsh, bash, fish
 
@@ -96,6 +99,9 @@ fn rich_help_uses_symbols_and_the_same_grid() {
         strip_ansi(&output.stdout),
         format!(
             "jadpo {VERSION} · a programming environment for coding agents
+
+Build and check
+  fmt           Format source files
 
 Set up
   completions   Turn on Tab completion        zsh · bash · fish
@@ -186,7 +192,7 @@ fn command_help_shows_usage_arguments_flags_and_examples() {
 
 #[test]
 fn every_command_has_help_with_an_example() {
-    for command in ["help", "version", "completions"] {
+    for command in ["help", "version", "completions", "fmt"] {
         let output = jadpo(&["help", command]);
         assert_eq!(output.code, 0, "{command}");
         assert!(
@@ -240,8 +246,8 @@ fn help_json_is_the_whole_command_reference() {
         .iter()
         .map(|c| c["name"].as_str().expect("name"))
         .collect();
-    assert_eq!(names, ["completions", "help", "version"]);
-    let completions = &data["commands"][0];
+    assert_eq!(names, ["fmt", "completions", "help", "version"]);
+    let completions = &data["commands"][1];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -575,6 +581,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
     assert_eq!(
         complete(&[""]),
         [
+            "fmt\tFormat source files",
             "completions\tTurn on Tab completion",
             "help\tShow commands, flags and examples",
             "version\tPrint the version",

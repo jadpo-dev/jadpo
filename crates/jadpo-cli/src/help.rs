@@ -84,7 +84,7 @@ fn argument_row(argument: &Argument) -> Row {
     );
     match &argument.values {
         Values::Fixed(values) => row.extra(values.iter().map(|value| value.name)),
-        Values::Commands => row,
+        Values::Commands | Values::Path => row,
     }
 }
 
@@ -129,6 +129,7 @@ fn argument_json(argument: &Argument) -> Json {
                 ])
             })),
         ),
+        Values::Path => ("path", Json::array(Vec::<Json>::new())),
     };
     Json::object([
         ("name", argument.name.into()),

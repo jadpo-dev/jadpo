@@ -1,0 +1,449 @@
+// The concrete syntax of Jadpo (docs/compiler-runtime.md §2.2).
+//
+// Written from the decided syntax of areas 1–4 (docs/language), extended to
+// the shapes every other area's examples use: declarations whose bodies are
+// `name: value` members, route entries keyed by method and path, and
+// statement blocks. The typed AST in src/generated/ is generated from this
+// file by `cargo test -p jadpo-syntax --test sourcegen`, which fails when the
+// two drift.
+//
+// Conventions (ungrammar): 'x' is a token, Name is a node, label:Rule names
+// an accessor, `?` is optional and `*` repeats. Trivia (whitespace, `//`
+// comments and `///` documentation comments) is never written here: it is
+// kept in the tree beside the token it belongs to.
+
+//*************************//
+// Files                   //
+//*************************//
+
+// A `.jadpo` file: declarations only.
+SourceFile =
+  Decl*
+
+// A documentation example: declarations, members, route entries and
+// statements, with `...` standing for code left out.
+Snippet =
+  SnippetItem*
+
+SnippetItem =
+  Decl
+| Member
+| BareMember
+| RouteEntry
+| Stmt
+| Elision
+
+// An email template: text with Jadpo inside `{{ }}` (area 16).
+Template =
+  TemplateBody
+
+//*************************//
+// Declarations            //
+//*************************//
+
+Decl =
+  TypeDecl
+| FunctionDecl
+| ActionDecl
+| QueryDecl
+| FixtureDecl
+| EntityDecl
+| LibraryDecl
+| RoutesDecl
+| ScheduleDecl
+| SubscriberDecl
+| TestDecl
+| SeedDecl
+| PackageDecl
+| ResourceDecl
+| ProvideDecl
+| SingletonDecl
+
+Visibility =
+  'public'
+
+Name =
+  'ident'
+
+// `type Pence = Int { min: 0 }`; every type has a base and a block (area 2).
+TypeDecl =
+  Visibility? 'type' Name '=' base:Type MemberList?
+
+FunctionDecl =
+  Visibility? 'function' Name ParamList FailsClause? RetType? Block
+
+ActionDecl =
+  Visibility? 'action' Name ParamList FailsClause? RetType? Block
+
+// A query's body is declarative: `from:`, `where:`, `missing:` (area 6).
+QueryDecl =
+  Visibility? 'query' Name ParamList FailsClause? RetType? MemberList
+
+// A test-only action that builds data (area 13).
+FixtureDecl =
+  'fixture' Name ParamList? RetType? Block
+
+EntityDecl =
+  Visibility? 'entity' Name MemberList
+
+LibraryDecl =
+  Visibility? 'library' Name MemberList
+
+RoutesDecl =
+  'routes' Name MemberList
+
+ScheduleDecl =
+  'schedule' Name MemberList
+
+SubscriberDecl =
+  'subscriber' Name MemberList
+
+TestDecl =
+  'test' 'string' Block
+
+SeedDecl =
+  'seed' Name? Block
+
+// `package AcmeCouriers.v1 { ... }`, a provider package's index (area 11).
+PackageDecl =
+  'package' Path MemberList
+
+ResourceDecl =
+  'resource' Name MemberList
+
+ProvideDecl =
+  'provide' Name MemberList
+
+// Declarations that exist once per project carry no name (area 1):
+// `application`, `config`, `principal`, `authentication`, `policy`,
+// `flags`, `migration`, `acceptance` and `locales`.
+SingletonDecl =
+  keyword:'ident' MemberList
+
+//*************************//
+// Signatures              //
+//*************************//
+
+ParamList =
+  '(' (Param (',' Param)* ','?)? ')'
+
+Param =
+  Name ':' Type
+
+// `fails` comes before `->` (area 3).
+FailsClause =
+  'fails' (Type (',' Type)*)
+
+RetType =
+  '->' Type
+
+//*************************//
+// Members                 //
+//*************************//
+
+MemberList =
+  '{' MemberItem* '}'
+
+MemberItem =
+  Member
+| BareMember
+| RouteEntry
+| Decl
+| Elision
+
+// Every member inside braces is `name: value`; a value is one thing or a
+// `{ ... }` block (area 3's colon rule). Keys may be dotted:
+// `Todo.priority: { ... }`, `couriers.bookings.create: [slot_taken]`.
+Member =
+  MemberKey ':' value:Expr? block:MemberList?
+
+MemberKey =
+  Name ('.' Name)*
+
+// An enum variant with no data is just its name (area 2).
+BareMember =
+  Name
+
+// `...` marks code left out of a documentation example.
+Elision =
+  '...'
+
+// `GET /{todo_id: Todo.id} { ... }`: the one exception to the colon rule
+// (area 7).
+RouteEntry =
+  method:'ident' RoutePath MemberList
+
+RoutePath =
+  RouteSegment*
+
+RouteSegment =
+  '/' 'path_segment'? PathParam?
+
+PathParam =
+  '{' Name (':' Type)? '}'
+
+//*************************//
+// Statements              //
+//*************************//
+
+Block =
+  '{' BlockItem* '}'
+
+BlockItem =
+  Stmt
+| Member
+| Elision
+
+Stmt =
+  VarStmt
+| AssignStmt
+| ReturnStmt
+| IfStmt
+| ForStmt
+| EmitStmt
+| AssertStmt
+| ExprStmt
+
+// Every variable states its type (area 2); `var mut` can be reassigned
+// (area 3).
+VarStmt =
+  'var' 'mut'? Name (':' Type)? '=' Expr
+
+AssignStmt =
+  target:Expr '=' value:Expr
+
+ReturnStmt =
+  'return' Expr?
+
+// Conditions are always in brackets (area 3).
+IfStmt =
+  'if' Condition Block ElseBranch?
+
+Condition =
+  '(' Expr ')'
+
+ElseBranch =
+  'else' if_stmt:IfStmt? Block?
+
+ForStmt =
+  'for' Name 'in' Expr Block
+
+EmitStmt =
+  'emit' Expr
+
+// `assert response.status == 422`, `assert complete(id) fails NotFound`
+// (area 13).
+AssertStmt =
+  'assert' Expr AssertFails?
+
+AssertFails =
+  'fails' Type
+
+ExprStmt =
+  Expr
+
+//*************************//
+// Expressions             //
+//*************************//
+
+Expr =
+  Literal
+| NameRef
+| FieldExpr
+| CallExpr
+| RecordExpr
+| ParenExpr
+| ListExpr
+| OrderedExpr
+| BinExpr
+| PrefixExpr
+| MatchExpr
+| AttemptExpr
+| RejectExpr
+| PropagateExpr
+| LambdaExpr
+| RoutePathExpr
+| GenericExpr
+| NullableExpr
+| ElisionExpr
+
+Literal =
+  value:('int_number' | 'decimal_number' | 'unit_number' | 'string' | 'true' | 'false' | 'none')
+
+NameRef =
+  'ident'
+
+// `todo.title`, `Todo.id`, `temporal.in_zone`
+FieldExpr =
+  Expr '.' NameRef
+
+CallExpr =
+  Expr ArgList
+
+ArgList =
+  '(' (Arg (',' Arg)* ','?)? ')'
+
+// Named arguments exist only for standard-library operations (area 3).
+Arg =
+  (Name ':')? Expr
+
+// A value with a block: `TodoView { ... }`, `Todo.update(todo) { set: ... }`,
+// `name: ProductName { optional: true }`.
+RecordExpr =
+  Expr MemberList
+
+ParenExpr =
+  '(' Expr ')'
+
+// Square brackets are the only way to write a list (area 2).
+ListExpr =
+  '[' (Expr (',' Expr)* ','?)? ']'
+
+// `order: [Todo.created_at desc]` (area 6).
+OrderedExpr =
+  Expr direction:('asc' | 'desc')
+
+BinExpr =
+  lhs:Expr
+  op:(
+    'or' | 'and'
+  | '==' | '!=' | 'in' | 'matches'
+  | '<' | '<=' | '>' | '>='
+  | '+' | '-'
+  | '*' | '/' | '%'
+  )
+  rhs:Expr
+
+PrefixExpr =
+  op:('not' | '-') Expr
+
+// One `match` for values and call outcomes (area 3).
+MatchExpr =
+  'match' Expr MatchArmList
+
+MatchArmList =
+  '{' MatchArm* '}'
+
+MatchArm =
+  Pat '->' Expr? Block?
+
+// `attempt` starts a statement and may map a construction's failure:
+// `attempt Quantity(n * 2) invalid: QuantityTooLarge` (areas 2–4).
+AttemptExpr =
+  'attempt' Expr Mapping*
+
+Mapping =
+  Name ':' Expr
+
+RejectExpr =
+  'reject' Expr
+
+PropagateExpr =
+  'propagate'
+
+// `todo -> todo.title`, only as an argument to a standard-library
+// collection operation (area 3).
+LambdaExpr =
+  Name '->' Expr
+
+// `prefix: /todos/{project_id: Project.id}` (area 7).
+RoutePathExpr =
+  RoutePath
+
+// `List<Tag>` written as a member's value.
+GenericExpr =
+  Expr GenericArgList
+
+// `ProductName?` written as a member's value.
+NullableExpr =
+  Expr '?'
+
+ElisionExpr =
+  '...'
+
+//*************************//
+// Types                   //
+//*************************//
+
+Type =
+  PathType
+| NullableType
+
+PathType =
+  Path GenericArgList?
+
+Path =
+  NameRef ('.' NameRef)*
+
+GenericArgList =
+  '<' (Type (',' Type)* ','?)? '>'
+
+NullableType =
+  Type '?'
+
+//*************************//
+// Patterns                //
+//*************************//
+
+Pat =
+  CasePat
+| LiteralPat
+| WildcardPat
+
+// `TodoStatus.open`, `PaymentOutcome.paid(payment)`, `some(x)`,
+// `success(value)`, `LookupMissing`: brackets name the data a case carries.
+CasePat =
+  Path PatBinding?
+
+PatBinding =
+  '(' Name ')'
+
+LiteralPat =
+  '-'? Literal
+
+WildcardPat =
+  '_'
+
+//*************************//
+// Templates               //
+//*************************//
+
+TemplateBody =
+  TemplatePart*
+
+TemplatePart =
+  TemplateLiteral
+| TemplateValue
+| TemplateIf
+| TemplateFor
+| TemplateInclude
+
+TemplateLiteral =
+  'template_text'
+
+TemplateValue =
+  '{{' Expr '}}'
+
+TemplateIf =
+  TemplateIfTag TemplateBody TemplateElse* TemplateEndTag?
+
+TemplateIfTag =
+  '{{' 'if' Condition '}}'
+
+TemplateElse =
+  TemplateElseTag TemplateBody
+
+TemplateElseTag =
+  '{{' 'else' ('if' Condition)? '}}'
+
+TemplateFor =
+  TemplateForTag TemplateBody TemplateEndTag?
+
+TemplateForTag =
+  '{{' 'for' Name 'in' Expr '}}'
+
+TemplateEndTag =
+  '{{' 'end' '}}'
+
+TemplateInclude =
+  '{{' 'include' Expr '}}'

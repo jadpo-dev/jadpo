@@ -158,6 +158,37 @@ impl Row {
     }
 }
 
+/// How a command ended, for its summary footer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    Success,
+    Failure,
+}
+
+/// One fact in a summary footer: a count, usually. A problem count takes
+/// the failure colour; the rest are muted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Fact {
+    pub text: String,
+    pub problem: bool,
+}
+
+impl Fact {
+    pub fn plain(text: impl Into<String>) -> Fact {
+        Fact {
+            text: text.into(),
+            problem: false,
+        }
+    }
+
+    pub fn problem(text: impl Into<String>) -> Fact {
+        Fact {
+            text: text.into(),
+            problem: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Block {
     /// Bold `jadpo <command>`, muted facts joined by `·`, then prose.
@@ -181,6 +212,13 @@ pub enum Block {
     /// A description, then the command whole on its own line.
     Examples(Vec<(String, String)>),
     Diagnostic(Box<DiagnosticView>),
+    /// The last line: the outcome in its colour, then facts joined by `·`
+    /// (`✗ check failed  1 error · 11 files`).
+    Summary {
+        outcome: Outcome,
+        headline: String,
+        facts: Vec<Fact>,
+    },
     /// The one next command: `→ command  reason`.
     Hint {
         command: String,
@@ -244,6 +282,18 @@ impl Block {
 
     pub fn diagnostic(diagnostic: &Diagnostic, sources: &dyn Sources) -> Block {
         Block::Diagnostic(Box::new(DiagnosticView::new(diagnostic, sources)))
+    }
+
+    pub fn summary(
+        outcome: Outcome,
+        headline: impl Into<String>,
+        facts: impl IntoIterator<Item = Fact>,
+    ) -> Block {
+        Block::Summary {
+            outcome,
+            headline: headline.into(),
+            facts: facts.into_iter().collect(),
+        }
     }
 
     pub fn hint(command: impl Into<String>, reason: impl Into<String>) -> Block {
@@ -397,6 +447,11 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             lines
         }
         Block::Diagnostic(view) => view.lines(style),
+        Block::Summary {
+            outcome,
+            headline,
+            facts,
+        } => vec![summary_line(*outcome, headline, facts, style)],
         Block::Hint { command, reason } => {
             if rich(style) {
                 let arrow = Symbol::Next.text(style.symbols);
@@ -410,6 +465,45 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             }
         }
     }
+}
+
+fn summary_line(outcome: Outcome, headline: &str, facts: &[Fact], style: &Style) -> Line {
+    if !rich(style) {
+        let facts: Vec<&str> = facts.iter().map(|fact| fact.text.as_str()).collect();
+        return if facts.is_empty() {
+            vec![raw(headline)]
+        } else {
+            vec![raw(format!("{headline}: {}", facts.join(", ")))]
+        };
+    }
+    let (symbol, token) = match outcome {
+        Outcome::Success => (Symbol::Success, Token::Success),
+        Outcome::Failure => (Symbol::Failure, Token::Failure),
+    };
+    let mut line = vec![strong(
+        token,
+        format!("{} {headline}", symbol.text(style.symbols)),
+    )];
+    for (i, fact) in facts.iter().enumerate() {
+        let token = if fact.problem {
+            Token::Failure
+        } else {
+            Token::Muted
+        };
+        if i == 0 {
+            line.push(raw("  "));
+            line.push(paint(token, fact.text.as_str()));
+        } else if fact.problem {
+            line.push(paint(Token::Muted, separator(style)));
+            line.push(paint(token, fact.text.as_str()));
+        } else {
+            line.push(paint(
+                Token::Muted,
+                format!("{}{}", separator(style), fact.text),
+            ));
+        }
+    }
+    line
 }
 
 fn list_row(row: &Row, grid: &Grid, style: &Style) -> Line {

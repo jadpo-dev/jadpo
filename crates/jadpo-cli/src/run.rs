@@ -2,7 +2,10 @@
 //! result in the stream's mode. Pure: the binary only supplies the
 //! environment and prints the [`Output`].
 
-use jadpo_diag::{Diagnostic, rule};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+use jadpo_diag::{Diagnostic, Severity, rule};
 use jadpo_term::{Block, ColorChoice, Environment, Json, Screen, Stream, Style, envelope};
 
 use crate::completion;
@@ -23,6 +26,16 @@ pub struct Output {
 pub struct Call {
     /// Positional arguments after the command name.
     pub arguments: Vec<String>,
+    /// The command's own flags that were given (`--check`).
+    pub flags: Vec<&'static str>,
+    /// The folder the command runs in.
+    pub cwd: Option<PathBuf>,
+}
+
+impl Call {
+    pub fn flag(&self, name: &str) -> bool {
+        self.flags.contains(&name)
+    }
 }
 
 /// What a command produced.
@@ -35,6 +48,16 @@ pub enum Reply {
         data: Json,
     },
     Failed(Box<Diagnostic>),
+    /// A result about the project's files: a screen of diagnostics and a
+    /// summary, the data for `--json`, and the diagnostics with the sources
+    /// their frames and line numbers come from. It fails when any
+    /// diagnostic is an error.
+    Report {
+        screen: Screen,
+        data: Json,
+        diagnostics: Vec<Diagnostic>,
+        sources: BTreeMap<String, String>,
+    },
 }
 
 #[derive(Debug)]
@@ -81,17 +104,43 @@ pub fn run(args: &[String], env: &Environment) -> Output {
             _ => &args[1..],
         };
         return Output {
-            stdout: completion::candidates(words),
+            stdout: completion::candidates(words, env.cwd.as_deref()),
             stderr: String::new(),
             code: 0,
         };
     }
     let (json, choice) = presentation(args);
     let (name, reply) = match parse(args) {
-        Ok(parsed) => dispatch(parsed),
+        Ok(parsed) => dispatch(parsed, env),
         Err(diagnostic) => (None, Reply::Failed(diagnostic)),
     };
     finish(name, reply, env, json, choice)
+}
+
+fn finish_report(
+    name: Option<&str>,
+    report: (Screen, Json, Vec<Diagnostic>, BTreeMap<String, String>),
+    env: &Environment,
+    json: bool,
+    choice: ColorChoice,
+) -> Output {
+    let (screen, data, diagnostics, sources) = report;
+    let code = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity() == Severity::Error)
+        .map(exit_code)
+        .max()
+        .unwrap_or(0);
+    let stdout = if json {
+        envelope(name, Some(data), &diagnostics, &sources).to_document()
+    } else {
+        screen.render(&Style::detect(env, false, choice, Stream::Stdout))
+    };
+    Output {
+        stdout,
+        stderr: String::new(),
+        code,
+    }
 }
 
 fn finish(
@@ -104,6 +153,20 @@ fn finish(
     let (data, diagnostic, text) = match reply {
         Reply::Done { text, data } => (Some(data), None, Some(text)),
         Reply::Failed(diagnostic) => (None, Some(*diagnostic), None),
+        Reply::Report {
+            screen,
+            data,
+            diagnostics,
+            sources,
+        } => {
+            return finish_report(
+                name,
+                (screen, data, diagnostics, sources),
+                env,
+                json,
+                choice,
+            );
+        }
     };
     let code = diagnostic.as_ref().map_or(0, exit_code);
     if json {
@@ -159,6 +222,7 @@ fn presentation(args: &[String]) -> (bool, ColorChoice) {
 struct Parsed {
     command: Option<&'static Command>,
     arguments: Vec<String>,
+    flags: Vec<&'static str>,
     help: bool,
     version: bool,
 }
@@ -204,6 +268,7 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
     let mut parsed = Parsed {
         command,
         arguments: words.into_iter().skip(1).collect(),
+        flags: Vec::new(),
         help: false,
         version: false,
     };
@@ -218,6 +283,16 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
                 }
             }
             ("--color", None) => return Err(Box::new(missing_color())),
+            (name, None)
+                if let Some(flag) = command.and_then(|command| {
+                    command
+                        .flags
+                        .iter()
+                        .find(|flag| flag.name == name && flag.value.is_none())
+                }) =>
+            {
+                parsed.flags.push(flag.name);
+            }
             (_, value) => {
                 let written = value.map_or_else(|| name.clone(), |value| format!("{name}={value}"));
                 return Err(Box::new(unknown_flag(&written, &name, command)));
@@ -227,7 +302,7 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
     Ok(parsed)
 }
 
-fn dispatch(parsed: Parsed) -> (Option<&'static str>, Reply) {
+fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) {
     let Some(command) = parsed.command else {
         if parsed.version && !parsed.help {
             let version = table::find("version").expect("version is built");
@@ -235,6 +310,8 @@ fn dispatch(parsed: Parsed) -> (Option<&'static str>, Reply) {
                 Some(version.name),
                 (version.run)(&Call {
                     arguments: Vec::new(),
+                    flags: Vec::new(),
+                    cwd: env.cwd.clone(),
                 }),
             );
         }
@@ -261,6 +338,8 @@ fn dispatch(parsed: Parsed) -> (Option<&'static str>, Reply) {
         Some(command.name),
         (command.run)(&Call {
             arguments: parsed.arguments,
+            flags: parsed.flags,
+            cwd: env.cwd.clone(),
         }),
     )
 }

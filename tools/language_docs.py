@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """Check and render the language reference in docs/language.
 
-Every compiled ```jadpo block shows how the archived v0 compiler treated it.
+A ```jadpo check block is compiled by the new `jadpo` (docs/compiler-runtime.md
+§2.7). Today that means parsed and format-checked with `jadpo fmt --check`:
+a block without `expect=` must parse and be canonically formatted, and an
+`expect=rule.id` block must fail with that rule and be followed by a
+```text output block holding the exact plain output, which `--bless`
+rewrites. Later chunks make `check` mean more as the compiler grows.
+
+Every other compiled ```jadpo block shows how the archived v0 compiler treated it.
 The v0 compiler was removed on 2026-10-13 (tag archive/compiler-v0); its
 results are frozen in docs/language/reference/v0-results.json, and a block
 whose source no longer matches its frozen result fails the check. Passing
@@ -12,6 +19,7 @@ code is written in `fragment` blocks, which are not compiled.
 
   python3 tools/language_docs.py --check     # verify only
   python3 tools/language_docs.py             # verify and write build/language-site
+  python3 tools/language_docs.py --bless     # rewrite the output blocks after `check` blocks
   python3 tools/language_docs.py --freeze    # with the v0 compiler built: rewrite the frozen results
 """
 
@@ -30,6 +38,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'docs/language'
 COMPILER = ROOT / 'jadpo/target/debug/jadpo'
+JADPO = ROOT / 'target/debug/jadpo'
+OUTPUT_FENCE = '```text output'
 FROZEN = DOCS / 'reference/v0-results.json'
 TEMPLATE = Path(__file__).resolve().parent / 'language_docs_template.html'
 OUT_DEFAULT = ROOT / 'build/language-site'
@@ -40,6 +50,30 @@ FENCE = re.compile(r'^```(\S*)(.*)$')
 def run(args, cwd=None):
     result = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
     return result.returncode, result.stdout + result.stderr
+
+
+_jadpo_built = False
+
+
+def jadpo(args, cwd=None):
+    """Runs the new `jadpo`, built from this checkout, in plain mode."""
+    global _jadpo_built
+    if not _jadpo_built:
+        code, out = run(['cargo', 'build', '--quiet', '--locked', '-p', 'jadpo-cli'], cwd=ROOT)
+        if code:
+            sys.exit(f'could not build jadpo:\n{out}')
+        _jadpo_built = True
+    env = {k: v for k, v in os.environ.items() if k not in ('FORCE_COLOR', 'CLICOLOR_FORCE', 'COLUMNS')}
+    env['JADPO_PLAIN'] = '1'
+    result = subprocess.run([str(JADPO), *args], cwd=cwd, capture_output=True, text=True, env=env)
+    return result.returncode, result.stdout + result.stderr
+
+
+def load_new_catalogue():
+    code, out = jadpo(['help', '--json'])
+    if code:
+        sys.exit(f'jadpo help --json failed:\n{out}')
+    return {rule['id']: rule for rule in json.loads(out)['data']['rules']}
 
 
 def load_frozen():
@@ -97,6 +131,7 @@ class Page:
         self.blocks = []
         self.problems = []
         self.results = {}
+        self.blessings = []
 
     def collect_blocks(self):
         lines = self.body.splitlines()
@@ -111,14 +146,79 @@ class Page:
                 n += 1
                 attrs.setdefault('project', f'example-{n}')
                 attrs.setdefault('file', 'main.jadpo')
-                self.blocks.append({'line': i, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n'})
+                block = {'line': i, 'end': j, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n'}
+                # An output block may follow, after blank lines.
+                k = j + 1
+                while k < len(lines) and not lines[k].strip():
+                    k += 1
+                if k < len(lines) and lines[k].strip() == OUTPUT_FENCE:
+                    m = k + 1
+                    while m < len(lines) and not lines[m].startswith('```'):
+                        m += 1
+                    block['output'] = {'start': k, 'end': m, 'text': '\n'.join(lines[k + 1:m]) + '\n'}
+                self.blocks.append(block)
                 i = j
             i += 1
+
+    def check_projects(self, bless):
+        """`check` blocks, compiled by the new jadpo."""
+        projects = {}
+        for block in self.blocks:
+            if block['attrs'].get('check'):
+                projects.setdefault(block['attrs']['project'], []).append(block)
+        for name, blocks in projects.items():
+            expected = {b['attrs']['expect'] for b in blocks if 'expect' in b['attrs']} or {'pass'}
+            if len(expected) > 1:
+                self.problems.append(f'{name}: blocks disagree on expect=')
+            expected = expected.pop()
+            with tempfile.TemporaryDirectory() as tmp:
+                for block in blocks:
+                    target = Path(tmp) / block['attrs']['file']
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(block['source'])
+                code, out = jadpo(['fmt', '--check', tmp])
+            out = out.replace(tmp + '/', '').replace(tmp, '.')
+            rules = re.findall(r'rule: (\S+)', out)
+            shown = [b for b in blocks if 'expect' in b['attrs']] or blocks
+            last = shown[-1]
+            if expected == 'pass':
+                ok = code == 0
+                if not ok:
+                    self.problems.append(f'{name}: expected to parse and be formatted, but jadpo fmt --check says {rules[:3] or "no"}')
+            else:
+                ok = expected in rules
+                if not ok:
+                    self.problems.append(f'{name}: expected {expected} but got {rules[:3] or "a pass"}')
+                written = last.get('output', {}).get('text')
+                if written != out:
+                    if bless:
+                        self.blessings.append((last, out))
+                    elif written is None:
+                        self.problems.append(f'{name}: add a {OUTPUT_FENCE} block after it (run --bless)')
+                    else:
+                        self.problems.append(f'{name}: its output block differs from jadpo\'s output (run --bless)')
+            self.results[name] = {'expected': expected, 'ok': ok, 'output': out.strip(), 'rules': rules, 'check': True}
+
+    def bless(self):
+        """Writes each check block's real output after it."""
+        if not self.blessings:
+            return 0
+        text = self.path.read_text()
+        head = text[:len(text) - len(self.body)]
+        lines = self.body.splitlines()
+        for block, out in sorted(self.blessings, key=lambda b: b[0]['end'], reverse=True):
+            output = [OUTPUT_FENCE, *out.rstrip('\n').split('\n'), '```']
+            if 'output' in block:
+                lines[block['output']['start']:block['output']['end'] + 1] = output
+            else:
+                lines[block['end'] + 1:block['end'] + 1] = ['', *output]
+        self.path.write_text(head + '\n'.join(lines) + '\n')
+        return len(self.blessings)
 
     def compile_projects(self):
         projects = {}
         for block in self.blocks:
-            if block['attrs'].get('fragment'):
+            if block['attrs'].get('fragment') or block['attrs'].get('check'):
                 continue
             projects.setdefault(block['attrs']['project'], []).append(block)
         for name, blocks in projects.items():
@@ -167,9 +267,10 @@ class Page:
     def covered_rules(self):
         return {r['expected'] for r in self.results.values() if r['expected'] != 'pass' and r['ok']}
 
-    def check(self):
+    def check(self, bless=False):
         self.collect_blocks()
         self.compile_projects()
+        self.check_projects(bless)
         missing = [r for r in self.claimed_rules() if r not in self.covered_rules()]
         for rule in missing:
             self.problems.append(f'no example for {rule}')
@@ -224,6 +325,13 @@ class Renderer:
             return ''
         if attrs.get('fragment'):
             status = '<span class="muted">fragment, not compiled</span>'
+        elif result is not None and result.get('check'):
+            if not result['ok']:
+                status = '<span class="broken">✗ example does not behave as stated</span>'
+            elif result['expected'] == 'pass':
+                status = '<span class="check">✓ parses · formatted</span>'
+            else:
+                status = f'<span class="check">✓ fails with {html.escape(result["expected"])}</span>'
         elif result is None:
             status = ''
         elif not result['ok']:
@@ -234,7 +342,7 @@ class Renderer:
             status = f'<span class="check">✓ fails with {html.escape(result["expected"])}</span>'
         out = (f'<div class="code"><div class="label"><span>{html.escape(attrs["file"])}</span>{status}</div>'
                f'<pre><code class="jadpo">{html.escape(block["source"].rstrip())}</code></pre></div>')
-        if result and 'expect' in attrs and result['expected'] != 'pass':
+        if result and 'expect' in attrs and result['expected'] != 'pass' and not result.get('check'):
             out += (f'<div class="diag"><div class="label">jadpo check</div>'
                     f'<pre>{render_diagnostic(result["output"])}</pre></div>')
         return out
@@ -308,6 +416,8 @@ class Renderer:
                     out.append(self.code_block(blocks[i]))
                 else:
                     label = line[3:].strip() or 'text'
+                    if line.strip() == OUTPUT_FENCE:
+                        label = 'jadpo fmt --check'
                     out.append(f'<div class="code plain"><div class="label"><span>{html.escape(label)}</span></div>'
                                f'<pre><code>{html.escape(chr(10).join(lines[i + 1:j]))}</code></pre></div>')
                 i = j + 1
@@ -556,6 +666,7 @@ def main():
     parser.add_argument('--check', action='store_true', help='verify examples without writing pages')
     parser.add_argument('--out', default=str(OUT_DEFAULT))
     parser.add_argument('--freeze', action='store_true', help='compile with the v0 compiler and rewrite the frozen results')
+    parser.add_argument('--bless', action='store_true', help='rewrite the output blocks after check blocks')
     args = parser.parse_args()
     if args.freeze:
         if not COMPILER.exists():
@@ -566,11 +677,16 @@ def main():
         if frozen is None and not COMPILER.exists():
             sys.exit(f'no frozen results at {FROZEN} and no compiler to run')
     catalogue = load_catalogue(frozen)
+    if (ROOT / 'Cargo.toml').exists():
+        catalogue = {**catalogue, **load_new_catalogue()}
     pages = [Page(p, catalogue, frozen) for p in sorted(DOCS.glob('[0-9][0-9]-*.md'))]
     failed = False
     owners = {}
     for page in pages:
-        page.check()
+        page.check(bless=args.bless)
+        blessed = page.bless() if args.bless else 0
+        if blessed:
+            print(f'{page.path.name}: blessed {blessed} output block(s)')
         for rule in page.claimed_rules():
             owners.setdefault(rule, []).append(page.path.name)
         examples = len([b for b in page.blocks if not b['attrs'].get('fragment')])

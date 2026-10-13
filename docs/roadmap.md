@@ -86,7 +86,7 @@ optimisation) are `xhigh`.
 - [x] **1.1 Workspace and CLI shell:** `opus · high` `jadpo` with the agreed
   [design language](language/research/14-cli-design-language.md),
   self-describing help, `--json`, completion skeleton.
-- [ ] **1.2 Parser, syntax tree and formatter** `opus · high` for the decided grammar.
+- [x] **1.2 Parser, syntax tree and formatter** `opus · high` for the decided grammar.
 - [ ] **1.3 Project layout and domains** `opus · high` (area 1).
 - [ ] **1.4 Values and types** `opus · high` (area 2).
 - [ ] **1.5 Logic** `opus · high` (area 3).

@@ -12,6 +12,8 @@ path = "src/main.rs"
 
 [dependencies]
 jadpo-diag.workspace = true
+jadpo-fmt.workspace = true
+jadpo-syntax.workspace = true
 jadpo-term.workspace = true
 
 [dev-dependencies]

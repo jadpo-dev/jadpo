@@ -103,7 +103,10 @@ fn bash_completes_commands_and_values() {
             .map(str::to_string)
             .collect()
     };
-    assert_eq!(complete("jadpo ''", 1), ["completions", "help", "version"]);
+    assert_eq!(
+        complete("jadpo ''", 1),
+        ["fmt", "completions", "help", "version"]
+    );
     assert_eq!(complete("jadpo ver", 1), ["version"]);
     assert_eq!(complete("jadpo completions ''", 2), ["zsh", "bash", "fish"]);
     assert_eq!(complete("jadpo help --j", 2), ["--json"]);

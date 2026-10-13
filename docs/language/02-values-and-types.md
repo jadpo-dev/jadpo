@@ -26,7 +26,9 @@ rules:
   - syntax.expected_constraint_value
   - syntax.expected_field_initialiser
   - syntax.expected_literal
+  - syntax.type_block_required
   - syntax.type_parent_required
+  - syntax.variable_type_required
 ---
 
 # Values and types
@@ -766,7 +768,9 @@ function reprice(product: Product, price: Pence) -> Product {
 > The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
 
 Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+compiler's actual output. The syntax errors (`syntax.*`) show the new
+compiler's output, from `jadpo fmt --check`; the rest still show the archived
+compiler's until their chunk is built.
 
 ### `type.mismatch`
 
@@ -1010,13 +1014,81 @@ function decline(reason: DeclineReason) -> PaymentOutcome {
 
 ### `syntax.type_parent_required`
 
-```jadpo project=e-parent expect=syntax.type_parent_required
+```jadpo check project=e-parent expect=syntax.type_parent_required
 type Dimensions = {
     width: Int
 }
 ```
 
+```text output
+error: `Dimensions` needs a base type
+ --> main.jadpo:1:19
+  |
+1 | type Dimensions = {
+  |                   ^ expected a base before `{`
+  reason: Every type is written `type Name = Base { ... }`; the base says what it is built from, such as `Object`, `Enum`, `Input` or `Text`.
+  next: Add the base before `{`, for example `type Dimensions = Object {` (agent)
+  rule: syntax.type_parent_required
+  help: docs/language/02-values-and-types.html#syntax-type-parent-required
+
+fmt failed: 1 with syntax errors
+```
+
+### `syntax.type_block_required`
+
+A type always has a block, even an empty one, so it never reads like an alias:
+
+```jadpo check project=e-type-block expect=syntax.type_block_required
+type OrderId = Uuid
+```
+
+```text output
+error: `OrderId` needs a block
+ --> main.jadpo:1:16
+  |
+1 | type OrderId = Uuid
+  |                ^^^^ expected `{}` after the base
+  reason: Every type is written `type Name = Base { ... }`. Without a block it reads like an alias, and Jadpo has no aliases: every type is a new type.
+  next: Add `{}` after `Uuid` (agent)
+  rule: syntax.type_block_required
+  help: docs/language/02-values-and-types.html#syntax-type-block-required
+
+fmt failed: 1 with syntax errors
+```
+
+### `syntax.variable_type_required`
+
+Every variable states its type, and a literal takes it:
+
+```jadpo check project=e-variable-type expect=syntax.variable_type_required
+type Price = Decimal {
+    scale: 2
+    min: 0.00
+}
+
+function free() -> Price {
+    var price = Price(0.00)
+    return price
+}
+```
+
+```text output
+error: `price` needs a type
+ --> main.jadpo:7:9
+  |
+7 |     var price = Price(0.00)
+  |         ^^^^^ expected `: Type` after the name
+  reason: Every variable states its type, so a reader sees it where the value is introduced.
+  next: Write `var price: Price = 0.00` (agent)
+  rule: syntax.variable_type_required
+  help: docs/language/02-values-and-types.html#syntax-variable-type-required
+
+fmt failed: 1 with syntax errors
+```
+
 ### `syntax.expected_constraint`
+
+> The archived compiler's error: a misspelt setting is now found when types are checked.
 
 ```jadpo project=e-constraint expect=syntax.expected_constraint
 type ProductName = Text {
@@ -1027,6 +1099,8 @@ type ProductName = Text {
 
 ### `syntax.constraint_colon_required`
 
+> The archived compiler's error: the new parser reports a missing colon as `syntax.colon_required` (area 3).
+
 ```jadpo project=e-constraint-colon expect=syntax.constraint_colon_required
 type ContactEmail = Text {
     format email
@@ -1035,6 +1109,8 @@ type ContactEmail = Text {
 
 ### `syntax.expected_constraint_value`
 
+> The archived compiler's error: a setting's value is now checked when types are checked.
+
 ```jadpo project=e-constraint-value expect=syntax.expected_constraint_value
 type Price = Decimal {
     min: zero
@@ -1042,6 +1118,8 @@ type Price = Decimal {
 ```
 
 ### `syntax.expected_literal`
+
+> The archived compiler's error: settings go in a block after the field's type, and a missing value is `syntax.expected_expression` (area 3).
 
 ```jadpo project=e-literal-value expect=syntax.expected_literal
 type PageSize = Int {
@@ -1054,6 +1132,8 @@ input ListProducts {
 ```
 
 ### `syntax.expected_field_initialiser`
+
+> The archived compiler's error: the new parser reports `Product { name }` as `syntax.colon_required` (area 3).
 
 ```jadpo project=e-initialiser expect=syntax.expected_field_initialiser
 type ProductName = Text {
@@ -1070,6 +1150,8 @@ function product(name: ProductName) -> Product {
 ```
 
 ### `syntax.enum_empty`
+
+> The archived compiler's error: `type X = Enum {}` is now checked when types are checked.
 
 ```jadpo project=e-enum-empty expect=syntax.enum_empty
 enum TicketStatus {}

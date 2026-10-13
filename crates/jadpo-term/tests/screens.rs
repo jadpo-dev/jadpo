@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_term::{Block, Depth, Mode, Row, Screen, Style, Symbols, Theme, Token};
+use jadpo_term::{Block, Depth, Fact, Mode, Outcome, Row, Screen, Style, Symbols, Theme, Token};
 
 const TITLES: &str = "domains/planning/libraries/titles.jadpo";
 
@@ -316,5 +316,54 @@ fn examples_put_each_command_on_its_own_line() {
   Turn on Tab completion in fish
     jadpo completions fish
 "
+    );
+}
+
+fn failed_summary() -> Screen {
+    Screen::new().with(Block::summary(
+        Outcome::Failure,
+        "fmt failed",
+        [
+            Fact::problem("2 not formatted"),
+            Fact::plain("12 formatted"),
+        ],
+    ))
+}
+
+#[test]
+fn a_summary_footer_leads_with_the_outcome() {
+    assert_eq!(
+        failed_summary().render(&rich()),
+        "✗ fmt failed  2 not formatted · 12 formatted\n"
+    );
+    assert_eq!(
+        Screen::new()
+            .with(Block::summary(
+                Outcome::Success,
+                "formatted",
+                [Fact::plain("14 unchanged")]
+            ))
+            .render(&rich()),
+        "✓ formatted  14 unchanged\n"
+    );
+}
+
+#[test]
+fn a_plain_summary_reads_outcome_colon_facts() {
+    assert_eq!(
+        failed_summary().render(&Style::new(Mode::Plain)),
+        "fmt failed: 2 not formatted, 12 formatted\n"
+    );
+}
+
+#[test]
+fn summary_colour_is_on_the_outcome_and_problem_counts() {
+    let style = Style {
+        color: Some(Depth::Ansi16),
+        ..Style::new(Mode::Rich)
+    };
+    assert_eq!(
+        failed_summary().render(&style),
+        "\x1b[1;31m✗ fmt failed\x1b[0m  \x1b[31m2 not formatted\x1b[0m\x1b[2m · 12 formatted\x1b[0m\n"
     );
 }
