@@ -14,6 +14,7 @@ rules:
   - semantic.unknown_callee
   - semantic.not_callable
   - semantic.wrong_name_kind
+  - library.similar_exists
   - semantic.standard_namespace_reserved
   - semantic.standard_operation_qualification
   - syntax.unexpected_character
@@ -171,10 +172,9 @@ fields as JSON with `jadpo check --json`.
 Every error this area can produce, with an example that triggers it and the
 new compiler's real output from `jadpo check`. An example without `app.jadpo`
 is checked as loose files, one implicit domain with the layout rules off; the
-layout examples are small projects. Two decided errors are not built yet:
+layout examples are small projects. One decided error is not built yet:
 `layout.asset_unreferenced` waits for the reference forms of areas 11 and
-16, and the `library.similar_exists` warning for the graph's digests
-(chunk 1.7). The `module.*` errors, `syntax.import_requires_module`,
+16. The `module.*` errors, `syntax.import_requires_module`,
 `syntax.empty_import`, `syntax.route_export_invalid` and
 `data.project_role_invalid` went with modules and role folders.
 
@@ -741,6 +741,51 @@ error: Shared code uses `OrderTotal` from domain `ordering`
 check failed: 1 error, 4 files
 ```
 
+### `library.similar_exists`
+
+A warning, so `check` still passes. A function is like a library function
+when its parameter types, result, `fails` list and body are the same once
+each parameter and variable is renamed by its position: a copy, however it
+is formatted or named. Of two alike library functions, the later one in
+file order is reported.
+
+```jadpo check project=e-similar expect=library.similar_exists
+type Pence = Int {
+    min: 0
+}
+
+library rounding {
+    /// The amount, capped at a thousand pence.
+    function capped(amount: Pence) -> Pence {
+        if (amount > Pence(1000)) {
+            return Pence(1000)
+        }
+        return amount
+    }
+}
+
+function cap_total(total: Pence) -> Pence {
+    if (total > Pence(1000)) {
+        return Pence(1000)
+    }
+    return total
+}
+```
+
+```text output
+warning: A similar library function exists: `rounding.capped`
+ --> main.jadpo:15:10
+   |
+15 | function cap_total(total: Pence) -> Pence {
+   |          ^^^^^^^^^ same as `rounding.capped`
+  reason: `cap_total` takes the same parameters, gives the same result and has the same body as `rounding.capped` in `main.jadpo`, apart from the names of its variables.
+  next: Call `rounding.capped` instead, and remove `cap_total` (agent)
+  rule: library.similar_exists
+  help: docs/language/01-project-layout-and-modules.html#library-similar-exists
+
+checked: 1 warning, 1 file
+```
+
 ### `syntax.expected_declaration`
 
 ```jadpo check project=e-expected-declaration expect=syntax.expected_declaration
@@ -1229,7 +1274,8 @@ New errors would include `layout.unknown_location`, `layout.wrong_folder`,
 `library.similar_exists` warning.
 
 Built on 2026-10-13 (chunk 1.3): `jadpo check` reports all of these except
-`layout.asset_unreferenced` and `library.similar_exists`; each has its
+`layout.asset_unreferenced` and `library.similar_exists`, which followed
+with the graph's digests in chunk 1.7; each has its
 example and real output under [Errors](#errors). A folder or file checked
 without an `app.jadpo` above it is treated as loose files, one implicit
 domain with the layout rules off, as a single file is. Resolution covers

@@ -136,7 +136,7 @@ pub fn similar_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
                 &rule::LIBRARY_SIMILAR_EXISTS,
                 format!("A similar library function exists: `{existing}`"),
             )
-            .at(span, "does what it does")
+            .at(span, format!("same as `{existing}`"))
             .reason(format!(
                 "`{written}` takes the same parameters, gives the same result and has the same body as `{existing}` in `{at}`, apart from the names of its variables."
             ))
