@@ -162,7 +162,7 @@ impl Row {
 pub enum Block {
     /// Bold `jadpo <command>`, muted facts joined by `·`, then prose.
     Header {
-        title: String,
+        heading: String,
         facts: Vec<String>,
         text: Vec<String>,
     },
@@ -190,11 +190,11 @@ pub enum Block {
 
 impl Block {
     pub fn header<S: Into<String>>(
-        title: impl Into<String>,
+        heading: impl Into<String>,
         facts: impl IntoIterator<Item = S>,
     ) -> Block {
         Block::Header {
-            title: title.into(),
+            heading: heading.into(),
             facts: facts.into_iter().map(Into::into).collect(),
             text: Vec::new(),
         }
@@ -336,8 +336,12 @@ fn rich(style: &Style) -> bool {
 
 fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
     match block {
-        Block::Header { title, facts, text } => {
-            let mut first = vec![bold(title.as_str())];
+        Block::Header {
+            heading,
+            facts,
+            text,
+        } => {
+            let mut first = vec![bold(heading.as_str())];
             if !facts.is_empty() {
                 let joined = facts
                     .iter()

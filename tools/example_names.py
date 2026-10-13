@@ -195,10 +195,25 @@ def scan(banned: list[str]) -> list[str]:
     return found
 
 
+def self_test() -> None:
+    """The matching rules this check relies on, checked before it runs."""
+    assert words('TodoTitle') == words('todo_title') == words('TODO_TITLE') == words('todo-title') == ('todo', 'title')
+    assert words('HTTPServer') == ('http', 'server')
+    assert contains(words('parse_todo_title'), ('todo', 'title'))
+    assert not contains(words('todos'), ('todo',))
+    tokens = list(rust_tokens('// Todo\n/* Todo /* nested */ */ let a = "Todo"; let b = r#"x"#; fn c<\'a>() {}'))
+    assert ('string', '"Todo"') in [(kind, text) for _, kind, text in tokens]
+    assert all(text != 'Todo' for _, kind, text in tokens if kind == 'identifier')
+    assert ('identifier', 'c') in [(kind, text) for _, kind, text in tokens]
+    assert declared_names('', ['type Pair = Object {', '    left_side: Int', '}', 'function f(amount: Int) -> Int {']) == {
+        'Pair', 'left_side', 'f', 'amount'}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--check', action='store_true', help='fail if the list is stale or a name is used')
     args = parser.parse_args()
+    self_test()
     banned = banned_list()
     text = ''.join(f'{name}\n' for name in banned)
     if not args.check:
