@@ -309,6 +309,21 @@ compare them.
   cares about order reads the current state instead of trusting the event's
   copy, which is also what makes repeats safe.
 
+## Where events travel
+
+Events stay inside the Jadpo runtime (Richard, 2026-10-13). They are stored
+in the main store's outbox in the same transaction as the action, and the
+runtime delivers them: on a long-running server from its own workers, on
+Cloudflare Workers right after the commit (`waitUntil`) with the
+once-a-minute schedule tick sweeping anything left. One place holds every
+log and trace, a request is never slowed by delivery, and no site needs a
+queue service.
+
+External queues are never the delivery path. A connection can *publish*
+chosen public events outward, so other systems can react to them: an outbound
+bridge fed from the outbox after commit, at least once, with the trace
+context attached (Cloudflare Queues, SQS, Pub/Sub, a webhook).
+
 ## Retries and giving up
 
 What happens after a run depends on how it ended, using the failure kinds
@@ -1222,3 +1237,4 @@ Nothing is decided on this page yet.
 | Tracing through events | Always on: events carry the emitting action's trace context; subscriber runs continue it; `jadpo trace <request id>` | 2026-10-13 |
 | Schedule monitoring | Every run and tick recorded; `jadpo schedules` (list, run, pause, resume, history); `jadpo why <schedule>`; metrics; alerts with no setup (no success in twice the interval, ticks stopped, near the time limit, three failures, stuck lease); console timeline (Richard) | 2026-10-13 |
 | Circuit breaker | Per connection: after repeated `unavailable` failures, deliveries calling the provider are held, one probe after a pause, success releases the rest; held deliveries keep their retry budget; shown and alerted | 2026-10-13 |
+| Event transport | Internal only: the main store's outbox delivered by the runtime (on Workers after commit via `waitUntil`, swept by the minute tick); external queues only receive published copies of chosen public events (Richard) | 2026-10-13 |
