@@ -1,7 +1,8 @@
 //! Checking a Jadpo project (docs/compiler-runtime.md §2.2): the rules of
-//! each language area as salsa queries over `jadpo-db`. Area 1 is built:
-//! layout, naming, visibility and resolution. Later chunks add types,
-//! logic and failures (areas 2 to 4) and build the graph.
+//! each language area as salsa queries over `jadpo-db`. Areas 1 and 2 are
+//! built: layout, naming, visibility and resolution, then values and types
+//! ([`types`]). Later chunks add logic and failures (areas 3 and 4) and
+//! build the graph.
 //!
 //! [`check`] assembles every diagnostic for a project, sorted by file and
 //! position so the same source always gives the same output.
@@ -10,8 +11,9 @@ mod case;
 mod layout;
 mod naming;
 mod resolve;
-mod std_names;
+mod std_lib;
 mod tree;
+pub mod types;
 mod usage;
 
 pub use layout::layout_problems;
@@ -21,6 +23,13 @@ pub use usage::{mentions, usage_problems, users};
 
 use jadpo_db::{Db, Project, item_tree, parse};
 use jadpo_diag::{Diagnostic, rule};
+
+/// Every standard-library operation the stubs declare, as
+/// `namespace.operation`: each must be bound to the Rust function of that
+/// name in `jadpo-value`.
+pub fn standard_operations() -> Vec<String> {
+    std_lib::StdNames::get().bindings()
+}
 
 /// Every problem in `project`, in a stable order. Syntax errors come alone:
 /// a file that does not parse would only add knock-on errors.
@@ -50,6 +59,8 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(naming_problems(db, project, file).iter().cloned());
             out.extend(resolve_file(db, project, file).iter().cloned());
             out.extend(usage_problems(db, project, file).iter().cloned());
+            out.extend(types::type_problems(db, project, file).iter().cloned());
+            out.extend(types::body_problems(db, project, file).iter().cloned());
         }
     }
     sort(&mut out);

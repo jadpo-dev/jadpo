@@ -1,0 +1,21 @@
+// The `collection` namespace (area 2, question 4). Each operation is bound
+// to the Rust function of the same qualified name in `jadpo-value`.
+//
+// In these stubs a single capital letter (`T`, `U`) stands for any type,
+// fixed by the arguments at each call: the standard library's signatures
+// are the only generic ones (area 3). `Function<T, U>` is an argument
+// written inline as `item -> expression` (area 3); it exists only here.
+
+public library collection {
+    /// How many items `items` holds.
+    function count(items: List<T>) -> Int {}
+
+    /// Whether `items` holds an item equal to `item`.
+    function contains(items: List<T>, item: T) -> Bool {}
+
+    /// A new list with `each` applied to every item, in order.
+    function map(items: List<T>, each: Function<T, U>) -> List<U> {}
+
+    /// A new list of the items `keep` accepts, in order.
+    function filter(items: List<T>, keep: Function<T, Bool>) -> List<T> {}
+}
