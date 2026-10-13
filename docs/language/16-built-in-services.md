@@ -25,11 +25,11 @@ than depending on a third-party service (the rule area 8 applied to OAuth).
 |---|---|---|---|
 | Feature flags | Yes | Misspelt flags are errors; both branches tested; expired flags reported; one-step removal | Root `flags.jadpo`; read as `flags.name` |
 | Rate limits | Yes | The route knows the caller; 429 is already a failure kind; limits appear in OpenAPI | `rate_limit:` on an API or route |
-| Files | Yes | Size and type checked; policy and erasure reach the bytes; signed links generated | `File` fields; a file store in `app.jadpo` |
+| Files | Yes | Size and type checked; policy and erasure reach the bytes; signed links generated | `File` fields; a `files` connection in `app.jadpo` (area 11 capabilities) |
 | Audit trail | Yes | The compiler sees every write and its caller; personal fields hashed | `audit:` section on an entity |
 | Tracing and metrics | Yes, no syntax | Every route, query, action, job and integration call is known | Generated runtime |
 | Path IDs and monitoring thresholds | Proposed | Every path is known, so it can be named, sampled and given limits | Generated runtime; a monitoring file per domain; questions 13–16 |
-| Email | Sending and templates, yes; provider APIs, no | Templates typed against translations; delivered after commit | `type X = Mail` in `events/`; SMTP in `app.jadpo` |
+| Email | Yes, through the `mail` capability | Templates typed against translations; delivered after commit; any provider without code changes | `type X = Mail` in `events/`; a `mail` connection in `app.jadpo` |
 | Search | Yes | Index, query and migration generated from one declaration | `search:` section on an entity |
 | Outgoing webhooks | Yes | Payloads typed from events; signing and retries generated | Later area; question 8 |
 | Field encryption | Yes | Encrypted fields kept out of logs, indexes and filters | Area 15; question 8 |
@@ -164,20 +164,21 @@ POST / {
 
 ## Files
 
-A file is a field of type `File` on an entity. The bytes live in a file
-store declared in `app.jadpo`, any S3-compatible service (Amazon S3,
-Cloudflare R2, MinIO); the record holds the file's key, name, size and type
-(question 7).
+A file is a field of type `File` on an entity. The bytes live in a
+connection that provides the `files` capability (area 11): the built-in S3
+driver for any S3-compatible service, or a package that is a preset over it
+(Cloudflare R2, Amazon S3). The record holds the file's key, name, size and
+type (question 7, revised 2026-10-13).
 
 ```jadpo fragment
 // app.jadpo
 application {
-    stores: {
-        files: {
-            engine: Engine.s3
-            url: config.files_url
-            access_key: config.files_access_key
-            secret_key: config.files_secret_key
+    connections: {
+        avatars: {
+            package: CloudflareR2.v1
+            account_id: config.cloudflare_account
+            bucket: "avatars"
+            credential: config.r2_credential
         }
     }
 }
@@ -186,12 +187,23 @@ application {
 entity User {
     ...
     avatar: File? {
-        store: files
+        store: avatars
         max_size: 5mb
         types: [FileType.png, FileType.jpeg, FileType.webp]
     }
 }
 ```
+
+- `store:` names the connection, as for entities and caches. Two buckets
+  are two connections.
+- In `jadpo dev` and tests, files go to local disk with locally signed
+  links, so nothing leaves the machine; the local driver does not exist in
+  production builds.
+- A file the application makes itself (a generated PDF) is written with
+  `attempt avatars.put(bytes, FileType.pdf)`, which returns a `File` to
+  store in a field. It is the action's one provider call, made before its
+  writes (area 11 question 7); bytes never attached are deleted after a day,
+  like abandoned uploads.
 
 **Uploading.** Files go straight from the client to the store, not through
 the application, so the 1 MB body limit (area 7) is not in the way:
@@ -385,9 +397,20 @@ emit WelcomeMail {
 }
 ```
 
-- The transport is SMTP, which every email provider accepts, set once:
-  `mail: { url: config.smtp_url  from: config.mail_sender }` in
-  `application { }`. Nothing ties the application to one provider.
+- **Where it goes** is the `mail` capability (area 11, revised
+  2026-10-13): `mail: { connection: postmark  from: config.mail_sender }` in
+  `application { }` names a connection. SMTP is one built-in driver
+  (`driver: Driver.smtp`, port 587 on Cloudflare Workers, which blocks 25);
+  a mail package (Postmark, Amazon SES, Resend) is another. The `Mail`
+  types, translations and `emit` are the same whichever is chosen, so
+  changing provider changes `app.jadpo` only.
+- **Bounces and complaints** come back as the standard events
+  `MailBounced` and `MailComplained` when the package maps its webhooks
+  onto them; with SMTP there are none.
+- **Provider features** (Postmark's message streams, SES configuration
+  sets) are typed settings on the connection; the provider's other
+  operations (SES's suppression list) stay callable as an ordinary package
+  (area 11).
 - Tests capture mail instead of sending it, and read it as `mail.sent`.
 - **`jadpo dev` catches every email in a local inbox** (Richard, 2026-10-13).
   Nothing leaves the machine. A person opens it in the browser from the dev
@@ -399,9 +422,24 @@ emit WelcomeMail {
   a sign-up or privacy-request flow end to end; `jadpo mail clear` empties
   it. Phoenix's dev mailbox and Mailpit offer the browser half; the
   agent commands and the trace link are new.
-- A provider's own API (hosted templates, bounce webhooks, analytics) is an
-  ordinary integration (area 11). The personal-data report lists the mail
-  transport as receiving every marked field a mail carries.
+- **A mail health score: an early indication, not a guarantee** (Richard,
+  2026-10-13). Every mail in the dev inbox, and `jadpo mail show <id>`,
+  shows what Jadpo's own checks found and how to fix each: no plain-text
+  part, image-only content, broken HTML, links that are not absolute HTTPS,
+  link shorteners, an all-capitals subject, a missing unsubscribe header on
+  bulk mail, more than 102 KB (Gmail clips it). `jadpo check` warns about
+  templates that would fail. When SpamAssassin is installed its open rules
+  are added. `jadpo mail check-domain` compares the sending domain's SPF,
+  DKIM and DMARC records with what the mail connection needs. What it does
+  not do, said on every screen that shows a score: it cannot predict whether
+  Gmail, Outlook or any other provider puts a mail in the inbox, because they
+  use their own filters and the sender's history, which change constantly.
+  A clean score means the common mistakes are absent, nothing more; it must
+  not be relied on. Testing real inbox placement needs seed-account services
+  outside Jadpo.
+- The personal-data report lists the mail connection as receiving every
+  marked field a mail carries; a package that maps an `erase` operation
+  gets area 15's `PersonErased` subscriber generated.
 
 ## Search
 
@@ -479,6 +517,10 @@ that is an integration, as Laravel Scout's other engines are.
   by a generated subscriber, so no action writes two stores.
 - **Mail as an event.** Reusing `emit` and `events/` adds no new statement or
   folder; `Mail` is a new type base beside `Event` and `Failure`.
+- **Capabilities.** Files and email follow area 11's proposed capabilities
+  (questions 19–25 there): the provider is a connection in `app.jadpo`,
+  and `stores:` becomes `connections:`. Search, flags, rate limits and
+  audit stay in the main store and need no capability.
 - **Size literals.** `max_size: 5mb` is a new literal form, following the
   duration spelling of area 10 question 4.
 - **Retention shape.** Audit retention reuses area 15's
@@ -493,7 +535,7 @@ that is an integration, as Laravel Scout's other engines are.
 |---|---|---|
 | `flags.jadpo` in the fixed root list; `Mail` types in `events/` | 1 | Questions 1 and 11 |
 | `5mb` size literals; `File`, `FileUpload`, `UploadSlot`, `SearchText` built-in types | 2 | Questions 7 and 12 |
-| File stores (`Engine.s3`); `search:` replacing the full-text index `kind:` | 5 | Questions 7 and 12 |
+| File stores as `files` connections; `search:` replacing the full-text index `kind:` | 5, 11 | Questions 7 and 12 |
 | `matches` in queries; relevance order in keyset pages | 6 | Question 12 |
 | `rate_limit:` on APIs and routes; `GET /flags`; rate limits in OpenAPI | 7 | Questions 5 and 6 |
 | Default rate limits on generated authentication routes | 8 | Question 6 |
@@ -545,6 +587,11 @@ that is an integration, as Laravel Scout's other engines are.
    protocol only. It is how Rails Active Storage and Laravel work, and the
    compiler then applies policy, erasure and retention to the bytes.
    Image resizing and virus scanning wait for a real app.
+   *Revised 2026-10-13 (capabilities, area 11 questions 19–24):* the store
+   is a connection providing `files`: the built-in S3 driver, or a package
+   that is a preset over it (R2's upload slots still need S3 keys, even on
+   Workers); local disk in development and tests; `store.put(bytes, type)`
+   for files the application makes.
 8. **Should outgoing webhooks and field encryption be built in?**
    *Recommendation:* yes, both later. Outgoing webhooks are events with
    signed, retried delivery to a customer's address, which the compiler can
@@ -566,6 +613,13 @@ that is an integration, as Laravel Scout's other engines are.
     only, provider APIs as integrations. This replaces the golden app's
     `ReminderMail` integration; Rails, Django and Laravel all ship mail with
     SMTP and a test inbox.
+    *Revised 2026-10-13 (capabilities, area 11 questions 19–24):* email is
+    no longer SMTP only. Sending goes through the `mail` capability: SMTP is
+    one built-in driver and a mail package (Postmark, SES) another, chosen
+    by `mail: { connection: }` with no code change; bounces and complaints
+    come back as standard events; provider features are connection
+    settings or the package's own operations. Laravel's mailers and Rails'
+    delivery methods work the same way.
 12. **Is search a `search:` section using PostgreSQL full-text search?**
     *Recommendation:* yes, one language per entity, with search services as
     integrations. Django's `SearchVector` and Laravel Scout's database engine
@@ -621,3 +675,4 @@ that is an integration, as Laravel Scout's other engines are.
 | Thresholds in source | | |
 | Loosening thresholds | | |
 | Local inbox in development | `jadpo dev` catches all mail: browser view in the dev console (rendered, locale, working links, trace link) and `jadpo mail list/show/links/open/clear` for agents (Richard) | 2026-10-13 |
+| Mail health score | Deterministic content checks per mail in the dev inbox and `jadpo mail show`, optional SpamAssassin rules, `jadpo mail check-domain` for SPF/DKIM/DMARC; every score states it is an early indication, cannot predict inbox placement and must not be relied on (Richard) | 2026-10-13 |

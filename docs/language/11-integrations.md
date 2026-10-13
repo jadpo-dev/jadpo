@@ -1,7 +1,7 @@
 ---
 title: External services
 area: 11
-status: decided
+status: in-review
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - semantic.service_atomic_effect
@@ -47,6 +47,7 @@ URL, sets a header or sees a raw response.
 | Compile time | Only the resources an app calls are loaded; each package checked once per digest |
 | Tests | A generated fake per package; scheduled contract runs against the sandbox |
 | Your own services | Every Jadpo API publishes a package from its API record |
+| Capabilities | Mail, files, SMS and others: one API in code, the provider chosen in `app.jadpo` (proposed) |
 
 ## Provider packages
 
@@ -554,7 +555,7 @@ subscriber payment_succeeded {
 
 No webhook route is written by hand (question 11). Signature schemes are
 built in: `SignatureScheme.stripe`, `SignatureScheme.standard_webhooks`
-(Svix, Twilio and others) and `SignatureScheme.hmac_sha256` with a named
+(Svix and others) and `SignatureScheme.hmac_sha256` with a named
 header for the rest.
 
 Today nothing supports webhooks.
@@ -620,6 +621,145 @@ free. A package with no fixed host (your own services, self-hosted
 products) takes `host: config.orders_url` on the connection, and the
 approval report shows it. Internal services and third parties work the same
 way.
+
+## Capabilities
+
+> Proposed 2026-10-13 (questions 19–25). The research, and eight real
+> providers modelled as packages, are in
+> [the capabilities proposals](research/capabilities-proposals.md).
+
+A **capability** is a job several providers do: sending mail, storing files,
+sending SMS. Jadpo owns a short, fixed list, and each one has a single API
+that application code uses, never the provider's. A package says which
+capabilities it provides and maps the standard operations onto its own
+calls, so changing from Postmark to SES is a change to `app.jadpo`, not to
+code (question 19).
+
+| Capability | Code uses | Built-in drivers | Packages? |
+|---|---|---|---|
+| `database` | Entities (area 5) | PostgreSQL; D1 later | No |
+| `cache` | `caches:` (area 5) | Redis; in memory | No, at first |
+| `files` | `File` fields (area 16) | S3; local disk | Yes, as S3 presets |
+| `mail` | `type X = Mail`, emitted (area 16) | SMTP; local inbox | Yes |
+| `sms` | `type X = Sms`, emitted | Local inbox | Yes |
+| `publishing` | Chosen public events sent to other systems | Local log | Yes |
+| `schedules` | `schedule` (area 12) | Timer; Cloudflare cron; external tick | No |
+
+Event delivery is not a capability: it stays inside the runtime, from the
+outbox in the main store, so logs and traces stay in one place and no queue
+service is needed. A queue such as Cloudflare Queues or SQS is a
+`publishing` target instead: chosen public events go out to it after
+commit, at least once, with their trace context. Telemetry is not one
+either: every monitoring vendor accepts OpenTelemetry (area 16).
+
+**One `connections:` block.** `stores:` and `providers:` merge. Each entry
+is a built-in driver or a package; where it is used says which capability
+it serves (question 20). One connection is one resource (a bucket, a
+queue), not one vendor account, as Cloudflare's own bindings are.
+
+```jadpo fragment
+// app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+        cache: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+        avatars: {
+            package: CloudflareR2.v1
+            account_id: config.cloudflare_account
+            bucket: "avatars"
+            credential: config.r2_credential
+        }
+        postmark: {
+            package: Postmark.v1
+            credential: config.postmark_token
+            message_stream: "outbound"
+        }
+        stripe: {
+            package: Stripe.v2024_06_20
+            domains: [payments]
+            credential: config.stripe_secret_key
+        }
+    }
+    mail: {
+        connection: postmark
+        from: config.mail_sender
+    }
+}
+```
+
+Entities, caches and `File` fields name a connection with `store:`;
+`mail:`, `sms:` and `publishing:` name one in `application { }`; schedules
+use the target's own tick unless told otherwise. Using a connection for a
+capability its package does not provide is a compile error.
+
+**Provider features without breaking the abstraction.** Three ways in:
+typed settings the package declares (`message_stream:` above); standard
+events back (`MailBounced`, `SmsFailed`) that the package maps its webhooks
+onto; and the package's own API, still callable as
+`connection.resource.operation(input)` from the domains the connection
+lists.
+
+**How a package provides one.** The package index says `provides: { mail:
+"mail.jadpo" }`, and that file maps each standard operation onto one of the
+package's operations (question 21):
+
+```jadpo fragment
+// providers/postmark/mail.jadpo
+provide mail {
+    send: {
+        call: email.send
+        input: {
+            From: message.from
+            To: message.to
+            Subject: message.subject
+            HtmlBody: message.html
+            TextBody: message.text
+            MessageStream: settings.message_stream
+        }
+        receipt: response.MessageID
+        failures: {
+            inactive_recipient: MailFailure.recipient_rejected
+        }
+    }
+}
+```
+
+A mapping holds only field paths, literals, lists, nested blocks and enum
+tables: no expressions or calls, so the compiler checks both sides and a
+package stays declarations only. What needs real code is built into the
+runtime: the PostgreSQL, Redis, SMTP and S3 drivers, Workers bindings, wire
+formats, credential schemes, webhook checks and schedule ticks.
+
+**Proving a package works.** Each capability has a conformance suite;
+`jadpo provider conform <package> <capability>` runs it against the
+provider's sandbox. The registry lists a capability only with a passing
+run pinned to the package's digest. Tests use one fake per capability,
+whatever the provider: `mail.sent`, `sms.sent`, `published` (question 22).
+
+**Development.** In `jadpo dev` nothing leaves the machine: mail and SMS go
+to the local inbox, files to local disk, published events to a log in the
+dev console. The database runs its real engine; the cache runs in memory
+(question 23).
+
+**Reports.** The manifest records each connection's capabilities, hosts and
+targets; the network report labels each host with its capability; the
+personal-data report lists mail, SMS, file and publishing connections as
+receiving the marked fields of what they carry. A capability can map the
+provider's delete operation, and then area 15's `PersonErased` subscriber
+is generated.
+
+**Targets.** Each driver and package says which targets it runs on, and
+`jadpo check` refuses a deployable that uses one elsewhere, naming the
+alternative (question 24). Cloudflare Workers can open TCP sockets but block
+port 25, so SMTP works only on port 587; Workers has no timer of its own, so
+its schedule tick is Cloudflare cron; R2 and Queues bindings exist only on
+Workers.
 
 ## Errors
 
@@ -1557,9 +1697,19 @@ Other points:
   before the writes (area 3's amendment cites question 7, which keeps its
   number), whoever may run the action may call (area 9), one changing call
   per action (area 12).
-- **Area 16** sends built-in mail over SMTP; a mail provider's own API
-  (templates, bounces) is a package. Outgoing webhooks could reuse
-  `SignatureScheme`.
+- **Area 16** sends mail through the `mail` capability: SMTP is one
+  built-in driver, a mail package another (question 19). Outgoing webhooks
+  could reuse `SignatureScheme`.
+- **Capabilities (proposed) change decided text.** Area 5's `stores:` and
+  `engine:` and this page's `providers:` become one `connections:` block
+  with `driver:` or `package:` (question 20); area 5's "same engine in every
+  environment" would no longer hold for caches in development (question
+  23); area 12's schedule adapters become built-in tick drivers chosen by
+  the target (question 24); questions 9 and 10 need sandboxes that are
+  credentials, host placeholders and two-part credentials (question 25).
+- **Correction.** Twilio signs webhooks with its own HMAC-SHA1 scheme, not
+  Standard Webhooks as the webhooks section said (checked 2026-10-13); see
+  question 25.
 - **Rule IDs.** The `semantic.service_*` rules below check today's
   declaration. Under packages, the pin, digest and egress rules become
   `jadpo.lock` and package checks (area 14).
@@ -1580,12 +1730,21 @@ Other points:
 | Readiness does not probe providers; a provider outage should not take the app out of service | 7 | Answered here |
 | Magic links and OIDC code exchange (area 8) are ordinary providers; no special feature | 8 | Answered here |
 | Mail templates and translations for message bodies | 10 | Deferred |
+| `connections:` replacing `stores:`; `driver: Driver.x` replacing `engine:`; cache in memory in development | 5 | Questions 20 and 23 |
+| `Sms` type base and a `PhoneNumber` type | 2 | Question 19 |
+| Event delivery stays in the runtime; publishing targets fed from the outbox; schedule ticks chosen by target | 12 | Questions 19 and 24 |
+| Mail and files sections use capabilities; outgoing webhooks as a built-in publishing driver | 16 | Questions 19 and 21 |
+| One fake per capability (`mail.sent`, `sms.sent`, `published`) | 13 | Question 22 |
+| `jadpo provider conform`; local inbox for SMS and published events; Wrangler config generated per target | 14 | Questions 22–24 |
+| Capabilities in the manifest, network and personal-data reports; `erase` mappings generating `PersonErased` subscribers | 15, 18 | Question 21 |
+| `privacy: { self_service: { mail: } }` names the app's mail connection | 15 | Question 20 |
 
 ### Open questions
 
 Questions keep their numbers, because other pages cite 6 and 7. Questions
 1 to 5 and 9 to 12 were decided on 2026-10-12 and reopened on 2026-10-13;
-13 to 18 are new.
+13 to 18 are new; 19 to 25 (capabilities) were raised on 2026-10-13 and
+are open.
 
 1. **How are request and response types written?** *Reopened 2026-10-13;*
    first answered as hand-written types checked against the contract.
@@ -1731,6 +1890,70 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
     connection lists them, `domains: [payments]`, required; other domains go
     through that domain's public actions. It keeps area 1's ownership, and a
     new caller is a one-line diff in review. *Decided 2026-10-13:* yes, as recommended.
+19. **Which capabilities exist, and how is one added?** Raised 2026-10-13
+    from Richard's idea that a package states its purpose. *Recommendation:*
+    seven in the first build: `database` and `cache` (built-in drivers
+    only), `files`, `mail`, `sms`, `publishing` (chosen public events sent
+    outward from the outbox) and `schedules` (built-in ticks only). Event
+    delivery stays in the runtime; telemetry is OpenTelemetry; push
+    notifications come later. Adding one is a language change through the
+    review, always with the same parts: a native API, standard types, a
+    local driver, a fake and a conformance suite. Packages cannot invent
+    capabilities. Dapr and Encore also own a fixed list; Dapr shows that a
+    generic escape hatch (its "bindings") undoes the point.
+20. **Do `stores:` and `providers:` become one `connections:` block?**
+    Raised 2026-10-13. *Recommendation:* yes. Each entry is
+    `driver: Driver.x` (built in) or `package: X.vN`, with typed settings
+    the driver or package declares. The use site says which capability it
+    serves: `store:` on entities, caches and `File` fields; `mail:`, `sms:`
+    and `publishing:` in `application { }`. One connection per resource
+    (bucket, queue), not per vendor account, following Cloudflare's
+    bindings: R2 and Queues need different credentials, and cron none.
+21. **How does a package provide a capability?** Raised 2026-10-13.
+    *Recommendation:* `provides:` in the index names a `provide <capability>`
+    file mapping each standard operation, standard event and optional
+    `erase` onto the package's own operations, with field paths, literals,
+    lists, nested blocks and enum tables only. Provider features come
+    through typed connection settings and the package's own API, never
+    through the capability. Protocol drivers, signing and webhook checks are
+    built into the runtime, so packages stay declarations only. An `erase`
+    mapping generates area 15's `PersonErased` subscriber.
+22. **How is a capability package proven, and how is it faked?** Raised
+    2026-10-13. *Recommendation:* one conformance suite per capability, run
+    by `jadpo provider conform` against the sandbox or an emulator; the
+    registry lists a capability only with a passing run pinned to the
+    digest, and local packages run it in scheduled CI. Tests get one fake
+    per capability (`mail.sent`, `sms.sent`, `published`), whatever the
+    provider; a package's own operations keep their generated fake.
+23. **What runs in development?** Raised 2026-10-13. *Recommendation:*
+    nothing leaves the machine: mail and SMS to the local inbox, files to
+    local disk with local signed links, published events to a log in the
+    dev console, schedules on the local timer. The database runs its real
+    engine; the cache runs in memory. That narrows area 5's "same engine in
+    every environment" for caches, which is safe because a cache cannot
+    change what a request returns. Encore and Rails do the same.
+24. **How do targets limit drivers?** Raised 2026-10-13 with the native
+    and WebAssembly targets. *Recommendation:* every driver and package
+    lists the targets it runs on; `jadpo check` refuses a deployable that
+    uses one elsewhere and names the alternative. The schedule tick is the
+    target's: an in-process timer natively, Cloudflare cron on Workers
+    (generated into the Wrangler config, also sweeping the outbox), or an
+    external tick. On Workers: TCP works but port 25 is blocked, so SMTP
+    needs port 587; there is no local disk; bindings exist only there.
+25. **How are the gaps the modelled packages found closed?** Raised
+    2026-10-13. *Recommendation:* five small additions, each built with the
+    first package that needs it:
+    - a package's sandbox may be a test credential rather than a host
+      (Postmark, Twilio);
+    - a host may hold one placeholder filled from a typed setting
+      (`{account_id}.r2.cloudflarestorage.com`), shown as a pattern in the
+      network report and checked at runtime;
+    - the credential scheme decides the credential's shape (SigV4 takes a
+      key id and a secret);
+    - new webhook checks: basic auth (Postmark, which signs nothing),
+      Twilio's HMAC-SHA1 and AWS SNS certificates;
+    - `connection.webhook_url` as a mapping value (Twilio's status
+      callback).
 
 ### Decisions
 
@@ -1771,3 +1994,10 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
 | Package naming | `Stripe.v2024_06_20`; types `Stripe.PaymentIntent`, versioned names only while two versions are connected | 2026-10-13 |
 | Connection naming | lower_snake_case, chosen by the app, sharing a namespace with domains and libraries | 2026-10-13 |
 | Calling domains | Each connection lists `domains: [...]`; other domains go through that domain's public actions | 2026-10-13 |
+| Capabilities | | |
+| Connections | | |
+| Providing a capability | | |
+| Conformance and fakes | | |
+| Development drivers | | |
+| Targets | | |
+| Gaps from the modelled packages | | |
