@@ -97,6 +97,11 @@ Still missing: JOB-001–004, CONFIG-001–003, BOUNDARY-001 and REL-003.
 - Cloudflare D1 as a store engine, which first needs a Workers runtime.
 - Acting as an OAuth provider, with scopes narrowing policy (decided in
   language area 8, 2026-10-12; needed for AI connectors and integrations).
+- Jadpo package registry and package manager: packages in general, official
+  provider packages served from the provider's own repository, and
+  `jadpo packages outdated` with an upgrade or downgrade plan (changelog,
+  affected calls, resulting compile errors, behaviour changes) for a person to
+  decide on (ideas recorded in language area 11, 2026-10-13).
 - PostgreSQL row-level security as an opt-in store setting, generated from
   policy (decided in language area 6, 2026-10-12).
 
