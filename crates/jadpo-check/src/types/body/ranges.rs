@@ -14,7 +14,7 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::rules::{Const, Num, Rules};
 use super::super::ty::Ty;
-use super::{Body, key};
+use super::{Body, node_key};
 
 /// One end of a range: unbounded below, a number, or unbounded above.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -162,7 +162,7 @@ struct Combined {
     max_length: Option<u64>,
     patterns: Vec<String>,
     email: bool,
-    version: Option<u8>,
+    version: Option<jadpo_std::UuidVersion>,
 }
 
 fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
@@ -185,7 +185,7 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
             out.max_length = Some(out.max_length.map_or(n, |m| m.min(n)));
         }
         out.patterns.extend(rules.pattern.clone());
-        out.email |= rules.email;
+        out.email |= rules.format == Some(jadpo_std::TextFormat::Email);
         if rules.version.is_some() {
             out.version = rules.version;
         }
@@ -193,14 +193,16 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
     out
 }
 
-/// Whether a call counts something: `collection.count`, whose result is
-/// never negative, though its stub can only say `Int`.
-fn counts(call: &ast::CallExpr) -> bool {
-    call.expr()
-        .is_some_and(|callee| crate::tree::written(callee.syntax()) == "collection.count")
-}
-
 impl Body<'_> {
+    /// The smallest result a standard-library call gives, when the
+    /// operation table says.
+    fn floor(&self, call: &ast::CallExpr) -> Option<i64> {
+        match self.facts.reaches.get(&node_key(call.syntax()))? {
+            super::facts::Reach::Std(op) => op.operation().at_least,
+            _ => None,
+        }
+    }
+
     /// Whether the declared ranges prove `value`, of type `actual`, always
     /// follows `target`'s rules.
     pub(super) fn proves(&self, value: &Expr, actual: &Ty, target: &Ty) -> bool {
@@ -261,14 +263,14 @@ impl Body<'_> {
                 }
             }
             Expr::BinExpr(binary) => self.binary_interval(binary),
-            Expr::CallExpr(call) if counts(call) => Interval {
-                low: End::At(Num {
-                    mantissa: 0,
-                    scale: 0,
-                }),
+            // A standard-library operation whose result has a floor its
+            // type can't say, as `collection.count`'s is 0 (the operation
+            // table's `at_least`).
+            Expr::CallExpr(call) if let Some(floor) = self.floor(call) => Interval {
+                low: End::At(Num::whole(i128::from(floor))),
                 high: End::Above,
             },
-            other => match self.types.get(&key(other.syntax())) {
+            other => match self.facts.types.get(&node_key(other.syntax())) {
                 Some(ty) => self.type_interval(ty),
                 None => Interval::ANY,
             },

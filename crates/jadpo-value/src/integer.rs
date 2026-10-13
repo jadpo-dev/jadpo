@@ -1,6 +1,6 @@
 //! The `integer` namespace (area 3, question 7).
 
-pub use crate::rounding::Rounding;
+pub use jadpo_std::Rounding;
 
 /// `dividend / divisor`, rounded as `rounding` says. The checker rules out
 /// a zero divisor; `None` is the fault if one arrives anyway, or if the

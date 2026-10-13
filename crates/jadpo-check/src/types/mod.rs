@@ -20,12 +20,13 @@ mod table;
 mod ty;
 
 pub use body::{
-    BodyCheck, FailureSet, FailureSets, Fallible, body_check, body_problems, failure_sets,
+    Callable, Checked, FailureSet, FailureSets, Fallible, body_problems, callables_of, failure_set,
+    failure_sets, typed_body,
 };
 pub use decl::type_problems;
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{Const, Num, Rules};
 pub use shape::{FieldsBase, Shape, type_shapes};
 pub use signatures::{Callables, Sig, callables};
-pub use table::{Def, FieldDef, TypeTable, VariantDef, type_table};
+pub use table::{Def, FieldDef, TypeTable, TypeView, VariantDef, type_table};
 pub use ty::{BASES, Prim, Ty, TypeRef, container_arity};

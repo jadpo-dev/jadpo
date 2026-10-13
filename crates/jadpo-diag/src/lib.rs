@@ -273,6 +273,8 @@ rules! {
         "14-tooling.html#command-errors", "Generated file could not be written";
     TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,
         "01-project-layout-and-modules.html#toolchain-empty-project", "Project declares nothing";
+    TOOLCHAIN_NOT_BUILT_YET: "toolchain.not_built_yet", area 3, Error, Agent,
+        "03-logic.html#toolchain-not-built-yet", "Operation is declared but not built yet";
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
         "14-tooling.html#the-jadpo-command", "Project could not be found";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,

@@ -141,7 +141,9 @@ fn the_schema_lists_every_kind_with_reserved_ones_marked() {
     for kind in EdgeKind::ALL {
         assert_eq!(EdgeKind::from_word(kind.word()), Some(*kind));
     }
-    assert_eq!(Kind::Site.status(), Status::Reserved);
+    assert_eq!(Kind::Site.status(), Status::Built);
+    assert!(Kind::Site.per_build() && Kind::Branch.per_build() && !Kind::Action.per_build());
+    assert_eq!(Kind::Deployable.status(), Status::Reserved);
 }
 
 #[test]
@@ -165,8 +167,11 @@ fn a_diff_matches_by_key_so_a_registered_rename_reads_as_renamed() {
     after.node(renamed);
     let mut count = node(Kind::Type, "Count");
     count.detail = Detail::Type {
-        base: jadpo_graph::Base::Refines("Int".into()),
-        rules: vec![("min".into(), "0".into())],
+        base: jadpo_graph::Base::Refines(jadpo_graph::TypeRef::Builtin(jadpo_std::Builtin::Int)),
+        rules: jadpo_graph::Rules {
+            min: jadpo_std::Num::parse("0"),
+            ..jadpo_graph::Rules::default()
+        },
         failure: None,
     };
     after.node(count);

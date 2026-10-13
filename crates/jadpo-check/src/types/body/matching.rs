@@ -17,7 +17,8 @@ use super::super::rules::Const;
 use super::super::shape::FieldsBase;
 use super::super::table::Def;
 use super::super::ty::{Prim, Ty};
-use super::{Body, LocalKind, capital, did_you_mean, is_literal, line_span, text};
+use super::facts::PatternFact;
+use super::{Body, LocalKind, capital, did_you_mean, is_literal, line_span, node_key, text};
 use crate::case::starts_upper;
 use crate::tree;
 
@@ -208,6 +209,17 @@ impl Body<'_> {
                 let before = self.out.len();
                 let reading = self.pattern(&subject, &pat, &written);
                 misread |= self.out.len() > before;
+                let fact = match (&reading.case, &subject) {
+                    (Some(Case::Variant(variant)), Subject::Enum(host)) => {
+                        Some(PatternFact::Variant(host.clone(), variant.clone()))
+                    }
+                    (Some(Case::Some), _) => Some(PatternFact::Some),
+                    _ if reading.wildcard => Some(PatternFact::Wildcard),
+                    _ => None,
+                };
+                if let Some(fact) = fact {
+                    self.facts.patterns.insert(node_key(pat.syntax()), fact);
+                }
                 if let Some(first) = &wildcard {
                     if !after_wildcard {
                         after_wildcard = true;

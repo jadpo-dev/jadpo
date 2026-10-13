@@ -23,6 +23,7 @@ rules:
   - syntax.named_argument_duplicate
   - syntax.positional_after_named
   - syntax.unsupported_throw
+  - toolchain.not_built_yet
   - type.argument_count
   - type.arithmetic_operand
   - type.assign_*
@@ -2702,6 +2703,37 @@ error: An inline function is only an argument to a collection operation
   next: Write the expression on its own, or pass it to a collection operation (agent)
   rule: type.inline_function_placement
   help: docs/language/03-logic.html#type-inline-function-placement
+
+check failed: 1 error, 1 file
+```
+
+### `toolchain.not_built_yet`
+
+The standard library declares operations that later areas build, such as
+`temporal.format` (area 10). Until a chunk builds one, calling it is an error
+rather than a program that can't run:
+
+```jadpo check project=e-not-built-yet expect=toolchain.not_built_yet
+type Pence = Int {
+    min: 0
+}
+
+function price_text(price: Pence) -> Pence {
+    var formatted_price: Pence = temporal.format(price)
+    return formatted_price
+}
+```
+
+```text output
+error: `temporal.format` isn't built yet
+ --> main.jadpo:6:34
+  |
+6 |     var formatted_price: Pence = temporal.format(price)
+  |                                  ^^^^^^^^^^^^^^^ declared, not built
+  reason: The language declares `temporal.format`, but this compiler has nothing to run it with yet, so a program that calls it couldn't run.
+  next: Do without `temporal.format` for now (agent)
+  rule: toolchain.not_built_yet
+  help: docs/language/03-logic.html#toolchain-not-built-yet
 
 check failed: 1 error, 1 file
 ```

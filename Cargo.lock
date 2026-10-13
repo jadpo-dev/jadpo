@@ -207,9 +207,8 @@ dependencies = [
  "jadpo-diag",
  "jadpo-fmt",
  "jadpo-graph",
+ "jadpo-std",
  "jadpo-syntax",
- "jadpo-value",
- "regex",
  "salsa",
 ]
 
@@ -254,6 +253,7 @@ name = "jadpo-graph"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "jadpo-std",
 ]
 
 [[package]]
@@ -267,6 +267,13 @@ dependencies = [
  "lsp-server",
  "lsp-types",
  "serde_json",
+]
+
+[[package]]
+name = "jadpo-std"
+version = "0.1.0"
+dependencies = [
+ "regex",
 ]
 
 [[package]]
@@ -289,6 +296,9 @@ dependencies = [
 [[package]]
 name = "jadpo-value"
 version = "0.1.0"
+dependencies = [
+ "jadpo-std",
+]
 
 [[package]]
 name = "libc"

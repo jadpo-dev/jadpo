@@ -19,7 +19,9 @@
 
 mod calls;
 mod expr;
+pub(crate) mod facts;
 mod failing;
+mod lower;
 mod matching;
 mod ops;
 mod outcome;
@@ -27,20 +29,22 @@ mod ranges;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use jadpo_db::{Db, File, Project, Symbols, symbols};
+use jadpo_db::{Db, File, ItemKind, Project, item_tree};
 use jadpo_diag::{Diagnostic, Span, rule};
+use jadpo_graph::Key;
+use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, Stmt};
-use jadpo_syntax::{SyntaxKind, SyntaxNode};
 
 use super::decl::Decls;
-use super::signatures::{Callables, callables};
-use super::table::{TypeTable, type_table};
+use super::table::TypeView;
 use super::ty::{Prim, Ty, TypeNode, TypeRef};
 use crate::case::is_lower_snake;
-use crate::failures::{FailureTable, failure_table};
+use crate::lookups::{FailureView, Lookup, NameView, SigView};
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 
+use facts::{Facts, LocalFact};
+pub(crate) use facts::{NodeKey, node_key};
 pub use failing::Fallible;
 
 /// Which failures can leave one callable (area 4).
@@ -62,25 +66,78 @@ pub struct FailureSets {
     pub callables: BTreeMap<String, FailureSet>,
 }
 
-/// Everything checking one file's bodies finds.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct BodyCheck {
-    pub problems: Vec<Diagnostic>,
-    pub sets: FailureSets,
+/// A callable with a body: a function, action, fixture, test or seed, by
+/// its declaration's position among its file's declarations and, for a
+/// library's function, its position in the library. Positions among
+/// declarations rather than bytes, so an edit inside a body keeps every
+/// callable's identity.
+#[salsa::interned(debug)]
+pub struct Callable<'db> {
+    #[returns(copy)]
+    pub file: File,
+    #[returns(copy)]
+    pub index: u32,
+    #[returns(copy)]
+    pub function: Option<u32>,
 }
 
-/// Checks one file's bodies.
+/// Everything checking one callable finds.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Checked {
+    pub problems: Vec<Diagnostic>,
+    /// For a function, action or library function: its name
+    /// (`library.function` for a library's) and the failures that can
+    /// leave it.
+    pub set: Option<(String, FailureSet)>,
+    /// Its key in the graph.
+    pub key: Option<Key>,
+    /// Its typed body (docs/compiler-runtime.md §2.3), which the graph's
+    /// edges, sites and branches, usage, recursion and the language server
+    /// all read.
+    pub body: jadpo_graph::body::Body,
+}
+
+/// The callables of `file` that have bodies, in source order.
+pub fn callables_of<'db>(db: &'db dyn Db, file: File) -> Vec<Callable<'db>> {
+    let mut out = Vec::new();
+    for item in &item_tree(db, file).items {
+        match item.kind {
+            ItemKind::Function
+            | ItemKind::Action
+            | ItemKind::Fixture
+            | ItemKind::Test
+            | ItemKind::Seed => out.push(Callable::new(db, file, item.index, None)),
+            ItemKind::Library => {
+                for function in &item.functions {
+                    out.push(Callable::new(db, file, item.index, Some(function.index)));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Checks one callable: its diagnostics, its failure set and its typed
+/// body, from one walk. It reads its own file and, through the per-name
+/// lookups, only the declarations it names, so an edit elsewhere checks it
+/// again only when something it reads changed.
 #[salsa::tracked(returns(ref))]
-pub fn body_check(db: &dyn Db, project: Project, file: File) -> BodyCheck {
+pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db>) -> Checked {
+    let file = callable.file(db);
     let Some(source) = tree::source(db, file) else {
-        return BodyCheck::default();
+        return Checked::default();
     };
+    let Some(decl) = tree::decl_at(&source, callable.index(db)) else {
+        return Checked::default();
+    };
+    let lookup = Lookup::new(db, project);
     let mut checker = Body {
         path: file.path(db),
-        table: type_table(db, project),
-        calls: callables(db, project),
-        symbols: symbols(db, project),
-        failures: failure_table(db, project),
+        table: &lookup,
+        calls: &lookup,
+        symbols: &lookup,
+        failures: &lookup,
         scopes: Vec::new(),
         result: Ty::Prim(Prim::Unit),
         context: Context::Action,
@@ -91,32 +148,59 @@ pub fn body_check(db: &dyn Db, project: Project, file: File) -> BodyCheck {
         dead: false,
         flow: Flow::default(),
         handled: Vec::new(),
-        constructions: BTreeMap::new(),
-        types: BTreeMap::new(),
         arm: Arm::None,
-        sets: FailureSets::default(),
+        facts: Facts::default(),
+        set: None,
         out: Vec::new(),
     };
-    for decl in source.decls() {
-        checker.decl(&decl);
-    }
-    BodyCheck {
+    let Some(target) = checker.target(&decl, callable.function(db)) else {
+        return Checked::default();
+    };
+    let key = crate::graph::callable_key(&lookup, file.path(db), &decl, callable.function(db));
+    let syntax = target.syntax.clone();
+    checker.callable(target);
+    let body = lower::lower(&checker, &lookup, file.text(db), &syntax);
+    Checked {
         problems: checker.out,
-        sets: checker.sets,
+        set: checker.set,
+        key,
+        body,
     }
 }
 
 /// The problems inside one file's bodies.
-pub fn body_problems(db: &dyn Db, project: Project, file: File) -> &Vec<Diagnostic> {
-    &body_check(db, project, file).problems
+#[salsa::tracked(returns(ref))]
+pub fn body_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    callables_of(db, file)
+        .into_iter()
+        .flat_map(|callable| typed_body(db, project, callable).problems.iter().cloned())
+        .collect()
 }
 
-/// Which failures can leave each function and action in one file: a query
-/// of its own, so whatever reads the sets is reused when an edit leaves
-/// them equal.
+/// Which failures can leave one callable: a query of its own, so whatever
+/// reads the set is reused when a body edit leaves it equal, though the
+/// typed body itself changed.
+#[salsa::tracked(returns(ref))]
+pub fn failure_set<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    callable: Callable<'db>,
+) -> Option<(String, FailureSet)> {
+    typed_body(db, project, callable).set.clone()
+}
+
+/// Which failures can leave each function and action in one file.
 #[salsa::tracked(returns(ref))]
 pub fn failure_sets(db: &dyn Db, project: Project, file: File) -> FailureSets {
-    body_check(db, project, file).sets.clone()
+    let mut sets = FailureSets::default();
+    for callable in callables_of(db, file) {
+        if let Some((name, set)) = failure_set(db, project, callable) {
+            sets.callables
+                .entry(name.clone())
+                .or_insert_with(|| set.clone());
+        }
+    }
+    sets
 }
 
 /// What can leave the callable being checked.
@@ -141,12 +225,6 @@ enum Arm {
     /// A failure arm, with the failure it handles; `None` when the arm's
     /// pattern is already reported.
     Failure(Option<String>),
-}
-
-/// A node's position in the file, as a key.
-fn key(node: &SyntaxNode) -> (u32, u32) {
-    let range = node.text_range();
-    (range.start().into(), range.end().into())
 }
 
 /// What kind of code is being checked, which decides what it may call
@@ -177,7 +255,7 @@ impl Context {
 
 /// How a name came into scope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum LocalKind {
+pub(crate) enum LocalKind {
     Param,
     Var,
     VarMut,
@@ -191,6 +269,8 @@ enum LocalKind {
 
 #[derive(Clone, Debug)]
 struct Local {
+    /// Its number in the typed body.
+    id: usize,
     name: String,
     ty: Ty,
     kind: LocalKind,
@@ -215,10 +295,10 @@ enum CallKind {
 
 struct Body<'a> {
     path: &'a str,
-    table: &'a TypeTable,
-    calls: &'a Callables,
-    symbols: &'a Symbols,
-    failures: &'a FailureTable,
+    table: &'a dyn TypeView,
+    calls: &'a dyn SigView,
+    symbols: &'a dyn NameView,
+    failures: &'a dyn FailureView,
     scopes: Vec<Vec<Local>>,
     /// The result type of the callable being checked.
     result: Ty,
@@ -236,21 +316,20 @@ struct Body<'a> {
     /// unreachable.
     dead: bool,
     flow: Flow,
-    /// The calls an `attempt` or an outcome `match` is handling, by
-    /// position.
-    handled: Vec<(u32, u32)>,
-    /// Whether each runtime construction can fail, by the call's position.
-    constructions: BTreeMap<(u32, u32), Fallible>,
-    /// The type each expression was found to have, by position, for
-    /// proving a construction safe.
-    types: BTreeMap<(u32, u32), Ty>,
+    /// The calls an `attempt` or an outcome `match` is handling.
+    handled: Vec<NodeKey>,
     arm: Arm,
-    sets: FailureSets,
+    /// What the walk decided, for the typed body.
+    facts: Facts,
+    /// The callable's name and failure set, once checked.
+    set: Option<(String, FailureSet)>,
     out: Vec<Diagnostic>,
 }
 
 /// One callable to check.
-struct Callable {
+struct Target {
+    /// Its declaration, or its function in a library.
+    syntax: jadpo_syntax::SyntaxNode,
     context: Context,
     /// `function`, `action`, `test` ...
     word: &'static str,
@@ -335,9 +414,13 @@ impl Body<'_> {
         ty.map_or(Ty::Error, |ty| self.table.resolve(&TypeRef::from_type(&ty)))
     }
 
-    fn decl(&mut self, decl: &Decl) {
+    /// What to check for declaration `decl`, or its library's function
+    /// `function`; `None` for a declaration without a body.
+    fn target(&mut self, decl: &Decl, function: Option<u32>) -> Option<Target> {
         let name = tree::decl_name(decl).as_ref().and_then(tree::name_text);
-        let callable = |context, word, params, fails, contract, result, body| Callable {
+        let syntax = decl.syntax().clone();
+        let target = |context, word, params, fails, contract, result, body| Target {
+            syntax: syntax.clone(),
             context,
             word,
             name: name.clone(),
@@ -347,8 +430,8 @@ impl Body<'_> {
             result,
             body,
         };
-        match decl {
-            Decl::FunctionDecl(d) => self.callable(callable(
+        Some(match (decl, function) {
+            (Decl::FunctionDecl(d), None) => target(
                 Context::Function,
                 "function",
                 d.param_list(),
@@ -356,8 +439,8 @@ impl Body<'_> {
                 true,
                 d.ret_type(),
                 d.block(),
-            )),
-            Decl::ActionDecl(d) => self.callable(callable(
+            ),
+            (Decl::ActionDecl(d), None) => target(
                 Context::Action,
                 "action",
                 d.param_list(),
@@ -365,8 +448,8 @@ impl Body<'_> {
                 true,
                 d.ret_type(),
                 d.block(),
-            )),
-            Decl::FixtureDecl(d) => self.callable(callable(
+            ),
+            (Decl::FixtureDecl(d), None) => target(
                 Context::Action,
                 "fixture",
                 d.param_list(),
@@ -374,39 +457,40 @@ impl Body<'_> {
                 false,
                 d.ret_type(),
                 d.block(),
-            )),
-            Decl::LibraryDecl(d) => {
+            ),
+            (Decl::LibraryDecl(d), Some(index)) => {
+                // A library's functions call each other bare.
                 self.library = name.clone();
-                for function in tree::library_functions(d) {
-                    let function_name = function.name().as_ref().and_then(tree::name_text);
-                    self.callable(Callable {
-                        context: Context::Function,
-                        word: "function",
-                        name: function_name
-                            .map(|f| format!("{}.{f}", name.clone().unwrap_or_default())),
-                        params: function.param_list(),
-                        fails: function.fails_clause(),
-                        contract: true,
-                        result: function.ret_type(),
-                        body: function.block(),
-                    });
+                let function = tree::library_functions(d).into_iter().nth(index as usize)?;
+                let function_name = function.name().as_ref().and_then(tree::name_text);
+                Target {
+                    syntax: function.syntax().clone(),
+                    context: Context::Function,
+                    word: "function",
+                    name: function_name
+                        .map(|f| format!("{}.{f}", name.clone().unwrap_or_default())),
+                    params: function.param_list(),
+                    fails: function.fails_clause(),
+                    contract: true,
+                    result: function.ret_type(),
+                    body: function.block(),
                 }
-                self.library = None;
             }
-            Decl::TestDecl(d) => self.callable(Callable {
+            (Decl::TestDecl(d), None) => Target {
                 name: None,
-                ..callable(Context::Action, "test", None, None, false, None, d.block())
-            }),
-            Decl::SeedDecl(d) => self.callable(Callable {
+                ..target(Context::Action, "test", None, None, false, None, d.block())
+            },
+            (Decl::SeedDecl(d), None) => Target {
                 name: None,
-                ..callable(Context::Action, "seed", None, None, false, None, d.block())
-            }),
-            _ => {}
-        }
+                ..target(Context::Action, "seed", None, None, false, None, d.block())
+            },
+            _ => return None,
+        })
     }
 
-    fn callable(&mut self, callable: Callable) {
-        let Callable {
+    fn callable(&mut self, callable: Target) {
+        let Target {
+            syntax: _,
             context,
             word,
             name,
@@ -459,13 +543,15 @@ impl Body<'_> {
         if contract {
             self.fails_list(fails.as_ref(), params.as_ref(), word);
         }
-        if let Some(name) = name
-            && contract
-        {
-            let flow = std::mem::take(&mut self.flow);
-            self.sets.callables.entry(name).or_insert(FailureSet {
-                failures: flow.leaving.into_keys().collect(),
-                open: flow.open,
+        if contract {
+            self.set = name.map(|name| {
+                (
+                    name,
+                    FailureSet {
+                        failures: self.flow.leaving.keys().cloned().collect(),
+                        open: self.flow.open,
+                    },
+                )
             });
         }
     }
@@ -487,10 +573,19 @@ impl Body<'_> {
             || self.is_local(&text)
             || !is_lower_snake(&text)
             || StdNames::get().reserved(&text)
-            || self.symbols.domains.contains(&text)
+            || self.symbols.is_domain(&text)
             || self.symbols.library(&text).is_some();
+        let id = self.facts.locals.len();
+        self.facts.locals.push(LocalFact {
+            name: text.clone(),
+            ty: ty.clone(),
+            kind,
+            span: span.clone(),
+        });
+        self.facts.declared.insert(node_key(name.syntax()), id);
         if let Some(scope) = self.scopes.last_mut() {
             scope.push(Local {
+                id,
                 name: text,
                 ty,
                 kind,
@@ -508,15 +603,18 @@ impl Body<'_> {
             .find_map(|scope| scope.iter().rev().find(|local| local.name == name))
     }
 
-    /// The type of a local, marking it read.
-    fn read(&mut self, name: &str) -> Option<Ty> {
+    /// The type of the local `name` reads, marking it read.
+    fn read(&mut self, name: &ast::NameRef) -> Option<Ty> {
+        let written = text(name);
         let local = self
             .scopes
             .iter_mut()
             .rev()
-            .find_map(|scope| scope.iter_mut().rev().find(|local| local.name == name))?;
+            .find_map(|scope| scope.iter_mut().rev().find(|local| local.name == written))?;
         local.used = true;
-        Some(local.ty.clone())
+        let (id, ty) = (local.id, local.ty.clone());
+        self.facts.reads.insert(node_key(name.syntax()), id);
+        Some(ty)
     }
 
     fn is_local(&self, name: &str) -> bool {
@@ -713,7 +811,7 @@ impl Body<'_> {
                 // `assert complete(id) fails TodoNotFound` expects the call
                 // to fail (area 13): it is handled there.
                 let handled = match (assert.expr(), assert.assert_fails()) {
-                    (Some(Expr::CallExpr(call)), Some(_)) => Some(key(call.syntax())),
+                    (Some(Expr::CallExpr(call)), Some(_)) => Some(node_key(call.syntax())),
                     _ => None,
                 };
                 self.handled.extend(handled);
@@ -842,6 +940,10 @@ impl Body<'_> {
         match assign.target() {
             Some(Expr::NameRef(name)) => {
                 let written = text(&name);
+                if let Some(local) = self.find(&written) {
+                    let id = local.id;
+                    self.facts.reads.insert(node_key(name.syntax()), id);
+                }
                 match self.find(&written).cloned() {
                     Some(local) if local.kind == LocalKind::VarMut => {
                         if let Some(value) = value {

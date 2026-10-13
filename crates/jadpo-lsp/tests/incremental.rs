@@ -104,9 +104,14 @@ fn an_edit_rechecks_only_what_it_changes() {
     );
     let log = server.loaded().expect("project").db.take_executions();
     assert_eq!(
-        count(&log, "body_check"),
+        count(&log, "typed_body"),
         1,
         "only the edited body: {log:?}"
+    );
+    assert_eq!(
+        count(&log, "body_problems"),
+        1,
+        "only the edited file's problems: {log:?}"
     );
     assert_eq!(count(&log, "symbols"), 0, "{log:?}");
     assert_eq!(count(&log, "type_table"), 0, "{log:?}");

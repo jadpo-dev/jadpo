@@ -13,12 +13,10 @@ use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, Expr, MemberItem};
 
 use super::super::shape::FieldsBase;
-use super::super::signatures::Sig;
 use super::super::table::{Def, FieldDef};
 use super::super::ty::Ty;
-use super::{Arm, Body, did_you_mean, is_literal, key, line_span, text};
-use crate::case::starts_upper;
-use crate::std_lib::{Namespace, StdNames};
+use super::facts::Reach;
+use super::{Arm, Body, did_you_mean, is_literal, line_span, node_key, text};
 use crate::tree::{self, dotted};
 
 /// What a call can do besides give its result.
@@ -41,85 +39,32 @@ pub enum Fallible {
 impl Body<'_> {
     // --- what a call can fail with ----------------------------------------
 
-    /// What a call can fail with, from the callee's `fails` list.
+    /// What a call can fail with: a construction's verdict, or the
+    /// `fails` list of what the call reaches, as the call was resolved.
     pub(super) fn call_fallible(&self, call: &ast::CallExpr) -> Fallible {
-        if let Some(verdict) = self.constructions.get(&key(call.syntax())) {
+        let key = node_key(call.syntax());
+        if let Some(verdict) = self.facts.constructions.get(&key) {
             return verdict.clone();
         }
-        match call.expr() {
-            Some(Expr::NameRef(name)) => {
-                let callee = text(&name);
-                if starts_upper(&callee) || self.is_local(&callee) {
-                    return Fallible::Unknown;
-                }
-                if let Some(library) = &self.library
-                    && let Some(sig) = self.calls.library.get(&(library.clone(), callee.clone()))
-                {
-                    return self.sig_fallible(sig);
-                }
-                self.calls
-                    .plain
-                    .get(&callee)
-                    .map_or(Fallible::Unknown, |sig| self.sig_fallible(sig))
+        match self.facts.reaches.get(&key) {
+            Some(Reach::Callable { fails, .. } | Reach::Library { fails, .. }) => {
+                self.fails_fallible(fails)
             }
-            Some(callee @ Expr::FieldExpr(_)) => {
-                let Some((first, rest)) = dotted(&callee) else {
-                    return Fallible::Unknown;
-                };
-                let head = text(&first);
-                let rest: Vec<String> = rest.iter().map(text).collect();
-                if starts_upper(&head) {
-                    return match rest.as_slice() {
-                        [operation] if self.callable_kind(&head) == Some(ItemKind::Entity) => {
-                            self.entity_fallible(&head, operation)
-                        }
-                        _ => Fallible::Unknown,
-                    };
-                }
-                let [member] = rest.as_slice() else {
-                    return Fallible::Unknown;
-                };
-                if self.is_local(&head) {
-                    return Fallible::Unknown;
-                }
-                let names = StdNames::get();
-                if names.namespace(&head) == Some(Namespace::Standard) {
-                    // The standard library computes its results; nothing in
-                    // it fails with a domain failure.
-                    return Fallible::Never;
-                }
-                if self.symbols.library(&head).is_some() {
-                    return self
-                        .calls
-                        .library
-                        .get(&(head, member.clone()))
-                        .map_or(Fallible::Unknown, |sig| self.sig_fallible(sig));
-                }
-                if self.symbols.domains.contains(&head)
-                    && matches!(
-                        self.callable_kind(member),
-                        Some(ItemKind::Action | ItemKind::Query)
-                    )
-                {
-                    return self
-                        .calls
-                        .plain
-                        .get(member)
-                        .map_or(Fallible::Unknown, |sig| self.sig_fallible(sig));
-                }
-                Fallible::Unknown
-            }
-            _ => Fallible::Unknown,
+            // The standard library computes its results; nothing in it
+            // fails with a domain failure.
+            Some(Reach::Std(_)) => Fallible::Never,
+            Some(Reach::Entity { entity, operation }) => self.entity_fallible(entity, operation),
+            Some(Reach::Construct(_) | Reach::Unknown) | None => Fallible::Unknown,
         }
     }
 
-    fn sig_fallible(&self, sig: &Sig) -> Fallible {
-        if sig.fails.is_empty() {
+    fn fails_fallible(&self, fails: &[String]) -> Fallible {
+        if fails.is_empty() {
             return Fallible::Never;
         }
         let mut names: Vec<String> = Vec::new();
-        for name in &sig.fails {
-            if !self.failures.contains(name) {
+        for name in fails {
+            if !self.failures.is_declared_failure(name) {
                 // Not a failure: reported where the list is written.
                 return Fallible::Unknown;
             }
@@ -136,7 +81,7 @@ impl Body<'_> {
     /// blocks, both built with area 6.
     fn entity_fallible(&self, entity: &str, operation: &str) -> Fallible {
         let missing = format!("{entity}NotFound");
-        if operation == "get" && self.failures.contains(&missing) {
+        if operation == "get" && self.failures.is_declared_failure(&missing) {
             Fallible::Fails(vec![missing])
         } else {
             Fallible::Unknown
@@ -146,7 +91,7 @@ impl Body<'_> {
     /// A call nothing handles: one that can fail needs `attempt` or an
     /// outcome `match` (area 3, question 11).
     pub(super) fn unhandled(&mut self, call: &ast::CallExpr) {
-        if self.handled.contains(&key(call.syntax())) {
+        if self.handled.contains(&node_key(call.syntax())) {
             return;
         }
         let fallible = self.call_fallible(call);
@@ -200,7 +145,12 @@ impl Body<'_> {
     pub(super) fn reject(&mut self, reject: &ast::RejectExpr) {
         let span = line_span(self.path, reject.syntax());
         match reject.expr().and_then(|inner| self.failure_given(&inner)) {
-            Some(name) => self.leave(&name, span, "rejected here"),
+            Some(name) => {
+                self.facts
+                    .rejects
+                    .insert(node_key(reject.syntax()), name.clone());
+                self.leave(&name, span, "rejected here");
+            }
             None => self.flow.open = true,
         }
     }
@@ -210,7 +160,12 @@ impl Body<'_> {
     pub(super) fn propagate(&mut self, propagate: &ast::PropagateExpr) {
         let span = self.span(propagate);
         match self.arm.clone() {
-            Arm::Failure(Some(name)) => self.leave(&name, span, "passed on here"),
+            Arm::Failure(Some(name)) => {
+                self.facts
+                    .propagates
+                    .insert(node_key(propagate.syntax()), name.clone());
+                self.leave(&name, span, "passed on here");
+            }
             Arm::Failure(None) => {}
             Arm::Success => {
                 // The outcome check reports it, at the arm.
@@ -384,14 +339,14 @@ impl Body<'_> {
         };
         let (ty, fallible) = match &inner {
             Expr::CallExpr(call) => {
-                self.handled.push(key(call.syntax()));
+                self.handled.push(node_key(call.syntax()));
                 let ty = self.call(call, expected);
                 self.handled.pop();
                 (ty, self.call_fallible(call))
             }
             Expr::RecordExpr(record) => {
                 let before = self.out.len();
-                self.handled.push(key(record.syntax()));
+                self.handled.push(node_key(record.syntax()));
                 let ty = self.infer(&inner);
                 self.handled.pop();
                 let fallible = if self.out.len() > before {
@@ -445,14 +400,20 @@ impl Body<'_> {
                     self.unknown_mapping(mapping, &written, false);
                 }
             }
-            Fallible::Construction => self.construction_mappings(&mappings, &written, span),
+            Fallible::Construction => {
+                if let Some(failure) = self.construction_mappings(&mappings, &written, span) {
+                    self.facts
+                        .mapped
+                        .insert(node_key(attempt.syntax()), failure);
+                }
+            }
         }
         ty
     }
 
     /// An entity write with a block (area 6), or an object being built.
     fn record_fallible(&self, record: &ast::RecordExpr) -> Fallible {
-        if let Some(verdict) = self.constructions.get(&key(record.syntax())) {
+        if let Some(verdict) = self.facts.constructions.get(&node_key(record.syntax())) {
             return verdict.clone();
         }
         match record.expr() {
@@ -487,7 +448,12 @@ impl Body<'_> {
         let inner_end = u32::from(inner.syntax().text_range().end());
         let end = u32::from(attempt.syntax().text_range().end());
         let reason = match inner {
-            Expr::CallExpr(call) if self.constructions.contains_key(&key(call.syntax())) => {
+            Expr::CallExpr(call)
+                if self
+                    .facts
+                    .constructions
+                    .contains_key(&node_key(call.syntax())) =>
+            {
                 format!(
                     "The declared ranges prove `{written}` always follows its type's rules, so building it never fails; `attempt` marks only what can."
                 )
@@ -520,19 +486,22 @@ impl Body<'_> {
 
     /// Whether a call is to a standard-library operation.
     fn is_standard(&self, call: &ast::CallExpr) -> bool {
-        call.expr()
-            .as_ref()
-            .and_then(dotted)
-            .is_some_and(|(first, _)| {
-                let head = text(&first);
-                !self.is_local(&head)
-                    && StdNames::get().namespace(&head) == Some(Namespace::Standard)
-            })
+        matches!(
+            self.facts.reaches.get(&node_key(call.syntax())),
+            Some(Reach::Std(_))
+        )
     }
 
     /// The mappings after a construction that can fail: `invalid:` names
-    /// an `invalid_value` failure, and nothing else is mapped.
-    fn construction_mappings(&mut self, mappings: &[ast::Mapping], written: &str, span: Span) {
+    /// an `invalid_value` failure, and nothing else is mapped. The failure
+    /// `invalid:` names, when it names one.
+    fn construction_mappings(
+        &mut self,
+        mappings: &[ast::Mapping],
+        written: &str,
+        span: Span,
+    ) -> Option<String> {
+        let mut invalid = None;
         let mut named = false;
         let mut unknown = false;
         for mapping in mappings {
@@ -557,9 +526,10 @@ impl Body<'_> {
             };
             self.leave(&failure, span.clone(), "mapped here");
             self.mapping_kind(mapping, &failure, "invalid", "invalid_value");
+            invalid = Some(failure);
         }
         if named || unknown {
-            return;
+            return invalid;
         }
         self.flow.open = true;
         self.out.push(
@@ -571,12 +541,13 @@ impl Body<'_> {
             .reason("The value is only known when the program runs, and the declared ranges don't prove it follows the type's rules; `invalid:` names the `invalid_value` failure the caller gets when it doesn't.")
             .next(format!("Add `invalid: SomeFailure` after `{written}`")),
         );
+        None
     }
 
     /// The failure a mapping names must have the kind its condition needs
     /// (area 4, question 7).
     fn mapping_kind(&mut self, mapping: &ast::Mapping, failure: &str, condition: &str, kind: &str) {
-        let Some(info) = self.failures.get(failure) else {
+        let Some(info) = self.failures.failure_info(failure) else {
             return;
         };
         let Some(actual) = info.kind.clone() else {
@@ -732,7 +703,7 @@ impl Body<'_> {
         // Stale: listed, but nothing lets it out.
         for (index, (written, ty)) in entries.iter().enumerate() {
             if self.flow.leaving.contains_key(written)
-                || !self.failures.contains(written)
+                || !self.failures.is_declared_failure(written)
                 || entries[..index]
                     .iter()
                     .any(|(earlier, _)| earlier == written)

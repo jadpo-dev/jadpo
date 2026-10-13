@@ -3,9 +3,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use jadpo_db::{Db, File, Item, Project, item_tree, location, symbols};
+use jadpo_db::{Db, File, Item, Project, item_tree, location};
+use jadpo_graph::body::Refers;
 use jadpo_graph::{
-    Base, Detail, EdgeKind, FailureDetail, Key, Kind, Node, Section, Signature,
+    Base, Detail, EdgeKind, FailureDetail, Key, Kind, Node, Section, Signature, TypeRef,
     catalogue::status_of,
 };
 use jadpo_syntax::SyntaxNode;
@@ -13,12 +14,11 @@ use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
 use super::paths::Resolver;
 use super::text::{LineIndex, digest, doc, place};
-use super::{declaration_key, field_key, library_function_key, registry, variant_key};
-use crate::failures::{FailureTable, failure_table};
+use super::{declaration_key, field_key, library_function_key, type_ref, variant_key};
+use crate::lookups::{FailureView, Lookup, NameView, SigView};
 use crate::tree;
 use crate::types::{
-    Callables, Const, Def, FieldDef, FieldsBase, Num, Rules, Sig, Ty, TypeRef, TypeTable,
-    callables, failure_sets, type_table,
+    Callable, Const, Def, FieldDef, FieldsBase, Rules, Sig, Ty, TypeView, typed_body,
 };
 
 /// The nodes a file declares and the edges that start at them.
@@ -33,8 +33,11 @@ pub fn file_part(db: &dyn Db, project: Project, file: File) -> FilePart {
     let Some(source) = tree::source(db, file) else {
         return FilePart::default();
     };
-    let symbols = symbols(db, project);
+    let lookup = Lookup::new(db, project);
     let mut part = Part {
+        db,
+        project,
+        file,
         path: file.path(db),
         lines: LineIndex::new(file.text(db)),
         domain: location(db, project, file)
@@ -42,18 +45,15 @@ pub fn file_part(db: &dyn Db, project: Project, file: File) -> FilePart {
             .domain()
             .map(str::to_string),
         resolver: Resolver {
-            symbols,
-            table: type_table(db, project),
-            callables: callables(db, project),
+            symbols: &lookup,
+            table: &lookup,
         },
-        table: type_table(db, project),
-        callables: callables(db, project),
-        failures: failure_table(db, project),
+        lookup: &lookup,
         items: &item_tree(db, file).items,
         out: FilePart::default(),
     };
     let mut node = part.node(
-        registry().key(Kind::File, part.path, None),
+        lookup.registry().key(Kind::File, part.path, None),
         Kind::File,
         part.path.clone(),
         source.syntax().clone(),
@@ -70,34 +70,58 @@ pub fn file_part(db: &dyn Db, project: Project, file: File) -> FilePart {
     for (index, decl) in source.decls().enumerate() {
         part.decl(&decl, index);
     }
-    for (name, set) in &failure_sets(db, project, file).callables {
-        let from = match name.split_once('.') {
-            Some((library, function)) => Some(library_function_key(library, function)),
-            None => declaration_key(symbols, name),
-        };
-        let Some(from) = from else { continue };
-        for failure in &set.failures {
-            if let Some(to) = declaration_key(symbols, failure) {
-                part.out.edges.push((from.clone(), EdgeKind::Raises, to));
-            }
-        }
-    }
     part.out
 }
 
 struct Part<'a> {
+    db: &'a dyn Db,
+    project: Project,
+    file: File,
     path: &'a String,
     lines: LineIndex,
     domain: Option<String>,
     resolver: Resolver<'a>,
-    table: &'a TypeTable,
-    callables: &'a Callables,
-    failures: &'a FailureTable,
+    lookup: &'a Lookup<'a>,
     items: &'a [Item],
     out: FilePart,
 }
 
 impl Part<'_> {
+    /// A type as the graph holds it: canonically when it resolved, as
+    /// written otherwise.
+    fn type_of(&self, ty: Option<&Ty>, written: &str) -> TypeRef {
+        match ty {
+            Some(ty) if !ty.has_error() => type_ref(self.lookup, ty),
+            _ => TypeRef::Written(written.to_string()),
+        }
+    }
+
+    fn signature(&self, sig: Option<&Sig>, written: &jadpo_db::Signature) -> Signature {
+        Signature {
+            params: written
+                .params
+                .iter()
+                .enumerate()
+                .map(|(i, param)| {
+                    let resolved = sig.and_then(|sig| sig.params.get(i)).map(|(_, ty)| ty);
+                    (param.name.clone(), self.type_of(resolved, &param.ty))
+                })
+                .collect(),
+            result: match &written.result {
+                Some(result) => self.type_of(sig.map(|sig| &sig.result), result),
+                None => TypeRef::Builtin(jadpo_std::Builtin::Unit),
+            },
+            fails: written
+                .fails
+                .iter()
+                .map(|failure| match declaration_key(self.lookup, failure) {
+                    Some(key) if self.lookup.is_declared_failure(failure) => TypeRef::Node(key),
+                    _ => TypeRef::Written(failure.clone()),
+                })
+                .collect(),
+        }
+    }
+
     /// A node for `syntax`, with its place, digest and description.
     fn node(&self, key: Key, kind: Kind, name: String, syntax: SyntaxNode) -> Node {
         let mut node = Node::new(key, kind, name);
@@ -137,23 +161,26 @@ impl Part<'_> {
                 if let Some(item) = item
                     && let Some(kind) = super::kind_of(&item.kind)
                 {
-                    let key = registry().key(kind, &item.name, None);
+                    let key = self.lookup.registry().key(kind, &item.name, None);
                     let node = self.node(key, kind, item.name.clone(), decl.syntax().clone());
                     self.out.nodes.push(node);
                 }
             }
             Decl::SeedDecl(d) => {
                 if let Some(name) = d.name().as_ref().and_then(tree::name_text) {
-                    let key = registry().key(Kind::Seed, &name, None);
-                    self.runnable(key, Kind::Seed, name, d.syntax());
+                    let key = self.lookup.registry().key(Kind::Seed, &name, None);
+                    self.runnable(key, Kind::Seed, name, d.syntax(), index);
                 }
             }
             Decl::TestDecl(d) => {
                 if let Some(token) = d.string_token() {
                     let name = token.text().trim_matches('"').to_string();
-                    let key =
-                        registry().key(Kind::Test, &format!("{} \"{name}\"", self.path), None);
-                    self.runnable(key, Kind::Test, name, d.syntax());
+                    let key = self.lookup.registry().key(
+                        Kind::Test,
+                        &format!("{} \"{name}\"", self.path),
+                        None,
+                    );
+                    self.runnable(key, Kind::Test, name, d.syntax(), index);
                 }
             }
             Decl::PackageDecl(_)
@@ -164,35 +191,34 @@ impl Part<'_> {
     }
 
     /// A test or a seed: statements that call actions.
-    fn runnable(&mut self, key: Key, kind: Kind, name: String, syntax: &SyntaxNode) {
+    fn runnable(&mut self, key: Key, kind: Kind, name: String, syntax: &SyntaxNode, index: usize) {
         let node = self.node(key.clone(), kind, name, syntax.clone());
         self.out.nodes.push(node);
-        let uses = self.resolver.uses(syntax, &|_| false);
-        let calls = self.resolver.calls(syntax, None);
-        self.edges(&key, EdgeKind::Uses, uses);
-        self.edges(&key, EdgeKind::Calls, calls);
+        self.body(&key, index as u32, None);
     }
 
     fn callable(&mut self, syntax: &SyntaxNode, item: &Item, public: bool) {
         let Some(kind) = super::kind_of(&item.kind) else {
             return;
         };
-        let key = registry().key(kind, &item.name, None);
+        let key = self.lookup.registry().key(kind, &item.name, None);
         let mut node = self.node(key.clone(), kind, item.name.clone(), syntax.clone());
         node.public = public;
-        node.detail = Detail::Callable(signature(
-            self.callables.plain.get(&item.name),
-            &item.signature,
-        ));
+        node.detail =
+            Detail::Callable(self.signature(self.lookup.signature(&item.name), &item.signature));
         self.out.nodes.push(node);
-        let uses = self.resolver.uses(syntax, &|_| false);
-        let calls = self.resolver.calls(syntax, None);
-        self.edges(&key, EdgeKind::Uses, uses);
-        self.edges(&key, EdgeKind::Calls, calls);
+        if kind == Kind::Query {
+            // A query is a declarative node, not a body (§2.3): what its
+            // block names is read from the block.
+            let uses = self.resolver.uses(syntax, &|_| false);
+            self.edges(&key, EdgeKind::Uses, uses);
+        } else {
+            self.body(&key, item.index, None);
+        }
     }
 
     fn library(&mut self, decl: &ast::LibraryDecl, item: &Item) {
-        let key = registry().key(Kind::Library, &item.name, None);
+        let key = self.lookup.registry().key(Kind::Library, &item.name, None);
         let mut node = self.node(
             key.clone(),
             Kind::Library,
@@ -205,7 +231,7 @@ impl Part<'_> {
             .iter()
             .zip(item.functions.iter())
         {
-            let child = library_function_key(&item.name, &member.name);
+            let child = library_function_key(self.lookup.registry(), &item.name, &member.name);
             let mut node = self.node(
                 child.clone(),
                 Kind::Function,
@@ -214,35 +240,86 @@ impl Part<'_> {
             );
             node.parent = Some(key.clone());
             node.public = item.public;
-            node.detail = Detail::Callable(signature(
-                self.callables
-                    .library
-                    .get(&(item.name.clone(), member.name.clone())),
+            node.detail = Detail::Callable(self.signature(
+                self.lookup.library_signature(&item.name, &member.name),
                 &member.signature,
             ));
             self.out.nodes.push(node);
-            let uses = self.resolver.uses(function.syntax(), &|_| false);
-            let calls = self.resolver.calls(function.syntax(), Some(&item.name));
-            self.edges(&child, EdgeKind::Uses, uses);
-            self.edges(&child, EdgeKind::Calls, calls);
+            self.body(&child, item.index, Some(member.index));
         }
+    }
+
+    /// What a callable's typed body says: the types it uses, what it calls
+    /// and the failures that can leave it, as edges, and its sites and
+    /// branches, as nodes numbered per build.
+    fn body(&mut self, key: &Key, index: u32, function: Option<u32>) {
+        let callable = Callable::new(self.db, self.file, index, function);
+        let checked = typed_body(self.db, self.project, callable);
+        let body = &checked.body;
+        let uses: BTreeSet<Key> = body
+            .names
+            .iter()
+            .filter_map(|name| match &name.refers {
+                Refers::Node { key, uses: true } => Some(key.clone()),
+                _ => None,
+            })
+            .collect();
+        let calls: BTreeSet<Key> = body
+            .calls()
+            .filter(|(_, callee)| callee.is_callable())
+            .filter_map(|(_, callee)| callee.key().cloned())
+            .collect();
+        self.edges(key, EdgeKind::Uses, uses);
+        self.edges(key, EdgeKind::Calls, calls);
+        if let Some((_, set)) = &checked.set {
+            let raises: BTreeSet<Key> = set
+                .failures
+                .iter()
+                .filter_map(|failure| declaration_key(self.lookup, failure))
+                .collect();
+            self.edges(key, EdgeKind::Raises, raises);
+        }
+        for (number, site) in body.sites.iter().enumerate() {
+            if site.is_fault_site() {
+                self.per_build(Kind::Site, key, number, site.start, site.end);
+            }
+        }
+        for (number, branch) in body.branches.iter().enumerate() {
+            self.per_build(Kind::Branch, key, number, branch.start, branch.end);
+        }
+    }
+
+    /// A site or branch of `parent`, by its number in this build (area 18).
+    fn per_build(&mut self, kind: Kind, parent: &Key, number: usize, start: u32, end: u32) {
+        let name = format!("{}.{number}", parent.name());
+        let mut node = Node::new(Key::new(kind, &name), kind, name);
+        let last = end.saturating_sub(1).max(start);
+        node.place = Some(jadpo_graph::Place {
+            file: self.path.clone(),
+            start,
+            end,
+            lines: (self.lines.line(start), self.lines.line(last)),
+        });
+        node.domain = self.domain.clone();
+        node.parent = Some(parent.clone());
+        self.out.nodes.push(node);
     }
 
     fn type_decl(&mut self, decl: &ast::TypeDecl) {
         let Some(name) = decl.name().as_ref().and_then(tree::name_text) else {
             return;
         };
-        let key = registry().key(Kind::Type, &name, None);
+        let key = self.lookup.registry().key(Kind::Type, &name, None);
         let mut node = self.node(key.clone(), Kind::Type, name.clone(), decl.syntax().clone());
         node.public = decl.visibility().is_some();
         let written_base = decl
             .base()
             .map(|base| tree::written(base.syntax()))
             .unwrap_or_default();
-        let def = self.table.def(&name);
+        let def = self.lookup.def(&name);
         let base = match def {
             Some(Def::Scalar { parent, .. }) if !parent.has_error() => {
-                Base::Refines(parent.to_string())
+                Base::Refines(type_ref(self.lookup, parent))
             }
             Some(Def::Fields { base, .. }) => fields_base(*base),
             Some(Def::Enum { .. }) => Base::Enum,
@@ -254,15 +331,15 @@ impl Part<'_> {
                 "Failure" => Base::Failure,
                 "Event" => Base::Event,
                 "EmailMessage" => Base::EmailMessage,
-                _ => Base::Refines(written_base.clone()),
+                _ => Base::Refines(TypeRef::Written(written_base.clone())),
             },
         };
         let rules = match def {
-            Some(Def::Scalar { rules, .. }) => rules_list(rules),
-            _ => Vec::new(),
+            Some(Def::Scalar { rules, .. }) => (**rules).clone(),
+            _ => Rules::default(),
         };
         let failure = (base == Base::Failure).then(|| {
-            let info = self.failures.get(&name);
+            let info = self.lookup.failure_info(&name);
             let kind = info.and_then(|info| info.kind.clone());
             FailureDetail {
                 status: kind.as_deref().and_then(status_of),
@@ -340,7 +417,7 @@ impl Part<'_> {
         let Some(name) = decl.name().as_ref().and_then(tree::name_text) else {
             return;
         };
-        let key = registry().key(Kind::Entity, &name, None);
+        let key = self.lookup.registry().key(Kind::Entity, &name, None);
         let mut node = self.node(
             key.clone(),
             Kind::Entity,
@@ -365,7 +442,7 @@ impl Part<'_> {
         list: Option<ast::MemberList>,
     ) -> Vec<SyntaxNode> {
         let fields: Vec<FieldDef> = self
-            .table
+            .lookup
             .fields(host)
             .map(<[_]>::to_vec)
             .unwrap_or_default();
@@ -380,7 +457,9 @@ impl Part<'_> {
                 && let Some(ast::Expr::ListExpr(entries)) = member.value()
             {
                 for entry in entries.exprs() {
-                    if let TypeRef::Path(names, _) = TypeRef::from_expr(&entry) {
+                    if let crate::types::TypeRef::Path(names, _) =
+                        crate::types::TypeRef::from_expr(&entry)
+                    {
                         copying.push((names, entry.syntax().clone()));
                     }
                 }
@@ -416,7 +495,7 @@ impl Part<'_> {
         member: &ast::Member,
         section: Option<Section>,
     ) {
-        let key = field_key(host, &path);
+        let key = field_key(self.lookup.registry(), host, &path);
         let mut node = self.node(
             key.clone(),
             Kind::Field,
@@ -424,7 +503,7 @@ impl Part<'_> {
             member.syntax().clone(),
         );
         node.parent = Some(parent.clone());
-        let def = self.table.field(host, &path);
+        let def = self.lookup.field(host, &path);
         let written = member
             .value()
             .map(|value| match &value {
@@ -437,12 +516,14 @@ impl Part<'_> {
         node.detail = Detail::Field {
             ty: def
                 .filter(|def| !def.declared.has_error())
-                .map_or(written, |def| def.declared.to_string()),
+                .map_or(TypeRef::Written(written), |def| {
+                    type_ref(self.lookup, &def.declared)
+                }),
             optional: def.is_some_and(|def| def.optional),
             default: def.is_some_and(|def| def.default),
             section,
             copied_from: None,
-            rules: def.map(|def| rules_list(&def.rules)).unwrap_or_default(),
+            rules: def.map(|def| def.rules.clone()).unwrap_or_default(),
         };
         self.out.nodes.push(node);
         let uses = self.resolver.uses(member.syntax(), &|_| false);
@@ -459,7 +540,11 @@ impl Part<'_> {
         field: &FieldDef,
         entry: Option<&SyntaxNode>,
     ) {
-        let key = field_key(host, std::slice::from_ref(&field.name));
+        let key = field_key(
+            self.lookup.registry(),
+            host,
+            std::slice::from_ref(&field.name),
+        );
         let parent_place = self
             .out
             .nodes
@@ -474,16 +559,16 @@ impl Part<'_> {
         node.domain = self.domain.clone();
         node.parent = Some(parent.clone());
         let from = match &field.declared {
-            Ty::Field(source, path) => Some(field_key(source, path)),
+            Ty::Field(source, path) => Some(field_key(self.lookup.registry(), source, path)),
             _ => None,
         };
         node.detail = Detail::Field {
-            ty: field.declared.to_string(),
+            ty: type_ref(self.lookup, &field.declared),
             optional: field.optional,
             default: field.default,
             section: None,
             copied_from: from.clone(),
-            rules: rules_list(&field.rules),
+            rules: field.rules.clone(),
         };
         self.out.nodes.push(node);
         if let Some(from) = from {
@@ -499,7 +584,7 @@ impl Part<'_> {
         block: Option<ast::MemberList>,
         syntax: &SyntaxNode,
     ) {
-        let key = variant_key(host, variant);
+        let key = variant_key(self.lookup.registry(), host, variant);
         let mut node = self.node(
             key.clone(),
             Kind::Variant,
@@ -545,94 +630,5 @@ fn fields_base(base: FieldsBase) -> Base {
         FieldsBase::Event => Base::Event,
         FieldsBase::EmailMessage => Base::EmailMessage,
         FieldsBase::Failure => Base::Failure,
-    }
-}
-
-/// A type as the manifest writes it: canonically when it resolved, as
-/// written otherwise.
-fn type_text(ty: Option<&Ty>, written: &str) -> String {
-    match ty {
-        Some(ty) if !ty.has_error() => ty.to_string(),
-        _ => written.to_string(),
-    }
-}
-
-fn signature(sig: Option<&Sig>, written: &jadpo_db::Signature) -> Signature {
-    Signature {
-        params: written
-            .params
-            .iter()
-            .enumerate()
-            .map(|(i, param)| {
-                let resolved = sig.and_then(|sig| sig.params.get(i)).map(|(_, ty)| ty);
-                (param.name.clone(), type_text(resolved, &param.ty))
-            })
-            .collect(),
-        result: match &written.result {
-            Some(result) => type_text(sig.map(|sig| &sig.result), result),
-            None => "Unit".to_string(),
-        },
-        fails: written.fails.clone(),
-    }
-}
-
-/// An exact number as written, without trailing exponent: `0.50`, `-3`.
-fn num_text(num: Num) -> String {
-    let negative = num.mantissa < 0;
-    let digits = num.mantissa.unsigned_abs().to_string();
-    let scale = num.scale as usize;
-    let text = if scale == 0 {
-        digits
-    } else {
-        let padded = format!("{digits:0>width$}", width = scale + 1);
-        let (whole, places) = padded.split_at(padded.len() - scale);
-        format!("{whole}.{places}")
-    };
-    if negative { format!("-{text}") } else { text }
-}
-
-/// A type's or field's rules, by name, in the order area 2 lists them.
-fn rules_list(rules: &Rules) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    if let Some(min) = rules.min {
-        out.push(("min".to_string(), num_text(min)));
-    }
-    if let Some(max) = rules.max {
-        out.push(("max".to_string(), num_text(max)));
-    }
-    if let Some(min) = rules.min_length {
-        out.push(("min_length".to_string(), min.to_string()));
-    }
-    if let Some(max) = rules.max_length {
-        out.push(("max_length".to_string(), max.to_string()));
-    }
-    if let Some(pattern) = &rules.pattern {
-        out.push(("pattern".to_string(), pattern.clone()));
-    }
-    if rules.email {
-        out.push(("format".to_string(), "email".to_string()));
-    }
-    if let Some(scale) = rules.scale {
-        out.push(("scale".to_string(), scale.to_string()));
-    }
-    if let Some(version) = rules.version {
-        out.push(("version".to_string(), version.to_string()));
-    }
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn numbers_print_as_written() {
-        let num = |text| num_text(Num::parse(text).expect("number"));
-        assert_eq!(num("0"), "0");
-        assert_eq!(num("12"), "12");
-        assert_eq!(num("-3"), "-3");
-        assert_eq!(num("0.50"), "0.50");
-        assert_eq!(num("-0.05"), "-0.05");
-        assert_eq!(num("1_000.5"), "1000.5");
     }
 }

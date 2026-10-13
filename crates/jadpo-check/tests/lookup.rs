@@ -150,3 +150,44 @@ fn parameters_and_variables() {
         None
     );
 }
+
+/// The review's case: a variable in an inner block has the name of a
+/// function the outer block then calls. The checker, the graph and the
+/// language server read one resolution, the typed body's, so all three say
+/// the call reaches the function and the variable is a variable.
+#[test]
+fn a_shadowing_variable_and_a_call_agree_everywhere() {
+    use jadpo_check::graph::graph;
+    use jadpo_graph::{EdgeKind, Key, Kind};
+
+    let source = "type Num = Int {\n    min: 0\n}\n\ntype Flag = Bool {}\n\nfunction total(x: Num) -> Num {\n    return x\n}\n\nfunction pick(b: Flag, x: Num) -> Num {\n    if (b) {\n        var total: Num = x\n        return total\n    }\n    return total(x)\n}\n";
+    let db = Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", source)]);
+    assert!(jadpo_check::check(&db, project).is_empty(), "checks clean");
+
+    let built = graph(&db, project);
+    let pick = built.find(&Key::new(Kind::Function, "pick")).expect("pick");
+    let called: Vec<String> = built
+        .outgoing(pick, EdgeKind::Calls)
+        .map(|id| built.node(id).key.to_string())
+        .collect();
+    assert_eq!(called, ["function total"]);
+
+    let file = project.files(&db)[0];
+    let offset = |needle: &str, nth: usize| {
+        source.match_indices(needle).nth(nth).expect("needle").0 as u32 + 1
+    };
+    let found = |offset| lookup(&db, project, file, offset).map(|(found, _)| found);
+    assert_eq!(
+        found(offset("total(x)", 0)),
+        Some(Found::Node(Key::new(Kind::Function, "total")))
+    );
+    assert_eq!(
+        found(offset("return total\n", 0) + 7),
+        Some(Found::Local {
+            name: "total".into(),
+            ty: Some("Num".into()),
+            what: "variable",
+        })
+    );
+}

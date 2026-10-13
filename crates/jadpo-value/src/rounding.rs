@@ -1,16 +1,8 @@
 //! Rounding a division that doesn't come out exact (area 3, question 7),
-//! shared by `integer.divide` and `decimal.divide`.
+//! shared by `integer.divide` and `decimal.divide`. `Rounding` itself is
+//! declared once, in `jadpo-std`.
 
-/// The `Rounding` enum of the standard library.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Rounding {
-    /// To the nearest; a tie goes to the even neighbour.
-    HalfEven,
-    /// To the nearest; a tie goes away from zero.
-    HalfUp,
-    /// Away from zero.
-    Up,
-}
+use jadpo_std::Rounding;
 
 /// `dividend / divisor` rounded as `rounding` says; `None` when the divisor
 /// is zero or the result overflows.

@@ -2,7 +2,9 @@
 
 use std::fmt;
 
-use crate::{Key, Kind};
+use jadpo_std::{Builtin, Rules};
+
+use crate::{Key, Kind, TypeRef};
 
 /// Where a node is written: its project-relative file, byte range without
 /// surrounding comments, and the lines that range covers (1-based, both
@@ -68,21 +70,22 @@ pub enum Base {
     Failure,
     Event,
     EmailMessage,
-    /// A refinement of a built-in or named type, as written.
-    Refines(String),
+    /// A refinement of a built-in or named type.
+    Refines(TypeRef),
 }
 
 impl Base {
-    pub fn word(&self) -> &str {
+    /// As written after `=`, naming a refined type's key by `name`.
+    pub fn render(&self, name: &dyn Fn(&Key) -> String) -> String {
         match self {
-            Base::Object => "Object",
-            Base::Enum => "Enum",
-            Base::Input => "Input",
-            Base::Output => "Output",
-            Base::Failure => "Failure",
-            Base::Event => "Event",
-            Base::EmailMessage => "EmailMessage",
-            Base::Refines(parent) => parent,
+            Base::Object => "Object".to_string(),
+            Base::Enum => "Enum".to_string(),
+            Base::Input => "Input".to_string(),
+            Base::Output => "Output".to_string(),
+            Base::Failure => "Failure".to_string(),
+            Base::Event => "Event".to_string(),
+            Base::EmailMessage => "EmailMessage".to_string(),
+            Base::Refines(parent) => parent.render(name),
         }
     }
 }
@@ -115,29 +118,40 @@ impl Section {
     }
 }
 
-/// A callable's signature, its types written canonically.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+/// A callable's signature.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Signature {
-    pub params: Vec<(String, String)>,
-    pub result: String,
-    /// The failures its `fails` list names, as written and in order.
-    pub fails: Vec<String>,
+    pub params: Vec<(String, TypeRef)>,
+    pub result: TypeRef,
+    /// The failures its `fails` list names, in order.
+    pub fails: Vec<TypeRef>,
+}
+
+impl Default for Signature {
+    fn default() -> Signature {
+        Signature {
+            params: Vec::new(),
+            result: TypeRef::Builtin(Builtin::Unit),
+            fails: Vec::new(),
+        }
+    }
 }
 
 impl Signature {
-    /// `(note: Note) fails Refused -> Note`.
-    pub fn render(&self) -> String {
+    /// `(note: Note) fails Refused -> Note`, naming keys by `name`.
+    pub fn render(&self, name: &dyn Fn(&Key) -> String) -> String {
         let params: Vec<String> = self
             .params
             .iter()
-            .map(|(name, ty)| format!("{name}: {ty}"))
+            .map(|(param, ty)| format!("{param}: {}", ty.render(name)))
             .collect();
         let mut out = format!("({})", params.join(", "));
         if !self.fails.is_empty() {
-            out.push_str(&format!(" fails {}", self.fails.join(", ")));
+            let fails: Vec<String> = self.fails.iter().map(|ty| ty.render(name)).collect();
+            out.push_str(&format!(" fails {}", fails.join(", ")));
         }
-        if self.result != "Unit" {
-            out.push_str(&format!(" -> {}", self.result));
+        if self.result != TypeRef::Builtin(Builtin::Unit) {
+            out.push_str(&format!(" -> {}", self.result.render(name)));
         }
         out
     }
@@ -150,19 +164,19 @@ pub enum Detail {
     None,
     Type {
         base: Base,
-        /// Its own rules, each as `name` and canonical value.
-        rules: Vec<(String, String)>,
+        /// Its own rules.
+        rules: Rules,
         failure: Option<FailureDetail>,
     },
     Field {
-        /// The declared type, canonically: `List<Tag>`, `Note.id?`.
-        ty: String,
+        /// The declared type: `List<Tag>`, `Note.id?`.
+        ty: TypeRef,
         optional: bool,
         default: bool,
         section: Option<Section>,
         /// For a field brought in by `include` or `pick`: where it comes from.
         copied_from: Option<Key>,
-        rules: Vec<(String, String)>,
+        rules: Rules,
     },
     Variant {
         /// Whether it carries data.

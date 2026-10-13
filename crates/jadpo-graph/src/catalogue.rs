@@ -108,7 +108,10 @@ pub fn libraries(graph: &Graph) -> Catalogue {
             .collect();
         for function in members {
             let child = graph.node(function);
-            let signature = child.signature().map(|s| s.render()).unwrap_or_default();
+            let signature = child
+                .signature()
+                .map(|s| s.render(&|key| crate::manifest::name_now(graph, key)))
+                .unwrap_or_default();
             let short = child
                 .name
                 .rsplit_once('.')
@@ -255,7 +258,10 @@ pub fn failures(graph: &Graph) -> Catalogue {
                     let mut out = Value::object();
                     out.set("id", child.key.as_str());
                     if let Detail::Field { ty, .. } = &child.detail {
-                        out.set("type", ty.as_str());
+                        out.set(
+                            "type",
+                            ty.render(&|key| crate::manifest::name_now(graph, key)),
+                        );
                     }
                     out
                 })

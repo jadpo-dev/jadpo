@@ -10,85 +10,127 @@ use jadpo_db::{
     Base, Db, File, Folder, Item, ItemKind, Layout, Ownership, Place, Project, item_tree, location,
 };
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_syntax::ast::{self, AstNode, Expr};
+use jadpo_graph::body::{Callee, Expr, Node, Refers};
+use jadpo_graph::{Key, Kind};
+use jadpo_syntax::ast::{self, AstNode, Decl};
 
 use crate::case::{starts_upper, to_snake};
-use crate::tree::{self, dotted, name_span};
+use crate::lookups::{Lookup, Name, NameView};
+use crate::tree::{self, name_span};
+use crate::types::{callables_of, typed_body};
 
 /// The declarations one file mentions.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Mentions {
-    /// Upper-case names anywhere, and lower-case names called bare.
+    /// Types, entities and failures it names, and callables it calls.
     names: BTreeSet<String>,
-    /// `library.function(...)` calls.
+    /// The library functions it calls.
     library_calls: BTreeSet<(String, String)>,
-    /// Failures named by `reject` or a failure mapping.
+    /// Failures it raises with `reject` or maps to with `invalid:`.
     raised: BTreeSet<String>,
 }
 
+/// What one file mentions: in its declarations, every upper-case name
+/// (field types, copying lines, refinement bases, a query's block); in its
+/// callables, what their typed bodies say each name refers to, so a call a
+/// local shadows or a name only resolution knew about counts as the check
+/// resolved it.
 #[salsa::tracked(returns(ref))]
-pub fn mentions(db: &dyn Db, file: File) -> Mentions {
+pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
     let mut found = Mentions::default();
     let Some(source) = tree::source(db, file) else {
         return found;
     };
-    for node in source.syntax().descendants() {
-        if let Some(name) = ast::NameRef::cast(node.clone()) {
+    for decl in source.decls() {
+        if matches!(
+            decl,
+            Decl::FunctionDecl(_)
+                | Decl::ActionDecl(_)
+                | Decl::FixtureDecl(_)
+                | Decl::TestDecl(_)
+                | Decl::SeedDecl(_)
+                | Decl::LibraryDecl(_)
+        ) {
+            continue;
+        }
+        for name in decl.syntax().descendants().filter_map(ast::NameRef::cast) {
             if let Some(text) = tree::name_ref_text(&name)
                 && starts_upper(&text)
             {
                 found.names.insert(text);
             }
-        } else if let Some(call) = ast::CallExpr::cast(node.clone()) {
-            match call.expr() {
-                Some(Expr::NameRef(name)) => {
-                    let Some(text) = tree::name_ref_text(&name) else {
-                        continue;
-                    };
-                    // A library's functions call each other bare.
-                    if let Some(library) = node.ancestors().find_map(ast::LibraryDecl::cast)
-                        && let Some(library) = library.name().as_ref().and_then(tree::name_text)
-                    {
-                        found.library_calls.insert((library, text.clone()));
-                    }
-                    found.names.insert(text);
-                }
-                Some(callee @ Expr::FieldExpr(_)) => {
-                    if let Some((first, rest)) = dotted(&callee)
-                        && let [function] = rest.as_slice()
-                        && let (Some(ownership), Some(function)) =
-                            (tree::name_ref_text(&first), tree::name_ref_text(function))
-                    {
-                        found.library_calls.insert((ownership, function));
-                    }
-                }
-                _ => {}
-            }
-        } else if let Some(reject) = ast::RejectExpr::cast(node.clone()) {
-            let head = match reject.expr() {
-                Some(Expr::RecordExpr(record)) => record.expr(),
-                Some(Expr::CallExpr(call)) => call.expr(),
-                other => other,
+        }
+    }
+    let host_of = |key: &Key| key.name().split('.').next().unwrap_or_default().to_string();
+    for callable in callables_of(db, file) {
+        let body = &typed_body(db, project, callable).body;
+        for name in &body.names {
+            let Refers::Node { key, .. } = &name.refers else {
+                continue;
             };
-            if let Some(Expr::NameRef(name)) = head {
-                found.raised.extend(tree::name_ref_text(&name));
+            if let Some(Kind::Type | Kind::Entity | Kind::Field | Kind::Variant) = key.kind() {
+                found.names.insert(host_of(key));
             }
-        } else if let Some(mapping) = ast::Mapping::cast(node)
-            && let Some(Expr::NameRef(name)) = mapping.expr()
-        {
-            found.raised.extend(tree::name_ref_text(&name));
+        }
+        for (_, callee) in body.calls() {
+            match callee {
+                Callee::LibraryFunction(key) => {
+                    if let Some((library, function)) = key.name().split_once('.') {
+                        found
+                            .library_calls
+                            .insert((library.to_string(), function.to_string()));
+                    }
+                }
+                Callee::Function(key)
+                | Callee::Action(key)
+                | Callee::Query(key)
+                | Callee::Fixture(key) => {
+                    found.names.insert(key.name().to_string());
+                }
+                Callee::Object(key) | Callee::Variant(key) | Callee::Entity { entity: key, .. } => {
+                    found.names.insert(host_of(key));
+                }
+                Callee::Construct(ty) => {
+                    found.names.extend(ty.keys().into_iter().map(host_of));
+                }
+                Callee::Std(_) | Callee::Unknown => {}
+            }
+        }
+        for site in &body.sites {
+            if let Node::Expr(
+                Expr::Reject {
+                    failure: Some(failure),
+                    ..
+                }
+                | Expr::Attempt {
+                    invalid: Some(failure),
+                    ..
+                },
+            ) = &site.node
+            {
+                found.raised.insert(failure.name().to_string());
+            }
         }
     }
     found
+}
+
+/// A file that uses a declaration: its path, owner, and whether it holds
+/// routes.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct User {
+    pub path: String,
+    pub ownership: Ownership,
+    pub route: bool,
 }
 
 /// Who uses what, across the project's non-test files.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Users {
     /// By declaration name: the files that mention it.
-    by_name: BTreeMap<String, BTreeSet<String>>,
-    /// By library and function: the files that call it.
-    by_function: BTreeMap<(String, String), BTreeSet<String>>,
+    by_name: BTreeMap<String, BTreeSet<User>>,
+    /// By `library.function`: the files that call it.
+    by_function: BTreeMap<String, BTreeSet<User>>,
     /// By failure: the domains that raise it.
     raised_by: BTreeMap<String, BTreeSet<String>>,
 }
@@ -101,21 +143,25 @@ pub fn users(db: &dyn Db, project: Project) -> Users {
         if location.test || location.place == Place::Tests {
             continue;
         }
-        let path = file.path(db);
-        let found = mentions(db, file);
+        let user = User {
+            path: file.path(db).clone(),
+            ownership: location.ownership.clone(),
+            route: location.place == Place::Folder(Folder::Routes),
+        };
+        let found = mentions(db, project, file);
         for name in &found.names {
             users
                 .by_name
                 .entry(name.clone())
                 .or_default()
-                .insert(path.clone());
+                .insert(user.clone());
         }
-        for call in &found.library_calls {
+        for (library, function) in &found.library_calls {
             users
                 .by_function
-                .entry(call.clone())
+                .entry(format!("{library}.{function}"))
                 .or_default()
-                .insert(path.clone());
+                .insert(user.clone());
         }
         if let Ownership::Domain(domain) = &location.ownership {
             for failure in &found.raised {
@@ -128,6 +174,37 @@ pub fn users(db: &dyn Db, project: Project) -> Users {
         }
     }
     users
+}
+
+/// The files that mention `name`: a per-name lookup, so a file's usage
+/// rules depend only on its own declarations' users.
+#[salsa::tracked(returns(ref))]
+fn name_users<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTreeSet<User> {
+    users(db, project)
+        .by_name
+        .get(name.text(db))
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The files that call library function `library.function`.
+#[salsa::tracked(returns(ref))]
+fn function_users<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTreeSet<User> {
+    users(db, project)
+        .by_function
+        .get(name.text(db))
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The domains that raise failure `name`.
+#[salsa::tracked(returns(ref))]
+fn raisers<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTreeSet<String> {
+    users(db, project)
+        .raised_by
+        .get(name.text(db))
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// Promotion and dead-code problems of one file's declarations.
@@ -147,23 +224,9 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
         return Vec::new();
     };
     let path = file.path(db);
-    let users = users(db, project);
-    let route_file = |user: &String| {
-        project
-            .files(db)
-            .iter()
-            .find(|file| file.path(db) == user)
-            .is_some_and(|file| location_of(db, project, *file) == Place::Folder(Folder::Routes))
-    };
-    let domain_of = |user: &String| {
-        project
-            .files(db)
-            .iter()
-            .find(|file| file.path(db) == user)
-            .map(|file| jadpo_db::location(db, project, *file).ownership.clone())
-    };
-    let table = jadpo_db::symbols(db, project);
-    let ours = |user: &String| domain_of(user) == Some(location.ownership.clone());
+    let lookup = Lookup::new(db, project);
+    let named = |name: &str| name_users(db, project, Name::new(db, name.to_string()));
+    let ours = |user: &&User| user.ownership == location.ownership;
     let mut out = Vec::new();
     for item in &item_tree(db, file).items {
         match (&location.ownership, folder, &item.kind) {
@@ -171,31 +234,34 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 if !matches!(folder, Folder::Types | Folder::Libraries)
                     && (*kind == ItemKind::Function || is_plain_type(kind)) =>
             {
-                let mut others: Vec<&String> = users
-                    .by_name
-                    .get(&item.name)
-                    .into_iter()
-                    .flatten()
-                    .filter(|user| *user != path)
+                let mut others: Vec<&User> = named(&item.name)
+                    .iter()
+                    .filter(|user| user.path != *path)
                     .collect();
                 // A route only counts when nothing else uses the type.
-                if folder != Folder::Routes || others.iter().any(|user| !route_file(user)) {
-                    others.retain(|user| !route_file(user));
+                if folder != Folder::Routes || others.iter().any(|user| !user.route) {
+                    others.retain(|user| !user.route);
                 }
                 let elsewhere = others.iter().copied().find(|user| !ours(user));
-                let same = others.iter().copied().find(|user| ours(user));
+                let same = others.iter().copied().find(ours);
                 match (elsewhere, same) {
-                    (Some(user), _) if item.public && pure(&source, path, item.index, table) => {
-                        out.push(promote(path, &source, item, Move::Shared, user));
+                    (Some(user), _) if item.public && pure(&source, path, item.index, &lookup) => {
+                        out.push(promote(path, &source, item, Move::Shared, &user.path));
                     }
                     (_, Some(user)) => {
-                        out.push(promote(path, &source, item, Move::Domain(domain), user));
+                        out.push(promote(
+                            path,
+                            &source,
+                            item,
+                            Move::Domain(domain),
+                            &user.path,
+                        ));
                     }
                     _ => {}
                 }
             }
             (Ownership::Domain(_), Folder::Failures, ItemKind::Type(Base::Failure)) => {
-                let domains = users.raised_by.get(&item.name).map_or(0, BTreeSet::len);
+                let domains = raisers(db, project, Name::new(db, item.name.clone())).len();
                 if domains > 1 {
                     let file = to_snake(&item.name);
                     out.push(
@@ -210,40 +276,40 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 }
             }
             (ownership, Folder::Types, kind) if is_plain_type(kind) => {
-                let others: Vec<&String> = users
-                    .by_name
-                    .get(&item.name)
-                    .into_iter()
-                    .flatten()
-                    .filter(|user| *user != path)
+                let others: Vec<&User> = named(&item.name)
+                    .iter()
+                    .filter(|user| user.path != *path)
                     .collect();
                 let elsewhere = others.iter().copied().find(|user| !ours(user));
                 if others.is_empty() {
                     out.push(unused(path, &source, item, None));
                 } else if let (Ownership::Domain(_), Some(user)) = (ownership, elsewhere)
                     && item.public
-                    && pure(&source, path, item.index, table)
+                    && pure(&source, path, item.index, &lookup)
                 {
-                    out.push(promote(path, &source, item, Move::Shared, user));
+                    out.push(promote(path, &source, item, Move::Shared, &user.path));
                 }
             }
             (ownership, Folder::Libraries, ItemKind::Library) => {
-                let mut callers: BTreeSet<&String> = BTreeSet::new();
+                let mut callers: BTreeSet<&User> = BTreeSet::new();
                 for function in &item.functions {
-                    match users
-                        .by_function
-                        .get(&(item.name.clone(), function.name.clone()))
-                    {
-                        Some(found) => callers.extend(found),
-                        None => out.push(unused(path, &source, function, Some(item.index))),
+                    let found = function_users(
+                        db,
+                        project,
+                        Name::new(db, format!("{}.{}", item.name, function.name)),
+                    );
+                    if found.is_empty() {
+                        out.push(unused(path, &source, function, Some(item.index)));
+                    } else {
+                        callers.extend(found);
                     }
                 }
                 if let (Ownership::Domain(_), Some(user)) =
                     (ownership, callers.iter().copied().find(|user| !ours(user)))
                     && item.public
-                    && pure(&source, path, item.index, table)
+                    && pure(&source, path, item.index, &lookup)
                 {
-                    out.push(promote(path, &source, item, Move::Shared, user));
+                    out.push(promote(path, &source, item, Move::Shared, &user.path));
                 }
             }
             _ => {}
@@ -254,7 +320,7 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
 
 /// Whether declaration `index` depends on no domain's code: nothing it
 /// names belongs to a domain, apart from what its own file declares.
-fn pure(source: &ast::SourceFile, path: &str, index: u32, table: &jadpo_db::Symbols) -> bool {
+fn pure(source: &ast::SourceFile, path: &str, index: u32, table: &dyn NameView) -> bool {
     let Some(decl) = tree::decl_at(source, index) else {
         return true;
     };
@@ -263,12 +329,11 @@ fn pure(source: &ast::SourceFile, path: &str, index: u32, table: &jadpo_db::Symb
         .filter_map(ast::NameRef::cast)
         .filter_map(|name| tree::name_ref_text(&name))
         .all(|name| {
-            !table.domains.contains(&name)
-                && table.declarations.get(&name).is_none_or(|found| {
-                    found
-                        .iter()
-                        .all(|symbol| symbol.path == path || symbol.ownership.domain().is_none())
-                })
+            !table.is_domain(&name)
+                && table
+                    .declared(&name)
+                    .iter()
+                    .all(|symbol| symbol.path == path || symbol.ownership.domain().is_none())
         })
 }
 
@@ -276,10 +341,6 @@ fn pure(source: &ast::SourceFile, path: &str, index: u32, table: &jadpo_db::Symb
 enum Move<'a> {
     Domain(&'a str),
     Shared,
-}
-
-fn location_of(db: &dyn Db, project: Project, file: File) -> Place {
-    jadpo_db::location(db, project, file).place.clone()
 }
 
 fn is_plain_type(kind: &ItemKind) -> bool {

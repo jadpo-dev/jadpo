@@ -14,8 +14,9 @@ use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 use super::literal;
 use super::rules::{self, CONSTRAINTS, Const, FIELD_SETTINGS, Problem, Rules, Subject};
 use super::shape::{self, FieldsBase, Line, ShapeKind};
-use super::table::{Found, LineKind, LineProblem, TypeTable, derive, type_table};
+use super::table::{Found, LineKind, LineProblem, TypeView, derive};
 use super::ty::{BASES, Prim, Ty, TypeNode, TypeRef, container_arity};
+use crate::lookups::Lookup;
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 
@@ -25,9 +26,10 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
     let Some(source) = tree::source(db, file) else {
         return Vec::new();
     };
+    let lookup = Lookup::new(db, project);
     let mut checker = Decls {
         path: file.path(db),
-        table: type_table(db, project),
+        table: &lookup,
         out: Vec::new(),
     };
     for decl in source.decls() {
@@ -45,7 +47,7 @@ enum Role {
 
 pub(super) struct Decls<'a> {
     pub path: &'a str,
-    pub table: &'a TypeTable,
+    pub table: &'a dyn TypeView,
     pub out: Vec<Diagnostic>,
 }
 

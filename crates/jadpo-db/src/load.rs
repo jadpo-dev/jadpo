@@ -1,5 +1,6 @@
 //! Finding and reading a project: the only I/O in the compiler crates.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use salsa::{Durability, Setter};
@@ -87,7 +88,10 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
             }),
         }
     }
-    let project = Project::new(&db, files, other_files, layout);
+    // `database/identities.json` is read once `jadpo rename` and the domain
+    // commands, which write it, exist (area 14); until then nothing has been
+    // renamed.
+    let project = Project::new(&db, files, other_files, layout, BTreeMap::new());
     Loaded {
         db,
         project,

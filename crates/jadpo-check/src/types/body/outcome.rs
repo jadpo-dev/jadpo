@@ -10,9 +10,10 @@ use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, Expr, Pat};
 
 use super::super::ty::Ty;
+use super::facts::PatternFact;
 use super::failing::Fallible;
 use super::matching::Mode;
-use super::{Arm, Body, LocalKind, did_you_mean, key, line_span, text};
+use super::{Arm, Body, LocalKind, did_you_mean, line_span, node_key, text};
 use crate::case::starts_upper;
 use crate::tree::{self, dotted};
 
@@ -46,9 +47,10 @@ impl Body<'_> {
                 other => tree::written(other.syntax()),
             })
             .unwrap_or_default();
+        self.facts.outcomes.insert(node_key(node.syntax()));
         let (success, fallible) = match &subject {
             Some(Expr::CallExpr(call)) => {
-                self.handled.push(key(call.syntax()));
+                self.handled.push(node_key(call.syntax()));
                 let ty = self.call(call, None);
                 self.handled.pop();
                 (ty, self.call_fallible(call))
@@ -120,6 +122,15 @@ impl Body<'_> {
             let pattern = arm
                 .pat()
                 .map_or(Pattern::Unknown, |pat| self.outcome_pattern(&pat));
+            if let Some(pat) = arm.pat() {
+                let fact = match &pattern {
+                    Pattern::Success(..) => PatternFact::Success,
+                    Pattern::Failure(failure, ..) => PatternFact::Failure(failure.clone()),
+                    Pattern::Wildcard => PatternFact::Wildcard,
+                    Pattern::Other | Pattern::Unknown => PatternFact::Unknown,
+                };
+                self.facts.patterns.insert(node_key(pat.syntax()), fact);
+            }
             let span = arm
                 .pat()
                 .map_or_else(|| self.span(arm), |pat| self.span(&pat));

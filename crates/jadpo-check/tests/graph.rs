@@ -413,3 +413,37 @@ fn editing_a_body_rebuilds_only_that_files_part() {
     assert_eq!(count("type_table"), 0, "{log:?}");
     assert_eq!(count("graph"), 1, "assembled again: {log:?}");
 }
+
+/// The identity registry is an input (area 18): a rename it records
+/// re-keys the renamed node and what refers to it, and nothing else.
+#[test]
+fn a_rename_the_registry_records_rekeys_what_it_touches() {
+    let mut db = Database::default();
+    let project = support::project(
+        &db,
+        Layout::Loose,
+        &[(
+            "main.jadpo",
+            "type Count = Int {\n    min: 0\n}\n\nfunction double(x: Count) -> Count {\n    return x\n}\n",
+        )],
+    );
+    let before = jadpo_check::graph::graph(&db, project).clone();
+    assert!(before.get(&Key::new(Kind::Type, "Count")).is_some());
+
+    project
+        .set_identities(&mut db)
+        .to([("type Count".to_string(), "Tally".to_string())].into());
+    let after = jadpo_check::graph::graph(&db, project);
+    let tally = after
+        .get(&Key::new(Kind::Type, "Tally"))
+        .expect("the type keeps its born name");
+    assert_eq!(tally.name, "Count", "and its name now");
+    let double = after
+        .find(&Key::new(Kind::Function, "double"))
+        .expect("double");
+    let uses: Vec<String> = after
+        .outgoing(double, EdgeKind::Uses)
+        .map(|id| after.node(id).key.to_string())
+        .collect();
+    assert_eq!(uses, ["type Tally"]);
+}

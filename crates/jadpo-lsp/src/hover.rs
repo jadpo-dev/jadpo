@@ -6,7 +6,8 @@
 //! from.
 
 use jadpo_check::graph::Found;
-use jadpo_graph::{Base, Detail, EdgeKind, Graph, Kind, NodeId, Section};
+use jadpo_graph::manifest::name_now;
+use jadpo_graph::{Base, Detail, EdgeKind, Graph, Key, Kind, NodeId, Section, rule_pairs};
 
 /// How many callers or users a fact names before counting the rest.
 const NAMED: usize = 5;
@@ -56,6 +57,7 @@ fn node(graph: &Graph, id: NodeId) -> String {
 fn declaration(graph: &Graph, id: NodeId) -> String {
     let node = graph.node(id);
     let word = node.kind.word();
+    let name = |key: &Key| name_now(graph, key);
     match &node.detail {
         Detail::Callable(signature) => {
             let keyword = match node.kind {
@@ -64,7 +66,7 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                 Kind::Fixture => "fixture",
                 _ => "action",
             };
-            format!("{keyword} {}{}", short(&node.name), signature.render())
+            format!("{keyword} {}{}", short(&node.name), signature.render(&name))
         }
         Detail::Type {
             base,
@@ -81,9 +83,13 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                     lines.push(format!("message: \"{message}\""));
                 }
             }
-            lines.extend(rules.iter().map(|(name, value)| format!("{name}: {value}")));
+            lines.extend(
+                rule_pairs(rules)
+                    .into_iter()
+                    .map(|(rule, value)| format!("{rule}: {value}")),
+            );
             lines.extend(members(graph, id, base));
-            let head = format!("type {} = {}", node.name, base.word());
+            let head = format!("type {} = {}", node.name, base.render(&name));
             if lines.is_empty() {
                 head
             } else {
@@ -98,9 +104,9 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             rules,
             ..
         } => {
-            let mut settings: Vec<String> = rules
-                .iter()
-                .map(|(name, value)| format!("{name}: {value}"))
+            let mut settings: Vec<String> = rule_pairs(rules)
+                .into_iter()
+                .map(|(rule, value)| format!("{rule}: {value}"))
                 .collect();
             if *optional {
                 settings.push("optional: true".to_string());
@@ -113,7 +119,7 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                 Some(Section::Internal) => "internal field ",
                 None => "",
             };
-            let field = format!("{place}{}: {ty}", node.name);
+            let field = format!("{place}{}: {}", node.name, ty.render(&name));
             if settings.is_empty() {
                 field
             } else {
@@ -198,7 +204,11 @@ fn ordered_children(graph: &Graph, id: NodeId) -> Vec<NodeId> {
 fn field_line(graph: &Graph, id: NodeId) -> String {
     let node = graph.node(id);
     match &node.detail {
-        Detail::Field { ty, .. } => format!("{}: {ty}", short(&node.name)),
+        Detail::Field { ty, .. } => format!(
+            "{}: {}",
+            short(&node.name),
+            ty.render(&|key| name_now(graph, key))
+        ),
         _ => short(&node.name).to_string(),
     }
 }

@@ -2,12 +2,11 @@
 //! survive the trip to a file name, unique names, names that fold to the
 //! same file, reserved and generic names.
 
-use jadpo_db::{
-    Db, File, Item, ItemKind, Layout, Ownership, Project, Symbol, Symbols, item_tree, symbols,
-};
+use jadpo_db::{Db, File, Item, ItemKind, Layout, Ownership, Project, Symbol, item_tree, symbols};
 use jadpo_diag::{Decider, Diagnostic, Span, rule};
 
 use crate::case::{is_lower_snake, is_upper_camel, round_trips, to_camel, to_snake};
+use crate::lookups::{Lookup, NameView};
 use crate::std_lib::StdNames;
 use crate::tree::{self, file_span, name_span};
 
@@ -36,7 +35,7 @@ pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
         return Vec::new();
     };
     let path = file.path(db);
-    let table = symbols(db, project);
+    let table = Lookup::new(db, project);
     let mut out = Vec::new();
     for item in &item_tree(db, file).items {
         match item.kind {
@@ -48,13 +47,13 @@ pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
             _ => {}
         }
         let span = name_span(&source, path, item.index, None);
-        if let Some(problem) = declaration(table, path, item, None, span) {
+        if let Some(problem) = declaration(&table, path, item, None, span) {
             out.push(problem);
         }
         for function in &item.functions {
             let span = name_span(&source, path, item.index, Some(function.index));
             if let Some(problem) =
-                declaration(table, path, function, Some((item.index, &item.name)), span)
+                declaration(&table, path, function, Some((item.index, &item.name)), span)
             {
                 out.push(problem);
             }
@@ -65,7 +64,7 @@ pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
 
 /// The first naming problem of one declaration.
 fn declaration(
-    table: &Symbols,
+    table: &Lookup<'_>,
     path: &str,
     item: &Item,
     library: Option<(u32, &str)>,
@@ -96,9 +95,9 @@ fn declaration(
     };
     let here = order(path, index, function);
     if let Some(first) = table
-        .declarations
-        .get(name)
-        .and_then(|found| found.iter().min_by_key(|symbol| symbol_order(symbol)))
+        .declared(name)
+        .iter()
+        .min_by_key(|symbol| symbol_order(symbol))
         && symbol_order(first) < here
     {
         return Some(
@@ -114,7 +113,7 @@ fn declaration(
             .next(format!("Rename this {}, or remove it if it's a copy", item.kind.word())),
         );
     }
-    if item.kind == ItemKind::Library && table.domains.contains(name) {
+    if item.kind == ItemKind::Library && table.is_domain(name) {
         return Some(
             Diagnostic::new(
                 &rule::SEMANTIC_DUPLICATE_DECLARATION,
@@ -125,12 +124,13 @@ fn declaration(
             .next("Rename the library"),
         );
     }
+    // The names folding to each file name are found once per symbol
+    // table, not by comparing every pair of declarations.
     let folded = to_snake(name);
     if let Some(other) = table
-        .declarations
+        .same_file_name(&folded)
         .iter()
-        .filter(|(other, _)| other.as_str() != name && to_snake(other) == folded)
-        .flat_map(|(_, found)| found.iter())
+        .filter(|symbol| symbol.name != name)
         .filter(|symbol| symbol_order(symbol) < here)
         .min_by_key(|symbol| symbol_order(symbol))
     {
