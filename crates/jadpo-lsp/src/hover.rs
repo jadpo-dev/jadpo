@@ -189,19 +189,9 @@ fn ordered_children(graph: &Graph, id: NodeId) -> Vec<NodeId> {
         .children(id)
         .filter(|&child| graph.node(child).kind == Kind::Field)
         .collect();
-    // Written fields in source order; copied ones, which share their
-    // type's place, after them.
-    children.sort_by_key(|&child| {
-        let node = graph.node(child);
-        let copied = matches!(
-            &node.detail,
-            Detail::Field {
-                copied_from: Some(_),
-                ..
-            }
-        );
-        (copied, node.place.as_ref().map(|p| p.start))
-    });
+    // In the order they are written; a copied field sits at the entry that
+    // copied it.
+    children.sort_by_key(|&child| graph.node(child).place.as_ref().map(|p| p.start));
     children
 }
 
@@ -282,7 +272,7 @@ fn facts(graph: &Graph, id: NodeId) -> Vec<String> {
         out.push(about.join(" · "));
         let raisers: Vec<NodeId> = graph.incoming(id, EdgeKind::Raises).collect();
         if !raisers.is_empty() {
-            out.push(format!("can leave {}", named(graph, &raisers)));
+            out.push(format!("raised by {}", named(graph, &raisers)));
         }
     }
     let callers: Vec<NodeId> = graph.incoming(id, EdgeKind::Calls).collect();
@@ -295,7 +285,12 @@ fn facts(graph: &Graph, id: NodeId) -> Vec<String> {
         node.kind,
         Kind::Type | Kind::Entity | Kind::Field | Kind::Variant
     ) {
-        let users: Vec<NodeId> = graph.incoming(id, EdgeKind::Uses).collect();
+        // A failure's raisers are listed already.
+        let raisers: Vec<NodeId> = graph.incoming(id, EdgeKind::Raises).collect();
+        let users: Vec<NodeId> = graph
+            .incoming(id, EdgeKind::Uses)
+            .filter(|user| !raisers.contains(user))
+            .collect();
         if !users.is_empty() {
             out.push(format!("used by {}", named(graph, &users)));
         }

@@ -17,8 +17,8 @@ use super::{declaration_key, field_key, library_function_key, registry, variant_
 use crate::failures::{FailureTable, failure_table};
 use crate::tree;
 use crate::types::{
-    Callables, Const, Def, FieldDef, FieldsBase, Num, Rules, Sig, Ty, TypeTable, callables,
-    failure_sets, type_table,
+    Callables, Const, Def, FieldDef, FieldsBase, Num, Rules, Sig, Ty, TypeRef, TypeTable,
+    callables, failure_sets, type_table,
 };
 
 /// The nodes a file declares and the edges that start at them.
@@ -371,15 +371,36 @@ impl Part<'_> {
             .map(<[_]>::to_vec)
             .unwrap_or_default();
         let mut written: BTreeMap<String, ast::Member> = BTreeMap::new();
+        // Each `include` and `pick` entry, as the names it is written with.
+        let mut copying: Vec<(Vec<String>, SyntaxNode)> = Vec::new();
         for (name, member) in tree::members(list) {
-            if let Some(name) = tree::name_text(&name) {
-                written.entry(name).or_insert(member);
+            let Some(name) = tree::name_text(&name) else {
+                continue;
+            };
+            if matches!(name.as_str(), "include" | "pick")
+                && let Some(ast::Expr::ListExpr(entries)) = member.value()
+            {
+                for entry in entries.exprs() {
+                    if let TypeRef::Path(names, _) = TypeRef::from_expr(&entry) {
+                        copying.push((names, entry.syntax().clone()));
+                    }
+                }
             }
+            written.entry(name).or_insert(member);
         }
         let mut children = Vec::new();
         for field in &fields {
             if field.copied {
-                self.copied_field(host, host_key, field);
+                // At the entry that brought it in: `Note.body` in a `pick`,
+                // or `Note` in an `include`.
+                let entry = match &field.declared {
+                    Ty::Field(source, path) => copying.iter().find(|(names, _)| {
+                        names.first() == Some(source)
+                            && (names.len() == 1 || names[1..] == path[..])
+                    }),
+                    _ => None,
+                };
+                self.copied_field(host, host_key, field, entry.map(|(_, node)| node));
             } else if let Some(member) = written.get(&field.name) {
                 self.field(host, host_key, vec![field.name.clone()], member, None);
                 children.push(member.syntax().clone());
@@ -430,8 +451,15 @@ impl Part<'_> {
     }
 
     /// A field brought in by `include` or `pick`: it has no text of its
-    /// own, so it takes its type's place and no digest.
-    fn copied_field(&mut self, host: &str, parent: &Key, field: &FieldDef) {
+    /// own, so it takes the place of the entry that copied it, and no
+    /// digest.
+    fn copied_field(
+        &mut self,
+        host: &str,
+        parent: &Key,
+        field: &FieldDef,
+        entry: Option<&SyntaxNode>,
+    ) {
         let key = field_key(host, std::slice::from_ref(&field.name));
         let parent_place = self
             .out
@@ -440,7 +468,10 @@ impl Part<'_> {
             .find(|node| &node.key == parent)
             .and_then(|node| node.place.clone());
         let mut node = Node::new(key.clone(), Kind::Field, format!("{host}.{}", field.name));
-        node.place = parent_place;
+        node.place = match entry {
+            Some(entry) => Some(place(self.path, &self.lines, entry)),
+            None => parent_place,
+        };
         node.domain = self.domain.clone();
         node.parent = Some(parent.clone());
         let from = match &field.declared {

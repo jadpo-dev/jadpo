@@ -138,8 +138,8 @@
       "id": "field Summary.body",
       "kind": "field",
       "lines": [
-        1,
-        4
+        2,
+        2
       ],
       "name": "Summary.body",
       "parent": "type Summary",

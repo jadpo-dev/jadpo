@@ -236,7 +236,7 @@ pub fn failures(graph: &Graph) -> Catalogue {
         let raisers: Vec<NodeId> = graph.incoming(id, EdgeKind::Raises).collect();
         if !raisers.is_empty() {
             let list: Vec<String> = raisers.iter().map(|&r| reference(graph, r)).collect();
-            markdown.push_str(&format!("- can leave: {}\n", list.join(", ")));
+            markdown.push_str(&format!("- raised by: {}\n", list.join(", ")));
         }
         markdown.push('\n');
         let mut entry = reference_json(graph, id);
