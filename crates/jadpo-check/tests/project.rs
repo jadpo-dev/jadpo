@@ -356,6 +356,20 @@ fn names_resolve_to_the_right_kind() {
 }
 
 #[test]
+fn types_built_from_other_types_resolve_what_they_copy() {
+    assert_eq!(
+        problems(
+            Layout::Loose,
+            &[(
+                "a.jadpo",
+                "entity Basket {}\n\ntype BasketView = Output {\n    include: [Basket]\n    omit: [Basket.note]\n}\n\ntype PatchBasket = Input {\n    pick: [Basket.note, Baskit.size]\n    optional: all\n}\n"
+            )]
+        ),
+        ["a.jadpo semantic.unknown_name: `Baskit` isn't declared"]
+    );
+}
+
+#[test]
 fn loose_files_have_no_layout_rules() {
     assert_eq!(
         problems(

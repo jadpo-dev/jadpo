@@ -95,7 +95,8 @@ pub enum Base {
 }
 
 impl Base {
-    fn from_written(text: &str) -> Base {
+    /// The base a `type` declaration names, as written after `=`.
+    pub fn from_written(text: &str) -> Base {
         match text {
             "Object" => Base::Object,
             "Enum" => Base::Enum,

@@ -8,9 +8,7 @@
 //! Lower-case names used as values (`total`, `todo.title`) are area 3's to
 //! check, with types.
 
-use jadpo_db::{
-    Base, Db, File, ItemKind, Ownership, Place, Project, Symbol, Symbols, location, symbols,
-};
+use jadpo_db::{Base, Db, File, ItemKind, Ownership, Project, Symbol, Symbols, location, symbols};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, MemberItem, Pat, Stmt, Type};
 
@@ -36,7 +34,6 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
     let mut resolver = Resolver {
         path: file.path(db),
         ownership: &location.ownership,
-        root_tests: location.place == Place::Tests,
         table: symbols(db, project),
         names: StdNames::get(),
         scopes: Vec::new(),
@@ -52,7 +49,6 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
 struct Resolver<'a> {
     path: &'a str,
     ownership: &'a Ownership,
-    root_tests: bool,
     table: &'a Symbols,
     names: &'static StdNames,
     scopes: Vec<Vec<String>>,
@@ -132,16 +128,7 @@ impl Resolver<'_> {
             .map(|base| tree::written(base.syntax()))
             .unwrap_or_default();
         self.ty(decl.base(), Want::Type);
-        let base = match base_text.as_str() {
-            "Object" => Base::Object,
-            "Enum" => Base::Enum,
-            "Input" => Base::Input,
-            "Output" => Base::Output,
-            "Failure" => Base::Failure,
-            "Event" => Base::Event,
-            "EmailMessage" => Base::EmailMessage,
-            other => Base::Named(other.to_string()),
-        };
+        let base = Base::from_written(&base_text);
         let list = decl.member_list();
         match base {
             Base::Failure => {
@@ -178,16 +165,35 @@ impl Resolver<'_> {
         }
     }
 
-    /// A block of fields: `name: Type`.
+    /// A block of fields: `name: Type`, and the lines that copy fields
+    /// from other types (area 2): `include: [Todo]`, `pick: [Todo.title]`,
+    /// `omit: [...]` and `optional: [...]` or `all`.
     fn fields(&mut self, list: Option<ast::MemberList>) {
         for item in list.iter().flat_map(|list| list.member_items()) {
-            if let MemberItem::Member(field) = item {
-                if let Some(key) = field.member_key() {
-                    self.member_name(key.names().next(), "field");
+            let MemberItem::Member(field) = item else {
+                continue;
+            };
+            let key = field
+                .member_key()
+                .and_then(|key| key.names().next())
+                .and_then(|name| tree::name_text(&name));
+            match key.as_deref() {
+                Some("include" | "pick" | "omit") => {
+                    if let Some(Expr::ListExpr(list)) = field.value() {
+                        for entry in list.exprs() {
+                            self.type_expr(&entry, Want::Type);
+                        }
+                    }
+                    continue;
                 }
-                if let Some(value) = field.value() {
-                    self.type_expr(&value, Want::Type);
-                }
+                Some("optional") => continue,
+                _ => {}
+            }
+            if let Some(key) = field.member_key() {
+                self.member_name(key.names().next(), "field");
+            }
+            if let Some(value) = field.value() {
+                self.type_expr(&value, Want::Type);
             }
         }
     }
@@ -728,14 +734,12 @@ impl Resolver<'_> {
             (Ownership::Domain(theirs), Ownership::Domain(ours)) if theirs != ours => {
                 Some(theirs.clone())
             }
-            (Ownership::Domain(theirs), Ownership::Root) if self.root_tests => Some(theirs.clone()),
+            (Ownership::Domain(theirs), Ownership::Root) => Some(theirs.clone()),
             _ => None,
         };
         match &symbol.kind {
-            ItemKind::Function => {
-                if let Some((library, _)) = &symbol.library
-                    && self.library.as_ref() != Some(library)
-                {
+            ItemKind::Function => match (&symbol.library, other_domain) {
+                (Some((library, _)), _) if self.library.as_ref() != Some(library) => {
                     self.out.push(
                         Diagnostic::new(
                             &rule::SEMANTIC_UNKNOWN_CALLEE,
@@ -746,23 +750,22 @@ impl Resolver<'_> {
                         .next(format!("Call `{library}.{text}(...)`"))
                         .edit(Span::new(self.path, span.start, span.start), format!("{library}.")),
                     );
-                } else if symbol.library.is_some() {
-                } else if let Some(domain) = other_domain {
-                    self.out.push(
-                        Diagnostic::new(
-                            &rule::SEMANTIC_UNKNOWN_CALLEE,
-                            format!("`{text}` is a helper in domain `{domain}`"),
-                        )
-                        .at(span, "not reachable from here")
-                        .reason("A helper function is called from its own domain; another domain uses it through a public library.")
-                        .next(format!(
-                            "Move `{text}` into a public library in `{domain}` and call it through the library"
-                        )),
-                    );
-                } else {
-                    self.access(symbol, span);
                 }
-            }
+                // A sibling in the same library.
+                (Some(_), _) => {}
+                (None, Some(domain)) => self.out.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_UNKNOWN_CALLEE,
+                        format!("`{text}` is a helper in domain `{domain}`"),
+                    )
+                    .at(span, "not reachable from here")
+                    .reason("A helper function is called from its own domain; another domain uses it through a public library.")
+                    .next(format!(
+                        "Move `{text}` into a public library in `{domain}` and call it through the library"
+                    )),
+                ),
+                (None, None) => self.access(symbol, span),
+            },
             ItemKind::Action | ItemKind::Query => match other_domain {
                 Some(domain) => self.out.push(
                     Diagnostic::new(
