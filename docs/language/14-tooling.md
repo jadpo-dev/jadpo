@@ -663,6 +663,14 @@ what other areas carried here and where this page answers it.
     command missing a required argument in a terminal opens a searchable
     list (`jadpo sql` alone lists every query); without a terminal it fails
     with the valid values listed, so agents get the choices too.
+    *Extended 2026-10-13 (Richard):* completion starts at the top level:
+    typing `jadpo` and Tab lists every command with a one-line description,
+    and every flag is offered with its description, so nobody has to
+    remember them. The CLI describes itself completely: `jadpo` alone and
+    `jadpo <command> --help` show every subcommand and flag with what it does
+    and an example, and `jadpo help --json` gives the whole command
+    reference as data for agents. Nobody needs the documentation to learn
+    what a command does; the docs are generated from the same source.
 
 ### Decisions
 
@@ -696,4 +704,4 @@ what other areas carried here and where this page answers it.
 | Deployables | `deployables: { }` in `app.jadpo` with what each serves or runs and its target; compiled from what it reaches | 2026-10-13 |
 | Integration commands | `jadpo provider add/import/record/update`; `packages outdated` later | 2026-10-13 |
 | Command synonyms | Plain synonyms (`fmt`/`format`), nearest-command suggestions, no single-letter aliases (Richard) | 2026-10-13 |
-| Completion and prompts | Tab completion of commands, flags and project names; a missing argument opens a searchable list in a terminal and lists valid values otherwise (Richard) | 2026-10-13 |
+| Completion and prompts | Tab completion from the top level of commands, flags (with descriptions) and project names; a missing argument opens a searchable list in a terminal and lists valid values otherwise; the CLI describes itself fully (`--help` with examples, `jadpo help --json`), so nobody needs the docs (Richard) | 2026-10-13 |
