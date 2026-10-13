@@ -39,7 +39,7 @@ before starting the second half.
 
 ## Phase 0 — Reset
 
-- [ ] **0.1 Merge the language review.** Pull request from `language-review`
+- [x] **0.1 Merge the language review.** Pull request from `language-review`
   to `main`. **Needs Richard** to approve opening it.
 - [x] **0.2 Archive the current compiler.** Tag `archive/compiler-v0` on
   `main`, then delete `jadpo/`, the old examples' generated output, the old
