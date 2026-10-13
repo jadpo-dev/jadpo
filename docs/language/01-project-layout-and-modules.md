@@ -14,6 +14,7 @@ rules:
   - semantic.unknown_callee
   - semantic.not_callable
   - semantic.wrong_name_kind
+  - semantic.own_domain_qualification
   - library.similar_exists
   - semantic.standard_namespace_reserved
   - semantic.standard_operation_qualification
@@ -516,6 +517,68 @@ error: `reserve_stock` is private to domain `inventory`
   help: docs/language/01-project-layout-and-modules.html#visibility-private-cross-domain
 
 check failed: 1 error, 4 files
+```
+
+### `visibility.public_not_allowed`
+
+A domain offers other domains its types, entities, queries, libraries and
+actions; nothing else is `public`:
+
+```jadpo check project=e-public file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-public file=domains/planning/routes/todos.jadpo expect=visibility.public_not_allowed
+public routes Todos {
+    prefix: "/todos"
+}
+```
+
+```text output
+error: A route group can't be `public`
+ --> domains/planning/routes/todos.jadpo:1:1
+  |
+1 | public routes Todos {
+  | ^^^^^^ not part of a domain's interface
+  reason: A route group is a trigger: nothing calls it, so there is nothing to offer another domain; who reaches a route is decided by the route and its policy.
+  next: Remove `public` (agent)
+  rule: visibility.public_not_allowed
+  help: docs/language/01-project-layout-and-modules.html#visibility-public-not-allowed
+
+check failed: 1 error, 2 files
+```
+
+### `semantic.own_domain_qualification`
+
+The dot names the owner of what you call, so code calls its own domain's
+actions and queries by their bare names:
+
+```jadpo check project=e-own-domain file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-own-domain file=domains/planning/actions/snooze_todo.jadpo
+action snooze_todo() -> Unit {}
+```
+
+```jadpo check project=e-own-domain file=domains/planning/actions/tidy_up.jadpo expect=semantic.own_domain_qualification
+action tidy_up() -> Unit {
+    planning.snooze_todo()
+}
+```
+
+```text output
+error: `snooze_todo` is in this file's own domain
+ --> domains/planning/actions/tidy_up.jadpo:2:5
+  |
+2 |     planning.snooze_todo()
+  |     ^^^^^^^^ own domain
+  reason: The dot names the owner of what you call, and code in `planning` owns `snooze_todo` itself, so it calls it by its bare name.
+  next: Call `snooze_todo(...)` without `planning.` (agent)
+  rule: semantic.own_domain_qualification
+  help: docs/language/01-project-layout-and-modules.html#semantic-own-domain-qualification
+
+check failed: 1 error, 3 files
 ```
 
 ### `layout.unknown_location`
@@ -1163,7 +1226,11 @@ build/
 - A domain owns everything in it and is the visibility boundary.
   Declarations are private to their domain unless marked `public`.
 - Entity identities, types, failures, events, queries, libraries and actions
-  can be public. A public action is the domain's write interface: checkout in
+  can be public; `public` on anything else (a function, a route group, a
+  schedule, a subscriber, a test, a seed or a fixture) is
+  `visibility.public_not_allowed`, and an own-domain action or query called
+  as `planning.snooze_todo()` from inside `planning` is
+  `semantic.own_domain_qualification`. A public action is the domain's write interface: checkout in
   `ordering` can call `inventory.reserve_stock(...)` and both changes commit
   or roll back together in one database transaction, using the transaction
   machinery that exists today. Another domain never touches the entities

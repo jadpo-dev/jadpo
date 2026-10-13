@@ -428,3 +428,68 @@ fn moving_a_test_to_another_domain_keeps_its_key() {
     assert_eq!(before, [Key::from_text("test count \"adds up\"")]);
     assert_eq!(before, after);
 }
+
+// --- finding 23: what may be public, and own-domain calls are bare ----------
+
+#[test]
+fn only_a_domains_interface_can_be_public() {
+    let in_project = |path: &str, text: &str| {
+        rules(
+            Layout::Project,
+            &[
+                support::APP,
+                (
+                    "domains/planning/types/count.jadpo",
+                    "type Count = Int {}\n",
+                ),
+                (
+                    "domains/planning/actions/keep.jadpo",
+                    "action keep(n: Count) -> Count {\n    return n\n}\n",
+                ),
+                (path, text),
+            ],
+        )
+    };
+    assert_eq!(
+        in_project(
+            "domains/planning/types/count.test.jadpo",
+            "public test \"adds up\" {\n    assert 1 == 1\n}\n"
+        ),
+        ["visibility.public_not_allowed"]
+    );
+    assert_eq!(
+        in_project(
+            "domains/planning/actions/tick.jadpo",
+            "action tick(n: Count) -> Count {\n    return helper(n)\n}\n\npublic function helper(n: Count) -> Count {\n    return n\n}\n"
+        ),
+        ["visibility.public_not_allowed"]
+    );
+    assert_eq!(
+        in_project(
+            "domains/planning/actions/tick.jadpo",
+            "public action tick() -> Unit {}\n"
+        ),
+        CLEAN
+    );
+}
+
+#[test]
+fn an_own_domain_call_is_bare() {
+    assert_eq!(
+        rules(
+            Layout::Project,
+            &[
+                support::APP,
+                (
+                    "domains/planning/actions/snooze_todo.jadpo",
+                    "action snooze_todo() -> Unit {}\n"
+                ),
+                (
+                    "domains/planning/actions/tick.jadpo",
+                    "action tick() -> Unit {\n    planning.snooze_todo()\n}\n"
+                ),
+            ]
+        ),
+        ["semantic.own_domain_qualification"]
+    );
+}

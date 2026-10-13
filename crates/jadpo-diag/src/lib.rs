@@ -215,6 +215,8 @@ rules! {
         "01-project-layout-and-modules.html#semantic-name-case", "Name has the wrong case for its kind";
     SEMANTIC_NOT_CALLABLE: "semantic.not_callable", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-not-callable", "Name cannot be called";
+    SEMANTIC_OWN_DOMAIN_QUALIFICATION: "semantic.own_domain_qualification", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-own-domain-qualification", "Own-domain call is qualified";
     SEMANTIC_STANDARD_NAMESPACE_RESERVED: "semantic.standard_namespace_reserved", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-standard-namespace-reserved", "Name belongs to a standard-library namespace";
     SEMANTIC_STANDARD_OPERATION_QUALIFICATION: "semantic.standard_operation_qualification", area 1, Error, Agent,
@@ -401,6 +403,8 @@ rules! {
         "02-values-and-types.html#type-unknown-variant-field", "Variant has no such field";
     VISIBILITY_PRIVATE_CROSS_DOMAIN: "visibility.private_cross_domain", area 1, Error, Human,
         "01-project-layout-and-modules.html#visibility-private-cross-domain", "Another domain uses a private declaration";
+    VISIBILITY_PUBLIC_NOT_ALLOWED: "visibility.public_not_allowed", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#visibility-public-not-allowed", "Declaration can't be public";
 }
 
 /// Looks a rule up by id, for tools that read ids back from JSON.

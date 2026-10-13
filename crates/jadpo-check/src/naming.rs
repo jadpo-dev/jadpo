@@ -28,6 +28,53 @@ fn described(symbol: &Symbol) -> String {
     format!("{} in `{}`", symbol.kind.with_a(), symbol.path)
 }
 
+/// `public` on a declaration that isn't part of a domain's interface: only
+/// types (failures and events among them), entities, queries, libraries and
+/// actions are offered to other domains (area 1).
+fn public_not_allowed(path: &str, decl: &jadpo_syntax::ast::Decl) -> Option<Diagnostic> {
+    use jadpo_syntax::ast::{AstNode, Decl};
+    let word = match decl {
+        Decl::TypeDecl(_)
+        | Decl::EntityDecl(_)
+        | Decl::QueryDecl(_)
+        | Decl::LibraryDecl(_)
+        | Decl::ActionDecl(_) => return None,
+        Decl::FunctionDecl(_) => "function",
+        Decl::FixtureDecl(_) => "fixture",
+        Decl::RoutesDecl(_) => "route group",
+        Decl::ScheduleDecl(_) => "schedule",
+        Decl::SubscriberDecl(_) => "subscriber",
+        Decl::TestDecl(_) => "test",
+        Decl::SeedDecl(_) => "seed",
+        _ => "declaration",
+    };
+    let visibility = decl
+        .syntax()
+        .children()
+        .find(|child| child.kind() == jadpo_syntax::SyntaxKind::VISIBILITY)?;
+    let range = visibility.text_range();
+    let span = Span::new(path, range.start().into(), range.end().into());
+    let reason = match word {
+        "function" => "Another domain uses a helper through a public library, so a plain function stays with the code that calls it.".to_string(),
+        "route group" | "schedule" | "subscriber" => format!(
+            "A {word} is a trigger: nothing calls it, so there is nothing to offer another domain; who reaches a route is decided by the route and its policy."
+        ),
+        _ => format!(
+            "A domain offers other domains its types, entities, queries, libraries and actions; a {word} is never called from another domain."
+        ),
+    };
+    Some(
+        Diagnostic::new(
+            &rule::VISIBILITY_PUBLIC_NOT_ALLOWED,
+            format!("A {word} can't be `public`"),
+        )
+        .at(span.clone(), "not part of a domain's interface")
+        .reason(reason)
+        .next("Remove `public`")
+        .edit(Span::new(path, span.start, span.end + 1), ""),
+    )
+}
+
 /// A test's sentence is its name, unique across the project, so a report
 /// or a rerun names exactly one test (area 13; its key is its subject and
 /// sentence, area 18).
@@ -77,6 +124,9 @@ pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
     let path = file.path(db);
     let table = Lookup::new(db, project);
     let mut out = Vec::new();
+    for decl in source.decls() {
+        out.extend(public_not_allowed(path, &decl));
+    }
     for item in &item_tree(db, file).items {
         if item.kind == ItemKind::Test {
             if let Some(problem) = duplicate_test(db, project, &source, path, item) {

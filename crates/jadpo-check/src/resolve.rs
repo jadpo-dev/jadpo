@@ -1008,6 +1008,22 @@ impl Resolver<'_> {
             let Some((member, span)) = member else {
                 return;
             };
+            if *self.ownership == Ownership::Domain(qualifier.clone()) {
+                let end = span.start;
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_OWN_DOMAIN_QUALIFICATION,
+                        format!("`{member}` is in this file's own domain"),
+                    )
+                    .at(qualifier_span.clone(), "own domain")
+                    .reason(format!(
+                        "The dot names the owner of what you call, and code in `{qualifier}` owns `{member}` itself, so it calls it by its bare name."
+                    ))
+                    .next(format!("Call `{member}(...)` without `{qualifier}.`"))
+                    .edit(Span::new(self.path, qualifier_span.start, end), ""),
+                );
+                return;
+            }
             let in_domain =
                 |symbol: &&Symbol| symbol.ownership == Ownership::Domain(qualifier.clone());
             let found = self
