@@ -56,7 +56,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` | Decided in area 12, not built |
 | `jadpo provider add` / `import` / `record` / `update` | Adds, imports, confirms and upgrades provider packages | Decided in area 11; question 15 |
 | `jadpo trace <id>` / `jadpo why <name>` / `jadpo call` / `jadpo console` | Debugging (area 17) | Proposed in area 17 |
-| `jadpo incident <event-file>` | Explains a runtime event using the local build | Exists |
+| `jadpo incident [file \| -]` | Explains a runtime event: from a file, from standard input (`pbpaste \| jadpo incident -`, or a log stream piped in), or, with no argument in a terminal, from text pasted at a prompt; it finds the Jadpo events inside surrounding log text and groups them by request | Exists for a file; the rest decided 2026-10-13 |
 | `jadpo lsp` | Runs the language server for editors | Exists |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere | Proposed (bug below) |
 
@@ -705,3 +705,5 @@ what other areas carried here and where this page answers it.
 | Integration commands | `jadpo provider add/import/record/update`; `packages outdated` later | 2026-10-13 |
 | Command synonyms | Plain synonyms (`fmt`/`format`), nearest-command suggestions, no single-letter aliases (Richard) | 2026-10-13 |
 | Completion and prompts | Tab completion from the top level of commands, flags (with descriptions) and project names; a missing argument opens a searchable list in a terminal and lists valid values otherwise; the CLI describes itself fully (`--help` with examples, `jadpo help --json`), so nobody needs the docs (Richard) | 2026-10-13 |
+| Incident input | `jadpo incident` reads a file, standard input, or text pasted at a prompt in a terminal; Jadpo events are found inside surrounding log text (timestamps, platform wrappers) and grouped by request; the build's manifest is found by the event's build id (area 18) (Richard) | 2026-10-13 |
+| CLI design language | One design language for all CLI output, designed before it is built and followed everywhere; see the [CLI design language](research/14-cli-design-language.md) (Richard) | 2026-10-13 |
