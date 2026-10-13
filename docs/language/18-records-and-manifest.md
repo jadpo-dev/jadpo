@@ -1,7 +1,7 @@
 ---
 title: Records and manifest
 area: 18
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules: []
 ---
@@ -19,7 +19,7 @@ is a view of it. Reviewing a change means comparing two manifests, and
 explaining a production event means rebuilding the manifest of the build
 that raised it.
 
-> In review. Almost nothing here exists yet (see Status). The research and the options considered are in [the proposals](research/18-records-and-manifest-proposals.md). This page gathers what areas 1, 5, 7, 9, 11, 14, 16 and 17 each described, and replaces their separate pieces with one system.
+> Decided on 2026-10-13.
 
 | Name | Holds | Where | Committed | Written by | Read by |
 |---|---|---|---|---|---|
@@ -396,19 +396,19 @@ Each row says how it was checked: run with `jadpo` 3ce094d0 on a copy of
    registry), `jadpo.lock` and `acceptances/`. A file is committed only if
    it cannot be recomputed from today's source or is a promise whose diff
    must be read. Area 1's root gains `api/` and `acceptances/`. This is the
-   Kotlin, API Extractor and lock-file pattern.
+   Kotlin, API Extractor and lock-file pattern. *Decided 2026-10-13:* yes, as recommended.
 2. **What is the manifest?** *Recommendation:* one `build/manifest.json`,
    the compiler's graph as canonical JSON with a `format` number. Every
    report, catalogue, OpenAPI document and monitoring rule is a view of
    it, and `app.meta.json`, `inventory/`, `audit/`, `compatibility/` and
-   `approval/` go. Build ids are digests of what decides behaviour.
+   `approval/` go. Build ids are digests of what decides behaviour. *Decided 2026-10-13:* yes, as recommended.
 3. **How does identity survive renames, and is there one registry?**
    *Recommendation:* one registry, `database/identities.json`, for data and
    code. Each thing is known by its born name, and the registry holds only
    renames, written by `jadpo rename` and the domain commands. Code is in
    it because stored deliveries and schedule state name code. This amends
    area 5's dense registry. A dense registry would add a line for every
-   new action.
+   new action. *Decided 2026-10-13:* yes, as recommended.
 4. **What is the "before" in every comparison?** *Recommendation:* a git
    ref, by default where the branch started. That commit is built with
    the same compiler and cached per commit. `check` gates on the diff,
@@ -426,19 +426,19 @@ Each row says how it was checked: run with `jadpo` 3ce094d0 on a copy of
    `///` reason from a person. It counts only in the change that adds it,
    and is never edited once merged. `jadpo acceptance new <purpose>`
    drafts it without a reason, and the CODEOWNERS approval is the gate.
-   This amends area 7's "one per change" and its notes in the record.
+   This amends area 7's "one per change" and its notes in the record. *Decided 2026-10-13:* yes, as recommended.
 6. **Which package changes need a person?** *Recommendation:* a used
    operation removed, a used field removed or retyped, a new failure on a
    used operation, or a host or credential scheme changed. Everything else
    only appears in the review. `provider update` prints that part of the
-   review, which is what the "upgrade plan" idea becomes.
+   review, which is what the "upgrade plan" idea becomes. *Decided 2026-10-13:* yes, as recommended.
 7. **Does a deployable carry its manifest?** *Recommendation:* no, only a
    build stamp (build id, commit, modified, compiler, deployable, target)
    on every event, plus `.jadpo` locations at fault sites. `jadpo incident`
    rebuilds the manifest from the commit and checks the build id. There is
    no endpoint to secure, it works for workers and Wasm alike, and nothing
    is archived. Deploy only commits that stay in history. This replaces
-   the starting idea of embedding the manifest and serving it.
+   the starting idea of embedding the manifest and serving it. *Decided 2026-10-13:* yes, with one addition: `jadpo` fetches and runs the exact compiler version named in the stamp (as `rustup` installs a pinned toolchain), so an old build can always be rebuilt.
 
 ### Decisions
 
@@ -458,10 +458,10 @@ Each row says how it was checked: run with `jadpo` 3ce094d0 on a copy of
 | Renaming | Carried from area 14: `jadpo rename <old> <new>` updates source, callers, file names and the identity registry | 2026-10-13 |
 | Sign-off | Carried from area 14: acceptance files in a host-protected folder; CI's `jadpo check` fails without them | 2026-10-13 |
 | Incident input | Carried from area 14: the build's manifest is found by the event's build id | 2026-10-13 |
-| Records | | |
-| Manifest | | |
-| Identity | | |
+| Records | Four committed records: `api/`, `database/`, `jadpo.lock`, `acceptances/`; area 1's root gains `api/` and `acceptances/` | 2026-10-13 |
+| Manifest | One `build/manifest.json`, the compiler's graph as versioned canonical JSON; every report and generated document is a view of it | 2026-10-13 |
+| Identity | One registry for data and code in `database/identities.json`, holding renames only, written by `jadpo rename` and the domain commands | 2026-10-13 |
 | The before side | Current branch against the default branch (`main`/`master` from the remote) at their merge base; `--before <ref>` overrides; one default for `check`, `approval` and the review web view (Richard) | 2026-10-13 |
-| Acceptances | | |
-| Package changes | | |
-| Production builds | | |
+| Acceptances | One file per decision listing the changes it covers, with a person's reason; counts only in the change that adds it; `jadpo acceptance new` drafts it; CODEOWNERS approval is the gate | 2026-10-13 |
+| Package changes | A person accepts a used operation removed, a used field removed or retyped, a new failure on a used operation, or a host or credential-scheme change | 2026-10-13 |
+| Production builds | Deployables carry a build stamp, not the manifest; `jadpo incident` rebuilds from the commit with the exact compiler version | 2026-10-13 |

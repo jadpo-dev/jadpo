@@ -986,7 +986,7 @@ migration workflow (area 5). The layout only reserves their folders.
 10. **Root `api/` and `acceptances/` folders** (carried from area 7). Area 7
    keeps each API's record in `api/` and a person's acceptance of a breaking
    change in `acceptances/`, but the decided root list allows only the entries
-   above. *Recommendation:* add both folders to the fixed root.
+   above. *Recommendation:* add both folders to the fixed root. *Decided 2026-10-13 (area 18):* yes; the root also gains `providers/` and `jadpo.lock` (area 11).
 
 ### Decisions
 
@@ -1016,5 +1016,5 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Keywords match folders | `schedule` (folder `schedules/`), `integration` (`integrations/`) and `library` (`libraries/`) replace `job` and `service` (Amended 2026-10-13 by area 11: `integration` and `integrations/` are gone; external services are provider packages) | 2026-10-12 |
 | Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` | 2026-10-12 |
 | Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
-| Root `api/` and `acceptances/` folders | | |
+| Root `api/` and `acceptances/` folders | Added to the fixed root, with `providers/` and `jadpo.lock` (areas 11 and 18) | 2026-10-13 |
 | Emails folder | Each domain may have `emails/`, holding email types and their templates (from area 16) | 2026-10-13 |
