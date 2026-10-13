@@ -367,3 +367,41 @@ fn summary_colour_is_on_the_outcome_and_problem_counts() {
         "\x1b[1;31m✗ fmt failed\x1b[0m  \x1b[31m2 not formatted\x1b[0m\x1b[2m · 12 formatted\x1b[0m\n"
     );
 }
+
+/// Inline code in a label's value is never split across lines: the line
+/// breaks before it, and a span longer than the line overflows whole
+/// (CLI design language, "Layout": commands are never broken).
+#[test]
+fn inline_code_in_a_value_wraps_whole() {
+    let diagnostic = Diagnostic::new(&rule::TOOLCHAIN_PROJECT_NOT_FOUND, "No project here")
+        .reason("Jadpo looked for `app.jadpo` in this folder and every folder above it.")
+        .next("Run it inside a project, or give a file or folder: `jadpo check <path>`");
+    let screen = Screen::new().with(Block::diagnostic(&diagnostic, &()));
+    let out = screen.render(&Style {
+        width: 80,
+        ..rich()
+    });
+    assert_eq!(
+        out,
+        "✗ error  No project here
+  reason    Jadpo looked for `app.jadpo` in this folder and every folder above
+            it.
+  next      Run it inside a project, or give a file or folder:
+            `jadpo check <path>` (agent)
+  rule      toolchain.project_not_found
+  help      docs/language/14-tooling.html#the-jadpo-command
+"
+    );
+    let long = Diagnostic::new(&rule::TOOLCHAIN_PROJECT_NOT_FOUND, "No project here")
+        .next(format!("Run `jadpo check {}`", "x".repeat(90)));
+    let out = Screen::new()
+        .with(Block::diagnostic(&long, &()))
+        .render(&Style {
+            width: 80,
+            ..rich()
+        });
+    assert!(
+        out.contains(&format!("\n            `jadpo check {}`", "x".repeat(90))),
+        "{out}"
+    );
+}

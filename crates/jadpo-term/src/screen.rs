@@ -132,12 +132,38 @@ pub(crate) fn cut(text: &str, max: usize, style: &Style) -> String {
     format!("{}{mark}", kept.trim_end())
 }
 
+/// The words of prose for wrapping: split at spaces, except inside inline
+/// code (`` `jadpo check <path>` ``), which stays one word with whatever is
+/// attached to it, so a command is never broken across lines.
+pub(crate) fn words(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut in_code = false;
+    for (i, c) in text.char_indices() {
+        match c {
+            '`' => in_code = !in_code,
+            ' ' if !in_code => {
+                if i > start {
+                    out.push(&text[start..i]);
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if start < text.len() {
+        out.push(&text[start..]);
+    }
+    out
+}
+
 /// Splits prose into lines of at most `max` cells. A word longer than a
-/// line (a command, a path, a link) gets a line of its own, whole.
+/// line (a command, a path, a link, inline code) gets a line of its own,
+/// whole.
 pub(crate) fn wrap(text: &str, max: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current = String::new();
-    for word in text.split(' ').filter(|word| !word.is_empty()) {
+    for word in words(text) {
         if !current.is_empty() && width(&current) + 1 + width(word) > max {
             lines.push(std::mem::take(&mut current));
         }
@@ -576,7 +602,7 @@ pub(crate) fn field(label: &str, value: Vec<Piece>, style: &Style) -> Vec<Line> 
     let mut lines: Vec<Line> = vec![vec![raw("  "), paint(Token::Muted, label), raw(pad)]];
     let mut used = 0;
     for piece in value {
-        for word in piece.text.split(' ').filter(|word| !word.is_empty()) {
+        for word in words(&piece.text) {
             let last = lines.last_mut().expect("a line");
             if used > 0 && used + 1 + width(word) > room {
                 lines.push(vec![raw(" ".repeat(indent))]);
@@ -642,6 +668,10 @@ mod tests {
             ["short", "https://example.test/a/very/long/link", "end"]
         );
         assert_eq!(wrap("", 10), [""]);
+        assert_eq!(
+            wrap("give a file: `jadpo check <path>` now", 20),
+            ["give a file:", "`jadpo check <path>`", "now"]
+        );
     }
 
     #[test]
