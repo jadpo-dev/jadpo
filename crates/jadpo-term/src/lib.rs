@@ -16,5 +16,5 @@ pub use detect::{ColorChoice, Depth, Environment, MAX_WIDTH, Mode, Stream, Style
 pub use diagnostic::DiagnosticView;
 pub use json::{Json, SCHEMA_VERSION, diagnostic_json, envelope};
 pub use palette::{Symbol, Token};
-pub use screen::{Block, Row, Screen};
+pub use screen::{Block, Fact, Outcome, Row, Screen};
 pub use sources::{Position, Sources, line_text};

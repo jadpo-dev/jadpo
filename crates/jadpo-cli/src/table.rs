@@ -73,6 +73,8 @@ pub enum Values {
     Fixed(&'static [Value]),
     /// The name of a built command.
     Commands,
+    /// A file or folder, completed from the folder the command runs in.
+    Path,
 }
 
 #[derive(Debug)]
@@ -148,6 +150,44 @@ pub const SHELLS: &[Value] = &[
 ];
 
 pub static COMMANDS: &[Command] = &[
+    Command {
+        name: "fmt",
+        synonyms: &["format"],
+        group: "Build and check",
+        summary: "Format source files",
+        description: "Rewrite Jadpo files in the one layout the formatter owns: indentation, spacing, \
+                      blank lines and one member per line. With --check, change nothing and fail if \
+                      any file isn't formatted. Without a path, the project is found by walking up \
+                      to app.jadpo.",
+        arguments: &[Argument {
+            name: "path",
+            description: "A file or folder instead of the whole project",
+            required: false,
+            values: Values::Path,
+        }],
+        flags: &[Flag {
+            name: "--check",
+            value: None,
+            description: "Report unformatted files and change nothing",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "Format the project you are in",
+                command: "jadpo fmt",
+            },
+            Example {
+                description: "Check formatting without changing anything, as CI does",
+                command: "jadpo fmt --check",
+            },
+            Example {
+                description: "Format one file",
+                command: "jadpo fmt app.jadpo",
+            },
+        ],
+        arguments_rule: &rule::CLI_FMT_ARGUMENTS,
+        run: commands::fmt,
+    },
     Command {
         name: "completions",
         synonyms: &["completion"],

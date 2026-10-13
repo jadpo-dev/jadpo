@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
 
 /// The lines every rich screen fits.
 pub const MAX_WIDTH: usize = 80;
@@ -16,6 +17,9 @@ pub struct Environment {
     pub stdout_terminal: bool,
     pub stderr_terminal: bool,
     pub windows: bool,
+    /// The folder the command runs in; commands that read the project start
+    /// from here.
+    pub cwd: Option<PathBuf>,
 }
 
 impl Environment {
@@ -35,6 +39,7 @@ impl Environment {
             stdout_terminal: std::io::stdout().is_terminal(),
             stderr_terminal: std::io::stderr().is_terminal(),
             windows: cfg!(windows),
+            cwd: std::env::current_dir().ok(),
         }
     }
 
@@ -47,6 +52,11 @@ impl Environment {
         self.stdin_terminal = stdin;
         self.stdout_terminal = stdout;
         self.stderr_terminal = stderr;
+        self
+    }
+
+    pub fn with_cwd(mut self, cwd: impl AsRef<Path>) -> Environment {
+        self.cwd = Some(cwd.as_ref().to_path_buf());
         self
     }
 

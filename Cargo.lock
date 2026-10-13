@@ -25,6 +25,8 @@ name = "jadpo-cli"
 version = "0.1.0"
 dependencies = [
  "jadpo-diag",
+ "jadpo-fmt",
+ "jadpo-syntax",
  "jadpo-term",
  "serde_json",
 ]
