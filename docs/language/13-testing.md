@@ -1174,7 +1174,7 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 | Query cost assertions | None at runtime; the compiler reports query cost and changes show in review | 2026-10-13 |
 | Test failure output | Every failed test reports the assertion broken into sub-expression values, record diffs, the failure that happened instead, the test's trace in short, fake usage, clock, seed, kept database and the rerun command; readable and `--json`; stable `test.*` codes (Richard) | 2026-10-13 |
 | Running tests | `jadpo test` by file, `file:line`, `--name`, `--kind`, `--failed`; `--watch` reruns affected tests on save; `--interactive` keyboard view to search, navigate and run every test in the app; editor run buttons; no `test.only` (Richard) | 2026-10-13 |
-| Data builders | Generated `make.Entity { ... }` with valid defaults through the real create operation | 2026-10-13 |
+| Data builders | Generated `make.Entity { ... }` with valid defaults through the real create operation; builders may set any non-generated field, including ones ordinary inputs do not accept, so hard-to-reach states are easy to build; validation still applies | 2026-10-13 |
 | Side-effect assertions | `assert emitted Event { ... }` and fakes' `.requests` | 2026-10-13 |
 | Comparing values | `==` on records and lists with field diffs; no snapshot assertions | 2026-10-13 |
 | What a failed test leaves | `--keep-failed` keeps the database and trace | 2026-10-13 |

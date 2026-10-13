@@ -28,6 +28,11 @@ and specifications, not here.
    either path without his answer. If rework: keep `python3 tools/verify.py`
    and the passing golden cases green throughout, and rebuild only what the
    review says is wrong. The per-area lists below apply either way.
+   Testing must meet these pass/fail targets (Richard, 2026-10-13; suggested
+   numbers, to be confirmed by measurement): a watch-mode rerun of the
+   affected tests reports in under 1 second; the golden app's full suite runs
+   in under 10 seconds on a laptop; `jadpo new` creates a project whose tests
+   already pass, with one example of each kind of test.
    Area 1 (decided 2026-10-12) needs: the domain layout and its layout
    checks; domain ownership and `public` (including public actions sharing
    the caller's transaction) replacing `module`/`import`; owner-qualified
