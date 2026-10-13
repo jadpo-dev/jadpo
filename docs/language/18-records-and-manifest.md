@@ -414,6 +414,13 @@ Each row says how it was checked: run with `jadpo` 3ce094d0 on a copy of
    the same compiler and cached per commit. `check` gates on the diff,
    `approval` explains it, and production passes the commit its events
    carry. This is buf's `--against`, applied to the whole application.
+   *Decided 2026-10-13 (Richard):* by default, the current branch against
+   the repository's default branch (`main` or `master`, read from the git
+   remote), measured from where the branch left it (the merge base, as a
+   pull request's diff is), so changes merged into `main` since do not show
+   as reversed; `--before <branch or commit>` compares with anything else.
+   The same default serves `check`, `jadpo approval` and the review web view
+   (area 17, roadmap E06).
 5. **How are acceptances written, matched and used up?** *Recommendation:*
    one file per decision, listing `subject: Kind.change` entries, with a
    `///` reason from a person. It counts only in the change that adds it,
@@ -454,7 +461,7 @@ Each row says how it was checked: run with `jadpo` 3ce094d0 on a copy of
 | Records | | |
 | Manifest | | |
 | Identity | | |
-| The before side | | |
+| The before side | Current branch against the default branch (`main`/`master` from the remote) at their merge base; `--before <ref>` overrides; one default for `check`, `approval` and the review web view (Richard) | 2026-10-13 |
 | Acceptances | | |
 | Package changes | | |
 | Production builds | | |
