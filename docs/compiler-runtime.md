@@ -591,7 +591,12 @@ from the language pages' code blocks and from `examples/` into the
 committed `tools/example-identifiers.txt`, minus an allowlist of generic
 words (`id`, `status`). The gate fails if the list is stale, or if a listed
 name appears in any case style as an identifier or string in
-`crates/*/src/`. Tests may use them.
+`crates/*/src/`. An example entity whose name is an allowed word (`Order`,
+`Session`) goes to `tools/example-type-names.txt` instead, and may not stand
+as a name in a string literal without spaces (`"Order"`), the sign of
+special-casing, while the word stays usable in identifiers and prose
+(Richard, 2026-10-13). Tests, including inline `#[cfg(test)]` modules, may
+use them.
 
 | Phase | `tools/verify.py` adds |
 |---|---|
