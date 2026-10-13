@@ -254,6 +254,24 @@ pub static COMMANDS: &[Command] = &[
         run: commands::completions,
     },
     Command {
+        name: "lsp",
+        synonyms: &[],
+        group: "Set up",
+        summary: "Run the language server for editors",
+        description: "Run the language server on standard input and output, for an editor to start: \
+                      the same errors as jadpo check while you type, hover with signatures, \
+                      descriptions, the failures a call can produce and who calls it, and go to \
+                      definition. The project is the one holding the editor's workspace folder.",
+        arguments: &[],
+        flags: &[],
+        examples: &[Example {
+            description: "Start the language server, as an editor does",
+            command: "jadpo lsp",
+        }],
+        arguments_rule: &rule::CLI_LSP_ARGUMENTS,
+        run: commands::lsp,
+    },
+    Command {
         name: "help",
         synonyms: &[],
         group: "Help",

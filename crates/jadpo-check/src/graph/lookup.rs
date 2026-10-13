@@ -278,7 +278,7 @@ impl Lookup<'_> {
                 }
                 declaration_key(symbols, text).map(Found::Node)
             }
-            [owner, member] => {
+            [head_name, member] => {
                 if let Some(Found::Local { ty: Some(ty), .. }) = in_scope {
                     let host = match TypeRef::parse(&ty) {
                         TypeRef::Path(names, args) if names.len() == 1 && args.is_empty() => {
@@ -297,11 +297,11 @@ impl Lookup<'_> {
                     .resolver
                     .callables
                     .library
-                    .contains_key(&(owner.clone(), member.clone()))
+                    .contains_key(&(head_name.clone(), member.clone()))
                 {
-                    return Some(Found::Node(library_function_key(owner, member)));
+                    return Some(Found::Node(library_function_key(head_name, member)));
                 }
-                if symbols.domains.contains(owner) {
+                if symbols.domains.contains(head_name) {
                     return declaration_key(symbols, member).map(Found::Node);
                 }
                 None

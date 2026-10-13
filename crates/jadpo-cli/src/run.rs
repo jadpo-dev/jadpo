@@ -19,6 +19,16 @@ pub struct Output {
     pub stdout: String,
     pub stderr: String,
     pub code: u8,
+    /// A session the binary runs on the real streams after writing the
+    /// output, such as the language server.
+    pub session: Option<Session>,
+}
+
+/// A long-running command that owns standard input and output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Session {
+    /// `jadpo lsp`, started in this folder.
+    Lsp(PathBuf),
 }
 
 /// Everything a command's `run` function receives.
@@ -58,6 +68,8 @@ pub enum Reply {
         diagnostics: Vec<Diagnostic>,
         sources: BTreeMap<String, String>,
     },
+    /// A session that takes over standard input and output.
+    Session(Session),
 }
 
 #[derive(Debug)]
@@ -107,6 +119,7 @@ pub fn run(args: &[String], env: &Environment) -> Output {
             stdout: completion::candidates(words, env.cwd.as_deref()),
             stderr: String::new(),
             code: 0,
+            session: None,
         };
     }
     let (json, choice) = presentation(args);
@@ -140,6 +153,7 @@ fn finish_report(
         stdout,
         stderr: String::new(),
         code,
+        session: None,
     }
 }
 
@@ -151,6 +165,14 @@ fn finish(
     choice: ColorChoice,
 ) -> Output {
     let (data, diagnostic, text) = match reply {
+        Reply::Session(session) => {
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(session),
+            };
+        }
         Reply::Done { text, data } => (Some(data), None, Some(text)),
         Reply::Failed(diagnostic) => (None, Some(*diagnostic), None),
         Reply::Report {
@@ -175,12 +197,14 @@ fn finish(
             stdout: envelope(name, data, &diagnostics, &()).to_document(),
             stderr: String::new(),
             code,
+            session: None,
         };
     }
     let mut output = Output {
         stdout: String::new(),
         stderr: String::new(),
         code,
+        session: None,
     };
     match text {
         Some(Text::Raw(text)) => output.stdout = text,

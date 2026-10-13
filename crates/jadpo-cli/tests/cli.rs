@@ -62,6 +62,7 @@ Build and check
 
 Set up
   completions   Turn on Tab completion        zsh, bash, fish
+  lsp           Run the language server for editors
 
 Help
   help          Show commands, flags and examples
@@ -107,6 +108,7 @@ Build and check
 
 Set up
   completions   Turn on Tab completion        zsh · bash · fish
+  lsp           Run the language server for editors
 
 Help
   help          Show commands, flags and examples
@@ -248,7 +250,10 @@ fn help_json_is_the_whole_command_reference() {
         .iter()
         .map(|c| c["name"].as_str().expect("name"))
         .collect();
-    assert_eq!(names, ["check", "fmt", "completions", "help", "version"]);
+    assert_eq!(
+        names,
+        ["check", "fmt", "completions", "lsp", "help", "version"]
+    );
     let completions = &data["commands"][2];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
@@ -586,6 +591,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "check\tCheck the project for errors",
             "fmt\tFormat source files",
             "completions\tTurn on Tab completion",
+            "lsp\tRun the language server for editors",
             "help\tShow commands, flags and examples",
             "version\tPrint the version",
         ]

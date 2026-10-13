@@ -17,6 +17,7 @@ jadpo-db = { path = "crates/jadpo-db" }
 jadpo-check = { path = "crates/jadpo-check" }
 jadpo-value = { path = "crates/jadpo-value" }
 jadpo-graph = { path = "crates/jadpo-graph" }
+jadpo-lsp = { path = "crates/jadpo-lsp" }
 rowan = "=0.16.1"
 ungrammar = "=1.16.1"
 serde_json = "1"

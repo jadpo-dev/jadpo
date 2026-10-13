@@ -105,7 +105,7 @@ fn bash_completes_commands_and_values() {
     };
     assert_eq!(
         complete("jadpo ''", 1),
-        ["check", "fmt", "completions", "help", "version"]
+        ["check", "fmt", "completions", "lsp", "help", "version"]
     );
     assert_eq!(complete("jadpo ver", 1), ["version"]);
     assert_eq!(complete("jadpo completions ''", 2), ["zsh", "bash", "fish"]);

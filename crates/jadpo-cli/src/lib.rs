@@ -12,4 +12,4 @@ mod run;
 mod suggest;
 mod table;
 
-pub use run::{Output, run};
+pub use run::{Output, Session, run};

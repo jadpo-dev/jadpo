@@ -41,6 +41,12 @@ pub struct Loaded {
 /// holds `app.jadpo`) that is the whole project; otherwise the file, or
 /// every `.jadpo` file under the folder, as loose files.
 pub fn load(target: &Path) -> Loaded {
+    load_into(target, Database::default())
+}
+
+/// [`load`] into a database of the caller's, such as one that records what
+/// it executes.
+pub fn load_into(target: &Path, db: Database) -> Loaded {
     let folder = if target.is_dir() {
         target.to_path_buf()
     } else {
@@ -56,7 +62,6 @@ pub fn load(target: &Path) -> Loaded {
         None if target.is_dir() => (folder.clone(), Layout::Loose, walk(&folder, false)),
         None => (folder, Layout::Loose, vec![target.to_path_buf()]),
     };
-    let db = Database::default();
     let mut files = Vec::new();
     let mut other_files = Vec::new();
     let mut unreadable = Vec::new();

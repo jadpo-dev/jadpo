@@ -9,7 +9,7 @@ use crate::completion;
 pub use crate::check::check;
 pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
-use crate::run::{Call, Reply, both, either, quoted, unknown_command};
+use crate::run::{Call, Reply, Session, both, either, quoted, unknown_command};
 use crate::suggest::nearest;
 use crate::table::{self, SHELLS};
 
@@ -21,6 +21,16 @@ pub fn help(call: &Call) -> Reply {
             None => Reply::failed(unknown_command(word)),
         },
     }
+}
+
+/// `jadpo lsp`: the binary serves the editor on standard input and output
+/// once this returns.
+pub fn lsp(call: &Call) -> Reply {
+    Reply::Session(Session::Lsp(
+        call.cwd
+            .clone()
+            .unwrap_or_else(|| std::path::PathBuf::from(".")),
+    ))
 }
 
 pub fn version(_call: &Call) -> Reply {
