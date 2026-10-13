@@ -20,7 +20,7 @@ use super::facts::{BuildFact, Facts, PatternFact, Reach, node_key};
 use super::{Body, Fallible, LocalKind};
 use crate::graph::paths::Resolver;
 use crate::graph::{
-    LineIndex, declaration_key, field_key, library_function_key, registry, type_ref, variant_key,
+    LineIndex, declaration_key, field_key, library_function_key, type_ref, variant_key,
 };
 use crate::lookups::{FailureView, Lookup, NameView};
 use crate::tree::{self, dotted};
@@ -538,7 +538,7 @@ impl Lower<'_> {
                 self.path_names(&refs);
             }
             return typed::Expr::Build {
-                callee: Callee::Variant(variant_key(&host, &variant)),
+                callee: Callee::Variant(variant_key(self.names.registry(), &host, &variant)),
                 fields: Vec::new(),
                 fallible: typed::Fallible::Never,
             };
@@ -547,7 +547,7 @@ impl Lower<'_> {
             && let Some(receiver) = field.expr()
         {
             let receiver = self.expr(&receiver);
-            let field_key = field_key(&host, &path);
+            let field_key = field_key(self.names.registry(), &host, &path);
             if let Some(name) = field.name_ref() {
                 self.node(name.syntax(), Some(field_key.clone()), false);
             }
@@ -580,7 +580,11 @@ impl Lower<'_> {
             },
             Reach::Library {
                 library, function, ..
-            } => Callee::LibraryFunction(library_function_key(library, function)),
+            } => Callee::LibraryFunction(library_function_key(
+                self.names.registry(),
+                library,
+                function,
+            )),
             Reach::Std(op) => Callee::Std(*op),
             Reach::Construct(ty) => Callee::Construct(self.ty(ty)),
             Reach::Entity { entity, operation } => match self.type_key(entity) {
@@ -644,9 +648,17 @@ impl Lower<'_> {
                     && let Some(text) = tree::name_ref_text(qualifier)
                 {
                     let qualifies = if self.names.library(&text).is_some() {
-                        Some(registry().key(jadpo_graph::Kind::Library, &text, None))
+                        Some(
+                            self.names
+                                .registry()
+                                .key(jadpo_graph::Kind::Library, &text, None),
+                        )
                     } else if self.names.is_domain(&text) {
-                        Some(registry().key(jadpo_graph::Kind::Domain, &text, None))
+                        Some(
+                            self.names
+                                .registry()
+                                .key(jadpo_graph::Kind::Domain, &text, None),
+                        )
                     } else {
                         None
                     };
@@ -706,7 +718,7 @@ impl Lower<'_> {
                 Vec::new(),
             ),
             BuildFact::Variant(host, variant) => (
-                Callee::Variant(variant_key(host, variant)),
+                Callee::Variant(variant_key(self.names.registry(), host, variant)),
                 host.clone(),
                 vec![variant.clone()],
             ),
@@ -737,7 +749,7 @@ impl Lower<'_> {
             };
             let mut path = prefix.to_vec();
             path.push(text);
-            let field = field_key(host, &path);
+            let field = field_key(self.names.registry(), host, &path);
             self.node(name.syntax(), Some(field.clone()), false);
             if let Some(value) = member.value() {
                 out.push((field, self.expr(&value)));
@@ -830,7 +842,7 @@ impl Lower<'_> {
                 let pattern = match self.facts.patterns.get(&node_key(pat.syntax())).cloned() {
                     Some(PatternFact::Variant(host, variant)) => {
                         self.path_names(&refs);
-                        Pattern::Variant(variant_key(&host, &variant))
+                        Pattern::Variant(variant_key(self.names.registry(), &host, &variant))
                     }
                     Some(PatternFact::Some) => Pattern::Some,
                     Some(PatternFact::Success) => Pattern::Success,

@@ -290,7 +290,14 @@ parameters with their kinds, its result, and the one Rust function in
 A test holds the stubs to the table on arity and kinds, and `jadpo-value`
 matches on the table's operations exhaustively. An operation the language
 names but no chunk has built yet is `toolchain.not_built_yet` where it is
-called. Enums that Rust code interprets (`Rounding`, `TextFormat`,
+called. In the stubs a single capital letter is a type variable, fixed by
+the arguments at each call; `Number` is any type built on `Int` or
+`Decimal`, and a built-in representation such as `Int` in a parameter is
+any type built on it, since operations work on the representation as
+operators do (so `integer.divide` takes values built on `Int`, and
+`decimal.divide` numbers). A type variable no argument fixes is a checked
+unknown: it accepts anything where it stands, but the container around it
+is still checked, so a `List<T>` parameter takes only a list. Enums that Rust code interprets (`Rounding`, `TextFormat`,
 `UuidVersion`) are declared once, in `jadpo-std`.
 
 **wasm32.** The runtime crates and the shared leaf build for
@@ -356,8 +363,12 @@ rebuilt rather than mutated and shared behind `Arc`; nothing is deleted in
 place, so generational keys would be wasted. In-memory ids are never
 serialised. *Rejected:* a general property graph with string labels, which
 loses the typed shape every consumer relies on. Built in chunk 1.7 as one
-key-sorted node list with typed `NodeId`s and a typed detail per kind;
-per-kind arenas join with the typed bodies if the executors need them.
+key-sorted node list with typed `NodeId`s and a typed detail per kind; since
+chunk 1.8 a detail's types and rules are typed too (`TypeRef` names declared
+types, entities, fields and variants by identity key; rules are
+`jadpo-std`'s `Rules`), and the manifest prints them as Jadpo writes them.
+Each callable's typed body (below) is its own arena, which both executors
+walk (§2.5).
 
 | Node group | Kinds |
 |---|---|
@@ -387,9 +398,34 @@ per callable gives Ball–Larus path numbers, branch coverage and exact
 review paths, with loop back edges cut as area 16 decides. Executors walk
 the structured body; reports read the control-flow graph.
 
+Built in chunk 1.8 (`jadpo_graph::body`), for functions, actions,
+fixtures, library functions, tests and seeds: one salsa query per callable
+(`typed_body`) checks it and lowers what the check decided, so the body,
+the diagnostics and everything read from the body agree. Sites are numbered
+in source order (a site's number is its index), each with its range, line
+and type; a literal's type is the type it goes into. A call names what it
+reaches: a function, action, query, fixture or library function by key, a
+standard-library operation by the operation table's `Op`, a constructor by
+its type, an object or variant by key, or an entity operation (area 6). A
+construction says whether it can fail and which failure `invalid:` maps
+that to, and the body lists the failures that can leave it. Locals are
+numbered with parameters first, and a table records what every name in the
+body refers to. Every reader goes through it: the graph's `calls`, `uses`
+and `raises` edges, usage and promotion (area 1), action cycles (area 3)
+and the language server's hover and definition, so a name means one thing
+everywhere. The graph's `site` nodes are the sites the runtime can name in
+a frame, a failure or a fault (calls, constructions that can fail,
+`reject`, `propagate`, arithmetic); its `branch` nodes are each way through
+an `if` (both, written or not) and each arm of a `match`. Both are keyed
+`<kind> <callable>.<number>` under their callable and numbered per build,
+so a diff leaves them to the callable's own change (area 18). Effect kinds,
+the control-flow graph and path numbers come with their areas.
+
 **Identity.** A node's key is its kind and born name through the registry
 (`action complete_todo`, `field Todo.title`), not qualified by domain, so
-promotion to `shared/` keeps it (built in chunk 1.7; area 18, question 8). Its digest is BLAKE3 over its canonical
+promotion to `shared/` keeps it (built in chunk 1.7; area 18, question 8).
+The registry's lines are a field of the project's salsa input, so a rename
+it records re-keys exactly what it touches (chunk 1.8). Its digest is BLAKE3 over its canonical
 form without positions or comments, so moving code changes neither. Sites
 and branches are numbered per build in source order (area 18). Every node
 records its project-relative file and byte range; the manifest prints
@@ -432,18 +468,36 @@ and invalidation is where hand-rolled caches go wrong.
 | `parse` | file | its text changes |
 | `item_tree` | file | its declarations or signatures change, not bodies |
 | `symbols` | project | an item tree changes |
-| `signature`, `entity`, `type_decl` | declaration | its item, or a type it names, changes |
-| `body` (resolved, typed, diagnostics) | callable | its text or a signature it uses changes |
+| `signature`, `type_def`, `name_facts`, `failure_info` (per-name lookups) | name | that name's entry in its project table changes |
+| `typed_body` (resolved, typed, diagnostics) | callable | its file's text, or a name it reads, changes |
 | `effects` | callable | its body or a callee's effects change |
 | `plan` (SQL, codecs, policy) | query, write site, type | its inputs, entity or policy change |
 | `graph`, `diagnostics` | project, file | anything above; assembly only |
+
+**Per-name lookups (chunk 1.8).** The project tables (symbols, types,
+signatures, failures, who uses what) are rebuilt whenever any declaration
+changes, which is cheap; nothing that checks a file reads them whole.
+Each check reads them through per-name queries that copy one name's entry
+out, so when a table is rebuilt and the entry comes out equal, salsa's
+early cut-off stops there and the check depends only on the names it reads.
+Suggestions on a mistake ("did you mean") read a table whole, so only code
+that already found a mistake depends on every name. In a project of 2,003
+files (`crates/jadpo-check/tests/scale.rs`, release build), before and
+after: a cold check took 850 ms and takes 82 ms (the naming rules no longer
+compare every pair of declarations); a rule on a type one file uses
+rechecked all 2,003 files' bodies in 18 ms and now rechecks that file in
+5 ms; an uncalled function's signature rechecked 2,003 bodies in 17 ms and
+now rechecks its own file in 6 ms; a new file nothing reads rechecked
+2,004 files' bodies, resolution and naming in 833 ms and now checks only
+itself in 12 ms. The test asserts the counts, not the times.
 
 Inputs carry durability: standard library and packages high, root files
 medium, domain files low, so a keystroke never revalidates packages.
 `jadpo lsp`, `jadpo dev` and `jadpo test --watch` keep one database for
 their lifetime; `jadpo check` starts cold with only the package cache.
 Affected tests are those that reach a node whose digest changed, by
-reverse reachability over `calls`, `runs`, `reads` and `covers`.
+reverse reachability over `calls`, `runs`, `reads`, `uses` and `covers`:
+changing a type's rule re-runs the tests that reach code using the type.
 
 ### 2.5 Executors
 

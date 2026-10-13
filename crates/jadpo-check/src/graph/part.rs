@@ -14,8 +14,8 @@ use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
 use super::paths::Resolver;
 use super::text::{LineIndex, digest, doc, place};
-use super::{declaration_key, field_key, library_function_key, registry, type_ref, variant_key};
-use crate::lookups::{FailureView, Lookup, SigView};
+use super::{declaration_key, field_key, library_function_key, type_ref, variant_key};
+use crate::lookups::{FailureView, Lookup, NameView, SigView};
 use crate::tree;
 use crate::types::{
     Callable, Const, Def, FieldDef, FieldsBase, Rules, Sig, Ty, TypeView, typed_body,
@@ -53,7 +53,7 @@ pub fn file_part(db: &dyn Db, project: Project, file: File) -> FilePart {
         out: FilePart::default(),
     };
     let mut node = part.node(
-        registry().key(Kind::File, part.path, None),
+        lookup.registry().key(Kind::File, part.path, None),
         Kind::File,
         part.path.clone(),
         source.syntax().clone(),
@@ -161,22 +161,25 @@ impl Part<'_> {
                 if let Some(item) = item
                     && let Some(kind) = super::kind_of(&item.kind)
                 {
-                    let key = registry().key(kind, &item.name, None);
+                    let key = self.lookup.registry().key(kind, &item.name, None);
                     let node = self.node(key, kind, item.name.clone(), decl.syntax().clone());
                     self.out.nodes.push(node);
                 }
             }
             Decl::SeedDecl(d) => {
                 if let Some(name) = d.name().as_ref().and_then(tree::name_text) {
-                    let key = registry().key(Kind::Seed, &name, None);
+                    let key = self.lookup.registry().key(Kind::Seed, &name, None);
                     self.runnable(key, Kind::Seed, name, d.syntax(), index);
                 }
             }
             Decl::TestDecl(d) => {
                 if let Some(token) = d.string_token() {
                     let name = token.text().trim_matches('"').to_string();
-                    let key =
-                        registry().key(Kind::Test, &format!("{} \"{name}\"", self.path), None);
+                    let key = self.lookup.registry().key(
+                        Kind::Test,
+                        &format!("{} \"{name}\"", self.path),
+                        None,
+                    );
                     self.runnable(key, Kind::Test, name, d.syntax(), index);
                 }
             }
@@ -198,7 +201,7 @@ impl Part<'_> {
         let Some(kind) = super::kind_of(&item.kind) else {
             return;
         };
-        let key = registry().key(kind, &item.name, None);
+        let key = self.lookup.registry().key(kind, &item.name, None);
         let mut node = self.node(key.clone(), kind, item.name.clone(), syntax.clone());
         node.public = public;
         node.detail =
@@ -215,7 +218,7 @@ impl Part<'_> {
     }
 
     fn library(&mut self, decl: &ast::LibraryDecl, item: &Item) {
-        let key = registry().key(Kind::Library, &item.name, None);
+        let key = self.lookup.registry().key(Kind::Library, &item.name, None);
         let mut node = self.node(
             key.clone(),
             Kind::Library,
@@ -228,7 +231,7 @@ impl Part<'_> {
             .iter()
             .zip(item.functions.iter())
         {
-            let child = library_function_key(&item.name, &member.name);
+            let child = library_function_key(self.lookup.registry(), &item.name, &member.name);
             let mut node = self.node(
                 child.clone(),
                 Kind::Function,
@@ -306,7 +309,7 @@ impl Part<'_> {
         let Some(name) = decl.name().as_ref().and_then(tree::name_text) else {
             return;
         };
-        let key = registry().key(Kind::Type, &name, None);
+        let key = self.lookup.registry().key(Kind::Type, &name, None);
         let mut node = self.node(key.clone(), Kind::Type, name.clone(), decl.syntax().clone());
         node.public = decl.visibility().is_some();
         let written_base = decl
@@ -414,7 +417,7 @@ impl Part<'_> {
         let Some(name) = decl.name().as_ref().and_then(tree::name_text) else {
             return;
         };
-        let key = registry().key(Kind::Entity, &name, None);
+        let key = self.lookup.registry().key(Kind::Entity, &name, None);
         let mut node = self.node(
             key.clone(),
             Kind::Entity,
@@ -492,7 +495,7 @@ impl Part<'_> {
         member: &ast::Member,
         section: Option<Section>,
     ) {
-        let key = field_key(host, &path);
+        let key = field_key(self.lookup.registry(), host, &path);
         let mut node = self.node(
             key.clone(),
             Kind::Field,
@@ -537,7 +540,11 @@ impl Part<'_> {
         field: &FieldDef,
         entry: Option<&SyntaxNode>,
     ) {
-        let key = field_key(host, std::slice::from_ref(&field.name));
+        let key = field_key(
+            self.lookup.registry(),
+            host,
+            std::slice::from_ref(&field.name),
+        );
         let parent_place = self
             .out
             .nodes
@@ -552,7 +559,7 @@ impl Part<'_> {
         node.domain = self.domain.clone();
         node.parent = Some(parent.clone());
         let from = match &field.declared {
-            Ty::Field(source, path) => Some(field_key(source, path)),
+            Ty::Field(source, path) => Some(field_key(self.lookup.registry(), source, path)),
             _ => None,
         };
         node.detail = Detail::Field {
@@ -577,7 +584,7 @@ impl Part<'_> {
         block: Option<ast::MemberList>,
         syntax: &SyntaxNode,
     ) {
-        let key = variant_key(host, variant);
+        let key = variant_key(self.lookup.registry(), host, variant);
         let mut node = self.node(
             key.clone(),
             Kind::Variant,

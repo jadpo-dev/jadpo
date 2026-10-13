@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 
 use jadpo_db::{Db, ItemKind, Project, Symbol, Symbols, symbols};
+use jadpo_graph::Registry;
 
 use crate::case::to_snake;
 use crate::failures::{FailureInfo, FailureTable, failure_table};
@@ -130,6 +131,8 @@ pub trait NameView {
     /// The whole table: for suggestions on a mistake only, since reading it
     /// depends on every declaration.
     fn all(&self) -> &Symbols;
+    /// The identity registry every key is made through.
+    fn registry(&self) -> &Registry;
 
     /// The declaration called `name`, if there is exactly one or the first.
     fn get(&self, name: &str) -> Option<&Symbol> {
@@ -173,6 +176,12 @@ impl NameView for Symbols {
 
     fn all(&self) -> &Symbols {
         self
+    }
+
+    /// A table on its own knows no renames.
+    fn registry(&self) -> &Registry {
+        static EMPTY: std::sync::OnceLock<Registry> = std::sync::OnceLock::new();
+        EMPTY.get_or_init(Registry::new)
     }
 }
 
@@ -285,6 +294,10 @@ impl NameView for Lookup<'_> {
 
     fn all(&self) -> &Symbols {
         symbols(self.db, self.project)
+    }
+
+    fn registry(&self) -> &Registry {
+        crate::graph::registry(self.db, self.project)
     }
 }
 

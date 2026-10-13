@@ -193,14 +193,16 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
     out
 }
 
-/// Whether a call counts something: `collection.count`, whose result is
-/// never negative, though its stub can only say `Int`.
-fn counts(call: &ast::CallExpr) -> bool {
-    call.expr()
-        .is_some_and(|callee| crate::tree::written(callee.syntax()) == "collection.count")
-}
-
 impl Body<'_> {
+    /// The smallest result a standard-library call gives, when the
+    /// operation table says.
+    fn floor(&self, call: &ast::CallExpr) -> Option<i64> {
+        match self.facts.reaches.get(&node_key(call.syntax()))? {
+            super::facts::Reach::Std(op) => op.operation().at_least,
+            _ => None,
+        }
+    }
+
     /// Whether the declared ranges prove `value`, of type `actual`, always
     /// follows `target`'s rules.
     pub(super) fn proves(&self, value: &Expr, actual: &Ty, target: &Ty) -> bool {
@@ -261,11 +263,11 @@ impl Body<'_> {
                 }
             }
             Expr::BinExpr(binary) => self.binary_interval(binary),
-            Expr::CallExpr(call) if counts(call) => Interval {
-                low: End::At(Num {
-                    mantissa: 0,
-                    scale: 0,
-                }),
+            // A standard-library operation whose result has a floor its
+            // type can't say, as `collection.count`'s is 0 (the operation
+            // table's `at_least`).
+            Expr::CallExpr(call) if let Some(floor) = self.floor(call) => Interval {
+                low: End::At(Num::whole(i128::from(floor))),
                 high: End::Above,
             },
             other => match self.facts.types.get(&node_key(other.syntax())) {

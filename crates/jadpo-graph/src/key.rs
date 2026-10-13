@@ -70,6 +70,17 @@ impl Registry {
         Registry::default()
     }
 
+    /// A registry from its lines, as `database/identities.json` holds them:
+    /// `kind name-now` and the born name.
+    pub fn from_lines<'a>(lines: impl IntoIterator<Item = (&'a String, &'a String)>) -> Registry {
+        Registry {
+            renames: lines
+                .into_iter()
+                .map(|(now, born)| (now.clone(), born.clone()))
+                .collect(),
+        }
+    }
+
     /// Records that the `kind` called `now` was born `born`.
     pub fn rename(&mut self, kind: Kind, now: &str, born: &str) {
         self.renames

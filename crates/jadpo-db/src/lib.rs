@@ -19,6 +19,7 @@ pub use load::{Loaded, PROJECT_FILE, Unreadable, find_root, load, load_into};
 pub use places::{Folder, Location, Ownership, Place, RootFile, Stray, locate};
 pub use table::{Symbol, Symbols, symbols};
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use jadpo_syntax::Parse;
@@ -43,7 +44,11 @@ pub struct File {
 }
 
 /// The project: its source files in path order, the paths of every other
-/// file inside it (templates and other assets), and its layout.
+/// file inside it (templates and other assets), its layout, and the
+/// identity registry's lines (area 18): for each thing renamed since it was
+/// born, `kind name-now` and its born name, as `database/identities.json`
+/// holds them. The registry is an input like the files, so a rename it
+/// records re-keys exactly what it touches.
 #[salsa::input(debug)]
 pub struct Project {
     #[returns(ref)]
@@ -52,6 +57,8 @@ pub struct Project {
     pub other_files: Vec<String>,
     #[returns(copy)]
     pub layout: Layout,
+    #[returns(ref)]
+    pub identities: BTreeMap<String, String>,
 }
 
 /// The database every compiler query runs against.

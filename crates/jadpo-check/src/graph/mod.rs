@@ -29,13 +29,12 @@ use jadpo_graph::{Builder, Graph, Key, Kind, Node, Registry, TypeRef};
 
 use crate::types::Ty;
 
-/// The identity registry (area 18). `database/identities.json` is read
-/// once `jadpo rename` and the domain commands, which write it, exist
-/// (area 14); until then nothing has been renamed and every born name is
-/// the name now. Every key is made through it.
-pub fn registry() -> &'static Registry {
-    static EMPTY: std::sync::OnceLock<Registry> = std::sync::OnceLock::new();
-    EMPTY.get_or_init(Registry::new)
+/// The identity registry (area 18), from the project's input, so a rename
+/// it records re-keys what it touches and nothing else. Every key is made
+/// through it.
+#[salsa::tracked(returns(ref))]
+pub fn registry(db: &dyn Db, project: Project) -> Registry {
+    Registry::from_lines(project.identities(db))
 }
 
 /// The graph kind of a declaration.
@@ -69,12 +68,11 @@ pub fn declaration_key(symbols: &dyn NameView, name: &str) -> Option<Key> {
         .iter()
         .find(|symbol| symbol.library.is_none())?;
     let kind = kind_of(&symbol.kind)?;
-    Some(registry().key(kind, name, None))
+    Some(symbols.registry().key(kind, name, None))
 }
 
 /// The key of function `function` of library `library`.
-pub fn library_function_key(library: &str, function: &str) -> Key {
-    let registry = registry();
+pub fn library_function_key(registry: &Registry, library: &str, function: &str) -> Key {
     let born = registry.born(Kind::Library, library, None);
     registry.key(
         Kind::Function,
@@ -84,8 +82,7 @@ pub fn library_function_key(library: &str, function: &str) -> Key {
 }
 
 /// The born name of the type or entity called `host` now.
-fn born_host(host: &str) -> String {
-    let registry = registry();
+fn born_host(registry: &Registry, host: &str) -> String {
     let as_type = registry.born(Kind::Type, host, None);
     if as_type != host {
         return as_type;
@@ -95,16 +92,16 @@ fn born_host(host: &str) -> String {
 
 /// The key of field `path` (`Note.body`, `Outcome.paid.receipt`) under the
 /// type or entity `host`.
-pub fn field_key(host: &str, path: &[String]) -> Key {
-    let born = born_host(host);
+pub fn field_key(registry: &Registry, host: &str, path: &[String]) -> Key {
+    let born = born_host(registry, host);
     let now = format!("{host}.{}", path.join("."));
-    registry().key(Kind::Field, &now, Some((host, &born)))
+    registry.key(Kind::Field, &now, Some((host, &born)))
 }
 
 /// The key of variant `variant` of enum `host`.
-pub fn variant_key(host: &str, variant: &str) -> Key {
-    let born = born_host(host);
-    registry().key(
+pub fn variant_key(registry: &Registry, host: &str, variant: &str) -> Key {
+    let born = born_host(registry, host);
+    registry.key(
         Kind::Variant,
         &format!("{host}.{variant}"),
         Some((host, &born)),
@@ -120,8 +117,10 @@ pub fn type_ref(symbols: &dyn NameView, ty: &Ty) -> TypeRef {
         Ty::Prim(builtin) => TypeRef::Builtin(*builtin),
         Ty::Named(name) => declaration_key(symbols, name)
             .map_or_else(|| TypeRef::Std(name.clone(), Vec::new()), TypeRef::Node),
-        Ty::Field(host, path) => TypeRef::Field(field_key(host, path)),
-        Ty::Variant(host, variant) => TypeRef::Variant(variant_key(host, variant)),
+        Ty::Field(host, path) => TypeRef::Field(field_key(symbols.registry(), host, path)),
+        Ty::Variant(host, variant) => {
+            TypeRef::Variant(variant_key(symbols.registry(), host, variant))
+        }
         Ty::List(inner) => TypeRef::List(boxed(inner)),
         Ty::Set(inner) => TypeRef::Set(boxed(inner)),
         Ty::Map(key, value) => TypeRef::Map(boxed(key), boxed(value)),
@@ -152,15 +151,19 @@ pub fn callable_key(
                 .into_iter()
                 .nth(index as usize)?;
             let function = function.name().as_ref().and_then(tree::name_text)?;
-            Some(library_function_key(&name, &function))
+            Some(library_function_key(symbols.registry(), &name, &function))
         }
         (Decl::TestDecl(test), None) => {
             let name = test.string_token()?.text().trim_matches('"').to_string();
-            Some(registry().key(Kind::Test, &format!("{path} \"{name}\""), None))
+            Some(
+                symbols
+                    .registry()
+                    .key(Kind::Test, &format!("{path} \"{name}\""), None),
+            )
         }
         (Decl::SeedDecl(seed), None) => {
             let name = seed.name().as_ref().and_then(tree::name_text)?;
-            Some(registry().key(Kind::Seed, &name, None))
+            Some(symbols.registry().key(Kind::Seed, &name, None))
         }
         (decl, None) => {
             let name = tree::decl_name(decl).as_ref().and_then(tree::name_text)?;
@@ -174,10 +177,11 @@ pub fn callable_key(
 #[salsa::tracked(returns(ref))]
 pub fn graph(db: &dyn Db, project: Project) -> Graph {
     let symbols = symbols(db, project);
+    let registry = registry(db, project);
     let mut builder = Builder::new();
     for domain in &symbols.domains {
         let mut node = Node::new(
-            registry().key(Kind::Domain, domain, None),
+            registry.key(Kind::Domain, domain, None),
             Kind::Domain,
             domain,
         );
