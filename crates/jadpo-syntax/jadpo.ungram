@@ -215,15 +215,19 @@ AssignStmt =
 ReturnStmt =
   'return' Expr?
 
-// Conditions are always in brackets (area 3).
+// Conditions are always in brackets (area 3). An `else if` chain is one
+// flat list of branches, so its length never nests the tree.
 IfStmt =
-  'if' Condition Block ElseBranch?
+  'if' Condition Block ElseIf* ElseBranch?
 
 Condition =
   '(' Expr ')'
 
+ElseIf =
+  'else' 'if' Condition Block
+
 ElseBranch =
-  'else' if_stmt:IfStmt? Block?
+  'else' Block?
 
 ForStmt =
   'for' Name 'in' Expr Block

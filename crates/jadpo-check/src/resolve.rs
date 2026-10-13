@@ -521,10 +521,13 @@ impl Resolver<'_> {
             self.expr(&condition);
         }
         self.block(branch.block());
-        if let Some(otherwise) = branch.else_branch() {
-            if let Some(next) = otherwise.if_stmt() {
-                self.if_stmt(&next);
+        for next in branch.else_ifs() {
+            if let Some(condition) = next.condition().and_then(|c| c.expr()) {
+                self.expr(&condition);
             }
+            self.block(next.block());
+        }
+        if let Some(otherwise) = branch.else_branch() {
             self.block(otherwise.block());
         }
     }

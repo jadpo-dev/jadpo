@@ -170,12 +170,14 @@ pub enum Stmt {
     Return {
         value: Option<SiteId>,
     },
+    /// An `if`, its `else if`s and its `else`, as one flat list however
+    /// long the chain.
     If {
-        condition: Option<SiteId>,
-        then: Vec<SiteId>,
-        then_branch: BranchId,
-        /// An `else if` is an `else` holding one `if`.
+        /// The `if` and each `else if`, in order.
+        arms: Vec<IfArm>,
+        /// The `else` block, empty without one.
         otherwise: Vec<SiteId>,
+        /// The `else`, or the way past the chain when no condition holds.
         otherwise_branch: BranchId,
     },
     For {
@@ -435,6 +437,14 @@ pub enum ArmBody {
     Value(SiteId),
     Block(Vec<SiteId>),
     Empty,
+}
+
+/// One condition of an `if` chain and the block it runs.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IfArm {
+    pub condition: Option<SiteId>,
+    pub then: Vec<SiteId>,
+    pub branch: BranchId,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

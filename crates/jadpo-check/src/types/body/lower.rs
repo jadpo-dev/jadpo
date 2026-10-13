@@ -372,32 +372,39 @@ impl Lower<'_> {
         SiteId(id as u32)
     }
 
+    /// An `if` chain as one flat list: each condition with its block, then
+    /// the `else`, without recursing however long the chain is.
     fn if_stmt(&mut self, id: usize, branch: &ast::IfStmt) -> TypedStmt {
-        let condition = branch
-            .condition()
-            .and_then(|c| c.expr())
-            .map(|condition| self.expr(&condition));
-        let then_branch = match branch.block() {
-            Some(block) => self.branch(id, block.syntax()),
-            None => self.branch(id, branch.syntax()),
-        };
-        let then = self.block(branch.block());
+        let mut arms = Vec::new();
+        let first = (branch.condition(), branch.block(), branch.syntax().clone());
+        let rest = branch
+            .else_ifs()
+            .map(|next| (next.condition(), next.block(), next.syntax().clone()));
+        for (condition, block, node) in std::iter::once(first).chain(rest) {
+            let condition = condition
+                .and_then(|c| c.expr())
+                .map(|condition| self.expr(&condition));
+            let at = match &block {
+                Some(block) => self.branch(id, block.syntax()),
+                None => self.branch(id, &node),
+            };
+            let then = self.block(block);
+            arms.push(typed::IfArm {
+                condition,
+                then,
+                branch: at,
+            });
+        }
         let (otherwise_branch, otherwise) = match branch.else_branch() {
             Some(otherwise) => {
                 let at = self.branch(id, otherwise.syntax());
-                let statements = match otherwise.if_stmt() {
-                    Some(next) => vec![self.stmt(&Stmt::IfStmt(next))],
-                    None => self.block(otherwise.block()),
-                };
-                (at, statements)
+                (at, self.block(otherwise.block()))
             }
             // The way past an `if` without `else` is a branch too.
             None => (self.branch(id, branch.syntax()), Vec::new()),
         };
         TypedStmt::If {
-            condition,
-            then,
-            then_branch,
+            arms,
             otherwise,
             otherwise_branch,
         }

@@ -866,19 +866,24 @@ impl Body<'_> {
         }
     }
 
+    /// An `if` with its `else if` branches, one after another, and its
+    /// `else`; whether the code after it can run.
     fn if_stmt(&mut self, branch: &ast::IfStmt) -> bool {
         if let Some(condition) = branch.condition().and_then(|c| c.expr()) {
             self.condition(&condition);
         }
-        let then = self.block(branch.block());
-        let otherwise = match branch.else_branch() {
-            Some(otherwise) => match otherwise.if_stmt() {
-                Some(next) => self.if_stmt(&next),
-                None => self.block(otherwise.block()),
-            },
-            None => true,
-        };
-        then || otherwise
+        let mut completes = self.block(branch.block());
+        for next in branch.else_ifs() {
+            if let Some(condition) = next.condition().and_then(|c| c.expr()) {
+                self.condition(&condition);
+            }
+            completes |= self.block(next.block());
+        }
+        completes
+            | match branch.else_branch() {
+                Some(otherwise) => self.block(otherwise.block()),
+                None => true,
+            }
     }
 
     /// A condition: a `Bool`, or a type built on `Bool`, never `none`.

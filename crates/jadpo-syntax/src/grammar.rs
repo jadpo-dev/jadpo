@@ -1299,19 +1299,6 @@ fn block_item(p: &mut Parser<'_>) {
     statement_end(p);
 }
 
-/// The rest of an `if` chain too deep to read, without recursing: every
-/// condition and block up to the line that doesn't continue it with `else`.
-fn skip_chain(p: &mut Parser<'_>) {
-    let m = p.start();
-    loop {
-        skip_balanced(p);
-        if p.at_eof() || p.at(R_BRACE) || (p.on_new_line() && !p.at(ELSE_KW)) {
-            break;
-        }
-    }
-    m.complete(p, ERROR);
-}
-
 fn skip_statement(p: &mut Parser<'_>) {
     let m = p.start();
     loop {
@@ -1475,35 +1462,21 @@ fn if_stmt(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump(IF_KW);
     condition(p);
-    if p.at(L_BRACE) {
-        block(p);
-    } else {
-        let found = p.found();
-        let error = p
-            .error_here(
-                &rule::SYNTAX_UNEXPECTED_TOKEN,
-                "Expected `{` after the condition",
-            )
-            .label("expected `{`")
-            .reason(format!("An `if` runs a block in braces; found {found}."))
-            .next("Add `{` after the condition, and `}` after the block");
-        p.push_error(error);
-        skip_line(p);
+    if_block(p);
+    // `else if` branches are siblings in one list, however many there are:
+    // a chain never nests the tree.
+    while p.at(ELSE_KW) && p.nth(1) == IF_KW {
+        let branch = p.start();
+        p.bump(ELSE_KW);
+        p.bump(IF_KW);
+        condition(p);
+        if_block(p);
+        branch.complete(p, ELSE_IF);
     }
     if p.at(ELSE_KW) {
         let e = p.start();
         p.bump(ELSE_KW);
-        if p.at(IF_KW) {
-            // Each `else if` nests one level in the tree, so a chain counts
-            // towards the depth limit; past it, the rest of the chain is
-            // skipped without recursing.
-            if p.enter() {
-                if_stmt(p);
-                p.leave();
-            } else {
-                skip_chain(p);
-            }
-        } else if p.at(L_BRACE) {
+        if p.at(L_BRACE) {
             block(p);
         } else {
             let found = p.found();
@@ -1522,6 +1495,25 @@ fn if_stmt(p: &mut Parser<'_>) {
         e.complete(p, ELSE_BRANCH);
     }
     m.complete(p, IF_STMT);
+}
+
+/// The block after an `if` or `else if` condition.
+fn if_block(p: &mut Parser<'_>) {
+    if p.at(L_BRACE) {
+        block(p);
+    } else {
+        let found = p.found();
+        let error = p
+            .error_here(
+                &rule::SYNTAX_UNEXPECTED_TOKEN,
+                "Expected `{` after the condition",
+            )
+            .label("expected `{`")
+            .reason(format!("An `if` runs a block in braces; found {found}."))
+            .next("Add `{` after the condition, and `}` after the block");
+        p.push_error(error);
+        skip_line(p);
+    }
 }
 
 fn condition(p: &mut Parser<'_>) {

@@ -284,3 +284,27 @@ fn a_pipe_named_jadpo_is_not_read() {
         formatted.stdout
     );
 }
+
+/// A 5,000-branch `else if` chain is one flat `if`: it checks and formats
+/// without a depth error or a stack overflow (Phase 1 review, finding 18).
+#[test]
+fn a_long_else_if_chain_checks_and_formats() {
+    let root = project("else-if-chain");
+    let chain = " else if (count == 1) {\n        return count\n    }".repeat(5_000);
+    write(
+        &root,
+        TALLY,
+        &format!(
+            "action tally(count: Count) -> Count {{\n    if (count == 0) {{\n        return count\n    }}{chain}\n    return count\n}}\n"
+        ),
+    );
+    let output = jadpo(&root, &["check"]);
+    assert_eq!(output.code, 0, "{}", output.stdout);
+    assert!(
+        output.stdout.starts_with("checked: 3 files"),
+        "{}",
+        output.stdout
+    );
+    let formatted = jadpo(&root, &["fmt", "--check"]);
+    assert_eq!(formatted.code, 0, "{}", formatted.stdout);
+}

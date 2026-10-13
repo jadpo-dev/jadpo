@@ -323,8 +323,10 @@ token by one rule (leading to the next token, trailing to the last token
 on its line), as [Biome](https://biomejs.dev/internals/architecture) does,
 so the formatter needs none of the comment-placement repairs Ruff's
 AST-based formatter carries. The parser recovers at declaration and member
-boundaries, never panics, and is fuzzed. Nesting, an `else if` chain and
-template tags included, is limited to 96 levels, past which the rest is
+boundaries, never panics, and is fuzzed. An `if` with its `else if`s and
+`else` is one flat list of branches in the tree and in the typed body, so a
+chain's length is unlimited and never nests; real nesting (brackets,
+blocks, template tags) is limited to 96 levels, past which the rest is
 skipped with one error rather than recursing; a byte-order mark opening a
 file is whitespace, and a line ended by a carriage return alone is an error
 (chunk 1.9). The grammar is one
@@ -432,7 +434,8 @@ and the language server's hover and definition, so a name means one thing
 everywhere. The graph's `site` nodes are the sites the runtime can name in
 a frame, a failure or a fault (calls, constructions that can fail,
 `reject`, `propagate`, arithmetic); its `branch` nodes are each way through
-an `if` (both, written or not) and each arm of a `match`. Both are keyed
+an `if` chain (each condition's block, and the `else` or the way past it,
+written or not) and each arm of a `match`. Both are keyed
 `<kind> <callable>.<number>` under their callable and numbered per build,
 so a diff leaves them to the callable's own change (area 18). Effect kinds,
 the control-flow graph and path numbers come with their areas.
