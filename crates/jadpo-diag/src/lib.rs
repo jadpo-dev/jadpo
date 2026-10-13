@@ -107,6 +107,8 @@ rules! {
         "14-tooling.html#command-errors", "Format command has invalid arguments";
     CLI_HELP_ARGUMENTS: "cli.help_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Help command has invalid arguments";
+    CLI_LSP_ARGUMENTS: "cli.lsp_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Language-server command has invalid arguments";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Terminal presentation option is invalid";
     CLI_UNKNOWN_COMMAND: "cli.unknown_command", area 14, Error, Agent,
@@ -195,6 +197,8 @@ rules! {
         "01-project-layout-and-modules.html#layout-unused-declaration", "Shared declaration is not used";
     LAYOUT_WRONG_FOLDER: "layout.wrong_folder", area 1, Error, Agent,
         "01-project-layout-and-modules.html#layout-wrong-folder", "Declaration is in the wrong folder";
+    LIBRARY_SIMILAR_EXISTS: "library.similar_exists", area 1, Warning, Agent,
+        "01-project-layout-and-modules.html#library-similar-exists", "A library function already does the same";
     NAMING_FOLDED_COLLISION: "naming.folded_collision", area 1, Error, Agent,
         "01-project-layout-and-modules.html#naming-folded-collision", "Two names fold to the same file name";
     NAMING_GENERIC_NAME: "naming.generic_name", area 1, Error, Human,
@@ -265,6 +269,8 @@ rules! {
         "01-project-layout-and-modules.html#syntax-unterminated-string", "String is not closed";
     SYNTAX_VARIABLE_TYPE_REQUIRED: "syntax.variable_type_required", area 2, Error, Agent,
         "02-values-and-types.html#syntax-variable-type-required", "Variable has no type";
+    TOOLCHAIN_ARTIFACT_WRITE_FAILED: "toolchain.artifact_write_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Generated file could not be written";
     TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,
         "01-project-layout-and-modules.html#toolchain-empty-project", "Project declares nothing";
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,

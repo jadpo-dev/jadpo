@@ -5,10 +5,11 @@
 mod check;
 mod commands;
 mod completion;
+mod derived;
 mod fmt;
 mod help;
 mod run;
 mod suggest;
 mod table;
 
-pub use run::{Output, run};
+pub use run::{Output, Session, run};

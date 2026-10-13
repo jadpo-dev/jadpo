@@ -20,6 +20,7 @@ use rowan::GreenNode;
 
 pub use error::{SyntaxError, TextEdit};
 pub use generated::kinds::SyntaxKind;
+pub use rowan::TokenAtOffset;
 
 use lexer::{LexError, LexErrorKind, LexMode};
 use parser::{Input, Parser};

@@ -1,0 +1,247 @@
+//! The manifest (area 18): the graph as canonical JSON, written by `jadpo
+//! check` to `build/manifest.json`, and its schema, which `jadpo help
+//! --json` prints.
+//!
+//! `format` changes only when a field is removed or changes meaning;
+//! additions keep the number (area 18). Fields a later area fills are not
+//! written until it does: the build stamp (`source`, `deployables` and
+//! each deployable's build id, areas 14 and 18), routes, schedules,
+//! subscribers and their runs (7, 12), connections and hosts (11), policy
+//! (9), personal data (15), thresholds (16) and the control flow path
+//! numbers decode against (16, 18).
+
+use std::collections::BTreeMap;
+
+use crate::json::Value;
+use crate::{Detail, EdgeKind, Graph, Kind, Node, NodeId};
+
+/// The manifest's format number.
+pub const FORMAT: i64 = 1;
+
+/// What a manifest says about the check that wrote it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Stamp {
+    /// The compiler's version.
+    pub compiler: String,
+    /// How many errors the check found: a graph from a project with
+    /// errors leaves out what could not be resolved.
+    pub errors: usize,
+}
+
+/// The manifest of `graph`.
+pub fn manifest(graph: &Graph, stamp: &Stamp) -> Value {
+    let mut out = Value::object();
+    out.set("format", FORMAT);
+    out.set("compiler", stamp.compiler.as_str());
+    out.set("errors", stamp.errors);
+    out.set(
+        "nodes",
+        Value::Array(graph.ids().map(|id| node_json(graph, id)).collect()),
+    );
+    out
+}
+
+/// One node as the manifest writes it.
+pub fn node_json(graph: &Graph, id: NodeId) -> Value {
+    let node = graph.node(id);
+    let mut out = Value::object();
+    out.set("id", node.key.as_str());
+    out.set("kind", node.kind.word());
+    out.set("name", node.name.as_str());
+    if let Some(place) = &node.place {
+        out.set("file", place.file.as_str());
+        out.set(
+            "lines",
+            vec![Value::from(place.lines.0), Value::from(place.lines.1)],
+        );
+    }
+    if let Some(digest) = &node.digest {
+        out.set("digest", digest.short());
+    }
+    out.set_some("domain", node.domain.as_deref());
+    out.set_some("parent", node.parent.as_ref().map(|key| key.as_str()));
+    out.set_some("public", node.public);
+    out.set_some("doc", node.doc.as_deref());
+    detail_json(node, &mut out);
+    for (kind, targets) in graph.edges_from(id) {
+        out.set(
+            kind.word(),
+            targets
+                .into_iter()
+                .map(|to| Value::from(graph.node(to).key.as_str()))
+                .collect::<Vec<_>>(),
+        );
+    }
+    out
+}
+
+fn rules_json(rules: &[(String, String)]) -> Value {
+    Value::Object(
+        rules
+            .iter()
+            .map(|(name, value)| (name.clone(), Value::from(value.as_str())))
+            .collect(),
+    )
+}
+
+fn detail_json(node: &Node, out: &mut Value) {
+    match &node.detail {
+        Detail::None => {}
+        Detail::Type {
+            base,
+            rules,
+            failure,
+        } => {
+            out.set("base", base.word());
+            out.set_some("rules", rules_json(rules));
+            if let Some(failure) = failure {
+                let mut entry = Value::object();
+                entry.set("code", failure.code.as_str());
+                entry.set_some("kind", failure.kind.as_deref());
+                entry.set_some("status", failure.status);
+                entry.set_some("message", failure.message.as_deref());
+                out.set("failure", entry);
+            }
+        }
+        Detail::Field {
+            ty,
+            optional,
+            default,
+            section,
+            copied_from,
+            rules,
+        } => {
+            out.set("type", ty.as_str());
+            out.set_some("optional", *optional);
+            out.set_some("default", *default);
+            out.set_some("section", section.map(|s| s.word()));
+            out.set_some("copiedFrom", copied_from.as_ref().map(|key| key.as_str()));
+            out.set_some("rules", rules_json(rules));
+        }
+        Detail::Variant { payload } => out.set_some("payload", *payload),
+        Detail::Callable(signature) => {
+            let mut entry = Value::object();
+            entry.set(
+                "params",
+                signature
+                    .params
+                    .iter()
+                    .map(|(name, ty)| {
+                        let mut param = Value::object();
+                        param.set("name", name.as_str());
+                        param.set("type", ty.as_str());
+                        param
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            entry.set("result", signature.result.as_str());
+            entry.set(
+                "fails",
+                signature
+                    .fails
+                    .iter()
+                    .map(|name| Value::from(name.as_str()))
+                    .collect::<Vec<_>>(),
+            );
+            out.set("signature", entry);
+        }
+    }
+}
+
+/// The fields a manifest node can have, with what each holds.
+const NODE_FIELDS: &[(&str, &str)] = &[
+    (
+        "id",
+        "The node's identity: its kind's word and its born name",
+    ),
+    ("kind", "What the node is"),
+    (
+        "name",
+        "Its name now, as written; differs from the id only after a rename",
+    ),
+    ("file", "The project-relative file it is written in"),
+    ("lines", "The first and last line it covers"),
+    (
+        "digest",
+        "BLAKE3 of its tokens without whitespace, comments or positions",
+    ),
+    ("domain", "The domain that owns it"),
+    ("parent", "The id of what it belongs to"),
+    ("public", "Visible to other domains"),
+    ("doc", "Its /// description"),
+    ("base", "A type's base, or the type it refines"),
+    ("rules", "Rules on a type or field, by name"),
+    ("failure", "A failure's code, kind, status and message"),
+    ("type", "A field's declared type"),
+    ("optional", "An input field the sender may leave out"),
+    ("default", "An input field with a default"),
+    ("section", "A failure field's block: client or internal"),
+    ("copiedFrom", "The field an include or pick line copied"),
+    ("payload", "A variant that carries data"),
+    (
+        "signature",
+        "A callable's parameters, result and fails list",
+    ),
+];
+
+/// The manifest's schema, for `jadpo help --json`.
+pub fn schema() -> Value {
+    let mut out = Value::object();
+    out.set("file", "build/manifest.json");
+    out.set("format", FORMAT);
+    out.set(
+        "top",
+        Value::Object(BTreeMap::from([
+            ("format".to_string(), Value::from("The format number")),
+            (
+                "compiler".to_string(),
+                Value::from("The version of jadpo that wrote it"),
+            ),
+            (
+                "errors".to_string(),
+                Value::from("How many errors the check found"),
+            ),
+            (
+                "nodes".to_string(),
+                Value::from("Every node, sorted by id; each lists its edges by kind"),
+            ),
+        ])),
+    );
+    out.set(
+        "nodeFields",
+        Value::Object(
+            NODE_FIELDS
+                .iter()
+                .map(|(name, meaning)| (name.to_string(), Value::from(*meaning)))
+                .collect(),
+        ),
+    );
+    out.set(
+        "nodeKinds",
+        Kind::ALL
+            .iter()
+            .map(|kind| {
+                let mut entry = Value::object();
+                entry.set("kind", kind.word());
+                entry.set("group", kind.group().word());
+                entry.set("status", kind.status().word());
+                entry.set("area", kind.area());
+                entry
+            })
+            .collect::<Vec<_>>(),
+    );
+    out.set(
+        "edgeKinds",
+        EdgeKind::ALL
+            .iter()
+            .map(|kind| {
+                let mut entry = Value::object();
+                entry.set("kind", kind.word());
+                entry.set("status", kind.status().word());
+                entry.set("meaning", kind.meaning());
+                entry
+            })
+            .collect::<Vec<_>>(),
+    );
+    out
+}

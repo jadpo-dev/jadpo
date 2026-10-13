@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use salsa::Durability;
+use salsa::{Durability, Setter};
 
 use crate::places::{Ownership, locate};
 use crate::{Database, File, Layout, Project};
@@ -41,6 +41,12 @@ pub struct Loaded {
 /// holds `app.jadpo`) that is the whole project; otherwise the file, or
 /// every `.jadpo` file under the folder, as loose files.
 pub fn load(target: &Path) -> Loaded {
+    load_into(target, Database::default())
+}
+
+/// [`load`] into a database of the caller's, such as one that records what
+/// it executes.
+pub fn load_into(target: &Path, db: Database) -> Loaded {
     let folder = if target.is_dir() {
         target.to_path_buf()
     } else {
@@ -56,7 +62,6 @@ pub fn load(target: &Path) -> Loaded {
         None if target.is_dir() => (folder.clone(), Layout::Loose, walk(&folder, false)),
         None => (folder, Layout::Loose, vec![target.to_path_buf()]),
     };
-    let db = Database::default();
     let mut files = Vec::new();
     let mut other_files = Vec::new();
     let mut unreadable = Vec::new();
@@ -68,10 +73,7 @@ pub fn load(target: &Path) -> Loaded {
         }
         match std::fs::read_to_string(&path) {
             Ok(text) => {
-                let durability = match locate(&shown, layout).ownership {
-                    Ownership::Domain(_) | Ownership::Loose => Durability::LOW,
-                    Ownership::Shared | Ownership::Root => Durability::MEDIUM,
-                };
+                let durability = durability(&shown, layout);
                 files.push(
                     File::builder(shown, text)
                         .path_durability(durability)
@@ -92,6 +94,88 @@ pub fn load(target: &Path) -> Loaded {
         root,
         unreadable,
     }
+}
+
+/// How rarely a file changes (docs/compiler-runtime.md §2.4): domain files
+/// low, `shared/` and the root files medium, so a keystroke in a domain
+/// never revalidates what only the others decide.
+fn durability(path: &str, layout: Layout) -> Durability {
+    match locate(path, layout).ownership {
+        Ownership::Domain(_) | Ownership::Loose => Durability::LOW,
+        Ownership::Shared | Ownership::Root => Durability::MEDIUM,
+    }
+}
+
+impl Loaded {
+    /// The source file at the project-relative `path`.
+    pub fn file(&self, path: &str) -> Option<File> {
+        self.project
+            .files(&self.db)
+            .iter()
+            .copied()
+            .find(|file| file.path(&self.db) == path)
+    }
+
+    /// An absolute path inside the root as the project names it: relative,
+    /// with `/`. `None` outside the root.
+    pub fn relative(&self, path: &Path) -> Option<String> {
+        let relative = path.strip_prefix(&self.root).ok()?;
+        Some(display(Path::new(""), relative))
+    }
+
+    /// Sets the text of the source file at `path`, adding it when it is
+    /// new. Only `.jadpo` files outside `build/` are source; anything else
+    /// is ignored. The database keeps every other result it can.
+    pub fn set_text(&mut self, path: &str, text: String) {
+        if !is_source(path) {
+            return;
+        }
+        if let Some(file) = self.file(path) {
+            if file.text(&self.db) != &text {
+                file.set_text(&mut self.db).to(text);
+            }
+            return;
+        }
+        let layout = self.project.layout(&self.db);
+        let durability = durability(path, layout);
+        let file = File::builder(path.to_string(), text)
+            .path_durability(durability)
+            .text_durability(durability)
+            .new(&self.db);
+        let mut files = self.project.files(&self.db).clone();
+        files.push(file);
+        files.sort_by(|a, b| a.path(&self.db).cmp(b.path(&self.db)));
+        self.project.set_files(&mut self.db).to(files);
+    }
+
+    /// Removes the source file at `path`, if the project has it.
+    pub fn remove(&mut self, path: &str) {
+        let files = self.project.files(&self.db).clone();
+        let kept: Vec<File> = files
+            .iter()
+            .copied()
+            .filter(|file| file.path(&self.db) != path)
+            .collect();
+        if kept.len() != files.len() {
+            self.project.set_files(&mut self.db).to(kept);
+        }
+    }
+
+    /// Reads `path` from disk again: its text now, or its removal when it
+    /// is gone or unreadable.
+    pub fn reload(&mut self, path: &str) {
+        match std::fs::read_to_string(self.root.join(path)) {
+            Ok(text) => self.set_text(path, text),
+            Err(_) => self.remove(path),
+        }
+    }
+}
+
+/// Whether a project-relative path is a source file the project holds.
+fn is_source(path: &str) -> bool {
+    path.ends_with(".jadpo")
+        && !path.starts_with("build/")
+        && !path.split('/').any(|part| part.starts_with('.'))
 }
 
 /// A path as the reader sees it: relative to the root, with `/`.

@@ -1,0 +1,422 @@
+{
+  "compiler": "test",
+  "errors": 0,
+  "format": 1,
+  "nodes": [
+    {
+      "calls": [
+        "function wording.keep"
+      ],
+      "digest": "8a881a885612b739",
+      "domain": "notes",
+      "file": "domains/notes/actions/save_note.jadpo",
+      "id": "action save_note",
+      "kind": "action",
+      "lines": [
+        1,
+        11
+      ],
+      "name": "save_note",
+      "raises": [
+        "type NoteRefused"
+      ],
+      "signature": {
+        "fails": [
+          "NoteRefused"
+        ],
+        "params": [
+          {
+            "name": "body",
+            "type": "Body"
+          }
+        ],
+        "result": "Note"
+      },
+      "uses": [
+        "type Body",
+        "type Note",
+        "type NoteRefused"
+      ]
+    },
+    {
+      "digest": "d9fabc0d6e29722f",
+      "domain": "notes",
+      "file": "domains/notes/actions/summarise_note.jadpo",
+      "id": "action summarise_note",
+      "kind": "action",
+      "lines": [
+        1,
+        6
+      ],
+      "name": "summarise_note",
+      "signature": {
+        "fails": [],
+        "params": [
+          {
+            "name": "note",
+            "type": "Note"
+          }
+        ],
+        "result": "Summary"
+      },
+      "uses": [
+        "type Note",
+        "type Summary",
+        "variant Shade.plain"
+      ]
+    },
+    {
+      "domain": "notes",
+      "id": "domain notes",
+      "kind": "domain",
+      "name": "notes"
+    },
+    {
+      "digest": "304fd7764808cfba",
+      "domain": "notes",
+      "file": "domains/notes/types/note.jadpo",
+      "id": "field Note.body",
+      "kind": "field",
+      "lines": [
+        2,
+        2
+      ],
+      "name": "Note.body",
+      "parent": "type Note",
+      "type": "Body",
+      "uses": [
+        "type Body"
+      ]
+    },
+    {
+      "digest": "f021ff6b98f87627",
+      "domain": "notes",
+      "file": "domains/notes/types/note.jadpo",
+      "id": "field Note.pinned",
+      "kind": "field",
+      "lines": [
+        3,
+        3
+      ],
+      "name": "Note.pinned",
+      "parent": "type Note",
+      "type": "Bool"
+    },
+    {
+      "digest": "a176d5b1b44a96c8",
+      "domain": "notes",
+      "file": "domains/notes/failures/note_refused.jadpo",
+      "id": "field NoteRefused.length",
+      "kind": "field",
+      "lines": [
+        6,
+        6
+      ],
+      "name": "NoteRefused.length",
+      "parent": "type NoteRefused",
+      "section": "client",
+      "type": "Int"
+    },
+    {
+      "digest": "c5735b3e38a506bf",
+      "domain": "notes",
+      "file": "domains/notes/types/shade.jadpo",
+      "id": "field Shade.tinted.level",
+      "kind": "field",
+      "lines": [
+        4,
+        4
+      ],
+      "name": "Shade.tinted.level",
+      "parent": "variant Shade.tinted",
+      "type": "Int"
+    },
+    {
+      "copiedFrom": "field Note.body",
+      "domain": "notes",
+      "file": "domains/notes/types/summary.jadpo",
+      "id": "field Summary.body",
+      "kind": "field",
+      "lines": [
+        2,
+        2
+      ],
+      "name": "Summary.body",
+      "parent": "type Summary",
+      "type": "Note.body",
+      "uses": [
+        "field Note.body"
+      ]
+    },
+    {
+      "digest": "c518e6f557f006b7",
+      "domain": "notes",
+      "file": "domains/notes/types/summary.jadpo",
+      "id": "field Summary.shade",
+      "kind": "field",
+      "lines": [
+        3,
+        3
+      ],
+      "name": "Summary.shade",
+      "parent": "type Summary",
+      "type": "Shade",
+      "uses": [
+        "type Shade"
+      ]
+    },
+    {
+      "digest": "48533df35c105dc7",
+      "file": "app.jadpo",
+      "id": "file app.jadpo",
+      "kind": "file",
+      "lines": [
+        1,
+        1
+      ],
+      "name": "app.jadpo"
+    },
+    {
+      "digest": "8a881a885612b739",
+      "domain": "notes",
+      "file": "domains/notes/actions/save_note.jadpo",
+      "id": "file domains/notes/actions/save_note.jadpo",
+      "kind": "file",
+      "lines": [
+        1,
+        11
+      ],
+      "name": "domains/notes/actions/save_note.jadpo"
+    },
+    {
+      "digest": "d9fabc0d6e29722f",
+      "domain": "notes",
+      "file": "domains/notes/actions/summarise_note.jadpo",
+      "id": "file domains/notes/actions/summarise_note.jadpo",
+      "kind": "file",
+      "lines": [
+        1,
+        6
+      ],
+      "name": "domains/notes/actions/summarise_note.jadpo"
+    },
+    {
+      "digest": "7ccb0bd2198565d8",
+      "domain": "notes",
+      "file": "domains/notes/failures/note_refused.jadpo",
+      "id": "file domains/notes/failures/note_refused.jadpo",
+      "kind": "file",
+      "lines": [
+        1,
+        8
+      ],
+      "name": "domains/notes/failures/note_refused.jadpo"
+    },
+    {
+      "digest": "87f677c81573b125",
+      "domain": "notes",
+      "file": "domains/notes/libraries/wording.jadpo",
+      "id": "file domains/notes/libraries/wording.jadpo",
+      "kind": "file",
+      "lines": [
+        1,
+        6
+      ],
+      "name": "domains/notes/libraries/wording.jadpo"
+    },
+    {
+      "digest": "933645b7d4346bd5",
+      "domain": "notes",
+      "file": "domains/notes/types/body.jadpo",
+      "id": "file domains/notes/types/body.jadpo",
+      "kind": "file",
+      "lines": [
+        1,
+        5
+      ],
+      "name": "domains/notes/types/body.jadpo"
+    },
+    {
+      "digest": "3bb086dee76303e3",
+      "domain": "notes",
+      "file": "domains/notes/types/note.jadpo",
+      "id": "file domains/notes/types/note.jadpo",
+      "kind": "file",
+      "lines": [
+        1,
+        4
+      ],
+      "name": "domains/notes/types/note.jadpo"
+    },
+    {
+      "digest": "0867429b6fc172eb",
+      "domain": "notes",
+      "file": "domains/notes/types/shade.jadpo",
+      "id": "file domains/notes/types/shade.jadpo",
+      "kind": "file",
+      "lines": [
+        1,
+        6
+      ],
+      "name": "domains/notes/types/shade.jadpo"
+    },
+    {
+      "digest": "4d616b7c4af1de7a",
+      "domain": "notes",
+      "file": "domains/notes/types/summary.jadpo",
+      "id": "file domains/notes/types/summary.jadpo",
+      "kind": "file",
+      "lines": [
+        1,
+        4
+      ],
+      "name": "domains/notes/types/summary.jadpo"
+    },
+    {
+      "digest": "5f5618b334fe82c2",
+      "doc": "Keeps a body as it is.",
+      "domain": "notes",
+      "file": "domains/notes/libraries/wording.jadpo",
+      "id": "function wording.keep",
+      "kind": "function",
+      "lines": [
+        3,
+        5
+      ],
+      "name": "wording.keep",
+      "parent": "library wording",
+      "signature": {
+        "fails": [],
+        "params": [
+          {
+            "name": "body",
+            "type": "Body"
+          }
+        ],
+        "result": "Body"
+      },
+      "uses": [
+        "type Body"
+      ]
+    },
+    {
+      "digest": "87f677c81573b125",
+      "domain": "notes",
+      "file": "domains/notes/libraries/wording.jadpo",
+      "id": "library wording",
+      "kind": "library",
+      "lines": [
+        1,
+        6
+      ],
+      "name": "wording"
+    },
+    {
+      "base": "Text",
+      "digest": "933645b7d4346bd5",
+      "doc": "The text of a note.",
+      "domain": "notes",
+      "file": "domains/notes/types/body.jadpo",
+      "id": "type Body",
+      "kind": "type",
+      "lines": [
+        2,
+        5
+      ],
+      "name": "Body",
+      "rules": {
+        "max_length": "500",
+        "min_length": "1"
+      }
+    },
+    {
+      "base": "Object",
+      "digest": "3bb086dee76303e3",
+      "domain": "notes",
+      "file": "domains/notes/types/note.jadpo",
+      "id": "type Note",
+      "kind": "type",
+      "lines": [
+        1,
+        4
+      ],
+      "name": "Note"
+    },
+    {
+      "base": "Failure",
+      "digest": "7ccb0bd2198565d8",
+      "doc": "The note was refused.",
+      "domain": "notes",
+      "failure": {
+        "code": "note_refused",
+        "kind": "rejected",
+        "message": "The note was refused.",
+        "status": 422
+      },
+      "file": "domains/notes/failures/note_refused.jadpo",
+      "id": "type NoteRefused",
+      "kind": "type",
+      "lines": [
+        2,
+        8
+      ],
+      "name": "NoteRefused"
+    },
+    {
+      "base": "Enum",
+      "digest": "0867429b6fc172eb",
+      "domain": "notes",
+      "file": "domains/notes/types/shade.jadpo",
+      "id": "type Shade",
+      "kind": "type",
+      "lines": [
+        1,
+        6
+      ],
+      "name": "Shade"
+    },
+    {
+      "base": "Object",
+      "digest": "4d616b7c4af1de7a",
+      "domain": "notes",
+      "file": "domains/notes/types/summary.jadpo",
+      "id": "type Summary",
+      "kind": "type",
+      "lines": [
+        1,
+        4
+      ],
+      "name": "Summary",
+      "uses": [
+        "field Note.body"
+      ]
+    },
+    {
+      "digest": "ca90024bbd3aafc0",
+      "domain": "notes",
+      "file": "domains/notes/types/shade.jadpo",
+      "id": "variant Shade.plain",
+      "kind": "variant",
+      "lines": [
+        2,
+        2
+      ],
+      "name": "Shade.plain",
+      "parent": "type Shade"
+    },
+    {
+      "digest": "77143bc8e7b4647b",
+      "domain": "notes",
+      "file": "domains/notes/types/shade.jadpo",
+      "id": "variant Shade.tinted",
+      "kind": "variant",
+      "lines": [
+        3,
+        5
+      ],
+      "name": "Shade.tinted",
+      "parent": "type Shade",
+      "payload": true
+    }
+  ]
+}

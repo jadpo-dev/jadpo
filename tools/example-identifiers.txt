@@ -40,6 +40,8 @@ build_product
 bulk_quantity
 business_zone
 cancel_unpaid_orders
+cap_total
+capped
 cart_id
 catalogue_name
 category_id

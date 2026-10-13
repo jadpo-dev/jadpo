@@ -156,8 +156,13 @@ the failures a call can produce, completion, rename and formatting. The VS
 Code extension in `editors/vscode` adds highlighting and a command to open any
 generated file. It contains no parser of its own.
 
-Decided in area 1 and not built: hover shows a declaration's `///`
-description and its callers; promotion and the similar-helper warning come
+> **Built (chunk 1.7).** `jadpo lsp` gives the errors `jadpo check` gives
+> while you type, from one database kept for the server's life, so an edit
+> rechecks only what it changes; hover with a declaration written as Jadpo,
+> its `///` description, the failures a callable can produce, a failure's
+> code, kind and status, and who calls or uses it; and go to definition.
+
+Decided in area 1 and not built: promotion and the similar-helper warning come
 with quick fixes; rename goes through the same code as `jadpo rename`, so an
 entity field renamed in the editor keeps its stored data (question 5).
 
@@ -236,8 +241,15 @@ build/
   target/                     the runnable app (jadpo build only)
 ```
 
-The catalogues, the schema report and the permissions report are decided
-(areas 1, 4, 5 and 9) and not built; the query report is area 6's input, kept beside the schema report
+> **Built (chunk 1.7).** For a project, `jadpo check` writes
+> `build/manifest.json` (area 18) and the catalogues
+> `build/catalogue/libraries.md` and `failures.md` with `.json` twins, errors
+> or not, so what an agent looks up is never stale; a file is rewritten only
+> when its bytes change, and loose files write nothing. The reports, OpenAPI
+> and the monitoring rules come with their areas.
+
+The schema report and the permissions report are decided
+(areas 5 and 9) and not built; the query report is area 6's input, kept beside the schema report
 because a reviewer reads them together. Each is written as Markdown, which an agent can search, with a `.json`
 twin for tools (question 10).
 
@@ -254,7 +266,8 @@ hidden `.app/project.json`, which area 1's fixed root does not allow.
 ## Tools for agents
 
 Agents look things up through the compiler rather than browsing folders.
-These were decided in areas 1, 4 and 5 and none is built yet.
+These were decided in areas 1, 4 and 5. The library and failure catalogues
+and the similar-helper warning are built (chunk 1.7); the rest are not yet.
 
 - **Library catalogue** (`build/catalogue/libraries.md`): every library
   function with its signature, `///` description and callers. An agent reads
@@ -464,7 +477,7 @@ source example. Generated from the compiler's catalogue.
 | `toolchain.artifact_cleanup_failed` | `artifacts`, `build` | Previous build backup could not be removed |
 | `toolchain.artifact_promote_failed` | `artifacts`, `build` | Staged build artifacts could not be promoted |
 | `toolchain.artifact_stage_failed` | `artifacts`, `build` | Build staging directory could not be created |
-| `toolchain.artifact_write_failed` | `artifacts`, `build` | Generated artifact could not be written |
+| `toolchain.artifact_write_failed` | `check`, `build` | Generated file could not be written |
 | `toolchain.project_not_found` | any command | Project path does not exist |
 | `toolchain.project_read_failed` | any command | Project directory could not be read |
 | `toolchain.scaffold_destination_exists` | `new` | Scaffold destination is an existing file |

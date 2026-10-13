@@ -2,14 +2,15 @@
 //! each language area as salsa queries over `jadpo-db`. Areas 1 to 4 are
 //! built: layout, naming, visibility and resolution, then values and types
 //! and the logic of bodies ([`types`]), and failures (`failures`, with the
-//! body rules beside the others in [`types`]). A later chunk builds the
-//! graph.
+//! body rules beside the others in [`types`]). [`graph`] builds the
+//! application graph from these queries.
 //!
 //! [`check`] assembles every diagnostic for a project, sorted by file and
 //! position so the same source always gives the same output.
 
 mod case;
 mod failures;
+pub mod graph;
 mod layout;
 mod naming;
 mod resolve;
@@ -66,6 +67,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(failure_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());
             out.extend(types::recursion_problems(db, project, file).iter().cloned());
+            out.extend(graph::similar_problems(db, project, file).iter().cloned());
         }
     }
     sort(&mut out);

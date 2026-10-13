@@ -47,6 +47,10 @@ def main() -> int:
             # Every example in docs/language and examples/ formats idempotently
             # to the same tree (docs/compiler-runtime.md §2.7).
             ('format idempotence', ['cargo', 'test', '--locked', '-p', 'jadpo-fmt', '--test', 'examples']),
+            # Same source, same bytes (docs/compiler-runtime.md §2.8): every
+            # corpus project's manifest twice, its files read in two orders,
+            # and no key or digest moved by formatting.
+            ('manifest determinism', ['cargo', 'test', '--locked', '-p', 'jadpo-check', '--test', 'determinism']),
             # Includes the crate-graph test (crates/jadpo-cli/tests/crate_graph.rs),
             # the parser's documentation, error and fuzz tests, and the
             # generated AST's drift test.

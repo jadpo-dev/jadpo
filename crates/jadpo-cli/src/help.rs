@@ -169,8 +169,26 @@ pub fn command_json(command: &Command) -> Json {
     ])
 }
 
-/// The whole command reference and the rule catalogue, for agents and for
-/// the docs check.
+/// A canonical JSON value from the graph crate as a `--json` value.
+fn from_graph(value: &jadpo_graph::json::Value) -> Json {
+    use jadpo_graph::json::Value;
+    match value {
+        Value::Null => Json::Null,
+        Value::Bool(value) => Json::Bool(*value),
+        Value::Int(value) => Json::Int(*value),
+        Value::Str(value) => Json::Str(value.clone()),
+        Value::Array(items) => Json::Array(items.iter().map(from_graph).collect()),
+        Value::Object(entries) => Json::Object(
+            entries
+                .iter()
+                .map(|(key, value)| (key.clone(), from_graph(value)))
+                .collect(),
+        ),
+    }
+}
+
+/// The whole command reference, the rule catalogue and the manifest's
+/// schema, for agents and for the docs check.
 pub fn reference_json() -> Json {
     Json::object([
         ("name", "jadpo".into()),
@@ -196,5 +214,6 @@ pub fn reference_json() -> Json {
                 ])
             })),
         ),
+        ("manifest", from_graph(&jadpo_graph::manifest::schema())),
     ])
 }

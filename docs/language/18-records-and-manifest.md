@@ -101,6 +101,18 @@ that path numbers decode against, and each deployable's build id.
   the golden todo is 101 KB (13 KB compressed). Agents ask for one node
   with `jadpo inspect <name> --json` rather than reading the file.
 
+> **Built (chunk 1.7).** For a project, `jadpo check` writes
+> `build/manifest.json`, errors or not, at `format` 1: `compiler`, `errors`
+> and `nodes`. A node has `id`, `kind`, `name`, `file`, `lines` and `digest`,
+> and where they apply `domain`, `parent`, `public`, `doc`, a type's `base`,
+> `rules` and `failure`, a field's `type`, a callable's `signature`, and its
+> edges as sorted lists by kind: `calls`, `uses`, and `raises` for the
+> failures that can leave a callable (the `fails` above). Nodes are built for
+> areas 1 to 4; the build stamp (`source`, `deployables`, build ids),
+> routes, schedules, hosts, policy, personal fields and thresholds join as
+> their areas are built. `jadpo help --json` prints the schema with every
+> node and edge kind and whether it is built yet.
+
 ::: today
 
 `build/app.meta.json` holds a graph whose nodes are numbered in order, so a
@@ -142,6 +154,15 @@ renaming a domain or an entity is one line.
 - `jadpo incident`, path keys (area 16) and the review all compare through
   this registry, so a rename reads as "renamed", never as "removed and
   added".
+
+> **Built (chunk 1.7).** A key is the kind and the born name, in the
+> registry's own form: `action complete_todo`, `field Todo.title`,
+> `function rounding.half_even`. It is not qualified by domain, as the
+> manifest example above is: names are unique across the project, and
+> promotion moves a declaration to `shared/` without a registry line, which
+> a domain in the key would turn into a removal and an addition. Question 8
+> asks Richard to confirm it. The registry is read once `jadpo rename`
+> writes it; until then every born name is the name now.
 
 ## Comparing two builds
 
@@ -439,6 +460,18 @@ Each row says how it was checked: run with `jadpo` 3ce094d0 on a copy of
    no endpoint to secure, it works for workers and Wasm alike, and nothing
    is archived. Deploy only commits that stay in history. This replaces
    the starting idea of embedding the manifest and serving it. *Decided 2026-10-13:* yes, with one addition: `jadpo` fetches and runs the exact compiler version named in the stamp (as `rustup` installs a pinned toolchain), so an old build can always be rebuilt.
+
+8. **Is a stable identity qualified by its domain?** Raised while building
+   chunk 1.7: the manifest example writes `planning.complete_todo`, the
+   registry example `entity Task` but `subscriber planning.notify_owner`.
+   *Recommendation:* no, as built: a key is the kind and the born name,
+   `action complete_todo`, and the domain is a field of the node. Names are
+   unique across the project and across kinds (area 1), so the domain adds
+   nothing to a key, and promotion to `shared/` moves a declaration to
+   another owner without a registry line, so a domain in the key would show
+   a routine move as a removal and an addition, losing incidents, coverage
+   and stored deliveries that name it. Changing this later is a new
+   manifest `format`.
 
 ### Decisions
 

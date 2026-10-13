@@ -2386,13 +2386,13 @@ var same: Bool = a == b         // true: same contents (false today)
 
 #### Q13: UUID versions
 
-```jadpo fragment
+```jadpo check project=q13-uuid-versions
 entity Order {
-    id: Uuid                    // generated as version 7
+    id: Uuid  // generated as version 7
 }
 
 type PartnerRef = Uuid {
-    version: UuidVersion.v4     // accepts and generates only version 4
+    version: UuidVersion.v4  // accepts and generates only version 4
 }
 ```
 
@@ -2422,7 +2422,7 @@ for line in order.lines {       // a loop binding takes its type from the list
 
 #### Q17: fixed options are written `Type.value`
 
-```jadpo fragment
+```jadpo check project=q17-options
 type ContactEmail = Text {
     format: TextFormat.email
 }
