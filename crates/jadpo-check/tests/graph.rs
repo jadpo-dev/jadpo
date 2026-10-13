@@ -306,6 +306,24 @@ fn a_function_that_calls_itself_keeps_the_edge() {
 }
 
 #[test]
+fn a_type_written_as_a_field_uses_that_field_only() {
+    let files = with(
+        &fixture(),
+        "domains/notes/actions/echo_body.jadpo",
+        "action echo_body(text: Note.body) -> Note.body {\n    return text\n}\n",
+    );
+    let (graph, _) = build(&files);
+    let echo = graph
+        .find(&Key::from_text("action echo_body"))
+        .expect("action");
+    let uses: Vec<String> = graph
+        .outgoing(echo, EdgeKind::Uses)
+        .map(|id| graph.node(id).key.to_string())
+        .collect();
+    assert_eq!(uses, ["field Note.body"]);
+}
+
+#[test]
 fn the_manifest_is_the_same_bytes_in_any_file_order() {
     let files = fixture();
     let (graph, errors) = build(&files);

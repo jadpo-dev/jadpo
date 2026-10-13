@@ -76,13 +76,18 @@ impl Resolver<'_> {
                     .filter_map(|name| tree::name_ref_text(&name))
                     .collect()
             }),
-            NAME_REF | FIELD_EXPR if outermost(node) => Expr::cast(node.clone()).and_then(|expr| {
-                let (first, rest) = dotted(&expr)?;
-                std::iter::once(&first)
-                    .chain(rest.iter())
-                    .map(tree::name_ref_text)
-                    .collect()
-            }),
+            // A name inside a type's path is part of that path, read above.
+            NAME_REF | FIELD_EXPR
+                if outermost(node) && node.parent().is_none_or(|parent| parent.kind() != PATH) =>
+            {
+                Expr::cast(node.clone()).and_then(|expr| {
+                    let (first, rest) = dotted(&expr)?;
+                    std::iter::once(&first)
+                        .chain(rest.iter())
+                        .map(tree::name_ref_text)
+                        .collect()
+                })
+            }
             _ => None,
         };
         if let Some(key) = names.and_then(|names| self.path(&names)) {
