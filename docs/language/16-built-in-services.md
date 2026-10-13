@@ -562,6 +562,9 @@ that is an integration, as Laravel Scout's other engines are.
    stores flags in the app's database; LaunchDarkly or Unleash would be a
    third-party dependency for something small enough to own. A web screen
    can come later on the same operations.
+   *Revised 2026-10-13 (Richard):* the store is named, never assumed:
+   `flags: { store: main }` in `app.jadpo`; without it, using a flag is a
+   compile error (the area 5 rule for every system feature).
 3. **Which targeting rules?** *Recommendation:* named users, named tenants
    (once area 9 decides tenancy), a percentage by a hash of flag name and
    user `id`, then everyone; first match wins. No attribute rules
@@ -577,11 +580,28 @@ that is an integration, as Laravel Scout's other engines are.
    flags go out on a plain generated `GET /flags`; adopt OpenFeature's remote
    evaluation protocol (OFREP) for that route once it is stable, which its
    authors say it is not yet.
+   *Decided 2026-10-13 (Richard):* yes, and the client sees its own state:
+   `GET /flags` returns every flag marked `client: true`, evaluated for the
+   caller (their user, tenant and rollout bucket), so a frontend shows
+   exactly what this user has. Flags without `client: true` never leave the
+   server.
 6. **Are rate limits `rate_limit: { requests: within: by: }` on an API or
    route, counted in Redis with an in-memory fallback?** *Recommendation:*
    yes, keyed by caller or address, with built-in limits on the generated
    authentication routes. This is Rails 8's `rate_limit to: within: by:` in
    Jadpo's form.
+   *Revised 2026-10-13 (Richard): on by default for every route.* With no
+   setting, every API gets sensible limits: per signed-in caller 600 a
+   minute, per address 120 a minute on public routes, and 10 a minute per
+   address on the generated sign-in and privacy routes; `rate_limit:`
+   loosens or tightens them per API or route, and turning one off needs an
+   acceptance. Counts live in Redis when a cache connection is named
+   (`rate_limits: { store: cache }`); without one they are kept in memory
+   with a fixed allowance (`memory: 16MB` by default, oldest counters
+   dropped first), and `jadpo check` warns that limits are then per
+   instance, multiplied by the number running, and recommends Redis. On
+   Workers there is no lasting memory, so a Redis connection (or
+   Cloudflare's rate-limiting binding as a driver) is required.
 7. **Are files a `File` field with a file store, direct uploads through a
    signed slot, and signed links in outputs?** *Recommendation:* yes, S3
    protocol only. It is how Rails Active Storage and Laravel work, and the
@@ -620,6 +640,18 @@ that is an integration, as Laravel Scout's other engines are.
     come back as standard events; provider features are connection
     settings or the package's own operations. Laravel's mailers and Rails'
     delivery methods work the same way.
+   *Revised 2026-10-13 (Richard):* mails live in their domain's `mails/`
+   folder: the type (`welcome_mail.jadpo`), an HTML template
+   (`welcome_mail.html`) and a text template (`welcome_mail.txt`), plus a
+   shared layout. No MJML: agents write plain HTML, which is safer and more
+   flexible, and the health score flags what mail clients mishandle.
+   Templates use a small template language, checked by the compiler against
+   the mail's type: `{{ display_name }}` (escaped), `{{ t.welcome_heading }}`
+   for translated text, `{{#if has_due_date}} ... {{else}} ... {{/if}}`,
+   `{{#each items as item}} ... {{/each}}`, `{{> button}}` for partials, and
+   the standard formatting functions (`{{ temporal.format(due_at) }}`).
+   Nothing else: values are prepared in the mail's fields, not computed in
+   the template.
 12. **Is search a `search:` section using PostgreSQL full-text search?**
     *Recommendation:* yes, one language per entity, with search services as
     integrations. Django's `SearchVector` and Laravel Scout's database engine
@@ -659,16 +691,16 @@ that is an integration, as Laravel Scout's other engines are.
 | Third-party services | Carried from area 8: the language owns a feature rather than relying on a third-party service where it reasonably can | 2026-10-12 |
 | Policy model | Carried from area 9: grants keyed by `create`, `read`, `update`, `delete` | 2026-10-12 |
 | Flag declaration | | |
-| Flag storage and changes | | |
+| Flag storage and changes | In the app's own database, named explicitly (`flags: { store: main }`); changed with `jadpo flags`; no flag service | 2026-10-13 |
 | Flag targeting | | |
 | Flag checks | | |
-| OpenFeature | | |
-| Rate limits | | |
+| OpenFeature | Not now; `GET /flags` returns `client: true` flags evaluated for the caller (Richard) | 2026-10-13 |
+| Rate limits | On by default for every route with sensible limits; `rate_limit:` adjusts; turning off needs an acceptance; Redis when named, otherwise bounded memory with a warning; Redis or a platform binding required on Workers (Richard) | 2026-10-13 |
 | Files | | |
 | Outgoing webhooks and field encryption | | |
 | Audit trail | | |
 | Tracing and metrics | | |
-| Email | | |
+| Email | `mails/` folder per domain: type, HTML and text templates, shared layout; no MJML; a small typed template language (values, translations, if, each, partials, formatting); delivered through the `mail` capability (Richard) | 2026-10-13 |
 | Search | | |
 | Path IDs | | |
 | Detail by threshold | | |
