@@ -523,7 +523,7 @@ impl Body<'_> {
     /// Division by zero is ruled out while compiling (area 3, question 7):
     /// a literal divisor is not `0`, and any other divisor's type excludes
     /// zero.
-    fn divisor(&mut self, rhs: &Expr, operand: &Operand) {
+    pub(super) fn divisor(&mut self, rhs: &Expr, operand: &Operand) {
         let span = self.span(rhs);
         let written = tree::written(rhs.syntax());
         match operand {

@@ -81,7 +81,8 @@ pub struct StdNames {
     declared: BTreeMap<String, BTreeMap<String, Operation>>,
     /// Namespaces known by name only, with their operations' names.
     named: BTreeMap<&'static str, BTreeSet<&'static str>>,
-    generated: BTreeSet<&'static str>,
+    /// Namespaces the compiler fills, with the members built so far.
+    generated: BTreeMap<&'static str, BTreeSet<&'static str>>,
     generic: BTreeSet<&'static str>,
 }
 
@@ -135,7 +136,14 @@ impl StdNames {
                             .extend(operations.split_whitespace());
                     }
                 }
-                "generated" => table.generated.extend(line.split_whitespace()),
+                "generated" => {
+                    let (name, members) = line.split_once(':').unwrap_or((line, ""));
+                    table
+                        .generated
+                        .entry(name.trim())
+                        .or_default()
+                        .extend(members.split_whitespace());
+                }
                 "generic" => table.generic.extend(line.split_whitespace()),
                 _ => {}
             }
@@ -233,7 +241,7 @@ impl StdNames {
     pub fn namespace(&self, name: &str) -> Option<Namespace> {
         if self.declared.contains_key(name) || self.named.contains_key(name) {
             Some(Namespace::Standard)
-        } else if self.generated.contains(name) {
+        } else if self.generated.contains_key(name) {
             Some(Namespace::Generated)
         } else {
             None
@@ -315,6 +323,13 @@ impl StdNames {
             .map(str::to_string)
     }
 
+    /// Whether `namespace.member` of a generated namespace is built.
+    pub fn generated_member(&self, namespace: &str, member: &str) -> bool {
+        self.generated
+            .get(namespace)
+            .is_some_and(|members| members.contains(member))
+    }
+
     /// Every reserved namespace name: standard and generated.
     pub fn reserved(&self, name: &str) -> bool {
         self.namespace(name).is_some()
@@ -341,6 +356,9 @@ mod tests {
         assert_eq!(names.namespace("temporal"), Some(Namespace::Standard));
         assert_eq!(names.namespace("collection"), Some(Namespace::Standard));
         assert_eq!(names.namespace("clock"), Some(Namespace::Generated));
+        assert_eq!(names.namespace("config"), Some(Namespace::Generated));
+        assert!(names.generated_member("clock", "now"));
+        assert!(!names.generated_member("clock", "whenever"));
         assert_eq!(names.namespace_of("in_zone").as_deref(), Some("temporal"));
         assert!(names.has_operation("collection", "count"));
         assert!(names.is_generic("utils"));

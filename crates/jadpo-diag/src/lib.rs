@@ -169,6 +169,8 @@ rules! {
         "03-logic.html#failure-outcome-wildcard", "Outcome match uses a wildcard";
     FAILURE_PROPAGATE_PLACEMENT: "failure.propagate_placement", area 3, Error, Agent,
         "03-logic.html#failure-propagate-placement", "Propagate is used outside a failure arm";
+    FAILURE_REJECT_PLACEMENT: "failure.reject_placement", area 3, Error, Agent,
+        "03-logic.html#failure-reject-placement", "Reject is used inside an expression";
     FAILURE_STALE_DECLARATION: "failure.stale_declaration", area 4, Error, Agent,
         "04-failures.html#failure-stale-declaration", "Listed failure can never happen";
     FAILURE_UNDECLARED_PROPAGATION: "failure.undeclared_propagation", area 4, Error, Agent,
@@ -291,6 +293,8 @@ rules! {
         "03-logic.html#type-assign-unknown", "Assignment target is not declared";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
         "02-values-and-types.html#type-base-outside-declaration", "Base is used outside a type declaration";
+    TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-clock-context", "The operation clock is unavailable in this context";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,
         "02-values-and-types.html#type-constraint-base", "Constraint does not fit the type's base";
     TYPE_CONSTRAINT_CONTRADICTION: "type.constraint_contradiction", area 2, Error, Agent,

@@ -542,12 +542,12 @@ impl Resolver<'_> {
                 Some(Expr::RecordExpr(record)) => {
                     match record.expr() {
                         Some(Expr::NameRef(name)) => self.type_name(&name, Want::Failure),
-                        Some(other) => self.expr(&other),
+                        Some(other) => self.not_a_failure_value(&other),
                         None => {}
                     }
                     self.member_values(record.member_list());
                 }
-                Some(other) => self.expr(&other),
+                Some(other) => self.not_a_failure_value(&other),
                 None => {}
             },
             Expr::AttemptExpr(attempt) => {
@@ -557,7 +557,7 @@ impl Resolver<'_> {
                 for mapping in attempt.mappings() {
                     match mapping.expr() {
                         Some(Expr::NameRef(name)) => self.type_name(&name, Want::Failure),
-                        Some(other) => self.expr(&other),
+                        Some(other) => self.not_a_failure_value(&other),
                         None => {}
                     }
                 }
@@ -616,6 +616,23 @@ impl Resolver<'_> {
             }
             _ => self.children(expr),
         }
+    }
+
+    /// Where a failure is named (`reject`, a mapping), anything but a
+    /// failure's name: an enum's variant such as `FailureKind.rejected`, a
+    /// field or any other value (area 4).
+    fn not_a_failure_value(&mut self, expr: &Expr) {
+        // `reject OutOfStock()`: the call is the mistake.
+        if let Expr::CallExpr(call) = expr
+            && let Some(Expr::NameRef(name)) = call.expr()
+            && starts_upper(&text(&name))
+        {
+            self.expr(expr);
+            return;
+        }
+        let written = tree::written(expr.syntax());
+        let span = self.span(expr);
+        self.out.push(not_a_failure(&written, "a value", span));
     }
 
     fn children(&mut self, expr: &Expr) {
