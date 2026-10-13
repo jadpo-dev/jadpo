@@ -113,6 +113,9 @@ reference only).
 ## Phase 2 — Interpreter and tests (area 13)
 
 - [ ] **2.1 Interpreter** `opus · xhigh` for pure logic, with errors at `.jadpo` lines.
+  It walks 1.8's typed bodies. Also fold `resolve.rs`'s separate body walk
+  into the typed-body query (left over from 1.9), so name errors and
+  unused-variable errors come from one walk.
 - [ ] **2.2 Test runner:** `opus · high` file, line, name, seed, failure reports as decided,
   `--json`.
 - [ ] **2.3 Watch mode** `opus · high` under the 1-second target on a fixture project.
