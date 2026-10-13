@@ -644,10 +644,14 @@ the same traits.
 **Specification examples become tests.** A chunk turns its areas'
 `fragment` blocks into `check` blocks as it builds them; `check` blocks are
 compiled by the new `jadpo`, while unmarked blocks stay frozen v0 results
-until the chunk removes them. An `expect=rule.id` block is followed by a
-` ```text output ` block holding the exact plain output, compared byte for
-byte and rewritten by `language_docs.py --bless`, so each `## Errors` entry
-shows the new compiler's real output (Phase 1's "done when"). Projects with
+until the chunk removes them. An `expect=rule.id` block must give exactly
+one diagnostic, with that rule, as `jadpo check --json` reports it, and exit
+1 (0 for a warning); it is followed by a ` ```text output ` block holding the
+exact plain output, compared byte for byte and rewritten by
+`language_docs.py --bless`, so each `## Errors` entry shows the new
+compiler's real output (Phase 1's "done when"). A page of a built area owns
+exactly the rules whose catalogue entry names its area, and each needs a
+`check` block; a frozen v0 result never counts for it (chunk 1.9). Projects with
 `test` declarations also run under `jadpo test --json` and are exported to
 `build/spec-corpus/` for the differential run.
 

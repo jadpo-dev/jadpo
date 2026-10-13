@@ -3,27 +3,6 @@ title: Project layout and modules
 area: 1
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-11)
-rules:
-  - toolchain.empty_project
-  - layout.*
-  - naming.*
-  - visibility.*
-  - semantic.duplicate_declaration
-  - semantic.name_case
-  - semantic.unknown_name
-  - semantic.unknown_callee
-  - semantic.not_callable
-  - semantic.wrong_name_kind
-  - semantic.own_domain_qualification
-  - library.similar_exists
-  - semantic.standard_namespace_reserved
-  - semantic.standard_operation_qualification
-  - syntax.unexpected_character
-  - syntax.unterminated_string
-  - syntax.invalid_escape
-  - syntax.expected_declaration
-  - syntax.expected_name
-  - syntax.unexpected_token
 ---
 
 # Project layout and modules

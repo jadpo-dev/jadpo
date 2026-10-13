@@ -3,49 +3,6 @@ title: Values and types
 area: 2
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
-rules:
-  - type.absent_field
-  - type.base_outside_declaration
-  - type.constraint_base
-  - type.constraint_contradiction
-  - type.constraint_repeated
-  - type.constructor_argument_count
-  - type.constructor_input
-  - type.copy_clash
-  - type.copy_into_input
-  - type.decimal_scale_required
-  - type.duplicate_field
-  - type.duplicate_variant
-  - type.duplicate_variant_field
-  - type.enum_empty
-  - type.field_on_non_record
-  - type.invalid_literal
-  - type.invalid_pattern
-  - type.mismatch
-  - type.missing_field
-  - type.missing_variant_field
-  - type.not_record
-  - type.nullable_selection
-  - type.optional_outside_input
-  - type.primitive_signature
-  - type.redundant_nullability
-  - type.reserved_field_name
-  - type.setting_value
-  - type.sibling_mismatch
-  - type.type_argument_count
-  - type.unknown_enum_variant
-  - type.unknown_field
-  - type.unknown_setting
-  - type.unknown_variant_field
-  - syntax.constraint_colon_required
-  - syntax.enum_empty
-  - syntax.expected_constraint
-  - syntax.expected_constraint_value
-  - syntax.expected_field_initialiser
-  - syntax.expected_literal
-  - syntax.type_block_required
-  - syntax.type_parent_required
-  - syntax.variable_type_required
 ---
 
 # Values and types
@@ -927,33 +884,27 @@ check failed: 1 error, 1 file
 ### `type.primitive_signature`
 
 ```jadpo check project=e-primitive expect=type.primitive_signature
-function normalise(value: Text) -> Text {
-    return value
+type Title = Text {
+    max_length: 200
+}
+
+function normalise(value: Text) -> Title {
+    return Title(value)
 }
 ```
 
 ```text output
 error: This parameter uses `Text` directly
- --> main.jadpo:1:27
+ --> main.jadpo:5:27
   |
-1 | function normalise(value: Text) -> Text {
+5 | function normalise(value: Text) -> Title {
   |                           ^^^^ a built-in type
   reason: Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `Text` says neither.
   next: Declare a named type built on `Text` and use it here (agent)
   rule: type.primitive_signature
   help: docs/language/02-values-and-types.html#type-primitive-signature
 
-error: This result uses `Text` directly
- --> main.jadpo:1:36
-  |
-1 | function normalise(value: Text) -> Text {
-  |                                    ^^^^ a built-in type
-  reason: Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `Text` says neither.
-  next: Declare a named type built on `Text` and use it here (agent)
-  rule: type.primitive_signature
-  help: docs/language/02-values-and-types.html#type-primitive-signature
-
-check failed: 2 errors, 1 file
+check failed: 1 error, 1 file
 ```
 
 ### `type.invalid_literal`
@@ -1795,6 +1746,69 @@ error: `title` is already in `TodoView`, from `Todo`
   help: docs/language/02-values-and-types.html#type-copy-clash
 
 check failed: 1 error, 2 files
+```
+
+### `type.copy_cycle`
+
+An `include` that leads back to its own type would copy its fields from
+themselves:
+
+```jadpo check project=e-copy-cycle expect=type.copy_cycle
+type Title = Text {}
+
+type TodoView = Output {
+    include: [ListView]
+    title: Title
+}
+
+type ListView = Output {
+    include: [TodoView]
+}
+```
+
+```text output
+error: `ListView` includes its own fields
+ --> main.jadpo:9:15
+  |
+9 |     include: [TodoView]
+  |               ^^^^^^^^ leads back here
+  reason: `TodoView` leads back to `ListView` through its own `include`, so its fields would be copied from themselves and the type could never be written out.
+  next: Remove `TodoView` from `include`, or write the fields it needs (agent)
+  rule: type.copy_cycle
+  help: docs/language/02-values-and-types.html#type-copy-cycle
+
+check failed: 1 error, 1 file
+```
+
+### `type.map_key_boundary`
+
+A map in an `Input` or an `Output` is a JSON object, whose keys are text, so
+its key type is built on `Text` or `Uuid` (question 5):
+
+```jadpo check project=e-map-key expect=type.map_key_boundary
+type DueAt = Instant {}
+
+type Weight = Int {
+    min: 0
+}
+
+type Schedule = Output {
+    weights: Map<DueAt, Weight>
+}
+```
+
+```text output
+error: `Schedule` holds a map keyed by `DueAt`
+ --> main.jadpo:8:14
+  |
+8 |     weights: Map<DueAt, Weight>
+  |              ^^^^^^^^^^^^^^^^^^ keys are `DueAt`
+  reason: `Schedule` crosses a boundary as JSON, where a map is an object and its keys are text; `DueAt` is built on `Instant`.
+  next: Key the map by a type built on `Text` or `Uuid`, or send a list of objects instead (agent)
+  rule: type.map_key_boundary
+  help: docs/language/02-values-and-types.html#type-map-key-boundary
+
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.type_parent_required`

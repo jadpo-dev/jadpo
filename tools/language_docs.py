@@ -3,8 +3,9 @@
 
 A ```jadpo check block is compiled by the new `jadpo` (docs/compiler-runtime.md
 §2.7) with `jadpo check`, which grows with each roadmap chunk: a block without
-`expect=` must check cleanly and be canonically formatted (`jadpo fmt
---check`), and an `expect=rule.id` block must fail with that rule, be
+`expect=` must check cleanly, exit 0 and be canonically formatted (`jadpo fmt
+--check`), and an `expect=rule.id` block must report exactly one diagnostic,
+with that rule, read from `jadpo check --json`, exit 1 (0 for a warning), be
 formatted unless the rule is a syntax error, and be followed by a
 ```text output block holding the exact plain output, which `--bless`
 rewrites. A project with an `app.jadpo` block is checked as a project, with
@@ -26,12 +27,16 @@ code is written in `fragment` blocks, which are not compiled.
   python3 tools/language_docs.py --freeze    # with the v0 compiler built: rewrite the frozen results
 
 Phase 1 is done when areas 1-4's decided examples check and their errors show
-the new compiler's output (docs/roadmap.md). For those pages the check also
-holds that every block still on the frozen v0 result says why, inside a
-`::: today` box or under a note in its section that says it is the archived
-compiler's ("archived compiler", or "Being removed" for v0 syntax), and that
-no `fragment` there checks cleanly, since one that does is a decided example
-the new compiler can check.
+the new compiler's output (docs/roadmap.md). Those pages own exactly the new
+compiler's rules whose catalogue entry (`jadpo help --json`) names their area,
+and each needs a `check` block failing with it: a frozen v0 result never
+counts. The check also holds that every block still on the frozen v0 result
+says why, inside a `::: today` box or under a note just before it that says it
+is the archived compiler's ("archived compiler", or "Being removed" for v0
+syntax; a note covers the project of the next example in its section and no
+other), and that no `fragment` there checks cleanly, since one that does is a
+decided example the new compiler can check. The other pages still list the
+rules they own in front matter.
 """
 
 import argparse
@@ -58,6 +63,8 @@ OUT_DEFAULT = ROOT / 'build/language-site'
 FENCE = re.compile(r'^```(\S*)(.*)$')
 # Roadmap Phase 1 builds areas 1-4 with the new compiler.
 PHASE_ONE = 4
+# Area 14's command errors, shown by the CLI's tests rather than by pages.
+COMMAND_AREA = 14
 # What a note says about a block still on the frozen v0 result.
 ARCHIVED_NOTES = ('archived compiler', 'being removed')
 
@@ -138,9 +145,12 @@ def parse_attrs(text):
 
 
 class Page:
-    def __init__(self, path, catalogue, frozen=None):
+    def __init__(self, path, catalogue, frozen=None, new_catalogue=None):
         self.path = path
         self.catalogue = catalogue
+        # The new compiler's catalogue (`jadpo help --json`), whose `area`
+        # field says which page owns each rule.
+        self.new_catalogue = new_catalogue or {}
         self.frozen = None if frozen is None else frozen['pages'].get(path.name, {})
         text = path.read_text()
         self.meta, self.body = parse_front_matter(text)
@@ -203,9 +213,18 @@ class Page:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(block['source'])
                 code, out = jadpo(['check', tmp])
+                json_code, json_out = jadpo(['check', '--json', tmp])
                 formatted, _ = jadpo(['fmt', '--check', tmp])
             out = out.replace(tmp + '/', '').replace(tmp, '.')
-            rules = re.findall(r'rule: (\S+)', out)
+            # The rules come from the JSON report, not the text, so a code
+            # frame quoting `rule: ...` can't stand in for a diagnostic.
+            try:
+                rules = [d['rule'] for d in json.loads(json_out)['diagnostics']]
+            except (ValueError, KeyError):
+                rules = []
+                self.problems.append(f'{name}: jadpo check --json gave no report')
+            if json_code != code:
+                self.problems.append(f'{name}: jadpo check exits {code} but --json exits {json_code}')
             shown = [b for b in blocks if 'expect' in b['attrs']] or blocks
             last = shown[-1]
             if expected == 'pass':
@@ -215,9 +234,14 @@ class Page:
                 elif formatted:
                     self.problems.append(f'{name}: checks but is not canonically formatted (run jadpo fmt)')
             else:
-                ok = expected in rules
-                if not ok:
-                    self.problems.append(f'{name}: expected {expected} but got {rules[:3] or "a pass"}')
+                # Exactly the expected error, once, and the failing exit
+                # code: an example shows one mistake.
+                exit_code = 0 if self.catalogue.get(expected, {}).get('severity') == 'warning' else 1
+                ok = rules == [expected] and code == exit_code
+                if rules != [expected]:
+                    self.problems.append(f'{name}: expected exactly one {expected} but got {rules[:4] or "a pass"}')
+                elif code != exit_code:
+                    self.problems.append(f'{name}: gives {expected} but exits {code}, not {exit_code}')
                 elif formatted and not expected.startswith('syntax.'):
                     ok = False
                     self.problems.append(f'{name}: not canonically formatted (run jadpo fmt)')
@@ -293,19 +317,38 @@ class Page:
             self.results[name] = {'expected': expected, 'ok': ok, 'output': out.strip(), 'rules': rules, 'digest': digest}
 
     def claimed_rules(self):
+        """The rules this page owns. Areas 1-4 own exactly the new
+        compiler's rules whose catalogue entry names their area; the other
+        pages, still on the archived compiler, list theirs in front matter."""
+        if self.phase_one():
+            return sorted(r for r, entry in self.new_catalogue.items() if entry.get('area') == self.area())
         patterns = self.meta.get('rules', [])
         return sorted(r for r in self.catalogue if any(fnmatch(r, p) for p in patterns))
 
     def covered_rules(self):
-        return {r['expected'] for r in self.results.values() if r['expected'] != 'pass' and r['ok']}
+        """Rules an example here shows failing as stated; on areas 1-4 only
+        the new compiler's `check` blocks count, never a frozen v0 result."""
+        return {r['expected'] for r in self.results.values()
+                if r['expected'] != 'pass' and r['ok'] and (r.get('check') or not self.phase_one())}
+
+    def phase_one(self):
+        return 1 <= self.area() <= PHASE_ONE
 
     def area(self):
         return int(self.meta.get('area', 0))
 
     def archived(self):
         """Blocks still on the frozen v0 result, each with why: `None` when
-        nothing on the page says."""
+        nothing on the page says. A note covers the project of the first
+        example after it, in its section, and no other."""
         lines = self.body.splitlines()
+        noted = {}
+        for i, line in enumerate(lines):
+            if not (line.startswith('>') and any(word in line.lower() for word in ARCHIVED_NOTES)):
+                continue
+            after = next((b for b in self.blocks if b['line'] > i), None)
+            if after is not None and after['heading'] <= i:
+                noted.setdefault((after['heading'], after['attrs']['project']), line.lstrip('> ').strip())
         out = []
         for block in self.blocks:
             attrs = block['attrs']
@@ -314,9 +357,7 @@ class Page:
             if block['today']:
                 reason = 'today box: the archived compiler\'s syntax'
             else:
-                notes = [line.lstrip('> ').strip() for line in lines[block['heading']:block['line']]
-                         if line.startswith('>') and any(word in line.lower() for word in ARCHIVED_NOTES)]
-                reason = notes[0] if notes else None
+                reason = noted.get((block['heading'], attrs['project']))
             out.append((block, reason))
         return out
 
@@ -752,9 +793,9 @@ def main():
         if frozen is None and not COMPILER.exists():
             sys.exit(f'no frozen results at {FROZEN} and no compiler to run')
     catalogue = load_catalogue(frozen)
-    if (ROOT / 'Cargo.toml').exists():
-        catalogue = {**catalogue, **load_new_catalogue()}
-    pages = [Page(p, catalogue, frozen) for p in sorted(DOCS.glob('[0-9][0-9]-*.md'))]
+    new_catalogue = load_new_catalogue() if (ROOT / 'Cargo.toml').exists() else {}
+    catalogue = {**catalogue, **new_catalogue}
+    pages = [Page(p, catalogue, frozen, new_catalogue) for p in sorted(DOCS.glob('[0-9][0-9]-*.md'))]
     failed = False
     owners = {}
     for page in pages:
@@ -782,6 +823,13 @@ def main():
         if len(files) > 1:
             failed = True
             print(f'  FAIL {rule} is claimed by {", ".join(files)}')
+    # Every rule the new compiler has belongs to a page. Area 14's are
+    # errors from running a command, not from checking source, so the CLI's
+    # own tests show them (crates/jadpo-cli/tests).
+    for rule, entry in sorted(new_catalogue.items()):
+        if rule not in owners and entry.get('area') != COMMAND_AREA:
+            failed = True
+            print(f'  FAIL {rule} (area {entry.get("area")}) is claimed by no page')
     print(f'{len(owners)}/{len(catalogue)} catalogue errors are assigned to an area')
     if args.freeze and not failed:
         FROZEN.parent.mkdir(parents=True, exist_ok=True)
