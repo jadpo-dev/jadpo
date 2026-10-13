@@ -8,6 +8,15 @@ item should update the charter, affected specifications, and examples.
 
 ## 1. Accepted decisions
 
+### Runtime targets — 2026-10-13
+
+Richard: the TypeScript/Bun target is to be dropped. Jadpo targets native Rust
+for long-running servers and WebAssembly for hosts such as Cloudflare Workers.
+Language features must work on both; where a host supplies a mechanism (for
+example scheduling), Jadpo offers its own by default and the host's as an
+option. How and when the targets are built is part of roadmap step 3. Not yet
+implemented.
+
 ### Failures — 2026-10-12
 
 Richard decided most of area 4 of the language review; see

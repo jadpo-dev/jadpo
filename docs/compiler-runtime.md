@@ -186,8 +186,9 @@ toolchain burden and actual Cloudflare compatibility determine the
 recommendation. Direct code generation may still use a Rust-built runtime;
 runtime implementation language and application lowering are separate choices.
 
-TypeScript/Bun remains the working target until a recorded decision changes
-it. Wasm does not itself supply domain validation, durable storage, distributed
+TypeScript/Bun remains the working target until the replacement exists. On
+2026-10-13 Richard decided to drop it in favour of native Rust and WebAssembly
+([decision register](decision-register.md#runtime-targets--2026-10-13)). Wasm does not itself supply domain validation, durable storage, distributed
 coordination or portable threading. Host adapters must preserve the accepted
 language guarantees or reject unsupported requirements. A replicated storage
 platform and a full backend migration are outside this bounded experiment.
