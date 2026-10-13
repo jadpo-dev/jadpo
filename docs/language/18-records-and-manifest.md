@@ -74,8 +74,9 @@ that path numbers decode against, and each deployable's build id.
   "deployables": { "api": { "target": "wasm", "build": "b_9a1f03c6d2e4" } },
   "nodes": [
     {
-      "id": "planning.complete_todo",
+      "id": "action complete_todo",
       "kind": "action",
+      "domain": "planning",
       "file": "domains/planning/actions/complete_todo.jadpo",
       "lines": [4, 22],
       "digest": "9f2c41d0",
@@ -136,7 +137,7 @@ renaming a domain or an entity is one line.
 {
   "entity Task": "Todo",
   "field Task.importance": "Todo.priority",
-  "subscriber planning.notify_owner": "planning.send_reminder"
+  "subscriber notify_owner": "send_reminder"
 }
 ```
 
@@ -472,6 +473,8 @@ Each row says how it was checked: run with `jadpo` 3ce094d0 on a copy of
    a routine move as a removal and an addition, losing incidents, coverage
    and stored deliveries that name it. Changing this later is a new
    manifest `format`.
+   *Decided 2026-10-13 (Richard):* as recommended; the examples above now
+   use the unqualified form.
 
 ### Decisions
 
@@ -480,6 +483,7 @@ Each row says how it was checked: run with `jadpo` 3ce094d0 on a copy of
 | Compiler data | Carried from area 1: a visible `database/` folder for the identity registry, migrations and seeds | 2026-10-12 |
 | New domains | Carried from area 1: creating or renaming a domain appears in the approval review | 2026-10-12 |
 | Policy protection | Carried from area 1: through the approval check wherever policy lives, not by file path | 2026-10-12 |
+| Stable identity | A key is the kind and the born name (`action complete_todo`), never qualified by domain; the domain is a field of the node, so promotion to `shared/` keeps the key | 2026-10-13 |
 | Migration snapshots | Carried from area 5: each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; `check` fails when entities and the latest snapshot disagree | 2026-10-12 |
 | Removing data | Carried from area 5: retire, then drop in a later migration; a drop needs explicit acceptance | 2026-10-12 |
 | System tables | Carried from area 5: runtime tables prefixed `jadpo_`, part of the migration snapshots | 2026-10-13 |
