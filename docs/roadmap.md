@@ -93,7 +93,7 @@ optimisation) are `xhigh`.
 - [x] **1.6 Failures** `opus · high` (area 4).
 - [x] **1.7 The graph, identity and manifest:** `opus · xhigh` `jadpo check` writes
   `build/manifest.json`; the language server gives diagnostics and hover.
-- [ ] **1.8 Typed bodies and one resolver** `opus · xhigh`, from the Phase 1
+- [x] **1.8 Typed bodies and one resolver** `opus · xhigh`, from the Phase 1
   review: a per-callable query giving typed bodies (site ids, types,
   resolved callees, literal targets, fallibility, failure sets) that
   diagnostics, graph edges, usage, cycles and the language server all derive
