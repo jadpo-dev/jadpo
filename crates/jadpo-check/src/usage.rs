@@ -42,7 +42,16 @@ pub fn mentions(db: &dyn Db, file: File) -> Mentions {
         } else if let Some(call) = ast::CallExpr::cast(node.clone()) {
             match call.expr() {
                 Some(Expr::NameRef(name)) => {
-                    found.names.extend(tree::name_ref_text(&name));
+                    let Some(text) = tree::name_ref_text(&name) else {
+                        continue;
+                    };
+                    // A library's functions call each other bare.
+                    if let Some(library) = node.ancestors().find_map(ast::LibraryDecl::cast)
+                        && let Some(library) = library.name().as_ref().and_then(tree::name_text)
+                    {
+                        found.library_calls.insert((library, text.clone()));
+                    }
+                    found.names.insert(text);
                 }
                 Some(callee @ Expr::FieldExpr(_)) => {
                     if let Some((first, rest)) = dotted(&callee)
@@ -153,6 +162,8 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
             .find(|file| file.path(db) == user)
             .map(|file| jadpo_db::location(db, project, *file).ownership.clone())
     };
+    let table = jadpo_db::symbols(db, project);
+    let ours = |user: &String| domain_of(user) == Some(location.ownership.clone());
     let mut out = Vec::new();
     for item in &item_tree(db, file).items {
         match (&location.ownership, folder, &item.kind) {
@@ -171,22 +182,16 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 if folder != Folder::Routes || others.iter().any(|user| !route_file(user)) {
                     others.retain(|user| !route_file(user));
                 }
-                let same: Vec<&String> = others
-                    .iter()
-                    .copied()
-                    .filter(|user| domain_of(user) == Some(Ownership::Domain(domain.clone())))
-                    .collect();
-                let elsewhere = others.len() > same.len();
-                if elsewhere && item.public {
-                    out.push(promote(path, &source, item, "shared", others[0]));
-                } else if let Some(user) = same.first() {
-                    out.push(promote(
-                        path,
-                        &source,
-                        item,
-                        &format!("domains/{domain}"),
-                        user,
-                    ));
+                let elsewhere = others.iter().copied().find(|user| !ours(user));
+                let same = others.iter().copied().find(|user| ours(user));
+                match (elsewhere, same) {
+                    (Some(user), _) if item.public && pure(&source, path, item.index, table) => {
+                        out.push(promote(path, &source, item, Move::Shared, user));
+                    }
+                    (_, Some(user)) => {
+                        out.push(promote(path, &source, item, Move::Domain(domain), user));
+                    }
+                    _ => {}
                 }
             }
             (Ownership::Domain(_), Folder::Failures, ItemKind::Type(Base::Failure)) => {
@@ -204,29 +209,73 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                     );
                 }
             }
-            (_, Folder::Types, kind) if is_plain_type(kind) => {
-                let used = users
+            (ownership, Folder::Types, kind) if is_plain_type(kind) => {
+                let others: Vec<&String> = users
                     .by_name
                     .get(&item.name)
-                    .is_some_and(|found| found.iter().any(|user| user != path));
-                if !used {
+                    .into_iter()
+                    .flatten()
+                    .filter(|user| *user != path)
+                    .collect();
+                let elsewhere = others.iter().copied().find(|user| !ours(user));
+                if others.is_empty() {
                     out.push(unused(path, &source, item, None));
+                } else if let (Ownership::Domain(_), Some(user)) = (ownership, elsewhere)
+                    && item.public
+                    && pure(&source, path, item.index, table)
+                {
+                    out.push(promote(path, &source, item, Move::Shared, user));
                 }
             }
-            (_, Folder::Libraries, ItemKind::Library) => {
+            (ownership, Folder::Libraries, ItemKind::Library) => {
+                let mut callers: BTreeSet<&String> = BTreeSet::new();
                 for function in &item.functions {
-                    let used = users
+                    match users
                         .by_function
-                        .contains_key(&(item.name.clone(), function.name.clone()));
-                    if !used {
-                        out.push(unused(path, &source, function, Some(item.index)));
+                        .get(&(item.name.clone(), function.name.clone()))
+                    {
+                        Some(found) => callers.extend(found),
+                        None => out.push(unused(path, &source, function, Some(item.index))),
                     }
+                }
+                if let (Ownership::Domain(_), Some(user)) =
+                    (ownership, callers.iter().copied().find(|user| !ours(user)))
+                    && item.public
+                    && pure(&source, path, item.index, table)
+                {
+                    out.push(promote(path, &source, item, Move::Shared, user));
                 }
             }
             _ => {}
         }
     }
     out
+}
+
+/// Whether declaration `index` depends on no domain's code: nothing it
+/// names belongs to a domain, apart from what its own file declares.
+fn pure(source: &ast::SourceFile, path: &str, index: u32, table: &jadpo_db::Symbols) -> bool {
+    let Some(decl) = tree::decl_at(source, index) else {
+        return true;
+    };
+    decl.syntax()
+        .descendants()
+        .filter_map(ast::NameRef::cast)
+        .filter_map(|name| tree::name_ref_text(&name))
+        .all(|name| {
+            !table.domains.contains(&name)
+                && table.declarations.get(&name).is_none_or(|found| {
+                    found
+                        .iter()
+                        .all(|symbol| symbol.path == path || symbol.ownership.domain().is_none())
+                })
+        })
+}
+
+/// Where a promoted declaration moves.
+enum Move<'a> {
+    Domain(&'a str),
+    Shared,
 }
 
 fn location_of(db: &dyn Db, project: Project, file: File) -> Place {
@@ -240,35 +289,42 @@ fn is_plain_type(kind: &ItemKind) -> bool {
     )
 }
 
-fn promote(
-    path: &str,
-    source: &ast::SourceFile,
-    item: &Item,
-    home: &str,
-    user: &str,
-) -> Diagnostic {
+fn promote(path: &str, source: &ast::SourceFile, item: &Item, to: Move, user: &str) -> Diagnostic {
     let name = &item.name;
     let file = to_snake(name);
-    let (what, target) = if item.kind == ItemKind::Function {
-        (
-            "A helper function used by one file lives in it; once another file uses it, it moves to a library",
+    let (scope, home) = match to {
+        Move::Domain(domain) => ("file", format!("domains/{domain}")),
+        Move::Shared => ("domain", "shared".to_string()),
+    };
+    let (what, target) = match item.kind {
+        ItemKind::Function => (
+            format!(
+                "A helper function used by one {scope} lives in it; once another {scope} uses it, it moves to a library in `{home}/libraries/`"
+            ),
             format!(
                 "Move `{name}` into a library in `{home}/libraries/` and call it through the library"
             ),
-        )
-    } else {
-        (
-            "A type used by one file lives in it; once another file uses it, it moves to `types/`",
+        ),
+        ItemKind::Library => (
+            format!(
+                "A library used by one {scope} lives in it; once another {scope} uses it, it moves to `{home}/libraries/`"
+            ),
+            format!("Move `{name}` to `{home}/libraries/{file}.jadpo`"),
+        ),
+        _ => (
+            format!(
+                "A type used by one {scope} lives in it; once another {scope} uses it, it moves to `{home}/types/`"
+            ),
             format!("Move `{name}` to `{home}/types/{file}.jadpo`"),
-        )
+        ),
     };
     Diagnostic::new(
         &rule::LAYOUT_PROMOTION_REQUIRED,
-        format!("`{name}` is used beyond this file"),
+        format!("`{name}` is used beyond this {scope}"),
     )
     .at(
         name_span(source, path, item.index, None),
-        "used by another file",
+        format!("used by another {scope}"),
     )
     .reason(format!("{what}. `{user}` uses it too."))
     .next(target)

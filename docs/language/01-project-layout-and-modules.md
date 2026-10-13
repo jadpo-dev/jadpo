@@ -164,7 +164,7 @@ There are no block comments and no documentation comments yet.
 
 Each compiler error gives the location, a reason, a suggested next step and who
 should act on it, plus a stable rule ID with a help link. Tools read the same
-fields as JSON with `jadpo check <project> --diagnostic-format=json`.
+fields as JSON with `jadpo check --json`.
 
 ## Errors
 
@@ -474,7 +474,7 @@ error: `g` is a function, not a type
    |
 10 |     first: g
    |            ^ expected a type
-  reason: Here Jadpo expects a type, such as `Count`, `List<Count>` or `Todo.id`.
+  reason: Here Jadpo expects a type, such as `Count` or `List<Count>`.
   next: Name a type here (agent)
   rule: semantic.wrong_name_kind
   help: docs/language/01-project-layout-and-modules.html#semantic-wrong-name-kind
@@ -624,7 +624,7 @@ error: `SnoozeDays` is used beyond this file
   |
 1 | type SnoozeDays = Int {
   |      ^^^^^^^^^^ used by another file
-  reason: A type used by one file lives in it; once another file uses it, it moves to `types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
+  reason: A type used by one file lives in it; once another file uses it, it moves to `domains/planning/types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
   next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo` (agent)
   rule: layout.promotion_required
   help: docs/language/01-project-layout-and-modules.html#layout-promotion-required
@@ -1227,6 +1227,14 @@ New errors would include `layout.unknown_location`, `layout.wrong_folder`,
 `naming.round_trip`, `naming.folded_collision`, `naming.generic_name`,
 `visibility.private_cross_domain`, `layout.call_direction` and a
 `library.similar_exists` warning.
+
+Built on 2026-10-13 (chunk 1.3): `jadpo check` reports all of these except
+`layout.asset_unreferenced` and `library.similar_exists`; each has its
+example and real output under [Errors](#errors). A folder or file checked
+without an `app.jadpo` above it is treated as loose files, one implicit
+domain with the layout rules off, as a single file is. Until areas 2 to 4
+are built, `jadpo check` resolves names in signatures, type blocks and
+calls; lower-case names used as values are area 3's to check.
 
 #### Cost of building it
 

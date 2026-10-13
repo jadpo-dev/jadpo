@@ -241,12 +241,19 @@ pub fn domain_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let names = StdNames::get();
     let mut out = Vec::new();
     for domain in &symbols(db, project).domains {
-        let Some(first) = project.files(db).iter().find(|file| {
-            jadpo_db::location(db, project, **file).ownership == Ownership::Domain(domain.clone())
-        }) else {
+        let Some(first) = project
+            .files(db)
+            .iter()
+            .filter(|file| {
+                jadpo_db::location(db, project, **file).ownership
+                    == Ownership::Domain(domain.clone())
+            })
+            .map(|file| file.path(db))
+            .min()
+        else {
             continue;
         };
-        let span = file_span(first.path(db));
+        let span = file_span(first);
         if !is_lower_snake(domain) {
             let fixed = to_snake(domain);
             out.push(

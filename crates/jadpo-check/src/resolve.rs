@@ -40,6 +40,7 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
         table: symbols(db, project),
         names: StdNames::get(),
         scopes: Vec::new(),
+        library: None,
         out: Vec::new(),
     };
     for decl in source.decls() {
@@ -55,6 +56,9 @@ struct Resolver<'a> {
     table: &'a Symbols,
     names: &'static StdNames,
     scopes: Vec<Vec<String>>,
+    /// The library whose functions are being resolved: they call each
+    /// other bare, as helpers in their own file.
+    library: Option<String>,
     out: Vec<Diagnostic>,
 }
 
@@ -85,6 +89,7 @@ impl Resolver<'_> {
             }
             Decl::FixtureDecl(d) => self.callable(d.param_list(), None, d.ret_type(), d.block()),
             Decl::LibraryDecl(d) => {
+                self.library = d.name().as_ref().and_then(tree::name_text);
                 for function in tree::library_functions(d) {
                     self.callable(
                         function.param_list(),
@@ -93,6 +98,7 @@ impl Resolver<'_> {
                         function.block(),
                     );
                 }
+                self.library = None;
             }
             Decl::TestDecl(d) => self.block(d.block()),
             Decl::SeedDecl(d) => self.block(d.block()),
@@ -727,7 +733,9 @@ impl Resolver<'_> {
         };
         match &symbol.kind {
             ItemKind::Function => {
-                if let Some((library, _)) = &symbol.library {
+                if let Some((library, _)) = &symbol.library
+                    && self.library.as_ref() != Some(library)
+                {
                     self.out.push(
                         Diagnostic::new(
                             &rule::SEMANTIC_UNKNOWN_CALLEE,
@@ -738,6 +746,7 @@ impl Resolver<'_> {
                         .next(format!("Call `{library}.{text}(...)`"))
                         .edit(Span::new(self.path, span.start, span.start), format!("{library}.")),
                     );
+                } else if symbol.library.is_some() {
                 } else if let Some(domain) = other_domain {
                     self.out.push(
                         Diagnostic::new(
