@@ -1,0 +1,5 @@
+# The exact Rust toolchain every build and the gate use (docs/compiler-runtime.md §2.1).
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
