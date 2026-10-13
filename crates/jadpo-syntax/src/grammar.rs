@@ -65,7 +65,7 @@ pub(crate) fn snippet(p: &mut Parser<'_>) {
 
 pub(crate) fn template(p: &mut Parser<'_>) {
     let m = p.start();
-    template_body(p, false);
+    template_body(p);
     while !p.at_eof() {
         // A stray `{{ else }}` or `{{ end }}` at the top level.
         let (start, end) = p.range();
@@ -88,7 +88,7 @@ pub(crate) fn template(p: &mut Parser<'_>) {
         let e = p.start();
         skip_template_tag(p);
         e.complete(p, ERROR);
-        template_body(p, false);
+        template_body(p);
     }
     m.complete(p, TEMPLATE);
 }
@@ -1356,7 +1356,6 @@ fn var_stmt(p: &mut Parser<'_>) {
 
 /// `var price = Price(0.0)`: every variable states its type (area 2).
 fn missing_variable_type(p: &mut Parser<'_>, var_name: &str, name_end: u32) {
-    let (start, _) = p.range();
     let mut error = SyntaxError::new(
         &rule::SYNTAX_VARIABLE_TYPE_REQUIRED,
         format!("`{var_name}` needs a type"),
@@ -1398,7 +1397,6 @@ fn missing_variable_type(p: &mut Parser<'_>, var_name: &str, name_end: u32) {
             "Add the type after the name: `var {var_name}: Type = ...`"
         ));
     }
-    let _ = start;
     p.push_error(error);
 }
 
@@ -2253,7 +2251,7 @@ fn at_tag_word(p: &Parser<'_>, word: &str) -> bool {
 
 /// Parts up to the end of the input, or to an `{{ else }}` or `{{ end }}`
 /// when inside a block.
-fn template_body(p: &mut Parser<'_>, nested: bool) {
+fn template_body(p: &mut Parser<'_>) {
     let m = p.start();
     while !p.at_eof() {
         if at_tag(p, ELSE_KW) || at_tag_word(p, "end") {
@@ -2285,7 +2283,6 @@ fn template_body(p: &mut Parser<'_>, nested: bool) {
             _ => p.bump_error(),
         }
     }
-    let _ = nested;
     m.complete(p, TEMPLATE_BODY);
 }
 
@@ -2320,7 +2317,7 @@ fn template_if(p: &mut Parser<'_>) {
     condition(p);
     close_template_tag(p);
     tag.complete(p, TEMPLATE_IF_TAG);
-    template_body(p, true);
+    template_body(p);
     while at_tag(p, ELSE_KW) {
         let branch = p.start();
         let tag = p.start();
@@ -2331,7 +2328,7 @@ fn template_if(p: &mut Parser<'_>) {
         }
         close_template_tag(p);
         tag.complete(p, TEMPLATE_ELSE_TAG);
-        template_body(p, true);
+        template_body(p);
         branch.complete(p, TEMPLATE_ELSE);
     }
     end_tag(p, open, "if");
@@ -2359,7 +2356,7 @@ fn template_for(p: &mut Parser<'_>) {
     expr(p);
     close_template_tag(p);
     tag.complete(p, TEMPLATE_FOR_TAG);
-    template_body(p, true);
+    template_body(p);
     end_tag(p, open, "for");
     m.complete(p, TEMPLATE_FOR);
 }

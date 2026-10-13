@@ -296,8 +296,7 @@ impl Formatter {
             SOURCE_FILE => self.file(node, false),
             SNIPPET => self.file(node, true),
             MEMBER_LIST | BLOCK | MATCH_ARM_LIST => self.braces(node),
-            PARAM_LIST | ARG_LIST => self.bracketed(node, true),
-            LIST_EXPR => self.bracketed(node, false),
+            PARAM_LIST | ARG_LIST | LIST_EXPR => self.bracketed(node),
             _ => self.sequence(node),
         }
     }
@@ -426,7 +425,7 @@ impl Formatter {
 
     /// `( ... )` or `[ ... ]`: on one line when it fits, otherwise one item
     /// per line; no trailing comma either way.
-    fn bracketed(&mut self, node: &SyntaxNode, _call: bool) -> Doc {
+    fn bracketed(&mut self, node: &SyntaxNode) -> Doc {
         let children = significant_children(node);
         let mut open = nil();
         let mut close = nil();
