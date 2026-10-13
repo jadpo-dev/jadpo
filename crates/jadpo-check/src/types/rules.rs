@@ -67,7 +67,10 @@ impl Num {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Const {
     /// A number; `decimal` when written with a point.
-    Number { value: Num, decimal: bool },
+    Number {
+        value: Num,
+        decimal: bool,
+    },
     /// A duration such as `30s` (area 10).
     Duration(String),
     /// A string, with its escapes decoded.
@@ -103,7 +106,9 @@ impl Const {
                     .map_or(Const::Other, Const::Path),
                 None => Const::Other,
             },
-            Expr::ListExpr(list) => Const::List(list.exprs().map(|e| Const::from_expr(&e)).collect()),
+            Expr::ListExpr(list) => {
+                Const::List(list.exprs().map(|e| Const::from_expr(&e)).collect())
+            }
             Expr::ParenExpr(paren) => paren.expr().map_or(Const::Other, |e| Const::from_expr(&e)),
             _ => Const::Other,
         }
@@ -116,19 +121,18 @@ impl Const {
         let text = token.text();
         let sign = if negative { "-" } else { "" };
         match token.kind() {
-            jadpo_syntax::SyntaxKind::INT_NUMBER => Num::parse(&format!("{sign}{text}"))
-                .map_or(Const::Other, |value| Const::Number {
+            jadpo_syntax::SyntaxKind::INT_NUMBER => {
+                Num::parse(&format!("{sign}{text}")).map_or(Const::Other, |value| Const::Number {
                     value,
                     decimal: false,
-                }),
+                })
+            }
             jadpo_syntax::SyntaxKind::DECIMAL_NUMBER => Num::parse(&format!("{sign}{text}"))
                 .map_or(Const::Other, |value| Const::Number {
                     value,
                     decimal: true,
                 }),
-            jadpo_syntax::SyntaxKind::UNIT_NUMBER if !negative => {
-                Const::Duration(text.to_string())
-            }
+            jadpo_syntax::SyntaxKind::UNIT_NUMBER if !negative => Const::Duration(text.to_string()),
             jadpo_syntax::SyntaxKind::STRING if !negative => Const::Str(unescape(text)),
             jadpo_syntax::SyntaxKind::TRUE_KW if !negative => Const::Bool(true),
             jadpo_syntax::SyntaxKind::FALSE_KW if !negative => Const::Bool(false),
@@ -230,26 +234,50 @@ pub enum Problem {
 }
 
 /// One constraint read and checked against what it constrains.
-pub fn constraint(subject: Subject, name: &str, value: &Const, rules: &mut Rules) -> Result<(), Problem> {
+pub fn constraint(
+    subject: Subject,
+    name: &str,
+    value: &Const,
+    rules: &mut Rules,
+) -> Result<(), Problem> {
     let text_like = matches!(subject, Subject::Prim(p) if p.representation() == Prim::Text);
     match name {
         "min" | "max" => {
             let parsed = match (subject, value) {
-                (Subject::Prim(Prim::Int), Const::Number { value, decimal: false }) => Some(*value),
+                (
+                    Subject::Prim(Prim::Int),
+                    Const::Number {
+                        value,
+                        decimal: false,
+                    },
+                ) => Some(*value),
                 (Subject::Prim(Prim::Int), _) => {
                     return Err(Problem::Value("a whole number, such as `0`".into(), None));
                 }
-                (Subject::Prim(Prim::Decimal), Const::Number { value, decimal: true }) => {
-                    Some(*value)
-                }
-                (Subject::Prim(Prim::Decimal), Const::Number { value, decimal: false }) => {
+                (
+                    Subject::Prim(Prim::Decimal),
+                    Const::Number {
+                        value,
+                        decimal: true,
+                    },
+                ) => Some(*value),
+                (
+                    Subject::Prim(Prim::Decimal),
+                    Const::Number {
+                        value,
+                        decimal: false,
+                    },
+                ) => {
                     return Err(Problem::Value(
                         "a decimal number, such as `0.0`".into(),
                         Some(format!("{}.0", value.mantissa)),
                     ));
                 }
                 (Subject::Prim(Prim::Decimal), _) => {
-                    return Err(Problem::Value("a decimal number, such as `0.0`".into(), None));
+                    return Err(Problem::Value(
+                        "a decimal number, such as `0.0`".into(),
+                        None,
+                    ));
                 }
                 // Duration bounds are checked when area 10 is built.
                 (Subject::Prim(Prim::Duration), Const::Duration(_)) => None,
@@ -305,7 +333,9 @@ pub fn constraint(subject: Subject, name: &str, value: &Const, rules: &mut Rules
                 return Err(Problem::Base("`Text` types"));
             }
             match value {
-                Const::Path(path) if path.len() == 2 && path[0] == "TextFormat" && path[1] == "email" => {
+                Const::Path(path)
+                    if path.len() == 2 && path[0] == "TextFormat" && path[1] == "email" =>
+                {
                     rules.email = true;
                 }
                 Const::Path(path) if path.len() == 1 && path[0] == "email" => {
@@ -427,12 +457,18 @@ pub fn check_rules(rules: &Rules, value: &Const) -> Result<(), Broken> {
         if let Some(min) = rules.min
             && value.compare(min) == Ordering::Less
         {
-            return broken(format!("min: {}", show(min)), format!("is below {}", show(min)));
+            return broken(
+                format!("min: {}", show(min)),
+                format!("is below {}", show(min)),
+            );
         }
         if let Some(max) = rules.max
             && value.compare(max) == Ordering::Greater
         {
-            return broken(format!("max: {}", show(max)), format!("is above {}", show(max)));
+            return broken(
+                format!("max: {}", show(max)),
+                format!("is above {}", show(max)),
+            );
         }
         if let Some(scale) = rules.scale
             && value.significant_places() > scale
@@ -449,7 +485,11 @@ pub fn check_rules(rules: &Rules, value: &Const) -> Result<(), Broken> {
         _ => None,
     };
     if let Some(length) = length {
-        let unit = if matches!(value, Const::List(_)) { "items" } else { "characters" };
+        let unit = if matches!(value, Const::List(_)) {
+            "items"
+        } else {
+            "characters"
+        };
         if let Some(min) = rules.min_length
             && length < min
         {
@@ -472,7 +512,10 @@ pub fn check_rules(rules: &Rules, value: &Const) -> Result<(), Broken> {
             );
         }
         if rules.email && !is_email(text) {
-            return broken("format: TextFormat.email".into(), "isn't an email address".into());
+            return broken(
+                "format: TextFormat.email".into(),
+                "isn't an email address".into(),
+            );
         }
         if let Some(version) = rules.version
             && uuid_version(text) != Some(version)
@@ -524,10 +567,9 @@ fn uuid_version(text: &str) -> Option<u8> {
     let groups: Vec<&str> = text.split('-').collect();
     let sizes = [8, 4, 4, 4, 12];
     if groups.len() != 5
-        || groups
-            .iter()
-            .zip(sizes)
-            .any(|(group, size)| group.len() != size || !group.chars().all(|c| c.is_ascii_hexdigit()))
+        || groups.iter().zip(sizes).any(|(group, size)| {
+            group.len() != size || !group.chars().all(|c| c.is_ascii_hexdigit())
+        })
     {
         return None;
     }
@@ -560,7 +602,10 @@ fn is_url(text: &str) -> bool {
         && scheme
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
-        && rest.split(['/', '?', '#']).next().is_some_and(|host| !host.is_empty())
+        && rest
+            .split(['/', '?', '#'])
+            .next()
+            .is_some_and(|host| !host.is_empty())
         && !text.chars().any(char::is_whitespace)
 }
 
@@ -592,13 +637,26 @@ mod tests {
             constraint(Subject::Prim(Prim::Text), "min", &number("1"), &mut rules),
             Err(Problem::Base("`Int`, `Decimal` and `Duration` types"))
         );
-        assert!(constraint(Subject::Prim(Prim::Email), "max_length", &number("80"), &mut rules).is_ok());
+        assert!(
+            constraint(
+                Subject::Prim(Prim::Email),
+                "max_length",
+                &number("80"),
+                &mut rules
+            )
+            .is_ok()
+        );
         assert!(matches!(
             constraint(Subject::Prim(Prim::Decimal), "min", &number("0"), &mut rules),
             Err(Problem::Value(_, Some(fix))) if fix == "0.0"
         ));
         assert_eq!(
-            constraint(Subject::Prim(Prim::Int), "maxlength", &number("1"), &mut rules),
+            constraint(
+                Subject::Prim(Prim::Int),
+                "maxlength",
+                &number("1"),
+                &mut rules
+            ),
             Err(Problem::Unknown)
         );
     }

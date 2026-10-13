@@ -35,7 +35,8 @@ pub fn check(table: &TypeTable, expected: &Ty, value: &Const) -> Result<(), Prob
             };
         }
         Const::List(items) => {
-            let element = match expected.strip_nullable() {
+            let structure = table.structure(expected);
+            let element = match &structure {
                 Ty::List(element) | Ty::Set(element) => element,
                 _ => {
                     return Err(Problem::Kind { fix: None });
@@ -43,6 +44,9 @@ pub fn check(table: &TypeTable, expected: &Ty, value: &Const) -> Result<(), Prob
             };
             for item in items {
                 check(table, element, item)?;
+            }
+            for (host, rules) in table.rule_chain(expected) {
+                check_rules(rules, value).map_err(|broken| Problem::Broken(host, broken))?;
             }
             return Ok(());
         }
@@ -64,7 +68,12 @@ pub fn check(table: &TypeTable, expected: &Ty, value: &Const) -> Result<(), Prob
         Const::Number { decimal: true, .. } => representation == Prim::Decimal,
         Const::Str(_) => matches!(
             representation,
-            Prim::Text | Prim::Uuid | Prim::Instant | Prim::CalendarDate | Prim::Time | Prim::Duration
+            Prim::Text
+                | Prim::Uuid
+                | Prim::Instant
+                | Prim::CalendarDate
+                | Prim::Time
+                | Prim::Duration
         ),
         Const::Duration(_) => representation == Prim::Duration,
         Const::Bool(_) => representation == Prim::Bool,
@@ -75,7 +84,19 @@ pub fn check(table: &TypeTable, expected: &Ty, value: &Const) -> Result<(), Prob
             Const::Number {
                 value,
                 decimal: false,
-            } if representation == Prim::Decimal => Some(format!("{}.0", value.mantissa)),
+            } if representation == Prim::Decimal => {
+                let places = table
+                    .rule_chain(expected)
+                    .iter()
+                    .find_map(|(_, rules)| rules.scale)
+                    .unwrap_or(1)
+                    .max(1);
+                Some(format!(
+                    "{}.{}",
+                    value.mantissa,
+                    "0".repeat(places as usize)
+                ))
+            }
             _ => None,
         };
         return Err(Problem::Kind { fix });

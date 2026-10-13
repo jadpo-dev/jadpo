@@ -32,12 +32,19 @@ pub fn callables(db: &dyn Db, project: Project) -> Callables {
         params: signature
             .params
             .iter()
-            .map(|param| (param.name.clone(), table.resolve(&TypeRef::parse(&param.ty))))
+            .map(|param| {
+                (
+                    param.name.clone(),
+                    table.resolve(&TypeRef::parse(&param.ty)),
+                )
+            })
             .collect(),
         result: signature
             .result
             .as_ref()
-            .map_or(Ty::Prim(Prim::Unit), |result| table.resolve(&TypeRef::parse(result))),
+            .map_or(Ty::Prim(Prim::Unit), |result| {
+                table.resolve(&TypeRef::parse(result))
+            }),
     };
     let mut out = Callables::default();
     for &file in project.files(db) {

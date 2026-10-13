@@ -19,9 +19,9 @@ mod table;
 mod ty;
 
 pub use body::body_problems;
-pub use signatures::{Callables, Sig, callables};
 pub use decl::type_problems;
 pub use rules::{Const, Num, Rules};
 pub use shape::{FieldsBase, Shape, type_shapes};
+pub use signatures::{Callables, Sig, callables};
 pub use table::{Def, FieldDef, TypeTable, VariantDef, type_table};
 pub use ty::{BASES, Prim, Ty, TypeRef, container_arity};

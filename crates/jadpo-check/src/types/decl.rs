@@ -115,7 +115,9 @@ impl Decls<'_> {
                 };
                 let name = prim.name();
                 let message = match container {
-                    Some(container) => format!("This {word}'s `{container}` holds `{name}` directly"),
+                    Some(container) => {
+                        format!("This {word}'s `{container}` holds `{name}` directly")
+                    }
                     None => format!("This {word} uses `{name}` directly"),
                 };
                 let span = self.span(node.syntax());
@@ -230,7 +232,10 @@ impl Decls<'_> {
                         return false;
                     }
                 } else if self.table.contains(first)
-                    && self.table.resolve(&TypeRef::Path(names.clone(), Vec::new())).is_error()
+                    && self
+                        .table
+                        .resolve(&TypeRef::Path(names.clone(), Vec::new()))
+                        .is_error()
                 {
                     return self.unknown_field_type(&names, &head);
                 }
@@ -246,21 +251,22 @@ impl Decls<'_> {
     /// `Type.field` naming a field `Owner` doesn't have.
     fn unknown_field_type(&mut self, names: &[String], head: &SyntaxNode) -> bool {
         let host = &names[0];
-        let (fields, word): (Vec<String>, &str) = match (self.table.fields(host), self.table.variants(host)) {
-            (Some(fields), _) if names.len() == 2 => {
-                (fields.iter().map(|f| f.name.clone()).collect(), "field")
-            }
-            (_, Some(variants)) if names.len() == 3 => (
-                variants
-                    .iter()
-                    .find(|v| v.name == names[1])
-                    .and_then(|v| v.fields.as_ref())
-                    .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
-                    .unwrap_or_default(),
-                "field",
-            ),
-            _ => return true,
-        };
+        let (fields, word): (Vec<String>, &str) =
+            match (self.table.fields(host), self.table.variants(host)) {
+                (Some(fields), _) if names.len() == 2 => {
+                    (fields.iter().map(|f| f.name.clone()).collect(), "field")
+                }
+                (_, Some(variants)) if names.len() == 3 => (
+                    variants
+                        .iter()
+                        .find(|v| v.name == names[1])
+                        .and_then(|v| v.fields.as_ref())
+                        .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
+                        .unwrap_or_default(),
+                    "field",
+                ),
+                _ => return true,
+            };
         let missing = names.last().cloned().unwrap_or_default();
         let prefix = names[..names.len() - 1].join(".");
         let near = nearest(&missing, fields.iter().map(String::as_str)).map(str::to_string);
@@ -380,14 +386,25 @@ impl Decls<'_> {
             seen.insert(text.clone(), span);
             if let Some(block) = block {
                 let lines = shape::lines(Some(block.clone()), FieldsBase::Object);
-                self.lines(Some(block), FieldsBase::Object, &format!("{host}.{text}"), &lines);
+                self.lines(
+                    Some(block),
+                    FieldsBase::Object,
+                    &format!("{host}.{text}"),
+                    &lines,
+                );
             }
         }
     }
 
     /// An object's lines (area 2): its written fields and their settings,
     /// and the lines that copy fields from other types, read top to bottom.
-    fn lines(&mut self, list: Option<ast::MemberList>, base: FieldsBase, host: &str, lines: &[Line]) {
+    fn lines(
+        &mut self,
+        list: Option<ast::MemberList>,
+        base: FieldsBase,
+        host: &str,
+        lines: &[Line],
+    ) {
         let items: Vec<MemberItem> = list.iter().flat_map(|list| list.member_items()).collect();
         let member = |line: usize| match items.get(line) {
             Some(MemberItem::Member(member)) => Some(member.clone()),
@@ -395,10 +412,14 @@ impl Decls<'_> {
         };
         let area_two = base.is_area_two();
         for (index, line) in lines.iter().enumerate() {
-            let Some(member) = member(index) else { continue };
+            let Some(member) = member(index) else {
+                continue;
+            };
             match line {
                 Line::Field { name, ty, .. } => {
-                    let Some(value) = member.value() else { continue };
+                    let Some(value) = member.value() else {
+                        continue;
+                    };
                     let node = TypeNode::Expr(value);
                     if !self.type_node(&node, false) || !area_two {
                         continue;
@@ -416,7 +437,9 @@ impl Decls<'_> {
                     self.settings(node.settings(), subject, Some(&field));
                 }
                 Line::NotAList(word) if area_two => {
-                    let Some(value) = member.value() else { continue };
+                    let Some(value) = member.value() else {
+                        continue;
+                    };
                     let span = self.span(value.syntax());
                     let written = tree::written(value.syntax());
                     self.out.push(
@@ -433,7 +456,9 @@ impl Decls<'_> {
                     );
                 }
                 Line::Reserved(name) if area_two => {
-                    let Some(key) = member.member_key() else { continue };
+                    let Some(key) = member.member_key() else {
+                        continue;
+                    };
                     let span = self.span(key.syntax());
                     self.out.push(
                         Diagnostic::new(
@@ -473,7 +498,13 @@ impl Decls<'_> {
         }
     }
 
-    fn line_problem(&mut self, problem: &LineProblem, member: &ast::Member, host: &str, first: Option<Span>) {
+    fn line_problem(
+        &mut self,
+        problem: &LineProblem,
+        member: &ast::Member,
+        host: &str,
+        first: Option<Span>,
+    ) {
         let key_span = member
             .member_key()
             .map_or_else(|| self.span(member.syntax()), |key| self.span(key.syntax()));
@@ -569,7 +600,12 @@ impl Decls<'_> {
     /// Checks a block of settings: a scalar type's constraints, or a
     /// field's constraints and, on an `Input`, `optional` and `default`.
     /// Returns the rules that apply.
-    fn settings(&mut self, list: Option<ast::MemberList>, subject: Subject, field: Option<&FieldCtx>) -> Rules {
+    fn settings(
+        &mut self,
+        list: Option<ast::MemberList>,
+        subject: Subject,
+        field: Option<&FieldCtx>,
+    ) -> Rules {
         let mut rules = Rules::default();
         let mut seen: BTreeMap<String, (Span, Const)> = BTreeMap::new();
         for (name, member) in tree::members(list) {
@@ -599,7 +635,14 @@ impl Decls<'_> {
             if let Some(field) = field
                 && FIELD_SETTINGS.contains(&key.as_str())
             {
-                self.field_setting(&key, &value, value_node.as_ref(), key_span, value_span, field);
+                self.field_setting(
+                    &key,
+                    &value,
+                    value_node.as_ref(),
+                    key_span,
+                    value_span,
+                    field,
+                );
                 continue;
             }
             match rules::constraint(subject, &key, &value, &mut rules) {
@@ -608,7 +651,12 @@ impl Decls<'_> {
                     let known: Vec<&str> = CONSTRAINTS
                         .iter()
                         .copied()
-                        .chain(field.map_or(&[][..], |_| &FIELD_SETTINGS[..]).iter().copied())
+                        .chain(
+                            field
+                                .map_or(&[][..], |_| &FIELD_SETTINGS[..])
+                                .iter()
+                                .copied(),
+                        )
                         .collect();
                     let near = nearest(&key, known.iter().copied());
                     let mut problem = Diagnostic::new(
@@ -618,7 +666,12 @@ impl Decls<'_> {
                     .at(key_span.clone(), "unknown setting")
                     .reason(format!(
                         "A type's block holds the constraints {}.{}",
-                        crate::and_list(&CONSTRAINTS.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>()),
+                        crate::and_list(
+                            &CONSTRAINTS
+                                .iter()
+                                .map(|c| format!("`{c}`"))
+                                .collect::<Vec<_>>()
+                        ),
                         did_you_mean(near)
                     ));
                     problem = match near {
@@ -655,9 +708,7 @@ impl Decls<'_> {
                         "`{key}` is a constraint, and its value must be {expected}."
                     ));
                     self.out.push(match fix {
-                        Some(fix) => problem
-                            .next(format!("Write `{fix}`"))
-                            .edit(value_span, fix),
+                        Some(fix) => problem.next(format!("Write `{fix}`")).edit(value_span, fix),
                         None => problem.next(format!("Give `{key}` {expected}")),
                     });
                 }
@@ -674,7 +725,12 @@ impl Decls<'_> {
                 }
             }
         }
-        self.contradictions(&seen, "min", "max", rules.min.zip(rules.max).map(|(a, b)| a.compare(b).is_gt()));
+        self.contradictions(
+            &seen,
+            "min",
+            "max",
+            rules.min.zip(rules.max).map(|(a, b)| a.compare(b).is_gt()),
+        );
         self.contradictions(
             &seen,
             "min_length",
@@ -694,7 +750,9 @@ impl Decls<'_> {
         if contradicts != Some(true) {
             return;
         }
-        let (Some((low_span, low_value)), Some((high_span, high_value))) = (seen.get(low), seen.get(high)) else {
+        let (Some((low_span, low_value)), Some((high_span, high_value))) =
+            (seen.get(low), seen.get(high))
+        else {
             return;
         };
         let show = |value: &Const| match value {
@@ -704,7 +762,11 @@ impl Decls<'_> {
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_CONSTRAINT_CONTRADICTION,
-                format!("`{high}: {}` is below `{low}: {}`", show(high_value), show(low_value)),
+                format!(
+                    "`{high}: {}` is below `{low}: {}`",
+                    show(high_value),
+                    show(low_value)
+                ),
             )
             .at(high_span.clone(), "below the minimum")
             .also(low_span.clone(), "the minimum")
@@ -733,10 +795,13 @@ impl Decls<'_> {
         if key == "optional" {
             if !matches!(value, Const::Bool(_)) {
                 self.out.push(
-                    Diagnostic::new(&rule::TYPE_SETTING_VALUE, "`optional` takes `true` or `false`")
-                        .at(value_span, format!("{} here", value.describe()))
-                        .reason("`optional: true` lets a request leave the field out.")
-                        .next("Write `optional: true`"),
+                    Diagnostic::new(
+                        &rule::TYPE_SETTING_VALUE,
+                        "`optional` takes `true` or `false`",
+                    )
+                    .at(value_span, format!("{} here", value.describe()))
+                    .reason("`optional: true` lets a request leave the field out.")
+                    .next("Write `optional: true`"),
                 );
             }
             return;
@@ -755,12 +820,16 @@ impl Decls<'_> {
             return;
         }
         if let Err(problem) = literal::check(self.table, &field.ty, value) {
-            let written = value_node.map(|v| tree::written(v.syntax())).unwrap_or_default();
+            let written = value_node
+                .map(|v| tree::written(v.syntax()))
+                .unwrap_or_default();
             let mut expected = field.ty.clone();
             if self.table.is_nullable(&field.declared) && !self.table.is_nullable(&expected) {
                 expected = expected.nullable();
             }
-            self.out.push(literal::diagnostic(self.table, problem, &written, &expected, value_span, false));
+            self.out.push(literal::diagnostic(
+                self.table, problem, &written, &expected, value_span, false,
+            ));
         }
     }
 }

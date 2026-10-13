@@ -43,13 +43,18 @@ pub struct VariantDef {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Def {
     /// A refinement: its parent and the rules it adds.
-    Scalar { parent: Ty, rules: Rules },
+    Scalar {
+        parent: Ty,
+        rules: Rules,
+    },
     /// An object, input, output, event, email, failure or entity.
     Fields {
         base: FieldsBase,
         fields: Vec<FieldDef>,
     },
-    Enum { variants: Vec<VariantDef> },
+    Enum {
+        variants: Vec<VariantDef>,
+    },
 }
 
 /// Every type in the project, by name.
@@ -84,7 +89,9 @@ pub enum Source {
         settings: Vec<Setting>,
     },
     /// Copied by `include` or `pick` from `owner.field`.
-    Copied { host: String },
+    Copied {
+        host: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,10 +136,7 @@ pub enum LineKind {
     /// A `pick` entry that isn't `Owner.field`.
     NotAFieldPath,
     /// `omit` or `optional` naming a field not present at that point.
-    Absent {
-        field: String,
-        word: &'static str,
-    },
+    Absent { field: String, word: &'static str },
     /// A copy that would replace a field already present.
     CopyClash { field: String, earlier: String },
     /// `optional` anywhere but an `Input`.
@@ -319,9 +323,7 @@ impl Deriver<'_> {
         match self.shapes.get(name) {
             Some(ShapeKind::Fields { base, lines }) => {
                 if let Some(done) = self.done.get(name) {
-                    return Found::Fields(
-                        done.iter().flatten().map(|f| f.name.clone()).collect(),
-                    );
+                    return Found::Fields(done.iter().flatten().map(|f| f.name.clone()).collect());
                 }
                 self.done.insert(name.to_string(), None);
                 let (fields, _) = derive(*base, lines, &mut |other| self.fields(other));
@@ -396,10 +398,9 @@ impl TypeTable {
                         .iter()
                         .map(|variant| VariantDef {
                             name: variant.name.clone(),
-                            fields: variant
-                                .fields
-                                .as_ref()
-                                .map(|lines| variant_fields(lines).iter().map(placeholder).collect()),
+                            fields: variant.fields.as_ref().map(|lines| {
+                                variant_fields(lines).iter().map(placeholder).collect()
+                            }),
                         })
                         .collect(),
                 },
@@ -597,7 +598,10 @@ impl TypeTable {
             TypeRef::Invalid => Ty::Error,
             TypeRef::Nullable(inner) => self.resolve_with(inner, stub).nullable(),
             TypeRef::Path(names, args) => {
-                let args: Vec<Ty> = args.iter().map(|arg| self.resolve_with(arg, stub)).collect();
+                let args: Vec<Ty> = args
+                    .iter()
+                    .map(|arg| self.resolve_with(arg, stub))
+                    .collect();
                 match names.as_slice() {
                     [name] => self.resolve_name(name, args, stub),
                     [host, rest @ ..] if self.field(host, rest).is_some() => {
@@ -712,6 +716,29 @@ impl TypeTable {
             }
         }
         None
+    }
+
+    /// The type with field types and refinements followed to what they
+    /// are built from: `List<Tag>` for a field declared `List<Tag>`.
+    pub fn structure(&self, ty: &Ty) -> Ty {
+        let mut current = ty.strip_nullable().clone();
+        for _ in 0..DEPTH {
+            let next = match &current {
+                Ty::Field(host, path) => self
+                    .field(host, path)
+                    .map(|f| f.declared.strip_nullable().clone()),
+                Ty::Named(name) => match self.defs.get(name) {
+                    Some(Def::Scalar { parent, .. }) => Some(parent.strip_nullable().clone()),
+                    _ => None,
+                },
+                _ => None,
+            };
+            match next {
+                Some(next) => current = next,
+                None => return current,
+            }
+        }
+        current
     }
 
     /// What a value of this type is made of: the validated text types are

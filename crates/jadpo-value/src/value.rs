@@ -49,7 +49,9 @@ impl Ord for Decimal {
         match self.aligned(*other) {
             Some((a, b)) => a.cmp(&b),
             // Only reachable with scales far beyond any declared `scale:`.
-            None => (self.mantissa.signum(), self.scale).cmp(&(other.mantissa.signum(), other.scale)),
+            None => {
+                (self.mantissa.signum(), self.scale).cmp(&(other.mantissa.signum(), other.scale))
+            }
         }
     }
 }

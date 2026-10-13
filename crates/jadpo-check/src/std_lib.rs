@@ -227,7 +227,9 @@ impl StdNames {
         self.declared
             .iter()
             .flat_map(|(namespace, operations)| {
-                operations.keys().map(move |name| format!("{namespace}.{name}"))
+                operations
+                    .keys()
+                    .map(move |name| format!("{namespace}.{name}"))
             })
             .collect()
     }
@@ -297,9 +299,6 @@ mod tests {
             .operation("collection", "count")
             .expect("collection.count");
         assert_eq!(count.params.len(), 1);
-        assert_eq!(
-            count.result,
-            TypeRef::Path(vec!["Int".into()], Vec::new())
-        );
+        assert_eq!(count.result, TypeRef::Path(vec!["Int".into()], Vec::new()));
     }
 }

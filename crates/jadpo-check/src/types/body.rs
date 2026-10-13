@@ -16,10 +16,10 @@ use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, MemberItem, Stmt};
 
-use super::signatures::{Callables, Sig, callables};
 use super::decl::Decls;
 use super::literal;
 use super::rules::Const;
+use super::signatures::{Callables, Sig, callables};
 use super::table::{Def, FieldDef, TypeTable, type_table};
 use super::ty::{Prim, Ty, TypeNode, TypeRef};
 use crate::case::starts_upper;
@@ -264,7 +264,7 @@ impl Body<'_> {
             return;
         }
         if let Expr::ListExpr(list) = expr {
-            match expected.strip_nullable() {
+            match &self.table.structure(expected) {
                 Ty::List(item) | Ty::Set(item) => {
                     let item = (**item).clone();
                     for element in list.exprs() {
@@ -331,7 +331,9 @@ impl Body<'_> {
                 .reason(format!(
                     "`{actual}` may be `none`, and `{expected}` can't be."
                 ))
-                .next(format!("Use `match` to handle `none` before using `{written}` as `{expected}`"))
+                .next(format!(
+                    "Use `match` to handle `none` before using `{written}` as `{expected}`"
+                ))
         } else if matches!(actual, Ty::Prim(prim) if Some(*prim) == representation && prim.is_representation())
         {
             let target = expected.strip_nullable().to_string();
@@ -342,6 +344,25 @@ impl Body<'_> {
                 .next(format!("Convert it with `{target}({written})`"))
                 .edit(Span::new(self.path, span.start, span.start), format!("{target}("))
                 .edit(Span::new(self.path, span.end, span.end), ")")
+        } else if !actual.has_error() && self.table.assignable(expected, actual) {
+            // A general value where a refinement of it is required.
+            let target = expected.strip_nullable().to_string();
+            problem
+                .reason(format!(
+                    "`{target}` is a refinement of `{actual}`; a general value becomes the specific one only through `{target}(...)`, which re-checks its rules."
+                ))
+                .next(format!("Convert it with `{target}({written})`"))
+                .edit(Span::new(self.path, span.start, span.start), format!("{target}("))
+                .edit(Span::new(self.path, span.end, span.end), ")")
+        } else if matches!(
+            (actual.strip_nullable(), expected.strip_nullable()),
+            (Ty::List(_), Ty::List(_)) | (Ty::Set(_), Ty::Set(_)) | (Ty::Map(..), Ty::Map(..))
+        ) {
+            problem
+                .reason(format!(
+                    "Collections keep their element type, so a `{actual}` is never a `{expected}`, even where each element would widen."
+                ))
+                .next(format!("Build a `{expected}` here"))
         } else {
             problem
                 .reason(format!(
@@ -363,7 +384,13 @@ impl Body<'_> {
         }
     }
 
-    fn literal_problem(&mut self, expr: &Expr, expected: &Ty, problem: literal::Problem, constructor: bool) {
+    fn literal_problem(
+        &mut self,
+        expr: &Expr,
+        expected: &Ty,
+        problem: literal::Problem,
+        constructor: bool,
+    ) {
         let written = tree::written(expr.syntax());
         let span = self.span(expr);
         self.out.push(literal::diagnostic(
@@ -392,7 +419,8 @@ impl Body<'_> {
             Expr::ParenExpr(paren) => paren.expr().map_or(Ty::Error, |inner| self.infer(&inner)),
             Expr::PrefixExpr(prefix) => {
                 let inner = prefix.expr().map_or(Ty::Error, |inner| self.infer(&inner));
-                let minus = prefix.syntax().first_token().map(|t| t.kind()) == Some(SyntaxKind::MINUS);
+                let minus =
+                    prefix.syntax().first_token().map(|t| t.kind()) == Some(SyntaxKind::MINUS);
                 match (minus, self.table.representation(&inner)) {
                     (false, _) => Ty::Prim(Prim::Bool),
                     (true, Some(prim)) if prim.is_number() => Ty::Prim(prim),
@@ -417,7 +445,9 @@ impl Body<'_> {
                 Ty::List(Box::new(item))
             }
             Expr::BinExpr(binary) => self.binary(binary),
-            Expr::AttemptExpr(attempt) => attempt.expr().map_or(Ty::Error, |inner| self.infer(&inner)),
+            Expr::AttemptExpr(attempt) => {
+                attempt.expr().map_or(Ty::Error, |inner| self.infer(&inner))
+            }
             Expr::MatchExpr(subject) => {
                 if let Some(inner) = subject.expr() {
                     self.infer(&inner);
@@ -513,7 +543,8 @@ impl Body<'_> {
                     && !fields.is_empty()
                 {
                     let span = self.span(expr);
-                    let names: Vec<String> = fields.iter().map(|f| format!("`{}`", f.name)).collect();
+                    let names: Vec<String> =
+                        fields.iter().map(|f| format!("`{}`", f.name)).collect();
                     self.out.push(
                         Diagnostic::new(
                             &rule::TYPE_MISSING_VARIANT_FIELD,
@@ -596,12 +627,16 @@ impl Body<'_> {
                 .reason(format!(
                     "`{value}` is `{receiver}`; a field is read once `match` has found a value."
                 ))
-                .next(format!("Match on `{value}` and read `{field}` inside `some(...)`")),
+                .next(format!(
+                    "Match on `{value}` and read `{field}` inside `some(...)`"
+                )),
             );
             return Ty::Error;
         }
         let Some(host) = self.object_of(receiver) else {
-            let start = node.dot_token().map_or(span.start, |dot| u32::from(dot.text_range().start()));
+            let start = node
+                .dot_token()
+                .map_or(span.start, |dot| u32::from(dot.text_range().start()));
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_FIELD_ON_NON_RECORD,
@@ -630,7 +665,14 @@ impl Body<'_> {
         }
     }
 
-    fn unknown_field(&mut self, host: &str, field: &str, fields: &[FieldDef], span: Span, variant: bool) {
+    fn unknown_field(
+        &mut self,
+        host: &str,
+        field: &str,
+        fields: &[FieldDef],
+        span: Span,
+        variant: bool,
+    ) {
         let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
         let near = nearest(field, names.iter().copied());
         let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
@@ -696,7 +738,11 @@ impl Body<'_> {
                 if starts_upper(&head) {
                     if self.table.field(&head, &rest).is_some() {
                         let target = Ty::Field(head.clone(), rest.clone());
-                        return self.construct(&format!("{head}.{}", rest.join(".")), Some(target), call);
+                        return self.construct(
+                            &format!("{head}.{}", rest.join(".")),
+                            Some(target),
+                            call,
+                        );
                     }
                     self.args_only(call);
                     return Ty::Error;
@@ -841,7 +887,9 @@ impl Body<'_> {
                 if let Some(prim) = Prim::from_name(written) {
                     if prim.is_representation() || prim == Prim::Unit {
                         self.args_only(call);
-                        let span = call.expr().map_or_else(|| self.span(call), |e| self.span(&e));
+                        let span = call
+                            .expr()
+                            .map_or_else(|| self.span(call), |e| self.span(&e));
                         self.out.push(
                             Diagnostic::new(
                                 &rule::TYPE_CONSTRUCTOR_INPUT,
@@ -872,7 +920,9 @@ impl Body<'_> {
                                 return Ty::Error;
                             }
                             self.args_only(call);
-                            let span = call.expr().map_or_else(|| self.span(call), |e| self.span(&e));
+                            let span = call
+                                .expr()
+                                .map_or_else(|| self.span(call), |e| self.span(&e));
                             self.out.push(
                                 Diagnostic::new(
                                     &rule::TYPE_CONSTRUCTOR_INPUT,
@@ -949,12 +999,22 @@ impl Body<'_> {
     }
 
     /// `Enum(value)`: an enum is never built from a value.
-    fn enum_constructor(&mut self, host: &str, variants: &[super::table::VariantDef], call: &ast::CallExpr) {
+    fn enum_constructor(
+        &mut self,
+        host: &str,
+        variants: &[super::table::VariantDef],
+        call: &ast::CallExpr,
+    ) {
         let args = Self::positional(call);
-        let matching = args.first().and_then(|(_, value)| match Const::from_expr(value) {
-            Const::Str(text) => variants.iter().find(|v| v.name == text).map(|v| v.name.clone()),
-            _ => None,
-        });
+        let matching = args
+            .first()
+            .and_then(|(_, value)| match Const::from_expr(value) {
+                Const::Str(text) => variants
+                    .iter()
+                    .find(|v| v.name == text)
+                    .map(|v| v.name.clone()),
+                _ => None,
+            });
         if matching.is_none() {
             for (_, value) in &args {
                 self.infer(value);
@@ -971,8 +1031,10 @@ impl Body<'_> {
             Some(variant) => problem
                 .next(format!("Write `{host}.{variant}`"))
                 .edit(span, format!("{host}.{variant}")),
-            None => problem.next(format!("Write one of `{host}`'s variants, such as `{host}.{}`",
-                variants.first().map_or("", |v| v.name.as_str()))),
+            None => problem.next(format!(
+                "Write one of `{host}`'s variants, such as `{host}.{}`",
+                variants.first().map_or("", |v| v.name.as_str())
+            )),
         });
     }
 
@@ -1001,7 +1063,9 @@ impl Body<'_> {
                 self.fields_given(record, &name, &[], &fields, input, head_span);
                 Ty::Named(name)
             }
-            ([], Some(Def::Scalar { .. })) | ([], None) if Prim::from_name(&name).is_some() || self.table.def(&name).is_some() => {
+            ([], Some(Def::Scalar { .. })) | ([], None)
+                if Prim::from_name(&name).is_some() || self.table.def(&name).is_some() =>
+            {
                 self.not_record(record, &name, "scalar");
                 Ty::Named(name)
             }
@@ -1018,9 +1082,18 @@ impl Body<'_> {
                 match &found.fields {
                     Some(fields) => {
                         let fields = fields.clone();
-                        self.fields_given(record, &name, &[variant_name], &fields, false, head_span);
+                        self.fields_given(
+                            record,
+                            &name,
+                            &[variant_name],
+                            &fields,
+                            false,
+                            head_span,
+                        );
                     }
-                    None => self.not_record(record, &format!("{name}.{variant_name}"), "plain variant"),
+                    None => {
+                        self.not_record(record, &format!("{name}.{variant_name}"), "plain variant")
+                    }
                 }
                 Ty::Named(name)
             }
@@ -1033,8 +1106,13 @@ impl Body<'_> {
         let (reason, next) = match kind {
             "enum" => (
                 format!("`{written}` is an enum; its values are its variants."),
-                format!("Write one of `{written}`'s variants, such as `{written}.{}`",
-                    self.table.variants(written).and_then(|v| v.first()).map_or("", |v| v.name.as_str())),
+                format!(
+                    "Write one of `{written}`'s variants, such as `{written}.{}`",
+                    self.table
+                        .variants(written)
+                        .and_then(|v| v.first())
+                        .map_or("", |v| v.name.as_str())
+                ),
             ),
             "plain variant" => (
                 format!("`{written}` carries no fields."),
@@ -1047,16 +1125,21 @@ impl Body<'_> {
                     .or_else(|| Prim::from_name(written))
                     .map_or_else(String::new, |prim| format!(", built on `{}`,", prim.name()));
                 (
-                    format!("Braces build objects and variants with fields; `{written}`{base} takes one value in brackets."),
+                    format!(
+                        "Braces build objects and variants with fields; `{written}`{base} takes one value in brackets."
+                    ),
                     format!("Write `{written}(...)` with one value"),
                 )
             }
         };
         self.out.push(
-            Diagnostic::new(&rule::TYPE_NOT_RECORD, format!("`{written}` isn't built with `{{ ... }}`"))
-                .at(span, "has no fields")
-                .reason(reason)
-                .next(next),
+            Diagnostic::new(
+                &rule::TYPE_NOT_RECORD,
+                format!("`{written}` isn't built with `{{ ... }}`"),
+            )
+            .at(span, "has no fields")
+            .reason(reason)
+            .next(next),
         );
     }
 
@@ -1078,14 +1161,24 @@ impl Body<'_> {
             host.to_string()
         };
         let mut given: BTreeMap<String, Span> = BTreeMap::new();
-        for item in record.member_list().iter().flat_map(|list| list.member_items()) {
-            let MemberItem::Member(member) = item else { continue };
-            let Some(key) = member.member_key() else { continue };
+        for item in record
+            .member_list()
+            .iter()
+            .flat_map(|list| list.member_items())
+        {
+            let MemberItem::Member(member) = item else {
+                continue;
+            };
+            let Some(key) = member.member_key() else {
+                continue;
+            };
             let mut names = key.names();
             let (Some(first), None) = (names.next(), names.next()) else {
                 continue;
             };
-            let Some(name) = tree::name_text(&first) else { continue };
+            let Some(name) = tree::name_text(&first) else {
+                continue;
+            };
             let span = self.span(&first);
             let value = member.value();
             if let Some(earlier) = given.get(&name) {

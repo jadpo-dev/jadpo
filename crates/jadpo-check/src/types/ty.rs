@@ -389,9 +389,9 @@ impl TypeNode {
     /// The written type without a field's settings block.
     pub fn without_settings(&self) -> TypeNode {
         match self {
-            TypeNode::Expr(Expr::RecordExpr(record)) => record
-                .expr()
-                .map_or_else(|| self.clone(), TypeNode::Expr),
+            TypeNode::Expr(Expr::RecordExpr(record)) => {
+                record.expr().map_or_else(|| self.clone(), TypeNode::Expr)
+            }
             other => other.clone(),
         }
     }
@@ -420,7 +420,10 @@ mod tests {
             TypeRef::parse("List<Map<A,B.c>>?"),
             TypeRef::Nullable(Box::new(path(
                 &["List"],
-                vec![path(&["Map"], vec![path(&["A"], vec![]), path(&["B", "c"], vec![])])]
+                vec![path(
+                    &["Map"],
+                    vec![path(&["A"], vec![]), path(&["B", "c"], vec![])]
+                )]
             )))
         );
         assert_eq!(TypeRef::parse("List<"), TypeRef::Invalid);

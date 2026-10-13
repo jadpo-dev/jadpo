@@ -118,7 +118,9 @@ pub fn shape(decl: &Decl) -> Option<Shape> {
     match decl {
         Decl::TypeDecl(decl) => {
             let name = decl.name().as_ref().and_then(tree::name_text)?;
-            let parent = decl.base().map_or(TypeRef::Invalid, |base| TypeRef::from_type(&base));
+            let parent = decl
+                .base()
+                .map_or(TypeRef::Invalid, |base| TypeRef::from_type(&base));
             let list = decl.member_list();
             let kind = match &parent {
                 TypeRef::Path(names, args) if names.len() == 1 && args.is_empty() => {
@@ -254,7 +256,9 @@ pub fn settings(list: Option<ast::MemberList>) -> Vec<Setting> {
         .filter_map(|(name, member)| {
             Some((
                 tree::name_text(&name)?,
-                member.value().map_or(Const::Other, |v| Const::from_expr(&v)),
+                member
+                    .value()
+                    .map_or(Const::Other, |v| Const::from_expr(&v)),
             ))
         })
         .collect()
