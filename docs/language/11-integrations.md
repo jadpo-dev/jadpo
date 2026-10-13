@@ -1,7 +1,7 @@
 ---
 title: External services
 area: 11
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - semantic.service_atomic_effect
@@ -1609,19 +1609,19 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
    version; two versions are two connections run side by side; upgrade by
    adding the next, moving callers, and deleting the old. The approval
    report shows the diff of the operations the app uses. This is still
-   Stripe's own advice.
+   Stripe's own advice. *Decided 2026-10-13:* yes, as recommended.
 4. **How is a package pinned?** *Reopened 2026-10-13;* first answered as a
    contract file whose digest goes in the approval record.
    *Recommendation:* registry packages by digest in `jadpo.lock`, local ones
    by being committed; never fetched during a build. Cargo and npm lock
-   files work this way.
+   files work this way. *Decided 2026-10-13:* yes, as recommended.
 5. **Which failures can be mapped, and to what?** *Reopened 2026-10-13;*
    first answered with the contract's error responses. *Recommendation:* the
    package's failures, by code, at the call, to any declarable failure of a
    fitting kind; `timed_out` to an `unavailable` failure only on idempotent
    operations; anything unmapped is a fault. A package failure is never
    listed in an app's `fails`, so a provider's codes never become part of
-   the app's API.
+   the app's API. *Decided 2026-10-13:* yes, as recommended.
 6. **Who supplies the idempotency key?** *Recommendation:* the runtime: the
    delivery key in subscribers and schedules, the client's key or request id
    in routes; the operation only says where it goes. Today's
@@ -1652,20 +1652,20 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
     scheme and the connection gives only `credential: config.x`. Bearer,
     named header and basic first; AWS signing arrives with the Smithy
     importer and the first AWS package; OAuth client credentials when a real
-    app needs them.
+    app needs them. *Decided 2026-10-13:* yes, as recommended.
 11. **How are webhooks received?** *Reopened 2026-10-13;* first answered as
     a hand-written route using the integration's signature check.
     *Recommendation:* generated from the package when the connection has a
     webhook secret: signature checked with a five-minute tolerance, repeats
     dropped by event id, each event published as a Jadpo event. No webhook
-    route is written by hand. Area 7's question 8 is amended.
+    route is written by hand. Area 7's question 8 is amended. *Decided 2026-10-13:* yes, as recommended.
 12. **How are fakes made and checked?** *Reopened 2026-10-13;* first
     answered as fakes checked against the contract file. *Recommendation:*
     a fake generated per package answers with valid defaults; a test
     scripts responses with `fakes:`; the compiler checks scripted responses
     against the package's types; `jadpo test --kind contract` runs against
     the sandbox in scheduled CI and must cover every unconfirmed written
-    operation.
+    operation. *Decided 2026-10-13:* yes, as recommended.
 13. **How is a package made for an API with no published specification?**
     *Recommendation:* an agent writes the package files from the provider's
     docs, in exactly the format an importer produces, with only the
@@ -1688,7 +1688,7 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
     `jadpo provider record` saves a placeholder-valued sandbox response that
     the output type is checked against. Unconfirmed written operations are
     flagged in the approval report and need a passing scheduled contract run,
-    but do not block a build: a sandbox outage should not stop a release.
+    but do not block a build: a sandbox outage should not stop a release. *Decided 2026-10-13:* yes, as recommended.
 15. **What is the registry, and who publishes to it?** *Recommendation:*
     Jadpo's own registry, declarations only, signed, pinned by digest, never
     fetched during a build. Start with curated packages (Stripe, Twilio,
@@ -1721,17 +1721,17 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
     `AcmeCouriers.v1`. Types, failures and events are named by the package
     without the version (`Stripe.PaymentIntent`), so two connections to one
     version share types; while two versions are connected during an upgrade,
-    names carry the version (`Stripe.v2025_01_01.PaymentIntent`).
+    names carry the version (`Stripe.v2025_01_01.PaymentIntent`). *Decided 2026-10-13:* yes, as recommended.
 17. **How are connections named?** *Recommendation:* lower_snake_case,
     chosen by the app (`stripe`, `couriers`); they share one namespace with
     domains and libraries, so a clash is a compile error. Resource and
     operation names come from the package, following the provider's SDK where
-    the importer can map them.
+    the importer can map them. *Decided 2026-10-13:* yes, as recommended.
 18. **Which domains may call a provider?** Area 1 put integrations in a
     domain, so only that domain called them. *Recommendation:* the
     connection lists them, `domains: [payments]`, required; other domains go
     through that domain's public actions. It keeps area 1's ownership, and a
-    new caller is a one-line diff in review.
+    new caller is a one-line diff in review. *Decided 2026-10-13:* yes, as recommended.
 
 ### Decisions
 
@@ -1759,16 +1759,16 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
 | Checking fakes | Fakes checked against the contract by the compiler; `jadpo test --kind contract` against the sandbox in scheduled CI (Superseded 2026-10-13: reopened as question 12.) | 2026-10-12 |
 | Types from the package | Namespaced package types usable anywhere in code; no narrowing needed; provider object and enum types barred from entity fields and route `Input`/`Output`; ids and plain values allowed | 2026-10-13 |
 | Calling an operation | `connection.resource.operation(input)`: the connection from `app.jadpo`, the resource group and operation from the package | 2026-10-13 |
-| Versions as connections | | |
-| Package pin | | |
-| Failures at the call | | |
+| Versions as connections | One package per version; two versions are two connections side by side; the approval report shows the diff of operations used | 2026-10-13 |
+| Package pin | Registry packages by digest in `jadpo.lock`, local ones committed; never fetched during a build | 2026-10-13 |
+| Failures at the call | Package failures mapped by code at the call to declarable failures; `timed_out` to `unavailable` only when idempotent; unmapped is a fault; never in the app's `fails` | 2026-10-13 |
 | Hosts | Outbound access denied by default; only hosts of declared connections; no raw `fetch`; generated network report; changes in the approval report; no separate host list | 2026-10-13 |
-| Credentials | | |
-| Webhooks as events | | |
-| Fakes and contract runs | | |
+| Credentials | The package declares the scheme; the connection gives `credential: config.x`; bearer, header, basic first; AWS signing with the first AWS package | 2026-10-13 |
+| Webhooks as events | Generated when the connection has a webhook secret: signature checked, repeats dropped by event id, each published as an event; no hand-written route | 2026-10-13 |
+| Fakes and contract runs | Generated fake per package; tests script responses checked against the package; scheduled sandbox run covers unconfirmed operations | 2026-10-13 |
 | The no-spec path | `jadpo provider add` tries, in order: registry (official first), published specification, SDK types / Postman / HAR importers, written from docs; records the step used | 2026-10-13 |
-| Provenance and confirmation | | |
+| Provenance and confirmation | `source: PackageSource.imported` / `.written` (with `docs:`) per operation; `jadpo provider record` confirms; unconfirmed flagged in the approval report and covered by the contract run; builds not blocked | 2026-10-13 |
 | The registry | Jadpo's own, declarations only, signed and digest-pinned; first build: package format, connections, fakes, OpenAPI importer, hand-written packages, `jadpo provider record`, curated packages in the Jadpo repo; hosted registry, other importers and upgrade plans later | 2026-10-13 |
-| Package naming | | |
-| Connection naming | | |
-| Calling domains | | |
+| Package naming | `Stripe.v2024_06_20`; types `Stripe.PaymentIntent`, versioned names only while two versions are connected | 2026-10-13 |
+| Connection naming | lower_snake_case, chosen by the app, sharing a namespace with domains and libraries | 2026-10-13 |
+| Calling domains | Each connection lists `domains: [...]`; other domains go through that domain's public actions | 2026-10-13 |

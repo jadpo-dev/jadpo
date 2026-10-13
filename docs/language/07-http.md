@@ -1160,7 +1160,7 @@ generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
 | Deadline and body limit | 10-second default deadline, `deadline:` up to 60 seconds; 1 MB body limit answering 413 | 2026-10-12 |
 | Health | Generated only: `/health/live` and `/health/ready`, readiness from the declared stores | 2026-10-12 |
 | APIs and versions | `apis: { }` in `application`, `main` at `/` implied; a group names its API with `api:`; one OpenAPI document and record per API; a new major version is another API | 2026-10-12 |
-| Webhooks | Ordinary routes in a `webhooks` API; the provider's signature check as authentication; a unique rule on the provider's event id; work in a subscriber | 2026-10-12 |
+| Webhooks | Ordinary routes in a `webhooks` API; the provider's signature check as authentication; a unique rule on the provider's event id; work in a subscriber (Amended 2026-10-13 by area 11: provider webhooks are generated from the package and arrive as events; no route is written) | 2026-10-12 |
 | Field path format | The `Input` field's dotted path with list positions as numbers (`lines.2.quantity`) | 2026-10-12 |
 | API record and acceptance | Committed readable record per API (`api/main.api`) compared by `jadpo check`; breaking changes need a person-written acceptance file, one per change, the same form for drops, policy weakening and new domains; `acceptances/` owned in CODEOWNERS | 2026-10-12 |
 | Write revision header | `Jadpo-Revision` header on every write, a cookie for browsers; sending it back skips caches | 2026-10-12 |

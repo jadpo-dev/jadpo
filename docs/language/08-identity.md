@@ -430,9 +430,9 @@ apis: {
 }
 ```
 
-With one API, every method is accepted. A webhook route names its
-provider's signature check instead, `authentication: stripe.signature`
-(area 7's proposal; the check is area 11's), and has no `current_principal`.
+With one API, every method is accepted. Provider webhooks have no route to
+authenticate: the runtime generates them from the provider package, checks
+the signature and publishes each as an event (area 11).
 Question 8 spells the word out; today it is `auth: none` and `auth: fresh`
 (see the box above), and every route accepts every strategy.
 

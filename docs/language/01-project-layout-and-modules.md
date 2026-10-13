@@ -645,6 +645,8 @@ app.jadpo                  application, principal, health, readiness, language v
 config.jadpo               configuration: names, types, bindings, defaults
 authentication.jadpo       authentication methods and their failures
 policy.jadpo               application-wide policy, such as tenancy
+jadpo.lock                 pinned provider packages from the registry
+providers/                 provider packages imported or written for this app
 domains/
   planning/
     entities/
@@ -668,9 +670,6 @@ domains/
       users.jadpo
     schedules/
       overdue_reminders.jadpo
-    integrations/
-      reminder_mail.jadpo
-      reminder_mail.contract.json
 database/
   identities.json          stable identity of every table and column
   migrations/
@@ -698,10 +697,8 @@ domains/
   inventory/
     actions/      reserve_stock.jadpo        public: called by checkout in one transaction
   payments/
-    integrations/ stripe_v2024.jadpo  stripe_v2024.contract.json
-    routes/       stripe_webhooks.jadpo
+    subscribers/  payment_succeeded.jadpo    on Stripe.events.PaymentIntentSucceeded
   notifications/
-    integrations/ postmark.jadpo
     subscribers/  send_order_confirmation.jadpo
   catalogue/  fulfilment/  identity/
 database/
@@ -760,7 +757,7 @@ build/
 | `schedules/` | Time triggers: when to run which action | Replaces "jobs" |
 | `events/` | Event definitions | |
 | `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
-| `integrations/` | Third-party APIs, one declaration per provider version, contract beside it | Replaces "services"; versioning designed in area 11 |
+| (none) | Third-party APIs are provider packages: connections in `app.jadpo`, packages in root `providers/` or pinned in `jadpo.lock` | Amended 2026-10-13 by area 11; the `integrations/` folder and `integration` keyword are gone |
 | `fixtures/` | Test data shared by several test files in the domain | |
 
 #### Files and names
@@ -917,11 +914,13 @@ subscriber send_order_confirmation {
     run: send_order_confirmation_email(event)
 }
 
-// domains/payments/integrations/stripe_v2024.jadpo
-integration StripeV2024 {
-    base_url: "https://api.stripe.com"
-    api_version: "2024-06-20"
-    ...
+// app.jadpo: a connection to a provider package (area 11)
+providers: {
+    stripe: {
+        package: Stripe.v2024_06_20
+        credential: config.stripe_secret_key
+        domains: [payments]
+    }
 }
 ```
 
@@ -1013,7 +1012,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Reserved words | Control-flow and declaration words fully reserved, with a short explicit list of usable names | 2026-10-12 |
 | Documentation comments | `///` comments attach to the next declaration and feed generated docs, the library catalogue and OpenAPI | 2026-10-12 |
 | Formatting | The formatter owns blank lines and section order within a file | 2026-10-12 |
-| Keywords match folders | `schedule` (folder `schedules/`), `integration` (`integrations/`) and `library` (`libraries/`) replace `job` and `service` | 2026-10-12 |
+| Keywords match folders | `schedule` (folder `schedules/`), `integration` (`integrations/`) and `library` (`libraries/`) replace `job` and `service` (Amended 2026-10-13 by area 11: `integration` and `integrations/` are gone; external services are provider packages) | 2026-10-12 |
 | Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` | 2026-10-12 |
 | Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
 | Root `api/` and `acceptances/` folders | | |
