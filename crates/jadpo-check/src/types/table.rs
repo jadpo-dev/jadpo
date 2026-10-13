@@ -51,6 +51,10 @@ pub enum Def {
     Fields {
         base: FieldsBase,
         fields: Vec<FieldDef>,
+        /// When its `include` lines lead back to itself, so its fields
+        /// would be copied from themselves: the first name, in name order,
+        /// on that loop, where the loop is reported once.
+        copies_itself: Option<String>,
     },
     Enum {
         variants: Vec<VariantDef>,
@@ -316,6 +320,11 @@ struct Deriver<'a> {
     shapes: &'a BTreeMap<String, ShapeKind>,
     /// Each body's fields; `None` while being computed, which stops a cycle.
     done: BTreeMap<String, Option<Vec<RawField>>>,
+    /// The bodies being computed, outermost first.
+    stack: Vec<String>,
+    /// Every body on a cycle of `include` lines, with the cycle's first
+    /// name.
+    cyclic: BTreeMap<String, String>,
 }
 
 impl Deriver<'_> {
@@ -323,10 +332,26 @@ impl Deriver<'_> {
         match self.shapes.get(name) {
             Some(ShapeKind::Fields { base, lines }) => {
                 if let Some(done) = self.done.get(name) {
+                    if done.is_none()
+                        && let Some(at) = self.stack.iter().position(|n| n == name)
+                    {
+                        let members = &self.stack[at..];
+                        let first = members
+                            .iter()
+                            .chain(members.iter().filter_map(|n| self.cyclic.get(n)))
+                            .min()
+                            .cloned()
+                            .unwrap_or_default();
+                        for member in members {
+                            self.cyclic.insert(member.clone(), first.clone());
+                        }
+                    }
                     return Found::Fields(done.iter().flatten().map(|f| f.name.clone()).collect());
                 }
                 self.done.insert(name.to_string(), None);
+                self.stack.push(name.to_string());
                 let (fields, _) = derive(*base, lines, &mut |other| self.fields(other));
+                self.stack.pop();
                 let names = fields.iter().map(|f| f.name.clone()).collect();
                 self.done.insert(name.to_string(), Some(fields));
                 Found::Fields(names)
@@ -343,11 +368,14 @@ impl TypeTable {
         let mut deriver = Deriver {
             shapes,
             done: BTreeMap::new(),
+            stack: Vec::new(),
+            cyclic: Default::default(),
         };
         for name in shapes.keys() {
             deriver.fields(name);
         }
         let derived = deriver.done;
+        let cyclic = deriver.cyclic;
         let placeholder = |raw: &RawField| FieldDef {
             name: raw.name.clone(),
             declared: Ty::Error,
@@ -384,6 +412,7 @@ impl TypeTable {
                     rules: Box::default(),
                 },
                 ShapeKind::Fields { base, .. } => Def::Fields {
+                    copies_itself: cyclic.get(name).cloned(),
                     base: *base,
                     fields: derived
                         .get(name)
@@ -430,6 +459,7 @@ impl TypeTable {
                     rules: Box::default(),
                 },
                 ShapeKind::Fields { base, .. } => Def::Fields {
+                    copies_itself: cyclic.get(name).cloned(),
                     base: *base,
                     fields: resolve_fields(
                         derived
@@ -485,7 +515,15 @@ impl TypeTable {
                     parent: parent.clone(),
                     rules: Box::new(table.rules_from(parent, settings)),
                 },
-                (Def::Fields { base, fields }, _) => Def::Fields {
+                (
+                    Def::Fields {
+                        base,
+                        fields,
+                        copies_itself,
+                    },
+                    _,
+                ) => Def::Fields {
+                    copies_itself: copies_itself.clone(),
                     base: *base,
                     fields: field_rules(
                         fields,

@@ -53,6 +53,27 @@ impl Body<'_> {
                     let length = Const::List(list.exprs().map(|_| Const::Other).collect());
                     if let Err(problem) = literal::check(self.table, expected, &length) {
                         self.literal_problem(expr, expected, problem, false);
+                        return;
+                    }
+                    let is_set = matches!(self.table.structure(expected), Ty::Set(_));
+                    // Literals and variants; a computed value is only
+                    // known when it runs.
+                    let items: Vec<Const> = list
+                        .exprs()
+                        .map(|e| match Const::from_expr(&e) {
+                            Const::Path(names)
+                                if !names.first().is_some_and(|n| starts_upper(n)) =>
+                            {
+                                Const::Other
+                            }
+                            other => other,
+                        })
+                        .collect();
+                    if is_set && let Some(twice) = literal::repeated(&items) {
+                        let problem = literal::Problem::Builtin(format!(
+                            "has {twice} twice, and a set holds each value once"
+                        ));
+                        self.literal_problem(expr, expected, problem, false);
                     }
                     return;
                 }
@@ -588,7 +609,7 @@ impl Body<'_> {
         }
         let head_span = self.span(&head);
         match (rest.as_slice(), self.table.def(&name)) {
-            ([], Some(Def::Fields { base, fields })) => {
+            ([], Some(Def::Fields { base, fields, .. })) => {
                 if matches!(base, FieldsBase::Entity | FieldsBase::Failure) {
                     self.failure_value(&Expr::RecordExpr(record.clone()));
                     return Ty::Error;

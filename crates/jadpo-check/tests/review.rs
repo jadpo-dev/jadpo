@@ -248,3 +248,129 @@ fn a_number_too_long_to_hold_is_invalid() {
         ["type.invalid_literal"]
     );
 }
+
+// --- finding 8: area 2's field rules hold on entities and events ----------
+
+#[test]
+fn entity_and_event_fields_follow_area_two() {
+    let names = "type Name = Text {}\n\ntype Count = Int {}\n\n";
+    let entity = |field: &str| {
+        check(&format!(
+            "{names}entity Thing {{\n    id: Uuid\n{field}}}\n"
+        ))
+    };
+    assert_eq!(
+        entity("    name: Name {\n        optional: true\n    }\n"),
+        ["type.optional_outside_input"]
+    );
+    assert_eq!(
+        entity("    n: Count {\n        max_length: 3\n    }\n"),
+        ["type.constraint_base"]
+    );
+    assert_eq!(
+        entity("    name: Name {\n        bogus: 1\n    }\n"),
+        ["type.unknown_setting"]
+    );
+    assert_eq!(entity("    include: Name\n"), ["type.reserved_field_name"]);
+    assert_eq!(entity("    n: Count {\n        min: 5\n    }\n"), CLEAN);
+    assert_eq!(
+        check(&format!(
+            "{names}type Happened = Event {{\n    name: Name {{\n        default: \"x\"\n    }}\n}}\n"
+        )),
+        ["type.optional_outside_input"]
+    );
+}
+
+// --- finding 9: rules contradict along the chain ----------------------------
+
+#[test]
+fn a_refinement_cannot_contradict_what_it_builds_on() {
+    let contradiction = ["type.constraint_contradiction"];
+    assert_eq!(
+        check("type P = Int {\n    min: 10\n}\n\ntype T = P {\n    max: 3\n}\n"),
+        contradiction
+    );
+    assert_eq!(
+        check(
+            "type Price = Decimal {\n    scale: 2\n}\n\ntype FinePrice = Price {\n    scale: 4\n}\n"
+        ),
+        contradiction
+    );
+    assert_eq!(
+        check("type Delay = Duration {\n    min: 2h\n    max: 1h\n}\n"),
+        contradiction
+    );
+    assert_eq!(
+        check(
+            "type P = Int {\n    min: 10\n}\n\ntype Box = Object {\n    p: P {\n        max: 5\n    }\n}\n"
+        ),
+        contradiction
+    );
+    assert_eq!(
+        check(
+            "type P = Int {\n    min: 10\n}\n\ntype T = P {\n    max: 30\n}\n\ntype Price = Decimal {\n    scale: 2\n}\n\ntype Small = Price {\n    max: 9.99\n}\n"
+        ),
+        CLEAN
+    );
+}
+
+// --- finding 10: sets and maps as decided ----------------------------------
+
+#[test]
+fn a_boundary_map_is_keyed_by_text() {
+    let base = "type Weight = Int {}\n\ntype At = Instant {}\n\ntype Tag = Text {}\n\n";
+    assert_eq!(
+        check(&format!(
+            "{base}type A = Input {{\n    w: Map<At, Weight>\n}}\n"
+        )),
+        ["type.map_key_boundary"]
+    );
+    assert_eq!(
+        check(&format!(
+            "{base}type B = Output {{\n    w: List<Map<Weight, Weight>>\n}}\n"
+        )),
+        ["type.map_key_boundary"]
+    );
+    assert_eq!(
+        check(&format!(
+            "{base}type C = Output {{\n    w: Map<Tag, Weight>\n    v: Map<Uuid, Weight>\n}}\n\ntype D = Object {{\n    w: Map<Weight, Weight>\n}}\n"
+        )),
+        CLEAN
+    );
+}
+
+#[test]
+fn a_set_literal_holds_each_value_once() {
+    let base = "type Tag = Text {}\n\n";
+    assert_eq!(
+        check(&format!(
+            "{base}function f() -> Set<Tag> {{\n    return [\"a\", \"a\"]\n}}\n"
+        )),
+        ["type.invalid_literal"]
+    );
+    assert_eq!(
+        check(&format!(
+            "{base}function f() -> Set<Tag> {{\n    return [\"a\", \"b\"]\n}}\n"
+        )),
+        CLEAN
+    );
+}
+
+// --- finding 25: `include` never loops ---------------------------------------
+
+#[test]
+fn include_never_leads_back_to_itself() {
+    let base = "type Name = Text {}\n\n";
+    assert_eq!(
+        check(&format!(
+            "{base}type A = Output {{\n    include: [A]\n    n: Name\n}}\n"
+        )),
+        ["type.copy_cycle"]
+    );
+    assert_eq!(
+        check(&format!(
+            "{base}type B = Output {{\n    include: [C]\n}}\n\ntype C = Output {{\n    include: [B]\n    x: Name\n}}\n"
+        )),
+        ["type.copy_cycle"]
+    );
+}

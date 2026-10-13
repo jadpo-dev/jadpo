@@ -45,6 +45,13 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
             for item in items {
                 check(table, element, item)?;
             }
+            if matches!(structure, Ty::Set(_))
+                && let Some(twice) = repeated(items)
+            {
+                return Err(Problem::Builtin(format!(
+                    "has {twice} twice, and a set holds each value once"
+                )));
+            }
             for (host, rules) in table.rule_chain(expected) {
                 check_rules(rules, value).map_err(|broken| Problem::Broken(host, broken))?;
             }
@@ -110,6 +117,29 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
         check_rules(rules, value).map_err(|broken| Problem::Broken(host, broken))?;
     }
     Ok(())
+}
+
+/// The first value a list literal gives twice, as written for a reason
+/// line (area 2, question 5).
+pub fn repeated(items: &[Const]) -> Option<String> {
+    let same = |a: &Const, b: &Const| match (a, b) {
+        (Const::Number { value: x, .. }, Const::Number { value: y, .. }) => x.compare(*y).is_eq(),
+        (Const::Other | Const::TooLong, _) | (_, Const::Other | Const::TooLong) => false,
+        _ => a == b,
+    };
+    items.iter().enumerate().find_map(|(i, item)| {
+        items[..i]
+            .iter()
+            .any(|earlier| same(earlier, item))
+            .then(|| match item {
+                Const::Number { value, .. } => format!("`{value}`"),
+                Const::Str(text) => format!("`\"{text}\"`"),
+                Const::Bool(value) => format!("`{value}`"),
+                Const::Duration(text) => format!("`{text}`"),
+                Const::Path(names) => format!("`{}`", names.join(".")),
+                _ => "a value".to_string(),
+            })
+    })
 }
 
 /// What a type is, for a reason line: "built on `Int`", "an enum".

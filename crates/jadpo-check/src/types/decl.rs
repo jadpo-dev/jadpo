@@ -60,12 +60,10 @@ impl Decls<'_> {
         match decl {
             Decl::TypeDecl(d) => self.type_decl(d, decl),
             Decl::EntityDecl(d) => {
-                for (_, member) in tree::members(d.member_list()) {
-                    if let Some(value) = member.value()
-                        && shape::looks_like_type(&value)
-                    {
-                        self.type_node(&TypeNode::Expr(value), false);
-                    }
+                if let Some(shape) = shape::shape(decl)
+                    && let ShapeKind::Fields { base, lines } = &shape.kind
+                {
+                    self.lines(d.member_list(), *base, &shape.name, lines);
                 }
             }
             Decl::FunctionDecl(d) => self.signature(d.param_list(), d.ret_type(), true),
@@ -311,7 +309,7 @@ impl Decls<'_> {
                     return;
                 }
                 let subject = self.table.subject(&parent);
-                let own = self.settings(list, subject, None);
+                let own = self.settings(list, subject, None, &parent);
                 if self.table.base_prim(&parent) == Some(Prim::Decimal)
                     && own.scale.is_none()
                     && !self
@@ -442,7 +440,7 @@ impl Decls<'_> {
                         continue;
                     };
                     let node = TypeNode::Expr(value);
-                    if !self.type_node(&node, false) || !area_two {
+                    if !self.type_node(&node, false) {
                         continue;
                     }
                     let declared = self.table.resolve(ty);
@@ -451,13 +449,17 @@ impl Decls<'_> {
                     }
                     let field = FieldCtx {
                         input: base == FieldsBase::Input,
+                        later: base.has_later_settings(),
                         ty: Ty::Field(host.to_string(), vec![name.clone()]),
                         declared: declared.clone(),
                     };
                     let subject = self.table.subject(&declared);
-                    self.settings(node.settings(), subject, Some(&field));
+                    self.settings(node.settings(), subject, Some(&field), &declared);
+                    if matches!(base, FieldsBase::Input | FieldsBase::Output) {
+                        self.boundary_map_key(&declared, &node, host);
+                    }
                 }
-                Line::NotAList(word) if area_two => {
+                Line::NotAList(word) => {
                     let Some(value) = member.value() else {
                         continue;
                     };
@@ -476,7 +478,49 @@ impl Decls<'_> {
                         .edit(span, format!("[{written}]")),
                     );
                 }
-                Line::Reserved(name) if area_two => {
+                Line::Include(entries) => {
+                    let cycle = |name: &str| match self.table.def(name) {
+                        Some(super::table::Def::Fields { copies_itself, .. }) => {
+                            copies_itself.clone()
+                        }
+                        _ => None,
+                    };
+                    // One error for the loop, on its first type by name.
+                    let Some(first) = cycle(host).filter(|first| first == host) else {
+                        continue;
+                    };
+                    let copies_itself = |name: &str| cycle(name).as_deref() == Some(first.as_str());
+                    let Some(Expr::ListExpr(list)) = member.value() else {
+                        continue;
+                    };
+                    let looping = entries.iter().zip(list.exprs()).find(|(entry, _)| {
+                        matches!(entry, TypeRef::Path(names, _) if names.len() == 1
+                            && (names[0] == host || copies_itself(&names[0])))
+                    });
+                    if let Some((TypeRef::Path(names, _), written)) = looping {
+                        let span = self.span(written.syntax());
+                        let through = if names[0] == host {
+                            format!("`{host}` lists itself in `include`")
+                        } else {
+                            format!(
+                                "`{}` leads back to `{host}` through its own `include`",
+                                names[0]
+                            )
+                        };
+                        self.out.push(
+                            Diagnostic::new(
+                                &rule::TYPE_COPY_CYCLE,
+                                format!("`{host}` includes its own fields"),
+                            )
+                            .at(span, "leads back here")
+                            .reason(format!(
+                                "{through}, so its fields would be copied from themselves and the type could never be written out."
+                            ))
+                            .next(format!("Remove `{}` from `include`, or write the fields it needs", names[0])),
+                        );
+                    }
+                }
+                Line::Reserved(name) => {
                     let Some(key) = member.member_key() else {
                         continue;
                     };
@@ -515,6 +559,41 @@ impl Decls<'_> {
                     _ => None,
                 };
                 self.line_problem(&problem, &this, host, first);
+            }
+        }
+    }
+
+    /// A map at a boundary is a JSON object, whose keys are text, so its
+    /// key type is built on `Text` or `Uuid` (area 2, question 5).
+    fn boundary_map_key(&mut self, declared: &Ty, node: &TypeNode, host: &str) {
+        let mut current = declared.clone();
+        for _ in 0..16 {
+            match self.table.structure(&current) {
+                Ty::List(inner) | Ty::Set(inner) => current = *inner,
+                Ty::Map(key, value) => {
+                    let text = matches!(
+                        self.table.representation(&key),
+                        Some(Prim::Text | Prim::Uuid)
+                    );
+                    if !key.has_error() && !text {
+                        let span = self.span(node.syntax());
+                        self.out.push(
+                            Diagnostic::new(
+                                &rule::TYPE_MAP_KEY_BOUNDARY,
+                                format!("`{host}` holds a map keyed by `{key}`"),
+                            )
+                            .at(span, format!("keys are `{key}`"))
+                            .reason(format!(
+                                "`{host}` crosses a boundary as JSON, where a map is an object and its keys are text; `{key}` is {}.",
+                                literal::what(self.table, &key)
+                            ))
+                            .next("Key the map by a type built on `Text` or `Uuid`, or send a list of objects instead"),
+                        );
+                        return;
+                    }
+                    current = *value;
+                }
+                _ => return,
             }
         }
     }
@@ -626,6 +705,7 @@ impl Decls<'_> {
         list: Option<ast::MemberList>,
         subject: Subject,
         field: Option<&FieldCtx>,
+        parent: &Ty,
     ) -> Rules {
         let mut rules = Rules::default();
         let mut seen: BTreeMap<String, (Span, Const)> = BTreeMap::new();
@@ -653,6 +733,11 @@ impl Decls<'_> {
                 continue;
             }
             seen.insert(key.clone(), (key_span.clone(), value.clone()));
+            if field.is_some_and(|field| field.later)
+                && LATER_FIELD_SETTINGS.contains(&key.as_str())
+            {
+                continue;
+            }
             if let Some(field) = field
                 && FIELD_SETTINGS.contains(&key.as_str())
             {
@@ -705,7 +790,14 @@ impl Decls<'_> {
                 }
                 Err(Problem::Base(fits)) => {
                     let base = match subject {
-                        Subject::Prim(prim) => format!("a `{}` type", prim.name()),
+                        Subject::Prim(prim) => {
+                            let an = if prim.name().starts_with(['A', 'E', 'I', 'O', 'U']) {
+                                "an"
+                            } else {
+                                "a"
+                            };
+                            format!("{an} `{}` type", prim.name())
+                        }
                         Subject::Collection => "a collection".to_string(),
                         Subject::Other => "this type".to_string(),
                     };
@@ -758,7 +850,135 @@ impl Decls<'_> {
             "max_length",
             rules.min_length.zip(rules.max_length).map(|(a, b)| a > b),
         );
+        self.contradictions(
+            &seen,
+            "min",
+            "max",
+            rules
+                .min_duration
+                .zip(rules.max_duration)
+                .map(|(a, b)| a > b),
+        );
+        self.inherited(&seen, &rules, parent);
         rules
+    }
+
+    /// A refinement's rules against those of the types it builds on (area
+    /// 2): no value could follow a `max` below an inherited `min`, or the
+    /// other way round, and a `Decimal`'s scale is fixed where it is first
+    /// declared, since it decides how the value is stored and sent.
+    fn inherited(&mut self, seen: &BTreeMap<String, (Span, Const)>, own: &Rules, parent: &Ty) {
+        let chain: Vec<(String, Rules)> = self
+            .table
+            .rule_chain(parent)
+            .into_iter()
+            .map(|(host, rules)| (host, rules.clone()))
+            .collect();
+        let mut found: Option<(&str, String, String, String)> = None;
+        for (host, rules) in &chain {
+            let pairs: [(&str, Option<bool>, String, String); 6] = [
+                (
+                    "max",
+                    own.max.zip(rules.min).map(|(a, b)| a.compare(b).is_lt()),
+                    format!("min: {}", rules.min.map(rules::show).unwrap_or_default()),
+                    "below".into(),
+                ),
+                (
+                    "min",
+                    own.min.zip(rules.max).map(|(a, b)| a.compare(b).is_gt()),
+                    format!("max: {}", rules.max.map(rules::show).unwrap_or_default()),
+                    "above".into(),
+                ),
+                (
+                    "max_length",
+                    own.max_length.zip(rules.min_length).map(|(a, b)| a < b),
+                    format!("min_length: {}", rules.min_length.unwrap_or_default()),
+                    "below".into(),
+                ),
+                (
+                    "min_length",
+                    own.min_length.zip(rules.max_length).map(|(a, b)| a > b),
+                    format!("max_length: {}", rules.max_length.unwrap_or_default()),
+                    "above".into(),
+                ),
+                (
+                    "max",
+                    own.max_duration.zip(rules.min_duration).map(|(a, b)| a < b),
+                    format!(
+                        "min: {}",
+                        rules
+                            .min_duration
+                            .map(|d| d.to_string())
+                            .unwrap_or_default()
+                    ),
+                    "below".into(),
+                ),
+                (
+                    "min",
+                    own.min_duration.zip(rules.max_duration).map(|(a, b)| a > b),
+                    format!(
+                        "max: {}",
+                        rules
+                            .max_duration
+                            .map(|d| d.to_string())
+                            .unwrap_or_default()
+                    ),
+                    "above".into(),
+                ),
+            ];
+            if let Some((key, _, theirs, word)) = pairs
+                .into_iter()
+                .find(|(_, broken, _, _)| *broken == Some(true))
+            {
+                found = Some((key, theirs, word, host.clone()));
+                break;
+            }
+            if let (Some(mine), Some(theirs)) = (own.scale, rules.scale)
+                && mine != theirs
+            {
+                found = Some((
+                    "scale",
+                    format!("scale: {theirs}"),
+                    "different from".into(),
+                    host.clone(),
+                ));
+                break;
+            }
+        }
+        let Some((key, theirs, word, host)) = found else {
+            return;
+        };
+        let Some((span, value)) = seen.get(key) else {
+            return;
+        };
+        let written = match value {
+            Const::Number { value, .. } => rules::show(*value),
+            Const::Duration(text) => text.clone(),
+            _ => String::new(),
+        };
+        let reason = if key == "scale" {
+            format!(
+                "`{host}` fixes the scale at {}: a `Decimal`'s scale decides how it is stored and sent, so a refinement keeps it.",
+                theirs.trim_start_matches("scale: ")
+            )
+        } else {
+            format!(
+                "A refinement adds rules to `{host}`'s and can't loosen them, so no value could follow both, and the type could never be built."
+            )
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_CONSTRAINT_CONTRADICTION,
+                format!("`{key}: {written}` is {word} `{host}`'s `{theirs}`"),
+            )
+            .at(span.clone(), format!("{word} `{host}`'s `{theirs}`"))
+            .reason(reason)
+            .next(if key == "scale" {
+                format!("Remove `scale:`, or build on `Decimal` instead of `{host}`")
+            } else {
+                format!("Correct `{key}`, or build on a type whose rules it fits")
+            }),
+        );
     }
 
     fn contradictions(
@@ -778,6 +998,7 @@ impl Decls<'_> {
         };
         let show = |value: &Const| match value {
             Const::Number { value, .. } => rules::show(*value),
+            Const::Duration(text) => text.clone(),
             _ => String::new(),
         };
         self.out.push(
@@ -857,10 +1078,26 @@ impl Decls<'_> {
 
 struct FieldCtx {
     input: bool,
+    /// Whether later areas add settings of their own to this field.
+    later: bool,
     /// The field type, `Type.field`.
     ty: Ty,
     declared: Ty,
 }
+
+/// Settings later areas give an entity's or event's fields: data (area 5),
+/// policy (area 9) and personal data (area 15). They are checked when
+/// those areas are built.
+const LATER_FIELD_SETTINGS: [&str; 8] = [
+    "erase",
+    "generated",
+    "immutable",
+    "on_delete",
+    "personal",
+    "retention",
+    "role",
+    "unique",
+];
 
 fn optional_outside(host: &str, span: Span) -> Diagnostic {
     Diagnostic::new(

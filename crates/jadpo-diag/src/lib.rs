@@ -307,6 +307,8 @@ rules! {
         "02-values-and-types.html#type-constructor-input", "Value cannot be converted to this type";
     TYPE_COPY_CLASH: "type.copy_clash", area 2, Error, Agent,
         "02-values-and-types.html#type-copy-clash", "Copied field would replace another field";
+    TYPE_COPY_CYCLE: "type.copy_cycle", area 2, Error, Agent,
+        "02-values-and-types.html#type-copy-cycle", "Type includes its own fields";
     TYPE_COPY_INTO_INPUT: "type.copy_into_input", area 2, Error, Human,
         "02-values-and-types.html#type-copy-into-input", "Input copies every field of another type";
     TYPE_DECIMAL_SCALE_REQUIRED: "type.decimal_scale_required", area 2, Error, Agent,
@@ -333,6 +335,8 @@ rules! {
         "02-values-and-types.html#type-invalid-pattern", "Pattern is not a supported regular expression";
     TYPE_LOGICAL_OPERAND: "type.logical_operand", area 3, Error, Agent,
         "03-logic.html#type-logical-operand", "Logical operator needs Bool operands";
+    TYPE_MAP_KEY_BOUNDARY: "type.map_key_boundary", area 2, Error, Agent,
+        "02-values-and-types.html#type-map-key-boundary", "Map key at a boundary isn't text";
     TYPE_MATCH_ARM_VALUE: "type.match_arm_value", area 3, Error, Agent,
         "03-logic.html#type-match-arm-value", "Match arm gives no value";
     TYPE_MATCH_DUPLICATE_PATTERN: "type.match_duplicate_pattern", area 3, Error, Agent,
