@@ -149,7 +149,18 @@ fn format_one(
     diagnostics: &mut Vec<Diagnostic>,
     sources: &mut BTreeMap<String, String>,
 ) -> Status {
-    let text = match std::fs::read_to_string(file) {
+    // A pipe or a device named `.jadpo` would block or never end.
+    let regular = std::fs::metadata(file)
+        .map_err(|error| error.to_string())
+        .and_then(|meta| {
+            if meta.is_file() {
+                Ok(())
+            } else {
+                Err("it isn't a regular file".to_string())
+            }
+        });
+    let text = match regular.and_then(|()| std::fs::read_to_string(file).map_err(|e| e.to_string()))
+    {
         Ok(text) => text,
         Err(error) => {
             diagnostics.push(

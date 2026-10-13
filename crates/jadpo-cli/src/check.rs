@@ -64,7 +64,7 @@ pub fn check(call: &Call) -> Reply {
             )
             .at(Span::new(&file.path, 0, 0), "")
             .reason(format!("Reading it failed: {}.", file.error))
-            .next("Check the file can be read, then run `jadpo check` again")
+            .next("Check it can be read, then run `jadpo check` again")
         })
         .collect();
     let checked = jadpo_check::check(db, loaded.project);

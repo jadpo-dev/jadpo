@@ -42,6 +42,10 @@ pub struct Server {
     dirty: bool,
     /// Whether the editor watches files for the server when asked.
     can_watch: bool,
+    /// The project root as the editor names it, which may reach it
+    /// through a symbolic link; every URI sent back is under it, so it
+    /// attaches to the editor's documents.
+    shown_root: Option<PathBuf>,
 }
 
 impl Server {
@@ -58,6 +62,14 @@ impl Server {
             .or_else(|| params.root_uri.as_ref().and_then(convert::path_of))
             .or_else(|| params.root_path.as_ref().map(PathBuf::from))
             .unwrap_or_else(|| cwd.to_path_buf());
+        #[allow(deprecated)]
+        let given = params
+            .workspace_folders
+            .as_ref()
+            .and_then(|folders| folders.first())
+            .map(|folder| &folder.uri)
+            .or(params.root_uri.as_ref())
+            .and_then(convert::given_path_of);
         let folder = folder.canonicalize().unwrap_or(folder);
         let offered = params
             .capabilities
@@ -70,7 +82,12 @@ impl Server {
             Encoding::Utf16
         };
         let loaded = folder.is_dir().then(|| jadpo_db::load(&folder));
+        let shown_root = match (&loaded, given) {
+            (Some(loaded), Some(given)) => shown_root(&loaded.root, &folder, &given),
+            _ => None,
+        };
         let mut server = Server::new(loaded, encoding);
+        server.shown_root = shown_root;
         // The first flush publishes what the project already has wrong.
         server.dirty = true;
         server.can_watch = params
@@ -92,7 +109,13 @@ impl Server {
             open: BTreeSet::new(),
             dirty: false,
             can_watch: false,
+            shown_root: None,
         }
+    }
+
+    /// The root every URI sent to the editor is under.
+    fn uri_root<'a>(&'a self, loaded: &'a Loaded) -> &'a Path {
+        self.shown_root.as_deref().unwrap_or(&loaded.root)
     }
 
     /// What to send once the editor has said it is ready: a request to
@@ -257,7 +280,7 @@ impl Server {
                 .push(convert::diagnostic(
                     &problem,
                     text,
-                    &loaded.root,
+                    self.uri_root(loaded),
                     &source_of,
                     self.encoding,
                 ));
@@ -274,7 +297,7 @@ impl Server {
             if before == Some(&now) || (before.is_none() && now.is_empty()) {
                 continue;
             }
-            let Some(uri) = convert::uri_of(&loaded.root.join(&path)) else {
+            let Some(uri) = convert::uri_of(&self.uri_root(loaded).join(&path)) else {
                 continue;
             };
             out.push(Message::Notification(Notification::new(
@@ -338,10 +361,25 @@ impl Server {
         let file = loaded.file(&place.file)?;
         let text = file.text(&loaded.db);
         Some(GotoDefinitionResponse::Scalar(Location {
-            uri: convert::uri_of(&loaded.root.join(&place.file))?,
+            uri: convert::uri_of(&self.uri_root(loaded).join(&place.file))?,
             range: convert::range(text, place.start, place.end, self.encoding),
         }))
     }
+}
+
+/// The project root `root` (a real path) as the editor names it, given
+/// that it named the real folder `real` as `given`: the same number of
+/// folders up from what it gave.
+fn shown_root(root: &Path, real: &Path, given: &Path) -> Option<PathBuf> {
+    if given == real {
+        return None;
+    }
+    let up = real.strip_prefix(root).ok()?.components().count();
+    let mut shown = given.to_path_buf();
+    for _ in 0..up {
+        shown = shown.parent()?.to_path_buf();
+    }
+    Some(shown)
 }
 
 fn invalid(id: lsp_server::RequestId, error: &serde_json::Error) -> Response {

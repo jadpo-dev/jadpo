@@ -55,21 +55,32 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
             .parent()
             .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
     };
+    let mut unreadable = Vec::new();
     let (root, layout, sources) = match find_root(&folder) {
         Some(root) => {
-            let sources = walk(&root, true);
+            let sources = walk(&root, true, &mut unreadable);
             (root, Layout::Project, sources)
         }
-        None if target.is_dir() => (folder.clone(), Layout::Loose, walk(&folder, false)),
+        None if target.is_dir() => {
+            let sources = walk(&folder, false, &mut unreadable);
+            (folder.clone(), Layout::Loose, sources)
+        }
         None => (folder, Layout::Loose, vec![target.to_path_buf()]),
     };
     let mut files = Vec::new();
     let mut other_files = Vec::new();
-    let mut unreadable = Vec::new();
     for path in sources {
         let shown = display(&root, &path);
         if !shown.ends_with(".jadpo") {
             other_files.push(shown);
+            continue;
+        }
+        // A pipe or a device named `.jadpo` would block or never end.
+        if !std::fs::metadata(&path).is_ok_and(|meta| meta.is_file()) {
+            unreadable.push(Unreadable {
+                path: shown,
+                error: "it isn't a regular file".to_string(),
+            });
             continue;
         }
         match std::fs::read_to_string(&path) {
@@ -195,12 +206,26 @@ fn display(root: &Path, file: &Path) -> String {
 /// Every file under `folder` in path order, leaving out hidden entries and
 /// the generated `build/`. Outside `.jadpo` files, only a project's code
 /// folders are listed, where templates and other assets sit beside code.
-fn walk(folder: &Path, project: bool) -> Vec<PathBuf> {
+fn walk(folder: &Path, project: bool, unreadable: &mut Vec<Unreadable>) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let mut pending = vec![folder.to_path_buf()];
     while let Some(dir) = pending.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            // A folder that can't be listed may hold source: checking
+            // without it would pass a project with code missing.
+            Err(error) => {
+                let shown = display(folder, &dir);
+                unreadable.push(Unreadable {
+                    path: if shown.is_empty() {
+                        ".".into()
+                    } else {
+                        format!("{shown}/")
+                    },
+                    error: error.to_string(),
+                });
+                continue;
+            }
         };
         for entry in entries.filter_map(Result::ok) {
             let name = entry.file_name();
