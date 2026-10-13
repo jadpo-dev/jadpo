@@ -253,6 +253,7 @@ name = "jadpo-graph"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "jadpo-std",
 ]
 
 [[package]]

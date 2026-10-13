@@ -21,10 +21,13 @@ mod key;
 mod kind;
 pub mod manifest;
 mod node;
+mod types;
 
 pub use graph::{Builder, Edge, Graph, NodeId};
+pub use jadpo_std::Rules;
 pub use key::{Key, Registry};
 pub use kind::{EdgeKind, Group, Kind, Status};
 pub use node::{
     Base, DIGEST_DIGITS, Detail, Digest, FailureDetail, Node, Place, Section, Signature,
 };
+pub use types::{TypeRef, rule_pairs};

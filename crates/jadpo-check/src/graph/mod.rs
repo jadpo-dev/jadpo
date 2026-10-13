@@ -21,7 +21,9 @@ pub use similar::{FunctionShape, function_shapes, similar_problems};
 pub use text::LineIndex;
 
 use jadpo_db::{Db, ItemKind, Project, Symbols, symbols};
-use jadpo_graph::{Builder, Graph, Key, Kind, Node, Registry};
+use jadpo_graph::{Builder, Graph, Key, Kind, Node, Registry, TypeRef};
+
+use crate::types::Ty;
 
 /// The identity registry (area 18). `database/identities.json` is read
 /// once `jadpo rename` and the domain commands, which write it, exist
@@ -104,6 +106,32 @@ pub fn variant_key(host: &str, variant: &str) -> Key {
         &format!("{host}.{variant}"),
         Some((host, &born)),
     )
+}
+
+/// A checker type as the graph holds it: declared types, entities, fields
+/// and variants by key, the standard library's by name, and a type already
+/// reported as wrong as it is written.
+pub fn type_ref(symbols: &Symbols, ty: &Ty) -> TypeRef {
+    let boxed = |inner: &Ty| Box::new(type_ref(symbols, inner));
+    match ty {
+        Ty::Prim(builtin) => TypeRef::Builtin(*builtin),
+        Ty::Named(name) => declaration_key(symbols, name)
+            .map_or_else(|| TypeRef::Std(name.clone(), Vec::new()), TypeRef::Node),
+        Ty::Field(host, path) => TypeRef::Field(field_key(host, path)),
+        Ty::Variant(host, variant) => TypeRef::Variant(variant_key(host, variant)),
+        Ty::List(inner) => TypeRef::List(boxed(inner)),
+        Ty::Set(inner) => TypeRef::Set(boxed(inner)),
+        Ty::Map(key, value) => TypeRef::Map(boxed(key), boxed(value)),
+        Ty::Nullable(inner) => TypeRef::Nullable(boxed(inner)),
+        Ty::None => TypeRef::None,
+        Ty::Opaque(name, args) => TypeRef::Std(
+            name.clone(),
+            args.iter().map(|arg| type_ref(symbols, arg)).collect(),
+        ),
+        Ty::Error | Ty::Var(_) | Ty::Unknown(_) | Ty::Number | Ty::Function(..) => {
+            TypeRef::Written(ty.to_string())
+        }
+    }
 }
 
 /// The project's graph.

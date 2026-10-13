@@ -9,7 +9,11 @@ publish.workspace = true
 # The model only (docs/compiler-runtime.md §2.3): jadpo-check builds it from
 # its queries, and everything after reads it. No I/O, no salsa.
 [dependencies]
+jadpo-std.workspace = true
 blake3.workspace = true
+
+[dev-dependencies]
+jadpo-std.workspace = true
 
 [lints]
 workspace = true

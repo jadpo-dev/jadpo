@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 
 use crate::json::Value;
-use crate::{Detail, EdgeKind, Graph, Kind, Node, NodeId};
+use crate::{Detail, EdgeKind, Graph, Key, Kind, Node, NodeId, Rules, rule_pairs};
 
 /// The manifest's format number.
 pub const FORMAT: i64 = 1;
@@ -62,7 +62,7 @@ pub fn node_json(graph: &Graph, id: NodeId) -> Value {
     out.set_some("parent", node.parent.as_ref().map(|key| key.as_str()));
     out.set_some("public", node.public);
     out.set_some("doc", node.doc.as_deref());
-    detail_json(node, &mut out);
+    detail_json(node, &|key| name_now(graph, key), &mut out);
     for (kind, targets) in graph.edges_from(id) {
         out.set(
             kind.word(),
@@ -75,16 +75,24 @@ pub fn node_json(graph: &Graph, id: NodeId) -> Value {
     out
 }
 
-fn rules_json(rules: &[(String, String)]) -> Value {
+/// The name a key's node has now, which differs from the key's born name
+/// after a rename; the key's own name when it has no node.
+pub fn name_now(graph: &Graph, key: &Key) -> String {
+    graph
+        .get(key)
+        .map_or_else(|| key.name().to_string(), |node| node.name.clone())
+}
+
+fn rules_json(rules: &Rules) -> Value {
     Value::Object(
-        rules
-            .iter()
-            .map(|(name, value)| (name.clone(), Value::from(value.as_str())))
+        rule_pairs(rules)
+            .into_iter()
+            .map(|(name, value)| (name.to_string(), Value::from(value.as_str())))
             .collect(),
     )
 }
 
-fn detail_json(node: &Node, out: &mut Value) {
+fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
     match &node.detail {
         Detail::None => {}
         Detail::Type {
@@ -92,7 +100,7 @@ fn detail_json(node: &Node, out: &mut Value) {
             rules,
             failure,
         } => {
-            out.set("base", base.word());
+            out.set("base", base.render(name));
             out.set_some("rules", rules_json(rules));
             if let Some(failure) = failure {
                 let mut entry = Value::object();
@@ -111,7 +119,7 @@ fn detail_json(node: &Node, out: &mut Value) {
             copied_from,
             rules,
         } => {
-            out.set("type", ty.as_str());
+            out.set("type", ty.render(name));
             out.set_some("optional", *optional);
             out.set_some("default", *default);
             out.set_some("section", section.map(|s| s.word()));
@@ -126,21 +134,21 @@ fn detail_json(node: &Node, out: &mut Value) {
                 signature
                     .params
                     .iter()
-                    .map(|(name, ty)| {
+                    .map(|(param_name, ty)| {
                         let mut param = Value::object();
-                        param.set("name", name.as_str());
-                        param.set("type", ty.as_str());
+                        param.set("name", param_name.as_str());
+                        param.set("type", ty.render(name));
                         param
                     })
                     .collect::<Vec<_>>(),
             );
-            entry.set("result", signature.result.as_str());
+            entry.set("result", signature.result.render(name));
             entry.set(
                 "fails",
                 signature
                     .fails
                     .iter()
-                    .map(|name| Value::from(name.as_str()))
+                    .map(|failure| Value::from(failure.render(name)))
                     .collect::<Vec<_>>(),
             );
             out.set("signature", entry);

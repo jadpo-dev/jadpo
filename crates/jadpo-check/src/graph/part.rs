@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, File, Item, Project, item_tree, location, symbols};
 use jadpo_graph::{
-    Base, Detail, EdgeKind, FailureDetail, Key, Kind, Node, Section, Signature,
+    Base, Detail, EdgeKind, FailureDetail, Key, Kind, Node, Section, Signature, TypeRef,
     catalogue::status_of,
 };
 use jadpo_syntax::SyntaxNode;
@@ -13,12 +13,12 @@ use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
 use super::paths::Resolver;
 use super::text::{LineIndex, digest, doc, place};
-use super::{declaration_key, field_key, library_function_key, registry, variant_key};
+use super::{declaration_key, field_key, library_function_key, registry, type_ref, variant_key};
 use crate::failures::{FailureTable, failure_table};
 use crate::tree;
 use crate::types::{
-    Callables, Const, Def, FieldDef, FieldsBase, Num, Rules, Sig, Ty, TypeRef, TypeTable,
-    callables, failure_sets, type_table,
+    Callables, Const, Def, FieldDef, FieldsBase, Rules, Sig, Ty, TypeTable, callables,
+    failure_sets, type_table,
 };
 
 /// The nodes a file declares and the edges that start at them.
@@ -98,6 +98,43 @@ struct Part<'a> {
 }
 
 impl Part<'_> {
+    /// A type as the graph holds it: canonically when it resolved, as
+    /// written otherwise.
+    fn type_of(&self, ty: Option<&Ty>, written: &str) -> TypeRef {
+        match ty {
+            Some(ty) if !ty.has_error() => type_ref(self.resolver.symbols, ty),
+            _ => TypeRef::Written(written.to_string()),
+        }
+    }
+
+    fn signature(&self, sig: Option<&Sig>, written: &jadpo_db::Signature) -> Signature {
+        Signature {
+            params: written
+                .params
+                .iter()
+                .enumerate()
+                .map(|(i, param)| {
+                    let resolved = sig.and_then(|sig| sig.params.get(i)).map(|(_, ty)| ty);
+                    (param.name.clone(), self.type_of(resolved, &param.ty))
+                })
+                .collect(),
+            result: match &written.result {
+                Some(result) => self.type_of(sig.map(|sig| &sig.result), result),
+                None => TypeRef::Builtin(jadpo_std::Builtin::Unit),
+            },
+            fails: written
+                .fails
+                .iter()
+                .map(
+                    |failure| match declaration_key(self.resolver.symbols, failure) {
+                        Some(key) if self.failures.contains(failure) => TypeRef::Node(key),
+                        _ => TypeRef::Written(failure.clone()),
+                    },
+                )
+                .collect(),
+        }
+    }
+
     /// A node for `syntax`, with its place, digest and description.
     fn node(&self, key: Key, kind: Kind, name: String, syntax: SyntaxNode) -> Node {
         let mut node = Node::new(key, kind, name);
@@ -180,10 +217,8 @@ impl Part<'_> {
         let key = registry().key(kind, &item.name, None);
         let mut node = self.node(key.clone(), kind, item.name.clone(), syntax.clone());
         node.public = public;
-        node.detail = Detail::Callable(signature(
-            self.callables.plain.get(&item.name),
-            &item.signature,
-        ));
+        node.detail =
+            Detail::Callable(self.signature(self.callables.plain.get(&item.name), &item.signature));
         self.out.nodes.push(node);
         let uses = self.resolver.uses(syntax, &|_| false);
         let calls = self.resolver.calls(syntax, None);
@@ -214,12 +249,14 @@ impl Part<'_> {
             );
             node.parent = Some(key.clone());
             node.public = item.public;
-            node.detail = Detail::Callable(signature(
-                self.callables
-                    .library
-                    .get(&(item.name.clone(), member.name.clone())),
-                &member.signature,
-            ));
+            node.detail = Detail::Callable(
+                self.signature(
+                    self.callables
+                        .library
+                        .get(&(item.name.clone(), member.name.clone())),
+                    &member.signature,
+                ),
+            );
             self.out.nodes.push(node);
             let uses = self.resolver.uses(function.syntax(), &|_| false);
             let calls = self.resolver.calls(function.syntax(), Some(&item.name));
@@ -242,7 +279,7 @@ impl Part<'_> {
         let def = self.table.def(&name);
         let base = match def {
             Some(Def::Scalar { parent, .. }) if !parent.has_error() => {
-                Base::Refines(parent.to_string())
+                Base::Refines(type_ref(self.resolver.symbols, parent))
             }
             Some(Def::Fields { base, .. }) => fields_base(*base),
             Some(Def::Enum { .. }) => Base::Enum,
@@ -254,12 +291,12 @@ impl Part<'_> {
                 "Failure" => Base::Failure,
                 "Event" => Base::Event,
                 "EmailMessage" => Base::EmailMessage,
-                _ => Base::Refines(written_base.clone()),
+                _ => Base::Refines(TypeRef::Written(written_base.clone())),
             },
         };
         let rules = match def {
-            Some(Def::Scalar { rules, .. }) => rules_list(rules),
-            _ => Vec::new(),
+            Some(Def::Scalar { rules, .. }) => (**rules).clone(),
+            _ => Rules::default(),
         };
         let failure = (base == Base::Failure).then(|| {
             let info = self.failures.get(&name);
@@ -380,7 +417,9 @@ impl Part<'_> {
                 && let Some(ast::Expr::ListExpr(entries)) = member.value()
             {
                 for entry in entries.exprs() {
-                    if let TypeRef::Path(names, _) = TypeRef::from_expr(&entry) {
+                    if let crate::types::TypeRef::Path(names, _) =
+                        crate::types::TypeRef::from_expr(&entry)
+                    {
                         copying.push((names, entry.syntax().clone()));
                     }
                 }
@@ -437,12 +476,14 @@ impl Part<'_> {
         node.detail = Detail::Field {
             ty: def
                 .filter(|def| !def.declared.has_error())
-                .map_or(written, |def| def.declared.to_string()),
+                .map_or(TypeRef::Written(written), |def| {
+                    type_ref(self.resolver.symbols, &def.declared)
+                }),
             optional: def.is_some_and(|def| def.optional),
             default: def.is_some_and(|def| def.default),
             section,
             copied_from: None,
-            rules: def.map(|def| rules_list(&def.rules)).unwrap_or_default(),
+            rules: def.map(|def| def.rules.clone()).unwrap_or_default(),
         };
         self.out.nodes.push(node);
         let uses = self.resolver.uses(member.syntax(), &|_| false);
@@ -478,12 +519,12 @@ impl Part<'_> {
             _ => None,
         };
         node.detail = Detail::Field {
-            ty: field.declared.to_string(),
+            ty: type_ref(self.resolver.symbols, &field.declared),
             optional: field.optional,
             default: field.default,
             section: None,
             copied_from: from.clone(),
-            rules: rules_list(&field.rules),
+            rules: field.rules.clone(),
         };
         self.out.nodes.push(node);
         if let Some(from) = from {
@@ -545,94 +586,5 @@ fn fields_base(base: FieldsBase) -> Base {
         FieldsBase::Event => Base::Event,
         FieldsBase::EmailMessage => Base::EmailMessage,
         FieldsBase::Failure => Base::Failure,
-    }
-}
-
-/// A type as the manifest writes it: canonically when it resolved, as
-/// written otherwise.
-fn type_text(ty: Option<&Ty>, written: &str) -> String {
-    match ty {
-        Some(ty) if !ty.has_error() => ty.to_string(),
-        _ => written.to_string(),
-    }
-}
-
-fn signature(sig: Option<&Sig>, written: &jadpo_db::Signature) -> Signature {
-    Signature {
-        params: written
-            .params
-            .iter()
-            .enumerate()
-            .map(|(i, param)| {
-                let resolved = sig.and_then(|sig| sig.params.get(i)).map(|(_, ty)| ty);
-                (param.name.clone(), type_text(resolved, &param.ty))
-            })
-            .collect(),
-        result: match &written.result {
-            Some(result) => type_text(sig.map(|sig| &sig.result), result),
-            None => "Unit".to_string(),
-        },
-        fails: written.fails.clone(),
-    }
-}
-
-/// An exact number as written, without trailing exponent: `0.50`, `-3`.
-fn num_text(num: Num) -> String {
-    let negative = num.mantissa < 0;
-    let digits = num.mantissa.unsigned_abs().to_string();
-    let scale = num.scale as usize;
-    let text = if scale == 0 {
-        digits
-    } else {
-        let padded = format!("{digits:0>width$}", width = scale + 1);
-        let (whole, places) = padded.split_at(padded.len() - scale);
-        format!("{whole}.{places}")
-    };
-    if negative { format!("-{text}") } else { text }
-}
-
-/// A type's or field's rules, by name, in the order area 2 lists them.
-fn rules_list(rules: &Rules) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    if let Some(min) = rules.min {
-        out.push(("min".to_string(), num_text(min)));
-    }
-    if let Some(max) = rules.max {
-        out.push(("max".to_string(), num_text(max)));
-    }
-    if let Some(min) = rules.min_length {
-        out.push(("min_length".to_string(), min.to_string()));
-    }
-    if let Some(max) = rules.max_length {
-        out.push(("max_length".to_string(), max.to_string()));
-    }
-    if let Some(pattern) = &rules.pattern {
-        out.push(("pattern".to_string(), pattern.clone()));
-    }
-    if let Some(format) = rules.format {
-        out.push(("format".to_string(), format.name().to_string()));
-    }
-    if let Some(scale) = rules.scale {
-        out.push(("scale".to_string(), scale.to_string()));
-    }
-    if let Some(version) = rules.version {
-        out.push(("version".to_string(), version.digit().to_string()));
-    }
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn numbers_print_as_written() {
-        let num = |text| num_text(Num::parse(text).expect("number"));
-        assert_eq!(num("0"), "0");
-        assert_eq!(num("12"), "12");
-        assert_eq!(num("-3"), "-3");
-        assert_eq!(num("0.50"), "0.50");
-        assert_eq!(num("-0.05"), "-0.05");
-        assert_eq!(num("1_000.5"), "1000.5");
     }
 }
