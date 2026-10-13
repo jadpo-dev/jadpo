@@ -97,6 +97,8 @@ macro_rules! rules {
 rules! {
     CLI_COMPLETIONS_ARGUMENTS: "cli.completions_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Completions command has invalid arguments";
+    CLI_FMT_ARGUMENTS: "cli.fmt_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Format command has invalid arguments";
     CLI_HELP_ARGUMENTS: "cli.help_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Help command has invalid arguments";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
@@ -107,6 +109,54 @@ rules! {
         "14-tooling.html#command-errors", "Unknown flag";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Version command has invalid arguments";
+    FORMAT_CHANGES_REQUIRED: "format.changes_required", area 14, Error, Agent,
+        "14-tooling.html#formatting", "Source file is not formatted";
+    FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
+        "14-tooling.html#formatting", "Formatted source could not be written";
+    SYNTAX_ATTEMPT_PLACEMENT: "syntax.attempt_placement", area 3, Error, Agent,
+        "03-logic.html#syntax-attempt-placement", "Attempt is used inside an expression";
+    SYNTAX_COLON_REQUIRED: "syntax.colon_required", area 3, Error, Agent,
+        "03-logic.html#syntax-colon-required", "Member has no colon before its value";
+    SYNTAX_CONDITION_BRACKETS: "syntax.condition_brackets", area 3, Error, Agent,
+        "03-logic.html#syntax-condition-brackets", "Condition is not in brackets";
+    SYNTAX_EXPECTED_DECLARATION: "syntax.expected_declaration", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#syntax-expected-declaration", "Expected a declaration";
+    SYNTAX_EXPECTED_EXPRESSION: "syntax.expected_expression", area 3, Error, Agent,
+        "03-logic.html#syntax-expected-expression", "Expected a value";
+    SYNTAX_EXPECTED_NAME: "syntax.expected_name", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#syntax-expected-name", "Expected a name";
+    SYNTAX_EXPECTED_STATEMENT: "syntax.expected_statement", area 3, Error, Agent,
+        "03-logic.html#syntax-expected-statement", "Expected a statement";
+    SYNTAX_FAILS_AFTER_RESULT: "syntax.fails_after_result", area 4, Error, Agent,
+        "04-failures.html#syntax-fails-after-result", "Fails list comes after the result type";
+    SYNTAX_INVALID_ESCAPE: "syntax.invalid_escape", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#syntax-invalid-escape", "Unknown escape in a string";
+    SYNTAX_MATCH_ARROW: "syntax.match_arrow", area 3, Error, Agent,
+        "03-logic.html#syntax-match-arrow", "Match arm uses `=>`";
+    SYNTAX_MATCH_PATTERN: "syntax.match_pattern", area 3, Error, Agent,
+        "03-logic.html#syntax-match-pattern", "Expected a match pattern";
+    SYNTAX_NAMED_ARGUMENT_DUPLICATE: "syntax.named_argument_duplicate", area 3, Error, Agent,
+        "03-logic.html#syntax-named-argument-duplicate", "Named argument is given twice";
+    SYNTAX_POSITIONAL_AFTER_NAMED: "syntax.positional_after_named", area 3, Error, Agent,
+        "03-logic.html#syntax-positional-after-named", "Positional argument follows a named one";
+    SYNTAX_TYPE_BLOCK_REQUIRED: "syntax.type_block_required", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-type-block-required", "Type has no block";
+    SYNTAX_TYPE_PARENT_REQUIRED: "syntax.type_parent_required", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-type-parent-required", "Type has no base";
+    SYNTAX_UNEXPECTED_CHARACTER: "syntax.unexpected_character", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#syntax-unexpected-character", "Character is not part of Jadpo";
+    SYNTAX_UNEXPECTED_TOKEN: "syntax.unexpected_token", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#syntax-unexpected-token", "Something else was expected here";
+    SYNTAX_UNSUPPORTED_THROW: "syntax.unsupported_throw", area 3, Error, Agent,
+        "03-logic.html#syntax-unsupported-throw", "Jadpo has no `throw`";
+    SYNTAX_UNTERMINATED_STRING: "syntax.unterminated_string", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#syntax-unterminated-string", "String is not closed";
+    SYNTAX_VARIABLE_TYPE_REQUIRED: "syntax.variable_type_required", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-variable-type-required", "Variable has no type";
+    TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
+        "14-tooling.html#the-jadpo-command", "Project could not be found";
+    TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
+        "14-tooling.html#the-jadpo-command", "Jadpo source file could not be read";
 }
 
 /// Looks a rule up by id, for tools that read ids back from JSON.

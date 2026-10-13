@@ -1,0 +1,442 @@
+//! The event parser (rust-analyzer's design): grammar functions look at
+//! significant tokens only and record start, finish and token events; the
+//! sink then builds the tree with every whitespace and comment in place.
+//!
+//! The parser never panics and always terminates: every loop in the grammar
+//! either consumes a token or stops, and a parser that looks at the same
+//! token too many times without moving sees the end of the input instead.
+
+use std::cell::Cell;
+
+use jadpo_diag::Rule;
+
+use crate::SyntaxKind::{self, *};
+use crate::error::{SyntaxError, TextEdit};
+use crate::lexer::LexToken;
+
+/// The significant tokens the grammar sees, with where each one is.
+#[derive(Debug)]
+pub(crate) struct Input {
+    pub(crate) kinds: Vec<SyntaxKind>,
+    pub(crate) starts: Vec<u32>,
+    pub(crate) ends: Vec<u32>,
+    /// Whether a line break comes between this token and the one before.
+    pub(crate) newline_before: Vec<bool>,
+}
+
+impl Input {
+    pub(crate) fn new(text: &str, tokens: &[LexToken]) -> Input {
+        let mut input = Input {
+            kinds: Vec::new(),
+            starts: Vec::new(),
+            ends: Vec::new(),
+            newline_before: Vec::new(),
+        };
+        let mut offset = 0u32;
+        let mut newline = true;
+        for token in tokens {
+            let start = offset;
+            offset += token.len;
+            if token.kind.is_trivia() {
+                if token.kind == WHITESPACE
+                    && text
+                        .get(start as usize..offset as usize)
+                        .is_some_and(|piece| piece.contains('\n'))
+                {
+                    newline = true;
+                }
+                continue;
+            }
+            input.kinds.push(token.kind);
+            input.starts.push(start);
+            input.ends.push(offset);
+            input.newline_before.push(newline);
+            newline = false;
+        }
+        input
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Event {
+    Start {
+        kind: SyntaxKind,
+        forward_parent: Option<u32>,
+    },
+    Finish,
+    /// The next significant token, possibly with its kind remapped (a
+    /// contextual keyword, or a keyword used as a field name).
+    Token {
+        kind: SyntaxKind,
+    },
+    Tombstone,
+}
+
+/// How long the parser may look at one token before it is treated as stuck.
+const STEP_LIMIT: u32 = 4096;
+
+/// How deeply brackets and blocks may nest before the parser stops
+/// descending, so hostile input cannot exhaust the stack.
+const MAX_DEPTH: u32 = 96;
+
+pub(crate) struct Parser<'a> {
+    input: &'a Input,
+    text: &'a str,
+    pos: usize,
+    pub(crate) events: Vec<Event>,
+    pub(crate) errors: Vec<SyntaxError>,
+    steps: Cell<u32>,
+    /// Inside `( )`, `[ ]` and `< >` line breaks never end anything.
+    newlines_ignored: bool,
+    /// Whether `Name { ... }` may follow an expression here.
+    pub(crate) records_allowed: bool,
+    pub(crate) snippet: bool,
+    depth: u32,
+    too_deep: bool,
+}
+
+impl std::fmt::Debug for Parser<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Parser").field("pos", &self.pos).finish()
+    }
+}
+
+impl<'a> Parser<'a> {
+    pub(crate) fn new(input: &'a Input, text: &'a str, snippet: bool) -> Parser<'a> {
+        Parser {
+            input,
+            text,
+            pos: 0,
+            events: Vec::new(),
+            errors: Vec::new(),
+            steps: Cell::new(0),
+            newlines_ignored: false,
+            records_allowed: true,
+            snippet,
+            depth: 0,
+            too_deep: false,
+        }
+    }
+
+    fn stuck(&self) -> bool {
+        self.steps.get() > STEP_LIMIT
+    }
+
+    /// The kind of the token `n` ahead, or `EOF`.
+    pub(crate) fn nth(&self, n: usize) -> SyntaxKind {
+        let steps = self.steps.get();
+        self.steps.set(steps.saturating_add(1));
+        if self.stuck() {
+            return EOF;
+        }
+        self.input.kinds.get(self.pos + n).copied().unwrap_or(EOF)
+    }
+
+    pub(crate) fn current(&self) -> SyntaxKind {
+        self.nth(0)
+    }
+
+    pub(crate) fn at(&self, kind: SyntaxKind) -> bool {
+        self.nth(0) == kind
+    }
+
+    pub(crate) fn at_eof(&self) -> bool {
+        self.at(EOF)
+    }
+
+    /// The text of the token `n` ahead.
+    pub(crate) fn nth_text(&self, n: usize) -> &'a str {
+        let i = self.pos + n;
+        match (self.input.starts.get(i), self.input.ends.get(i)) {
+            (Some(start), Some(end)) => self.text.get(*start as usize..*end as usize).unwrap_or(""),
+            _ => "",
+        }
+    }
+
+    pub(crate) fn current_text(&self) -> &'a str {
+        self.nth_text(0)
+    }
+
+    /// An identifier with exactly this text, `n` tokens ahead.
+    pub(crate) fn nth_word(&self, n: usize, word: &str) -> bool {
+        self.nth(n) == IDENT && self.nth_text(n) == word
+    }
+
+    pub(crate) fn at_word(&self, word: &str) -> bool {
+        self.nth_word(0, word)
+    }
+
+    /// Whether a line break comes before the token `n` ahead. The end of
+    /// the input counts as a new line.
+    pub(crate) fn nth_on_new_line(&self, n: usize) -> bool {
+        self.input
+            .newline_before
+            .get(self.pos + n)
+            .copied()
+            .unwrap_or(true)
+    }
+
+    pub(crate) fn on_new_line(&self) -> bool {
+        self.nth_on_new_line(0)
+    }
+
+    /// Whether line breaks end things here: they do except inside brackets.
+    pub(crate) fn line_break_ends(&self) -> bool {
+        !self.newlines_ignored && self.on_new_line()
+    }
+
+    /// Whether the token `n` ahead starts exactly where the one before it
+    /// ends, with nothing between.
+    pub(crate) fn nth_adjacent(&self, n: usize) -> bool {
+        let i = self.pos + n;
+        match (
+            i.checked_sub(1).and_then(|p| self.input.ends.get(p)),
+            self.input.starts.get(i),
+        ) {
+            (Some(end), Some(start)) => end == start,
+            _ => false,
+        }
+    }
+
+    /// The byte range of the token `n` ahead; at the end, an empty range
+    /// after the last token.
+    pub(crate) fn nth_range(&self, n: usize) -> (u32, u32) {
+        let i = self.pos + n;
+        match (self.input.starts.get(i), self.input.ends.get(i)) {
+            (Some(start), Some(end)) => (*start, *end),
+            _ => {
+                let end = self.input.ends.last().copied().unwrap_or(0);
+                (end, end)
+            }
+        }
+    }
+
+    pub(crate) fn range(&self) -> (u32, u32) {
+        self.nth_range(0)
+    }
+
+    /// The end of the last consumed token.
+    pub(crate) fn prev_end(&self) -> u32 {
+        self.pos
+            .checked_sub(1)
+            .and_then(|i| self.input.ends.get(i))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn text(&self) -> &'a str {
+        self.text
+    }
+
+    /// How many significant tokens have been consumed.
+    pub(crate) fn position(&self) -> usize {
+        self.pos
+    }
+
+    /// The range of the last consumed token: where to point when something
+    /// is missing at the end of a line.
+    pub(crate) fn nth_range_before(&self) -> (u32, u32) {
+        match self.pos.checked_sub(1) {
+            Some(i) => (
+                self.input.starts.get(i).copied().unwrap_or(0),
+                self.input.ends.get(i).copied().unwrap_or(0),
+            ),
+            None => (0, 0),
+        }
+    }
+
+    /// Goes one level deeper into brackets or blocks; false (once reported)
+    /// when the input nests too deeply to follow.
+    pub(crate) fn enter(&mut self) -> bool {
+        if self.depth >= MAX_DEPTH {
+            if !self.too_deep {
+                self.too_deep = true;
+                let (start, end) = self.range();
+                self.push_error(
+                    SyntaxError::new(
+                        &jadpo_diag::rule::SYNTAX_UNEXPECTED_TOKEN,
+                        "This is nested too deeply to read",
+                        start,
+                        end,
+                    )
+                    .label("too deep")
+                    .reason(format!(
+                        "Jadpo reads brackets and blocks nested up to {MAX_DEPTH} levels deep."
+                    ))
+                    .next("Move the inner part into a function or a variable of its own"),
+                );
+            }
+            return false;
+        }
+        self.depth += 1;
+        true
+    }
+
+    pub(crate) fn leave(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
+    }
+
+    pub(crate) fn start(&mut self) -> Marker {
+        let pos = self.events.len() as u32;
+        self.events.push(Event::Tombstone);
+        Marker { pos }
+    }
+
+    /// Consumes the current token, whatever it is.
+    pub(crate) fn bump_any(&mut self) {
+        let kind = self.current();
+        if kind == EOF {
+            return;
+        }
+        self.do_bump(kind);
+    }
+
+    /// Consumes the current token as `kind`.
+    pub(crate) fn bump_remap(&mut self, kind: SyntaxKind) {
+        if self.current() == EOF {
+            return;
+        }
+        self.do_bump(kind);
+    }
+
+    pub(crate) fn bump(&mut self, kind: SyntaxKind) {
+        debug_assert_eq!(self.current(), kind);
+        self.bump_any();
+    }
+
+    fn do_bump(&mut self, kind: SyntaxKind) {
+        self.pos += 1;
+        self.steps.set(0);
+        self.events.push(Event::Token { kind });
+    }
+
+    pub(crate) fn eat(&mut self, kind: SyntaxKind) -> bool {
+        if self.at(kind) {
+            self.bump_any();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Runs `f` with line breaks ignored (inside brackets) or significant
+    /// (inside braces), restoring the setting afterwards.
+    pub(crate) fn with_newlines<T>(
+        &mut self,
+        ignored: bool,
+        f: impl FnOnce(&mut Parser<'a>) -> T,
+    ) -> T {
+        let saved = self.newlines_ignored;
+        self.newlines_ignored = ignored;
+        let out = f(self);
+        self.newlines_ignored = saved;
+        out
+    }
+
+    pub(crate) fn with_records<T>(
+        &mut self,
+        allowed: bool,
+        f: impl FnOnce(&mut Parser<'a>) -> T,
+    ) -> T {
+        let saved = self.records_allowed;
+        self.records_allowed = allowed;
+        let out = f(self);
+        self.records_allowed = saved;
+        out
+    }
+
+    /// Records an error, unless one already starts at the same place: one
+    /// mistake gives one error.
+    pub(crate) fn push_error(&mut self, error: SyntaxError) {
+        if self.errors.iter().any(|e| e.start == error.start) {
+            return;
+        }
+        self.errors.push(error);
+    }
+
+    /// An error at the current token.
+    pub(crate) fn error_here(
+        &mut self,
+        rule: &'static Rule,
+        message: impl Into<String>,
+    ) -> SyntaxError {
+        let (start, end) = self.range();
+        SyntaxError::new(rule, message, start, end)
+    }
+
+    /// A short description of the current token for messages: `` `->` ``,
+    /// `the end of the line`, `the end of the file`.
+    pub(crate) fn found(&self) -> String {
+        describe(self.current(), self.current_text(), self.on_new_line())
+    }
+
+    /// Wraps the current token in an error node.
+    pub(crate) fn bump_error(&mut self) {
+        let m = self.start();
+        self.bump_any();
+        m.complete(self, ERROR);
+    }
+
+    /// An insertion right after the last consumed token.
+    pub(crate) fn insert_after_prev(&self, text: impl Into<String>) -> TextEdit {
+        TextEdit::insert(self.prev_end(), text)
+    }
+}
+
+/// How a token reads in a message.
+pub(crate) fn describe(kind: SyntaxKind, text: &str, new_line: bool) -> String {
+    match kind {
+        EOF => "the end of the file".to_string(),
+        _ if new_line && kind != R_BRACE => format!("`{text}` on the next line"),
+        _ => format!("`{text}`"),
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Marker {
+    pos: u32,
+}
+
+impl Marker {
+    pub(crate) fn complete(self, p: &mut Parser<'_>, kind: SyntaxKind) -> CompletedMarker {
+        if let Some(event) = p.events.get_mut(self.pos as usize) {
+            *event = Event::Start {
+                kind,
+                forward_parent: None,
+            };
+        }
+        p.events.push(Event::Finish);
+        CompletedMarker {
+            pos: self.pos,
+            kind,
+        }
+    }
+
+    pub(crate) fn abandon(self, p: &mut Parser<'_>) {
+        if self.pos as usize == p.events.len() - 1 {
+            p.events.pop();
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CompletedMarker {
+    pos: u32,
+    kind: SyntaxKind,
+}
+
+impl CompletedMarker {
+    pub(crate) fn kind(&self) -> SyntaxKind {
+        self.kind
+    }
+
+    /// A new node that will contain this one: `a` becomes the left side of
+    /// `a + b`.
+    pub(crate) fn precede(self, p: &mut Parser<'_>) -> Marker {
+        let new = p.start();
+        if let Some(Event::Start { forward_parent, .. }) = p.events.get_mut(self.pos as usize) {
+            *forward_parent = Some(new.pos - self.pos);
+        }
+        new
+    }
+}

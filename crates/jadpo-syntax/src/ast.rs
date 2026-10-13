@@ -1,0 +1,80 @@
+//! The typed AST: one type per grammar node, generated from `jadpo.ungram`
+//! into `generated/nodes.rs`, over the lossless rowan tree.
+
+use std::marker::PhantomData;
+
+use crate::{SyntaxKind, SyntaxNode, SyntaxNodeChildren, SyntaxToken};
+
+pub use crate::generated::nodes::*;
+
+/// A typed view of a syntax node.
+pub trait AstNode {
+    fn can_cast(kind: SyntaxKind) -> bool
+    where
+        Self: Sized;
+
+    fn cast(syntax: SyntaxNode) -> Option<Self>
+    where
+        Self: Sized;
+
+    fn syntax(&self) -> &SyntaxNode;
+}
+
+/// The children of a node that cast to `N`.
+#[derive(Debug, Clone)]
+pub struct AstChildren<N> {
+    inner: SyntaxNodeChildren,
+    marker: PhantomData<N>,
+}
+
+impl<N> AstChildren<N> {
+    fn new(parent: &SyntaxNode) -> AstChildren<N> {
+        AstChildren {
+            inner: parent.children(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<N: AstNode> Iterator for AstChildren<N> {
+    type Item = N;
+
+    fn next(&mut self) -> Option<N> {
+        self.inner.find_map(N::cast)
+    }
+}
+
+pub(crate) mod support {
+    use super::{AstChildren, AstNode};
+    use crate::{SyntaxKind, SyntaxNode, SyntaxToken};
+
+    pub(crate) fn child<N: AstNode>(parent: &SyntaxNode) -> Option<N> {
+        parent.children().find_map(N::cast)
+    }
+
+    pub(crate) fn children<N: AstNode>(parent: &SyntaxNode) -> AstChildren<N> {
+        AstChildren::new(parent)
+    }
+
+    pub(crate) fn token(parent: &SyntaxNode, kind: SyntaxKind) -> Option<SyntaxToken> {
+        parent
+            .children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .find(|token| token.kind() == kind)
+    }
+
+    pub(crate) fn token_in(parent: &SyntaxNode, kinds: &[SyntaxKind]) -> Option<SyntaxToken> {
+        parent
+            .children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .find(|token| kinds.contains(&token.kind()))
+    }
+}
+/// Documentation comments (`///`) written directly above a node, in order.
+pub fn doc_comments(node: &SyntaxNode) -> Vec<SyntaxToken> {
+    node.children_with_tokens()
+        .filter_map(|element| element.into_token())
+        .take_while(|token| token.kind().is_trivia())
+        .filter(|token| token.kind() == SyntaxKind::DOC_COMMENT)
+        .collect()
+}

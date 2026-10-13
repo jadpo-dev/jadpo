@@ -11,6 +11,10 @@ publish = false
 [workspace.dependencies]
 jadpo-diag = { path = "crates/jadpo-diag" }
 jadpo-term = { path = "crates/jadpo-term" }
+jadpo-syntax = { path = "crates/jadpo-syntax" }
+jadpo-fmt = { path = "crates/jadpo-fmt" }
+rowan = "=0.16.1"
+ungrammar = "=1.16.1"
 serde_json = "1"
 
 [workspace.lints.rust]

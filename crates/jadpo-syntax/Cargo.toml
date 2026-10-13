@@ -1,0 +1,17 @@
+[package]
+name = "jadpo-syntax"
+description = "Lexer, parser, lossless syntax tree and typed AST for Jadpo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+jadpo-diag.workspace = true
+rowan.workspace = true
+
+[dev-dependencies]
+ungrammar.workspace = true
+
+[lints]
+workspace = true
