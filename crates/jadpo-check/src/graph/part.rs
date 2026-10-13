@@ -108,11 +108,10 @@ impl Part<'_> {
         node
     }
 
+    /// Edges from `from`; one back to itself is recursion, and kept.
     fn edges(&mut self, from: &Key, kind: EdgeKind, to: BTreeSet<Key>) {
         for to in to {
-            if &to != from {
-                self.out.edges.push((from.clone(), kind, to));
-            }
+            self.out.edges.push((from.clone(), kind, to));
         }
     }
 

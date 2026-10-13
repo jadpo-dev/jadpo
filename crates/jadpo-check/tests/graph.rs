@@ -289,6 +289,23 @@ fn an_edit_changes_only_the_digests_of_what_it_touches() {
 /// Files read in any order give the same bytes (they are always listed in
 /// path order, as `jadpo_db::load` lists them).
 #[test]
+fn a_function_that_calls_itself_keeps_the_edge() {
+    let files = with(
+        &fixture(),
+        "domains/notes/libraries/counting.jadpo",
+        "library counting {\n    function down(body: Body) -> Body {\n        if (body == Body(\"x\")) {\n            return body\n        }\n        return down(Body(\"x\"))\n    }\n}\n",
+    );
+    let (graph, _) = build(&files);
+    let down = graph
+        .find(&Key::from_text("function counting.down"))
+        .expect("function");
+    assert_eq!(
+        graph.outgoing(down, EdgeKind::Calls).collect::<Vec<_>>(),
+        [down]
+    );
+}
+
+#[test]
 fn the_manifest_is_the_same_bytes_in_any_file_order() {
     let files = fixture();
     let (graph, errors) = build(&files);

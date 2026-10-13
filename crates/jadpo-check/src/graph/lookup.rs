@@ -151,6 +151,25 @@ impl Lookup<'_> {
                     );
                 }
                 TYPE_DECL | ENTITY_DECL => break node,
+                // A field given while building a value: `Note { body: ... }`.
+                RECORD_EXPR => {
+                    let record = ast::RecordExpr::cast(node)?;
+                    let (first, rest) = dotted(&record.expr()?)?;
+                    let names: Vec<String> = std::iter::once(&first)
+                        .chain(rest.iter())
+                        .filter_map(tree::name_ref_text)
+                        .collect();
+                    path.reverse();
+                    let [host] = names.as_slice() else {
+                        return None;
+                    };
+                    let field = path.first()?;
+                    return self
+                        .resolver
+                        .table
+                        .field(host, std::slice::from_ref(field))
+                        .map(|_| Found::Node(field_key(host, std::slice::from_ref(field))));
+                }
                 MEMBER_LIST => {}
                 _ => return None,
             }

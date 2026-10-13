@@ -117,6 +117,8 @@ fn fields_and_variants() {
     let shade_of = "domains/notes/actions/shade_of.jadpo";
     assert_eq!(node(shade_of, "plain", 0), "variant Shade.plain");
     assert_eq!(node(shade_of, "pinned", 0), "field Note.pinned");
+    // A field given while building a value.
+    assert_eq!(node(SAVE, "pinned: false", 0), "field Note.pinned");
 }
 
 #[test]

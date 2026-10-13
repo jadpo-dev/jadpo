@@ -295,6 +295,21 @@ fn facts(graph: &Graph, id: NodeId) -> Vec<String> {
             out.push(format!("used by {}", named(graph, &users)));
         }
     }
+    if node.kind == Kind::Domain {
+        let held = graph
+            .nodes()
+            .iter()
+            .filter(|other| {
+                other.domain == node.domain
+                    && other.parent.is_none()
+                    && !matches!(other.kind, Kind::Domain | Kind::File)
+            })
+            .count();
+        out.push(match held {
+            1 => "holds 1 declaration".to_string(),
+            n => format!("holds {n} declarations"),
+        });
+    }
     if node.kind == Kind::Library {
         let functions: Vec<NodeId> = graph.children(id).collect();
         if !functions.is_empty() {
