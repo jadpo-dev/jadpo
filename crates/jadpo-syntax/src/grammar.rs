@@ -229,6 +229,10 @@ pub(crate) fn ends_block(p: &Parser<'_>) -> bool {
     if !p.on_new_line() || !at_decl(p) {
         return false;
     }
+    // `type: Name` is a member that took a reserved word, not a declaration.
+    if p.current().is_keyword() && p.nth(1) == COLON {
+        return false;
+    }
     let n = usize::from(p.at(PUBLIC_KW));
     p.nth(n) != IDENT || p.at_column_zero()
 }
@@ -614,8 +618,19 @@ fn ret_type(p: &mut Parser<'_>) {
 
 /// A declared name. Reserved words are reported and kept, so the rest
 /// still parses.
+/// Declaration words the lexer reads as names, because a setting may use
+/// them as its key (`package: Stripe.v2024_06_20`, `test: "..."`): they
+/// are reserved wherever something is named (area 1, question 7).
+pub const RESERVED_NAMES: &[&str] = &["package", "provide", "resource", "seed", "test"];
+
 fn name(p: &mut Parser<'_>, what: &str) {
     match p.current() {
+        IDENT if RESERVED_NAMES.contains(&p.current_text()) => {
+            reserved_word(p);
+            let m = p.start();
+            p.bump(IDENT);
+            m.complete(p, NAME);
+        }
         IDENT => {
             let m = p.start();
             p.bump(IDENT);
@@ -917,7 +932,7 @@ fn member_key_len(p: &Parser<'_>) -> Option<usize> {
 fn member_item(p: &mut Parser<'_>, context: Members) {
     match p.current() {
         DOT3 => elision(p),
-        _ if at_decl(p) => decl(p),
+        _ if at_decl(p) && !(p.current().is_keyword() && p.nth(1) == COLON) => decl(p),
         _ if at_route_entry(p) => route_entry(p),
         IDENT => {
             if member_key_len(p).is_some() {

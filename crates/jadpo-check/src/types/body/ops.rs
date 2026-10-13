@@ -451,7 +451,11 @@ impl Body<'_> {
                 let reason = if literal {
                     format!(
                         "A literal takes the type on the other side of `{op}`, and {} can't be one; write it the way that type's values are written.",
-                        if matches!(a, Operand::Literal(_)) { &sa } else { &sb }
+                        if matches!(a, Operand::Literal(_)) {
+                            &sa
+                        } else {
+                            &sb
+                        }
                     )
                 } else {
                     format!(

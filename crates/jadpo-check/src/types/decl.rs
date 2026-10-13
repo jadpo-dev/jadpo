@@ -436,6 +436,20 @@ impl Decls<'_> {
             };
             match line {
                 Line::Field { name, ty, .. } => {
+                    if jadpo_syntax::RESERVED_NAMES.contains(&name.as_str())
+                        && let Some(key) = member.member_key()
+                    {
+                        let span = self.span(key.syntax());
+                        self.out.push(
+                            Diagnostic::new(
+                                &rule::SYNTAX_EXPECTED_NAME,
+                                format!("`{name}` is a reserved word"),
+                            )
+                            .at(span, "can't be a name")
+                            .reason("Control-flow and declaration words are reserved, so they can't name a declaration, field, parameter or variable.")
+                            .next(format!("Choose another name than `{name}`")),
+                        );
+                    }
                     let Some(value) = member.value() else {
                         continue;
                     };

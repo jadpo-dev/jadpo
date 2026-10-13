@@ -155,6 +155,26 @@ Every name has one spelling, decided by what kind of thing it names.
 Identifiers are ASCII letters, digits and underscores, and cannot start with a
 digit. The compiler checks the case and suggests the right spelling.
 
+Control-flow and declaration words are reserved (question 7): none of them
+names a declaration, field, parameter, variable or variant, and using one is
+`syntax.expected_name`. They are `action`, `and`, `assert`, `attempt`,
+`else`, `emit`, `entity`, `fails`, `false`, `fixture`, `for`, `function`,
+`if`, `in`, `library`, `match`, `mut`, `none`, `not`, `or`, `package`,
+`propagate`, `provide`, `public`, `query`, `reject`, `resource`, `return`,
+`routes`, `schedule`, `seed`, `subscriber`, `test`, `true`, `type` and
+`var`. A setting the language defines may still use one as its key
+(`package: Stripe.v2024_06_20` in a connection, `test:` in configuration).
+
+These words mean something only where the language expects them, and stay
+usable as names everywhere else: `asc` and `desc` (a query's order), `end`
+(templates), `matches` (the pattern operator), `input` and `value`, and the
+words that open a declaration with no name, `acceptance`, `application`,
+`authentication`, `config`, `flags`, `locales`, `migration`, `policy` and
+`principal`. `include`, `pick`, `omit` and `optional` build a type's fields,
+so they name anything but a field (area 2), and the standard-library and
+generated namespaces (`collection`, `clock`, `config` ...) name no domain
+or library.
+
 ## Comments
 
 > **Changing.** `///` documentation comments were decided on 2026-10-12; see [Decided layout](#decided-layout).
@@ -1395,7 +1415,8 @@ migration workflow (area 5). The layout only reserves their folders.
    fixed section order. Revisit with measured sizes from the order/payment app.
 7. **Reserved words.** *Decided 2026-10-12 (see Decisions):* build the chosen policy:
    control-flow and declaration words are fully reserved, with a short explicit
-   list of words such as `input` and `value` that can be used as names.
+   list of words such as `input` and `value` that can be used as names. Built
+   in chunk 1.9; the exact lists are under [Naming](#naming).
 8. **Documentation comments.** *Decided 2026-10-12 (see Decisions):* add `///` comments that
    attach to the following declaration and flow into generated documentation,
    the library catalogue and OpenAPI descriptions.
