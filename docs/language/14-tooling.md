@@ -1,7 +1,7 @@
 ---
 title: Tooling
 area: 14
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - toolchain.no_sources
@@ -13,7 +13,7 @@ The `jadpo` command, the formatter, the language server, how errors are shown,
 the generated `build/` folder, and the tools agents use to look things up
 before they change code.
 
-> In review. Commands marked *proposed* do not exist yet; each names its open question. Today's behaviour is collapsed beneath each section that changes. Every claim about today was checked by running `jadpo` 3ce094d0 unless it says otherwise.
+> Decided on 2026-10-13. Commands and outputs below apply the decisions from areas 1 to 14.
 
 The rule behind all of it: **the compiler is the only source of truth.** The
 editor, the agent skill and every generated file come from the same check, so
@@ -553,16 +553,16 @@ what other areas carried here and where this page answers it.
    needs it except `config`, which refuses it. *Recommendation:* yes: find the
    project by walking up to `app.jadpo` from the current folder, and accept a
    path on every command, `config` included. Cargo, npm and Go all work this
-   way, and agents stop guessing which form a command takes.
+   way, and agents stop guessing which form a command takes. *Decided 2026-10-13:* yes, as recommended.
 2. **One `--json` switch on every command?** *Recommendation:* yes: replace
    `--diagnostic-format=human|plain|json` with `--json`, plain text when
    piped (as today) and colour otherwise. Every command, `impact` and
-   `migrate` included, then has one machine form, like `gh` and `kubectl`.
+   `migrate` included, then has one machine form, like `gh` and `kubectl`. *Decided 2026-10-13:* yes, as recommended.
 3. **Should `check` write the derived files, removing `artifacts` and
    `watch`?** *Recommendation:* yes. `check` writes `build/` except the
    runnable app, so the catalogues an agent reads are never stale; `build`
    adds `target/`; `dev --no-run` replaces `watch`. That leaves one command
-   per job. Rust's `cargo check` also writes its metadata.
+   per job. Rust's `cargo check` also writes its metadata. *Decided 2026-10-13:* yes, as recommended.
 4. **Replace the twelve `schema` commands with `migrate`?** Area 5 decided
    `migrate new` and `apply`. *Recommendation:* `jadpo migrate new <purpose>`
    writes the migration folder with its SQL for review and keeps
@@ -570,7 +570,7 @@ what other areas carried here and where this page answers it.
    pending ones. Snapshots and diffs go (the latest migration is the
    snapshot), decision files go (decisions live in `changes.jadpo`, checked by
    `jadpo check`), and the index commands go (area 5). This is the Rails and
-   Prisma shape: generate, review, apply.
+   Prisma shape: generate, review, apply. *Decided 2026-10-13:* yes, as recommended.
 5. **How is a field or entity renamed without losing data?** Today
    `jadpo schema rename` must run before any other change. *Recommendation:*
    one `jadpo rename <old> <new>` for any declaration or field, which updates
@@ -578,47 +578,47 @@ what other areas carried here and where this page answers it.
    step; the editor's rename calls it. A hand-edited rename then shows as a
    removal and an addition, which `migrate new` refuses with a pointer to the
    command. Domains keep their own `jadpo domain` commands because they move
-   folders.
+   folders. *Decided 2026-10-13:* yes, as recommended.
 6. **Trim error messages and fix help links?** *Recommendation:* yes:
    relative paths; the two impact lines only when they say something;
    obvious repairs carry their edit; JSON gains line and column and one key
    style; help links open the rule's entry on these pages, which already
    exist and are checked. Rust's and Elm's messages show that a short, exact
-   message with one suggestion is what people and models act on.
+   message with one suggestion is what people and models act on. *Decided 2026-10-13:* yes, as recommended.
 7. **Does `jadpo check` run the tests a change affects?** Area 1 described
    check reporting affected domains "and running their tests".
    *Recommendation:* `check` reports which domains and tests a change reaches
    but runs nothing; `jadpo test --affected` runs exactly those. `check` stays
    fast enough to run after every edit, as with `tsc` versus `vitest
-   --changed`.
+   --changed`. *Decided 2026-10-13:* yes, as recommended.
 8. **Should the formatter write one member per line?** Today it keeps
    `Object { done: Bool pinned: Bool }`. *Recommendation:* yes, and add a
    blank line between declarations, so `fmt --check` enforces the colon and
    one-per-line rules from areas 2 and 3. A short `pick: [Todo.id, Todo.title]`
    list stays on one line; `include`, `pick` and `omit` lines keep the
-   order written (area 2).
+   order written (area 2). *Decided 2026-10-13:* yes, as recommended.
 9. **What does `jadpo new` create?** *Recommendation:* the fixed root from
    area 1 (`app.jadpo`, `config.jadpo`, `domains/`, `database/`, `tests/`),
    one small domain with an action, a route and a test, and no hidden
    folders, so a new project passes `check`, `fmt --check` and `test`. The
-   compiler version moves into `app.jadpo` if it is needed at all.
+   compiler version moves into `app.jadpo` if it is needed at all. *Decided 2026-10-13:* yes, as recommended.
 10. **What form do the catalogues and schema report take?**
     *Recommendation:* Markdown files in `build/catalogue/` and
     `build/report/`, each with a `.json` twin, plus `jadpo impact` for
     questions about one name. Agents already search files well; an MCP
-    server can wrap the same output later without a second source.
+    server can wrap the same output later without a second source. *Decided 2026-10-13:* yes, as recommended.
 11. **Should `check` report what `build` would refuse?** *Recommendation:*
     yes: `toolchain.target_*` errors come from `check`, so an agent learns a
     feature cannot run yet before writing code around it, and "check passes"
     means "it builds".
-
+ *Decided 2026-10-13:* yes, as recommended.
 12. **Who may accept a reviewed change, and what stops an unaccepted
     release?** Area 9 found that nothing blocks a release today.
     *Recommendation:* acceptances are files in one folder that the git host
     protects (GitHub's code owners and branch protection, or the equivalent),
     and CI runs `jadpo check`, which fails without them. Jadpo builds no
     signing or user accounts of its own; review already happens on the git
-    host.
+    host. *Decided 2026-10-13:* yes, as recommended.
 13. **What does an operator use to deal with failed deliveries and schedule
     runs?** Area 12 proposes the states and what an operator can do.
     *Recommendation:* commands first: `jadpo deliveries list`, `retry`,
@@ -626,16 +626,28 @@ what other areas carried here and where this page answers it.
     environment through its configuration, each action logged with who did
     it. Alerts are log events the hosting platform's alerting picks up. A web
     screen can come later on the same operations, as Sidekiq and Temporal
-    offer both.
+    offer both. *Decided 2026-10-13:* yes, as recommended.
 14. **How is a deployable declared and built?** (carried from area 1, where
     no area took it) Area 1 decided that deployables (API, worker,
     back-office) are declarations in one project, each compiled from what it
     reaches, but no area gives their syntax. Which commands build and run
     one, and where is it declared?
+    *Decided 2026-10-13:* declared in `app.jadpo` under `deployables: { }`,
+    each saying what it serves or runs (`serves: [main, webhooks]`,
+    `runs: [Trigger.schedules, Trigger.subscribers]`) and its target
+    (`Target.native` or `Target.wasm`, decision register 2026-10-13); each is
+    compiled from what it reaches; with none declared, one deployable runs
+    everything; `jadpo build <deployable>` builds one and `jadpo dev` runs all
+    in one process.
 15. **Which commands manage integrations?** (carried from area 11) The
     command table above has no `jadpo integration add` or `update`, no
     contract diff and no adapter conformance run. Which of these does the
     toolchain provide?
+    *Decided 2026-10-13:* `jadpo provider add <name>` (the fixed order from
+    area 11), `provider import openapi|smithy <file>`, `provider record
+    <connection> <operation>` and `provider update <name>`, which shows the
+    difference in the operations the app uses; `jadpo packages outdated` and
+    upgrade plans come with the registry.
 16. **Should commands have synonyms?** Raised by Richard (2026-10-13).
     *Decided 2026-10-13:* yes, plain synonyms where people reach for either
     word (`fmt` and `format`, `delivery` and `deliveries`, `provider` and
@@ -646,7 +658,8 @@ what other areas carried here and where this page answers it.
     (2026-10-13). *Decided 2026-10-13:* yes, in two ways. Tab completion for
     zsh, bash and fish (`jadpo completions zsh`) completes commands, flags
     and the project's own names: queries for `jadpo sql`, routes, schedules,
-    test files and test names, connections, fields for `jadpo impact`. And a
+    test files and test names, connections, and every declaration for
+    `jadpo impact`. And a
     command missing a required argument in a terminal opens a searchable
     list (`jadpo sql` alone lists every query); without a terminal it fails
     with the valid values listed, so agents get the choices too.
@@ -667,20 +680,20 @@ what other areas carried here and where this page answers it.
 | Route listing | Carried from area 7: hover shows a route's full path; `jadpo routes` lists every route | 2026-10-12 |
 | Query SQL | Carried from area 6: `jadpo sql <query>` (with `--explain`) and an editor hover show a query's generated SQL; never written into source | 2026-10-12 |
 | Permissions report | Carried from area 9: the build writes `build/report/permissions.md` and a `.json` twin, a matrix of who can do what to every entity and field; changes to it appear in the approval review | 2026-10-12 |
-| Optional project path | | |
-| `--json` | | |
-| `check` writes derived files | | |
-| `migrate` commands | | |
-| Renaming | | |
-| Error messages | | |
-| Affected tests | | |
-| One member per line | | |
-| Scaffold | | |
-| Catalogue form | | |
-| Build-only errors in `check` | | |
-| Sign-off | | |
-| Operator commands | | |
-| Deployables | | |
-| Integration commands | | |
+| Optional project path | Found by walking up to `app.jadpo`; a path accepted on every command | 2026-10-13 |
+| `--json` | One `--json` on every non-interactive command; plain when piped, colour otherwise | 2026-10-13 |
+| `check` writes derived files | `check` writes `build/` except the runnable app; `artifacts` and `watch` go; `dev --no-run` rebuilds only | 2026-10-13 |
+| `migrate` commands | `migrate new <purpose>`, `apply`, `status` replace the twelve `schema` commands | 2026-10-13 |
+| Renaming | `jadpo rename <old> <new>` updates source, callers, file names and the identity registry; the editor's rename calls it; a hand rename of stored data is refused by `migrate new` | 2026-10-13 |
+| Error messages | Relative paths, impact lines only when useful, repairs carry their edit, JSON line and column, help links to these pages | 2026-10-13 |
+| Affected tests | `check` reports affected tests; `jadpo test --affected` runs them | 2026-10-13 |
+| One member per line | Formatter writes one member per line and a blank line between declarations; short lists stay on one line | 2026-10-13 |
+| Scaffold | `jadpo new` creates the fixed root, one small domain and passing tests of each kind; no hidden folders | 2026-10-13 |
+| Catalogue form | Markdown in `build/catalogue/` and `build/report/` with `.json` twins, plus `jadpo impact` | 2026-10-13 |
+| Build-only errors in `check` | `toolchain.target_*` errors come from `check` | 2026-10-13 |
+| Sign-off | Settled by area 7: acceptance files in a host-protected folder; CI's `jadpo check` fails without them | 2026-10-13 |
+| Operator commands | `jadpo deliveries list/retry/dismiss/cancel/resolve` against an environment, each logged with who did it | 2026-10-13 |
+| Deployables | `deployables: { }` in `app.jadpo` with what each serves or runs and its target; compiled from what it reaches | 2026-10-13 |
+| Integration commands | `jadpo provider add/import/record/update`; `packages outdated` later | 2026-10-13 |
 | Command synonyms | Plain synonyms (`fmt`/`format`), nearest-command suggestions, no single-letter aliases (Richard) | 2026-10-13 |
 | Completion and prompts | Tab completion of commands, flags and project names; a missing argument opens a searchable list in a terminal and lists valid values otherwise (Richard) | 2026-10-13 |
