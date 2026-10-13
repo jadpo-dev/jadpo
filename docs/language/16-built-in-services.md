@@ -389,6 +389,16 @@ emit WelcomeMail {
   `mail: { url: config.smtp_url  from: config.mail_sender }` in
   `application { }`. Nothing ties the application to one provider.
 - Tests capture mail instead of sending it, and read it as `mail.sent`.
+- **`jadpo dev` catches every email in a local inbox** (Richard, 2026-10-13).
+  Nothing leaves the machine. A person opens it in the browser from the dev
+  console (area 17): each mail rendered as HTML and as text, in its locale,
+  with its links working (so a magic link signs in locally) and a link to
+  the trace of the request that sent it. An agent uses the same inbox from
+  the command line: `jadpo mail list`, `jadpo mail show <id> --json`,
+  `jadpo mail links <id>` and `jadpo mail open <id> <link>`, so it can follow
+  a sign-up or privacy-request flow end to end; `jadpo mail clear` empties
+  it. Phoenix's dev mailbox and Mailpit offer the browser half; the
+  agent commands and the trace link are new.
 - A provider's own API (hosted templates, bounce webhooks, analytics) is an
   ordinary integration (area 11). The personal-data report lists the mail
   transport as receiving every marked field a mail carries.
@@ -610,3 +620,4 @@ that is an integration, as Laravel Scout's other engines are.
 | Detail by threshold | | |
 | Thresholds in source | | |
 | Loosening thresholds | | |
+| Local inbox in development | `jadpo dev` catches all mail: browser view in the dev console (rendered, locale, working links, trace link) and `jadpo mail list/show/links/open/clear` for agents (Richard) | 2026-10-13 |
