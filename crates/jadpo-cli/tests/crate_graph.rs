@@ -270,16 +270,11 @@ fn runtime_crates_deny_panics() {
             .join(name)
             .join("src/lib.rs");
         let text = std::fs::read_to_string(&lib).unwrap_or_default();
-        let denies = text.lines().any(|line| {
-            line.starts_with("#![cfg_attr(not(test), deny(")
-                && [
-                    "clippy::unwrap_used",
-                    "clippy::expect_used",
-                    "clippy::panic",
-                ]
-                .iter()
-                .all(|lint| line.contains(lint))
-        });
+        // The crate attribute, however rustfmt wraps it.
+        let flat: String = text.split_whitespace().collect();
+        let denies = flat.contains(
+            "#![cfg_attr(not(test),deny(clippy::unwrap_used,clippy::expect_used,clippy::panic))]",
+        );
         if !denies {
             missing.push(name.clone());
         }
