@@ -11,7 +11,7 @@ rules: []
 Jadpo code is written mainly by models and read by people. Two jobs follow
 from that. When something goes wrong, a person or an agent must get from the
 symptom to the `.jadpo` line and the reason without reading the generated
-TypeScript. And when a model hands over a large change, a reviewer must see
+code. And when a model hands over a large change, a reviewer must see
 what it does to the application (who can now do what to which data) before
 reading it line by line. This page covers both: where errors point, how to
 see what a request did and why, and how a change is reviewed.
@@ -26,7 +26,7 @@ refused, it is because the compiler and the runtime recorded it (question 10).
 
 | Capability | Today | Proposed | Where |
 |---|---|---|---|
-| Errors point at `.jadpo` | Generated TypeScript lines, and only with `JADPO_DEBUG_TARGET_STACKS=1` | Always `.jadpo` file and line, in development and production | Runtime; question 1 |
+| Errors point at `.jadpo` | Generated code lines (today's TypeScript target), and only with `JADPO_DEBUG_TARGET_STACKS=1` | Always `.jadpo` file and line, in development and production | Runtime; question 1 |
 | Production incidents | `jadpo incident` names the declaration, only for the exact build | Names the line in that build, then where it is now | `jadpo incident`; question 2 |
 | Breakpoints | None | Not now | Question 3 |
 | Why the language decided something | None | `jadpo why` | Question 4 |
@@ -44,10 +44,11 @@ refused, it is because the compiler and the runtime recorded it (question 10).
 ## Errors point at the `.jadpo` line
 
 Every stack, log event and error response that names a place names a
-`.jadpo` file and line, never the generated TypeScript. This is always on,
-not behind a setting (question 1). The compiler writes a source map beside
-the generated app, and the runtime uses it to rewrite each frame before
-logging, so a fault reads:
+`.jadpo` file and line, never the generated code. This is always on, not
+behind a setting (question 1). The compiler records where every piece of
+generated code came from, and the runtime uses that to rewrite each frame
+before logging, on the native Rust target and on WebAssembly alike (decision
+register, 2026-10-13), so a fault reads:
 
 ```text
 {"event":"operation.failed","classification":"int_overflow",
@@ -59,13 +60,14 @@ logging, so a fault reads:
 ```
 
 Frames inside the runtime's own code show as `runtime: <component>` rather
-than a TypeScript path, so a reader knows the fault is the compiler's, not
+than a generated-code path, so a reader knows the fault is the compiler's, not
 the application's. Domain failures still log no stack, only their `site` and
 path (decided in area 4). Frames carry places and names, never values.
 
-The runtime maps frames itself because Bun does not: it ignores a source map
-attached to the file it runs (see Status). That also means the mapping works
-the same under any host.
+The runtime maps frames itself rather than relying on the host: today's Bun
+target ignored a source map attached to the file it ran (see Status), and
+WebAssembly hosts differ in how much debug information they keep. Mapping in
+the runtime works the same under any host.
 
 ::: today
 
@@ -110,14 +112,13 @@ code, a production event can no longer be explained.
 
 ## Breakpoints and stepping
 
-Stepping through `.jadpo` code in an editor needs the debugger to read the
-compiler's source map. Bun's debugger speaks the WebKit inspector protocol,
-Bun's own documentation calls its VS Code debugging extension unreliable,
-and Bun ignored an attached source map in our probe. The recommendation is
-not to promise this now (question 3): agents cannot use breakpoints, and the
-timeline, `jadpo why` and captured tests below answer the same questions in
-a form both people and agents can read. Revisit after a probe of Bun's
-inspector with the generated map.
+Stepping through `.jadpo` code in an editor needs the debugger to map the
+generated Rust or WebAssembly back to `.jadpo` lines, which Rust's and
+WebAssembly's debug information do not do for a source language they did
+not compile. The recommendation is not to promise this now (question 3):
+agents cannot use breakpoints, and the timeline, `jadpo why` and captured
+tests below answer the same questions in a form both people and agents can
+read. Revisit once the Rust and WebAssembly targets exist.
 
 ## `jadpo why`: why the language decided something
 
@@ -371,7 +372,7 @@ MCP read those same files, so an agent never scrapes text meant for people
 
 ### Status
 
-Each row says how it was checked: run with `jadpo` 3ce094d0 and Bun 1.2.20,
+Each row says how it was checked against today's TypeScript/Bun target, which is being replaced by native Rust and WebAssembly (decision register, 2026-10-13): run with `jadpo` 3ce094d0 and Bun 1.2.20,
 or read from source or generated code (the golden todo, built with
 `jadpo build`).
 
@@ -419,7 +420,7 @@ or read from source or generated code (the golden todo, built with
 | Captured tests: fixtures, `fakes:`, personal fields replaced | 13 | Question 6 |
 | The developer console and MCP server; application graph and overlays; production monitoring | Roadmap E11 | Question 8 |
 | The review web view; interdiff between agent revisions | Roadmap E06 | Question 9 |
-| Breakpoints in `.jadpo` through Bun's inspector | Roadmap | Question 3 |
+| Breakpoints in `.jadpo` on the Rust and WebAssembly targets | Roadmap | Question 3 |
 | Path IDs and per-path query counts | 16 | Questions 11–14 |
 | Path coverage in `jadpo test`; production counts as a test input | 13 | Question 11 |
 | What a replay recording may hold | 15 | Question 13 |
@@ -429,7 +430,7 @@ or read from source or generated code (the golden todo, built with
 1. **Do errors and stacks always point at `.jadpo` lines?** Today only
    TypeScript stacks, behind `JADPO_DEBUG_TARGET_STACKS`. *Recommendation:*
    yes, always: the compiler writes a source map, the runtime maps its own
-   frames before logging (Bun will not), runtime-internal frames show as
+   frames before logging (on every target), runtime-internal frames show as
    `runtime: <component>`, and the flag goes. Rust prints a panic's file and
    line by default; a language whose generated code nobody reads must too.
 2. **How does a production incident map back after the code changed?**
@@ -439,10 +440,10 @@ or read from source or generated code (the golden todo, built with
    it cannot match. This is Sentry's release-plus-source-map model without a
    hosted service.
 3. **Should Jadpo offer breakpoints and stepping in `.jadpo` now?**
-   *Recommendation:* no. Bun ignores attached source maps and calls its VS
-   Code debugger unreliable, and agents cannot use breakpoints. Ship
-   mapped stacks, timelines, `why` and captured tests first; probe Bun's
-   inspector with the generated map later.
+   *Recommendation:* no, not now. Agents cannot use breakpoints, and the
+   Rust and WebAssembly targets do not exist yet. Ship mapped stacks,
+   timelines, `why` and captured tests first; revisit stepping on the new
+   targets.
 4. **Is `jadpo why` one command for every language decision?**
    *Recommendation:* yes: `jadpo why <request|event|delivery id>` and
    `jadpo why <Entity> <id> --as <user>`, covering policy (which grant lists
