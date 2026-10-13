@@ -29,7 +29,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/inventory/actions/reserve_stock.jadpo",
-        "public action reserve_stock(quantity: Quantity) -> Unit {\n    var level: StockLevel = StockLevel.get(quantity)\n}\n",
+        "public action reserve_stock(quantity: Quantity) -> Unit {\n    attempt StockLevel.get(quantity)\n}\n",
     ),
     (
         "domains/inventory/actions/reserve_stock.test.jadpo",
@@ -53,7 +53,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "tests/checkout_reserves_stock.test.jadpo",
-        "test \"checkout reserves stock\" {\n    ordering.checkout(Price(1.00), Quantity(1))\n}\n",
+        "test \"checkout reserves stock\" {\n    attempt ordering.checkout(Price(1.00), Quantity(1))\n}\n",
     ),
     ("database/seeds/local_demo.jadpo", "seed local_demo {}\n"),
 ];
@@ -210,7 +210,7 @@ fn domains_see_only_what_others_make_public() {
     assert_eq!(
         with(&[(
             "domains/ordering/actions/peek.jadpo",
-            "action peek(quantity: Quantity) -> Unit {\n    var level: StockLevel = StockLevel.get(quantity)\n}\n"
+            "action peek(quantity: Quantity) -> Quantity {\n    var level: StockLevel = StockLevel.get(quantity)\n    return level.quantity\n}\n"
         )]),
         [
             "domains/ordering/actions/peek.jadpo visibility.private_cross_domain: `StockLevel` is private to domain `inventory`",

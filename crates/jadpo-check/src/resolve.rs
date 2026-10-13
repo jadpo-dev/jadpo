@@ -51,7 +51,8 @@ struct Resolver<'a> {
     ownership: &'a Ownership,
     table: &'a Symbols,
     names: &'static StdNames,
-    scopes: Vec<Vec<String>>,
+    /// Locals in scope, with where each is declared.
+    scopes: Vec<Vec<(String, Span)>>,
     /// The library whose functions are being resolved: they call each
     /// other bare, as helpers in their own file.
     library: Option<String>,
@@ -228,10 +229,21 @@ impl Resolver<'_> {
                 &to_snake(&text),
                 word,
                 "lower_snake_case",
-                span,
+                span.clone(),
             ));
         } else if self.names.reserved(&text) {
-            self.out.push(reserved(&text, span));
+            self.out.push(reserved(&text, span.clone()));
+        } else if let Some(earlier) = self.declared_at(&text) {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_DUPLICATE_DECLARATION,
+                    format!("`{text}` is already declared"),
+                )
+                .at(span.clone(), "declared again")
+                .also(earlier, "first declared here")
+                .reason("A name in scope can't be declared again, parameters included, so one name means one value wherever it is read.")
+                .next(format!("Give this {word} a name of its own")),
+            );
         } else if self.table.domains.contains(&text) || self.table.library(&text).is_some() {
             let what = if self.table.domains.contains(&text) {
                 "domain"
@@ -243,20 +255,27 @@ impl Resolver<'_> {
                     &rule::SEMANTIC_DUPLICATE_DECLARATION,
                     format!("`{text}` is already a {what}"),
                 )
-                .at(span, format!("named like a {what}"))
+                .at(span.clone(), format!("named like a {what}"))
                 .reason("A variable can't reuse a domain's or library's name, so `name.call(...)` has one meaning.")
                 .next(format!("Rename this {word}")),
             );
         }
         if let Some(scope) = self.scopes.last_mut() {
-            scope.push(text);
+            scope.push((text, span));
         }
     }
 
-    fn is_local(&self, name: &str) -> bool {
+    /// Where a local called `name` in scope is declared.
+    fn declared_at(&self, name: &str) -> Option<Span> {
         self.scopes
             .iter()
-            .any(|scope| scope.iter().any(|local| local == name))
+            .flatten()
+            .find(|(local, _)| local == name)
+            .map(|(_, span)| span.clone())
+    }
+
+    fn is_local(&self, name: &str) -> bool {
+        self.declared_at(name).is_some()
     }
 
     // --- types -----------------------------------------------------------

@@ -135,6 +135,10 @@ pub enum Ty {
     /// An argument written inline as `item -> expression`; only in
     /// standard-library signatures.
     Function(Box<Ty>, Box<Ty>),
+    /// The data a payload variant carries, bound by a `match` arm
+    /// (`PaymentOutcome.paid(paid)`): its fields are the variant's
+    /// (area 3, question 9).
+    Variant(String, String),
 }
 
 impl Ty {
@@ -187,6 +191,7 @@ impl fmt::Display for Ty {
                 write!(f, "{name}<{}>", args.join(", "))
             }
             Ty::Function(from, to) => write!(f, "{from} -> {to}"),
+            Ty::Variant(host, variant) => write!(f, "{host}.{variant}"),
         }
     }
 }

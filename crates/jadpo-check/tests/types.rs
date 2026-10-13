@@ -245,7 +245,7 @@ fn one_mistake_gives_one_error() {
     // from it is `Error` and checks quietly.
     assert_eq!(
         with_names(
-            "function add(a: Pence, b: Missing) -> Pence {\n    var c: Pence = b\n    var d: Pence = b.amount + a\n    return Pence(b.total)\n}\n"
+            "function add(a: Pence, b: Missing) -> Pence {\n    var c: Pence = b\n    var d: Pence = b.amount + a\n    return Pence(b.total + c + d)\n}\n"
         ),
         ["semantic.unknown_name"]
     );
@@ -345,7 +345,7 @@ fn built_in_values_are_built_from_literals_only() {
     );
     assert_eq!(
         with_names(
-            "function raw(name: ProductName) -> ProductName {\n    var text: Text = Text(name)\n    return name\n}\n"
+            "function raw(name: ProductName) -> ProductName {\n    var text: Text = Text(name)\n    return ProductName(text)\n}\n"
         ),
         ["type.constructor_input"]
     );
