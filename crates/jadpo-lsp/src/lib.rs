@@ -45,6 +45,7 @@ pub fn serve(connection: &Connection, cwd: &Path) -> Result<(), String> {
         }
         Ok(())
     };
+    send(server.started())?;
     send(server.flush())?;
     for message in &connection.receiver {
         if let Message::Request(request) = &message

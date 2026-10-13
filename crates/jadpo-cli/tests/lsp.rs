@@ -156,7 +156,10 @@ fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
         json!({
             "processId": null,
             "rootUri": format!("file://{}", root.display()),
-            "capabilities": {"general": {"positionEncodings": ["utf-16"]}},
+            "capabilities": {
+                "general": {"positionEncodings": ["utf-16"]},
+                "workspace": {"didChangeWatchedFiles": {"dynamicRegistration": true}},
+            },
         }),
     );
     let capabilities = &initialized["result"]["capabilities"];
@@ -165,6 +168,16 @@ fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
     assert_eq!(capabilities["positionEncoding"], "utf-16");
     assert_eq!(initialized["result"]["serverInfo"]["name"], "jadpo");
     editor.notify("initialized", json!({}));
+
+    // The server asks the editor to watch the project's files.
+    let watch = editor.wait(|message| message["method"] == "client/registerCapability");
+    let registration = &watch["params"]["registrations"][0];
+    assert_eq!(registration["method"], "workspace/didChangeWatchedFiles");
+    assert_eq!(
+        registration["registerOptions"]["watchers"][0]["globPattern"],
+        "**/*.jadpo"
+    );
+    editor.send(json!({"jsonrpc": "2.0", "id": watch["id"], "result": null}));
 
     // The same problem `jadpo check` reports, in the error shape.
     let broken = uri(&root, "domains/notes/actions/broken.jadpo");
@@ -252,6 +265,27 @@ fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
         uri(&root, "domains/notes/types/body.jadpo")
     );
     assert_eq!(found["result"]["range"]["start"], position(1, 0));
+
+    // A file written behind the editor's back is checked when the watcher
+    // reports it, and forgotten when it is deleted.
+    let extra = "domains/notes/actions/extra.jadpo";
+    std::fs::write(
+        root.join(extra),
+        "action extra(body: Body) -> Body {\n    return nothing(body)\n}\n",
+    )
+    .expect("write");
+    editor.notify(
+        "workspace/didChangeWatchedFiles",
+        json!({"changes": [{"uri": uri(&root, extra), "type": 1}]}),
+    );
+    let problems = editor.diagnostics(&uri(&root, extra));
+    assert_eq!(problems[0]["code"], "semantic.unknown_callee");
+    std::fs::remove_file(root.join(extra)).expect("remove");
+    editor.notify(
+        "workspace/didChangeWatchedFiles",
+        json!({"changes": [{"uri": uri(&root, extra), "type": 3}]}),
+    );
+    assert_eq!(editor.diagnostics(&uri(&root, extra)), Vec::<Value>::new());
 
     let shutdown = editor.request(5, "shutdown", Value::Null);
     assert_eq!(shutdown["result"], Value::Null);

@@ -14,14 +14,16 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidChangeWatchedFiles, DidCloseTextDocument, DidOpenTextDocument,
     Initialized, Notification as _, PublishDiagnostics,
 };
-use lsp_types::request::{GotoDefinition, HoverRequest, Request as _};
+use lsp_types::request::{GotoDefinition, HoverRequest, RegisterCapability, Request as _};
 use lsp_types::{
-    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, FileChangeType, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-    Location, MarkupContent, MarkupKind, OneOf, PositionEncodingKind, PublishDiagnosticsParams,
-    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, Uri,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, FileChangeType, FileSystemWatcher, GlobPattern,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, Location, MarkupContent,
+    MarkupKind, OneOf, PositionEncodingKind, PublishDiagnosticsParams, Registration,
+    RegistrationParams, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncOptions, Uri,
 };
 
 use crate::convert::{self, Encoding};
@@ -38,6 +40,8 @@ pub struct Server {
     open: BTreeSet<String>,
     /// Whether anything changed since diagnostics were last published.
     dirty: bool,
+    /// Whether the editor watches files for the server when asked.
+    can_watch: bool,
 }
 
 impl Server {
@@ -69,6 +73,13 @@ impl Server {
         let mut server = Server::new(loaded, encoding);
         // The first flush publishes what the project already has wrong.
         server.dirty = true;
+        server.can_watch = params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.did_change_watched_files.as_ref())
+            .and_then(|watched| watched.dynamic_registration)
+            .unwrap_or(false);
         (server, capabilities(encoding))
     }
 
@@ -80,7 +91,35 @@ impl Server {
             published: BTreeMap::new(),
             open: BTreeSet::new(),
             dirty: false,
+            can_watch: false,
         }
+    }
+
+    /// What to send once the editor has said it is ready: a request to
+    /// watch the project's `.jadpo` files, so changes made outside the
+    /// editor (a `git checkout`, another tool) are checked too.
+    pub fn started(&self) -> Vec<Message> {
+        if !self.can_watch {
+            return Vec::new();
+        }
+        let watchers = DidChangeWatchedFilesRegistrationOptions {
+            watchers: vec![FileSystemWatcher {
+                glob_pattern: GlobPattern::String("**/*.jadpo".to_string()),
+                kind: None,
+            }],
+        };
+        let registration = Registration {
+            id: "jadpo-files".to_string(),
+            method: DidChangeWatchedFiles::METHOD.to_string(),
+            register_options: serde_json::to_value(watchers).ok(),
+        };
+        vec![Message::Request(Request::new(
+            lsp_server::RequestId::from("jadpo-watch".to_string()),
+            RegisterCapability::METHOD.to_string(),
+            RegistrationParams {
+                registrations: vec![registration],
+            },
+        ))]
     }
 
     pub fn loaded(&self) -> Option<&Loaded> {
