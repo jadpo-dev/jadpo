@@ -5,8 +5,10 @@ status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - effect.*
+  - failure.attempt_infallible
   - failure.attempt_required
   - failure.outcome_*
+  - failure.propagate_placement
   - semantic.missing_return
   - semantic.unreachable_code
   - semantic.unused_result
@@ -262,13 +264,37 @@ A body is a list of statements, one per line, with no semicolons:
 There is no `throw`. Decided (question 4): three more statements may stand
 alone, so a result nobody needs never has to be bound to a name:
 
-```jadpo fragment
+```jadpo check project=archive file=todos.jadpo hidden
+type TodoStatus = Enum {
+    open
+    archived
+}
+
+entity Todo {
+    id: Uuid
+    status: TodoStatus
+}
+
+type TodoNotFound = Failure {
+    kind: FailureKind.not_found
+}
+
+type Archived = Bool {}
+
+function already_archived(todo_id: Todo.id) -> Archived {
+    return false
+}
+
+action notify_owner(todo_id: Todo.id) -> Unit {}
+```
+
+```jadpo check project=archive
 action archive_todo(todo_id: Todo.id) fails TodoNotFound -> Unit {
-    attempt Todo.get(todo_id)         // fails or carries on; the value is not needed
+    attempt Todo.get(todo_id)  // fails or carries on; the value is not needed
     if (already_archived(todo_id)) {
-        return                        // leaves a Unit action early
+        return  // leaves a Unit action early
     }
-    notify_owner(todo_id)             // a Unit action called for its effect
+    notify_owner(todo_id)  // a Unit action called for its effect
 }
 ```
 
@@ -294,11 +320,25 @@ action record_twice(note: Note) -> Unit {
 
 ### Conditions
 
-```jadpo fragment
-if (due_at <= clock.now) {
-    reject DueDateInPast
-} else if (due_at > latest_due_at) {
-    reject DueDateTooFar
+```jadpo check project=due-dates file=types.jadpo hidden
+type DueAt = Instant {}
+
+type DueDateInPast = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type DueDateTooFar = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=due-dates
+action check_due(due_at: DueAt, latest_due_at: DueAt) fails DueDateInPast, DueDateTooFar -> Unit {
+    if (due_at <= clock.now) {
+        reject DueDateInPast
+    } else if (due_at > latest_due_at) {
+        reject DueDateTooFar
+    }
 }
 ```
 
@@ -463,7 +503,35 @@ action follow_up(todo: Todo) -> Unit {
 A `match` on a call's outcome names its success value and each failure
 (area 4):
 
-```jadpo fragment
+```jadpo check project=outcome file=lookup.jadpo hidden
+type LookupCode = Text {}
+
+type LookupResult = Text {}
+
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
+}
+
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
+}
+
+type LookupRejected = Failure {
+    kind: FailureKind.rejected
+}
+
+function lookup(key: LookupCode) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
+}
+```
+
+```jadpo check project=outcome
 function lookup_or_default(key: LookupCode) fails LookupRejected -> LookupResult {
     return match lookup(key) {
         success(value) -> value
@@ -812,11 +880,9 @@ syntax errors today; question 16 decided to keep it that way.
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's actual output. The `failure.*` entries still show the archived
-compiler's error until area 4 is built (roadmap chunk 1.6). Six entries keep
-the archived compiler's example because the decided language has no such
-mistake any more, or the new compiler reports it under another rule, named
-in each note.
+new compiler's actual output. Six entries keep the archived compiler's
+example because the decided language has no such mistake any more, or the
+new compiler reports it under another rule, named in each note.
 
 ### `effect.function_calls_action`
 
@@ -988,27 +1054,62 @@ action save_again(note: Note) -> Note {
 
 ### `failure.attempt_required`
 
-```jadpo project=e-attempt expect=failure.attempt_required
+```jadpo check project=e-attempt expect=failure.attempt_required
 type Note = Text {}
 
-failure Refused {
-    kind: Rejected
-    code: "refused"
+type Refused = Failure {
+    kind: FailureKind.rejected
 }
 
-action child(note: Note)
-    fails Refused
-    -> Note
-{
+action child(note: Note) fails Refused -> Note {
     reject Refused
 }
 
-action parent(note: Note)
-    fails Refused
-    -> Note
-{
+action parent(note: Note) fails Refused -> Note {
     return child(note)
 }
+```
+
+```text output
+error: `child` can fail, and nothing handles it
+ --> main.jadpo:12:12
+   |
+12 |     return child(note)
+   |            ^^^^^^^^^^^ can fail with `Refused`
+  reason: A call that can fail says so where it is made: `attempt` passes its failures on to the caller's `fails` list, and `match` handles each one.
+  next: Start the statement with `attempt`, or `match` on `child(...)` and handle `Refused` (agent)
+  rule: failure.attempt_required
+  help: docs/language/03-logic.html#failure-attempt-required
+
+check failed: 1 error, 1 file
+```
+
+### `failure.attempt_infallible`
+
+```jadpo check project=e-attempt-infallible expect=failure.attempt_infallible
+type Count = Int {}
+
+function plain(n: Count) -> Count {
+    return n
+}
+
+function wrapper(n: Count) -> Count {
+    return attempt plain(n)
+}
+```
+
+```text output
+error: `plain(...)` can't fail, so it takes no `attempt`
+ --> main.jadpo:8:12
+  |
+8 |     return attempt plain(n)
+  |            ^^^^^^^ nothing to pass on
+  reason: `plain(...)` lists no failures after `fails`, so it always gives its result; `attempt` marks only calls that can fail.
+  next: Remove `attempt` (agent)
+  rule: failure.attempt_infallible
+  help: docs/language/03-logic.html#failure-attempt-infallible
+
+check failed: 1 error, 1 file
 ```
 
 The outcome-match examples below share a hidden file declaring
@@ -1016,303 +1117,505 @@ The outcome-match examples below share a hidden file declaring
 
 ### `failure.outcome_missing_arm`
 
-```jadpo project=e-outcome-missing file=lookup.jadpo hidden
+```jadpo check project=e-outcome-missing file=lookup.jadpo hidden
 type LookupKey = Text {}
 
 type LookupResult = Text {}
 
-failure LookupMissing {
-    kind: NotFound
-    code: "lookup_missing"
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
 }
 
-failure LookupRefused {
-    kind: Rejected
-    code: "lookup_refused"
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
 }
 
-function lookup(key: LookupKey)
-    fails LookupMissing, LookupRefused
-    -> LookupResult
-{
-    reject LookupMissing
+function lookup(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
 }
 ```
 
-```jadpo project=e-outcome-missing expect=failure.outcome_missing_arm
+```jadpo check project=e-outcome-missing expect=failure.outcome_missing_arm
 function missing_failure(key: LookupKey) -> LookupResult {
     return match lookup(key) {
-        success(value) => value
-        failure LookupMissing => LookupResult("missing")
+        success(value) -> value
+        LookupMissing -> "missing"
     }
 }
+```
+
+```text output
+error: This `match` doesn't handle `LookupRefused`
+ --> main.jadpo:2:12
+  |
+2 |     return match lookup(key) {
+  |            ^^^^^^^^^^^^^^^^^ failures not handled
+  reason: `lookup(...)` can fail with `LookupMissing` and `LookupRefused`, and a `match` on its outcome has an arm for every one: a value, `reject` or `propagate`.
+  next: Add an arm for `LookupRefused` (agent)
+  rule: failure.outcome_missing_arm
+  help: docs/language/03-logic.html#failure-outcome-missing-arm
+
+check failed: 1 error, 2 files
 ```
 
 ### `failure.outcome_duplicate_arm`
 
-```jadpo project=e-outcome-dup file=lookup.jadpo hidden
+```jadpo check project=e-outcome-dup file=lookup.jadpo hidden
 type LookupKey = Text {}
 
 type LookupResult = Text {}
 
-failure LookupMissing {
-    kind: NotFound
-    code: "lookup_missing"
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
 }
 
-failure LookupRefused {
-    kind: Rejected
-    code: "lookup_refused"
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
 }
 
-function lookup(key: LookupKey)
-    fails LookupMissing, LookupRefused
-    -> LookupResult
-{
-    reject LookupMissing
+function lookup(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
 }
 ```
 
-```jadpo project=e-outcome-dup expect=failure.outcome_duplicate_arm
+```jadpo check project=e-outcome-dup expect=failure.outcome_duplicate_arm
 function duplicate_failure(key: LookupKey) -> LookupResult {
     return match lookup(key) {
-        success(value) => value
-        failure LookupMissing => LookupResult("missing")
-        failure LookupMissing => LookupResult("missing again")
-        failure LookupRefused => LookupResult("refused")
+        success(value) -> value
+        LookupMissing -> "missing"
+        LookupMissing -> "missing again"
+        LookupRefused -> "refused"
     }
 }
+```
+
+```text output
+error: `LookupMissing` is handled twice
+ --> main.jadpo:5:9
+  |
+4 |         LookupMissing -> "missing"
+  |         ------------- first matched here
+5 |         LookupMissing -> "missing again"
+  |         ^^^^^^^^^^^^^ matched again
+  reason: Each failure has one arm; the first takes every `LookupMissing`, so this one never runs.
+  next: Remove this arm, or merge its body into the first (agent)
+  rule: failure.outcome_duplicate_arm
+  help: docs/language/03-logic.html#failure-outcome-duplicate-arm
+
+check failed: 1 error, 2 files
 ```
 
 ### `failure.outcome_unknown_arm`
 
-```jadpo project=e-outcome-unknown file=lookup.jadpo hidden
+```jadpo check project=e-outcome-unknown file=lookup.jadpo hidden
 type LookupKey = Text {}
 
 type LookupResult = Text {}
 
-failure LookupMissing {
-    kind: NotFound
-    code: "lookup_missing"
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
 }
 
-failure LookupRefused {
-    kind: Rejected
-    code: "lookup_refused"
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
 }
 
-function lookup(key: LookupKey)
-    fails LookupMissing, LookupRefused
-    -> LookupResult
-{
-    reject LookupMissing
+function lookup(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
 }
 ```
 
-```jadpo project=e-outcome-unknown expect=failure.outcome_unknown_arm
-failure LookupTimedOut {
-    kind: Rejected
-    code: "lookup_timed_out"
+```jadpo check project=e-outcome-unknown expect=failure.outcome_unknown_arm
+type LookupTimedOut = Failure {
+    kind: FailureKind.rejected
 }
 
 function unknown_failure(key: LookupKey) -> LookupResult {
     return match lookup(key) {
-        success(value) => value
-        failure LookupMissing => LookupResult("missing")
-        failure LookupRefused => LookupResult("refused")
-        failure LookupTimedOut => LookupResult("timed out")
+        success(value) -> value
+        LookupMissing -> "missing"
+        LookupRefused -> "refused"
+        LookupTimedOut -> "timed out"
     }
 }
+```
+
+```text output
+error: `lookup(...)` can't fail with `LookupTimedOut`
+ --> main.jadpo:10:9
+   |
+10 |         LookupTimedOut -> "timed out"
+   |         ^^^^^^^^^^^^^^ never happens here
+  reason: `lookup(...)` fails with `LookupMissing` and `LookupRefused`, so an arm for anything else never runs.
+  next: Remove this arm (agent)
+  rule: failure.outcome_unknown_arm
+  help: docs/language/03-logic.html#failure-outcome-unknown-arm
+
+check failed: 1 error, 2 files
 ```
 
 ### `failure.outcome_wildcard`
 
-```jadpo project=e-outcome-wildcard file=lookup.jadpo hidden
+```jadpo check project=e-outcome-wildcard file=lookup.jadpo hidden
 type LookupKey = Text {}
 
 type LookupResult = Text {}
 
-failure LookupMissing {
-    kind: NotFound
-    code: "lookup_missing"
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
 }
 
-failure LookupRefused {
-    kind: Rejected
-    code: "lookup_refused"
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
 }
 
-function lookup(key: LookupKey)
-    fails LookupMissing, LookupRefused
-    -> LookupResult
-{
-    reject LookupMissing
+function lookup(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
 }
 ```
 
-```jadpo project=e-outcome-wildcard expect=failure.outcome_wildcard
+```jadpo check project=e-outcome-wildcard expect=failure.outcome_wildcard
 function wildcard_failure(key: LookupKey) -> LookupResult {
     return match lookup(key) {
-        success(value) => value
-        failure _ => LookupResult("fallback")
+        success(value) -> value
+        _ -> "fallback"
     }
 }
+```
+
+```text output
+error: `_` can't stand for a call's failures
+ --> main.jadpo:4:9
+  |
+4 |         _ -> "fallback"
+  |         ^ wildcard
+  reason: Every failure a call can give has an arm of its own, so a failure added to the call later is caught at every `match` that has to consider it.
+  next: Replace `_` with arms for `LookupMissing` and `LookupRefused` (agent)
+  rule: failure.outcome_wildcard
+  help: docs/language/03-logic.html#failure-outcome-wildcard
+
+check failed: 1 error, 2 files
 ```
 
 ### `failure.outcome_success_missing`
 
-```jadpo project=e-outcome-no-success file=lookup.jadpo hidden
+```jadpo check project=e-outcome-no-success file=lookup.jadpo hidden
 type LookupKey = Text {}
 
 type LookupResult = Text {}
 
-failure LookupMissing {
-    kind: NotFound
-    code: "lookup_missing"
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
 }
 
-failure LookupRefused {
-    kind: Rejected
-    code: "lookup_refused"
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
 }
 
-function lookup(key: LookupKey)
-    fails LookupMissing, LookupRefused
-    -> LookupResult
-{
-    reject LookupMissing
+function lookup(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
 }
 ```
 
-```jadpo project=e-outcome-no-success expect=failure.outcome_success_missing
+```jadpo check project=e-outcome-no-success expect=failure.outcome_success_missing
 function missing_success(key: LookupKey) -> LookupResult {
     return match lookup(key) {
-        failure LookupMissing => LookupResult("missing")
-        failure LookupRefused => LookupResult("refused")
+        LookupMissing -> "missing"
+        LookupRefused -> "refused"
     }
 }
+```
+
+```text output
+error: This `match` doesn't handle `lookup(...)` succeeding
+ --> main.jadpo:2:12
+  |
+2 |     return match lookup(key) {
+  |            ^^^^^^^^^^^^^^^^^ no `success(...)` arm
+  reason: A `match` on a call's outcome handles its value too, in a `success(name)` arm, as well as each failure.
+  next: Add `success(value) -> ...` as the first arm (agent)
+  rule: failure.outcome_success_missing
+  help: docs/language/03-logic.html#failure-outcome-success-missing
+
+check failed: 1 error, 2 files
 ```
 
 ### `failure.outcome_success_duplicate`
 
-```jadpo project=e-outcome-two-success file=lookup.jadpo hidden
+```jadpo check project=e-outcome-two-success file=lookup.jadpo hidden
 type LookupKey = Text {}
 
 type LookupResult = Text {}
 
-failure LookupMissing {
-    kind: NotFound
-    code: "lookup_missing"
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
 }
 
-failure LookupRefused {
-    kind: Rejected
-    code: "lookup_refused"
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
 }
 
-function lookup(key: LookupKey)
-    fails LookupMissing, LookupRefused
-    -> LookupResult
-{
-    reject LookupMissing
+function lookup(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
 }
 ```
 
-```jadpo project=e-outcome-two-success expect=failure.outcome_success_duplicate
+```jadpo check project=e-outcome-two-success expect=failure.outcome_success_duplicate
 function duplicate_success(key: LookupKey) -> LookupResult {
     return match lookup(key) {
-        success(value) => value
-        success(other) => other
-        failure LookupMissing => LookupResult("missing")
-        failure LookupRefused => LookupResult("refused")
+        success(value) -> value
+        success(other) -> other
+        LookupMissing -> "missing"
+        LookupRefused -> "refused"
     }
 }
+```
+
+```text output
+error: The success arm is written twice
+ --> main.jadpo:4:9
+  |
+3 |         success(value) -> value
+  |         -------------- first matched here
+4 |         success(other) -> other
+  |         ^^^^^^^^^^^^^^ matched again
+  reason: A call succeeds one way, so one `success(...)` arm takes its value; this one would never run.
+  next: Remove this arm, or merge its body into the first (agent)
+  rule: failure.outcome_success_duplicate
+  help: docs/language/03-logic.html#failure-outcome-success-duplicate
+
+check failed: 1 error, 2 files
 ```
 
 ### `failure.outcome_success_value_required`
 
-```jadpo project=e-outcome-success-value file=lookup.jadpo hidden
+```jadpo check project=e-outcome-success-value file=lookup.jadpo hidden
 type LookupKey = Text {}
 
 type LookupResult = Text {}
 
-failure LookupMissing {
-    kind: NotFound
-    code: "lookup_missing"
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
 }
 
-failure LookupRefused {
-    kind: Rejected
-    code: "lookup_refused"
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
 }
 
-function lookup(key: LookupKey)
-    fails LookupMissing, LookupRefused
-    -> LookupResult
-{
-    reject LookupMissing
+function lookup(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
 }
 ```
 
-```jadpo project=e-outcome-success-value expect=failure.outcome_success_value_required
+```jadpo check project=e-outcome-success-value expect=failure.outcome_success_value_required
 function invalid_success(key: LookupKey) -> LookupResult {
     return match lookup(key) {
-        success(value) => propagate
-        failure LookupMissing => LookupResult("missing")
-        failure LookupRefused => LookupResult("refused")
+        success(value) -> propagate
+        LookupMissing -> "missing"
+        LookupRefused -> "refused"
     }
 }
 ```
 
+```text output
+error: The success arm has no failure to pass on
+ --> main.jadpo:3:9
+  |
+3 |         success(value) -> propagate
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ `propagate` on success
+  reason: `propagate` passes a failure arm's failure on to the caller; the success arm has a value, which it gives, or a failure it `reject`s.
+  next: Give the success value, or `reject` a failure (agent)
+  rule: failure.outcome_success_value_required
+  help: docs/language/03-logic.html#failure-outcome-success-value-required
+
+check failed: 1 error, 2 files
+```
+
+### `failure.outcome_pattern_invalid`
+
+A `match` on a call's outcome has no patterns for values:
+
+```jadpo check project=e-outcome-pattern file=lookup.jadpo hidden
+type LookupKey = Text {}
+
+type LookupResult = Text {}
+
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
+}
+
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
+}
+
+function lookup(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
+}
+```
+
+```jadpo check project=e-outcome-pattern expect=failure.outcome_pattern_invalid
+function lookup_label(key: LookupKey) -> LookupResult {
+    return match lookup(key) {
+        success(value) -> value
+        LookupMissing -> "missing"
+        LookupRefused -> "refused"
+        none -> "nothing"
+    }
+}
+```
+
+```text output
+error: `none` can't match a call's outcome
+ --> main.jadpo:6:9
+  |
+6 |         none -> "nothing"
+  |         ^^^^ a pattern for values
+  reason: A `match` on `lookup(...)` has a `success(name)` arm for its value and an arm for each failure it can give; to look at the value's own cases, match on the success value.
+  next: Remove this arm, or match on the success value inside `success(...)` (agent)
+  rule: failure.outcome_pattern_invalid
+  help: docs/language/03-logic.html#failure-outcome-pattern-invalid
+
+check failed: 1 error, 2 files
+```
+
 ### `failure.outcome_infallible`
 
-```jadpo project=e-outcome-infallible expect=failure.outcome_infallible
+```jadpo check project=e-outcome-infallible expect=failure.outcome_infallible
 type LookupKey = Text {}
 
 type LookupResult = Text {}
 
 function plain(key: LookupKey) -> LookupResult {
-    return LookupResult("ok")
+    return "ok"
 }
 
 function needless(key: LookupKey) -> LookupResult {
     return match plain(key) {
-        success(value) => value
+        success(value) -> value
     }
 }
+```
+
+```text output
+error: `plain(...)` can't fail, so it has no outcome to match
+ --> main.jadpo:10:12
+   |
+10 |     return match plain(key) {
+   |            ^^^^^^^^^^^^^^^^ always succeeds
+  reason: `plain(...)` lists no failures after `fails`, so it always gives its result and there is nothing for failure arms to handle.
+  next: Use the call's result directly (agent)
+  rule: failure.outcome_infallible
+  help: docs/language/03-logic.html#failure-outcome-infallible
+
+check failed: 1 error, 1 file
 ```
 
 ### `failure.outcome_subject_required`
 
-```jadpo project=e-outcome-subject expect=failure.outcome_subject_required
+```jadpo check project=e-outcome-subject expect=failure.outcome_subject_required
 type LookupKey = Text {}
 
 function not_a_call(key: LookupKey) -> LookupKey {
     return match key {
-        success(value) => value
+        success(value) -> value
     }
 }
 ```
 
-### `failure.outcome_pattern_invalid`
+```text output
+error: `key` isn't a call, so it has no outcome to match
+ --> main.jadpo:4:12
+  |
+4 |     return match key {
+  |            ^^^^^^^^^ not a call
+  reason: `success(...)` and failure arms match the outcome of a call that can fail; a value is matched by its own cases, such as an enum's variants.
+  next: Match `key`'s cases, or match on the call that can fail (agent)
+  rule: failure.outcome_subject_required
+  help: docs/language/03-logic.html#failure-outcome-subject-required
 
-A value match used as an expression is read as an outcome match, so the
-error names the wrong construct:
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-outcome-pattern expect=failure.outcome_pattern_invalid
-enum TicketStatus {
+### `failure.propagate_placement`
+
+`propagate` passes a failure arm's failure on, so it has no meaning anywhere else:
+
+```jadpo check project=e-propagate expect=failure.propagate_placement
+type Count = Int {}
+
+type TicketStatus = Enum {
     open
     closed
 }
 
-type Rank = Int {}
-
-function rank(status: TicketStatus) -> Rank {
+function priority(status: TicketStatus) -> Count {
     return match status {
-        TicketStatus.open => Rank(1)
-        TicketStatus.closed => Rank(2)
+        TicketStatus.open -> 1
+        TicketStatus.closed -> propagate
     }
 }
+```
+
+```text output
+error: `propagate` has no failure to pass on here
+ --> main.jadpo:11:32
+   |
+11 |         TicketStatus.closed -> propagate
+   |                                ^^^^^^^^^ not in a failure arm
+  reason: `propagate` is an arm of a `match` on a call that can fail: it passes the failure that arm names on to the caller's `fails` list.
+  next: Give a value, `return` or `reject` a failure here instead (agent)
+  rule: failure.propagate_placement
+  help: docs/language/03-logic.html#failure-propagate-placement
+
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.match_arrow`

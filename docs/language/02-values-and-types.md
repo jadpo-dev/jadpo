@@ -195,7 +195,7 @@ or any `Int`-based type for `Quantity`, a decimal literal such as `0.0` (not
 `0`) for a `Decimal`-based type. This is also how you deliberately convert
 between two named types: the value is re-checked against the target's rules.
 
-```jadpo project=convert
+```jadpo check project=convert
 type Pence = Int {
     min: 0
 }
@@ -214,7 +214,10 @@ Arithmetic works on the representation, so `price * quantity` is a plain `Int`
 and has to be turned back into `Pence`. A plain `Int` can never be returned
 where `Pence` is expected.
 
-How a failed runtime check is reported is not designed yet (Review, question 1).
+When the declared ranges don't prove a computed value follows the target's
+rules, building it can fail and is written `attempt Type(value) invalid:
+SomeFailure` (question 1; area 4). Here `price` and `quantity` are never
+below zero and `Pence` has no maximum, so it cannot fail.
 
 ## Signatures use named types
 
@@ -222,7 +225,7 @@ Functions, actions and queries cannot take or return a built-in representation
 type directly. `Text`, `Int`, `Bool`, `Uuid`, the time types and their nullable
 forms all have to be wrapped in a named type that says what they mean.
 
-```jadpo project=signature
+```jadpo check project=signature
 type CustomerNote = Text {
     max_length: 500
 }

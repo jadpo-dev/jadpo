@@ -710,8 +710,18 @@ impl Body<'_> {
                 true
             }
             Stmt::AssertStmt(assert) => {
+                // `assert complete(id) fails TodoNotFound` expects the call
+                // to fail (area 13): it is handled there.
+                let handled = match (assert.expr(), assert.assert_fails()) {
+                    (Some(Expr::CallExpr(call)), Some(_)) => Some(key(call.syntax())),
+                    _ => None,
+                };
+                self.handled.extend(handled);
                 if let Some(expr) = assert.expr() {
                     self.infer(&expr);
+                }
+                if handled.is_some() {
+                    self.handled.pop();
                 }
                 true
             }

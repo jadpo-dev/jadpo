@@ -4,10 +4,15 @@ area: 4
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
+  - failure.code_format
   - failure.context_field_overlap
   - failure.duplicate_code
   - failure.duplicate_context_field
   - failure.duplicate_declaration
+  - failure.invalid_mapping_required
+  - failure.kind_required
+  - failure.kind_runtime_only
+  - failure.mapping_kind
   - failure.missing_context_field
   - failure.mutation_conflict_not_conflict
   - failure.patch_empty_not_invalid_value
@@ -16,6 +21,7 @@ rules:
   - failure.stale_declaration
   - failure.undeclared_propagation
   - failure.unknown_context_field
+  - failure.unknown_mapping
   - syntax.expected_failure_item
   - syntax.fails_after_result
   - syntax.failure_code_required
@@ -45,7 +51,22 @@ error response.
 
 ## Declaring a failure
 
-```jadpo fragment
+```jadpo check project=declaring file=types.jadpo hidden
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+entity Todo {
+    id: Uuid
+}
+
+entity Product {
+    id: Uuid
+}
+```
+
+```jadpo check project=declaring
 /// The todo does not exist.
 type TodoNotFound = Failure {
     kind: FailureKind.not_found
@@ -373,14 +394,29 @@ Decided in area 2: a runtime construction can fail and is written
 construction cannot break the target's rules, it is not fallible, so it takes
 no `attempt` (question 6):
 
-```jadpo fragment
+```jadpo check project=proven file=types.jadpo hidden
+type Pence = Int {
+    min: 0
+}
+
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+type QuantityTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=proven
 function line_total(price: Pence, quantity: Quantity) -> Pence {
-    var total: Pence = Pence(price * quantity)     // both at least 0, Pence has no maximum
+    var total: Pence = Pence(price * quantity)  // both at least 0, Pence has no maximum
     return total
 }
 
 function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
-    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge   // can exceed 1000
+    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge  // can exceed 1000
     return result
 }
 ```
@@ -500,7 +536,35 @@ Decided in area 3: one `match` handles a call's outcome. Every failure the
 call can produce needs an arm, with no `_`; an arm recovers with a value,
 maps with `reject` or passes the failure on with `propagate`.
 
-```jadpo fragment
+```jadpo check project=outcome file=lookup.jadpo hidden
+type LookupCode = Text {}
+
+type LookupResult = Text {}
+
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
+}
+
+type LookupRefused = Failure {
+    kind: FailureKind.rejected
+}
+
+type LookupRejected = Failure {
+    kind: FailureKind.rejected
+}
+
+function lookup(key: LookupCode) fails LookupMissing, LookupRefused -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    if (key == "refused") {
+        reject LookupRefused
+    }
+    return "found"
+}
+```
+
+```jadpo check project=outcome
 function lookup_or_default(key: LookupCode) fails LookupRejected -> LookupResult {
     return match lookup(key) {
         success(value) -> value
@@ -510,7 +574,7 @@ function lookup_or_default(key: LookupCode) fails LookupRejected -> LookupResult
 }
 ```
 
-Today's form and its errors (`failure.outcome_*`) are in area 3.
+Its errors (`failure.outcome_*`) are in area 3.
 
 ## Faults
 
@@ -663,12 +727,12 @@ constant.
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
-
 Every error this area can produce, with an example that triggers it and the
-compiler's actual output. The syntax errors (`syntax.*`) show the new
-compiler's output, from `jadpo fmt --check`; the rest still show the archived
-compiler's until their chunk is built.
+new compiler's actual output. Eight entries keep the archived compiler's
+example: four because the decided language has no such mistake any more, or
+the new compiler reports it under another rule, named in each note; and the
+four that check a data operation's mapping, which are built with data
+operations (area 6).
 
 ### `syntax.fails_after_result`
 
@@ -704,9 +768,31 @@ error: `fails` goes before `->`
 check failed: 1 error, 1 file
 ```
 
+### `failure.kind_required`
+
+```jadpo check project=e-kind expect=failure.kind_required
+type Missing = Failure {
+    message: "Not found."
+}
+```
+
+```text output
+error: `Missing` has no `kind`
+ --> main.jadpo:1:6
+  |
+1 | type Missing = Failure {
+  |      ^^^^^^^ a failure without a kind
+  reason: A failure's kind decides how it reaches a client, its HTTP status included, and how background work treats it, so every failure names one.
+  next: Add `kind:` with the `FailureKind` that fits, such as `kind: FailureKind.not_found` (agent)
+  rule: failure.kind_required
+  help: docs/language/04-failures.html#failure-kind-required
+
+check failed: 1 error, 1 file
+```
+
 ### `syntax.failure_kind_required`
 
-> The archived compiler's error: a failure's required `kind:` is now checked when failures are checked.
+> The archived compiler's error: a failure's missing `kind:` is now `failure.kind_required`, above.
 
 ```jadpo project=e-kind-required expect=syntax.failure_kind_required
 failure Missing {
@@ -737,7 +823,7 @@ failure Missing {
 
 ### `syntax.expected_failure_item`
 
-> The archived compiler's error: which settings a `Failure` takes is now checked when failures are checked.
+> The archived compiler's error: a setting a `Failure` doesn't take, such as `status: 404`, is now `type.unknown_setting` (area 2).
 
 A failure cannot choose its own HTTP status:
 
@@ -749,110 +835,195 @@ failure Missing {
 }
 ```
 
+### `failure.kind_runtime_only`
+
+```jadpo check project=e-kind-runtime expect=failure.kind_runtime_only
+type Broken = Failure {
+    kind: FailureKind.internal_fault
+}
+```
+
+```text output
+error: `Broken` can't have the kind `internal_fault`
+ --> main.jadpo:2:11
+  |
+2 |     kind: FailureKind.internal_fault
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^ raised only by the runtime
+  reason: The runtime raises `internal_fault` itself; an application declares `invalid_value`, `not_found`, `not_permitted`, `conflict`, `rejected`, `rate_limited` and `unavailable`, so a client's status always means the same thing.
+  next: Use the kind an application declares that fits this outcome (agent)
+  rule: failure.kind_runtime_only
+  help: docs/language/04-failures.html#failure-kind-runtime-only
+
+check failed: 1 error, 1 file
+```
+
+### `failure.code_format`
+
+```jadpo check project=e-code-format expect=failure.code_format
+type Missing = Failure {
+    kind: FailureKind.not_found
+    code: "Not Found!"
+}
+```
+
+```text output
+error: The code `Not Found!` isn't lower_snake_case
+ --> main.jadpo:3:11
+  |
+3 |     code: "Not Found!"
+  |           ^^^^^^^^^^^^ not lower_snake_case
+  reason: A failure's code is what clients branch on and translate by, so it is lower_snake_case, like a failure's name turned into one.
+  next: Write `"not_found"` (agent)
+  rule: failure.code_format
+  help: docs/language/04-failures.html#failure-code-format
+
+check failed: 1 error, 1 file
+```
+
 ### `failure.duplicate_code`
 
-A concealed and a genuine not-found cannot share a code today:
+Two failures cannot share a code, whether it is written or comes from the
+name:
 
-```jadpo project=e-duplicate-code expect=failure.duplicate_code
-failure CustomerNotFound {
-    kind: NotFound
-    code: "customer_not_found"
+```jadpo check project=e-duplicate-code expect=failure.duplicate_code
+type CustomerNotFound = Failure {
+    kind: FailureKind.not_found
     message: "Customer not found."
 }
 
-failure CustomerNotVisible {
-    kind: NotVisible
+type CustomerMissing = Failure {
+    kind: FailureKind.not_found
     code: "customer_not_found"
     message: "Customer not found."
 }
+```
+
+```text output
+error: The code `customer_not_found` is already used by `CustomerNotFound`
+ --> main.jadpo:8:11
+  |
+8 |     code: "customer_not_found"
+  |           ^^^^^^^^^^^^^^^^^^^^ the same code
+  reason: `CustomerNotFound` has the code `customer_not_found` too. A client relies on a code always meaning the same failure, with the same status, message and fields, so every code belongs to one failure.
+  next: Give one of them a code of its own, or use one failure for both (human)
+  rule: failure.duplicate_code
+  help: docs/language/04-failures.html#failure-duplicate-code
+
+check failed: 1 error, 1 file
 ```
 
 ### `failure.context_field_overlap`
 
-```jadpo project=e-context-overlap expect=failure.context_field_overlap
+```jadpo check project=e-context-overlap expect=failure.context_field_overlap
 type Reference = Text {
     max_length: 64
 }
 
-failure PaymentRefused {
-    kind: Rejected
-    code: "payment_refused"
-
-    public {
+type PaymentRefused = Failure {
+    kind: FailureKind.rejected
+    client: {
         reference: Reference
     }
-
-    internal {
+    internal: {
         reference: Reference
     }
 }
+```
+
+```text output
+error: `reference` is in both `client` and `internal`
+ --> main.jadpo:11:9
+   |
+ 8 |         reference: Reference
+   |         --------- first declared here
+11 |         reference: Reference
+   |         ^^^^^^^^^ declared again
+  reason: `client` fields are sent to the caller and `internal` fields never leave the server, so a field is one or the other.
+  next: Keep `reference` in one of the two blocks (agent)
+  rule: failure.context_field_overlap
+  help: docs/language/04-failures.html#failure-context-field-overlap
+
+check failed: 1 error, 1 file
 ```
 
 ### `failure.missing_context_field`
 
-```jadpo project=e-context-missing expect=failure.missing_context_field
+```jadpo check project=e-context-missing expect=failure.missing_context_field
 type Lookup = Text {}
 
-failure Missing {
-    kind: NotFound
-    code: "missing"
-
-    internal {
+type Missing = Failure {
+    kind: FailureKind.not_found
+    internal: {
         lookup: Lookup
     }
 }
 
-action find(lookup: Lookup)
-    fails Missing
-    -> Lookup
-{
+action find(lookup: Lookup) fails Missing -> Lookup {
     reject Missing
 }
 ```
 
+```text output
+error: `Missing` is missing `lookup`
+ --> main.jadpo:11:12
+   |
+11 |     reject Missing
+   |            ^^^^^^^ fields missing
+  reason: A failure is raised with every field its `client` and `internal` blocks declare, so the client and the log always get them.
+  next: Give its fields in a block: `Missing { lookup: ... }` (agent)
+  rule: failure.missing_context_field
+  help: docs/language/04-failures.html#failure-missing-context-field
+
+check failed: 1 error, 1 file
+```
+
 ### `failure.unknown_context_field`
 
-```jadpo project=e-context-unknown expect=failure.unknown_context_field
+```jadpo check project=e-context-unknown expect=failure.unknown_context_field
 type Lookup = Text {}
 
-failure Missing {
-    kind: NotFound
-    code: "missing"
-
-    internal {
+type Missing = Failure {
+    kind: FailureKind.not_found
+    internal: {
         lookup: Lookup
     }
 }
 
-action find(lookup: Lookup)
-    fails Missing
-    -> Lookup
-{
+action find(lookup: Lookup) fails Missing -> Lookup {
     reject Missing {
         lookup: lookup
-        query: lookup
+        search: lookup
     }
 }
+```
+
+```text output
+error: `Missing` has no field `search`
+ --> main.jadpo:13:9
+   |
+13 |         search: lookup
+   |         ^^^^^^ not declared
+  reason: `Missing`'s fields are `lookup`. A failure carries only the fields its `client` and `internal` blocks declare.
+  next: Remove `search`, or declare it in `Missing`'s `client` or `internal` block (agent)
+  rule: failure.unknown_context_field
+  help: docs/language/04-failures.html#failure-unknown-context-field
+
+check failed: 1 error, 1 file
 ```
 
 ### `failure.duplicate_context_field`
 
-```jadpo project=e-context-duplicate expect=failure.duplicate_context_field
+```jadpo check project=e-context-duplicate expect=failure.duplicate_context_field
 type Lookup = Text {}
 
-failure Missing {
-    kind: NotFound
-    code: "missing"
-
-    internal {
+type Missing = Failure {
+    kind: FailureKind.not_found
+    internal: {
         lookup: Lookup
     }
 }
 
-action find(lookup: Lookup)
-    fails Missing
-    -> Lookup
-{
+action find(lookup: Lookup) fails Missing -> Lookup {
     reject Missing {
         lookup: lookup
         lookup: lookup
@@ -860,14 +1031,29 @@ action find(lookup: Lookup)
 }
 ```
 
+```text output
+error: `lookup` is given twice
+ --> main.jadpo:13:9
+   |
+12 |         lookup: lookup
+   |         ------ first given here
+13 |         lookup: lookup
+   |         ^^^^^^ given again
+  reason: Each field of `Missing` is given once, so the log and the client never have to guess which value counts.
+  next: Remove one `lookup` (agent)
+  rule: failure.duplicate_context_field
+  help: docs/language/04-failures.html#failure-duplicate-context-field
+
+check failed: 1 error, 1 file
+```
+
 ### `failure.undeclared_propagation`
 
-```jadpo project=e-undeclared expect=failure.undeclared_propagation
+```jadpo check project=e-undeclared expect=failure.undeclared_propagation
 type Note = Text {}
 
-failure RegistrationClosed {
-    kind: Conflict
-    code: "registration_closed"
+type RegistrationClosed = Failure {
+    kind: FailureKind.conflict
 }
 
 action register(note: Note) -> Note {
@@ -875,44 +1061,180 @@ action register(note: Note) -> Note {
 }
 ```
 
+```text output
+error: `RegistrationClosed` can leave `register`, but its `fails` list doesn't say so
+ --> main.jadpo:8:5
+  |
+8 |     reject RegistrationClosed
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^ rejected here
+  reason: `fails` lists exactly the failures that can leave an action, so every caller knows what it must handle.
+  next: Add `RegistrationClosed` to `register`'s `fails` list (agent)
+  rule: failure.undeclared_propagation
+  help: docs/language/04-failures.html#failure-undeclared-propagation
+
+check failed: 1 error, 1 file
+```
+
 ### `failure.stale_declaration`
 
-```jadpo project=e-stale expect=failure.stale_declaration
+```jadpo check project=e-stale expect=failure.stale_declaration
 type Note = Text {}
 
-failure Refused {
-    kind: Rejected
-    code: "refused"
+type Refused = Failure {
+    kind: FailureKind.rejected
 }
 
-action complete(note: Note)
-    fails Refused
-    -> Note
-{
+action complete(note: Note) fails Refused -> Note {
     return note
 }
 ```
 
+```text output
+error: `Refused` can never leave `complete`
+ --> main.jadpo:7:35
+  |
+7 | action complete(note: Note) fails Refused -> Note {
+  |                                   ^^^^^^^ never raised or passed on
+  reason: Nothing in `complete` rejects `Refused` or passes it on from a call, and `fails` lists exactly the failures that can leave, so callers aren't made to handle one that never happens.
+  next: Remove `Refused` from `fails` (agent)
+  rule: failure.stale_declaration
+  help: docs/language/04-failures.html#failure-stale-declaration
+
+check failed: 1 error, 1 file
+```
+
 ### `failure.duplicate_declaration`
 
-```jadpo project=e-duplicate-fails expect=failure.duplicate_declaration
+```jadpo check project=e-duplicate-fails expect=failure.duplicate_declaration
 type Note = Text {}
 
-failure Refused {
-    kind: Rejected
-    code: "refused"
+type Refused = Failure {
+    kind: FailureKind.rejected
 }
 
-action execute(note: Note)
-    fails Refused, Refused
-    -> Note
-{
+action execute(note: Note) fails Refused, Refused -> Note {
     reject Refused
 }
 ```
 
-The four errors below check that a mapping names a failure of the right
-kind.
+```text output
+error: `Refused` is listed twice after `fails`
+ --> main.jadpo:7:43
+  |
+7 | action execute(note: Note) fails Refused, Refused -> Note {
+  |                                           ^^^^^^^ listed again
+  |                                  ------- first listed here
+  reason: `fails` lists each failure that can leave once.
+  next: Remove the second `Refused` (agent)
+  rule: failure.duplicate_declaration
+  help: docs/language/04-failures.html#failure-duplicate-declaration
+
+check failed: 1 error, 1 file
+```
+
+### `failure.invalid_mapping_required`
+
+A construction the declared ranges don't prove safe names the failure it
+becomes:
+
+```jadpo check project=e-invalid-required expect=failure.invalid_mapping_required
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+type QuantityTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
+    var result: Quantity = attempt Quantity(quantity * 2)
+    return result
+}
+```
+
+```text output
+error: `Quantity(...)` can fail, but no failure is named for it
+ --> main.jadpo:11:28
+   |
+11 |     var result: Quantity = attempt Quantity(quantity * 2)
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ can fail at runtime
+  reason: The value is only known when the program runs, and the declared ranges don't prove it follows the type's rules; `invalid:` names the `invalid_value` failure the caller gets when it doesn't.
+  next: Add `invalid: SomeFailure` after `Quantity(...)` (agent)
+  rule: failure.invalid_mapping_required
+  help: docs/language/04-failures.html#failure-invalid-mapping-required
+
+check failed: 1 error, 1 file
+```
+
+### `failure.mapping_kind`
+
+```jadpo check project=e-mapping-kind expect=failure.mapping_kind
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+type QuantityRefused = Failure {
+    kind: FailureKind.rejected
+}
+
+function doubled(quantity: Quantity) fails QuantityRefused -> Quantity {
+    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityRefused
+    return result
+}
+```
+
+```text output
+error: `invalid:` needs an `invalid_value` failure, and `QuantityRefused` is `rejected`
+ --> main.jadpo:11:68
+   |
+11 |     var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityRefused
+   |                                                                    ^^^^^^^^^^^^^^^ kind `rejected`
+  reason: Each mapping's condition fixes the kind of failure it becomes: a value that breaks a type's rules is `invalid_value`, so the client gets the status that means.
+  next: Name an `invalid_value` failure here, or make `QuantityRefused`'s kind `FailureKind.invalid_value` (agent)
+  rule: failure.mapping_kind
+  help: docs/language/04-failures.html#failure-mapping-kind
+
+check failed: 1 error, 1 file
+```
+
+### `failure.unknown_mapping`
+
+```jadpo check project=e-unknown-mapping expect=failure.unknown_mapping
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+type QuantityTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
+    var result: Quantity = attempt Quantity(quantity * 2) missing: QuantityTooLarge
+    return result
+}
+```
+
+```text output
+error: `Quantity(...)` has no `missing:` condition to map
+ --> main.jadpo:11:59
+   |
+11 |     var result: Quantity = attempt Quantity(quantity * 2) missing: QuantityTooLarge
+   |                                                           ^^^^^^^ not a condition here
+  reason: A construction has one condition to map, `invalid:`, when its value breaks the type's rules; `missing:` isn't one `Quantity(...)` has, or is given twice.
+  next: Use `invalid:` once (agent)
+  rule: failure.unknown_mapping
+  help: docs/language/04-failures.html#failure-unknown-mapping
+
+check failed: 1 error, 1 file
+```
+
+The four errors below check that a data operation's mapping names a failure
+of the right kind. They keep the archived compiler's example until data
+operations are built (area 6); the new compiler checks `invalid:` the same
+way, as `failure.mapping_kind` above.
 
 ### `failure.required_query_not_not_found`
 
