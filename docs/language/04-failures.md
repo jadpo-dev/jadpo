@@ -169,15 +169,29 @@ declared and rejected.
 | `misconfigured` | 500 | Deployment configuration is wrong | runtime |
 | `internal_fault` | 500 | A defect | runtime |
 
-```jadpo fragment
+```jadpo check project=kinds expect=failure.kind_runtime_only
 type CheckoutUnavailable = Failure {
-    kind: FailureKind.unavailable    // fine: a business outcome callers handle
+    kind: FailureKind.unavailable  // fine: a business outcome callers handle
     message: "Checkout is temporarily unavailable."
 }
 
 type Broken = Failure {
-    kind: FailureKind.internal_fault // error: only the runtime raises internal_fault (question 3)
+    kind: FailureKind.internal_fault  // error: only the runtime raises internal_fault (question 3)
 }
+```
+
+```text output
+error: `Broken` can't have the kind `internal_fault`
+ --> main.jadpo:7:11
+  |
+7 |     kind: FailureKind.internal_fault  // error: only the runtime raises internal_fault (question 3)
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^ raised only by the runtime
+  reason: The runtime raises `internal_fault` itself; an application declares `invalid_value`, `not_found`, `not_permitted`, `conflict`, `rejected`, `rate_limited` and `unavailable`, so a client's status always means the same thing.
+  next: Use the kind an application declares that fits this outcome (agent)
+  rule: failure.kind_runtime_only
+  help: docs/language/04-failures.html#failure-kind-runtime-only
+
+check failed: 1 error, 1 file
 ```
 
 `invalid_value` and `rejected` both use 422, and 400 is kept for requests
