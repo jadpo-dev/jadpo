@@ -175,11 +175,7 @@ impl Part<'_> {
             Decl::TestDecl(d) => {
                 if let Some(token) = d.string_token() {
                     let name = token.text().trim_matches('"').to_string();
-                    let key = self.lookup.registry().key(
-                        Kind::Test,
-                        &format!("{} \"{name}\"", self.path),
-                        None,
-                    );
+                    let key = super::test_key(self.lookup.registry(), self.path, &name);
                     self.runnable(key, Kind::Test, name, d.syntax(), index);
                 }
             }

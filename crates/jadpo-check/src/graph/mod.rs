@@ -155,11 +155,7 @@ pub fn callable_key(
         }
         (Decl::TestDecl(test), None) => {
             let name = test.string_token()?.text().trim_matches('"').to_string();
-            Some(
-                symbols
-                    .registry()
-                    .key(Kind::Test, &format!("{path} \"{name}\""), None),
-            )
+            Some(test_key(symbols.registry(), path, &name))
         }
         (Decl::SeedDecl(seed), None) => {
             let name = seed.name().as_ref().and_then(tree::name_text)?;
@@ -171,6 +167,14 @@ pub fn callable_key(
         }
         _ => None,
     }
+}
+
+/// A test's key: the subject it sits beside (its file's name without
+/// `.test`) and its sentence, with no path, so moving the domain it is in
+/// keeps it (area 18, question 8; decided in the Phase 1 review).
+pub(crate) fn test_key(registry: &jadpo_graph::Registry, path: &str, sentence: &str) -> Key {
+    let subject = jadpo_db::locate(path, jadpo_db::Layout::Loose).stem;
+    registry.key(Kind::Test, &format!("{subject} \"{sentence}\""), None)
 }
 
 /// The project's graph.

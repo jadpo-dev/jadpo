@@ -28,6 +28,46 @@ fn described(symbol: &Symbol) -> String {
     format!("{} in `{}`", symbol.kind.with_a(), symbol.path)
 }
 
+/// A test's sentence is its name, unique across the project, so a report
+/// or a rerun names exactly one test (area 13; its key is its subject and
+/// sentence, area 18).
+fn duplicate_test(
+    db: &dyn Db,
+    project: Project,
+    source: &jadpo_syntax::ast::SourceFile,
+    path: &str,
+    item: &Item,
+) -> Option<Diagnostic> {
+    let name = crate::lookups::Name::new(db, item.name.clone());
+    let found = crate::lookups::tests_called(db, project, name);
+    let (first_path, _) = found
+        .iter()
+        .find(|(p, index)| (p.as_str(), *index) < (path, item.index))?;
+    let span = match tree::decl_at(source, item.index) {
+        Some(jadpo_syntax::ast::Decl::TestDecl(test)) => match test.string_token() {
+            Some(token) => Span::new(
+                path,
+                token.text_range().start().into(),
+                token.text_range().end().into(),
+            ),
+            None => name_span(source, path, item.index, None),
+        },
+        _ => name_span(source, path, item.index, None),
+    };
+    let sentence = &item.name;
+    Some(
+        Diagnostic::new(
+            &rule::SEMANTIC_DUPLICATE_DECLARATION,
+            format!("The test \"{sentence}\" is declared twice"),
+        )
+        .at(span, "declared again here")
+        .reason(format!(
+            "A test's sentence is its name, unique across the project, so a report or a rerun names exactly one test; it is already a test in `{first_path}`."
+        ))
+        .next("Reword this test's sentence to say what it checks that the other doesn't, or remove it if it's a copy"),
+    )
+}
+
 /// The naming problems of one file's declarations.
 #[salsa::tracked(returns(ref))]
 pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
@@ -38,12 +78,16 @@ pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
     let table = Lookup::new(db, project);
     let mut out = Vec::new();
     for item in &item_tree(db, file).items {
+        if item.kind == ItemKind::Test {
+            if let Some(problem) = duplicate_test(db, project, &source, path, item) {
+                out.push(problem);
+            }
+            continue;
+        }
         match item.kind {
-            ItemKind::Test
-            | ItemKind::Singleton
-            | ItemKind::Package
-            | ItemKind::Resource
-            | ItemKind::Provide => continue,
+            ItemKind::Singleton | ItemKind::Package | ItemKind::Resource | ItemKind::Provide => {
+                continue;
+            }
             _ => {}
         }
         let span = name_span(&source, path, item.index, None);

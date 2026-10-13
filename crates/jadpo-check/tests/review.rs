@@ -374,3 +374,57 @@ fn include_never_leads_back_to_itself() {
         ["type.copy_cycle"]
     );
 }
+
+// --- finding 14: a test is known by its subject and sentence -----------------
+
+#[test]
+fn a_sentence_names_one_test_in_the_project() {
+    assert_eq!(
+        check(
+            "test \"adds up\" {\n    assert 1 == 1\n}\n\ntest \"adds up\" {\n    assert 2 == 2\n}\n"
+        ),
+        ["semantic.duplicate_declaration"]
+    );
+    assert_eq!(
+        rules(
+            Layout::Loose,
+            &[
+                ("a.jadpo", "test \"adds up\" {\n    assert 1 == 1\n}\n"),
+                ("b.jadpo", "test \"adds up\" {\n    assert 2 == 2\n}\n"),
+            ]
+        ),
+        ["semantic.duplicate_declaration"]
+    );
+}
+
+#[test]
+fn moving_a_test_to_another_domain_keeps_its_key() {
+    use jadpo_check::graph::graph;
+    use jadpo_db::Database;
+    use jadpo_graph::{Key, Kind};
+    let key_of = |path: &str| {
+        let db = Database::default();
+        let project = support::project(
+            &db,
+            Layout::Project,
+            &[
+                support::APP,
+                (
+                    "domains/planning/types/count.jadpo",
+                    "type Count = Int {}\n",
+                ),
+                (path, "test \"adds up\" {\n    assert 1 == 1\n}\n"),
+            ],
+        );
+        graph(&db, project)
+            .nodes()
+            .iter()
+            .filter(|node| node.kind == Kind::Test)
+            .map(|node| node.key.clone())
+            .collect::<Vec<Key>>()
+    };
+    let before = key_of("domains/planning/types/count.test.jadpo");
+    let after = key_of("domains/billing/types/count.test.jadpo");
+    assert_eq!(before, [Key::from_text("test count \"adds up\"")]);
+    assert_eq!(before, after);
+}
