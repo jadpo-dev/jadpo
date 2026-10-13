@@ -221,6 +221,18 @@ fn contextual_decl(p: &Parser<'_>, n: usize) -> Option<SyntaxKind> {
     Some(kind)
 }
 
+/// Whether a block that hasn't seen its `}` ends here, because a new
+/// declaration starts: a declaration keyword on a new line, or a word that
+/// only sometimes starts one (`config {`, `test "..."`) written at the
+/// start of a line. Indented, such a word is a member of the block.
+pub(crate) fn ends_block(p: &Parser<'_>) -> bool {
+    if !p.on_new_line() || !at_decl(p) {
+        return false;
+    }
+    let n = usize::from(p.at(PUBLIC_KW));
+    p.nth(n) != IDENT || p.at_column_zero()
+}
+
 pub(crate) fn at_decl(p: &Parser<'_>) -> bool {
     let n = usize::from(p.at(PUBLIC_KW));
     match p.nth(n) {
@@ -849,7 +861,7 @@ fn member_list(p: &mut Parser<'_>, context: Members) -> CompletedMarker {
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
-                if p.on_new_line() && at_decl(p) && !p.at(FUNCTION_KW) {
+                if ends_block(p) && !p.at(FUNCTION_KW) {
                     break;
                 }
                 let before = p.position();
@@ -1187,7 +1199,7 @@ fn block(p: &mut Parser<'_>) -> CompletedMarker {
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
-                if p.on_new_line() && at_decl(p) {
+                if ends_block(p) {
                     break;
                 }
                 let before = p.position();
@@ -1270,6 +1282,19 @@ fn block_item(p: &mut Parser<'_>) {
         _ => expr_stmt(p),
     }
     statement_end(p);
+}
+
+/// The rest of an `if` chain too deep to read, without recursing: every
+/// condition and block up to the line that doesn't continue it with `else`.
+fn skip_chain(p: &mut Parser<'_>) {
+    let m = p.start();
+    loop {
+        skip_balanced(p);
+        if p.at_eof() || p.at(R_BRACE) || (p.on_new_line() && !p.at(ELSE_KW)) {
+            break;
+        }
+    }
+    m.complete(p, ERROR);
 }
 
 fn skip_statement(p: &mut Parser<'_>) {
@@ -1454,7 +1479,15 @@ fn if_stmt(p: &mut Parser<'_>) {
         let e = p.start();
         p.bump(ELSE_KW);
         if p.at(IF_KW) {
-            if_stmt(p);
+            // Each `else if` nests one level in the tree, so a chain counts
+            // towards the depth limit; past it, the rest of the chain is
+            // skipped without recursing.
+            if p.enter() {
+                if_stmt(p);
+                p.leave();
+            } else {
+                skip_chain(p);
+            }
         } else if p.at(L_BRACE) {
             block(p);
         } else {
@@ -2064,7 +2097,7 @@ fn match_expr(p: &mut Parser<'_>) {
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
-                if p.on_new_line() && at_decl(p) {
+                if ends_block(p) {
                     break;
                 }
                 let before = p.position();
@@ -2255,9 +2288,17 @@ fn at_tag_word(p: &Parser<'_>, word: &str) -> bool {
 }
 
 /// Parts up to the end of the input, or to an `{{ else }}` or `{{ end }}`
-/// when inside a block.
+/// when inside a block. Past the depth limit, the rest of the template is
+/// skipped without recursing.
 fn template_body(p: &mut Parser<'_>) {
     let m = p.start();
+    if !p.enter() {
+        while !p.at_eof() {
+            p.bump_error();
+        }
+        m.complete(p, TEMPLATE_BODY);
+        return;
+    }
     while !p.at_eof() {
         if at_tag(p, ELSE_KW) || at_tag_word(p, "end") {
             break;
@@ -2288,6 +2329,7 @@ fn template_body(p: &mut Parser<'_>) {
             _ => p.bump_error(),
         }
     }
+    p.leave();
     m.complete(p, TEMPLATE_BODY);
 }
 

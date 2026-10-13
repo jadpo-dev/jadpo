@@ -181,6 +181,8 @@ rules! {
         "04-failures.html#failure-unknown-mapping", "Mapping names a condition the operation does not have";
     FORMAT_CHANGES_REQUIRED: "format.changes_required", area 14, Error, Agent,
         "14-tooling.html#formatting", "Source file is not formatted";
+    FORMAT_UNSAFE: "format.unsafe", area 14, Error, Human,
+        "14-tooling.html#format-unsafe", "Formatting would change the file's meaning";
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
         "14-tooling.html#formatting", "Formatted source could not be written";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,

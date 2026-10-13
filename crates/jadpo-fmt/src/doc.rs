@@ -88,6 +88,22 @@ pub fn print(doc: &Doc, width: usize) -> String {
     while let Some((level, mode, doc)) = stack.pop() {
         match doc {
             Doc::Text(s) => {
+                // A trailing comment ends its line: what follows goes on
+                // the next one, so the comment stays with its token and
+                // formatting again gives the same text.
+                if !suffixes.is_empty() && !s.is_empty() {
+                    if s.trim().is_empty() {
+                        continue;
+                    }
+                    for suffix in suffixes.drain(..) {
+                        out.push_str(suffix);
+                    }
+                    trim_end(&mut out);
+                    out.push('\n');
+                    let pad = level * INDENT;
+                    out.extend(std::iter::repeat_n(' ', pad));
+                    column = pad;
+                }
                 out.push_str(s);
                 column += s.chars().count();
             }
@@ -139,17 +155,21 @@ fn trim_end(out: &mut String) {
 }
 
 /// Whether `next`, printed flat, and what follows it up to the next line
-/// break fit in `room` columns. A trailing comment fits only at the end of
-/// its line.
+/// break fit in `room` columns. A trailing comment inside `next` fits only
+/// at the end of its line; one after it ends the line there.
 fn fits(next: Command<'_>, rest: &[Command<'_>], mut room: isize) -> bool {
     let mut stack = vec![next];
     let mut rest = rest.iter().rev();
     let mut suffix = false;
+    let mut after = false;
     loop {
         let (level, mode, doc) = match stack.pop() {
             Some(command) => command,
             None => match rest.next() {
-                Some(command) => *command,
+                Some(command) => {
+                    after = true;
+                    *command
+                }
                 None => return true,
             },
         };
@@ -173,6 +193,7 @@ fn fits(next: Command<'_>, rest: &[Command<'_>], mut room: isize) -> bool {
                 let mode = if *breaks { Mode::Break } else { mode };
                 stack.push((level, mode, doc));
             }
+            Doc::LineSuffix(_) if after => return true,
             Doc::LineSuffix(_) => suffix = true,
             Doc::HardLine => return true,
             Doc::Line | Doc::SoftLine if mode == Mode::Break => return true,
@@ -214,6 +235,20 @@ mod tests {
             print(&list(&["alpha", "beta", "gamma"]), 12),
             "f(\n    alpha,\n    beta,\n    gamma\n)"
         );
+    }
+
+    #[test]
+    fn text_after_a_trailing_comment_starts_a_new_line() {
+        let doc = concat([text("{"), Doc::LineSuffix("  // TODO".into()), text("}")]);
+        assert_eq!(print(&doc, 80), "{  // TODO\n}");
+        let doc = concat([
+            text("x +"),
+            Doc::LineSuffix("  // the base".into()),
+            text(" "),
+            text("1"),
+            Doc::LineSuffix("  // plus one".into()),
+        ]);
+        assert_eq!(print(&doc, 80), "x +  // the base\n1  // plus one");
     }
 
     #[test]

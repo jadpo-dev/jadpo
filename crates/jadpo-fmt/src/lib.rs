@@ -18,21 +18,72 @@ pub const WIDTH: usize = 100;
 
 /// Formats a `.jadpo` file.
 pub fn format_file(text: &str) -> Result<String, Vec<SyntaxError>> {
-    let parse = parse_file(text);
-    if parse.has_errors() {
-        return Err(parse.errors().to_vec());
-    }
-    Ok(format_tree(&parse.syntax()))
+    format_with(text, parse_file)
 }
 
 /// Formats a documentation example, which may hold members, statements
 /// and `...` at its top level.
 pub fn format_snippet(text: &str) -> Result<String, Vec<SyntaxError>> {
-    let parse = parse_snippet(text);
-    if parse.has_errors() {
-        return Err(parse.errors().to_vec());
+    format_with(text, parse_snippet)
+}
+
+/// Formats `text`, then reads the result back: it must parse to the same
+/// tokens and comments and format to itself, or the formatter refuses
+/// rather than write a file that means something else or never settles.
+fn format_with(
+    text: &str,
+    parse: fn(&str) -> jadpo_syntax::Parse,
+) -> Result<String, Vec<SyntaxError>> {
+    let before = parse(text);
+    if before.has_errors() {
+        return Err(before.errors().to_vec());
     }
-    Ok(format_tree(&parse.syntax()))
+    let formatted = format_tree(&before.syntax());
+    let after = parse(&formatted);
+    let same = !after.has_errors()
+        && shape(&before.syntax()) == shape(&after.syntax())
+        && format_tree(&after.syntax()) == formatted;
+    if same {
+        return Ok(formatted);
+    }
+    Err(vec![
+        SyntaxError::new(
+            &jadpo_diag::rule::FORMAT_UNSAFE,
+            "Formatting this file would change it",
+            0,
+            0,
+        )
+        .label("left as it is")
+        .reason(
+            "The formatted text didn't read back as the same code, or didn't stay the same when formatted again, so the formatter wrote nothing. This is a mistake in the formatter, not in the file.",
+        )
+        .next("Leave the file as it is, and report it to Jadpo's maintainers with the file"),
+    ])
+}
+
+/// What formatting must keep: every significant token in the order the
+/// formatter writes them, each node at its depth, and every comment.
+fn shape(node: &SyntaxNode) -> Vec<String> {
+    use jadpo_syntax::SyntaxKind::{COMMENT, DOC_COMMENT};
+    let mut out: Vec<String> = canonical_tokens(node)
+        .iter()
+        .map(|token| format!("{:?} {}", token.kind(), token.text()))
+        .collect();
+    let mut nodes: Vec<String> = node
+        .descendants()
+        .map(|inner| format!("{:?} {}", inner.kind(), inner.ancestors().count()))
+        .collect();
+    nodes.sort();
+    out.extend(nodes);
+    let mut comments: Vec<String> = node
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| matches!(token.kind(), COMMENT | DOC_COMMENT))
+        .map(|token| token.text().trim_end().to_string())
+        .collect();
+    comments.sort();
+    out.extend(comments);
+    out
 }
 
 fn format_tree(node: &SyntaxNode) -> String {

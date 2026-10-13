@@ -182,6 +182,12 @@ impl<'a> Parser<'a> {
         self.nth_on_new_line(0)
     }
 
+    /// Whether the current token starts its line, with nothing before it.
+    pub(crate) fn at_column_zero(&self) -> bool {
+        let (start, _) = self.range();
+        start == 0 || self.text().as_bytes().get(start as usize - 1) == Some(&b'\n')
+    }
+
     /// Whether line breaks end things here: they do except inside brackets.
     pub(crate) fn line_break_ends(&self) -> bool {
         !self.newlines_ignored && self.on_new_line()
@@ -252,7 +258,6 @@ impl<'a> Parser<'a> {
     pub(crate) fn enter(&mut self) -> bool {
         if self.depth >= MAX_DEPTH {
             if !self.too_deep {
-                self.too_deep = true;
                 let (start, end) = self.range();
                 self.push_error(
                     SyntaxError::new(
@@ -267,6 +272,7 @@ impl<'a> Parser<'a> {
                     ))
                     .next("Move the inner part into a function or a variable of its own"),
                 );
+                self.too_deep = true;
             }
             return false;
         }
@@ -368,6 +374,11 @@ impl<'a> Parser<'a> {
     /// Records an error, unless one already starts at the same place: one
     /// mistake gives one error.
     pub(crate) fn push_error(&mut self, error: SyntaxError) {
+        // Once something is nested too deeply, what follows is unread and
+        // any other error would be a knock-on of that one.
+        if self.too_deep {
+            return;
+        }
         if !self.error_starts.insert(error.start) {
             return;
         }
