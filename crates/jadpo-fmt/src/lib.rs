@@ -1,11 +1,13 @@
 //! The Jadpo formatter (docs/compiler-runtime.md §2.2): syntax tree to a
 //! document algebra to a printer. It owns indentation, spacing, blank lines
-//! (one between declarations, none doubled) and one member per line, so
-//! equivalent code always looks identical (areas 1 and 14). A file with
+//! (one between declarations, none doubled), one member per line and the
+//! order of sections inside a declaration, so equivalent code always looks
+//! identical (areas 1 and 14). A file with
 //! syntax errors is not formatted: its errors are returned instead.
 
 mod doc;
 mod format;
+mod sections;
 
 use jadpo_syntax::{SyntaxError, SyntaxNode, parse_file, parse_snippet};
 

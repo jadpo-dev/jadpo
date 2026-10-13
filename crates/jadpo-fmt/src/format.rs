@@ -11,6 +11,7 @@ use jadpo_syntax::{SyntaxElement, SyntaxNode, SyntaxToken};
 use rowan::{NodeOrToken, TextSize};
 
 use crate::doc::{Doc, concat, group, indent, nil, text};
+use crate::sections::Order;
 
 /// The gap before a trailing comment.
 const COMMENT_GAP: &str = "  ";
@@ -361,7 +362,8 @@ impl Formatter {
         concat(docs)
     }
 
-    /// `{ ... }` holding one item per line: members, statements or arms.
+    /// `{ ... }` holding one item per line: members, statements or arms,
+    /// with a declaration's sections in their order.
     fn braces(&mut self, node: &SyntaxNode) -> Doc {
         let mut open = None;
         let mut close = None;
@@ -379,14 +381,26 @@ impl Formatter {
             Some(token) => self.token(token),
             None => nil(),
         };
+        // Each item keeps the blank line written before it, wherever its
+        // section moves to; the first item in the body never has one.
+        let mut placed: Vec<(bool, SyntaxElement)> = items
+            .into_iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let first = match &item {
+                    NodeOrToken::Node(node) => first_token(node),
+                    NodeOrToken::Token(token) => Some(token.clone()),
+                };
+                (i > 0 && first.is_some_and(|t| blank_before(&t)), item)
+            })
+            .collect();
+        if let Some(order) = Order::of(node) {
+            placed.sort_by_key(|(_, item)| order.rank(item));
+        }
         let mut body = Vec::new();
-        for (i, item) in items.iter().enumerate() {
+        for (i, (blank, item)) in placed.iter().enumerate() {
             body.push(Doc::HardLine);
-            let first = match item {
-                NodeOrToken::Node(node) => first_token(node),
-                NodeOrToken::Token(token) => Some(token.clone()),
-            };
-            if i > 0 && first.is_some_and(|t| blank_before(&t)) {
+            if i > 0 && *blank {
                 body.push(Doc::HardLine);
             }
             body.push(self.element(item));
@@ -398,7 +412,7 @@ impl Formatter {
                 for (i, comment) in comments.iter().enumerate() {
                     docs.push(Doc::HardLine);
                     let blank = if i == 0 {
-                        !items.is_empty() && blank_before(token)
+                        !placed.is_empty() && blank_before(token)
                     } else {
                         comments[i - 1].blank_after
                     };
@@ -412,7 +426,7 @@ impl Formatter {
             }
             None => (nil(), nil()),
         };
-        if items.is_empty() && close_leading.is_empty() {
+        if placed.is_empty() && close_leading.is_empty() {
             return concat([open_doc, close_doc]);
         }
         concat([
