@@ -1,8 +1,8 @@
 //! Checking a Jadpo project (docs/compiler-runtime.md §2.2): the rules of
-//! each language area as salsa queries over `jadpo-db`. Areas 1 and 2 are
+//! each language area as salsa queries over `jadpo-db`. Areas 1 to 3 are
 //! built: layout, naming, visibility and resolution, then values and types
-//! ([`types`]). Later chunks add logic and failures (areas 3 and 4) and
-//! build the graph.
+//! and the logic of bodies ([`types`]). Later chunks add failures (area 4)
+//! and build the graph.
 //!
 //! [`check`] assembles every diagnostic for a project, sorted by file and
 //! position so the same source always gives the same output.
@@ -61,6 +61,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(usage_problems(db, project, file).iter().cloned());
             out.extend(types::type_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());
+            out.extend(types::recursion_problems(db, project, file).iter().cloned());
         }
     }
     sort(&mut out);

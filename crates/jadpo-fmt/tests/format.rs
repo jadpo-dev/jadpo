@@ -186,3 +186,17 @@ fn an_empty_file_stays_empty() {
     assert_eq!(fmt(""), "");
     assert_eq!(fmt("\n\n"), "");
 }
+
+#[test]
+fn comparisons_keep_a_space_on_both_sides() {
+    let source = "function f(a: Count, b: Count) -> Flag {\n    return Flag(a < b or a > b or a<=b or (a) >= 1)\n}\n";
+    assert_eq!(
+        fmt(source),
+        "function f(a: Count, b: Count) -> Flag {\n    return Flag(a < b or a > b or a <= b or (a) >= 1)\n}\n"
+    );
+    assert_eq!(
+        fmt("type Tags = Object {\n    tags: List<Tag>\n}\n"),
+        "type Tags = Object {\n    tags: List<Tag>\n}\n",
+        "type arguments stay tight"
+    );
+}

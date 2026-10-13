@@ -200,6 +200,10 @@ fn space_between(parent: SyntaxKind, left: SyntaxKind, right: SyntaxKind) -> boo
     if tight(parent) {
         return false;
     }
+    // `<` and `>` compare here; elsewhere they bracket type arguments.
+    if parent == BIN_EXPR {
+        return true;
+    }
     if matches!(
         right,
         COMMA

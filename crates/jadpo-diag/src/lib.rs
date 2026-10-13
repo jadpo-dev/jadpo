@@ -115,6 +115,12 @@ rules! {
         "14-tooling.html#command-errors", "Unknown flag";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Version command has invalid arguments";
+    EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
+        "03-logic.html#effect-function-calls-action", "Function calls an action or query";
+    EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
+        "03-logic.html#effect-function-persistence", "Function reads or writes stored data";
+    EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
+        "03-logic.html#effect-recursive-action", "Action is part of a call cycle";
     FORMAT_CHANGES_REQUIRED: "format.changes_required", area 14, Error, Agent,
         "14-tooling.html#formatting", "Source file is not formatted";
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
@@ -143,6 +149,8 @@ rules! {
         "01-project-layout-and-modules.html#naming-round-trip", "Name does not survive conversion to its file name";
     SEMANTIC_DUPLICATE_DECLARATION: "semantic.duplicate_declaration", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-duplicate-declaration", "Name is declared more than once";
+    SEMANTIC_MISSING_RETURN: "semantic.missing_return", area 3, Error, Agent,
+        "03-logic.html#semantic-missing-return", "Callable can end without returning its result";
     SEMANTIC_NAME_CASE: "semantic.name_case", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-name-case", "Name has the wrong case for its kind";
     SEMANTIC_NOT_CALLABLE: "semantic.not_callable", area 1, Error, Agent,
@@ -155,6 +163,12 @@ rules! {
         "01-project-layout-and-modules.html#semantic-unknown-callee", "Called name is not declared";
     SEMANTIC_UNKNOWN_NAME: "semantic.unknown_name", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-unknown-name", "Name is not declared";
+    SEMANTIC_UNREACHABLE_CODE: "semantic.unreachable_code", area 3, Error, Agent,
+        "03-logic.html#semantic-unreachable-code", "Code can never run";
+    SEMANTIC_UNUSED_RESULT: "semantic.unused_result", area 3, Error, Agent,
+        "03-logic.html#semantic-unused-result", "Value is computed and thrown away";
+    SEMANTIC_UNUSED_VARIABLE: "semantic.unused_variable", area 3, Error, Agent,
+        "03-logic.html#semantic-unused-variable", "Variable is never used";
     SEMANTIC_WRONG_NAME_KIND: "semantic.wrong_name_kind", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-wrong-name-kind", "Name is the wrong kind of declaration here";
     SYNTAX_ATTEMPT_PLACEMENT: "syntax.attempt_placement", area 3, Error, Agent,
@@ -205,6 +219,14 @@ rules! {
         "14-tooling.html#the-jadpo-command", "Jadpo source file could not be read";
     TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
         "02-values-and-types.html#type-absent-field", "Omitted or optional field is not present";
+    TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,
+        "03-logic.html#type-argument-count", "Call has the wrong number of arguments";
+    TYPE_ARITHMETIC_OPERAND: "type.arithmetic_operand", area 3, Error, Agent,
+        "03-logic.html#type-arithmetic-operand", "Arithmetic operand has the wrong type";
+    TYPE_ASSIGN_IMMUTABLE: "type.assign_immutable", area 3, Error, Agent,
+        "03-logic.html#type-assign-immutable", "Value that never changes is assigned";
+    TYPE_ASSIGN_UNKNOWN: "type.assign_unknown", area 3, Error, Agent,
+        "03-logic.html#type-assign-unknown", "Assignment target is not declared";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
         "02-values-and-types.html#type-base-outside-declaration", "Base is used outside a type declaration";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,
@@ -223,6 +245,8 @@ rules! {
         "02-values-and-types.html#type-copy-into-input", "Input copies every field of another type";
     TYPE_DECIMAL_SCALE_REQUIRED: "type.decimal_scale_required", area 2, Error, Agent,
         "02-values-and-types.html#type-decimal-scale-required", "Decimal type has no scale";
+    TYPE_DIVISOR_ZERO: "type.divisor_zero", area 3, Error, Agent,
+        "03-logic.html#type-divisor-zero", "Divisor may be zero";
     TYPE_DUPLICATE_FIELD: "type.duplicate_field", area 2, Error, Agent,
         "02-values-and-types.html#type-duplicate-field", "Field is given twice";
     TYPE_DUPLICATE_VARIANT: "type.duplicate_variant", area 2, Error, Agent,
@@ -233,22 +257,54 @@ rules! {
         "02-values-and-types.html#type-enum-empty", "Enum declares no variants";
     TYPE_FIELD_ON_NON_RECORD: "type.field_on_non_record", area 2, Error, Agent,
         "02-values-and-types.html#type-field-on-non-record", "Field is read from a value without fields";
+    TYPE_INCOMPARABLE: "type.incomparable", area 3, Error, Agent,
+        "03-logic.html#type-incomparable", "Values cannot be compared for equality";
+    TYPE_INLINE_FUNCTION_PLACEMENT: "type.inline_function_placement", area 3, Error, Agent,
+        "03-logic.html#type-inline-function-placement", "Inline function is not an argument to a collection operation";
     TYPE_INVALID_LITERAL: "type.invalid_literal", area 2, Error, Agent,
         "02-values-and-types.html#type-invalid-literal", "Literal breaks its type's rules";
     TYPE_INVALID_PATTERN: "type.invalid_pattern", area 2, Error, Agent,
         "02-values-and-types.html#type-invalid-pattern", "Pattern is not a supported regular expression";
+    TYPE_LOGICAL_OPERAND: "type.logical_operand", area 3, Error, Agent,
+        "03-logic.html#type-logical-operand", "Logical operator needs Bool operands";
+    TYPE_MATCH_ARM_VALUE: "type.match_arm_value", area 3, Error, Agent,
+        "03-logic.html#type-match-arm-value", "Match arm gives no value";
+    TYPE_MATCH_DUPLICATE_PATTERN: "type.match_duplicate_pattern", area 3, Error, Agent,
+        "03-logic.html#type-match-duplicate-pattern", "Match pattern is already covered";
+    TYPE_MATCH_NON_EXHAUSTIVE: "type.match_non_exhaustive", area 3, Error, Agent,
+        "03-logic.html#type-match-non-exhaustive", "Match does not cover every case";
+    TYPE_MATCH_PATTERN_TYPE: "type.match_pattern_type", area 3, Error, Agent,
+        "03-logic.html#type-match-pattern-type", "Pattern cannot match this value";
+    TYPE_MATCH_SOME_NON_OPTIONAL: "type.match_some_non_optional", area 3, Error, Agent,
+        "03-logic.html#type-match-some-non-optional", "Nullable pattern on a value that is never none";
+    TYPE_MATCH_UNKNOWN_BINDING: "type.match_unknown_binding", area 3, Error, Agent,
+        "03-logic.html#type-match-unknown-binding", "Pattern names data a case does not carry";
+    TYPE_MATCH_UNKNOWN_VARIANT: "type.match_unknown_variant", area 3, Error, Agent,
+        "03-logic.html#type-match-unknown-variant", "Pattern names an unknown enum variant";
+    TYPE_MATCH_UNREACHABLE_PATTERN: "type.match_unreachable_pattern", area 3, Error, Agent,
+        "03-logic.html#type-match-unreachable-pattern", "Match arm is unreachable after the wildcard";
+    TYPE_MATCH_WILDCARD_CLOSED: "type.match_wildcard_closed", area 3, Error, Agent,
+        "03-logic.html#type-match-wildcard-closed", "Wildcard on a value whose cases can be listed";
+    TYPE_MATCH_WILDCARD_REQUIRED: "type.match_wildcard_required", area 3, Error, Agent,
+        "03-logic.html#type-match-wildcard-required", "Open value space needs a wildcard arm";
     TYPE_MISMATCH: "type.mismatch", area 2, Error, Agent,
         "02-values-and-types.html#type-mismatch", "Value has the wrong type";
     TYPE_MISSING_FIELD: "type.missing_field", area 2, Error, Agent,
         "02-values-and-types.html#type-missing-field", "Object is missing a field";
     TYPE_MISSING_VARIANT_FIELD: "type.missing_variant_field", area 2, Error, Agent,
         "02-values-and-types.html#type-missing-variant-field", "Variant is missing a field";
+    TYPE_NAMED_ARGUMENT_UNKNOWN: "type.named_argument_unknown", area 3, Error, Agent,
+        "03-logic.html#type-named-argument-unknown", "Named argument is not a parameter";
+    TYPE_NAMED_ARGUMENT_UNSUPPORTED: "type.named_argument_unsupported", area 3, Error, Agent,
+        "03-logic.html#type-named-argument-unsupported", "Callable does not take named arguments";
     TYPE_NOT_RECORD: "type.not_record", area 2, Error, Agent,
         "02-values-and-types.html#type-not-record", "Braces build a type that has no fields";
     TYPE_NULLABLE_SELECTION: "type.nullable_selection", area 2, Error, Agent,
         "02-values-and-types.html#type-nullable-selection", "Field is read from a value that may be none";
     TYPE_OPTIONAL_OUTSIDE_INPUT: "type.optional_outside_input", area 2, Error, Agent,
         "02-values-and-types.html#type-optional-outside-input", "Optional or default field outside an Input";
+    TYPE_ORDERING_OPERAND: "type.ordering_operand", area 3, Error, Agent,
+        "03-logic.html#type-ordering-operand", "Values cannot be ordered";
     TYPE_PRIMITIVE_SIGNATURE: "type.primitive_signature", area 2, Error, Agent,
         "02-values-and-types.html#type-primitive-signature", "Signature uses a built-in type directly";
     TYPE_REDUNDANT_NULLABILITY: "type.redundant_nullability", area 2, Error, Agent,
@@ -261,12 +317,16 @@ rules! {
         "02-values-and-types.html#type-sibling-mismatch", "Field type is used for a sibling field type";
     TYPE_TYPE_ARGUMENT_COUNT: "type.type_argument_count", area 2, Error, Agent,
         "02-values-and-types.html#type-type-argument-count", "Type has the wrong number of type arguments";
+    TYPE_UNARY_OPERAND: "type.unary_operand", area 3, Error, Agent,
+        "03-logic.html#type-unary-operand", "Operator cannot be used with this value";
     TYPE_UNKNOWN_ENUM_VARIANT: "type.unknown_enum_variant", area 2, Error, Agent,
         "02-values-and-types.html#type-unknown-enum-variant", "Enum has no such variant";
     TYPE_UNKNOWN_FIELD: "type.unknown_field", area 2, Error, Agent,
         "02-values-and-types.html#type-unknown-field", "Type has no such field";
     TYPE_UNKNOWN_SETTING: "type.unknown_setting", area 2, Error, Agent,
         "02-values-and-types.html#type-unknown-setting", "Setting is not one Jadpo knows";
+    TYPE_UNKNOWN_VALUE: "type.unknown_value", area 3, Error, Agent,
+        "03-logic.html#type-unknown-value", "Name is not defined in this scope";
     TYPE_UNKNOWN_VARIANT_FIELD: "type.unknown_variant_field", area 2, Error, Agent,
         "02-values-and-types.html#type-unknown-variant-field", "Variant has no such field";
     VISIBILITY_PRIVATE_CROSS_DOMAIN: "visibility.private_cross_domain", area 1, Error, Human,

@@ -1,0 +1,11 @@
+// The `decimal` namespace (area 3, question 7). Each operation is bound to
+// the Rust function of the same qualified name in `jadpo-value`.
+//
+// `/` divides two values of the same named type exactly; these operations
+// divide values of different types, or round another way.
+
+public library decimal {
+    /// `dividend` divided by `divisor`, to the dividend's scale, rounded as
+    /// `rounding` says. The divisor is never zero.
+    function divide(dividend: T, divisor: U, rounding: Rounding) -> Decimal {}
+}

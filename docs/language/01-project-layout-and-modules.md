@@ -1232,9 +1232,9 @@ Built on 2026-10-13 (chunk 1.3): `jadpo check` reports all of these except
 `layout.asset_unreferenced` and `library.similar_exists`; each has its
 example and real output under [Errors](#errors). A folder or file checked
 without an `app.jadpo` above it is treated as loose files, one implicit
-domain with the layout rules off, as a single file is. Until areas 2 to 4
-are built, `jadpo check` resolves names in signatures, type blocks and
-calls; lower-case names used as values are area 3's to check.
+domain with the layout rules off, as a single file is. Resolution covers
+names in signatures, type blocks and calls; lower-case names used as values
+are checked with the logic of bodies (area 3).
 
 #### Cost of building it
 

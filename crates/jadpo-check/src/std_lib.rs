@@ -20,9 +20,11 @@ use crate::types::{BASES, Prim, TypeRef, container_arity};
 const NAMES: &str = include_str!("../std/names.txt");
 
 /// The stub files, by name.
-const STUBS: [(&str, &str); 2] = [
+const STUBS: [(&str, &str); 4] = [
     ("types.jadpo", include_str!("../std/types.jadpo")),
     ("collection.jadpo", include_str!("../std/collection.jadpo")),
+    ("decimal.jadpo", include_str!("../std/decimal.jadpo")),
+    ("integer.jadpo", include_str!("../std/integer.jadpo")),
 ];
 
 /// A standard-library operation's signature, as declared in its stub.

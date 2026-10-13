@@ -1,8 +1,9 @@
 # Names the language declares that have no Jadpo stub yet
 # (docs/compiler-runtime.md §2.1), read by jadpo-check's resolution. The
-# types and operations area 2 needs are declared as stubs beside this file
-# (`types.jadpo`, `collection.jadpo`); later chunks move the rest there as
-# their areas are built. Lines starting with `#` are comments.
+# types and operations areas 2 and 3 need are declared as stubs beside this
+# file (`types.jadpo`, `collection.jadpo`, `decimal.jadpo`,
+# `integer.jadpo`); later chunks move the rest there as their areas are
+# built. Lines starting with `#` are comments.
 
 # Built-in types that later areas define (areas 3 to 18), and the setting
 # options they use.
@@ -10,18 +11,16 @@
 InstantRange Zone Locale Weekday
 Page PageCursor
 File Principal Response Access
-FailureKind TimeFormat Rounding LocalGap LocalOverlap
+FailureKind TimeFormat LocalGap LocalOverlap
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol HttpMethod
 AuthenticationMethod RouteAuthentication FieldAccess OnDelete Generated FieldChange
 ApiChange PersonalData Erasure FileType SuccessStatus SearchLanguage RateLimitKey
 ComponentStyle
 
 # Standard-library namespaces and the operations the pages name so far,
-# always called through the namespace (areas 3 and 10).
+# always called through the namespace (area 10).
 [namespaces]
 temporal: in_zone resolve format format_relative format_friendly between day_bounds
-decimal: divide
-integer: divide
 
 # Namespaces the compiler fills from the project or the platform: any
 # member name is accepted until its area is built (areas 8, 10 and 13).
