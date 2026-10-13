@@ -101,7 +101,7 @@ optimisation) are `xhigh`.
   references in the graph; value validators and a typed standard-library
   operation table in a leaf crate shared with the runtime; transitive
   crate-graph and wasm32 gates; the quadratic naming check.
-- [ ] **1.9 Phase 1 review fixes** `opus · high`: the review's correctness,
+- [x] **1.9 Phase 1 review fixes** `opus · high`: the review's correctness,
   formatter, parser-depth, docs-gate and LSP findings, and area 1's
   decided exception letting a type fold to the name of the callable in its
   file (`CreateTodo` beside `create_todo`).
