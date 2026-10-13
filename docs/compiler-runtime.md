@@ -341,7 +341,9 @@ catalogue is part of `jadpo help --json`, which the docs check reads.
 rebuilt rather than mutated and shared behind `Arc`; nothing is deleted in
 place, so generational keys would be wasted. In-memory ids are never
 serialised. *Rejected:* a general property graph with string labels, which
-loses the typed shape every consumer relies on.
+loses the typed shape every consumer relies on. Built in chunk 1.7 as one
+key-sorted node list with typed `NodeId`s and a typed detail per kind;
+per-kind arenas join with the typed bodies if the executors need them.
 
 | Node group | Kinds |
 |---|---|
@@ -371,9 +373,9 @@ per callable gives Ball–Larus path numbers, branch coverage and exact
 review paths, with loop back edges cut as area 16 decides. Executors walk
 the structured body; reports read the control-flow graph.
 
-**Identity.** A node's key is its born qualified name through the registry
-(`planning.complete_todo`, `planning.Todo.title`,
-`planning.Todos GET /{todo_id}`). Its digest is BLAKE3 over its canonical
+**Identity.** A node's key is its kind and born name through the registry
+(`action complete_todo`, `field Todo.title`), not qualified by domain, so
+promotion to `shared/` keeps it (built in chunk 1.7; area 18, question 8). Its digest is BLAKE3 over its canonical
 form without positions or comments, so moving code changes neither. Sites
 and branches are numbered per build in source order (area 18). Every node
 records its project-relative file and byte range; the manifest prints

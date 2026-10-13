@@ -1280,11 +1280,12 @@ check failed: 1 error, 1 file
 ```
 
 The four errors below check that a data operation's mapping names a failure
-of the right kind. They keep the archived compiler's example until data
-operations are built (area 6); the new compiler checks `invalid:` the same
-way, as `failure.mapping_kind` above.
+of the right kind. The new compiler checks `invalid:` the same way, as
+`failure.mapping_kind` above.
 
 ### `failure.required_query_not_not_found`
+
+> The archived compiler's example: data operations' mappings are checked once data operations are built (area 6).
 
 ```jadpo project=e-query-kind expect=failure.required_query_not_not_found
 entity Customer {
@@ -1308,6 +1309,8 @@ action find_customer(id: Customer.id)
 ```
 
 ### `failure.required_mutation_not_not_found`
+
+> The archived compiler's example: data operations' mappings are checked once data operations are built (area 6).
 
 ```jadpo project=e-mutation-missing-kind expect=failure.required_mutation_not_not_found
 entity Customer {
@@ -1338,6 +1341,8 @@ action delete_customer(id: Customer.id)
 
 ### `failure.mutation_conflict_not_conflict`
 
+> The archived compiler's example: data operations' mappings are checked once data operations are built (area 6).
+
 ```jadpo project=e-mutation-conflict-kind expect=failure.mutation_conflict_not_conflict
 entity Customer {
     id: Uuid identity
@@ -1366,6 +1371,8 @@ action delete_customer(id: Customer.id)
 ```
 
 ### `failure.patch_empty_not_invalid_value`
+
+> The archived compiler's example: data operations' mappings are checked once data operations are built (area 6).
 
 ```jadpo project=e-patch-empty-kind expect=failure.patch_empty_not_invalid_value
 entity Customer {

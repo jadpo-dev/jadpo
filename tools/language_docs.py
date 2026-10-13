@@ -22,7 +22,16 @@ code is written in `fragment` blocks, which are not compiled.
   python3 tools/language_docs.py --check     # verify only
   python3 tools/language_docs.py             # verify and write build/language-site
   python3 tools/language_docs.py --bless     # rewrite the output blocks after `check` blocks
+  python3 tools/language_docs.py --archived  # list what areas 1-4 still show from the v0 compiler
   python3 tools/language_docs.py --freeze    # with the v0 compiler built: rewrite the frozen results
+
+Phase 1 is done when areas 1-4's decided examples check and their errors show
+the new compiler's output (docs/roadmap.md). For those pages the check also
+holds that every block still on the frozen v0 result says why, inside a
+`::: today` box or under a note in its section that says it is the archived
+compiler's ("archived compiler", or "Being removed" for v0 syntax), and that
+no `fragment` there checks cleanly, since one that does is a decided example
+the new compiler can check.
 """
 
 import argparse
@@ -47,6 +56,10 @@ TEMPLATE = Path(__file__).resolve().parent / 'language_docs_template.html'
 OUT_DEFAULT = ROOT / 'build/language-site'
 # Optional build/language-site/published.json maps page stems to published URLs for cross-page links.
 FENCE = re.compile(r'^```(\S*)(.*)$')
+# Roadmap Phase 1 builds areas 1-4 with the new compiler.
+PHASE_ONE = 4
+# What a note says about a block still on the frozen v0 result.
+ARCHIVED_NOTES = ('archived compiler', 'being removed')
 
 
 def run(args, cwd=None):
@@ -129,7 +142,10 @@ class Page:
         self.path = path
         self.catalogue = catalogue
         self.frozen = None if frozen is None else frozen['pages'].get(path.name, {})
-        self.meta, self.body = parse_front_matter(path.read_text())
+        text = path.read_text()
+        self.meta, self.body = parse_front_matter(text)
+        # File lines before the body, so messages give the file's line numbers.
+        self.offset = text[:len(text) - len(self.body)].count('\n')
         self.blocks = []
         self.problems = []
         self.results = {}
@@ -138,7 +154,14 @@ class Page:
     def collect_blocks(self):
         lines = self.body.splitlines()
         i, n = 0, 0
+        today, heading = False, 0
         while i < len(lines):
+            if lines[i].strip() == '::: today':
+                today = True
+            elif lines[i].strip() == ':::':
+                today = False
+            elif lines[i].startswith('#'):
+                heading = i
             match = FENCE.match(lines[i])
             if match and match.group(1) == 'jadpo':
                 attrs = parse_attrs(match.group(2))
@@ -148,7 +171,8 @@ class Page:
                 n += 1
                 attrs.setdefault('project', f'example-{n}')
                 attrs.setdefault('file', 'main.jadpo')
-                block = {'line': i, 'end': j, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n'}
+                block = {'line': i, 'end': j, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n',
+                         'today': today, 'heading': heading}
                 # An output block may follow, after blank lines.
                 k = j + 1
                 while k < len(lines) and not lines[k].strip():
@@ -275,10 +299,51 @@ class Page:
     def covered_rules(self):
         return {r['expected'] for r in self.results.values() if r['expected'] != 'pass' and r['ok']}
 
+    def area(self):
+        return int(self.meta.get('area', 0))
+
+    def archived(self):
+        """Blocks still on the frozen v0 result, each with why: `None` when
+        nothing on the page says."""
+        lines = self.body.splitlines()
+        out = []
+        for block in self.blocks:
+            attrs = block['attrs']
+            if attrs.get('check') or attrs.get('fragment'):
+                continue
+            if block['today']:
+                reason = 'today box: the archived compiler\'s syntax'
+            else:
+                notes = [line.lstrip('> ').strip() for line in lines[block['heading']:block['line']]
+                         if line.startswith('>') and any(word in line.lower() for word in ARCHIVED_NOTES)]
+                reason = notes[0] if notes else None
+            out.append((block, reason))
+        return out
+
+    def check_phase_one(self):
+        """Areas 1-4: what is left on the v0 result says why, and no
+        fragment is a program the new compiler checks cleanly."""
+        if not 1 <= self.area() <= PHASE_ONE:
+            return
+        for block, reason in self.archived():
+            if reason is None:
+                self.problems.append(f'{block["attrs"]["project"]} (line {block["line"] + self.offset + 1}) is on the '
+                                     'archived compiler\'s result with no note saying why; make it a check block or say why')
+        for block in self.blocks:
+            if not block['attrs'].get('fragment'):
+                continue
+            with tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp) / 'main.jadpo').write_text(block['source'])
+                code, _ = jadpo(['check', tmp])
+            if code == 0:
+                self.problems.append(f'the fragment at line {block["line"] + self.offset + 1} checks cleanly: '
+                                     'make it a check block')
+
     def check(self, bless=False):
         self.collect_blocks()
         self.compile_projects()
         self.check_projects(bless)
+        self.check_phase_one()
         missing = [r for r in self.claimed_rules() if r not in self.covered_rules()]
         for rule in missing:
             self.problems.append(f'no example for {rule}')
@@ -675,6 +740,8 @@ def main():
     parser.add_argument('--out', default=str(OUT_DEFAULT))
     parser.add_argument('--freeze', action='store_true', help='compile with the v0 compiler and rewrite the frozen results')
     parser.add_argument('--bless', action='store_true', help='rewrite the output blocks after check blocks')
+    parser.add_argument('--archived', action='store_true',
+                        help='list the blocks areas 1-4 still show from the archived compiler, and why')
     args = parser.parse_args()
     if args.freeze:
         if not COMPILER.exists():
@@ -702,6 +769,15 @@ def main():
         for problem in page.problems:
             failed = True
             print(f'  FAIL {problem}')
+    if args.archived:
+        print('\nStill on the archived compiler\'s result in areas 1-4:')
+        for page in pages:
+            if not 1 <= page.area() <= PHASE_ONE:
+                continue
+            for block, reason in page.archived():
+                expect = block['attrs'].get('expect', 'pass')
+                print(f'  {page.path.name}:{block["line"] + page.offset + 1}  {block["attrs"]["project"]}  {expect}  '
+                      f'{reason or "NO REASON"}')
     for rule, files in owners.items():
         if len(files) > 1:
             failed = True
