@@ -94,3 +94,64 @@ fn outside_a_project_files_are_loose() {
         .collect();
     assert_eq!(paths, ["a.jadpo", "nested/b.jadpo"]);
 }
+
+#[test]
+fn a_loaded_project_takes_edits_in_place_and_keeps_path_order() {
+    let root = folder("edits");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/planning/types/count.jadpo",
+        "type Count = Int {}\n",
+    );
+    let mut loaded = load(&root);
+    let paths = |loaded: &jadpo_db::Loaded| -> Vec<String> {
+        loaded
+            .project
+            .files(&loaded.db)
+            .iter()
+            .map(|file| file.path(&loaded.db).clone())
+            .collect()
+    };
+    assert_eq!(
+        loaded.relative(&root.join("domains/planning/types/count.jadpo")),
+        Some("domains/planning/types/count.jadpo".to_string())
+    );
+    assert_eq!(loaded.relative(Path::new("/elsewhere/x.jadpo")), None);
+
+    loaded.set_text(
+        "domains/planning/types/count.jadpo",
+        "type Total = Int {}\n".to_string(),
+    );
+    let count = loaded
+        .file("domains/planning/types/count.jadpo")
+        .expect("file");
+    assert_eq!(count.text(&loaded.db), "type Total = Int {}\n");
+
+    // A new file joins in path order; a non-source path is ignored.
+    loaded.set_text(
+        "domains/billing/types/fee.jadpo",
+        "type Fee = Int {}\n".into(),
+    );
+    loaded.set_text("notes.md", "not source".into());
+    loaded.set_text("build/stale.jadpo", "type Stale = Int {}\n".into());
+    assert_eq!(
+        paths(&loaded),
+        [
+            "app.jadpo",
+            "domains/billing/types/fee.jadpo",
+            "domains/planning/types/count.jadpo"
+        ]
+    );
+    assert!(symbols(&loaded.db, loaded.project).get("Fee").is_some());
+
+    // Reloading reads the disk: the edit is gone, a deleted file goes.
+    loaded.reload("domains/planning/types/count.jadpo");
+    assert_eq!(count.text(&loaded.db), "type Count = Int {}\n");
+    loaded.reload("domains/billing/types/fee.jadpo");
+    assert_eq!(
+        paths(&loaded),
+        ["app.jadpo", "domains/planning/types/count.jadpo"]
+    );
+    assert!(symbols(&loaded.db, loaded.project).get("Fee").is_none());
+}

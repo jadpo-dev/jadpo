@@ -9,11 +9,13 @@
 //! routes, schedules, subscribers, queries' bodies) have their nodes, with
 //! identity, place and digest; their contents come with their areas.
 
+mod lookup;
 mod part;
 mod paths;
 mod similar;
 mod text;
 
+pub use lookup::{Found, lookup};
 pub use part::{FilePart, file_part};
 pub use similar::{FunctionShape, function_shapes, similar_problems};
 pub use text::LineIndex;
