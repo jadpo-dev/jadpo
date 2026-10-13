@@ -366,7 +366,7 @@ Area: 5 data, 6 reads/writes, 9 policy, 10 config, 11 integrations, 12 events,
 
 ## 3. Mapping onto what exists
 
-**CONSISTENCY-001 ([entity-query-model](../../entity-query-model.md) §6–§9)**
+**CONSISTENCY-001 ([entity-query-model](../../archive/specs-v0/entity-query-model.md) §6–§9)**
 
 | Item | Verdict | Under this model |
 |---|---|---|

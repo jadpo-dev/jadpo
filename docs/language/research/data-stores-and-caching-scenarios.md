@@ -20,7 +20,7 @@ wiped or updated when data changes.
 
 Fixed points it has to fit:
 
-- [Entity model](../../entity-query-model.md) §6, §9: one authority per fact;
+- [Entity model](../../archive/specs-v0/entity-query-model.md) §6, §9: one authority per fact;
   freshness levels authoritative, read-your-writes, bounded, eventual; the
   compiler may pick a stronger source, never a weaker one; freshness is not
   authorisation, so derived data is revalidated against authority unless its
@@ -28,7 +28,7 @@ Fixed points it has to fit:
   the authority's transaction.
 - [Area 3](../03-logic.md) question 15: every action is all-or-nothing and
   reads are current unless they read a cache, declared where the cache is.
-- [Authentication plan](../../authentication-plan.md): no security or
+- [Authentication plan](../../archive/specs-v0/authentication-plan.md): no security or
   availability guarantee depends on a cache being present.
 
 Three tensions are already visible. [Area 5](../05-data.md) question 2

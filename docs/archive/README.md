@@ -1,8 +1,25 @@
 # Archive
 
-Frozen material from the Codex delivery period (to 2026-10-11). Nothing here is
-maintained, and links inside these files may be broken. Current work is in the
-[roadmap](../roadmap.md).
+Frozen material. Nothing here is maintained, and links inside these files may
+be broken. Current work is in the [roadmap](../roadmap.md); the language is
+specified in [docs/language](../language/README.md), which wins wherever an
+archived document disagrees.
+
+## The v0 compiler (archived 2026-10-13)
+
+The first compiler, generating TypeScript for Bun, was replaced by the
+graph-centred rebuild. Its source, tests, examples, experiments and editor
+extension are at the git tag `archive/compiler-v0`
+(`git show archive/compiler-v0:<path>`). The language pages' compiled
+examples show its frozen results (`docs/language/reference/v0-results.json`).
+
+| Item | What it is |
+|---|---|
+| [specs-v0/](specs-v0/) | The v0 specifications (grammar, syntax, type system, failure model, persistence, policy, events, time, testing and the delivery plans). Each is replaced by a language area: grammar and syntax by areas 1–3; types by 2; failures by 4; persistence, entities and lifecycle by 5 and 6; policy by 9; authentication by 8; configuration and time by 10; services by 11; events and async by 12; testing by 13; tooling and diagnostics by 14 and 17; approval by 18 |
+| [compiler-runtime-v0.md](compiler-runtime-v0.md) | The v0 architecture document in full |
+| [decision-register-2026-10-13.md](decision-register-2026-10-13.md) | The register before the language review, with every earlier decision |
+
+## The Codex delivery period (to 2026-10-11)
 
 | Item | What it is |
 |---|---|

@@ -10,9 +10,9 @@ against `examples/golden-todo-migration/` and `examples/golden-todo/app.jadpo`.
 
 ## Ground rules the scenarios assume
 
-These come from [project structure](../../project-structure.md), the
-[entity, query and transaction model](../../entity-query-model.md), area 1 and
-the [event model](../../event-model.md) (a candidate design):
+These come from [project structure](../../archive/specs-v0/project-structure.md), the
+[entity, query and transaction model](../../archive/specs-v0/entity-query-model.md), area 1 and
+the [event model](../../archive/specs-v0/event-model.md) (a candidate design):
 
 - Names are unique across the whole project, modules or not.
 - Exactly one entity per file under `entities/`. The entity dossier owns its

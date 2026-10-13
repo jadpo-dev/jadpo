@@ -41,14 +41,14 @@ before starting the second half.
 
 - [ ] **0.1 Merge the language review.** Pull request from `language-review`
   to `main`. **Needs Richard** to approve opening it.
-- [ ] **0.2 Archive the current compiler.** Tag `archive/compiler-v0` on
+- [x] **0.2 Archive the current compiler.** Tag `archive/compiler-v0` on
   `main`, then delete `jadpo/`, the old examples' generated output, the old
   compile tests and tools that only serve the old compiler. Keep the golden
   contract (`examples/golden-todo/acceptance.json`), the experiments' results
   and the diagnostics catalogue as reference. The language pages' "today"
   boxes stop being compiled and are marked as the archived compiler's
   behaviour. Done when `main` builds nothing old and the docs check passes.
-- [ ] **0.3 Documentation clean-up.** The language pages become the only
+- [x] **0.3 Documentation clean-up.** The language pages become the only
   specification: older specifications move to `docs/archive/` with a pointer
   to the area that replaced them; the decision register keeps decisions
   outside the language and links to the area pages for the rest;
@@ -77,7 +77,9 @@ before starting the second half.
 - [ ] **1.7 The graph, identity and manifest:** `jadpo check` writes
   `build/manifest.json`; the language server gives diagnostics and hover.
 
-Done when areas 1–4's examples check and their listed errors appear exactly.
+Done when areas 1–4's decided examples check, and each area's errors are
+listed on its page with the new compiler's real output (the v0 lists are
+reference only).
 
 ## Phase 2 — Interpreter and tests (area 13)
 

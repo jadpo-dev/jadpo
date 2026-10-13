@@ -7,7 +7,7 @@ Richard chose a simpler model than the options below the same day; see
 ## What is complicated today
 
 Policy is the area with the most ideas a reader has to hold at once. Today's
-model (the approved POLICY-001 plan, [policy-plan.md](../../policy-plan.md))
+model (the approved POLICY-001 plan, [policy-plan.md](../../archive/specs-v0/policy-plan.md))
 has:
 
 1. role enums, always qualified (`CompanyRole.editor`);

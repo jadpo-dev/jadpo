@@ -7,11 +7,11 @@ Decides nothing.
 
 Two designs exist, neither built:
 
-- **ASYNC-001** ([async plan](../../async-plan.md)), frozen 2026-10-04: seven
+- **ASYNC-001** ([async plan](../../archive/specs-v0/async-plan.md)), frozen 2026-10-04: seven
   delivery states, leases with fencing generations, per-key FIFO ordering,
   cumulative attempt and lifetime budgets, coalesced schedules and bounded
   continuations. Sound, and mostly invisible to authors.
-- **The event model** ([event model](../../event-model.md)), a candidate:
+- **The event model** ([event model](../../archive/specs-v0/event-model.md)), a candidate:
   `event` families with variants, `emit_event(...)`, subscribers with several
   `on` handlers, `component` ownership maps, `triggers:` restrictions on
   entities and services, per-variant `invoke`/`read` policy, delivery that

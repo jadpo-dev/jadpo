@@ -55,7 +55,7 @@ The initial experiment found that a SQLite trigger constraint became `ItemConfli
 in generated Bun but an internal fault in the native/WASM adapter. The repository
 already defines the correct behavior: an unqualified `conflict:` handles remaining
 normalized constraints, as described in the
-[failure model](../failure-model.md) and [grammar](../grammar-v0.1.md).
+[failure model](../archive/specs-v0/failure-model.md) and [grammar](../archive/specs-v0/grammar-v0.1.md).
 
 The new native adapter therefore classifies SQLite's constraint error class,
 including extended trigger constraints, as the host `conflict` status. Its generated

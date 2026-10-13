@@ -1,5 +1,13 @@
 # Golden todo design contract
 
+> **2026-10-13:** this contract (`acceptance.json` and the documents beside
+> it) is kept as the behavioural target for roadmap Phase 10. Its example
+> sources were written in the v0 syntax and are at the tag
+> `archive/compiler-v0` (`examples/golden-todo/*.jadpo` and
+> `examples/golden-todo-migration/`); Phase 10 rewrites the application in the
+> decided language. Where this text describes v0 syntax or process, the
+> language pages win.
+
 **Status:** candidate freeze for P10R review  
 **Contract version:** `todo-v0.1`  
 **Compiler support:** intentionally incomplete
@@ -41,7 +49,7 @@ boundary and fixture work is tracked separately and does not restore any legacy
 date/time spelling.
 
 The compiler-checked successor source is being assembled in the separate
-[`golden-todo-migration` package](../golden-todo-migration/README.md) so the
+`golden-todo-migration` package (now at the tag `archive/compiler-v0`) so the
 pre-DATA-007 pressure source remains intact. Its first slices migrate the four
 persistent domain entities, ownership references, and supported value/input/
 output declarations, plus typed configuration, the bounded principal and user
