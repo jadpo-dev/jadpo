@@ -101,12 +101,12 @@ fn destination(ownership: &Ownership, item: &Item) -> Option<String> {
         kind => home(kind).map(|folder| {
             // `shared/` holds only types, libraries and failures; anything
             // else moves into a domain.
-            let owner = if *ownership == Ownership::Shared && !Folder::SHARED.contains(&folder) {
+            let root = if *ownership == Ownership::Shared && !Folder::SHARED.contains(&folder) {
                 "domains/<domain>"
             } else {
                 domain.as_str()
             };
-            format!("`{owner}/{}/{file}.jadpo`", folder.name())
+            format!("`{root}/{}/{file}.jadpo`", folder.name())
         }),
     }
 }

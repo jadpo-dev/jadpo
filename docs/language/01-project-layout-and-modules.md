@@ -593,7 +593,7 @@ error: `snooze_todo` is in this file's own domain
   |
 2 |     planning.snooze_todo()
   |     ^^^^^^^^ own domain
-  reason: The dot names the owner of what you call, and code in `planning` owns `snooze_todo` itself, so it calls it by its bare name.
+  reason: The dot names who owns what you call, and `snooze_todo` belongs to `planning` itself, so code there calls it by its bare name.
   next: Call `snooze_todo(...)` without `planning.` (agent)
   rule: semantic.own_domain_qualification
   help: docs/language/01-project-layout-and-modules.html#semantic-own-domain-qualification

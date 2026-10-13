@@ -240,3 +240,6 @@ signing_key
 database_url
 page_size
 sign_out
+
+# Generic names the language rejects for a domain or library (area 1)
+helpers

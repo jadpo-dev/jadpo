@@ -127,14 +127,14 @@ pub fn check_calendar_date(text: &str) -> Result<(), String> {
         return Err(FORM.into());
     };
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let days = match month {
+    let length = match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
         2 if leap => 29,
         2 => 28,
         _ => return Err("has no such month".into()),
     };
-    if day == 0 || day > days {
+    if day == 0 || day > length {
         return Err("has no such day in its month".into());
     }
     Ok(())

@@ -199,7 +199,8 @@ pub struct Lookup<'db> {
 
 impl std::fmt::Debug for Lookup<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Lookup").finish_non_exhaustive()
+        f.debug_struct(std::any::type_name::<Self>())
+            .finish_non_exhaustive()
     }
 }
 

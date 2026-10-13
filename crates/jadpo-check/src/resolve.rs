@@ -1075,7 +1075,7 @@ impl Resolver<'_> {
                     )
                     .at(qualifier_span.clone(), "own domain")
                     .reason(format!(
-                        "The dot names the owner of what you call, and code in `{qualifier}` owns `{member}` itself, so it calls it by its bare name."
+                        "The dot names who owns what you call, and `{member}` belongs to `{qualifier}` itself, so code there calls it by its bare name."
                     ))
                     .next(format!("Call `{member}(...)` without `{qualifier}.`"))
                     .edit(Span::new(self.path, qualifier_span.start, end), ""),

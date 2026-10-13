@@ -6,14 +6,16 @@ declared in the language pages' code blocks and in `examples/` may not
 appear in the compiler's source. This script extracts every declared name
 into tools/example-identifiers.txt, minus the generic words listed in
 tools/example-identifiers-allowed.txt, and checks that no listed name appears,
-in any case style, as an identifier or string in crates/*/src/. Comments are
-not checked, and tests may use the names freely.
+in any case style, as an identifier or string in crates/*/src/ or in the
+standard library's stubs (crates/*/std/). Comments are not checked, and tests
+may use the names freely.
 
 An example entity whose name is an allowed word (`Order`, `Session`) is still
 a sign of special-casing when it stands as a string, so those names go to
 tools/example-type-names.txt and may not appear exactly, as a name, in a
 string literal without spaces (`"Order"`, `"Order.get"`). Inline
-`#[cfg(test)]` modules count as tests.
+`#[cfg(test)] mod` blocks count as tests; the attribute mentioned in a
+comment does not.
 
   python3 tools/example_names.py           # rewrite tools/example-identifiers.txt
   python3 tools/example_names.py --check   # fail if the list is stale or a name is used
@@ -29,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIST = ROOT / 'tools/example-identifiers.txt'
 ALLOWED = ROOT / 'tools/example-identifiers-allowed.txt'
 TYPE_LIST = ROOT / 'tools/example-type-names.txt'
+TYPE_ALLOWED = ROOT / 'tools/example-type-names-allowed.txt'
 SOURCES = [ROOT / 'docs/language', ROOT / 'examples']
 FENCE = re.compile(r'^```(\S*)(.*)$')
 IDENT = r'[A-Za-z_][A-Za-z0-9_]*'
@@ -49,7 +52,8 @@ FIELD = re.compile(rf'^\s*({IDENT})\??\s*:\s*[A-Z]')
 VARIANT = re.compile(rf'^\s*({IDENT})\s*(?::?\s*\{{)?\s*,?\s*(?://.*)?$')
 CALLABLE = re.compile(rf'^\s*(?:public\s+)?(?:function|action|query|fixture|seed)\s+{IDENT}\s*\(([^)]*)\)')
 PARAMETER = re.compile(rf'({IDENT})\??\s*:')
-ENTITY = re.compile(rf'^\s*(?:public\s+)?entity\s+([A-Z][A-Za-z0-9_]*)', re.MULTILINE)
+# Example types and entities, whose names may not stand alone in a string.
+TYPE_NAME = re.compile(rf'^\s*(?:public\s+)?(?:entity|type)\s+([A-Z][A-Za-z0-9_]*)', re.MULTILINE)
 DOMAIN_PATH = re.compile(r'(?:^|/)domains/([a-z_][a-z0-9_]*)/')
 
 
@@ -138,16 +142,17 @@ def banned_list() -> list[str]:
 
 
 def banned_type_names() -> list[str]:
-    """Example entity names left out of the main list because their words are allowed."""
+    """Example type and entity names left out of the main list because their words are allowed."""
     allowed = load_allowed()
-    entities = set()
+    types = set()
     for root in SOURCES:
         for path in sorted(root.rglob('*.md')):
             for _, lines in code_blocks(path):
-                entities.update(ENTITY.findall('\n'.join(lines)))
+                types.update(TYPE_NAME.findall('\n'.join(lines)))
         for path in sorted(root.rglob('*.jadpo')):
-            entities.update(ENTITY.findall(path.read_text()))
-    return sorted(name for name in entities if words(name) in allowed)
+            types.update(TYPE_NAME.findall(path.read_text()))
+    language = {line.split('#', 1)[0].strip() for line in TYPE_ALLOWED.read_text().splitlines()}
+    return sorted(name for name in types if words(name) in allowed and name not in language)
 
 
 # --- scanning Rust source --------------------------------------------------
@@ -202,13 +207,66 @@ def contains(haystack: tuple[str, ...], needle: tuple[str, ...]) -> bool:
     return any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
 
 
+TEST_MODULE = re.compile(r'^[ \t]*#\[cfg\(test\)\]\s*(?:pub(?:\(crate\))?\s+)?mod\s+\w+\s*\{', re.MULTILINE)
+
+
+def without_test_modules(text: str) -> str:
+    """`text` with each inline `#[cfg(test)] mod ... { ... }` blanked out,
+    lines kept, so tests may use example names. Only the attribute on a
+    module counts: a comment that mentions it exempts nothing."""
+    out = text
+    for match in reversed(list(TEST_MODULE.finditer(text))):
+        depth, i = 1, match.end()
+        while depth and i < len(text):
+            token = RUST_TOKEN.match(text, i)
+            if token and token.lastgroup in ('line_comment', 'string', 'char', 'lifetime', 'ident'):
+                i = token.end()
+                continue
+            if token and token.lastgroup == 'raw_string':
+                closing = '"' + token.group('hashes')
+                end = text.find(closing, token.end())
+                i = len(text) if end < 0 else end + len(closing)
+                continue
+            if token and token.lastgroup == 'block_comment':
+                end = text.find('*/', token.end())
+                i = len(text) if end < 0 else end + 2
+                continue
+            depth += {'{': 1, '}': -1}.get(text[i], 0)
+            i += 1
+        blank = re.sub(r'[^\n]', ' ', text[match.start():i])
+        out = out[:match.start()] + blank + out[i:]
+    return out
+
+
+def jadpo_tokens(text: str):
+    """Yield (line, kind, text) for names and strings in Jadpo source (the
+    standard library's stubs), skipping `//` comments."""
+    for number, raw in enumerate(text.splitlines(), 1):
+        code = raw.split('//', 1)[0]
+        for match in re.finditer(r'"(?:\\.|[^"\\])*"|' + IDENT, code):
+            kind = 'string' if match.group(0).startswith('"') else 'identifier'
+            yield number, kind, match.group(0)
+
+
+def sources_to_scan():
+    """Each file the compiler is built from, with its names and strings:
+    Rust source without its test modules, the standard library's Jadpo
+    stubs and its names list."""
+    for path in sorted(ROOT.glob('crates/*/src/**/*.rs')):
+        yield path, rust_tokens(without_test_modules(path.read_text()))
+    for path in sorted(ROOT.glob('crates/*/std/*.jadpo')):
+        yield path, jadpo_tokens(path.read_text())
+    for path in sorted(ROOT.glob('crates/*/std/*.txt')):
+        text = '\n'.join(line.split('#', 1)[0] for line in path.read_text().splitlines())
+        yield path, jadpo_tokens(text)
+
+
 def scan(banned: list[str], type_names: list[str]) -> list[str]:
     needles = [(name, tuple(name.split('_'))) for name in banned]
     exact = set(type_names)
     found = []
-    for path in sorted(ROOT.glob('crates/*/src/**/*.rs')):
-        source = path.read_text().split('#[cfg(test)]', 1)[0]
-        for line, kind, text in rust_tokens(source):
+    for path, tokens in sources_to_scan():
+        for line, kind, text in tokens:
             if kind == 'string' and not re.search(r'\s', text):
                 for piece in sorted(exact.intersection(re.findall(IDENT, text))):
                     found.append(f'{path.relative_to(ROOT)}:{line}: string {text} names the example type `{piece}`')
@@ -233,7 +291,10 @@ def self_test() -> None:
     assert ('identifier', 'c') in [(kind, text) for _, kind, text in tokens]
     assert declared_names('', ['type Pair = Object {', '    left_side: Int', '}', 'function f(amount: Int) -> Int {']) == {
         'Pair', 'left_side', 'f', 'amount'}
-    assert ENTITY.findall('entity Order {\n    public entity Session {') == ['Order', 'Session']
+    assert TYPE_NAME.findall('entity Order {\n    public entity Session {\ntype Plan = Object {') == ['Order', 'Session', 'Plan']
+    hidden = without_test_modules('fn a() {}\n/// See #[cfg(test)] below.\nfn b() { let x = "Todo"; }\n#[cfg(test)]\nmod tests {\n    fn c() { let s = "}"; }\n}\nfn d() {}\n')
+    assert '"Todo"' in hidden and 'fn d()' in hidden and '"}"' not in hidden
+    assert hidden.count('\n') == 8
 
 
 def main() -> int:
