@@ -310,7 +310,6 @@ starting_quantity
 stock
 stock_badge
 stock_badges
-stop_early
 stripe_v2024
 subtitle
 subtotal

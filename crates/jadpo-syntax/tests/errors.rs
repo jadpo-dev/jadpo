@@ -170,6 +170,7 @@ fn expected_expression() {
     let text = "function total(count: Count) -> Count {\n    var doubled: Count =\n    return doubled\n}\n";
     let (error, covered) = one_error(text);
     assert_eq!(error.rule.id, "syntax.expected_expression");
+    assert_eq!(error.message, "`doubled` has no value");
     assert_eq!(covered, "=");
 }
 
@@ -241,6 +242,7 @@ fn colon_required() {
     let (error, covered) = one_error(text);
     assert_eq!(error.rule.id, "syntax.colon_required");
     assert_eq!(error.message, "`format` needs a colon before its value");
+    assert_eq!(error.next, "Write `format: TextFormat.email`");
     assert_eq!(covered, "format");
     assert_eq!(
         fixed_by_edits(text, &error),

@@ -17,6 +17,7 @@ rules:
   - failure.undeclared_propagation
   - failure.unknown_context_field
   - syntax.expected_failure_item
+  - syntax.fails_after_result
   - syntax.failure_code_required
   - syntax.failure_item_colon_required
   - syntax.failure_kind_required
@@ -665,9 +666,47 @@ constant.
 > The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
 
 Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+compiler's actual output. The syntax errors (`syntax.*`) show the new
+compiler's output, from `jadpo fmt --check`; the rest still show the archived
+compiler's until their chunk is built.
+
+### `syntax.fails_after_result`
+
+```jadpo check project=e-fails-after expect=syntax.fails_after_result
+type Title = Text {
+    max_length: 200
+}
+
+type TitleBlank = Failure {
+    kind: FailureKind.invalid_value
+    message: "Enter a title."
+}
+
+function check_title(title: Title) -> Title fails TitleBlank {
+    if (title == "") {
+        reject TitleBlank
+    }
+    return title
+}
+```
+
+```text output
+error: `fails` goes before `->`
+ --> main.jadpo:10:45
+   |
+10 | function check_title(title: Title) -> Title fails TitleBlank {
+   |                                             ^^^^^^^^^^^^^^^^ after the result type
+  reason: A signature says what can fail before what it returns: `fails A, B -> Result`.
+  next: Move `fails TitleBlank` before `->` (agent)
+  rule: syntax.fails_after_result
+  help: docs/language/04-failures.html#syntax-fails-after-result
+
+fmt failed: 1 with syntax errors
+```
 
 ### `syntax.failure_kind_required`
+
+> The archived compiler's error: a failure's required `kind:` is now checked when failures are checked.
 
 ```jadpo project=e-kind-required expect=syntax.failure_kind_required
 failure Missing {
@@ -677,6 +716,8 @@ failure Missing {
 
 ### `syntax.failure_code_required`
 
+> The archived compiler's error: `code:` is optional now; it defaults to the failure's name (question 1).
+
 ```jadpo project=e-code-required expect=syntax.failure_code_required
 failure Missing {
     kind: NotFound
@@ -684,6 +725,8 @@ failure Missing {
 ```
 
 ### `syntax.failure_item_colon_required`
+
+> The archived compiler's error: the new parser reports a missing colon as `syntax.colon_required` (area 3).
 
 ```jadpo project=e-item-colon expect=syntax.failure_item_colon_required
 failure Missing {
@@ -693,6 +736,8 @@ failure Missing {
 ```
 
 ### `syntax.expected_failure_item`
+
+> The archived compiler's error: which settings a `Failure` takes is now checked when failures are checked.
 
 A failure cannot choose its own HTTP status:
 

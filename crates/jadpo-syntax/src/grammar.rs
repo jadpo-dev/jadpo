@@ -551,9 +551,7 @@ fn unclosed_params(p: &mut Parser<'_>, open: (u32, u32)) {
         format!("expected `)` before {found}")
     })
     .also(open.0, open.1, "opened here")
-    .reason(format!(
-        "The parameters end with `)` before `fails`, `->` or the body; found {found}."
-    ))
+    .reason("The parameters end with `)`, before `fails`, `->` or the body.")
     .next(if after.is_empty() {
         "Add `)` after the last parameter".to_string()
     } else {
@@ -1082,7 +1080,15 @@ fn bare_member(p: &mut Parser<'_>, context: Members) {
 fn member_without_colon(p: &mut Parser<'_>, context: Members) {
     let word = p.current_text().to_string();
     let (start, end) = p.range();
-    let value = p.nth_text(1).to_string();
+    let line_end = p.text()[end as usize..]
+        .find('\n')
+        .map_or(p.text().len(), |i| end as usize + i);
+    let value = p.text()[end as usize..line_end]
+        .split("//")
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
     let error = SyntaxError::new(
         &rule::SYNTAX_COLON_REQUIRED,
         format!("`{word}` needs a colon before its value"),
@@ -1314,7 +1320,22 @@ fn var_stmt(p: &mut Parser<'_>) {
     if !typed {
         missing_variable_type(p, &var_name, name_end);
     }
-    if p.eat(EQ) {
+    if p.at(EQ) && (p.nth_on_new_line(1) || matches!(p.nth(1), R_BRACE | EOF)) {
+        let (start, end) = p.range();
+        let error = SyntaxError::new(
+            &rule::SYNTAX_EXPECTED_EXPRESSION,
+            format!("`{var_name}` has no value"),
+            start,
+            end,
+        )
+        .label("expected a value after `=`")
+        .reason(
+            "A variable is given its value on the line that declares it: `var name: Type = value`.",
+        )
+        .next(format!("Write `{var_name}`'s value after `=`"));
+        p.push_error(error);
+        p.bump(EQ);
+    } else if p.eat(EQ) {
         stmt_value(p);
     } else {
         let found = p.found();
@@ -1499,7 +1520,7 @@ fn condition(p: &mut Parser<'_>) {
     )
     .label("expected `(` before the condition")
     .reason("Conditions are always in brackets, `if (total > limit) {`, so the block can't be mistaken for part of the condition.")
-    .next(format!("Write `({text})`"))
+    .next(format!("Write `if ({text}) {{`"))
     .edit(TextEdit::insert(start, "("))
     .edit(TextEdit::insert(end, ")"));
     p.truncate_errors(checkpoint);

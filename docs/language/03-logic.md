@@ -7,8 +7,12 @@ rules:
   - effect.*
   - failure.attempt_required
   - failure.outcome_*
+  - syntax.attempt_placement
+  - syntax.colon_required
+  - syntax.condition_brackets
   - syntax.expected_expression
   - syntax.expected_statement
+  - syntax.match_arrow
   - syntax.match_pattern
   - syntax.named_argument_duplicate
   - syntax.positional_after_named
@@ -704,7 +708,9 @@ syntax errors today; question 16 decided to keep it that way.
 > The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
 
 Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+compiler's actual output. The syntax errors (`syntax.*`) show the new
+compiler's output, from `jadpo fmt --check`; the rest still show the archived
+compiler's until their chunk is built.
 
 ### `effect.function_calls_action`
 
@@ -1143,37 +1149,76 @@ function rank(status: TicketStatus) -> Rank {
 }
 ```
 
-### `syntax.match_pattern`
+### `syntax.match_arrow`
 
-An outcome match written as a statement:
-
-```jadpo project=e-match-pattern expect=syntax.match_pattern
-type LookupKey = Text {}
-
-type LookupResult = Text {}
-
-failure LookupMissing {
-    kind: NotFound
-    code: "lookup_missing"
+```jadpo check project=e-match-arrow expect=syntax.match_arrow
+type TicketStatus = Enum {
+    open
+    closed
 }
 
-function lookup(key: LookupKey)
-    fails LookupMissing
-    -> LookupResult
-{
-    reject LookupMissing
+type Rank = Int {
+    min: 1
 }
 
-function recover(key: LookupKey) -> LookupResult {
-    match lookup(key) {
-        success(value) => {
-            return value
-        }
-        failure LookupMissing => {
-            return LookupResult("missing")
-        }
+function rank(status: TicketStatus) -> Rank {
+    return match status {
+        TicketStatus.open => 1
+        TicketStatus.closed -> 2
     }
 }
+```
+
+```text output
+error: Match arms use `->`
+ --> main.jadpo:12:27
+   |
+12 |         TicketStatus.open => 1
+   |                           ^^ expected `->`
+  reason: `=>` was removed: an arm uses the same arrow as a result type.
+  next: Use `->` instead of `=>` (agent)
+  rule: syntax.match_arrow
+  help: docs/language/03-logic.html#syntax-match-arrow
+
+fmt failed: 1 with syntax errors
+```
+
+### `syntax.match_pattern`
+
+A match arm names a case's data in brackets, not braces:
+
+```jadpo check project=e-match-pattern expect=syntax.match_pattern
+type ReceiptId = Uuid {}
+
+type Label = Text {}
+
+type PaymentOutcome = Enum {
+    pending
+    paid: {
+        receipt_id: ReceiptId
+    }
+}
+
+function label(outcome: PaymentOutcome) -> Label {
+    return match outcome {
+        PaymentOutcome.pending -> "pending"
+        PaymentOutcome.paid { receipt_id } -> "paid"
+    }
+}
+```
+
+```text output
+error: A match arm names a case's data in brackets
+ --> main.jadpo:15:29
+   |
+15 |         PaymentOutcome.paid { receipt_id } -> "paid"
+   |                             ^^^^^^^^^^^^^^ expected `(name)`
+  reason: An arm binds a case's data to one name, `PaymentOutcome.paid(paid)`, and reads its fields from it, as in `paid.field`.
+  next: Write `PaymentOutcome.paid(paid)` (agent)
+  rule: syntax.match_pattern
+  help: docs/language/03-logic.html#syntax-match-pattern
+
+fmt failed: 1 with syntax errors
 ```
 
 The value-match examples below share a hidden file declaring
@@ -1662,7 +1707,7 @@ function three() -> Number {
 
 ### `syntax.named_argument_duplicate`
 
-```jadpo project=e-named-duplicate expect=syntax.named_argument_duplicate
+```jadpo check project=e-named-duplicate expect=syntax.named_argument_duplicate
 type Day = CalendarDate {}
 
 function london_morning(date: Day) -> Instant {
@@ -1677,9 +1722,25 @@ function london_morning(date: Day) -> Instant {
 }
 ```
 
+```text output
+error: `zone:` is given twice
+ --> main.jadpo:8:9
+  |
+7 |         zone: Zone.europe_london,
+  |         ---- first given here
+8 |         zone: Zone.europe_london,
+  |         ^^^^ given again here
+  reason: Each named argument is given once.
+  next: Remove one of the `zone:` arguments (agent)
+  rule: syntax.named_argument_duplicate
+  help: docs/language/03-logic.html#syntax-named-argument-duplicate
+
+fmt failed: 1 with syntax errors
+```
+
 ### `syntax.positional_after_named`
 
-```jadpo project=e-positional-after expect=syntax.positional_after_named
+```jadpo check project=e-positional-after expect=syntax.positional_after_named
 type Day = CalendarDate {}
 
 function london_morning(date: Day) -> Instant {
@@ -1693,47 +1754,199 @@ function london_morning(date: Day) -> Instant {
 }
 ```
 
+```text output
+error: A positional argument follows a named one
+ --> main.jadpo:6:9
+  |
+5 |         date: date,
+  |         ---- named from here
+6 |         "09:00",
+  |         ^^^^^^^ not named
+  reason: Once an argument is named, every argument after it is named too.
+  next: Name this argument, or move it before `date:` (agent)
+  rule: syntax.positional_after_named
+  help: docs/language/03-logic.html#syntax-positional-after-named
+
+fmt failed: 1 with syntax errors
+```
+
 ### `syntax.expected_statement`
 
-There are no loops yet:
+There is no `while` loop; `for` over a list is the only one:
 
-```jadpo project=e-statement expect=syntax.expected_statement
-type Tag = Text {}
-
-type Tags = Object {
-    items: List<Tag>
+```jadpo check project=e-statement expect=syntax.expected_statement
+type Count = Int {
+    min: 0
 }
 
-function first(tags: Tags) -> Tag {
-    for tag in tags.items {
-        return tag
+function first(count: Count) -> Count {
+    while (count > 0) {
+        return count
     }
-    return Tag("none")
+    return count
 }
+```
+
+```text output
+error: Jadpo has no `while` loop
+ --> main.jadpo:6:5
+  |
+6 |     while (count > 0) {
+  |     ^^^^^ not a Jadpo statement
+  reason: The only loop is `for item in items`, which always ends after its list; stop early with `return`.
+  next: Loop over a list with `for`, or narrow it first with `collection.filter` (agent)
+  rule: syntax.expected_statement
+  help: docs/language/03-logic.html#syntax-expected-statement
+
+fmt failed: 1 with syntax errors
+```
+
+### `syntax.attempt_placement`
+
+`attempt` only starts a statement, so every early exit is at the start of a line:
+
+```jadpo check project=e-attempt-placement expect=syntax.attempt_placement
+type Count = Int {
+    min: 0
+    max: 1000
+}
+
+type TooBig = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function checked(count: Count) fails TooBig -> Count {
+    if (count > 500) {
+        reject TooBig
+    }
+    return count
+}
+
+function doubled(count: Count) fails TooBig -> Count {
+    return Count(attempt checked(count) * 2)
+}
+```
+
+```text output
+error: `attempt` can only start a statement
+ --> main.jadpo:18:18
+   |
+18 |     return Count(attempt checked(count) * 2)
+   |                  ^^^^^^^ inside an expression
+  reason: Every place a callable can stop early is at the start of a line: a `var`, an assignment, a `return`, or a statement of its own.
+  next: Move the call into its own `var` statement with `attempt`, then use the variable (agent)
+  rule: syntax.attempt_placement
+  help: docs/language/03-logic.html#syntax-attempt-placement
+
+fmt failed: 1 with syntax errors
+```
+
+### `syntax.colon_required`
+
+Every member inside braces is `name: value`:
+
+```jadpo check project=e-colon expect=syntax.colon_required
+type ContactEmail = Text {
+    format TextFormat.email
+}
+```
+
+```text output
+error: `format` needs a colon before its value
+ --> main.jadpo:2:5
+  |
+2 |     format TextFormat.email
+  |     ^^^^^^ expected `:` after `format`
+  reason: Every member inside braces is `name: value`, with a colon even when the value is a block.
+  next: Write `format: TextFormat.email` (agent)
+  rule: syntax.colon_required
+  help: docs/language/03-logic.html#syntax-colon-required
+
+fmt failed: 1 with syntax errors
+```
+
+### `syntax.condition_brackets`
+
+```jadpo check project=e-condition expect=syntax.condition_brackets
+type Count = Int {
+    min: 0
+}
+
+type Size = Text {}
+
+function size(count: Count) -> Size {
+    if count > 10 {
+        return "large"
+    }
+    return "small"
+}
+```
+
+```text output
+error: This condition needs brackets
+ --> main.jadpo:8:8
+  |
+8 |     if count > 10 {
+  |        ^^^^^^^^^^ expected `(` before the condition
+  reason: Conditions are always in brackets, `if (total > limit) {`, so the block can't be mistaken for part of the condition.
+  next: Write `if (count > 10) {` (agent)
+  rule: syntax.condition_brackets
+  help: docs/language/03-logic.html#syntax-condition-brackets
+
+fmt failed: 1 with syntax errors
 ```
 
 ### `syntax.expected_expression`
 
-`return` always needs a value, even in a `Unit` action:
+A variable is given its value on the line that declares it:
 
-```jadpo project=e-expression expect=syntax.expected_expression
-type Count = Int {}
-
-action stop_early(count: Count) -> Unit {
-    if count > 0 {
-        return
-    }
+```jadpo check project=e-expression expect=syntax.expected_expression
+type Count = Int {
+    min: 0
 }
+
+function doubled(count: Count) -> Count {
+    var result: Count =
+    return result
+}
+```
+
+```text output
+error: `result` has no value
+ --> main.jadpo:6:23
+  |
+6 |     var result: Count =
+  |                       ^ expected a value after `=`
+  reason: A variable is given its value on the line that declares it: `var name: Type = value`.
+  next: Write `result`'s value after `=` (agent)
+  rule: syntax.expected_expression
+  help: docs/language/03-logic.html#syntax-expected-expression
+
+fmt failed: 1 with syntax errors
 ```
 
 ### `syntax.unsupported_throw`
 
-```jadpo project=e-throw expect=syntax.unsupported_throw
+```jadpo check project=e-throw expect=syntax.unsupported_throw
 type Note = Text {}
 
 function fail_loudly(note: Note) -> Note {
     throw Error("boom")
 }
+```
+
+```text output
+error: Jadpo has no `throw`
+ --> main.jadpo:4:5
+  |
+4 |     throw Error("boom")
+  |     ^^^^^ not a Jadpo statement
+  reason: A callable raises one of its declared failures with `reject`, and lists it in `fails`.
+  next: Use `reject` with a declared failure, as in `reject NoteRejected` (agent)
+  rule: syntax.unsupported_throw
+  help: docs/language/03-logic.html#syntax-unsupported-throw
+
+fmt failed: 1 with syntax errors
 ```
 
 ## Review

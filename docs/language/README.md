@@ -14,7 +14,14 @@ python3 tools/language_docs.py           # check and render, including decisions
 - Front matter gives `title`, `area`, `status`, `checked-with` and `rules`: the
   compiler error IDs this area owns (globs allowed). Each rule belongs to one
   area, and the check fails until every owned rule has an example.
-- Every non-fragment ` ```jadpo ` block shows how the archived v0 compiler
+- A ` ```jadpo check ` block is compiled by the new `jadpo`, built from this
+  checkout. While only the parser and formatter exist, that means `jadpo fmt
+  --check`: the block must parse and be canonically formatted, or, with
+  `expect=rule.id`, fail with that rule and be followed by a ` ```text output `
+  block holding the exact plain output (`python3 tools/language_docs.py
+  --bless` rewrites it). Each chunk converts its areas' blocks as it builds
+  them.
+- Every other non-fragment ` ```jadpo ` block shows how the archived v0 compiler
   treated it: its result is frozen in `reference/v0-results.json`, and a block
   whose source changes no longer matches and fails the check, so proposed code
   belongs in `fragment` blocks. Attributes after the language name:
@@ -25,8 +32,9 @@ python3 tools/language_docs.py           # check and render, including decisions
   - `hidden` compiles the block without showing it;
   - `fragment` shows the block without compiling it.
 - Under `## Errors`, each `### \`rule.id\`` heading is followed by its example.
-  The page shows the v0 compiler's real output. The new compiler's errors are
-  designed per area as each roadmap chunk builds it.
+  A `check` example shows the new compiler's real output; the others still
+  show the v0 compiler's until their chunk is built. The new compiler's errors
+  are designed per area as each roadmap chunk builds it.
 - `::: today` … `:::` wraps the archived v0 compiler's syntax for something since decided differently; it renders collapsed.
 - A line starting with `>` renders as a note, used to mark sections a decision will change before the rework lands.
 - Once `status: decided`, the rendered page leads with the `Decided …` and `Decisions` sections and collapses today's reference body and the remaining review notes.

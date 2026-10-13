@@ -26,6 +26,7 @@ def step(name: str, command: list[str]) -> bool:
 
 def main() -> int:
     checks = [
+        # Builds jadpo from this checkout and runs it over the `check` blocks.
         ('language specification', [sys.executable, 'tools/language_docs.py', '--check']),
         ('example names', [sys.executable, 'tools/example_names.py', '--check']),
     ]
@@ -33,7 +34,12 @@ def main() -> int:
         checks += [
             ('rust formatting', ['cargo', 'fmt', '--all', '--check']),
             ('clippy', ['cargo', 'clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings']),
-            # Includes the crate-graph test (crates/jadpo-cli/tests/crate_graph.rs).
+            # Every example in docs/language and examples/ formats idempotently
+            # to the same tree (docs/compiler-runtime.md §2.7).
+            ('format idempotence', ['cargo', 'test', '--locked', '-p', 'jadpo-fmt', '--test', 'examples']),
+            # Includes the crate-graph test (crates/jadpo-cli/tests/crate_graph.rs),
+            # the parser's documentation, error and fuzz tests, and the
+            # generated AST's drift test.
             ('compiler tests', ['cargo', 'test', '--locked', '--workspace']),
         ]
     results = [step(name, command) for name, command in checks]
