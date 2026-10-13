@@ -52,6 +52,17 @@ pub(crate) mod support {
         parent.children().find_map(N::cast)
     }
 
+    /// The first child that casts to `N` after the first child of a kind
+    /// `before` accepts: the `b` of `a.b`, where `a` is a name too.
+    pub(crate) fn child_after<N: AstNode>(
+        parent: &SyntaxNode,
+        before: fn(SyntaxKind) -> bool,
+    ) -> Option<N> {
+        let mut children = parent.children();
+        children.find(|child| before(child.kind()))?;
+        children.find_map(N::cast)
+    }
+
     pub(crate) fn children<N: AstNode>(parent: &SyntaxNode) -> AstChildren<N> {
         AstChildren::new(parent)
     }

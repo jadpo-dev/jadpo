@@ -95,3 +95,19 @@ fn an_unclosed_template_block_is_reported_where_it_opens() {
         "`{{ end }}` has no matching `{{ if }}` or `{{ for }}`"
     );
 }
+
+#[test]
+fn a_field_access_reads_the_name_after_the_dot() {
+    let source = file("function f(a: Thing) -> Thing {\n    return a.b.c\n}\n");
+    let fields: Vec<String> = source
+        .syntax()
+        .descendants()
+        .filter_map(ast::FieldExpr::cast)
+        .map(|field| {
+            let left = field.expr().expect("left").syntax().to_string();
+            let name = field.name_ref().expect("name").syntax().to_string();
+            format!("{left} . {name}")
+        })
+        .collect();
+    assert_eq!(fields, ["a.b . c", "a . b"]);
+}

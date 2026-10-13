@@ -147,6 +147,10 @@ enum Field {
         ty: String,
         many: bool,
         nth: Option<usize>,
+        /// An earlier field whose type could also be read as this one
+        /// (`FieldExpr = Expr '.' NameRef`, where a `NameRef` is an `Expr`):
+        /// this field is the first child of its type after that one.
+        after: Option<String>,
     },
 }
 
@@ -229,6 +233,19 @@ fn is_enum(grammar: &Grammar, rule: &Rule) -> Option<Vec<String>> {
     }
 }
 
+/// Whether a node of type `ty` can be read as `wider`: the same type, or a
+/// variant of the enum `wider`, directly or through another enum.
+fn covers(grammar: &Grammar, wider: &str, ty: &str) -> bool {
+    if wider == ty {
+        return true;
+    }
+    let Some(node) = grammar.iter().find(|node| grammar[*node].name == wider) else {
+        return false;
+    };
+    is_enum(grammar, &grammar[node].rule)
+        .is_some_and(|variants| variants.iter().any(|variant| covers(grammar, variant, ty)))
+}
+
 fn lower(grammar: &Grammar) -> Vec<NodeDef> {
     let mut defs = Vec::new();
     for node in grammar.iter() {
@@ -253,6 +270,7 @@ fn lower(grammar: &Grammar) -> Vec<NodeDef> {
             }
         }
         let mut fields = Vec::new();
+        let mut earlier: Vec<String> = Vec::new();
         let mut seen: BTreeSet<String> = BTreeSet::new();
         let mut nth: BTreeMap<String, usize> = BTreeMap::new();
         let labelled_types: BTreeMap<String, usize> =
@@ -302,12 +320,22 @@ fn lower(grammar: &Grammar) -> Vec<NodeDef> {
                     } else {
                         None
                     };
+                    let after = if many || index.is_some() {
+                        None
+                    } else {
+                        earlier
+                            .iter()
+                            .find(|wider| *wider != &ty && covers(grammar, wider, &ty))
+                            .cloned()
+                    };
+                    earlier.push(ty.clone());
                     if seen.insert(name.clone()) {
                         fields.push(Field::Node {
                             name,
                             ty,
                             many,
                             nth: index,
+                            after,
                         });
                     }
                 }
@@ -487,6 +515,17 @@ fn generate_nodes(defs: &[NodeDef]) -> String {
                             let _ = writeln!(
                                 out,
                                 "    pub fn {name}(&self) -> Option<{ty}> {{\n        support::children(&self.syntax).nth({n})\n    }}"
+                            );
+                        }
+                        Field::Node {
+                            name,
+                            ty,
+                            after: Some(wider),
+                            ..
+                        } => {
+                            let _ = writeln!(
+                                out,
+                                "    pub fn {name}(&self) -> Option<{ty}> {{\n        support::child_after(&self.syntax, {wider}::can_cast)\n    }}"
                             );
                         }
                         Field::Node { name, ty, .. } => {
