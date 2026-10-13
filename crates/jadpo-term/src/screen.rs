@@ -61,6 +61,38 @@ pub(crate) fn strong(token: Token, text: impl Into<String>) -> Piece {
 
 pub(crate) type Line = Vec<Piece>;
 
+/// Text as it may reach a terminal: control characters (escape sequences
+/// among them) and the characters that reorder text right to left are
+/// written as `\u{...}`, so source text can't restyle the terminal or show
+/// code in another order than the compiler reads it.
+pub fn visible(text: &str) -> String {
+    if !text.chars().any(hidden) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if hidden(c) {
+            out.push_str(&format!("\\u{{{:x}}}", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn hidden(c: char) -> bool {
+    (c.is_control() && c != '\t')
+        || matches!(
+            c,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+                | '\u{feff}'
+        )
+}
+
 /// Display width. Every symbol Jadpo prints is one cell wide.
 pub(crate) fn width(text: &str) -> usize {
     text.chars().count()
@@ -69,6 +101,10 @@ pub(crate) fn width(text: &str) -> usize {
 fn render_line(line: &Line, style: &Style) -> String {
     let mut out = String::new();
     for piece in line {
+        let piece = &Piece {
+            text: visible(&piece.text),
+            ..piece.clone()
+        };
         let mut codes = Vec::new();
         if piece.bold && style.bold {
             codes.push("1".to_string());
@@ -588,6 +624,15 @@ pub(crate) fn decider(decides: Decider) -> Piece {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hidden_characters_are_spelt_out() {
+        assert_eq!(
+            visible("a\u{1b}[31mb\u{202e}c\td"),
+            "a\\u{1b}[31mb\\u{202e}c\td"
+        );
+        assert_eq!(visible("plain é"), "plain é");
+    }
 
     #[test]
     fn wrap_keeps_long_words_whole() {

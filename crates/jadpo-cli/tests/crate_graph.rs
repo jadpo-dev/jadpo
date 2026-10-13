@@ -252,3 +252,40 @@ fn the_rules_catch_each_kind_of_wrong_edge_however_far_away() {
             .any(|p| p.contains("jadpo-graph depends on salsa"))
     );
 }
+
+/// A panic aborts a Workers instance, so every shared and runtime crate
+/// that exists denies `unwrap`, `expect` and `panic!` outside its tests
+/// (docs/compiler-runtime.md §2.6).
+#[test]
+fn runtime_crates_deny_panics() {
+    let workspace = read();
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let mut missing = Vec::new();
+    for (name, layer) in &workspace.layers {
+        if !matches!(layer, Shared | Runtime) || !workspace.members.contains(name) {
+            continue;
+        }
+        let lib = std::path::Path::new(root)
+            .join("crates")
+            .join(name)
+            .join("src/lib.rs");
+        let text = std::fs::read_to_string(&lib).unwrap_or_default();
+        let denies = text.lines().any(|line| {
+            line.starts_with("#![cfg_attr(not(test), deny(")
+                && [
+                    "clippy::unwrap_used",
+                    "clippy::expect_used",
+                    "clippy::panic",
+                ]
+                .iter()
+                .all(|lint| line.contains(lint))
+        });
+        if !denies {
+            missing.push(name.clone());
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "these crates don't deny unwrap, expect and panic!: {missing:?}"
+    );
+}

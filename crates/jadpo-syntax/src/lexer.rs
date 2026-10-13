@@ -24,6 +24,8 @@ pub(crate) struct LexToken {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum LexErrorKind {
     UnexpectedCharacter(String),
+    /// A carriage return not followed by a line feed.
+    LoneCarriageReturn,
     UnterminatedString,
     InvalidEscape(char),
 }
@@ -196,8 +198,29 @@ impl Lexer<'_> {
         let start = self.pos;
         let Some(c) = self.peek() else { return };
         match c {
+            // A byte-order mark some editors write first is not code.
+            '\u{feff}' if start == 0 => {
+                self.pos += c.len_utf8();
+                self.push(WHITESPACE, start);
+            }
             ' ' | '\t' | '\r' | '\n' => {
                 self.bump_while(|c| matches!(c, ' ' | '\t' | '\r' | '\n'));
+                // A line ended by a carriage return alone would read as one
+                // line with the next, and every position after it be wrong.
+                let run = &self.text[start..self.pos];
+                // One error a file: the whole file uses that line ending.
+                let already = self
+                    .errors
+                    .iter()
+                    .any(|e| e.kind == LexErrorKind::LoneCarriageReturn);
+                if let Some(at) = run
+                    .char_indices()
+                    .find(|&(i, c)| c == '\r' && !run[i + 1..].starts_with('\n'))
+                    .map(|(i, _)| start + i)
+                    .filter(|_| !already)
+                {
+                    self.error(at, at + 1, LexErrorKind::LoneCarriageReturn);
+                }
                 self.push(WHITESPACE, start);
             }
             '/' if self.rest().starts_with("//") => {
@@ -372,6 +395,16 @@ mod tests {
             })
             .filter(|(kind, _)| *kind != WHITESPACE)
             .collect()
+    }
+
+    #[test]
+    fn a_leading_byte_order_mark_is_whitespace_and_a_lone_cr_is_an_error() {
+        let (tokens, errors) = lex("\u{feff}type A = Int {}\r\n", LexMode::Source);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(tokens[0].kind, WHITESPACE);
+        let (_, errors) = lex("type A = Int {}\rtype B = Int {}\r", LexMode::Source);
+        let found: Vec<&LexErrorKind> = errors.iter().map(|e| &e.kind).collect();
+        assert_eq!(found, vec![&LexErrorKind::LoneCarriageReturn], "one a file");
     }
 
     #[test]

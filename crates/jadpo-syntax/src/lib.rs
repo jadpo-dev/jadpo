@@ -172,6 +172,16 @@ fn lex_error(text: &str, error: &LexError) -> SyntaxError {
                 None => error,
             }
         }
+        LexErrorKind::LoneCarriageReturn => SyntaxError::new(
+            &rule::SYNTAX_UNEXPECTED_CHARACTER,
+            "This line ends with a carriage return alone",
+            start,
+            end,
+        )
+        .label("line end")
+        .reason("Jadpo files end lines with a line feed (or a carriage return and a line feed); a carriage return alone, the old Mac line ending, would join this line to the next.")
+        .next("Save the file with LF line endings")
+        .edit(TextEdit::replace(start, end, "\n")),
         LexErrorKind::UnterminatedString => SyntaxError::new(
             &rule::SYNTAX_UNTERMINATED_STRING,
             "This string isn't closed",

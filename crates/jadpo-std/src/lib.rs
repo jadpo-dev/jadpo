@@ -21,6 +21,13 @@
 //! may both depend on it. Its one dependency is `regex`, the linear-time
 //! engine `pattern:` needs on every target (area 2, question 9).
 
+// A panic aborts a Workers instance, so runtime code reports faults as
+// values (docs/compiler-runtime.md §2.6); tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 mod builtin;
 mod enums;
 mod num;

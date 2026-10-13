@@ -5,7 +5,7 @@ use jadpo_diag::{Decider, Diagnostic, Label, Severity};
 
 use crate::detect::{Mode, Style};
 use crate::palette::{Symbol, Token};
-use crate::screen::{Line, decider, field, headline, paint, raw, strong, width};
+use crate::screen::{Line, decider, field, headline, paint, raw, strong, visible, width};
 use crate::sources::{Position, Sources, line_text};
 
 /// One mark under a source line.
@@ -171,11 +171,15 @@ fn add_mark(frame: &mut Vec<FrameLine>, text: &str, label: &Label, primary: bool
     let start = Position::of(text, label.span.start);
     let end = Position::of(text, label.span.end);
     let source = line_text(text, start.line);
-    let column = start.column - 1;
+    // Columns as the line is shown, with hidden characters spelt out.
+    let shown = |chars: usize| -> usize {
+        width(&visible(&source.chars().take(chars).collect::<String>()))
+    };
+    let column = shown(start.column - 1);
     let length = if end.line == start.line {
-        end.column.saturating_sub(start.column)
+        shown(end.column - 1).saturating_sub(column)
     } else {
-        width(source).saturating_sub(column)
+        width(&visible(source)).saturating_sub(column)
     };
     let mark = Mark {
         column,
