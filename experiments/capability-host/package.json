@@ -1,8 +1,0 @@
-{
-  "name": "jadpo-capability-host-experiment",
-  "private": true,
-  "scripts": {
-    "build:rust": "sh build.sh native",
-    "build:wasm": "sh build.sh wasm"
-  }
-}

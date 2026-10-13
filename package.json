@@ -1,8 +1,0 @@
-{
-  "name": "jadpo",
-  "private": true,
-  "scripts": {
-    "build:wasm": "sh experiments/native-conformance/build.sh --target wasm",
-    "build:rust": "sh experiments/native-conformance/build.sh --target rust"
-  }
-}

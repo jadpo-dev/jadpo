@@ -1,9 +1,0 @@
-failure First {
-    kind: Conflict
-    code: "same"
-}
-
-failure Second {
-    kind: Conflict
-    code: "same"
-}

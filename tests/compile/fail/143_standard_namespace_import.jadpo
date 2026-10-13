@@ -1,5 +1,0 @@
-module app.main
-
-import temporal { in_zone }
-
-public type EventId = Uuid {}

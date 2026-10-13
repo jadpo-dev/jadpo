@@ -1,9 +1,0 @@
-type Number = Int {}
-
-function add(left: Number, right: Number) -> Number {
-    return Number(left + right)
-}
-
-test "authored callables stay positional" {
-    var result = add(left: Number(1), right: Number(2))
-}

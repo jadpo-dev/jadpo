@@ -1,8 +1,0 @@
-type JobRunAt = Instant {}
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: scan(JobRunAt(clock.now))
-    retry: next_schedule
-}

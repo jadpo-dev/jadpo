@@ -1,39 +1,34 @@
 # Jadpo
 
-Jadpo is an experimental language for software written mainly by LLMs and
-reviewed by humans. A Rust compiler (`jadpo/`) checks source and generates a
-TypeScript/Bun HTTP app with SQLite/PostgreSQL persistence.
+Jadpo is a programming language for software written mainly by LLMs and
+reviewed by people. The language is fully specified; the compiler is being
+rebuilt around one graph, in Rust, with an interpreter for development and
+compiled native and WebAssembly deployables.
 
 ## Where things are
 
 - Outstanding work, in order: [docs/roadmap.md](docs/roadmap.md). It is the
-  only tracker.
-- Language meaning: the specifications indexed in [docs/README.md](docs/README.md)
-  and the [decision register](docs/decision-register.md).
-- Golden todo: contract in `examples/golden-todo/`, current app in
-  `examples/golden-todo-migration/`.
-- Old plans, history and process documents: [docs/archive/](docs/archive/README.md).
-  Read them only when a task needs the background.
-
-## Build and check
-
-```sh
-cargo build --locked --manifest-path jadpo/Cargo.toml -p jadpo-cli
-python3 tools/verify.py --profile quick   # skips live PostgreSQL
-python3 tools/verify.py                   # full gate
-python3 tools/verify.py --require-golden  # also requires all 88 golden results
-```
-
-Prerequisites (Rust, Bun, Node, Python, Ruby, PostgreSQL tools) are in the
-[validation guide](tests/validation/README.md). Use focused tests while
-iterating and the full gate before merging compiler or runtime changes.
+  only tracker; each session takes the first unticked chunk.
+- What the language means: [docs/language](docs/language/README.md), eighteen
+  decided areas. Where anything else disagrees, the area page wins.
+- How it is built: [docs/compiler-runtime.md](docs/compiler-runtime.md).
+- Other decisions: [docs/decision-register.md](docs/decision-register.md).
+- The archived v0 compiler: git tag `archive/compiler-v0`; superseded
+  documents: [docs/archive](docs/archive/README.md). Read them only when a
+  chunk needs the background, and never copy their special cases.
 
 ## Working rules
 
-- Branch from `main`, commit and push often, merge when the full gate passes.
-  Never create worktrees under `/private/tmp`.
-- The verifier and tests are the evidence. Do not create evidence packets,
-  review records, timing logs, progress reports or per-task plan documents.
-- Update `docs/roadmap.md` only when an item finishes or the order changes.
-- If a change needs an undecided language choice, stop and ask Richard with a
-  recommendation; do not special-case the compiler to make one example pass.
+- `python3 tools/verify.py` is the gate. It must pass before a chunk merges.
+- Branch from `main` per chunk, commit and push often, merge through a pull
+  request when CI passes. Never create worktrees under `/private/tmp`.
+- Plan each chunk in the session from its area pages; write their examples
+  and errors as failing tests first. No plan documents, evidence packets,
+  review records, timing logs or progress reports.
+- Never special-case the compiler for an example application. If a chunk
+  needs a language choice the pages do not make, stop and ask Richard with a
+  recommendation.
+- Every user-facing screen (CLI output, generated pages) follows the
+  [CLI design language](docs/language/research/14-cli-design-language.md) and
+  is designed with the design skills in `.agents/skills/` before it is built.
+- Update the roadmap only when a chunk finishes or the order changes.

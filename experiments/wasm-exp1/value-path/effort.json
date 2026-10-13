@@ -1,9 +1,0 @@
-{
-  "startedAtUtcApproximate": "2026-09-30T05:07:00Z",
-  "evidenceAndReportCompletedAtUtc": "2026-09-30T05:29:12Z",
-  "engineerMinutesCap": 60,
-  "conservativeMinutesChargedIncludingFinalVerificationAndCommits": 25,
-  "agents": 1,
-  "accounting": "All elapsed time, including sequential builds, tests, measurement waits, write-stall diagnostic and reporting, plus finalization allowance. No overlapping CPU benchmarks/builds/tests during measured runs. Lightweight documentation/status work occurred on this uncontrolled workstation. Focused stage time was not independently instrumented.",
-  "outcome": "Specific small concurrent-read win against the generated Bun target; larger-value cost and concurrent-write stalls remain. No paid/cloud resources, production migration or new ABI."
-}

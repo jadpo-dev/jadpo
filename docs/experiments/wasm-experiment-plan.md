@@ -9,9 +9,9 @@ is an acceptable experiment outcome, not a reason to weaken the checks.
 
 This implements the protocol in [WASM-EXP1](../archive/implementation-history.md#wasm-exp1--bounded-wasm-runtime-experiment)
 and [compiler/runtime architecture](../compiler-runtime.md#33-scheduled-wasm-target-experiment).
-The [semantic model](../semantic-model.md), [types](../type-system.md),
-[failures](../failure-model.md), [entity/query contract](../entity-query-model.md),
-[policy](../policy-plan.md), and [time/testing contract](../time-testing-plan.md)
+The [semantic model](../archive/specs-v0/semantic-model.md), [types](../archive/specs-v0/type-system.md),
+[failures](../archive/specs-v0/failure-model.md), [entity/query contract](../archive/specs-v0/entity-query-model.md),
+[policy](../archive/specs-v0/policy-plan.md), and [time/testing contract](../archive/specs-v0/time-testing-plan.md)
 remain authoritative. The Bun runtime is a measured baseline, not permission to
 copy any defect discovered in it.
 

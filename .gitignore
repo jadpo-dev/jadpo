@@ -1,9 +1,8 @@
-jadpo/target/
-experiments/capability-monitor/target/
 build/
+/target/
 /.wrangler/
 
-# Local tooling, caches and credentials. Checked-in TLS fixtures remain visible.
+# Local tooling, caches and credentials.
 .DS_Store
 __pycache__/
 *.py[cod]
@@ -13,4 +12,3 @@ node_modules/
 !.env.example
 !.env.sample
 !.env.template
-/target/

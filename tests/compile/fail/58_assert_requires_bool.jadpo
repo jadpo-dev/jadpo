@@ -1,5 +1,0 @@
-type Phrase = Text {}
-
-test "assertions are boolean" {
-    assert Phrase("not a boolean")
-}

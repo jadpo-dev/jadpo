@@ -1,5 +1,0 @@
-type Name = Text {}
-
-function echo(name: Name) -> Name {
-    return nmae
-}

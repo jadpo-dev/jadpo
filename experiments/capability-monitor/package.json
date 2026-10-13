@@ -1,7 +1,0 @@
-{
-  "name": "jadpo-capability-monitor-experiment",
-  "private": true,
-  "scripts": {
-    "build:wasm": "sh build.sh"
-  }
-}

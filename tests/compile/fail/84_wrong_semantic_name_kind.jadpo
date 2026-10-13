@@ -1,6 +1,0 @@
-type NotAProblem = Text {}
-
-failure BrokenFailure {
-    kind: NotAProblem
-    code: "broken_failure"
-}

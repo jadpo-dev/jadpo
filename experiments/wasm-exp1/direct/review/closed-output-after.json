@@ -1,9 +1,0 @@
-{
-  "scope": "Only A01 closed-envelope assertion challenged; other synthetic-host outcomes not interpreted",
-  "pass": true,
-  "actual": {
-    "id": "A01",
-    "status": "fail",
-    "reason": "closed output"
-  }
-}

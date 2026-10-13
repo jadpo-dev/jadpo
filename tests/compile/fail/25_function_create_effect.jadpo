@@ -1,9 +1,0 @@
-entity Customer {
-    id: Uuid
-}
-
-function invalid_create(id: Customer.id) -> Customer {
-    return attempt create Customer {
-        id: id
-    }
-}

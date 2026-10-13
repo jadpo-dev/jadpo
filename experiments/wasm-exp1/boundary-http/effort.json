@@ -1,9 +1,0 @@
-{
-  "startedAtUtcApproximate": "2026-09-30T04:33:00Z",
-  "evidenceAndReportCompletedAtUtc": "2026-09-30T05:03:26Z",
-  "activeEngineerMinutesCap": 60,
-  "conservativeMinutesChargedIncludingFinalVerificationAndCommits": 35,
-  "agents": 1,
-  "accounting": "Conservative upper bound: all elapsed time including sequential profiling, builds, failed harness attempts, HTTP timing, reporting and a finalization allowance. Focused per-stage minutes were not instrumented. No builds/tests/other benchmarks ran alongside final timings; lightweight status reads and documentation work occurred on the same uncontrolled workstation.",
-  "outcome": "Completed two isolated optimisation variants, correctness and source-mutation/rebuild gates, fifty isolated measurements and 140 HTTP measurements. Two incomplete Bun-fetch attempts retained separately. Final Node HTTP client run completed without retries; all child servers exited. No cloud resources or production changes."
-}

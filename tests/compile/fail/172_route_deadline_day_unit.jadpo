@@ -1,5 +1,0 @@
-route GET /deadline {
-    auth: none
-    deadline: 1d
-    action: {}
-}

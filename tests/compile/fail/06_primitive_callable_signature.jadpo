@@ -1,4 +1,0 @@
-function normalise(value: Text) -> Text {
-    return value
-}
-

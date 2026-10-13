@@ -1,7 +1,0 @@
-type Choice = Text {}
-
-function choose(initial: Choice, replacement: Choice) -> Choice {
-    var mut selected: Choice = initial
-    selected = replacement
-    return selected
-}

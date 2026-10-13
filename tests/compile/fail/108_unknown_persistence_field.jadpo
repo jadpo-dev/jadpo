@@ -1,7 +1,0 @@
-type Customer = Object {
-    id: Uuid
-}
-
-persist Customer {
-    identity: missing_field
-}
