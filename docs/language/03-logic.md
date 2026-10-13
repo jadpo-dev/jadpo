@@ -7,6 +7,10 @@ rules:
   - effect.*
   - failure.attempt_required
   - failure.outcome_*
+  - semantic.missing_return
+  - semantic.unreachable_code
+  - semantic.unused_result
+  - semantic.unused_variable
   - syntax.attempt_placement
   - syntax.colon_required
   - syntax.condition_brackets
@@ -20,9 +24,12 @@ rules:
   - type.argument_count
   - type.arithmetic_operand
   - type.assign_*
+  - type.divisor_zero
   - type.incomparable
+  - type.inline_function_placement
   - type.logical_operand
   - type.match_*
+  - type.named_argument_unknown
   - type.named_argument_unsupported
   - type.ordering_operand
   - type.unary_operand
@@ -44,13 +51,26 @@ result from its arguments and nothing else. An **action** is an application
 operation that may read and write data, call integrations and call other
 actions. A **query** is a read-only operation, described in area 6.
 
-```jadpo fragment
+```jadpo check project=line-total file=numbers.jadpo hidden
+type Pence = Int {
+    min: 0
+}
+
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+```
+
+```jadpo check project=line-total
 /// Total for one order line before discounts.
 function line_total(price: Pence, quantity: Quantity) -> Pence {
     var total: Pence = Pence(price * quantity)
     return total
 }
+```
 
+```jadpo fragment
 action complete_todo(todo_id: Todo.id) fails TodoNotFound -> TodoView {
     var todo: Todo = attempt Todo.get(todo_id)
     var done: Todo = Todo.update(todo) {
@@ -380,7 +400,41 @@ var boxes: BoxCount = integer.divide(items, box_size, rounding: Rounding.up)   /
 `match` chooses between the cases of a value. It must cover every case, and it
 can be used as a statement or as an expression.
 
-```jadpo fragment
+```jadpo check project=matching file=shapes.jadpo hidden
+type ReceiptId = Uuid {}
+
+type PaymentOutcome = Enum {
+    pending
+    paid: {
+        receipt_id: ReceiptId
+    }
+    declined
+}
+
+type ProductName = Text {
+    min_length: 1
+    max_length: 120
+}
+
+type Listing = Object {
+    name: ProductName
+    subtitle: ProductName?
+}
+
+type TodoStatus = Enum {
+    open
+    done
+}
+
+entity Todo {
+    id: Uuid
+    status: TodoStatus
+}
+
+action notify_owner(todo_id: Todo.id) -> Unit {}
+```
+
+```jadpo check project=matching
 function receipt(outcome: PaymentOutcome) -> ReceiptId? {
     return match outcome {
         PaymentOutcome.pending -> none
@@ -396,20 +450,25 @@ function headline(listing: Listing) -> ProductName {
     }
 }
 
-function lookup_or_default(key: LookupCode) fails LookupRejected -> LookupResult {
-    return match lookup(key) {
-        success(value) -> value
-        LookupMissing -> "not found"
-        LookupRefused -> reject LookupRejected
-    }
-}
-
 action follow_up(todo: Todo) -> Unit {
     match todo.status {
         TodoStatus.open -> {
             notify_owner(todo.id)
         }
         TodoStatus.done -> {}
+    }
+}
+```
+
+A `match` on a call's outcome names its success value and each failure
+(area 4):
+
+```jadpo fragment
+function lookup_or_default(key: LookupCode) fails LookupRejected -> LookupResult {
+    return match lookup(key) {
+        success(value) -> value
+        LookupMissing -> "not found"
+        LookupRefused -> reject LookupRejected
     }
 }
 ```
@@ -606,7 +665,17 @@ function doubled(n: Count)
 Decided in area 2: `for item in items` iterates a list, and the loop variable
 takes its type from the list.
 
-```jadpo fragment
+```jadpo check project=order-total file=lines.jadpo hidden
+type Pence = Int {
+    min: 0
+}
+
+type OrderLine = Object {
+    subtotal: Pence
+}
+```
+
+```jadpo check project=order-total
 function order_total(lines: List<OrderLine>) -> Pence {
     var mut total: Pence = 0
     for line in lines {
@@ -645,11 +714,26 @@ A function may call itself or form a cycle with other functions. Recursive
 types are accepted (`replies: List<Comment>`), and recursion is the only way
 to walk them:
 
-```jadpo fragment
-function reply_count(comment: Comment) -> ReplyCount {
-    var mut count: ReplyCount = 0
+```jadpo check project=replies file=comments.jadpo hidden
+type CommentBody = Text {
+    max_length: 2000
+}
+
+type Comment = Object {
+    body: CommentBody
+    replies: List<Comment>
+}
+
+type ReplyTotal = Int {
+    min: 0
+}
+```
+
+```jadpo check project=replies
+function reply_count(comment: Comment) -> ReplyTotal {
+    var mut count: ReplyTotal = 0
     for reply in comment.replies {
-        count = ReplyCount(count + 1 + reply_count(reply))
+        count = ReplyTotal(count + 1 + reply_count(reply))
     }
     return count
 }
@@ -682,7 +766,29 @@ Only the standard library is generic (`List<T>`, `collection.count`). Your own
 callables take named types, and a parameter that accepts several types is an
 enum whose variants carry each one (from area 2):
 
-```jadpo fragment
+```jadpo check project=parties file=parties.jadpo hidden
+entity Customer {
+    id: Uuid
+}
+
+entity Supplier {
+    id: Uuid
+}
+
+type PartyTitle = Text {
+    max_length: 80
+}
+
+function customer_label(id: Customer.id) -> PartyTitle {
+    return "customer"
+}
+
+function supplier_label(id: Supplier.id) -> PartyTitle {
+    return "supplier"
+}
+```
+
+```jadpo check project=parties
 type PartyId = Enum {
     customer: {
         id: Customer.id
@@ -692,7 +798,7 @@ type PartyId = Enum {
     }
 }
 
-function party_label(party: PartyId) -> PartyLabel {
+function party_label(party: PartyId) -> PartyTitle {
     return match party {
         PartyId.customer(customer) -> customer_label(customer.id)
         PartyId.supplier(supplier) -> supplier_label(supplier.id)
@@ -705,16 +811,16 @@ syntax errors today; question 16 decided to keep it that way.
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
-
 Every error this area can produce, with an example that triggers it and the
-compiler's actual output. The syntax errors (`syntax.*`) show the new
-compiler's output, from `jadpo fmt --check`; the rest still show the archived
-compiler's until their chunk is built.
+new compiler's actual output. The `failure.*` entries still show the archived
+compiler's error until area 4 is built (roadmap chunk 1.6). Six entries keep
+the archived compiler's example because the decided language has no such
+mistake any more, or the new compiler reports it under another rule, named
+in each note.
 
 ### `effect.function_calls_action`
 
-```jadpo project=e-fn-action expect=effect.function_calls_action
+```jadpo check project=e-fn-action expect=effect.function_calls_action
 type Note = Text {}
 
 action save(note: Note) -> Note {
@@ -726,27 +832,81 @@ function pretend_pure(note: Note) -> Note {
 }
 ```
 
+```text output
+error: A function can't call action `save`
+ --> main.jadpo:8:12
+  |
+8 |     return save(note)
+  |            ^^^^ an action
+  reason: A function is pure: it computes its result from its arguments alone, so it calls only functions, library functions and the standard library; an action may read and write data.
+  next: Make the caller an action, or call `save` from the action that uses this function (agent)
+  rule: effect.function_calls_action
+  help: docs/language/03-logic.html#effect-function-calls-action
+
+check failed: 1 error, 1 file
+```
+
 ### `effect.function_persistence`
 
-```jadpo project=e-fn-persist expect=effect.function_persistence
+```jadpo check project=e-fn-persist expect=effect.function_persistence
 entity Customer {
     id: Uuid
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
 }
 
-function invalid_create(id: Customer.id) -> Customer {
-    return attempt create Customer {
-        id: id
-    }
+function find_customer(id: Customer.id) -> Customer {
+    return attempt Customer.get(id)
 }
 ```
 
+```text output
+error: A function can't call `Customer.get`
+ --> main.jadpo:6:20
+  |
+6 |     return attempt Customer.get(id)
+  |                    ^^^^^^^^^^^^ reads or writes stored data
+  reason: A function is pure: it computes its result from its arguments alone, so reading and writing entities belongs in an action.
+  next: Make the caller an action, or pass the data in as an argument (agent)
+  rule: effect.function_persistence
+  help: docs/language/03-logic.html#effect-function-persistence
+
+check failed: 1 error, 1 file
+```
+
+### `effect.recursive_action`
+
+Only functions may call themselves; an action in a call cycle is reported at the call that closes it:
+
+```jadpo check project=e-recursive-action expect=effect.recursive_action
+type Count = Int {
+    min: 0
+}
+
+action ping(count: Count) -> Unit {
+    pong(count)
+}
+
+action pong(count: Count) -> Unit {
+    ping(count)
+}
+```
+
+```text output
+error: Action `pong` is in a call cycle: `ping` → `pong` → `ping`
+ --> main.jadpo:10:5
+   |
+10 |     ping(count)
+   |     ^^^^ calls back round
+  reason: Only functions may call themselves; an action in a call cycle repeats its effects with no data reason, and an unbounded one never finishes.
+  next: Move the repeated logic into a function, or loop over a list with `for` (human)
+  rule: effect.recursive_action
+  help: docs/language/03-logic.html#effect-recursive-action
+
+check failed: 1 error, 1 file
+```
+
 ### `effect.query_calls_action`
+
+> The archived compiler's error: a query's body is declarative (`from:`, `where:`), so it has no statements that could call an action (area 6).
 
 ```jadpo project=e-query-action expect=effect.query_calls_action
 entity Customer {
@@ -775,6 +935,8 @@ entity Customer {
 
 ### `effect.query_mutation`
 
+> The archived compiler's error: a query's body is declarative (`from:`, `where:`), so it has no statements that could write (area 6).
+
 ```jadpo project=e-query-write expect=effect.query_mutation
 entity Customer {
     id: Uuid
@@ -798,6 +960,8 @@ entity Customer {
 
 ### `effect.authored_async`
 
+> The archived compiler's error: the new parser reports `async` before a declaration as `syntax.expected_declaration`.
+
 ```jadpo project=e-async expect=effect.authored_async
 type Note = Text {}
 
@@ -807,6 +971,8 @@ async action save(note: Note) -> Note {
 ```
 
 ### `effect.authored_await`
+
+> The archived compiler's error: the new parser reports `await save(note)` as `syntax.unexpected_token`, a second statement on the line.
 
 ```jadpo project=e-await expect=effect.authored_await
 type Note = Text {}
@@ -1221,14 +1387,14 @@ error: A match arm names a case's data in brackets
 check failed: 1 error, 1 file
 ```
 
-The value-match examples below share a hidden file declaring
-`DeliveryState { pending, sent, failed }`, `PaymentOutcome { pending, paid { receipt_id } }`
-and `Label = Text`.
+The `match` examples below share a hidden file declaring
+`DeliveryState { pending, sent, failed }`,
+`PaymentOutcome { pending, paid: { receipt_id } }` and `Label = Text`.
 
 ### `type.match_non_exhaustive`
 
-```jadpo project=e-match-exhaustive file=shapes.jadpo hidden
-enum DeliveryState {
+```jadpo check project=e-match-exhaustive file=shapes.jadpo hidden
+type DeliveryState = Enum {
     pending
     sent
     failed
@@ -1236,9 +1402,9 @@ enum DeliveryState {
 
 type ReceiptId = Uuid {}
 
-enum PaymentOutcome {
+type PaymentOutcome = Enum {
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
     }
 }
@@ -1246,23 +1412,33 @@ enum PaymentOutcome {
 type Label = Text {}
 ```
 
-```jadpo project=e-match-exhaustive expect=type.match_non_exhaustive
+```jadpo check project=e-match-exhaustive expect=type.match_non_exhaustive
 function describe(state: DeliveryState) -> Label {
-    match state {
-        DeliveryState.pending => {
-            return Label("Pending")
-        }
-        DeliveryState.sent => {
-            return Label("Sent")
-        }
+    return match state {
+        DeliveryState.pending -> "Pending"
+        DeliveryState.sent -> "Sent"
     }
 }
+```
+
+```text output
+error: This `match` doesn't cover `DeliveryState.failed`
+ --> main.jadpo:2:12
+  |
+2 |     return match state {
+  |            ^^^^^^^^^^^ 1 case not matched
+  reason: A `match` on an enum lists every variant, so a variant added later is caught at every `match` that has to consider it; `_` isn't allowed on `DeliveryState`.
+  next: Add an arm for `DeliveryState.failed` (agent)
+  rule: type.match_non_exhaustive
+  help: docs/language/03-logic.html#type-match-non-exhaustive
+
+check failed: 1 error, 2 files
 ```
 
 ### `type.match_duplicate_pattern`
 
-```jadpo project=e-match-duplicate file=shapes.jadpo hidden
-enum DeliveryState {
+```jadpo check project=e-match-duplicate file=shapes.jadpo hidden
+type DeliveryState = Enum {
     pending
     sent
     failed
@@ -1270,9 +1446,9 @@ enum DeliveryState {
 
 type ReceiptId = Uuid {}
 
-enum PaymentOutcome {
+type PaymentOutcome = Enum {
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
     }
 }
@@ -1280,29 +1456,37 @@ enum PaymentOutcome {
 type Label = Text {}
 ```
 
-```jadpo project=e-match-duplicate expect=type.match_duplicate_pattern
+```jadpo check project=e-match-duplicate expect=type.match_duplicate_pattern
 function describe(state: DeliveryState) -> Label {
-    match state {
-        DeliveryState.pending => {
-            return Label("Pending")
-        }
-        DeliveryState.pending => {
-            return Label("Waiting")
-        }
-        DeliveryState.sent => {
-            return Label("Sent")
-        }
-        DeliveryState.failed => {
-            return Label("Failed")
-        }
+    return match state {
+        DeliveryState.pending -> "Pending"
+        DeliveryState.pending -> "Waiting"
+        DeliveryState.sent -> "Sent"
+        DeliveryState.failed -> "Failed"
     }
 }
+```
+
+```text output
+error: `DeliveryState.pending` is matched twice
+ --> main.jadpo:4:9
+  |
+3 |         DeliveryState.pending -> "Pending"
+  |         --------------------- first matched here
+4 |         DeliveryState.pending -> "Waiting"
+  |         ^^^^^^^^^^^^^^^^^^^^^ matched again
+  reason: Each case is matched once; the first arm takes every value this one would, so this arm never runs.
+  next: Remove this arm, or merge its body into the first (agent)
+  rule: type.match_duplicate_pattern
+  help: docs/language/03-logic.html#type-match-duplicate-pattern
+
+check failed: 1 error, 2 files
 ```
 
 ### `type.match_unknown_variant`
 
-```jadpo project=e-match-variant file=shapes.jadpo hidden
-enum DeliveryState {
+```jadpo check project=e-match-variant file=shapes.jadpo hidden
+type DeliveryState = Enum {
     pending
     sent
     failed
@@ -1310,9 +1494,9 @@ enum DeliveryState {
 
 type ReceiptId = Uuid {}
 
-enum PaymentOutcome {
+type PaymentOutcome = Enum {
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
     }
 }
@@ -1320,26 +1504,34 @@ enum PaymentOutcome {
 type Label = Text {}
 ```
 
-```jadpo project=e-match-variant expect=type.match_unknown_variant
+```jadpo check project=e-match-variant expect=type.match_unknown_variant
 function describe(state: DeliveryState) -> Label {
-    match state {
-        DeliveryState.pending => {
-            return Label("Pending")
-        }
-        DeliveryState.delivered => {
-            return Label("Delivered")
-        }
-        _ => {
-            return Label("Other")
-        }
+    return match state {
+        DeliveryState.pending -> "Pending"
+        DeliveryState.snet -> "Sent"
+        DeliveryState.failed -> "Failed"
     }
 }
+```
+
+```text output
+error: `DeliveryState` has no variant `snet`
+ --> main.jadpo:4:23
+  |
+4 |         DeliveryState.snet -> "Sent"
+  |                       ^^^^ not a variant
+  reason: `DeliveryState`'s variants are `pending`, `sent` and `failed`. Did you mean `sent`?
+  next: Use `DeliveryState.sent` (agent)
+  rule: type.match_unknown_variant
+  help: docs/language/03-logic.html#type-match-unknown-variant
+
+check failed: 1 error, 2 files
 ```
 
 ### `type.match_unreachable_pattern`
 
-```jadpo project=e-match-unreachable file=shapes.jadpo hidden
-enum DeliveryState {
+```jadpo check project=e-match-unreachable file=shapes.jadpo hidden
+type DeliveryState = Enum {
     pending
     sent
     failed
@@ -1347,9 +1539,9 @@ enum DeliveryState {
 
 type ReceiptId = Uuid {}
 
-enum PaymentOutcome {
+type PaymentOutcome = Enum {
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
     }
 }
@@ -1357,26 +1549,36 @@ enum PaymentOutcome {
 type Label = Text {}
 ```
 
-```jadpo project=e-match-unreachable expect=type.match_unreachable_pattern
-function describe(state: DeliveryState) -> Label {
-    match state {
-        DeliveryState.pending => {
-            return Label("Pending")
-        }
-        _ => {
-            return Label("Other")
-        }
-        DeliveryState.sent => {
-            return Label("Sent")
-        }
+```jadpo check project=e-match-unreachable expect=type.match_unreachable_pattern
+function shout(label: Label) -> Label {
+    return match label {
+        "" -> "unnamed"
+        _ -> label
+        "quiet" -> "QUIET"
     }
 }
+```
+
+```text output
+error: This arm never runs
+ --> main.jadpo:5:9
+  |
+4 |         _ -> label
+  |         - matches everything left
+5 |         "quiet" -> "QUIET"
+  |         ^^^^^^^ after `_`
+  reason: `_` matches every value the arms above it don't, so no arm after it runs.
+  next: Move this arm above `_` (agent)
+  rule: type.match_unreachable_pattern
+  help: docs/language/03-logic.html#type-match-unreachable-pattern
+
+check failed: 1 error, 2 files
 ```
 
 ### `type.match_wildcard_required`
 
-```jadpo project=e-match-wildcard file=shapes.jadpo hidden
-enum DeliveryState {
+```jadpo check project=e-match-wildcard file=shapes.jadpo hidden
+type DeliveryState = Enum {
     pending
     sent
     failed
@@ -1384,9 +1586,9 @@ enum DeliveryState {
 
 type ReceiptId = Uuid {}
 
-enum PaymentOutcome {
+type PaymentOutcome = Enum {
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
     }
 }
@@ -1394,21 +1596,78 @@ enum PaymentOutcome {
 type Label = Text {}
 ```
 
-```jadpo project=e-match-wildcard expect=type.match_wildcard_required
+```jadpo check project=e-match-wildcard expect=type.match_wildcard_required
 function shout(label: Label) -> Label {
-    match label {
-        "" => {
-            return Label("unnamed")
-        }
+    return match label {
+        "" -> "unnamed"
     }
-    return label
 }
+```
+
+```text output
+error: This `match` needs a `_` arm
+ --> main.jadpo:2:12
+  |
+2 |     return match label {
+  |            ^^^^^^^^^^^ not every value is matched
+  reason: `Label` is built on `Text`, so its values can't all be listed; `_` matches every value the arms above it don't.
+  next: Add `_ -> ...` as the last arm (agent)
+  rule: type.match_wildcard_required
+  help: docs/language/03-logic.html#type-match-wildcard-required
+
+check failed: 1 error, 2 files
+```
+
+### `type.match_wildcard_closed`
+
+An enum, a `Bool` or a nullable value lists every case, so a case added later is caught:
+
+```jadpo check project=e-match-wildcard-closed file=shapes.jadpo hidden
+type DeliveryState = Enum {
+    pending
+    sent
+    failed
+}
+
+type ReceiptId = Uuid {}
+
+type PaymentOutcome = Enum {
+    pending
+    paid: {
+        receipt_id: ReceiptId
+    }
+}
+
+type Label = Text {}
+```
+
+```jadpo check project=e-match-wildcard-closed expect=type.match_wildcard_closed
+function describe(state: DeliveryState) -> Label {
+    return match state {
+        DeliveryState.pending -> "Pending"
+        _ -> "Other"
+    }
+}
+```
+
+```text output
+error: `_` can't stand for the rest of a `DeliveryState`
+ --> main.jadpo:4:9
+  |
+4 |         _ -> "Other"
+  |         ^ wildcard
+  reason: On enums, `Bool` and nullable values every case is listed, so a case added later is caught at every `match` that has to consider it.
+  next: Replace `_` with arms for `DeliveryState.sent` and `DeliveryState.failed` (agent)
+  rule: type.match_wildcard_closed
+  help: docs/language/03-logic.html#type-match-wildcard-closed
+
+check failed: 1 error, 2 files
 ```
 
 ### `type.match_pattern_type`
 
-```jadpo project=e-match-type file=shapes.jadpo hidden
-enum DeliveryState {
+```jadpo check project=e-match-type file=shapes.jadpo hidden
+type DeliveryState = Enum {
     pending
     sent
     failed
@@ -1416,9 +1675,9 @@ enum DeliveryState {
 
 type ReceiptId = Uuid {}
 
-enum PaymentOutcome {
+type PaymentOutcome = Enum {
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
     }
 }
@@ -1426,23 +1685,35 @@ enum PaymentOutcome {
 type Label = Text {}
 ```
 
-```jadpo project=e-match-type expect=type.match_pattern_type
+```jadpo check project=e-match-type expect=type.match_pattern_type
 function describe(state: DeliveryState) -> Label {
-    match state {
-        true => {
-            return Label("Yes")
-        }
-        _ => {
-            return Label("No")
-        }
+    return match state {
+        true -> "Yes"
+        DeliveryState.pending -> "Pending"
+        DeliveryState.sent -> "Sent"
+        DeliveryState.failed -> "Failed"
     }
 }
+```
+
+```text output
+error: A `Bool` can't match a `DeliveryState`
+ --> main.jadpo:3:9
+  |
+3 |         true -> "Yes"
+  |         ^^^^ wrong kind of pattern
+  reason: A `DeliveryState` is matched by its variants, such as `DeliveryState.pending`.
+  next: Write a pattern for a `DeliveryState` (agent)
+  rule: type.match_pattern_type
+  help: docs/language/03-logic.html#type-match-pattern-type
+
+check failed: 1 error, 2 files
 ```
 
 ### `type.match_some_non_optional`
 
-```jadpo project=e-match-some file=shapes.jadpo hidden
-enum DeliveryState {
+```jadpo check project=e-match-some file=shapes.jadpo hidden
+type DeliveryState = Enum {
     pending
     sent
     failed
@@ -1450,9 +1721,9 @@ enum DeliveryState {
 
 type ReceiptId = Uuid {}
 
-enum PaymentOutcome {
+type PaymentOutcome = Enum {
     pending
-    paid {
+    paid: {
         receipt_id: ReceiptId
     }
 }
@@ -1460,20 +1731,126 @@ enum PaymentOutcome {
 type Label = Text {}
 ```
 
-```jadpo project=e-match-some expect=type.match_some_non_optional
+```jadpo check project=e-match-some expect=type.match_some_non_optional
 function describe(label: Label) -> Label {
-    match label {
-        some(text) => {
-            return text
-        }
-        _ => {
-            return label
+    return match label {
+        some(text) -> text
+        _ -> label
+    }
+}
+```
+
+```text output
+error: `label` is never `none`, so `some(...)` can't match it
+ --> main.jadpo:3:9
+  |
+3 |         some(text) -> text
+  |         ^^^^^^^^^^ for nullable values
+  reason: `some(name)` and `none` match a nullable value, written `T?`; `label` is a `Label`.
+  next: Use `label` directly: it always has a value (agent)
+  rule: type.match_some_non_optional
+  help: docs/language/03-logic.html#type-match-some-non-optional
+
+check failed: 1 error, 2 files
+```
+
+### `type.match_unknown_binding`
+
+Brackets after a case name the data it carries, and a plain variant carries none:
+
+```jadpo check project=e-match-binding file=shapes.jadpo hidden
+type DeliveryState = Enum {
+    pending
+    sent
+    failed
+}
+
+type ReceiptId = Uuid {}
+
+type PaymentOutcome = Enum {
+    pending
+    paid: {
+        receipt_id: ReceiptId
+    }
+}
+
+type Label = Text {}
+```
+
+```jadpo check project=e-match-binding expect=type.match_unknown_binding
+function describe(outcome: PaymentOutcome) -> Label {
+    return match outcome {
+        PaymentOutcome.pending(waiting) -> "Pending"
+        PaymentOutcome.paid -> "Paid"
+    }
+}
+```
+
+```text output
+error: `PaymentOutcome.pending` carries no data to name
+ --> main.jadpo:3:31
+  |
+3 |         PaymentOutcome.pending(waiting) -> "Pending"
+  |                               ^^^^^^^^^ no data
+  reason: `PaymentOutcome.pending` is a plain variant; brackets after a case name the data it carries, and this one carries none.
+  next: Write `PaymentOutcome.pending` without brackets (agent)
+  rule: type.match_unknown_binding
+  help: docs/language/03-logic.html#type-match-unknown-binding
+
+check failed: 1 error, 2 files
+```
+
+### `type.match_arm_value`
+
+```jadpo check project=e-match-arm-value file=shapes.jadpo hidden
+type DeliveryState = Enum {
+    pending
+    sent
+    failed
+}
+
+type ReceiptId = Uuid {}
+
+type PaymentOutcome = Enum {
+    pending
+    paid: {
+        receipt_id: ReceiptId
+    }
+}
+
+type Label = Text {}
+```
+
+```jadpo check project=e-match-arm-value expect=type.match_arm_value
+action notify(outcome: PaymentOutcome) -> Unit {}
+
+action receipt(outcome: PaymentOutcome) -> ReceiptId? {
+    return match outcome {
+        PaymentOutcome.pending -> none
+        PaymentOutcome.paid -> {
+            notify(outcome)
         }
     }
 }
 ```
 
+```text output
+error: This arm gives no value
+ --> main.jadpo:6:9
+  |
+6 |         PaymentOutcome.paid -> {
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^ ends without a value
+  reason: A `match` used as a value gives one from every arm: an expression, `reject` or `propagate`; this block can reach its end without leaving.
+  next: Write the arm's value after `->`, or end the block with `return` or `reject` (agent)
+  rule: type.match_arm_value
+  help: docs/language/03-logic.html#type-match-arm-value
+
+check failed: 1 error, 2 files
+```
+
 ### `type.match_variant_bindings_required`
+
+> The archived compiler's error: an arm may match a variant without naming its data when it doesn't read it, `PaymentOutcome.paid -> ...` (question 9), so this mistake no longer exists.
 
 ```jadpo project=e-match-bindings file=shapes.jadpo hidden
 enum DeliveryState {
@@ -1507,41 +1884,9 @@ function describe(outcome: PaymentOutcome) -> Label {
 }
 ```
 
-### `type.match_unknown_binding`
-
-```jadpo project=e-match-binding file=shapes.jadpo hidden
-enum DeliveryState {
-    pending
-    sent
-    failed
-}
-
-type ReceiptId = Uuid {}
-
-enum PaymentOutcome {
-    pending
-    paid {
-        receipt_id: ReceiptId
-    }
-}
-
-type Label = Text {}
-```
-
-```jadpo project=e-match-binding expect=type.match_unknown_binding
-function describe(outcome: PaymentOutcome) -> Label {
-    match outcome {
-        PaymentOutcome.pending => {
-            return Label("Pending")
-        }
-        PaymentOutcome.paid { receipt } => {
-            return Label("Paid")
-        }
-    }
-}
-```
-
 ### `type.match_duplicate_binding`
+
+> The archived compiler's error: an arm names a variant's data with one name in brackets, so a field can't be named twice; `PaymentOutcome.paid { receipt_id }` is `syntax.match_pattern`.
 
 ```jadpo project=e-match-binding-twice file=shapes.jadpo hidden
 enum DeliveryState {
@@ -1577,22 +1922,41 @@ function describe(outcome: PaymentOutcome) -> Label {
 
 ### `type.arithmetic_operand`
 
-```jadpo project=e-arithmetic expect=type.arithmetic_operand
-type Score = Int {}
+`+` and `-` need the same named type on both sides; multiplying a price by a quantity is meaningful, adding them is not:
 
-type Phrase = Text {}
-
-function combine(score: Score, phrase: Phrase) -> Score {
-    var total = score + phrase
-    return score
+```jadpo check project=e-arithmetic expect=type.arithmetic_operand
+type Pence = Int {
+    min: 0
 }
+
+type Quantity = Int {
+    min: 1
+}
+
+function wrong_total(price: Pence, quantity: Quantity) -> Pence {
+    return Pence(price + quantity)
+}
+```
+
+```text output
+error: `Pence` and `Quantity` can't be added
+ --> main.jadpo:10:18
+   |
+10 |     return Pence(price + quantity)
+   |                  ^^^^^^^^^^^^^^^^ different types
+  reason: `+` and `-` need the same named type on both sides, or a literal, because `Pence` and `Quantity` are different units; `*` and `%` may mix types.
+  next: Use two values of the same type (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.ordering_operand`
 
 A nullable value has to be matched before it can be compared:
 
-```jadpo project=e-ordering expect=type.ordering_operand
+```jadpo check project=e-ordering expect=type.ordering_operand
 type Count = Int {}
 
 type Flag = Bool {}
@@ -1602,9 +1966,23 @@ function over_maximum(count: Count?, maximum: Count) -> Flag {
 }
 ```
 
+```text output
+error: `count` may be `none`, so it can't be ordered
+ --> main.jadpo:6:17
+  |
+6 |     return Flag(count > maximum)
+  |                 ^^^^^ may be `none`
+  reason: `count` is `Count?`; `<`, `<=`, `>` and `>=` order two values, and `none` has no place in an order.
+  next: Match on `count` and compare inside `some(...)` (agent)
+  rule: type.ordering_operand
+  help: docs/language/03-logic.html#type-ordering-operand
+
+check failed: 1 error, 1 file
+```
+
 ### `type.incomparable`
 
-```jadpo project=e-incomparable expect=type.incomparable
+```jadpo check project=e-incomparable expect=type.incomparable
 type Pence = Int {
     min: 0
 }
@@ -1620,9 +1998,23 @@ function same(price: Pence, quantity: Quantity) -> Flag {
 }
 ```
 
+```text output
+error: `Pence` and `Quantity` can't be compared
+ --> main.jadpo:12:17
+   |
+12 |     return Flag(price == quantity)
+   |                 ^^^^^^^^^^^^^^^^^ different types
+  reason: `==` compares two values of the same type, after widening; `Pence` and `Quantity` are different types, and neither widens to the other.
+  next: Compare two values of the same type (agent)
+  rule: type.incomparable
+  help: docs/language/03-logic.html#type-incomparable
+
+check failed: 1 error, 1 file
+```
+
 ### `type.logical_operand`
 
-```jadpo project=e-logical expect=type.logical_operand
+```jadpo check project=e-logical expect=type.logical_operand
 type Score = Int {}
 
 type Flag = Bool {}
@@ -1632,9 +2024,23 @@ function both(score: Score) -> Flag {
 }
 ```
 
+```text output
+error: `and` needs `Bool` values, and `score` is a `Score`
+ --> main.jadpo:6:17
+  |
+6 |     return Flag(score and score)
+  |                 ^^^^^ this is `Score`
+  reason: `and` and `or` work on `Bool` values and types built on `Bool`; Jadpo has no truthiness.
+  next: Compare `score` to get a `Bool` (agent)
+  rule: type.logical_operand
+  help: docs/language/03-logic.html#type-logical-operand
+
+check failed: 1 error, 1 file
+```
+
 ### `type.unary_operand`
 
-```jadpo project=e-unary expect=type.unary_operand
+```jadpo check project=e-unary expect=type.unary_operand
 type Phrase = Text {}
 
 type Flag = Bool {}
@@ -1644,9 +2050,51 @@ function negate(phrase: Phrase) -> Flag {
 }
 ```
 
+```text output
+error: `not` needs a `Bool`, and `phrase` is a `Phrase`
+ --> main.jadpo:6:21
+  |
+6 |     return Flag(not phrase)
+  |                     ^^^^^^ this is `Phrase`
+  reason: `not` works on `Bool` values and types built on `Bool`; Jadpo has no truthiness.
+  next: Compare `phrase` to get a `Bool` (agent)
+  rule: type.unary_operand
+  help: docs/language/03-logic.html#type-unary-operand
+
+check failed: 1 error, 1 file
+```
+
+### `type.divisor_zero`
+
+A divisor's type excludes zero, so division by zero is ruled out while compiling:
+
+```jadpo check project=e-divisor expect=type.divisor_zero
+type Pence = Int {
+    min: 0
+}
+
+function split_evenly(total: Pence, portions: Pence) -> Pence {
+    return Pence(total / portions)
+}
+```
+
+```text output
+error: `portions` may be zero
+ --> main.jadpo:6:26
+  |
+6 |     return Pence(total / portions)
+  |                          ^^^^^^^^ a `Pence` can be `0`
+  reason: Division by zero is ruled out while compiling: a divisor's type excludes zero, as `Int { min: 1 }` does, and `Pence` allows `0`.
+  next: Divide by a value whose type excludes zero, building it with its constructor where the zero case is handled (agent)
+  rule: type.divisor_zero
+  help: docs/language/03-logic.html#type-divisor-zero
+
+check failed: 1 error, 1 file
+```
+
 ### `type.assign_immutable`
 
-```jadpo project=e-assign-immutable expect=type.assign_immutable
+```jadpo check project=e-assign-immutable expect=type.assign_immutable
 type Choice = Text {}
 
 function replace(initial: Choice, replacement: Choice) -> Choice {
@@ -1656,9 +2104,25 @@ function replace(initial: Choice, replacement: Choice) -> Choice {
 }
 ```
 
+```text output
+error: `fixed` can't be changed
+ --> main.jadpo:5:5
+  |
+4 |     var fixed: Choice = initial
+  |         ----- declared without `mut`
+5 |     fixed = replacement
+  |     ^^^^^ assigned here
+  reason: `var` names a value that never changes; only a `var mut` can be pointed at a new value.
+  next: Declare it `var mut fixed` (agent)
+  rule: type.assign_immutable
+  help: docs/language/03-logic.html#type-assign-immutable
+
+check failed: 1 error, 1 file
+```
+
 ### `type.assign_unknown`
 
-```jadpo project=e-assign-unknown expect=type.assign_unknown
+```jadpo check project=e-assign-unknown expect=type.assign_unknown
 type Count = Int {}
 
 function total(count: Count) -> Count {
@@ -1667,9 +2131,23 @@ function total(count: Count) -> Count {
 }
 ```
 
+```text output
+error: `running` isn't declared
+ --> main.jadpo:4:5
+  |
+4 |     running = count
+  |     ^^^^^^^ not declared
+  reason: An assignment changes a `var mut` declared earlier in this block or one around it.
+  next: Declare it first, as in `var mut running: Count = ...` (agent)
+  rule: type.assign_unknown
+  help: docs/language/03-logic.html#type-assign-unknown
+
+check failed: 1 error, 1 file
+```
+
 ### `type.unknown_value`
 
-```jadpo project=e-unknown-value expect=type.unknown_value
+```jadpo check project=e-unknown-value expect=type.unknown_value
 type Name = Text {}
 
 function echo(name: Name) -> Name {
@@ -1677,9 +2155,143 @@ function echo(name: Name) -> Name {
 }
 ```
 
+```text output
+error: `nmae` isn't defined in this scope
+ --> main.jadpo:4:12
+  |
+4 |     return nmae
+  |            ^^^^ not defined
+  reason: Jadpo could not find this name. Did you mean `name`?
+  next: Use `name` instead of `nmae` (agent)
+  rule: type.unknown_value
+  help: docs/language/03-logic.html#type-unknown-value
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.unused_variable`
+
+```jadpo check project=e-unused-variable expect=semantic.unused_variable
+type Pence = Int {
+    min: 0
+}
+
+function with_delivery(price: Pence, delivery: Pence) -> Pence {
+    var subtotal: Pence = price
+    return Pence(price + delivery)
+}
+```
+
+```text output
+error: `subtotal` is never used
+ --> main.jadpo:6:9
+  |
+6 |     var subtotal: Pence = price
+  |         ^^^^^^^^ never read
+  reason: A value nobody reads is never bound to a name, so a reader never wonders what it was for.
+  next: Use `subtotal`, or remove its `var` line (agent)
+  rule: semantic.unused_variable
+  help: docs/language/03-logic.html#semantic-unused-variable
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.unused_result`
+
+A call stands on its own only when its result is `Unit`, and a function called on its own does nothing:
+
+```jadpo check project=e-unused-result expect=semantic.unused_result
+type Note = Text {}
+
+function tidy(note: Note) -> Note {
+    return note
+}
+
+action save(note: Note) -> Unit {
+    tidy(note)
+}
+```
+
+```text output
+error: This `Note` is thrown away
+ --> main.jadpo:8:5
+  |
+8 |     tidy(note)
+  |     ^^^^^^^^^^ result not used
+  reason: `tidy` only computes its result, so calling it without using the result does nothing.
+  next: Use the value, or remove it (agent)
+  rule: semantic.unused_result
+  help: docs/language/03-logic.html#semantic-unused-result
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.unreachable_code`
+
+```jadpo check project=e-unreachable expect=semantic.unreachable_code
+type Count = Int {
+    min: 0
+}
+
+type Size = Text {}
+
+function size_of(count: Count) -> Size {
+    return "small"
+    if (count > 10) {
+        return "large"
+    }
+}
+```
+
+```text output
+error: This code never runs
+ --> main.jadpo:9:5
+  |
+8 |     return "small"
+  |     -------------- leaves on every path
+9 |     if (count > 10) {
+  |     ^^^^^^^^^^^^^^^^^ never reached
+  reason: The statement before it ends in `return` or `reject` on every path, so nothing after it in this block can run.
+  next: Remove it, or move it before the statement that leaves (agent)
+  rule: semantic.unreachable_code
+  help: docs/language/03-logic.html#semantic-unreachable-code
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.missing_return`
+
+```jadpo check project=e-missing-return expect=semantic.missing_return
+type Count = Int {
+    min: 0
+}
+
+type Size = Text {}
+
+function size_of(count: Count) -> Size {
+    if (count > 10) {
+        return "large"
+    }
+}
+```
+
+```text output
+error: This function can end without returning a `Size`
+ --> main.jadpo:11:1
+   |
+11 | }
+   | ^ reached without `return`
+  reason: Every path through a function with a result ends in `return` or `reject`; at least one path here reaches the end of the body.
+  next: Return a `Size` at the end, or on every branch that reaches it (agent)
+  rule: semantic.missing_return
+  help: docs/language/03-logic.html#semantic-missing-return
+
+check failed: 1 error, 1 file
+```
+
 ### `type.argument_count`
 
-```jadpo project=e-argument-count expect=type.argument_count
+```jadpo check project=e-argument-count expect=type.argument_count
 type Name = Text {}
 
 function choose(first: Name, second: Name) -> Name {
@@ -1691,9 +2303,23 @@ function incomplete(name: Name) -> Name {
 }
 ```
 
+```text output
+error: `choose` takes 2 values, not 1
+ --> main.jadpo:8:18
+  |
+8 |     return choose(name)
+  |                  ^^^^^^ 1 given
+  reason: `choose(first: Name, second: Name)` has 2 parameters; each is given, in order, and none has a default.
+  next: Pass `second` as well (agent)
+  rule: type.argument_count
+  help: docs/language/03-logic.html#type-argument-count
+
+check failed: 1 error, 1 file
+```
+
 ### `type.named_argument_unsupported`
 
-```jadpo project=e-named-argument expect=type.named_argument_unsupported
+```jadpo check project=e-named-argument expect=type.named_argument_unsupported
 type Number = Int {}
 
 function add(left: Number, right: Number) -> Number {
@@ -1701,8 +2327,80 @@ function add(left: Number, right: Number) -> Number {
 }
 
 function three() -> Number {
-    return add(left: Number(1), right: Number(2))
+    return add(left: 1, right: 2)
 }
+```
+
+```text output
+error: `add` takes its arguments in order, without names
+ --> main.jadpo:8:16
+  |
+8 |     return add(left: 1, right: 2)
+  |                ^^^^ named
+  reason: Named arguments exist only for standard-library operations; your own callables are called positionally, in the order of their parameters.
+  next: Remove the argument names (agent)
+  rule: type.named_argument_unsupported
+  help: docs/language/03-logic.html#type-named-argument-unsupported
+
+check failed: 1 error, 1 file
+```
+
+### `type.named_argument_unknown`
+
+```jadpo check project=e-named-unknown expect=type.named_argument_unknown
+type Pence = Int {
+    min: 0
+}
+
+function line_count(lines: List<Pence>) -> Pence {
+    return Pence(collection.count(itmes: lines))
+}
+```
+
+```text output
+error: `collection.count` has no argument `itmes`
+ --> main.jadpo:6:35
+  |
+6 |     return Pence(collection.count(itmes: lines))
+  |                                   ^^^^^ not a parameter
+  reason: Its one argument is `items`.
+  next: Use `items:` instead of `itmes:` (agent)
+  rule: type.named_argument_unknown
+  help: docs/language/03-logic.html#type-named-argument-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `type.inline_function_placement`
+
+An inline function is written only as an argument to a standard-library collection operation:
+
+```jadpo check project=e-inline-function expect=type.inline_function_placement
+type Pence = Int {
+    min: 0
+}
+
+function same_price(price: Pence) -> Pence {
+    return price
+}
+
+function passed_on(price: Pence) -> Pence {
+    return same_price(item -> price)
+}
+```
+
+```text output
+error: An inline function is only an argument to a collection operation
+ --> main.jadpo:10:23
+   |
+10 |     return same_price(item -> price)
+   |                       ^^^^^^^^^^^^^ inline function
+  reason: Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `collection.map` or `collection.filter`.
+  next: Write the expression on its own, or pass it to a collection operation (agent)
+  rule: type.inline_function_placement
+  help: docs/language/03-logic.html#type-inline-function-placement
+
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.named_argument_duplicate`
@@ -2141,7 +2839,7 @@ check failed: 1 error, 1 file
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
+Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadmap chunk 1.5), except the failure side of `attempt` and `match` (area 4, chunk 1.6) and the runtime recursion limit (the interpreter, chunk 2.1).
 
 | Topic | Decision | Date |
 |---|---|---|

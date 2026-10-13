@@ -462,7 +462,14 @@ it came from the billing or the shipping address.
 There is no `null` or `undefined`. A type followed by `?` may hold `none`, and
 reading it means handling both cases, usually with `match` (area 3).
 
-```jadpo fragment
+```jadpo check project=absent file=names.jadpo hidden
+type ProductName = Text {
+    min_length: 1
+    max_length: 120
+}
+```
+
+```jadpo check project=absent file=main.jadpo
 type Listing = Object {
     name: ProductName
     subtitle: ProductName?
@@ -611,7 +618,20 @@ function reopen() -> TicketStatus {
 A variant can carry its own fields, which makes an enum a tagged union: each
 value is exactly one variant and has only that variant's fields.
 
-```jadpo fragment
+```jadpo check project=tagged-values file=names.jadpo hidden
+type ReceiptId = Uuid {}
+
+type DeclineReason = Text {
+    min_length: 1
+    max_length: 200
+}
+
+type OutcomeLabel = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=tagged-values file=main.jadpo
 type PaymentOutcome = Enum {
     pending
     paid: {

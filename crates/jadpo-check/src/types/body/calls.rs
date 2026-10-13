@@ -499,11 +499,14 @@ impl Body<'_> {
             format!("`{written}` has no argument `{name}`"),
         )
         .at(span.clone(), "not a parameter")
-        .reason(format!(
-            "Its arguments are {}.{}",
-            crate::and_list(&listed),
-            super::did_you_mean(near)
-        ));
+        .reason(match listed.as_slice() {
+            [only] => format!("Its one argument is {only}."),
+            _ => format!(
+                "Its arguments are {}.{}",
+                crate::and_list(&listed),
+                super::did_you_mean(near)
+            ),
+        });
         self.out.push(match near {
             Some(near) => problem
                 .next(format!("Use `{near}:` instead of `{name}:`"))

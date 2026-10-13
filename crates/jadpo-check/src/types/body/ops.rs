@@ -29,10 +29,26 @@ impl Operand {
         matches!(self, Operand::Value(ty) if ty.has_error())
     }
 
-    /// Shown in a message: `` `Score` `` or "a number".
+    /// Shown in a message: `` `Score` `` or "a whole number".
     fn shown(&self) -> String {
         match self {
             Operand::Value(ty) => format!("`{ty}`"),
+            Operand::Literal(value) => value.describe().to_string(),
+        }
+    }
+
+    /// Shown after "is": `` a `Score` `` or "a whole number".
+    fn shown_a(&self) -> String {
+        match self {
+            Operand::Value(ty) => {
+                let written = ty.to_string();
+                let an = if written.starts_with(['A', 'E', 'I', 'O']) {
+                    "an"
+                } else {
+                    "a"
+                };
+                format!("{an} `{written}`")
+            }
             Operand::Literal(value) => value.describe().to_string(),
         }
     }
@@ -167,7 +183,10 @@ impl Body<'_> {
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_UNARY_OPERAND,
-                    format!("`-` needs a number, and `{written}` is {shown}"),
+                    format!(
+                        "`-` needs a number, and `{written}` is {}",
+                        operand.shown_a()
+                    ),
                 )
                 .at(span, format!("this is {shown}"))
                 .reason(if nullable {
@@ -187,7 +206,7 @@ impl Body<'_> {
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_UNARY_OPERAND,
-                    format!("`not` needs a `Bool`, and `{written}` is {shown}"),
+                    format!("`not` needs a `Bool`, and `{written}` is {}", operand.shown_a()),
                 )
                 .at(span, format!("this is {shown}"))
                 .reason(if nullable {
@@ -259,7 +278,7 @@ impl Body<'_> {
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_LOGICAL_OPERAND,
-                format!("`{op}` needs `Bool` values, and `{written}` is {shown}"),
+                format!("`{op}` needs `Bool` values, and `{written}` is {}", operand.shown_a()),
             )
             .at(span, format!("this is {shown}"))
             .reason(if nullable {
