@@ -93,6 +93,7 @@ pub(crate) struct Parser<'a> {
     pub(crate) snippet: bool,
     depth: u32,
     too_deep: bool,
+    error_starts: std::collections::HashSet<u32>,
 }
 
 impl std::fmt::Debug for Parser<'_> {
@@ -115,6 +116,7 @@ impl<'a> Parser<'a> {
             snippet,
             depth: 0,
             too_deep: false,
+            error_starts: std::collections::HashSet::new(),
         }
     }
 
@@ -345,10 +347,28 @@ impl<'a> Parser<'a> {
         out
     }
 
+    /// Errors found before parsing, by the lexer.
+    pub(crate) fn seed_errors(&mut self, errors: Vec<SyntaxError>) {
+        for error in errors {
+            self.push_error(error);
+        }
+    }
+
+    pub(crate) fn error_count(&self) -> usize {
+        self.errors.len()
+    }
+
+    /// Forgets the errors after the first `n`.
+    pub(crate) fn truncate_errors(&mut self, n: usize) {
+        for error in self.errors.drain(n..) {
+            self.error_starts.remove(&error.start);
+        }
+    }
+
     /// Records an error, unless one already starts at the same place: one
     /// mistake gives one error.
     pub(crate) fn push_error(&mut self, error: SyntaxError) {
-        if self.errors.iter().any(|e| e.start == error.start) {
+        if !self.error_starts.insert(error.start) {
             return;
         }
         self.errors.push(error);

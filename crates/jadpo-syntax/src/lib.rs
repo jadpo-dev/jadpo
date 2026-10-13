@@ -99,10 +99,12 @@ fn parse(text: &str, entry: Entry) -> Parse {
     let (tokens, lex_errors) = lexer::lex(text, mode);
     let input = Input::new(text, &tokens);
     let mut parser = Parser::new(&input, text, entry == Entry::Snippet);
-    parser.errors = lex_errors
-        .iter()
-        .map(|error| lex_error(text, error))
-        .collect();
+    parser.seed_errors(
+        lex_errors
+            .iter()
+            .map(|error| lex_error(text, error))
+            .collect(),
+    );
     match entry {
         Entry::File => grammar::source_file(&mut parser),
         Entry::Snippet => grammar::snippet(&mut parser),

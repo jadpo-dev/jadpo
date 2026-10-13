@@ -737,10 +737,15 @@ fn ty(p: &mut Parser<'_>, what: &str) -> Option<CompletedMarker> {
         generic_arg_list(p);
     }
     let mut done = m.complete(p, PATH_TYPE);
-    while p.at(QUESTION) && !p.on_new_line() {
+    let mut levels = 0;
+    while p.at(QUESTION) && !p.on_new_line() && p.enter() {
+        levels += 1;
         let m = done.precede(p);
         p.bump(QUESTION);
         done = m.complete(p, NULLABLE_TYPE);
+    }
+    for _ in 0..levels {
+        p.leave();
     }
     Some(done)
 }
@@ -1482,7 +1487,7 @@ fn condition(p: &mut Parser<'_>) {
         return;
     }
     let (start, _) = p.range();
-    let checkpoint = p.errors.len();
+    let checkpoint = p.error_count();
     p.with_records(false, |p| expr(p));
     let end = p.prev_end();
     let text = p.text()[start as usize..end as usize].to_string();
@@ -1497,7 +1502,7 @@ fn condition(p: &mut Parser<'_>) {
     .next(format!("Write `({text})`"))
     .edit(TextEdit::insert(start, "("))
     .edit(TextEdit::insert(end, ")"));
-    p.errors.truncate(checkpoint);
+    p.truncate_errors(checkpoint);
     p.push_error(error);
     m.complete(p, CONDITION);
 }
@@ -1643,14 +1648,20 @@ fn expr_bp(p: &mut Parser<'_>, min: u8) -> Option<CompletedMarker> {
 
 fn expr_bp_inner(p: &mut Parser<'_>, min: u8) -> Option<CompletedMarker> {
     let mut lhs = unary(p)?;
+    // Each operator nests the tree one level deeper.
+    let mut levels = 0;
     while let Some((power, kind)) = infix_power(p) {
-        if power <= min || p.line_break_ends() {
+        if power <= min || p.line_break_ends() || !p.enter() {
             break;
         }
+        levels += 1;
         let m = lhs.precede(p);
         p.bump_remap(kind);
         expr_bp(p, power);
         lhs = m.complete(p, BIN_EXPR);
+    }
+    for _ in 0..levels {
+        p.leave();
     }
     Some(lhs)
 }
@@ -1781,8 +1792,29 @@ fn expected_expression(p: &mut Parser<'_>) {
     }
 }
 
-fn postfix(p: &mut Parser<'_>, mut lhs: CompletedMarker) -> CompletedMarker {
+fn postfix(p: &mut Parser<'_>, lhs: CompletedMarker) -> CompletedMarker {
+    // Each suffix nests the tree one level deeper.
+    let mut levels = 0;
+    let done = postfix_levels(p, lhs, &mut levels);
+    for _ in 0..levels {
+        p.leave();
+    }
+    done
+}
+
+fn postfix_levels(
+    p: &mut Parser<'_>,
+    mut lhs: CompletedMarker,
+    levels: &mut u32,
+) -> CompletedMarker {
     loop {
+        let suffix = matches!(p.current(), DOT | L_PAREN | L_BRACE | L_ANGLE | QUESTION);
+        if suffix && !p.enter() {
+            return lhs;
+        }
+        if suffix {
+            *levels += 1;
+        }
         lhs = match p.current() {
             DOT if !p.line_break_ends() => {
                 let m = lhs.precede(p);
