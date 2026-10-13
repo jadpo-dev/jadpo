@@ -109,6 +109,79 @@ fn constructions_the_ranges_prove_safe_take_no_attempt() {
     );
 }
 
+/// A user whose display name allows 80 characters and initials 3, and a
+/// badge whose name field adds its own limit of 12 (area 2, question 2).
+const BADGES: &str = "entity User {\n    id: Uuid\n    display_name: Text {\n        max_length: 80\n    }\n    initials: Text {\n        max_length: 3\n    }\n}\n\ntype Nickname = Text {\n    max_length: 10\n}\n\ntype BadgeNameTooLong = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Badge = Object {\n    name: Text {\n        max_length: 12\n    }\n}\n\n";
+
+fn with_badges(source: &str) -> Vec<String> {
+    one(&format!("{BADGES}{source}"))
+}
+
+#[test]
+fn building_an_object_runs_its_fields_own_rules() {
+    // A value that widens to the field's declared type is accepted; the
+    // field's own `max_length` runs as the object is built, so a longer
+    // value needs `attempt ... invalid:`.
+    assert_eq!(
+        with_badges(
+            "action make_badge(user: User) fails BadgeNameTooLong -> Badge {\n    var badge: Badge = attempt Badge {\n        name: user.display_name\n    } invalid: BadgeNameTooLong\n    return badge\n}\n"
+        ),
+        CLEAN
+    );
+    assert_eq!(
+        with_badges(
+            "action make_badge(user: User) -> Badge {\n    return Badge {\n        name: user.display_name\n    }\n}\n"
+        ),
+        ["failure.attempt_required"]
+    );
+    assert_eq!(
+        with_badges(
+            "action make_badge(user: User) fails BadgeNameTooLong -> Badge {\n    var badge: Badge = attempt Badge {\n        name: user.display_name\n    }\n    return badge\n}\n"
+        ),
+        ["failure.invalid_mapping_required"]
+    );
+    // Initials are at most 3 characters: the ranges prove the field's rule.
+    assert_eq!(
+        with_badges(
+            "function initials_badge(user: User) -> Badge {\n    return Badge {\n        name: user.initials\n    }\n}\n"
+        ),
+        CLEAN
+    );
+    assert_eq!(
+        with_badges(
+            "function initials_badge(user: User) fails BadgeNameTooLong -> Badge {\n    var badge: Badge = attempt Badge {\n        name: user.initials\n    } invalid: BadgeNameTooLong\n    return badge\n}\n"
+        ),
+        ["failure.attempt_infallible"]
+    );
+    // A literal is checked while compiling.
+    assert_eq!(
+        with_badges(
+            "function fixed() -> Badge {\n    return Badge {\n        name: \"Ada\"\n    }\n}\n"
+        ),
+        CLEAN
+    );
+    assert_eq!(
+        with_badges(
+            "function fixed() -> Badge {\n    return Badge {\n        name: \"A name far longer than twelve\"\n    }\n}\n"
+        ),
+        ["type.invalid_literal"]
+    );
+    // A named type built on `Text` doesn't widen to `Text`.
+    assert_eq!(
+        with_badges(
+            "function nickname_badge(nickname: Nickname) -> Badge {\n    return Badge {\n        name: nickname\n    }\n}\n"
+        ),
+        ["type.mismatch"]
+    );
+    // A field without rules of its own: building never fails.
+    assert_eq!(
+        one(
+            "type Label = Text {\n    max_length: 12\n}\n\ntype Tag = Object {\n    label: Label\n}\n\nfunction make_tag(label: Label) -> Tag {\n    return Tag {\n        label: label\n    }\n}\n"
+        ),
+        CLEAN
+    );
+}
+
 #[test]
 fn entity_operations_fail_as_area_6_decides() {
     let todos = "entity Todo {\n    id: Uuid\n}\n\ntype TodoNotFound = Failure {\n    kind: FailureKind.not_found\n}\n\n";

@@ -22,7 +22,7 @@ attachment
 auth_config
 avatar
 badge
-badge_name
+badge_name_too_long
 balance
 basket
 basket_line

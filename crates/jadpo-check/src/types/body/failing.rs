@@ -391,7 +391,9 @@ impl Body<'_> {
             }
             Expr::RecordExpr(record) => {
                 let before = self.out.len();
+                self.handled.push(key(record.syntax()));
                 let ty = self.infer(&inner);
+                self.handled.pop();
                 let fallible = if self.out.len() > before {
                     Fallible::Unknown
                 } else {
@@ -406,6 +408,10 @@ impl Body<'_> {
             Expr::CallExpr(call) => call
                 .expr()
                 .map(|callee| format!("{}(...)", tree::written(callee.syntax())))
+                .unwrap_or_default(),
+            Expr::RecordExpr(record) => record
+                .expr()
+                .map(|head| format!("{} {{ ... }}", tree::written(head.syntax())))
                 .unwrap_or_default(),
             other => tree::written(other.syntax()),
         };
@@ -446,6 +452,9 @@ impl Body<'_> {
 
     /// An entity write with a block (area 6), or an object being built.
     fn record_fallible(&self, record: &ast::RecordExpr) -> Fallible {
+        if let Some(verdict) = self.constructions.get(&key(record.syntax())) {
+            return verdict.clone();
+        }
         match record.expr() {
             Some(Expr::CallExpr(_)) => Fallible::Unknown,
             Some(head) => match dotted(&head) {
@@ -490,7 +499,7 @@ impl Body<'_> {
                 "`{written}` lists no failures after `fails`, so it always gives its result; `attempt` marks only calls that can fail."
             ),
             Expr::RecordExpr(_) => format!(
-                "Building `{written}` checks each field's value against its type while compiling, so it never fails; `attempt` marks only calls that can fail."
+                "Every field of `{written}` gets a value of its own type, or one the declared ranges prove follows the field's own rules, so building it never fails; `attempt` marks only what can."
             ),
             _ => "`attempt` marks a call that can fail, and this isn't a call.".to_string(),
         };

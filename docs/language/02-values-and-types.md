@@ -2231,13 +2231,24 @@ compiling.
 
 #### Q2: building an object runs its fields' rules
 
-```jadpo fragment
-type BadgeName = Text {
-    max_length: 12
+```jadpo check project=q2-badge file=users.jadpo hidden
+entity User {
+    id: Uuid
+    display_name: Text {
+        max_length: 80
+    }
 }
 
+type BadgeNameTooLong = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=q2-badge
 type Badge = Object {
-    name: BadgeName
+    name: Text {
+        max_length: 12
+    }
 }
 
 action make_badge(user: User) fails BadgeNameTooLong -> Badge {
