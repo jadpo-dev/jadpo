@@ -99,7 +99,7 @@ fn editing_a_type_body_does_not_recompute_another_files_resolution() {
     assert_eq!(count("resolve_file"), 1, "only a resolves again: {log:?}");
     assert_eq!(count("type_table"), 1, "the type changed: {log:?}");
     assert_eq!(
-        count("body_problems"),
+        count("body_check"),
         2,
         "both bodies use `Count`, so both are checked again: {log:?}"
     );
@@ -130,6 +130,6 @@ fn editing_a_function_body_does_not_rebuild_the_types() {
     );
     assert_eq!(count("type_table"), 0, "but are equal: {log:?}");
     assert_eq!(count("callables"), 0, "{log:?}");
-    assert_eq!(count("body_problems"), 1, "only a's bodies: {log:?}");
+    assert_eq!(count("body_check"), 1, "only a's bodies: {log:?}");
     assert_eq!(count("type_problems"), 1, "only a's declarations: {log:?}");
 }

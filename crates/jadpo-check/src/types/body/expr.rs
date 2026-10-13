@@ -67,6 +67,7 @@ impl Body<'_> {
         }
         if let Expr::CallExpr(call) = expr {
             let actual = self.call(call, Some(expected));
+            self.types.insert(super::key(expr.syntax()), actual.clone());
             self.require(expr, &actual, expected);
             return;
         }
@@ -188,7 +189,15 @@ impl Body<'_> {
 
     // --- the type of an expression ----------------------------------------
 
+    /// The type of an expression, remembered by position so a
+    /// construction can be proved safe from its parts (area 4, question 6).
     pub(super) fn infer(&mut self, expr: &Expr) -> Ty {
+        let ty = self.infer_expr(expr);
+        self.types.insert(super::key(expr.syntax()), ty.clone());
+        ty
+    }
+
+    fn infer_expr(&mut self, expr: &Expr) -> Ty {
         match expr {
             Expr::Literal(_) => match Const::from_expr(expr) {
                 Const::Number { decimal: true, .. } => Ty::Prim(Prim::Decimal),
@@ -224,23 +233,18 @@ impl Body<'_> {
                 Ty::List(Box::new(item))
             }
             Expr::BinExpr(binary) => self.binary(binary),
-            Expr::AttemptExpr(attempt) => {
-                for mapping in attempt.mappings() {
-                    if let Some(value) = mapping.expr() {
-                        self.failure_value(&value);
-                    }
-                }
-                attempt.expr().map_or(Ty::Error, |inner| self.infer(&inner))
-            }
+            Expr::AttemptExpr(attempt) => self.attempt(attempt, None),
             Expr::MatchExpr(subject) => self.match_value(subject, None),
             Expr::LambdaExpr(lambda) => {
                 self.misplaced_inline(lambda);
                 Ty::Error
             }
             Expr::RejectExpr(reject) => {
-                if let Some(inner) = reject.expr() {
-                    self.failure_value(&inner);
-                }
+                self.reject(reject);
+                Ty::Error
+            }
+            Expr::PropagateExpr(propagate) => {
+                self.propagate(propagate);
                 Ty::Error
             }
             _ => Ty::Error,

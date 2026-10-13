@@ -121,6 +121,60 @@ rules! {
         "03-logic.html#effect-function-persistence", "Function reads or writes stored data";
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
         "03-logic.html#effect-recursive-action", "Action is part of a call cycle";
+    FAILURE_ATTEMPT_INFALLIBLE: "failure.attempt_infallible", area 3, Error, Agent,
+        "03-logic.html#failure-attempt-infallible", "Attempt is used on something that cannot fail";
+    FAILURE_ATTEMPT_REQUIRED: "failure.attempt_required", area 3, Error, Agent,
+        "03-logic.html#failure-attempt-required", "Call that can fail is not handled";
+    FAILURE_CODE_FORMAT: "failure.code_format", area 4, Error, Agent,
+        "04-failures.html#failure-code-format", "Failure code is not lower_snake_case";
+    FAILURE_CONTEXT_FIELD_OVERLAP: "failure.context_field_overlap", area 4, Error, Agent,
+        "04-failures.html#failure-context-field-overlap", "Field is declared for both the client and the log";
+    FAILURE_DUPLICATE_CODE: "failure.duplicate_code", area 4, Error, Human,
+        "04-failures.html#failure-duplicate-code", "Failure code is already in use";
+    FAILURE_DUPLICATE_CONTEXT_FIELD: "failure.duplicate_context_field", area 4, Error, Agent,
+        "04-failures.html#failure-duplicate-context-field", "Failure field is given twice";
+    FAILURE_DUPLICATE_DECLARATION: "failure.duplicate_declaration", area 4, Error, Agent,
+        "04-failures.html#failure-duplicate-declaration", "Failure is listed twice after `fails`";
+    FAILURE_INVALID_MAPPING_REQUIRED: "failure.invalid_mapping_required", area 4, Error, Agent,
+        "04-failures.html#failure-invalid-mapping-required", "Construction that can fail does not name its failure";
+    FAILURE_KIND_REQUIRED: "failure.kind_required", area 4, Error, Agent,
+        "04-failures.html#failure-kind-required", "Failure has no kind";
+    FAILURE_KIND_RUNTIME_ONLY: "failure.kind_runtime_only", area 4, Error, Agent,
+        "04-failures.html#failure-kind-runtime-only", "Failure kind is raised only by the runtime";
+    FAILURE_MAPPING_KIND: "failure.mapping_kind", area 4, Error, Agent,
+        "04-failures.html#failure-mapping-kind", "Mapped failure's kind does not fit its condition";
+    FAILURE_MISSING_CONTEXT_FIELD: "failure.missing_context_field", area 4, Error, Agent,
+        "04-failures.html#failure-missing-context-field", "Rejected failure is missing a field";
+    FAILURE_OUTCOME_DUPLICATE_ARM: "failure.outcome_duplicate_arm", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-duplicate-arm", "Outcome match handles a failure twice";
+    FAILURE_OUTCOME_INFALLIBLE: "failure.outcome_infallible", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-infallible", "Outcome match is on a call that cannot fail";
+    FAILURE_OUTCOME_MISSING_ARM: "failure.outcome_missing_arm", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-missing-arm", "Outcome match does not handle every failure";
+    FAILURE_OUTCOME_PATTERN_INVALID: "failure.outcome_pattern_invalid", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-pattern-invalid", "Outcome match arm has a pattern for values";
+    FAILURE_OUTCOME_SUBJECT_REQUIRED: "failure.outcome_subject_required", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-subject-required", "Outcome match is not on a call";
+    FAILURE_OUTCOME_SUCCESS_DUPLICATE: "failure.outcome_success_duplicate", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-success-duplicate", "Outcome match repeats its success arm";
+    FAILURE_OUTCOME_SUCCESS_MISSING: "failure.outcome_success_missing", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-success-missing", "Outcome match has no success arm";
+    FAILURE_OUTCOME_SUCCESS_VALUE_REQUIRED: "failure.outcome_success_value_required", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-success-value-required", "Success arm passes on a failure";
+    FAILURE_OUTCOME_UNKNOWN_ARM: "failure.outcome_unknown_arm", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-unknown-arm", "Outcome arm names a failure the call cannot produce";
+    FAILURE_OUTCOME_WILDCARD: "failure.outcome_wildcard", area 3, Error, Agent,
+        "03-logic.html#failure-outcome-wildcard", "Outcome match uses a wildcard";
+    FAILURE_PROPAGATE_PLACEMENT: "failure.propagate_placement", area 3, Error, Agent,
+        "03-logic.html#failure-propagate-placement", "Propagate is used outside a failure arm";
+    FAILURE_STALE_DECLARATION: "failure.stale_declaration", area 4, Error, Agent,
+        "04-failures.html#failure-stale-declaration", "Listed failure can never happen";
+    FAILURE_UNDECLARED_PROPAGATION: "failure.undeclared_propagation", area 4, Error, Agent,
+        "04-failures.html#failure-undeclared-propagation", "Failure that can leave is not listed after `fails`";
+    FAILURE_UNKNOWN_CONTEXT_FIELD: "failure.unknown_context_field", area 4, Error, Agent,
+        "04-failures.html#failure-unknown-context-field", "Rejected failure has no such field";
+    FAILURE_UNKNOWN_MAPPING: "failure.unknown_mapping", area 4, Error, Agent,
+        "04-failures.html#failure-unknown-mapping", "Mapping names a condition the operation does not have";
     FORMAT_CHANGES_REQUIRED: "format.changes_required", area 14, Error, Agent,
         "14-tooling.html#formatting", "Source file is not formatted";
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,

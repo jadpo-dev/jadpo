@@ -336,15 +336,18 @@ impl Decls<'_> {
                 ..
             } => {
                 // A failure's fields sit in its `client:` and `internal:`
-                // blocks; area 4 checks the rest of it.
-                for (_, section) in tree::members(list) {
-                    for (_, field) in tree::members(section.block()) {
-                        if let Some(value) = field.value()
-                            && shape::looks_like_type(&value)
-                        {
-                            self.type_node(&TypeNode::Expr(value), false);
-                        }
+                // blocks, each an ordinary block of fields (area 4); the
+                // rest of the failure is area 4's to check.
+                for (key, section) in tree::members(list) {
+                    if !matches!(
+                        tree::name_text(&key).as_deref(),
+                        Some("client" | "internal")
+                    ) {
+                        continue;
                     }
+                    let block = section.block();
+                    let lines = shape::lines(block.clone(), FieldsBase::Object);
+                    self.lines(block, FieldsBase::Object, &shape.name, &lines);
                 }
             }
             ShapeKind::Fields { base, lines } => {

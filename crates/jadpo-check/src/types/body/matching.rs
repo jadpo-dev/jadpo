@@ -6,8 +6,7 @@
 //! never use `_` (question 10).
 //!
 //! A `match` whose arms name `success(...)` or a failure is on a call's
-//! outcome: its success value is bound here, and which failures it must
-//! handle is area 4's.
+//! outcome, checked in [`super::outcome`].
 
 use std::collections::BTreeMap;
 
@@ -24,7 +23,7 @@ use crate::tree;
 
 /// Where a `match` stands.
 #[derive(Clone, Copy)]
-enum Mode<'e> {
+pub(super) enum Mode<'e> {
     Statement,
     /// As a value, with the type its position requires, if known.
     Value(Option<&'e Ty>),
@@ -43,8 +42,6 @@ enum Subject {
     Open(Ty),
     /// Anything else: only `_`.
     Other(Ty),
-    /// A call's outcome, with its success type (area 4 checks the rest).
-    Outcome(Ty),
 }
 
 /// One case a pattern covers.
@@ -99,7 +96,7 @@ impl Body<'_> {
         self.match_expr(subject, Mode::Value(expected)).0
     }
 
-    fn is_failure(&self, name: &str) -> bool {
+    pub(super) fn is_failure(&self, name: &str) -> bool {
         matches!(
             self.table.def(name),
             Some(Def::Fields {
@@ -112,7 +109,7 @@ impl Body<'_> {
             .is_some_and(|symbol| symbol.kind.is_failure())
     }
 
-    fn pattern_path(pat: &Pat) -> Option<Vec<ast::NameRef>> {
+    pub(super) fn pattern_path(pat: &Pat) -> Option<Vec<ast::NameRef>> {
         match pat {
             Pat::CasePat(case) => Some(case.path()?.name_refs().collect()),
             _ => None,
@@ -149,11 +146,8 @@ impl Body<'_> {
         }
     }
 
-    fn subject(&mut self, expr: Option<Expr>, outcome: bool) -> Subject {
+    fn subject(&mut self, expr: Option<Expr>) -> Subject {
         let ty = expr.map_or(Ty::Error, |expr| self.infer(&expr));
-        if outcome {
-            return Subject::Outcome(ty);
-        }
         if ty.has_error() {
             return Subject::Error;
         }
@@ -193,7 +187,10 @@ impl Body<'_> {
                 .map_or(start, |e| u32::from(e.syntax().text_range().end()));
             Span::new(self.path, start, end)
         };
-        let subject = self.subject(subject_expr, outcome);
+        if outcome {
+            return self.outcome_match(node, mode, &arms, head);
+        }
+        let subject = self.subject(subject_expr);
         let mut seen: BTreeMap<Case, Span> = BTreeMap::new();
         let mut wildcard: Option<Span> = None;
         let mut closed_wildcard: Option<Span> = None;
@@ -267,7 +264,7 @@ impl Body<'_> {
 
     /// An arm's body; whether control can go on past the `match` through
     /// it.
-    fn arm_body(
+    pub(super) fn arm_body(
         &mut self,
         arm: &ast::MatchArm,
         mode: Mode<'_>,
@@ -294,12 +291,13 @@ impl Body<'_> {
             Mode::Statement => self.standalone(&expr),
             Mode::Value(expected) => match &expr {
                 Expr::RejectExpr(reject) => {
-                    if let Some(inner) = reject.expr() {
-                        self.failure_value(&inner);
-                    }
+                    self.reject(reject);
                     false
                 }
-                Expr::PropagateExpr(_) => false,
+                Expr::PropagateExpr(propagate) => {
+                    self.propagate(propagate);
+                    false
+                }
                 _ => {
                     match expected {
                         Some(expected) => self.check(&expr, expected),
@@ -356,7 +354,7 @@ impl Body<'_> {
             ..Reading::none()
         };
         match (subject, value) {
-            (Subject::Error | Subject::Outcome(_), _) => Reading::none(),
+            (Subject::Error, _) => Reading::none(),
             (Subject::Nullable(_), Const::None) => case(Case::None),
             (_, Const::None) => {
                 self.never_none(subject, span, written, "none");
@@ -413,18 +411,6 @@ impl Body<'_> {
         if let Subject::Error = subject {
             return Reading {
                 binding: bind(Ty::Error),
-                ..Reading::none()
-            };
-        }
-        if let Subject::Outcome(success) = subject {
-            // Which failures a call can give is area 4's to check.
-            let ty = match names.as_slice() {
-                [only] if only == "success" => success.clone(),
-                [only] if self.is_failure(only) => Ty::Named(only.clone()),
-                _ => Ty::Error,
-            };
-            return Reading {
-                binding: bind(ty),
                 ..Reading::none()
             };
         }
@@ -546,7 +532,7 @@ impl Body<'_> {
             Subject::Enum(name) => format!("a `{name}`"),
             Subject::Bool => "a `Bool`".to_string(),
             Subject::Nullable(inner) => format!("a `{inner}?`"),
-            Subject::Open(ty) | Subject::Other(ty) | Subject::Outcome(ty) => format!("a `{ty}`"),
+            Subject::Open(ty) | Subject::Other(ty) => format!("a `{ty}`"),
             Subject::Error => "this value".to_string(),
         }
     }
@@ -576,7 +562,7 @@ impl Body<'_> {
             Subject::Other(ty) => {
                 format!("A `{ty}` has no cases to list, so only `_` matches it.")
             }
-            Subject::Error | Subject::Outcome(_) => String::new(),
+            Subject::Error => String::new(),
         };
         self.out.push(
             Diagnostic::new(
@@ -715,7 +701,7 @@ impl Body<'_> {
                 }
                 return;
             }
-            Subject::Error | Subject::Outcome(_) => return,
+            Subject::Error => return,
         };
         let missing: Vec<String> = all
             .iter()

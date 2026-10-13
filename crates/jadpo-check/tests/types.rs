@@ -347,7 +347,9 @@ fn built_in_values_are_built_from_literals_only() {
         with_names(
             "function raw(name: ProductName) -> ProductName {\n    var text: Text = Text(name)\n    return ProductName(text)\n}\n"
         ),
-        ["type.constructor_input"]
+        // `ProductName(text)` is a second mistake: a `Text` value may break
+        // `ProductName`'s rules, so building one can fail (area 4).
+        ["type.constructor_input", "failure.attempt_required"]
     );
 }
 
