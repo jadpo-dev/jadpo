@@ -1112,6 +1112,11 @@ build/
   library and standard-library names are unique among themselves, and local
   variables cannot reuse them. Standard-library names are fixed per language
   version, so a new standard namespace never breaks an existing library.
+- One exception to file-name uniqueness: a type declared in the same file
+  as an action, query or function may fold to that callable's name, as an
+  input does (`type CreateTodo = Input` beside `action create_todo` in
+  `actions/create_todo.jadpo`), because only one file carries the name. If
+  the type is promoted to its own file, the rule applies again.
 - Tests sit beside their subject as `<name>.test.jadpo`. Scenarios that span
   several domains go in the root `tests/`. The kind of test (pure,
   integration, route, schedule) is known from what it calls, so it is not a
@@ -1360,6 +1365,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Reserved words | Control-flow and declaration words fully reserved, with a short explicit list of usable names | 2026-10-12 |
 | Documentation comments | `///` comments attach to the next declaration and feed generated docs, the library catalogue and OpenAPI | 2026-10-12 |
 | Formatting | The formatter owns blank lines and section order within a file | 2026-10-12 |
+| Names folding together | A type may fold to the name of the callable declared in the same file (an input named after its action); everywhere else `naming.folded_collision` applies | 2026-10-13 |
 | Keywords match folders | `schedule` (folder `schedules/`), `integration` (`integrations/`) and `library` (`libraries/`) replace `job` and `service` (Amended 2026-10-13 by area 11: `integration` and `integrations/` are gone; external services are provider packages) | 2026-10-12 |
 | Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` | 2026-10-12 |
 | Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
