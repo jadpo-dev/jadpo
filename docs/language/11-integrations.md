@@ -1695,6 +1695,14 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
       the compile errors that would follow, and behaviour changes (new or
       removed failures, fields, events). The same works for a downgrade. An
       agent shows the plan to a person, who decides.
+    *Staging (recommendation, 2026-10-13):* first build: the package format,
+    connections, generated fakes, the OpenAPI importer, hand-written packages
+    and `jadpo provider record`, with curated packages kept in the Jadpo
+    repository and copied into `providers/`. The golden todo's mail provider
+    is fictional, so its package is hand-written and exercises the no-spec
+    path. Later, each when first needed: the Smithy importer (first AWS
+    package), the SDK-types, Postman and HAR importers, the hosted registry,
+    then upgrade plans.
 16. **How are packages and their types named?** *Recommendation:* the
     provider in UpperCamelCase and its own version label, `Stripe.v2024_06_20`,
     `AcmeCouriers.v1`. Types, failures and events are named by the package
