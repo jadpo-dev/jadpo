@@ -1593,6 +1593,12 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
    derived type (`type X = Output from Stripe.PaymentIntent { pick: [...] }`)
    narrows one. At runtime a response is checked only for the fields the
    code reads. TypeScript SDKs and Smithy clients work the same way.
+   *Decided 2026-10-13 (Richard):* package types come in namespaced
+   (`Stripe.PaymentIntent`) and are usable anywhere in code; no narrowing or
+   derived types are needed. Two limits: a provider object or enum type
+   cannot be an entity field (it would tie stored data to the provider's
+   version) or part of a route's `Input` or `Output` (it would make the
+   provider's schema part of the app's API); ids and plain values can.
 2. **How is an operation called?** *Reopened 2026-10-13;* first answered as
    `StripeV2024.create_payment_intent(...)`. *Recommendation:*
    `connection.resource.operation(input)`, only from actions, with `attempt`
@@ -1634,6 +1640,13 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
    a package with no fixed host takes `host: config.x`. HTTPS only, no
    redirects or proxies, and a host change in an upgrade is flagged in the
    approval report.
+   *Decided 2026-10-13 (Richard, after Deno's permissions):* outbound
+   network access is denied by default. Jadpo code has no raw `fetch`; the
+   runtime refuses any host not listed by a declared connection's package;
+   the build writes a network report of every reachable host, its connection
+   and the domains using it; a new connection or a changed host appears in
+   the approval report. Connections are the permission list, with no second
+   list of hosts.
 10. **Which credential schemes first?** *Reopened 2026-10-13;* first
     answered on the integration. *Recommendation:* the package declares the
     scheme and the connection gives only `credential: config.x`. Bearer,
@@ -1744,12 +1757,12 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
 | Credential schemes | `CredentialScheme.bearer`, `.header`, `.basic` first (Superseded 2026-10-13: reopened as question 10.) | 2026-10-12 |
 | Webhook signatures | On the integration (`webhooks: { signature: SignatureScheme.x secret: }`), used as `authentication: StripeV2024.signature`; five-minute tolerance (Superseded 2026-10-13: reopened as question 11.) | 2026-10-12 |
 | Checking fakes | Fakes checked against the contract by the compiler; `jadpo test --kind contract` against the sandbox in scheduled CI (Superseded 2026-10-13: reopened as question 12.) | 2026-10-12 |
-| Types from the package | | |
+| Types from the package | Namespaced package types usable anywhere in code; no narrowing needed; provider object and enum types barred from entity fields and route `Input`/`Output`; ids and plain values allowed | 2026-10-13 |
 | Calling an operation | `connection.resource.operation(input)`: the connection from `app.jadpo`, the resource group and operation from the package | 2026-10-13 |
 | Versions as connections | | |
 | Package pin | | |
 | Failures at the call | | |
-| Hosts | | |
+| Hosts | Outbound access denied by default; only hosts of declared connections; no raw `fetch`; generated network report; changes in the approval report; no separate host list | 2026-10-13 |
 | Credentials | | |
 | Webhooks as events | | |
 | Fakes and contract runs | | |
