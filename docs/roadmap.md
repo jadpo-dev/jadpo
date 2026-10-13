@@ -117,7 +117,13 @@ the golden todo.
 - Durable-job operator surfaces and enforced component messaging (E03).
 - Transaction retry and deployment readiness qualification (E04).
 - Engineering validation: mutation, hostile and cross-feature cases (E05).
-- Enforceable policy approval and the review UI (E06).
+- The review UI (E06), Revset-inspired: a web view of a pull request as a
+  graph of what changed and what it affects (who can now do what to which
+  data, paths through routes, actions, queries and fields, newly reachable
+  code, API and data changes, queries per path, production traffic when
+  given), drilling down to the source diff per node, with agent-revision
+  interdiffs and a text export for CI. Built on area 18's manifest diff and
+  area 17 question 9's report; the files-changed view stays available.
 - Independent assurance and first-user studies (E07).
 - Order/payment application compared against TypeScript (E08).
 - Alternative runtimes: WASM and native Rust (E09).
