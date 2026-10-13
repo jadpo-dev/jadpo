@@ -331,6 +331,22 @@ impl Decls<'_> {
                     );
                 }
             }
+            ShapeKind::Fields {
+                base: FieldsBase::Failure,
+                ..
+            } => {
+                // A failure's fields sit in its `client:` and `internal:`
+                // blocks; area 4 checks the rest of it.
+                for (_, section) in tree::members(list) {
+                    for (_, field) in tree::members(section.block()) {
+                        if let Some(value) = field.value()
+                            && shape::looks_like_type(&value)
+                        {
+                            self.type_node(&TypeNode::Expr(value), false);
+                        }
+                    }
+                }
+            }
             ShapeKind::Fields { base, lines } => {
                 self.lines(list, *base, &shape.name, lines);
             }

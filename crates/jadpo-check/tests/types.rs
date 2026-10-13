@@ -324,6 +324,44 @@ fn standard_library_calls_take_their_types_from_the_arguments() {
 }
 
 #[test]
+fn types_later_areas_define_are_left_to_them() {
+    // `Response` (area 13) and `Page<T>` (area 6) are known by name only:
+    // reading their fields or passing them around reports nothing yet.
+    assert_eq!(
+        with_names(
+            "function status(response: Response) -> Pence {\n    var code: Pence = response.status\n    return code\n}\n\nfunction first(page: Page<ProductName>) -> Page<ProductName> {\n    return page\n}\n"
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn built_in_values_are_built_from_literals_only() {
+    assert_eq!(
+        with_names(
+            "type DueAt = Instant {}\n\nfunction due() -> DueAt {\n    return DueAt(Instant(\"2026-10-25T08:30:00Z\"))\n}\n\nfunction later(at: DueAt) -> DueAt {\n    return at\n}\n"
+        ),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        with_names(
+            "function raw(name: ProductName) -> ProductName {\n    var text: Text = Text(name)\n    return name\n}\n"
+        ),
+        ["type.constructor_input"]
+    );
+}
+
+#[test]
+fn loops_and_failures_read_their_types() {
+    assert_eq!(
+        with_names(
+            "type Line = Object {\n    price: Pence\n}\n\ntype Basket = Object {\n    lines: List<Line>\n}\n\ntype PriceTooHigh = Failure {\n    kind: FailureKind.invalid_value\n    client: {\n        limit: Pence\n    }\n}\n\nfunction first(basket: Basket) -> Pence {\n    for line in basket.lines {\n        return line.price\n    }\n    return 0\n}\n"
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
 fn every_standard_operation_is_bound_to_the_runtime() {
     let mut declared = jadpo_check::standard_operations();
     declared.sort();

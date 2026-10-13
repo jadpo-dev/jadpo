@@ -209,8 +209,8 @@ impl Body<'_> {
             Stmt::IfStmt(branch) => self.if_stmt(branch),
             Stmt::ForStmt(each) => {
                 let items = each.expr().map_or(Ty::Error, |expr| self.infer(&expr));
-                let item = match items.strip_nullable() {
-                    Ty::List(item) => (**item).clone(),
+                let item = match self.table.structure(&items) {
+                    Ty::List(item) => *item,
                     _ => Ty::Error,
                 };
                 self.scopes.push(BTreeMap::new());
@@ -608,7 +608,9 @@ impl Body<'_> {
 
     /// Reads field `name` from a value of type `receiver`.
     fn select(&mut self, receiver: &Ty, name: &ast::NameRef, node: &ast::FieldExpr) -> Ty {
-        if receiver.has_error() {
+        // A type a later area defines has fields this check doesn't know yet.
+        if receiver.has_error() || matches!(receiver.strip_nullable(), Ty::Opaque(..) | Ty::Var(_))
+        {
             return Ty::Error;
         }
         let field = text(name);
@@ -885,23 +887,9 @@ impl Body<'_> {
             Some(field) => field,
             None => {
                 if let Some(prim) = Prim::from_name(written) {
-                    if prim.is_representation() || prim == Prim::Unit {
+                    if prim == Prim::Unit {
                         self.args_only(call);
-                        let span = call
-                            .expr()
-                            .map_or_else(|| self.span(call), |e| self.span(&e));
-                        self.out.push(
-                            Diagnostic::new(
-                                &rule::TYPE_CONSTRUCTOR_INPUT,
-                                format!("`{written}` has no constructor"),
-                            )
-                            .at(span, "a built-in type")
-                            .reason(format!(
-                                "`{written}` is raw material, not a meaning: no value is converted back to it. Literals and arithmetic give `{written}` values directly."
-                            ))
-                            .next("Use the value as it is, or construct a named type"),
-                        );
-                        return Ty::Error;
+                        return Ty::Prim(Prim::Unit);
                     }
                     Ty::Prim(prim)
                 } else {
@@ -969,7 +957,26 @@ impl Body<'_> {
             return target;
         }
         let actual = self.infer(value);
-        if actual.has_error() {
+        if actual.has_error() || self.table.assignable(&actual, &target) {
+            return target;
+        }
+        if let Ty::Prim(prim) = &target
+            && prim.is_representation()
+        {
+            // `Instant("2026-10-25T08:30:00Z")` builds a built-in value from a
+            // literal; nothing converts a named type back to one.
+            let span = self.span(value);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_CONSTRUCTOR_INPUT,
+                    format!("`{written}` can't be built from `{actual}`"),
+                )
+                .at(span, format!("this is `{actual}`"))
+                .reason(format!(
+                    "A named type never becomes its built-in representation: there is no cast and no unwrap, only operators work on `{written}` values inside it."
+                ))
+                .next(format!("Use the `{actual}` value as it is")),
+            );
             return target;
         }
         let from = self.table.representation(&actual);

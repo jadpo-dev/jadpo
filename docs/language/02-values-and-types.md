@@ -837,7 +837,7 @@ function reprice(product: Product, price: Pence) -> Product {
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's actual output. Four syntax entries at the end still show the
+new compiler's actual output. Six syntax entries near the end still show the
 archived compiler's error, because the new compiler reports those mistakes
 under another rule, named in each note.
 
