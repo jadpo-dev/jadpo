@@ -61,6 +61,28 @@ fn loops_inline_functions_and_recursive_functions_check() {
 }
 
 #[test]
+fn inline_functions_take_the_list_and_the_expected_result() {
+    let todos = "type TodoTitle = Text {\n    max_length: 80\n}\n\ntype TodoStatus = Enum {\n    open\n    done\n}\n\nentity Todo {\n    id: Uuid\n    title: TodoTitle\n    status: TodoStatus\n}\n\naction notify_owner(todo_id: Todo.id) -> Unit {}\n\n";
+    // `todo.title` is a `Todo.title`; the list it builds is a
+    // `List<TodoTitle>` because that is what the variable requires.
+    assert_eq!(
+        check(&format!(
+            "{todos}function open_titles(todos: List<Todo>) -> List<TodoTitle> {{\n    var open: List<Todo> = collection.filter(todos, todo -> todo.status == TodoStatus.open)\n    var titles: List<TodoTitle> = collection.map(open, todo -> todo.title)\n    return titles\n}}\n\naction rename(todo: Todo, title: TodoTitle) -> Unit {{\n    var fresh: TodoTitle = title\n    Todo.update(todo) {{\n        set: {{\n            title: fresh\n        }}\n    }}\n}}\n"
+        )),
+        CLEAN
+    );
+    assert_eq!(
+        check(&format!(
+            "{todos}function open_ids(todos: List<Todo>) -> List<Todo> {{\n    return collection.filter(todos, todo -> notify_owner(todo.id) == notify_owner(todo.id))\n}}\n"
+        ))
+        .first()
+        .map(String::as_str),
+        Some("effect.function_calls_action"),
+        "an inline function is pure"
+    );
+}
+
+#[test]
 fn division_needs_a_divisor_that_excludes_zero() {
     assert_eq!(
         with_names(

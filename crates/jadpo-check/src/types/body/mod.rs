@@ -858,26 +858,26 @@ impl Body<'_> {
         );
     }
 
-    /// The value after `reject`: its fields are read, its failure is area
-    /// 4's to check.
+    /// The value after `reject`, or a block a later area checks (an
+    /// entity write's `set:`): its values are read, and the failure or the
+    /// write is that area's to check.
     fn failure_value(&mut self, expr: &Expr) {
         match expr {
-            Expr::RecordExpr(record) => {
-                for item in record
-                    .member_list()
-                    .iter()
-                    .flat_map(|list| list.member_items())
-                {
-                    if let ast::MemberItem::Member(member) = item
-                        && let Some(value) = member.value()
-                    {
-                        self.infer(&value);
-                    }
-                }
-            }
+            Expr::RecordExpr(record) => self.member_values(record.member_list()),
             Expr::NameRef(_) => {}
             other => {
                 self.infer(other);
+            }
+        }
+    }
+
+    fn member_values(&mut self, list: Option<ast::MemberList>) {
+        for item in list.iter().flat_map(|list| list.member_items()) {
+            if let ast::MemberItem::Member(member) = item {
+                if let Some(value) = member.value() {
+                    self.infer(&value);
+                }
+                self.member_values(member.block());
             }
         }
     }
