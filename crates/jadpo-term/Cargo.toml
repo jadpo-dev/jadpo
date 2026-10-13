@@ -1,0 +1,16 @@
+[package]
+name = "jadpo-term"
+description = "The CLI design language: rich, plain and JSON output"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+jadpo-diag.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

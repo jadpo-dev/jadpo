@@ -25,9 +25,17 @@ def step(name: str, command: list[str]) -> bool:
 
 
 def main() -> int:
-    checks = [('language specification', [sys.executable, 'tools/language_docs.py', '--check'])]
+    checks = [
+        ('language specification', [sys.executable, 'tools/language_docs.py', '--check']),
+        ('example names', [sys.executable, 'tools/example_names.py', '--check']),
+    ]
     if (ROOT / 'Cargo.toml').exists():
-        checks.append(('compiler tests', ['cargo', 'test', '--locked', '--workspace']))
+        checks += [
+            ('rust formatting', ['cargo', 'fmt', '--all', '--check']),
+            ('clippy', ['cargo', 'clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings']),
+            # Includes the crate-graph test (crates/jadpo-cli/tests/crate_graph.rs).
+            ('compiler tests', ['cargo', 'test', '--locked', '--workspace']),
+        ]
     results = [step(name, command) for name, command in checks]
     return 0 if all(results) else 1
 
