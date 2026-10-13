@@ -123,6 +123,112 @@ are built later:
   the branch that reaches a field instead of "may-call".
 - **More than one target** (E09) from the same graph.
 
+### 1.2 Impact of the finished language review (2026-10-13)
+
+Written after all eighteen review areas were decided and after Richard
+decided to drop the TypeScript/Bun target for native Rust and WebAssembly
+([decision register](decision-register.md#runtime-targets--2026-10-13)).
+Nothing in the review needs reopening. What changes is the build plan.
+
+**1. The rework option no longer holds up.** Its one advantage was keeping
+the passing golden cases green on the existing compiler. Those cases run on
+the TypeScript/Bun generator, which is being dropped, so keeping them green
+protects work that will be thrown away. With areas 1–4 changing nearly every
+syntax form and the generator tuned to the golden app (§1.1), rework is now
+a rebuild by another name. Recommendation: decide option 2, the graph-centred
+rebuild, now.
+
+**2. Development needs a second way to run the graph.** The decided testing
+target is a watch-mode rerun in under a second (roadmap item 3). Compiling
+generated Rust cannot meet it: recompiling an 816-line generated fixture
+took a median 8.61 s with cached dependencies, release mode
+([native experiment](experiments/native-rust-experiment-results.md#startup-build-cost-and-artifacts)),
+and a real application is larger. Recommendation: two executors over one
+graph.
+
+- **Interpreted** inside `jadpo` for `dev`, `test`, `call`, `test new
+  --from` and replay: the graph runs directly, so a save is rechecked and
+  rerun in milliseconds, and the timeline, `why` and traces come from the
+  interpreter's own record of what it did.
+- **Compiled** for deployables: graph to Rust, then native or `wasm32`
+  through rustc.
+- **One shared runtime crate** both use, so only callable bodies differ:
+  HTTP, sessions and OAuth, policy evaluation, store drivers, the outbox,
+  scheduler and leases, idempotency, rate limits, telemetry, frame mapping,
+  email rendering, flags and the privacy flows.
+- **Divergence is the risk,** and the guard is mechanical: CI runs every
+  test in both modes and fails on any difference. A debug-mode Cranelift
+  backend was considered and rejected: still seconds per change.
+
+**3. The graph carries much more than §1.1 lists.** Every feature below was
+decided in the review and needs nodes or edges of its own, so the graph's
+shape must allow for them from the first commit, even where they are built
+later:
+
+| From | Needs in the graph |
+|---|---|
+| Area 9 policy | Grants per effect and field, the four kinds of "who", tenancy reach, OAuth scopes; compiled into each query's conditions |
+| Area 5 data | Lifecycle conditions, cache entries and which writes invalidate them, stores per entity, system-table placement by the stores actions write |
+| Area 15 personal data | Marks, the person tree through references, erasure outcomes per reference and field, retention, unreachable-data errors |
+| Area 12 events | Emit, subscriber and schedule edges, trace propagation, `Access.system` |
+| Area 11 packages | Provider packages and capability mappings as lazily loaded subgraphs, cached per package digest; connections; hosts for the network report |
+| Area 14 deployables | Reachability per deployable and its target; drivers checked against targets |
+| Area 16 services | Flag reads as branch points (tests must cover each value), email templates and translation keys as typed nodes, rate limits, thresholds |
+| Area 18 records | Stable identity (born name plus renames), canonical JSON, graph diff as a first-class operation |
+
+**4. Properties the graph needs.**
+
+- **Stable identity** from the born name and the rename registry (area 18),
+  so incidents, coverage, acceptances and stored deliveries survive renames.
+- **Deterministic, canonical serialisation,** because incidents rebuild a
+  deployed build's manifest from its commit (area 18).
+- **Incremental, query-based checking** (rust-analyzer's model) for the
+  editor, `--watch` and `--affected`.
+- **Lazy subgraphs** for packages, so a large provider costs only what is
+  called (area 11).
+- **Diff** as one operation feeding the approval report, acceptances,
+  package upgrade plans, `check`'s gate and the review view.
+- **Per-callable control flow** for path IDs, path coverage and exact review
+  paths; a concrete syntax tree kept beside it for the formatter.
+
+**5. The first build needs a scope.** The review decided far more than the
+golden todo needs: an OAuth provider, privacy self-service, flags, audit,
+search, files, SMS, publishing, the registry, MCP, the console and review
+view, replay and path coverage. Building all of it before the golden todo
+runs end to end would repeat the long wait. Recommendation: the first build
+is the graph core, both executors and what the golden todo exercises
+(entities, queries, actions, routes, sign-in, policy, configuration, events,
+schedules, email through the `email` capability, tests, migrations and
+PostgreSQL), on the native target first and then Workers. The rest follows
+in the staged order each area already records, each still designed into
+the graph from the start.
+
+**6. Proposed order,** each step finished when its area pages' examples and
+errors pass:
+
+1. Graph core: parser and concrete syntax tree, resolution, types and
+   failures (areas 1–4), stable identity, the manifest, `jadpo check`, the
+   CLI shell in the agreed design language, the verifier check that bans
+   example-application names in compiler source.
+2. Interpreter and the test runner (area 13), so everything after is tested
+   at the target speed.
+3. Data: entities, migrations, queries and writes on PostgreSQL (areas 5, 6).
+4. HTTP, identity and policy (areas 7–9).
+5. Configuration, time and translations (area 10).
+6. Events, schedules and the outbox (area 12).
+7. Packages, capabilities and email (areas 11, 16).
+8. Compiled deployables: native, then WebAssembly on Workers, with both
+   executors passing the same tests.
+9. The golden todo end to end on both targets.
+10. Then, in staged order: personal data (15), the rest of built-in services
+    (16), debugging and review (17), the approval report and acceptances (18),
+    and the roadmap's product work (console, MCP, review view, registry).
+
+**Risks to watch:** the size of the shared runtime crate; interpreter and
+compiled divergence (guarded by running every test both ways); PostgreSQL
+from Workers needing Cloudflare's connection pooling; and scope creep, which
+step 5's cut exists to stop.
+
 ## 2. Toolchain language
 
 Rust was the leading suggestion for the core toolchain because compiler tooling,
