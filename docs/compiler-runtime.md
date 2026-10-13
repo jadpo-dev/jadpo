@@ -248,6 +248,7 @@ Rust 1.88 or later).
 
 | Crate | Responsibility | wasm32 |
 |---|---|---|
+| `jadpo-std` | Shared leaf: built-in types, exact numbers, value rules and their validators, the standard library's enums Rust interprets, the typed operation table | yes |
 | `jadpo-diag` | Rule catalogue, diagnostic model, edits | |
 | `jadpo-syntax` | Lexer, parser, lossless syntax tree, typed AST, `jadpo.ungram` | |
 | `jadpo-fmt` | Formatter | |
@@ -270,18 +271,31 @@ Rust 1.88 or later).
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
 code. Runtime crates never depend on compiler crates, and a generated
-application depends only on runtime crates. A workspace test reads `cargo
-metadata` and fails on any edge against this. *Rejected:* v0's single
-`core` crate, which grew to everything and let the generator read the
-syntax tree.
+application depends only on runtime crates and the shared leaf. The one
+shared crate, `jadpo-std`, depends on no workspace crate, so both sides may
+depend on it: what a valid value is, and what each standard-library
+operation takes and gives, is decided once (decided 2026-10-13, Phase 1
+review). The layers are a table in the root `Cargo.toml`
+(`[workspace.metadata.layers]`); a workspace test reads it and `cargo
+metadata` and fails on anything a crate reaches, directly or through other
+crates, against these rules, and on salsa anywhere but `jadpo-db` and
+`jadpo-check`. *Rejected:* v0's single `core` crate, which grew to
+everything and let the generator read the syntax tree.
 
 **The standard library** (`collection`, `temporal`, `decimal` and the rest)
-is declared in Jadpo stub files embedded in `jadpo-check`, each operation
-bound to one Rust function in `jadpo-value`, so its semantics exist once
-for both executors.
+is declared in Jadpo stub files embedded in `jadpo-check`, for programs to
+call, and listed, typed, in `jadpo-std`'s operation table: each operation's
+parameters with their kinds, its result, and the one Rust function in
+`jadpo-value` that runs it, so its semantics exist once for both executors.
+A test holds the stubs to the table on arity and kinds, and `jadpo-value`
+matches on the table's operations exhaustively. An operation the language
+names but no chunk has built yet is `toolchain.not_built_yet` where it is
+called. Enums that Rust code interprets (`Rounding`, `TextFormat`,
+`UuidVersion`) are declared once, in `jadpo-std`.
 
-**wasm32.** The four runtime crates build for `wasm32-unknown-unknown`,
-checked by the gate. Compiler crates do no I/O below `jadpo-db`, which
+**wasm32.** The runtime crates and the shared leaf build for
+`wasm32-unknown-unknown`, checked by the gate, which reads the list from
+the layer table; `rust-toolchain.toml` pins the target with the toolchain. Compiler crates do no I/O below `jadpo-db`, which
 keeps a browser playground possible later without gating on it now.
 
 ### 2.2 Source to graph

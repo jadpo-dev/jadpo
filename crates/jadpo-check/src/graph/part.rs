@@ -609,14 +609,14 @@ fn rules_list(rules: &Rules) -> Vec<(String, String)> {
     if let Some(pattern) = &rules.pattern {
         out.push(("pattern".to_string(), pattern.clone()));
     }
-    if rules.email {
-        out.push(("format".to_string(), "email".to_string()));
+    if let Some(format) = rules.format {
+        out.push(("format".to_string(), format.name().to_string()));
     }
     if let Some(scale) = rules.scale {
         out.push(("scale".to_string(), scale.to_string()));
     }
     if let Some(version) = rules.version {
-        out.push(("version".to_string(), version.to_string()));
+        out.push(("version".to_string(), version.digit().to_string()));
     }
     out
 }

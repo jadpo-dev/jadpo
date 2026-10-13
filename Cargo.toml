@@ -2,6 +2,32 @@
 members = ["crates/*"]
 resolver = "3"
 
+# The intended crate graph (docs/compiler-runtime.md §2.1), by layer: read by
+# the crate-graph test (crates/jadpo-cli/tests/crate_graph.rs) and by
+# tools/verify.py, which builds the shared and runtime crates for wasm32. A
+# crate listed before it exists takes its place when it is created.
+[workspace.metadata.layers]
+shared = ["jadpo-std"]
+compiler = [
+    "jadpo-diag",
+    "jadpo-syntax",
+    "jadpo-fmt",
+    "jadpo-graph",
+    "jadpo-db",
+    "jadpo-check",
+    "jadpo-plan",
+    "jadpo-interp",
+    "jadpo-codegen",
+]
+runtime = [
+    "jadpo-value",
+    "jadpo-runtime",
+    "jadpo-drivers",
+    "jadpo-host-native",
+    "jadpo-host-workers",
+]
+tooling = ["jadpo-term", "jadpo-test", "jadpo-lsp", "jadpo-cli"]
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
@@ -16,6 +42,7 @@ jadpo-fmt = { path = "crates/jadpo-fmt" }
 jadpo-db = { path = "crates/jadpo-db" }
 jadpo-check = { path = "crates/jadpo-check" }
 jadpo-value = { path = "crates/jadpo-value" }
+jadpo-std = { path = "crates/jadpo-std" }
 jadpo-graph = { path = "crates/jadpo-graph" }
 jadpo-lsp = { path = "crates/jadpo-lsp" }
 rowan = "=0.16.1"

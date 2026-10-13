@@ -28,11 +28,14 @@ pub use usage::{mentions, usage_problems, users};
 use jadpo_db::{Db, Project, item_tree, parse};
 use jadpo_diag::{Diagnostic, rule};
 
-/// Every standard-library operation the stubs declare, as
-/// `namespace.operation`: each must be bound to the Rust function of that
-/// name in `jadpo-value`.
-pub fn standard_operations() -> Vec<String> {
-    std_lib::StdNames::get().bindings()
+pub use std_lib::StubSignature;
+
+/// Every standard-library operation the stubs declare, with its
+/// parameters' kinds and its result's: each must match its entry in
+/// `jadpo-std`'s operation table, which binds it to one Rust function in
+/// `jadpo-value`.
+pub fn standard_operations() -> Vec<StubSignature> {
+    std_lib::StdNames::get().signatures()
 }
 
 /// Every problem in `project`, in a stable order. Syntax errors come alone:

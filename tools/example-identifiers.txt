@@ -141,6 +141,7 @@ finish_magic_link
 first_conflict
 first_quantity
 follow_up
+formatted_price
 gbp
 get_patch_item_reviewer
 group_name
@@ -263,6 +264,7 @@ postpone_all
 pretend_pure
 price
 price_line
+price_text
 priority
 private_label
 private_note

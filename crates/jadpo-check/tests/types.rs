@@ -4,6 +4,7 @@
 
 mod support;
 
+use jadpo_check::StubSignature;
 use jadpo_db::Layout;
 use support::rules;
 
@@ -364,12 +365,72 @@ fn loops_and_failures_read_their_types() {
 }
 
 #[test]
-fn every_standard_operation_is_bound_to_the_runtime() {
-    let mut declared = jadpo_check::standard_operations();
-    declared.sort();
+fn every_stub_matches_the_operation_table() {
+    // The stubs (crates/jadpo-check/std) declare what programs call; the
+    // table in jadpo-std lists the same operations, typed, each with the
+    // Rust function in jadpo-value that runs it.
+    let stubs: Vec<StubSignature> = jadpo_check::standard_operations();
+    let table: Vec<StubSignature> = jadpo_std::OPERATIONS
+        .iter()
+        .map(|operation| StubSignature {
+            name: operation.qualified(),
+            params: operation
+                .params
+                .iter()
+                .map(|param| (param.name.to_string(), Some(param.kind)))
+                .collect(),
+            result: Some(operation.result),
+        })
+        .collect();
+    assert_eq!(stubs, table);
+}
+
+#[test]
+fn standard_operations_check_their_arguments_shape_and_kind() {
+    let cases: &[(&str, &[&str])] = &[
+        // A list operation takes a list, whatever its items are.
+        (
+            "function f(n: Pence) -> Quantity {\n    return Quantity(collection.count(n))\n}\n",
+            &["type.mismatch"],
+        ),
+        (
+            "function f(n: Pence) -> List<Pence> {\n    return collection.map(n, x -> x)\n}\n",
+            &["type.mismatch"],
+        ),
+        // Division takes numbers, built on `Int` for `integer.divide`.
+        (
+            "function f(a: ProductName, b: ProductName) -> Pence {\n    return Pence(integer.divide(a, b, rounding: Rounding.up))\n}\n",
+            &["type.mismatch", "type.mismatch"],
+        ),
+        (
+            "function f(a: Price, b: Quantity) -> Pence {\n    return Pence(integer.divide(a, b, rounding: Rounding.up))\n}\n",
+            &["type.mismatch"],
+        ),
+        (
+            "function f(total: Price, people: Quantity) -> Price {\n    return attempt Price(decimal.divide(total, people, rounding: Rounding.half_even)) invalid: Refused\n}\n\ntype Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+            &["failure.undeclared_propagation"],
+        ),
+        (
+            "function f(total: Pence, boxes: Quantity) -> Pence {\n    return Pence(integer.divide(total, boxes, rounding: Rounding.up))\n}\n",
+            &["failure.attempt_required"],
+        ),
+        // An empty list fixes no type variable, and needs none.
+        (
+            "function f() -> Pence {\n    return Pence(collection.count([]))\n}\n",
+            &[],
+        ),
+    ];
+    for (source, expected) in cases {
+        assert_eq!(&with_names(source), expected, "{source}");
+    }
+}
+
+#[test]
+fn an_operation_declared_for_a_later_area_is_not_built_yet() {
     assert_eq!(
-        declared,
-        jadpo_value::BINDINGS,
-        "each stub operation in crates/jadpo-check/std is implemented once in jadpo-value"
+        with_names(
+            "function f(n: Pence) -> Pence {\n    var formatted_price: Pence = temporal.format(n)\n    return formatted_price\n}\n"
+        ),
+        ["toolchain.not_built_yet"]
     );
 }

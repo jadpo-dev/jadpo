@@ -2,66 +2,14 @@
 //! type's block or a field's settings, what each fits, and checking a
 //! literal against them while compiling.
 
-use std::cmp::Ordering;
-
 use jadpo_syntax::ast::{self, AstNode, Expr};
+
+use jadpo_std::{TextFormat, UuidVersion};
 
 use super::ty::Prim;
 use crate::tree::{self, dotted};
 
-/// An exact number as written: `mantissa × 10^-scale`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Num {
-    pub mantissa: i128,
-    pub scale: u32,
-}
-
-impl Num {
-    /// Reads `12`, `-3` or `0.50`; `None` past 38 digits.
-    pub fn parse(text: &str) -> Option<Num> {
-        let (negative, digits) = match text.strip_prefix('-') {
-            Some(rest) => (true, rest),
-            None => (false, text),
-        };
-        let digits = digits.replace('_', "");
-        let (whole, places) = digits.split_once('.').unwrap_or((&digits, ""));
-        let joined = format!("{whole}{places}");
-        let mantissa: i128 = joined.parse().ok()?;
-        Some(Num {
-            mantissa: if negative { -mantissa } else { mantissa },
-            scale: u32::try_from(places.len()).ok()?,
-        })
-    }
-
-    pub fn compare(self, other: Num) -> Ordering {
-        let scale = self.scale.max(other.scale);
-        let lift = |n: Num| {
-            10i128
-                .checked_pow(scale - n.scale)
-                .and_then(|factor| n.mantissa.checked_mul(factor))
-        };
-        match (lift(self), lift(other)) {
-            (Some(a), Some(b)) => a.cmp(&b),
-            _ => self.mantissa.signum().cmp(&other.mantissa.signum()),
-        }
-    }
-
-    /// Whether it is a whole number that fits an `Int`, a 64-bit integer.
-    pub fn fits_int(self) -> bool {
-        self.scale == 0 && i64::try_from(self.mantissa).is_ok()
-    }
-
-    /// Decimal places, ignoring trailing zeros: `1.50` has one.
-    pub fn significant_places(self) -> u32 {
-        let mut places = self.scale;
-        let mut mantissa = self.mantissa;
-        while places > 0 && mantissa % 10 == 0 {
-            mantissa /= 10;
-            places -= 1;
-        }
-        places
-    }
-}
+pub use jadpo_std::{Broken, Num, Rules, compile_pattern};
 
 /// A literal, or a setting's value, as the checker reads it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -179,19 +127,6 @@ fn unescape(text: &str) -> String {
         }
     }
     out
-}
-
-/// The rules one declaration adds: a type's block, or a field's settings.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct Rules {
-    pub min: Option<Num>,
-    pub max: Option<Num>,
-    pub min_length: Option<u64>,
-    pub max_length: Option<u64>,
-    pub pattern: Option<String>,
-    pub email: bool,
-    pub scale: Option<u32>,
-    pub version: Option<u8>,
 }
 
 /// What a constraint applies to: a value's representation, or a
@@ -332,21 +267,39 @@ pub fn constraint(
             if !text_like {
                 return Err(Problem::Base("`Text` types"));
             }
+            let named = |path: &[String]| match path {
+                [host, variant] if host == TextFormat::NAME => TextFormat::from_name(variant),
+                _ => None,
+            };
             match value {
-                Const::Path(path)
-                    if path.len() == 2 && path[0] == "TextFormat" && path[1] == "email" =>
-                {
-                    rules.email = true;
+                Const::Path(path) if named(path).is_some() => {
+                    rules.format = named(path);
                 }
-                Const::Path(path) if path.len() == 1 && path[0] == "email" => {
+                Const::Path(path)
+                    if path.len() == 1 && TextFormat::from_name(&path[0]).is_some() =>
+                {
+                    let written = format!("{}.{}", TextFormat::NAME, path[0]);
                     return Err(Problem::Value(
-                        "a `TextFormat` value, such as `TextFormat.email`".into(),
-                        Some("TextFormat.email".into()),
+                        format!("a `{}` value, such as `{written}`", TextFormat::NAME),
+                        Some(written),
                     ));
                 }
                 _ => {
+                    let listed: Vec<String> = TextFormat::NAMES
+                        .iter()
+                        .map(|name| format!("`{}.{name}`", TextFormat::NAME))
+                        .collect();
                     return Err(Problem::Value(
-                        "a `TextFormat` value; `TextFormat.email` is the only one".into(),
+                        match listed.as_slice() {
+                            [only] => {
+                                format!("a `{}` value; {only} is the only one", TextFormat::NAME)
+                            }
+                            _ => format!(
+                                "a `{}` value, one of {}",
+                                TextFormat::NAME,
+                                listed.join(", ")
+                            ),
+                        },
                         None,
                     ));
                 }
@@ -375,27 +328,28 @@ pub fn constraint(
             if subject != Subject::Prim(Prim::Uuid) {
                 return Err(Problem::Base("`Uuid` types"));
             }
-            let version = match value {
-                Const::Path(path) if path.len() == 2 && path[0] == "UuidVersion" => path[1]
-                    .strip_prefix('v')
-                    .and_then(|n| n.parse::<u8>().ok())
-                    .filter(|n| (1..=8).contains(n)),
-                _ => None,
-            };
-            match (version, value) {
-                (Some(version), _) => rules.version = Some(version),
-                (None, Const::Path(path)) if path.len() == 1 && path[0].starts_with('v') => {
+            let example = format!(
+                "a `{}` value, such as `{}.{}`",
+                UuidVersion::NAME,
+                UuidVersion::NAME,
+                UuidVersion::V4.name()
+            );
+            match value {
+                Const::Path(path) if path.len() == 2 && path[0] == UuidVersion::NAME => {
+                    match UuidVersion::from_name(&path[1]) {
+                        Some(version) => rules.version = Some(version),
+                        None => return Err(Problem::Value(example, None)),
+                    }
+                }
+                Const::Path(path)
+                    if path.len() == 1 && UuidVersion::from_name(&path[0]).is_some() =>
+                {
                     return Err(Problem::Value(
-                        "a `UuidVersion` value, such as `UuidVersion.v4`".into(),
-                        Some(format!("UuidVersion.{}", path[0])),
+                        example,
+                        Some(format!("{}.{}", UuidVersion::NAME, path[0])),
                     ));
                 }
-                _ => {
-                    return Err(Problem::Value(
-                        "a `UuidVersion` value, such as `UuidVersion.v4`".into(),
-                        None,
-                    ));
-                }
+                _ => return Err(Problem::Value(example, None)),
             }
         }
         _ => return Err(Problem::Unknown),
@@ -403,143 +357,20 @@ pub fn constraint(
     Ok(())
 }
 
-/// Compiles a pattern the way every target runs it: it must match the
-/// whole text, and backreferences and lookaround are refused so it runs
-/// in linear time (area 2, question 9).
-pub fn compile_pattern(pattern: &str) -> Result<regex::Regex, String> {
-    let bytes = pattern.as_bytes();
-    let mut escaped = false;
-    for (i, &b) in bytes.iter().enumerate() {
-        if escaped {
-            escaped = false;
-            if b.is_ascii_digit() && b != b'0' || b == b'k' {
-                return Err("backreferences are not allowed".into());
-            }
-            continue;
-        }
-        if b == b'\\' {
-            escaped = true;
-        } else if b == b'(' && bytes.get(i + 1) == Some(&b'?') {
-            let rest = &bytes[i + 2..];
-            if rest.starts_with(b"=")
-                || rest.starts_with(b"!")
-                || rest.starts_with(b"<=")
-                || rest.starts_with(b"<!")
-            {
-                return Err("lookahead and lookbehind are not allowed".into());
-            }
-        }
-    }
-    regex::Regex::new(&format!("^(?:{pattern})$")).map_err(|error| {
-        let detail = error.to_string();
-        let last = detail
-            .lines()
-            .rev()
-            .find(|line| line.starts_with("error:"))
-            .map(|line| line.trim_start_matches("error:").trim().to_string());
-        last.unwrap_or_else(|| "it isn't a valid regular expression".into())
-    })
-}
-
-/// Why a literal breaks a rule.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Broken {
-    /// The rule as written, such as `min: 1`.
-    pub rule: String,
-    /// What is wrong with the value, completing "The value ...".
-    pub why: String,
-}
-
-/// Checks a constant against one declaration's rules.
+/// Checks a constant against one declaration's rules, with the
+/// validators the runtime runs on values (`jadpo-std`).
 pub fn check_rules(rules: &Rules, value: &Const) -> Result<(), Broken> {
-    let broken = |rule: String, why: String| Err(Broken { rule, why });
-    if let Const::Number { value, .. } = value {
-        if let Some(min) = rules.min
-            && value.compare(min) == Ordering::Less
-        {
-            return broken(
-                format!("min: {}", show(min)),
-                format!("is below {}", show(min)),
-            );
-        }
-        if let Some(max) = rules.max
-            && value.compare(max) == Ordering::Greater
-        {
-            return broken(
-                format!("max: {}", show(max)),
-                format!("is above {}", show(max)),
-            );
-        }
-        if let Some(scale) = rules.scale
-            && value.significant_places() > scale
-        {
-            return broken(
-                format!("scale: {scale}"),
-                format!("has {} decimal places", value.significant_places()),
-            );
-        }
+    match value {
+        Const::Number { value, .. } => rules.check_number(*value),
+        Const::Str(text) => rules.check_text(text),
+        Const::List(items) => rules.check_length(items.len() as u64, "items"),
+        _ => Ok(()),
     }
-    let length = match value {
-        Const::Str(text) => Some(text.chars().count() as u64),
-        Const::List(items) => Some(items.len() as u64),
-        _ => None,
-    };
-    if let Some(length) = length {
-        let unit = if matches!(value, Const::List(_)) {
-            "items"
-        } else {
-            "characters"
-        };
-        if let Some(min) = rules.min_length
-            && length < min
-        {
-            return broken(format!("min_length: {min}"), format!("has {length} {unit}"));
-        }
-        if let Some(max) = rules.max_length
-            && length > max
-        {
-            return broken(format!("max_length: {max}"), format!("has {length} {unit}"));
-        }
-    }
-    if let Const::Str(text) = value {
-        if let Some(pattern) = &rules.pattern
-            && let Ok(compiled) = compile_pattern(pattern)
-            && !compiled.is_match(text)
-        {
-            return broken(
-                format!("pattern: \"{pattern}\""),
-                "doesn't match the whole pattern".into(),
-            );
-        }
-        if rules.email && !is_email(text) {
-            return broken(
-                "format: TextFormat.email".into(),
-                "isn't an email address".into(),
-            );
-        }
-        if let Some(version) = rules.version
-            && uuid_version(text) != Some(version)
-        {
-            return broken(
-                format!("version: UuidVersion.v{version}"),
-                format!("isn't a version {version} UUID"),
-            );
-        }
-    }
-    Ok(())
 }
 
 /// A number as written, with its decimal places.
 pub fn show(n: Num) -> String {
-    if n.scale == 0 {
-        return n.mantissa.to_string();
-    }
-    let digits = n.mantissa.unsigned_abs().to_string();
-    let places = n.scale as usize;
-    let padded = format!("{digits:0>width$}", width = places + 1);
-    let (whole, frac) = padded.split_at(padded.len() - places);
-    let sign = if n.mantissa < 0 { "-" } else { "" };
-    format!("{sign}{whole}.{frac}")
+    n.to_string()
 }
 
 /// What a built-in type itself requires of a literal, beyond its kind.
@@ -548,65 +379,9 @@ pub fn check_builtin(prim: Prim, value: &Const) -> Result<(), String> {
         (Prim::Int, Const::Number { value, .. }) if !value.fits_int() => {
             Err("is outside `Int`'s range, a 64-bit integer".into())
         }
-        (Prim::Uuid, Const::Str(text)) if uuid_version(text).is_none() => {
-            Err("isn't a UUID, written as 32 hexadecimal digits in groups of 8-4-4-4-12".into())
-        }
-        (Prim::Email, Const::Str(text)) if !is_email(text) => Err("isn't an email address".into()),
-        (Prim::Url, Const::Str(text)) if !is_url(text) => {
-            Err("isn't a URL with a scheme and a host, such as `https://example.com`".into())
-        }
-        (Prim::IpAddress, Const::Str(text)) if text.parse::<std::net::IpAddr>().is_err() => {
-            Err("isn't an IPv4 or IPv6 address".into())
-        }
+        (prim, Const::Str(text)) => jadpo_std::check_builtin_text(prim, text),
         _ => Ok(()),
     }
-}
-
-/// The version digit of a UUID in its textual form.
-fn uuid_version(text: &str) -> Option<u8> {
-    let groups: Vec<&str> = text.split('-').collect();
-    let sizes = [8, 4, 4, 4, 12];
-    if groups.len() != 5
-        || groups.iter().zip(sizes).any(|(group, size)| {
-            group.len() != size || !group.chars().all(|c| c.is_ascii_hexdigit())
-        })
-    {
-        return None;
-    }
-    groups[2]
-        .chars()
-        .next()
-        .and_then(|c| c.to_digit(16))
-        .and_then(|d| u8::try_from(d).ok())
-}
-
-/// An address with one `@`, something before it, and a domain with a dot
-/// after it, and no spaces.
-fn is_email(text: &str) -> bool {
-    let Some((local, domain)) = text.split_once('@') else {
-        return false;
-    };
-    !local.is_empty()
-        && !domain.contains('@')
-        && domain.contains('.')
-        && !domain.starts_with('.')
-        && !domain.ends_with('.')
-        && !text.chars().any(char::is_whitespace)
-}
-
-fn is_url(text: &str) -> bool {
-    let Some((scheme, rest)) = text.split_once("://") else {
-        return false;
-    };
-    !scheme.is_empty()
-        && scheme
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
-        && rest
-            .split(['/', '?', '#'])
-            .next()
-            .is_some_and(|host| !host.is_empty())
-        && !text.chars().any(char::is_whitespace)
 }
 
 #[cfg(test)]
@@ -618,16 +393,6 @@ mod tests {
             value: Num::parse(text).expect("a number"),
             decimal: text.contains('.'),
         }
-    }
-
-    #[test]
-    fn numbers_compare_exactly() {
-        let a = Num::parse("1.50").expect("a");
-        let b = Num::parse("1.5").expect("b");
-        assert_eq!(a.compare(b), Ordering::Equal);
-        assert_eq!(Num::parse("-3").expect("c").compare(a), Ordering::Less);
-        assert_eq!(a.significant_places(), 1);
-        assert_eq!(show(Num::parse("0.05").expect("d")), "0.05");
     }
 
     #[test]
@@ -662,10 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn patterns_match_the_whole_text_in_linear_time() {
-        assert!(compile_pattern("(a+)+\\1").is_err());
-        assert!(compile_pattern("(?=a)a").is_err());
-        assert!(compile_pattern("[a-z").is_err());
+    fn literals_are_checked_with_the_runtimes_validators() {
         let rules = Rules {
             pattern: Some("[A-Z]{3}-[0-9]{4}".into()),
             ..Rules::default()
@@ -698,5 +460,27 @@ mod tests {
             .is_ok()
         );
         assert!(check_builtin(Prim::IpAddress, &Const::Str("10.0.0.1".into())).is_ok());
+        let mut rules = Rules::default();
+        let path = |names: &[&str]| Const::Path(names.iter().map(|n| n.to_string()).collect());
+        assert!(
+            constraint(
+                Subject::Prim(Prim::Text),
+                "format",
+                &path(&["TextFormat", "email"]),
+                &mut rules
+            )
+            .is_ok()
+        );
+        assert_eq!(rules.format, Some(jadpo_std::TextFormat::Email));
+        assert!(
+            constraint(
+                Subject::Prim(Prim::Uuid),
+                "version",
+                &path(&["UuidVersion", "v7"]),
+                &mut rules
+            )
+            .is_ok()
+        );
+        assert_eq!(rules.version, Some(UuidVersion::V7));
     }
 }

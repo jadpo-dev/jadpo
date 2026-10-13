@@ -1,7 +1,7 @@
 //! The `decimal` namespace (area 3, question 7).
 
-pub use crate::rounding::Rounding;
 use crate::value::Decimal;
+pub use jadpo_std::Rounding;
 
 /// `dividend / divisor` at the dividend's scale, rounded as `rounding`
 /// says. The checker rules out a zero divisor; `None` is the fault if one

@@ -9,86 +9,9 @@ use jadpo_syntax::ast::{self, AstNode, Expr, Type};
 
 use crate::tree::{self, dotted};
 
-/// The types built into the checker: no Jadpo declaration can say what
-/// they are made of.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Prim {
-    Bool,
-    Int,
-    Decimal,
-    Text,
-    Bytes,
-    Uuid,
-    Email,
-    Url,
-    IpAddress,
-    Instant,
-    CalendarDate,
-    Time,
-    Duration,
-    Unit,
-}
-
-impl Prim {
-    pub const ALL: [Prim; 14] = [
-        Prim::Bool,
-        Prim::Int,
-        Prim::Decimal,
-        Prim::Text,
-        Prim::Bytes,
-        Prim::Uuid,
-        Prim::Email,
-        Prim::Url,
-        Prim::IpAddress,
-        Prim::Instant,
-        Prim::CalendarDate,
-        Prim::Time,
-        Prim::Duration,
-        Prim::Unit,
-    ];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Prim::Bool => "Bool",
-            Prim::Int => "Int",
-            Prim::Decimal => "Decimal",
-            Prim::Text => "Text",
-            Prim::Bytes => "Bytes",
-            Prim::Uuid => "Uuid",
-            Prim::Email => "Email",
-            Prim::Url => "Url",
-            Prim::IpAddress => "IpAddress",
-            Prim::Instant => "Instant",
-            Prim::CalendarDate => "CalendarDate",
-            Prim::Time => "Time",
-            Prim::Duration => "Duration",
-            Prim::Unit => "Unit",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Prim> {
-        Prim::ALL.into_iter().find(|prim| prim.name() == name)
-    }
-
-    /// What its values are made of: the validated text types are text.
-    pub fn representation(self) -> Prim {
-        match self {
-            Prim::Email | Prim::Url | Prim::IpAddress => Prim::Text,
-            other => other,
-        }
-    }
-
-    /// Whether it is raw material rather than a meaning: a named type
-    /// built on it never widens to it, and a signature may not use it
-    /// directly (area 2, question 11).
-    pub fn is_representation(self) -> bool {
-        !matches!(self, Prim::Email | Prim::Url | Prim::IpAddress | Prim::Unit)
-    }
-
-    pub fn is_number(self) -> bool {
-        matches!(self, Prim::Int | Prim::Decimal)
-    }
-}
+/// The types built into the language, from `jadpo-std`, which the runtime
+/// shares: no Jadpo declaration can say what they are made of.
+pub use jadpo_std::Builtin as Prim;
 
 /// The bases used only after `=` in a `type` declaration (area 2).
 pub const BASES: [&str; 7] = [
@@ -132,6 +55,14 @@ pub enum Ty {
     Opaque(String, Vec<Ty>),
     /// A type variable in a standard-library signature.
     Var(String),
+    /// A type variable no argument fixed at a call: anything fits where it
+    /// stands, so it absorbs checks as `Error` does, but the containers
+    /// around it are still checked (a `List<T>` parameter takes only a
+    /// list).
+    Unknown(String),
+    /// Any type built on `Int` or `Decimal`; only in standard-library
+    /// signatures.
+    Number,
     /// An argument written inline as `item -> expression`; only in
     /// standard-library signatures.
     Function(Box<Ty>, Box<Ty>),
@@ -146,13 +77,26 @@ impl Ty {
         matches!(self, Ty::Error)
     }
 
-    /// Whether `Error` appears anywhere inside.
+    /// Whether `Error`, or a type variable no argument fixed, appears
+    /// anywhere inside.
     pub fn has_error(&self) -> bool {
         match self {
-            Ty::Error => true,
+            Ty::Error | Ty::Unknown(_) => true,
             Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => inner.has_error(),
             Ty::Map(key, value) | Ty::Function(key, value) => key.has_error() || value.has_error(),
             Ty::Opaque(_, args) => args.iter().any(Ty::has_error),
+            _ => false,
+        }
+    }
+
+    /// Whether a type variable no argument fixed appears anywhere inside.
+    pub fn has_unknown(&self) -> bool {
+        match self {
+            Ty::Unknown(_) => true,
+            Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => inner.has_unknown(),
+            Ty::Map(key, value) | Ty::Function(key, value) => {
+                key.has_unknown() || value.has_unknown()
+            }
             _ => false,
         }
     }
@@ -178,7 +122,8 @@ impl fmt::Display for Ty {
         match self {
             Ty::Error => f.write_str("?"),
             Ty::Prim(prim) => f.write_str(prim.name()),
-            Ty::Named(name) | Ty::Var(name) => f.write_str(name),
+            Ty::Named(name) | Ty::Var(name) | Ty::Unknown(name) => f.write_str(name),
+            Ty::Number => f.write_str("Number"),
             Ty::Field(host, path) => write!(f, "{host}.{}", path.join(".")),
             Ty::List(inner) => write!(f, "List<{inner}>"),
             Ty::Set(inner) => write!(f, "Set<{inner}>"),

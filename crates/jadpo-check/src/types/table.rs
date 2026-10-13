@@ -617,6 +617,9 @@ impl TypeTable {
         if stub && name.len() == 1 && name.chars().all(|c| c.is_ascii_uppercase()) {
             return Ty::Var(name.to_string());
         }
+        if stub && name == "Number" && args.is_empty() {
+            return Ty::Number;
+        }
         if stub && name == "Function" && args.len() == 2 {
             let to = args.pop().unwrap_or(Ty::Error);
             let from = args.pop().unwrap_or(Ty::Error);
@@ -800,6 +803,11 @@ impl TypeTable {
     /// required, without a constructor (area 2, "When one type can stand in
     /// for another").
     pub fn assignable(&self, actual: &Ty, expected: &Ty) -> bool {
+        // A type variable no argument fixed accepts anything, but the
+        // containers around it are still checked.
+        if expected.has_unknown() && !self.same_shape(actual, expected) {
+            return false;
+        }
         if actual.has_error() || expected.has_error() || actual == expected {
             return true;
         }
@@ -824,6 +832,22 @@ impl TypeTable {
             _ => {}
         }
         self.widens_to(actual.strip_nullable(), expected)
+    }
+
+    /// Whether `actual` is the container `expected` is, all the way down to
+    /// the positions a type variable no argument fixed holds.
+    pub fn same_shape(&self, actual: &Ty, expected: &Ty) -> bool {
+        if actual.has_error() {
+            return true;
+        }
+        match (self.structure(actual), expected.strip_nullable()) {
+            (Ty::List(a), Ty::List(e)) | (Ty::Set(a), Ty::Set(e)) => self.same_shape(&a, e),
+            (Ty::Map(ak, av), Ty::Map(ek, ev)) => {
+                self.same_shape(&ak, ek) && self.same_shape(&av, ev)
+            }
+            (_, Ty::List(_) | Ty::Set(_) | Ty::Map(..)) => false,
+            _ => true,
+        }
     }
 
     fn widens_to(&self, from: &Ty, to: &Ty) -> bool {

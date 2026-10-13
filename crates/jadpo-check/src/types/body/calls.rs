@@ -137,6 +137,10 @@ impl Body<'_> {
                 let ty = self.std_call(operation, call, &written, expected);
                 return (ty, CallKind::Pure(written));
             }
+            if names.name_only(&head, member) {
+                let span = self.span(callee);
+                self.not_built_yet(span, &written);
+            }
             self.args_only(call);
             return (Ty::Error, CallKind::Pure(written));
         }
@@ -174,6 +178,22 @@ impl Body<'_> {
         }
         self.args_only(call);
         (Ty::Error, CallKind::Effect(written))
+    }
+
+    /// A standard-library operation the language declares but nothing runs
+    /// yet: its area's chunk builds it.
+    pub(super) fn not_built_yet(&mut self, span: Span, written: &str) {
+        self.out.push(
+            Diagnostic::new(
+                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                format!("`{written}` isn't built yet"),
+            )
+            .at(span, "declared, not built")
+            .reason(format!(
+                "The language declares `{written}`, but this compiler has nothing to run it with yet, so a program that calls it couldn't run."
+            ))
+            .next(format!("Do without `{written}` for now")),
+        );
     }
 
     /// The kind of the project declaration called `name`, not counting
@@ -405,13 +425,13 @@ impl Body<'_> {
             }
             let ty = self.infer(&value);
             if let Some(param) = param {
-                unify(param, &ty, &mut bound);
+                self.unify(param, &ty, &mut bound);
             }
             actual.push(Some(ty));
         }
         let result = self.table.resolve_std(&operation.result);
         if let Some(expected) = expected {
-            unify(&result, expected, &mut bound);
+            self.unify(&result, expected, &mut bound);
         }
         let mut inline = Vec::new();
         for ((arg, slot), ty) in args.iter().zip(&slots).zip(actual) {
@@ -437,6 +457,11 @@ impl Body<'_> {
                 continue;
             }
             let expected = substitute(&param, &bound);
+            if let Some(accepts) = built_on(&expected) {
+                let name = params[*slot].0.clone();
+                self.built_on_argument(&value, ty, accepts, written, &name);
+                continue;
+            }
             match ty {
                 Some(ty) => self.require(&value, &ty, &expected),
                 None => self.check(&value, &expected),
@@ -483,6 +508,98 @@ impl Body<'_> {
             );
         }
         substitute(&result, &bound)
+    }
+
+    /// An argument to a parameter that takes any type built on one of
+    /// `accepts`, as operators work on the representation: `Number`, or a
+    /// built-in representation written in a stub.
+    fn built_on_argument(
+        &mut self,
+        value: &Expr,
+        ty: Option<Ty>,
+        accepts: &[Prim],
+        written: &str,
+        param: &str,
+    ) {
+        let ty = match ty {
+            Some(ty) => ty,
+            None => {
+                // A literal takes the representation it is written as.
+                let literal = match Const::from_expr(value) {
+                    Const::Number { decimal: false, .. } => Some(Prim::Int),
+                    Const::Number { decimal: true, .. } => Some(Prim::Decimal),
+                    _ => None,
+                };
+                match literal {
+                    Some(prim) if accepts.contains(&prim) => {
+                        self.check(value, &Ty::Prim(prim));
+                        return;
+                    }
+                    _ if accepts.len() == 1 => {
+                        self.check(value, &Ty::Prim(accepts[0]));
+                        return;
+                    }
+                    _ => self.infer(value),
+                }
+            }
+        };
+        if ty.has_error() {
+            return;
+        }
+        let nullable = self.table.is_nullable(&ty);
+        if !nullable
+            && self
+                .table
+                .representation(&ty)
+                .is_some_and(|prim| accepts.contains(&prim))
+        {
+            return;
+        }
+        let wanted = match accepts {
+            [only] => format!("a value built on `{}`", only.name()),
+            _ => "a number".to_string(),
+        };
+        let built: Vec<String> = accepts
+            .iter()
+            .map(|prim| format!("`{}`", prim.name()))
+            .collect();
+        let span = self.span(value);
+        let reason = if nullable {
+            format!("`{written}`'s `{param}` is never `none`, and `{ty}` may be `none`.")
+        } else {
+            format!(
+                "`{written}`'s `{param}` takes a value built on {}; `{ty}` is {}.",
+                built.join(" or "),
+                super::super::literal::what(self.table, &ty)
+            )
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_MISMATCH,
+                format!("`{ty}` can't be used where {wanted} is required"),
+            )
+            .at(span, format!("this is `{ty}`"))
+            .reason(reason)
+            .next(format!("Pass {wanted} here")),
+        );
+    }
+
+    /// Binds the type variables in `param` from an argument's type, read
+    /// through field types and refinements to the container they are.
+    fn unify(&self, param: &Ty, actual: &Ty, bound: &mut BTreeMap<String, Ty>) {
+        if let Ty::Var(name) = param {
+            bound.entry(name.clone()).or_insert_with(|| actual.clone());
+            return;
+        }
+        match (param, self.table.structure(actual)) {
+            (Ty::List(p), Ty::List(a)) | (Ty::Set(p), Ty::Set(a)) => self.unify(p, &a, bound),
+            (Ty::Nullable(p), a) => self.unify(p, &a, bound),
+            (Ty::Map(pk, pv), Ty::Map(ak, av)) => {
+                self.unify(pk, &ak, bound);
+                self.unify(pv, &av, bound);
+            }
+            _ => {}
+        }
     }
 
     pub(super) fn unknown_argument(
@@ -774,27 +891,26 @@ impl Body<'_> {
     }
 }
 
-/// Binds the type variables in `param` from an argument's type.
-fn unify(param: &Ty, actual: &Ty, bound: &mut BTreeMap<String, Ty>) {
-    match (param, actual.strip_nullable()) {
-        (Ty::Var(name), _) => {
-            bound.entry(name.clone()).or_insert_with(|| actual.clone());
-        }
-        (Ty::List(p), Ty::List(a)) | (Ty::Set(p), Ty::Set(a)) => unify(p, a, bound),
-        (Ty::Nullable(p), a) => unify(p, a, bound),
-        (Ty::Map(pk, pv), Ty::Map(ak, av)) => {
-            unify(pk, ak, bound);
-            unify(pv, av, bound);
-        }
-        _ => {}
+/// The built-in types a parameter takes values built on, when it is
+/// `Number` or a built-in representation in a stub.
+fn built_on(param: &Ty) -> Option<&'static [Prim]> {
+    match param {
+        Ty::Number => Some(&[Prim::Int, Prim::Decimal]),
+        Ty::Prim(Prim::Int) => Some(&[Prim::Int]),
+        Ty::Prim(Prim::Decimal) => Some(&[Prim::Decimal]),
+        Ty::Prim(Prim::Text) => Some(&[Prim::Text]),
+        _ => None,
     }
 }
 
-/// `param` with its bound type variables filled in; unbound ones are
-/// `Error`.
+/// `param` with its bound type variables filled in; an unbound one is a
+/// checked unknown, which fits anything but keeps its container's shape.
 fn substitute(param: &Ty, bound: &BTreeMap<String, Ty>) -> Ty {
     match param {
-        Ty::Var(name) => bound.get(name).cloned().unwrap_or(Ty::Error),
+        Ty::Var(name) => bound
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| Ty::Unknown(name.clone())),
         Ty::List(inner) => Ty::List(Box::new(substitute(inner, bound))),
         Ty::Set(inner) => Ty::Set(Box::new(substitute(inner, bound))),
         Ty::Nullable(inner) => substitute(inner, bound).nullable(),

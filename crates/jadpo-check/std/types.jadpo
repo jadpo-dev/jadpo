@@ -2,34 +2,9 @@
 // §2.1). The representation types (`Bool`, `Int`, `Decimal`, `Text`,
 // `Bytes`, `Uuid`), the validated text types (`Email`, `Url`, `IpAddress`),
 // the time types and `Unit` are built into the checker, because no Jadpo
-// declaration can say what they are made of.
-
-/// The formats a `Text` type's `format:` setting accepts (area 2, question 9).
-public type TextFormat = Enum {
-    email
-}
-
-/// The UUID versions a `Uuid` type's `version:` setting can pin
-/// (area 2, question 13).
-public type UuidVersion = Enum {
-    v1
-    v2
-    v3
-    v4
-    v5
-    v6
-    v7
-    v8
-}
-
-/// How a division that doesn't come out exact is rounded (area 3,
-/// question 7): `half_even` to the nearest, ties to the even neighbour;
-/// `half_up` to the nearest, ties away from zero; `up` away from zero.
-public type Rounding = Enum {
-    half_even
-    half_up
-    up
-}
+// declaration can say what they are made of. `Rounding`, `TextFormat` and
+// `UuidVersion` are declared once in `jadpo-std`, beside the Rust code that
+// interprets them, and the checker reads them from there.
 
 /// How a failure reaches a client and how background work treats it
 /// (area 4). An application declares only `invalid_value`, `not_found`,

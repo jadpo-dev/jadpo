@@ -162,7 +162,7 @@ struct Combined {
     max_length: Option<u64>,
     patterns: Vec<String>,
     email: bool,
-    version: Option<u8>,
+    version: Option<jadpo_std::UuidVersion>,
 }
 
 fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
@@ -185,7 +185,7 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
             out.max_length = Some(out.max_length.map_or(n, |m| m.min(n)));
         }
         out.patterns.extend(rules.pattern.clone());
-        out.email |= rules.email;
+        out.email |= rules.format == Some(jadpo_std::TextFormat::Email);
         if rules.version.is_some() {
             out.version = rules.version;
         }

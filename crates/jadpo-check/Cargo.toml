@@ -11,14 +11,9 @@ jadpo-db.workspace = true
 jadpo-diag.workspace = true
 jadpo-fmt.workspace = true
 jadpo-graph.workspace = true
+jadpo-std.workspace = true
 jadpo-syntax.workspace = true
 salsa.workspace = true
-regex.workspace = true
-
-[dev-dependencies]
-# The stubs' bindings are checked against the runtime's operations; a
-# dev-dependency is outside the crate graph (crates/jadpo-cli/tests/crate_graph.rs).
-jadpo-value.workspace = true
 
 [lints]
 workspace = true

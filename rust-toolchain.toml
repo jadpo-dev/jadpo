@@ -2,4 +2,6 @@
 [toolchain]
 channel = "1.99.0"
 components = ["rustfmt", "clippy"]
+# The runtime crates build for WebAssembly (§2.1), and the gate checks it.
+targets = ["wasm32-unknown-unknown"]
 profile = "minimal"

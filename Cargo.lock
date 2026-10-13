@@ -207,9 +207,8 @@ dependencies = [
  "jadpo-diag",
  "jadpo-fmt",
  "jadpo-graph",
+ "jadpo-std",
  "jadpo-syntax",
- "jadpo-value",
- "regex",
  "salsa",
 ]
 
@@ -270,6 +269,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "jadpo-std"
+version = "0.1.0"
+dependencies = [
+ "regex",
+]
+
+[[package]]
 name = "jadpo-syntax"
 version = "0.1.0"
 dependencies = [
@@ -289,6 +295,9 @@ dependencies = [
 [[package]]
 name = "jadpo-value"
 version = "0.1.0"
+dependencies = [
+ "jadpo-std",
+]
 
 [[package]]
 name = "libc"

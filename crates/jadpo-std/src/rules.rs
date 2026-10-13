@@ -1,0 +1,300 @@
+//! The rules a valid value follows (area 2) and the validators that check
+//! them: bounds and scale on numbers, lengths counted in characters or
+//! items, whole-text patterns, formats and UUID versions, and what the
+//! validated built-in types require of their text. The checker runs these
+//! on literals while compiling; the runtime runs the same functions on
+//! values.
+
+use std::cmp::Ordering;
+
+use crate::{Builtin, Num, TextFormat, UuidVersion};
+
+/// The rules one declaration adds: a type's block, or a field's settings.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Rules {
+    pub min: Option<Num>,
+    pub max: Option<Num>,
+    pub min_length: Option<u64>,
+    pub max_length: Option<u64>,
+    /// A regular expression the whole text must match.
+    pub pattern: Option<String>,
+    pub format: Option<TextFormat>,
+    /// The most decimal places a number may have.
+    pub scale: Option<u32>,
+    pub version: Option<UuidVersion>,
+}
+
+/// Why a value breaks a rule.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Broken {
+    /// The rule as written, such as `min: 1`.
+    pub rule: String,
+    /// What is wrong with the value, completing "The value ...".
+    pub why: String,
+}
+
+fn broken(rule: String, why: String) -> Result<(), Broken> {
+    Err(Broken { rule, why })
+}
+
+impl Rules {
+    pub fn is_empty(&self) -> bool {
+        *self == Rules::default()
+    }
+
+    /// A number against `min`, `max` and `scale`.
+    pub fn check_number(&self, value: Num) -> Result<(), Broken> {
+        if let Some(min) = self.min
+            && value.compare(min) == Ordering::Less
+        {
+            return broken(format!("min: {min}"), format!("is below {min}"));
+        }
+        if let Some(max) = self.max
+            && value.compare(max) == Ordering::Greater
+        {
+            return broken(format!("max: {max}"), format!("is above {max}"));
+        }
+        if let Some(scale) = self.scale
+            && value.significant_places() > scale
+        {
+            return broken(
+                format!("scale: {scale}"),
+                format!("has {} decimal places", value.significant_places()),
+            );
+        }
+        Ok(())
+    }
+
+    /// A length against `min_length` and `max_length`; `unit` names what
+    /// was counted, `characters` or `items`.
+    pub fn check_length(&self, length: u64, unit: &str) -> Result<(), Broken> {
+        if let Some(min) = self.min_length
+            && length < min
+        {
+            return broken(format!("min_length: {min}"), format!("has {length} {unit}"));
+        }
+        if let Some(max) = self.max_length
+            && length > max
+        {
+            return broken(format!("max_length: {max}"), format!("has {length} {unit}"));
+        }
+        Ok(())
+    }
+
+    /// Text against its length in characters, `pattern`, `format` and
+    /// `version`.
+    pub fn check_text(&self, text: &str) -> Result<(), Broken> {
+        self.check_length(text.chars().count() as u64, "characters")?;
+        if let Some(pattern) = &self.pattern
+            && let Ok(compiled) = compile_pattern(pattern)
+            && !compiled.is_match(text)
+        {
+            return broken(
+                format!("pattern: \"{pattern}\""),
+                "doesn't match the whole pattern".into(),
+            );
+        }
+        if let Some(format) = self.format {
+            let fits = match format {
+                TextFormat::Email => is_email(text),
+            };
+            if !fits {
+                return broken(
+                    format!("format: {}.{}", TextFormat::NAME, format.name()),
+                    "isn't an email address".into(),
+                );
+            }
+        }
+        if let Some(version) = self.version
+            && uuid_version(text) != Some(version.digit())
+        {
+            return broken(
+                format!("version: {}.{}", UuidVersion::NAME, version.name()),
+                format!("isn't a version {} UUID", version.digit()),
+            );
+        }
+        Ok(())
+    }
+}
+
+/// Compiles a pattern the way every target runs it: it must match the
+/// whole text, and backreferences and lookaround are refused so it runs in
+/// linear time (area 2, question 9).
+pub fn compile_pattern(pattern: &str) -> Result<regex::Regex, String> {
+    let bytes = pattern.as_bytes();
+    let mut escaped = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        if escaped {
+            escaped = false;
+            if b.is_ascii_digit() && b != b'0' || b == b'k' {
+                return Err("backreferences are not allowed".into());
+            }
+            continue;
+        }
+        if b == b'\\' {
+            escaped = true;
+        } else if b == b'(' && bytes.get(i + 1) == Some(&b'?') {
+            let rest = &bytes[i + 2..];
+            if rest.starts_with(b"=")
+                || rest.starts_with(b"!")
+                || rest.starts_with(b"<=")
+                || rest.starts_with(b"<!")
+            {
+                return Err("lookahead and lookbehind are not allowed".into());
+            }
+        }
+    }
+    regex::Regex::new(&format!("^(?:{pattern})$")).map_err(|error| {
+        let detail = error.to_string();
+        let last = detail
+            .lines()
+            .rev()
+            .find(|line| line.starts_with("error:"))
+            .map(|line| line.trim_start_matches("error:").trim().to_string());
+        last.unwrap_or_else(|| "it isn't a valid regular expression".into())
+    })
+}
+
+/// What a validated built-in type requires of its text, beyond being text:
+/// the reason it refuses `text`, completing "The value ...".
+pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
+    match builtin {
+        Builtin::Uuid if uuid_version(text).is_none() => {
+            Err("isn't a UUID, written as 32 hexadecimal digits in groups of 8-4-4-4-12".into())
+        }
+        Builtin::Email if !is_email(text) => Err("isn't an email address".into()),
+        Builtin::Url if !is_url(text) => {
+            Err("isn't a URL with a scheme and a host, such as `https://example.com`".into())
+        }
+        Builtin::IpAddress if !is_ip_address(text) => Err("isn't an IPv4 or IPv6 address".into()),
+        _ => Ok(()),
+    }
+}
+
+/// The version digit of a UUID in its textual form; `None` when it isn't
+/// one.
+pub fn uuid_version(text: &str) -> Option<u8> {
+    let groups: Vec<&str> = text.split('-').collect();
+    let sizes = [8, 4, 4, 4, 12];
+    if groups.len() != 5
+        || groups.iter().zip(sizes).any(|(group, size)| {
+            group.len() != size || !group.chars().all(|c| c.is_ascii_hexdigit())
+        })
+    {
+        return None;
+    }
+    groups[2]
+        .chars()
+        .next()
+        .and_then(|c| c.to_digit(16))
+        .and_then(|d| u8::try_from(d).ok())
+}
+
+/// An address with one `@`, something before it, and a domain with a dot
+/// after it, and no spaces.
+pub fn is_email(text: &str) -> bool {
+    let Some((local, domain)) = text.split_once('@') else {
+        return false;
+    };
+    !local.is_empty()
+        && !domain.contains('@')
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !text.chars().any(char::is_whitespace)
+}
+
+/// A URL with a scheme and a host, and no spaces.
+pub fn is_url(text: &str) -> bool {
+    let Some((scheme, rest)) = text.split_once("://") else {
+        return false;
+    };
+    !scheme.is_empty()
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        && rest
+            .split(['/', '?', '#'])
+            .next()
+            .is_some_and(|host| !host.is_empty())
+        && !text.chars().any(char::is_whitespace)
+}
+
+pub fn is_ip_address(text: &str) -> bool {
+    text.parse::<std::net::IpAddr>().is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn num(text: &str) -> Num {
+        Num::parse(text).expect("a number")
+    }
+
+    #[test]
+    fn numbers_break_the_rule_they_break() {
+        let rules = Rules {
+            min: Some(num("1")),
+            max: Some(num("1000")),
+            ..Rules::default()
+        };
+        let broken = rules.check_number(num("0")).expect_err("below min");
+        assert_eq!(broken.rule, "min: 1");
+        let scaled = Rules {
+            scale: Some(2),
+            ..Rules::default()
+        };
+        assert!(scaled.check_number(num("1.250")).is_ok());
+        assert!(scaled.check_number(num("1.255")).is_err());
+    }
+
+    #[test]
+    fn text_is_counted_in_characters_and_matched_whole() {
+        let rules = Rules {
+            max_length: Some(3),
+            ..Rules::default()
+        };
+        assert!(rules.check_text("héé").is_ok(), "three characters");
+        assert!(rules.check_text("abcd").is_err());
+        let rules = Rules {
+            pattern: Some("[A-Z]{3}-[0-9]{4}".into()),
+            ..Rules::default()
+        };
+        assert!(rules.check_text("ABC-1234").is_ok());
+        assert!(rules.check_text("ABC-1234x").is_err());
+        let rules = Rules {
+            version: Some(UuidVersion::V7),
+            ..Rules::default()
+        };
+        assert!(
+            rules
+                .check_text("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e")
+                .is_ok()
+        );
+        assert_eq!(
+            rules
+                .check_text("0192f0c4-3b5e-4c1a-9d2e-4f6a8b0c1d2e")
+                .expect_err("v4")
+                .rule,
+            "version: UuidVersion.v7"
+        );
+    }
+
+    #[test]
+    fn patterns_run_in_linear_time() {
+        assert!(compile_pattern("(a+)+\\1").is_err());
+        assert!(compile_pattern("(?=a)a").is_err());
+        assert!(compile_pattern("[a-z").is_err());
+    }
+
+    #[test]
+    fn validated_builtins_check_their_text() {
+        assert!(check_builtin_text(Builtin::Uuid, "not a uuid").is_err());
+        assert!(check_builtin_text(Builtin::Uuid, "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e").is_ok());
+        assert!(check_builtin_text(Builtin::IpAddress, "10.0.0.1").is_ok());
+        assert!(check_builtin_text(Builtin::Email, "a@b").is_err());
+        assert!(check_builtin_text(Builtin::Url, "https://example.com").is_ok());
+        assert!(check_builtin_text(Builtin::Text, "anything").is_ok());
+    }
+}

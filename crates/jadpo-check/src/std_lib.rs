@@ -14,6 +14,8 @@ use std::sync::OnceLock;
 
 use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
+use jadpo_std::{Builtin, Kind};
+
 use crate::tree;
 use crate::types::{BASES, Prim, TypeRef, container_arity};
 
@@ -26,6 +28,41 @@ const STUBS: [(&str, &str); 4] = [
     ("decimal.jadpo", include_str!("../std/decimal.jadpo")),
     ("integer.jadpo", include_str!("../std/integer.jadpo")),
 ];
+
+/// A stub operation's signature as kinds (see [`StdNames::signatures`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StubSignature {
+    pub name: String,
+    pub params: Vec<(String, Option<Kind>)>,
+    pub result: Option<Kind>,
+}
+
+/// What kind a type written in a stub is.
+fn kind_of(ty: &TypeRef) -> Option<Kind> {
+    let TypeRef::Path(names, args) = ty else {
+        return None;
+    };
+    let [name] = names.as_slice() else {
+        return None;
+    };
+    match (name.as_str(), args.len()) {
+        ("List", 1) => Some(Kind::List),
+        ("Function", 2) => Some(Kind::Function),
+        ("Number", 0) => Some(Kind::Number),
+        (variable, 0)
+            if variable.len() == 1 && variable.chars().all(|c| c.is_ascii_uppercase()) =>
+        {
+            Some(Kind::Any)
+        }
+        (other, 0) => Builtin::from_name(other).map(Kind::Builtin).or_else(|| {
+            jadpo_std::ENUMS
+                .iter()
+                .find(|(enum_name, _)| *enum_name == other)
+                .map(|(enum_name, _)| Kind::Enum(enum_name))
+        }),
+        _ => None,
+    }
+}
 
 /// A standard-library operation's signature, as declared in its stub.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -64,6 +101,12 @@ impl StdNames {
             let mut table = StdNames::parse(NAMES);
             for (_, stub) in STUBS {
                 table.declare(stub);
+            }
+            for (name, variants) in jadpo_std::ENUMS {
+                table.enums.insert(
+                    name.to_string(),
+                    variants.iter().map(|variant| variant.to_string()).collect(),
+                );
             }
             table
         })
@@ -224,16 +267,37 @@ impl StdNames {
         self.declared.get(namespace)?.get(operation)
     }
 
-    /// Every operation declared in a stub, as `namespace.operation`.
-    pub fn bindings(&self) -> Vec<String> {
+    /// Every operation declared in a stub, as `namespace.operation`, with
+    /// its parameters' kinds and its result's, for the test that holds the
+    /// stubs to `jadpo-std`'s operation table; `None` where no kind
+    /// describes the type written.
+    pub fn signatures(&self) -> Vec<StubSignature> {
         self.declared
             .iter()
             .flat_map(|(namespace, operations)| {
                 operations
-                    .keys()
-                    .map(move |name| format!("{namespace}.{name}"))
+                    .iter()
+                    .map(move |(name, operation)| StubSignature {
+                        name: format!("{namespace}.{name}"),
+                        params: operation
+                            .params
+                            .iter()
+                            .map(|(param, ty)| (param.clone(), kind_of(ty)))
+                            .collect(),
+                        result: kind_of(&operation.result),
+                    })
             })
             .collect()
+    }
+
+    /// Whether `namespace.operation` is known by name only: listed for a
+    /// later area, with no stub and nothing to run it yet.
+    pub fn name_only(&self, namespace: &str, operation: &str) -> bool {
+        self.operation(namespace, operation).is_none()
+            && self
+                .named
+                .get(namespace)
+                .is_some_and(|operations| operations.contains(operation))
     }
 
     /// The first namespace, in name order, with an operation called `name`.
