@@ -160,3 +160,52 @@ provider proxy alone does not establish differentiation; customer demand,
 cost/privacy/retention, provider terms, portability and support burden remain
 unvalidated. E11's requested console/MCP functionality does not require this
 commercial or probabilistic layer.
+
+### Follow-up discussion — 2026-10-13
+
+**Status:** exploratory, not a business plan. Source: a 2026-10-13 session
+with the owner; the technical ideas are proposals in
+[area 16](language/16-built-in-services.md) (path IDs, monitoring
+thresholds) and [area 17](language/17-debugging-and-review.md) (path
+coverage, production in review, replay, query cost).
+
+Jadpo has to be worth using with no paid feature. Nothing commercial
+matters until the language proves itself (§6).
+
+**Stopping people bypassing a hosted service.** It cannot be done and should
+not be attempted: anyone can fork an open compiler and point it at their own
+endpoint, and DRM in an open compiler is forked out quickly and costs trust.
+The endpoint stays an ordinary setting and the manifest format stays open.
+What protects a hosted service is that running it well is real work
+(storage, retention, querying at scale, alerting, uptime, team features),
+priced below the cost of building and running a copy. Sentry, Grafana,
+PostHog, Temporal and Encore sell hosting around open or self-hostable
+cores. If the hosted service's own code is published, a source-available
+licence such as Sentry's Functional Source License (Apache after two years)
+protects it while the compiler stays permissively licensed.
+
+**Do not bypass OpenTelemetry.** Capture is not where Jadpo differs;
+analysis is. Standard transport means teams can keep their existing tools,
+and a Jadpo-aware service reads the same stream plus the build manifest
+(graph, stable identities, thresholds) published per build, so it needs no
+source code.
+
+**Candidate offerings, strongest first:**
+
+1. **A review gate on the git host.** The approval report, required sign-off
+   for policy and personal-data changes, and interdiffs between agent
+   revisions, as a pull-request app. Free for public repositories, paid for
+   private ones and teams. This sells the reason Jadpo exists: people
+   reviewing what models wrote.
+2. **Compliance evidence.** A signed record per build of who can reach which
+   data and who accepted each change. Regulated firms buy audit trails.
+3. **Hosted observability built on the manifest.** Path-aware storage,
+   cross-build comparison, generated alerts, an MCP endpoint for agents.
+   Strongest combined with item 1 (production traffic in the review);
+   observability alone is a crowded market.
+4. **Hosted build and deploy,** as Encore Cloud does. Plausible, and heavy
+   to operate.
+
+**Keeping the options open costs little now:** stable identities for every
+declaration, the build manifest as a versioned build output, and path IDs as
+OpenTelemetry attributes.

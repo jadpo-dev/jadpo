@@ -36,6 +36,10 @@ refused, it is because the compiler and the runtime recorded it (question 10).
 | Developer console and MCP | None | Local web page and read-only MCP over the same evidence | Roadmap E11; question 8 |
 | Reviewing a change | `jadpo approval --before <ref>`, one 6 MB JSON line | Report ordered by behaviour first; static web view of it | Roadmap E06; question 9 |
 | JSON for agents | Some commands | Every command and view | Area 14 question 2; question 10 |
+| Coverage by path | None | Tests and production compared path by path | Question 11 |
+| Production in review | None | The approval report shows traffic and failures on affected paths | Question 12 |
+| Replaying a production request | None | Opt-in recording at effect boundaries, replayed locally | Question 13 |
+| Query cost of a change | Query report per query | Queries added or removed per path, in the approval report | Question 14 |
 
 ## Errors point at the `.jadpo` line
 
@@ -328,6 +332,33 @@ header lines followed by one line of JSON. Nothing is ordered for a reader.
 
 :::
 
+## What the graph and production evidence add
+
+Proposed 2026-10-13. Each of these joins the compiler's graph to path IDs
+(area 16 question 13). Production data is always an optional input: a
+file exported from the monitoring tool, or a service that holds it. Every
+command works without it.
+
+- **Coverage by path** (question 11). `jadpo test` reports which paths the
+  tests ran, not which lines. Given production path counts, it lists paths
+  that ran in production with no test, ordered by traffic, and `jadpo test
+  new --from` writes the missing one. Paths in the graph never seen in
+  production for 90 days are listed as candidates for removal.
+- **Production in review** (question 12). Given production path counts,
+  the approval report says what a change touches in use: "touches paths
+  that served 38% of requests last week; one failed 12 times". No other
+  tool has both the meaning of a change and per-path traffic.
+- **Replaying a production request** (question 13). Time, randomness,
+  integrations and the database are declared effects, so the runtime knows
+  every source of nondeterminism. When opted in, it records what each
+  effect returned for a failing request, with personal fields replaced
+  using area 15's marks, and `jadpo replay` runs that request locally with
+  the same results. This extends `test new --from` from `jadpo dev` to
+  production.
+- **Query cost of a change** (question 14). The compiler counts the
+  queries on every path, so the approval report says "adds 2 queries to
+  `POST /orders`", the hottest path when production counts are given.
+
 ## Everything as JSON
 
 Every command on this page takes `--json` (area 14 question 2), and each
@@ -389,6 +420,9 @@ or read from source or generated code (the golden todo, built with
 | The developer console and MCP server; application graph and overlays; production monitoring | Roadmap E11 | Question 8 |
 | The review web view; interdiff between agent revisions | Roadmap E06 | Question 9 |
 | Breakpoints in `.jadpo` through Bun's inspector | Roadmap | Question 3 |
+| Path IDs and per-path query counts | 16 | Questions 11–14 |
+| Path coverage in `jadpo test`; production counts as a test input | 13 | Question 11 |
+| What a replay recording may hold | 15 | Question 13 |
 
 ### Open questions
 
@@ -451,6 +485,22 @@ or read from source or generated code (the golden todo, built with
     review web view and any breakpoints are product work. Build order:
     mapped stacks, the timeline and `trace`, `why`, `test new --from`, `call`,
     the review report's order, MCP, the console, then the review web view.
+11. **Is test coverage measured by path, and compared with production?**
+    *Recommendation:* yes: paths run by tests, paths run in production with
+    no test ordered by traffic, and paths unseen for 90 days. Line coverage
+    says a branch ran once; path coverage says which combinations ran.
+12. **Does the approval report use production counts when given them?**
+    *Recommendation:* yes, as an optional input; the report is complete
+    without it. It is the one view nobody else can build, because nobody
+    else has the meaning of the change.
+13. **Can a production request be recorded and replayed locally?**
+    *Recommendation:* yes, opt-in per deployment, failing requests only,
+    personal fields replaced by area 15's marks, recordings expiring like
+    logs. Record-and-replay is hard in most languages because effects are
+    everywhere; in Jadpo they are declared.
+14. **Does the approval report count queries per path?** *Recommendation:*
+    yes, from the compiler alone, ranked by production traffic when given.
+    It catches the extra query before it ships, not on a dashboard after.
 
 ### Decisions
 
@@ -471,3 +521,7 @@ or read from source or generated code (the golden todo, built with
 | Developer console and MCP | | |
 | Review report and view | | |
 | Contract and order | | |
+| Coverage by path | | |
+| Production in review | | |
+| Production replay | | |
+| Query cost of a change | | |

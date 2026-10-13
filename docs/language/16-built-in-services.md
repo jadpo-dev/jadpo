@@ -28,6 +28,7 @@ than depending on a third-party service (the rule area 8 applied to OAuth).
 | Files | Yes | Size and type checked; policy and erasure reach the bytes; signed links generated | `File` fields; a file store in `app.jadpo` |
 | Audit trail | Yes | The compiler sees every write and its caller; personal fields hashed | `audit:` section on an entity |
 | Tracing and metrics | Yes, no syntax | Every route, query, action, job and integration call is known | Generated runtime |
+| Path IDs and monitoring thresholds | Proposed | Every path is known, so it can be named, sampled and given limits | Generated runtime; a monitoring file per domain; questions 13–16 |
 | Email | Sending and templates, yes; provider APIs, no | Templates typed against translations; delivered after commit | `type X = Mail` in `events/`; SMTP in `app.jadpo` |
 | Search | Yes | Index, query and migration generated from one declaration | `search:` section on an entity |
 | Outgoing webhooks | Yes | Payloads typed from events; signing and retries generated | Later area; question 8 |
@@ -276,6 +277,77 @@ written in source (question 10).
 
 There are no custom spans: every action and query is already one.
 
+## Path IDs
+
+Proposed 2026-10-13 (question 13). Every request records the path it took
+through the application: the route, each action and query, and each branch
+taken inside them. The compiler knows every possible path, so a path can be
+named by a number rather than described:
+
+- **`path`** is a number that decodes against that build's graph, using
+  Ball–Larus path numbering (each acyclic path through a callable gets a
+  unique small integer, with minimal instrumentation). `jadpo path <build>
+  <path>` draws the route from the number alone, with no recorded data.
+- **`path_key`** is a hash of the stable identities on the path, so the
+  same path can be compared across builds ("p95 of this path since
+  Tuesday's deploy"). An edit inside a declaration changes its key, which
+  is the truth: the path changed.
+- **Loops and recursion.** A `for` body records which inner paths ran, not
+  how many times; a recursive call records the path of its first entry.
+
+Both go on the root span and on every failure and fault event. A path ID
+says which way a request went, not how long it took or what it carried:
+timings, the request and the response come from the trace (area 17).
+
+Two failures at the same line reached from different routes keep different
+paths, and a path shows the branches that ran and finished before the
+failure, which a stack no longer holds.
+
+Path IDs need control flow inside each callable in the compiler's graph,
+which today records only declarations and calls.
+
+## Monitoring thresholds
+
+Proposed 2026-10-13 (questions 14–16). Thresholds are declared in the
+application, reviewed with it and versioned with each build, not configured
+in a monitoring tool. There are two kinds, because only one can be judged
+by a single process.
+
+**Per request** (duration, query count, failure). The runtime keeps each
+request's spans in memory until it ends, then sends:
+
+- the full trace when a threshold was crossed, the request failed or
+  faulted, or its path is new to this process;
+- otherwise metrics only, plus one sample trace per path per minute, so
+  there is always a normal request to compare a bad one with.
+
+A process crash loses its unsent requests; long jobs send on a timeout.
+This keeps volume low without losing anything structural: the compiler
+knows every path, so per-path metrics cannot grow without bound.
+
+**Across requests** (p95 over a window, error rate, oldest waiting
+delivery). One instance cannot judge these for a fleet, so the compiler
+generates the rules for the monitoring tool into `build/monitoring/`:
+OpenSLO and Prometheus rules first, other tools only when asked. The build
+manifest carries the same thresholds, so a tool that reads it needs no
+generated rules. Rules are applied at deploy; a change made in the tool is
+overwritten, as with Terraform.
+
+- **Starting values** come from what the compiler knows (queries per path
+  from area 6's query report), then from production once it has run. Local
+  timings are not production timings; locally the compiler reports
+  relative change on the same fixtures ("30% slower", "2 more queries").
+- **An agent proposes changes** from observed data as an ordinary source
+  diff, through the MCP server (area 17).
+- **Loosening needs a person.** Raising or removing a threshold is how an
+  agent silences an alert, so it needs an acceptance file (area 7's form)
+  and appears in the approval report; tightening does not.
+- **Per build and per flag value.** Thresholds belong to a build, and each
+  flag value takes its own branch, so its own path and metrics, without
+  extra tagging.
+
+OpenTelemetry stays the transport; only what is sent changes.
+
 ## Email
 
 Applications send a handful of messages: confirm your address, reset your
@@ -379,6 +451,7 @@ that is an integration, as Laravel Scout's other engines are.
 | Files | **Not built (run):** `type Avatar = File {}` fails with `semantic.unknown_name`. |
 | Audit trail | **Not built (run):** `audit {}` in an entity fails with `syntax.unexpected_token`. Today's `build/audit/` folder is compiler output about the source, not a history of data. |
 | Tracing and metrics | **Partly (read, generated `app.ts`):** the runtime writes JSON log events; `operationalEventToOpenTelemetry` is generated but never called, and `traceId` is always `null`. |
+| Path IDs, monitoring thresholds | **Not built (read):** proposals from 2026-10-13. The semantic graph (`jadpo/crates/semantic/src/lib.rs`) holds declarations and call edges, no control flow. |
 | Email, search | **Not built (read):** the only mail is the golden app's `ReminderMail` integration (area 11). |
 | Error message | **Bug (run):** the `syntax.expected_declaration` reason lists `persist`, `module` and `import` and leaves out `entity`, `query` and `job`, which compile. Carried to area 14. |
 
@@ -420,6 +493,11 @@ that is an integration, as Laravel Scout's other engines are.
 | `flags:` in tests and the both-values check; `mail.sent`; an in-memory file store in tests | 13 | Questions 4, 7 and 11 |
 | `jadpo flags` commands and source removal; the `syntax.expected_declaration` message | 14 | Question 2; Status |
 | File erasure and export; audit entries on erasure; field encryption | 15 | Questions 7, 8 and 9 |
+| Where threshold declarations live | 1 | Question 15 |
+| Loop and recursion rule for path numbering | 3 | Question 13 |
+| Stable identity for branches as well as declarations | 5 | Question 13 |
+| Loosened thresholds need an acceptance | 7 | Question 16 |
+| `jadpo path`; path IDs in `jadpo trace` and `incident`; agent-proposed thresholds through MCP | 17 | Questions 13 and 15 |
 
 ### Open questions
 
@@ -482,6 +560,28 @@ that is an integration, as Laravel Scout's other engines are.
     *Recommendation:* yes, one language per entity, with search services as
     integrations. Django's `SearchVector` and Laravel Scout's database engine
     do the same with more hand-written setup.
+13. **Does every request carry a path ID?** *Recommendation:* yes, two:
+    a Ball–Larus `path` number that decodes against the build's graph, and
+    a `path_key` hash of stable identities for comparing builds; loops
+    record which inner paths ran, recursion its first entry. Sentry groups
+    errors by guessing from stacks; the compiler can name the path exactly.
+    Needs control flow in the compiler's graph.
+14. **Does the runtime decide how much to send per request?**
+    *Recommendation:* yes: buffer each request, send the full trace on a
+    crossed threshold, failure, fault or new path, otherwise metrics plus
+    one sample per path per minute. This is tail sampling done in the
+    process, which generic tools cannot do because they do not know what a
+    new path is.
+15. **Are thresholds declared in source, and are monitoring rules
+    generated?** *Recommendation:* yes, one monitoring file per domain, so
+    a reviewer sees the set; per-request thresholds act in the runtime,
+    across-request ones become OpenSLO and Prometheus rules in
+    `build/monitoring/` and in the build manifest. OpenSLO and Sloth keep
+    SLOs as code beside the app, where a renamed route breaks them silently;
+    here the compiler checks every threshold names something that exists.
+16. **Does loosening a threshold need a person?** *Recommendation:* yes,
+    an acceptance file and a line in the approval report; tightening does
+    not. Otherwise an agent fixes a noisy alert by raising its limit.
 
 ### Decisions
 
@@ -506,3 +606,7 @@ that is an integration, as Laravel Scout's other engines are.
 | Tracing and metrics | | |
 | Email | | |
 | Search | | |
+| Path IDs | | |
+| Detail by threshold | | |
+| Thresholds in source | | |
+| Loosening thresholds | | |

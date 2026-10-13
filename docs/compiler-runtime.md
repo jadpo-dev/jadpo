@@ -24,6 +24,55 @@ source
 The valuable component is the semantic model and its checks. The parser and
 target are replaceable implementation choices.
 
+### 1.1 Graph-centred compiler (open, 2026-10-13)
+
+**Today (read):** the compiler builds a semantic graph
+(`build_semantic_graph` in `jadpo/crates/semantic/src/lib.rs`) of
+declarations, call edges, refinements and external effects, keyed by name,
+with no control flow inside callables. It feeds diagnostics, the language
+service and approval reachability, which is why the approval report calls
+its paths "may-call, not feasible". Code generation (`core/src/target.rs`,
+about 14,000 lines) reads the syntax tree directly and consults the graph in
+about ten places. So the graph and the generated program are two separate
+readings of the source.
+
+**Options:**
+
+1. **Graph as a by-product (today).** No rewrite, and golden-todo progress
+   continues. But the graph can disagree with what runs, and every
+   graph feature (source maps, spans named by node, path IDs, thresholds,
+   `why`, path coverage) is added once to the graph and again to the
+   generator. A second target (E09) starts again from the syntax tree.
+2. **One typed graph that everything reads.** Parse, resolve and type-check
+   into a graph of declarations, edges and per-callable control flow, each
+   node with a stable identity; code generation, reports, the language
+   service, source maps and path numbering all read it. What the review
+   shows is what runs, by construction, and each new feature is written
+   once. Costs: moving the generator onto it, keeping the passing golden
+   cases green throughout, and the risk of fixing the graph's shape while
+   areas are still in review.
+3. **The graph as the source** (Unison's content-addressed code). Rejected:
+   models, git and reviewers work in text.
+
+**Proposed:** option 2, moved over one declaration kind at a time (routes
+and actions first, because spans and path IDs need them), starting before
+roadmap item 3's rework reaches the generator, so that rework is done once.
+
+**What else it enables during development:**
+
+- **Context for agents.** The exact declarations a task touches, from the
+  graph rather than a text search: smaller prompts and fewer wrong edits.
+- **Test selection.** Run only the tests whose paths reach changed nodes.
+- **Incremental checking.** Recheck only affected nodes (the query-based
+  approach of rust-analyzer), for a faster editor and agent loop.
+- **Compiler-performed refactors.** Rename, move and split as graph
+  operations that are correct by construction.
+- **Merging parallel agents' work** by declaration identity rather than
+  lines; disjoint subgraphs cannot conflict.
+- **Exact review paths.** With control flow, the approval report can name
+  the branch that reaches a field instead of "may-call".
+- **More than one target** (E09) from the same graph.
+
 ## 2. Toolchain language
 
 Rust was the leading suggestion for the core toolchain because compiler tooling,
