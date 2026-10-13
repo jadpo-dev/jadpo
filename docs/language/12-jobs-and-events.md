@@ -1,7 +1,7 @@
 ---
 title: Jobs and events
 area: 12
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - syntax.job_*
@@ -19,7 +19,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 5 and this page's recommendations; each recommendation names its open question. Today the compiler checks `job` declarations but cannot run them, and events and subscribers do not parse at all.
+> Decided on 2026-10-13. Code outside the collapsed boxes applies the decisions from areas 1 to 12. Today the compiler checks `job` declarations but cannot run them, and events and subscribers do not parse at all.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -1190,7 +1190,7 @@ build`, or read from source and the design documents.
     probe delivery is tried after a pause, and success releases the rest.
     Held deliveries do not spend their retry budget. Shown in
     `jadpo deliveries` and alerted. Resilience4j and Polly offer the same
-    pattern; built in, nobody has to remember it.
+    pattern; built in, nobody has to remember it. *Decided 2026-10-13:* yes, as recommended.
 
 ### Decisions
 
@@ -1221,4 +1221,4 @@ Nothing is decided on this page yet.
 | Schedule ticks on every host | Schedule adapters, many and chosen in `app.jadpo`: an adapter supplies the tick and may supply the lease (default: main database); a schedule or event with no store for its state is a compile error; system tables (`jadpo_` prefix) are in migration snapshots (Richard) | 2026-10-13 |
 | Tracing through events | Always on: events carry the emitting action's trace context; subscriber runs continue it; `jadpo trace <request id>` | 2026-10-13 |
 | Schedule monitoring | Every run and tick recorded; `jadpo schedules` (list, run, pause, resume, history); `jadpo why <schedule>`; metrics; alerts with no setup (no success in twice the interval, ticks stopped, near the time limit, three failures, stuck lease); console timeline (Richard) | 2026-10-13 |
-| Circuit breaker | | |
+| Circuit breaker | Per connection: after repeated `unavailable` failures, deliveries calling the provider are held, one probe after a pause, success releases the rest; held deliveries keep their retry budget; shown and alerted | 2026-10-13 |

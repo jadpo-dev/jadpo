@@ -1,7 +1,7 @@
 ---
 title: Testing
 area: 13
-status: in-review
+status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - configuration.field_unknown
@@ -21,7 +21,7 @@ How a Jadpo program is tested: where tests live, the four kinds of test,
 controlling the clock, configuration and fakes in tests, shared test data,
 assertions, the test database, and how tests meet caches and events.
 
-> In review. Code outside the collapsed boxes applies the decisions from areas 1 to 5 and this page's recommendations; each recommendation names its open question. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-13. Code outside the collapsed boxes applies the decisions from areas 1 to 13. Today's compiled syntax is collapsed beneath each section that changes.
 
 Examples use the golden todo app's `planning` domain: `User` and `Todo`
 entities, a `create_todo` action, a `TodoNotFound` failure, an
@@ -1063,36 +1063,36 @@ Each row says how it was checked: compiled with `jadpo check`, run with
    routes, as another domain would. Unit tests stay close to the code they
    test, and scenarios cannot depend on internals. This is the split Rust
    makes between unit tests inside a module and integration tests in
-   `tests/`.
+   `tests/`. *Decided 2026-10-13:* yes, as recommended.
 2. **Where does a test's environment go?** Today it is a named fixture
    attached with `using`. *Recommendation:* settings at the top of the test
    body (`clock:`, `config:`, `fakes:`), each optional, with a fixed default
    clock; the word `fixture` moves to shared data (question 4). A reader sees
    everything that shapes the result in the test, and the clock default is
-   never the real time.
+   never the real time. *Decided 2026-10-13:* yes, as recommended.
 3. **How do tests get configuration?** Today every fixture lists every field
    and wraps secrets in `secret("…")`. *Recommendation:* a `test:` value on
    each field in `config.jadpo`, overridden per test with `config:`; secrets
    get a generated throwaway value per run and cannot be written in tests.
-   Rails and Phoenix keep a test environment configuration the same way.
+   Rails and Phoenix keep a test environment configuration the same way. *Decided 2026-10-13:* settled by area 10 question 11: `test:` values in `config.jadpo`, generated secrets, per-test override.
 4. **What is a fixture?** *Recommendation:* a test-only action in
    `fixtures/` that creates data by calling the application's own actions
    and returns what tests need, called by name. Rows written straight into
    tables (Rails' YAML fixtures, Django's JSON fixtures) skip validation and
    policy and drift from the code; builders that go through the code
    (factory_bot, Elixir's ExMachina) are what those communities moved to.
-   It is also how area 5 decided seeds work.
+   It is also how area 5 decided seeds work. *Decided 2026-10-13:* yes, as recommended.
 5. **How do route and schedule tests call their boundary?** *Recommendation:*
    `request { method: HttpMethod.post path: "/todos" as: alice input: … }` returning a
    typed `Response`, through the real generated HTTP boundary without a
    network; and `overdue_reminders.run()`, which runs the schedule once at
    the test clock. Advancing the clock does not run schedules by itself, so
-   adding a schedule never changes an unrelated test.
+   adding a schedule never changes an unrelated test. *Decided 2026-10-13:* settled by areas 7 and 12: `request { }` returning `Response`, and `schedule.run()` under the test clock.
 6. **How are results checked?** *Recommendation:* keep `assert condition`,
    report the line, the condition and both sides' values on failure (as
    pytest does), and add `assert call(…) fails FailureName` for expected
    failures. One assertion word, and failures are checked by name, as area 4
-   lists them.
+   lists them. *Decided 2026-10-13:* yes, as recommended.
 7. **How are fakes written, and what if the code calls them a different
    number of times?** *Recommendation:* a `fakes:` setting mapping
    `Integration.operation` to a list of responses (output values or provider
@@ -1100,54 +1100,54 @@ Each row says how it was checked: compiled with `jadpo check`, run with
    the list runs out or has responses left over, naming the operation. A
    wrong count is a mistake in the test or the code, not a provider outcome;
    the HTTP mocking library nock checks leftover responses the same way.
-   See [the testing proposals](research/13-testing-proposals.md).
+   See [the testing proposals](research/13-testing-proposals.md). *Decided 2026-10-13:* yes, updated for area 11: unscripted provider calls get the package fake's valid defaults; scripted answers via `fakes: { stripe.payment_intents.create: [...] }`; running out or leftovers fail the test.
 8. **How do tests get a fast, isolated PostgreSQL?** *Recommendation:*
    `jadpo test` starts a disposable PostgreSQL (or uses a given one), builds a
    template database from the migrations once, and copies it for each test,
    running tests in parallel; actions commit for real. Rolling back one
    transaction per test is faster but breaks after-commit events and
    concurrency checks; PGlite needs no install but runs one connection at a
-   time. Details in [the testing proposals](research/13-testing-proposals.md).
+   time. Details in [the testing proposals](research/13-testing-proposals.md). *Decided 2026-10-13:* yes, as recommended.
 9. **How do events and caches behave in tests?** *Recommendation:* events
    are delivered after each step commits, before the next statement, until
    none are left; caches are on and empty for each test, and tests cannot
    touch them. Tests then see what production does, deterministically.
    Django's `captureOnCommitCallbacks(execute=True)` runs after-commit work
-   at the same point.
+   at the same point. *Decided 2026-10-13:* settled by areas 6 and 12: events delivered after each commit in a seeded shuffled order; an in-memory cache emptied between tests.
 10. **How does a test act as a user?** Area 8 proposes passing the caller to
     actions as a parameter. *Recommendation:* tests, fixtures and seeds make
     one with `Principal.user(user)`, which application code cannot do; a
     route test signs in with `as:`, which runs the application's real
     authentication. Laravel's `actingAs` sets the user directly and skips the
-    sign-in checks; signing in for real tests them too.
+    sign-in checks; signing in for real tests them too. *Decided 2026-10-13:* settled by area 8 question 10: `Principal.user(user)` in tests, fixtures and seeds; `as:` in route tests.
 11. **How does a test act as a service?** (carried from area 8) Question 10
     covers users only. How does a test, fixture or seed make a service
-    caller, and does a route test sign in with a service key?
+    caller, and does a route test sign in with a service key? *Decided 2026-10-13:* `Principal.service(service)` in tests, fixtures and seeds; a route test signs in with a key from `Service.issue_key`.
 12. **Can a test assert what a query costs?** (carried from area 6) Area 6
     bounds how many records and database queries a query may cost. Can a
-    test assert those numbers, and how?
+    test assert those numbers, and how? *Decided 2026-10-13:* no runtime assertion; the compiler reports each query's cost in the build report and a change shows in the approval review.
 13. **Should the compiler generate data builders?** *Recommendation:* yes.
     `make.Todo { title: "Buy milk" }` fills every other required field with
     a valid default and goes through the real create operation, so
     validation and policy apply (factory_bot's model, generated instead of
     written). Fixtures remain for meaningful scenarios and return a named
     object holding what they made (`setup.alice`, `setup.todos`), so a test
-    never has to look its own data up again.
+    never has to look its own data up again. *Decided 2026-10-13:* yes, as recommended.
 14. **How does a test check side effects?** *Recommendation:*
     `assert emitted ReminderDue { todo_id: todo.id }` for events, beside the
-    fakes' `.requests` for provider calls.
+    fakes' `.requests` for provider calls. *Decided 2026-10-13:* yes, as recommended.
 15. **How are whole values compared?** *Recommendation:* `==` on records and
     lists, with a field-by-field diff on failure; no snapshot assertions,
     because agents update snapshots without reading them and a failing test
-    quietly becomes a passing one.
+    quietly becomes a passing one. *Decided 2026-10-13:* yes, as recommended.
 16. **What does a failed test leave behind?** *Recommendation:* with
     `--keep-failed`, its database (named in the report) and its trace, so
-    `jadpo trace` and `jadpo console` can inspect exactly what it did.
+    `jadpo trace` and `jadpo console` can inspect exactly what it did. *Decided 2026-10-13:* yes, as recommended.
 17. **Is a database copy per test fast enough?** Estimate, not measured: a
     PostgreSQL template copy likely costs tens to a couple of hundred
     milliseconds. *Recommendation:* the runner prepares copies in the
     background while tests run; measure on the golden app before changing
-    the approach.
+    the approach. *Decided 2026-10-13:* yes, as recommended.
 
 ### Decisions
 
@@ -1160,22 +1160,22 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 | Seeds | Carried from area 5: seeds create data through the application's own actions and refuse to run against production | 2026-10-12 |
 | Caches and events | Carried from areas 1 and 5: caches serve display reads only; events run after the emitting action commits | 2026-10-12 |
 | Code in tests | Carried from areas 2 to 4: `var x: T`, literals take the expected type, `if (…)`, one `match` with `->`, failures named in arms, the colon rule | 2026-10-12 |
-| What a test can reach | | |
-| Test environment | | |
-| Configuration in tests | | |
-| Fixtures | | |
-| Route and schedule tests | | |
-| Assertions | | |
-| Fakes | | |
-| Test database | | |
-| Events and caches in tests | | |
-| Acting as a user | | |
-| Acting as a service | | |
-| Query cost assertions | | |
+| What a test can reach | A test beside its code reaches anything in its domain; a scenario in root `tests/` sees only public declarations and routes | 2026-10-13 |
+| Test environment | Optional `clock:`, `config:`, `fakes:` settings at the top of the test; the clock defaults to a fixed time | 2026-10-13 |
+| Configuration in tests | Area 10: `test:` values, generated secrets, per-test override | 2026-10-13 |
+| Fixtures | Test-only actions in `fixtures/` calling the real actions; return a named object of what they made | 2026-10-13 |
+| Route and schedule tests | `request { }` returning `Response`; `schedule.run()` under the test clock | 2026-10-13 |
+| Assertions | `assert condition` with sub-expression values; `assert call(...) fails FailureName` | 2026-10-13 |
+| Fakes | Generated per package with valid defaults; scripted answers; `.requests`; running out or leftovers fail the test | 2026-10-13 |
+| Test database | Disposable PostgreSQL; a template from the migrations copied per test; parallel; real commits | 2026-10-13 |
+| Events and caches in tests | Events delivered after each commit in a seeded shuffled order; in-memory cache emptied per test | 2026-10-13 |
+| Acting as a user | `Principal.user(user)` in tests, fixtures and seeds; `as:` in route tests | 2026-10-13 |
+| Acting as a service | `Principal.service(service)`; route tests sign in with a key from `Service.issue_key` | 2026-10-13 |
+| Query cost assertions | None at runtime; the compiler reports query cost and changes show in review | 2026-10-13 |
 | Test failure output | Every failed test reports the assertion broken into sub-expression values, record diffs, the failure that happened instead, the test's trace in short, fake usage, clock, seed, kept database and the rerun command; readable and `--json`; stable `test.*` codes (Richard) | 2026-10-13 |
 | Running tests | `jadpo test` by file, `file:line`, `--name`, `--kind`, `--failed`; `--watch` reruns affected tests on save; `--interactive` keyboard view to search, navigate and run every test in the app; editor run buttons; no `test.only` (Richard) | 2026-10-13 |
-| Data builders | | |
-| Side-effect assertions | | |
-| Comparing values | | |
-| What a failed test leaves | | |
-| Speed of database copies | | |
+| Data builders | Generated `make.Entity { ... }` with valid defaults through the real create operation | 2026-10-13 |
+| Side-effect assertions | `assert emitted Event { ... }` and fakes' `.requests` | 2026-10-13 |
+| Comparing values | `==` on records and lists with field diffs; no snapshot assertions | 2026-10-13 |
+| What a failed test leaves | `--keep-failed` keeps the database and trace | 2026-10-13 |
+| Speed of database copies | Copies prepared in the background; measured on the golden app before changing approach | 2026-10-13 |
