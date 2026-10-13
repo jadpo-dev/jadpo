@@ -2,6 +2,7 @@
 //! `jadpo help --json`, Tab completion and suggestions, and writes every
 //! result in the CLI design language through `jadpo-term`.
 
+mod check;
 mod commands;
 mod completion;
 mod fmt;

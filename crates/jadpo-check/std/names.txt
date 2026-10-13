@@ -1,0 +1,38 @@
+# The names the language itself declares (docs/compiler-runtime.md §2.1),
+# read by jadpo-check's resolution. Only names for now: chunks 1.4 to 1.6
+# replace this list with typed Jadpo stubs, each operation bound to one Rust
+# function in jadpo-value. Lines starting with `#` are comments.
+
+# Built-in types, which exist without being declared and whose names cannot
+# be reused (area 2), with the built-in types and settings options other
+# areas use (areas 4 to 18).
+[types]
+Bool Int Decimal Text Bytes Uuid
+Email Url IpAddress
+Instant CalendarDate Time Duration Zone Locale Weekday InstantRange
+List Set Map Page PageCursor
+Object Enum Input Output Failure Event EmailMessage
+Unit
+File Principal Response Access
+FailureKind TextFormat TimeFormat Rounding UuidVersion LocalGap LocalOverlap
+Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol HttpMethod
+AuthenticationMethod RouteAuthentication FieldAccess OnDelete Generated FieldChange
+ApiChange PersonalData Erasure FileType SuccessStatus SearchLanguage RateLimitKey
+ComponentStyle
+
+# Standard-library namespaces and the operations the pages name so far,
+# always called through the namespace (areas 1, 2, 3 and 10).
+[namespaces]
+temporal: in_zone resolve format format_relative format_friendly between day_bounds
+collection: count contains map filter
+decimal: divide
+integer: divide
+
+# Namespaces the compiler fills from the project or the platform: any
+# member name is accepted until its area is built (areas 8, 10 and 13).
+[generated]
+clock config translations sessions oauth
+
+# Names too generic for a domain or a library (area 1).
+[generic]
+misc common utils helpers core

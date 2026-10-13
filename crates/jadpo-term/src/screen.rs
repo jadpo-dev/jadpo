@@ -166,25 +166,34 @@ pub enum Outcome {
 }
 
 /// One fact in a summary footer: a count, usually. A problem count takes
-/// the failure colour; the rest are muted.
+/// the failure colour, a warning count the warning colour; the rest are
+/// muted.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fact {
     pub text: String,
-    pub problem: bool,
+    /// The colour of a count that needs attention.
+    pub tone: Option<Token>,
 }
 
 impl Fact {
     pub fn plain(text: impl Into<String>) -> Fact {
         Fact {
             text: text.into(),
-            problem: false,
+            tone: None,
         }
     }
 
     pub fn problem(text: impl Into<String>) -> Fact {
         Fact {
             text: text.into(),
-            problem: true,
+            tone: Some(Token::Failure),
+        }
+    }
+
+    pub fn warning(text: impl Into<String>) -> Fact {
+        Fact {
+            text: text.into(),
+            tone: Some(Token::Warning),
         }
     }
 }
@@ -485,15 +494,11 @@ fn summary_line(outcome: Outcome, headline: &str, facts: &[Fact], style: &Style)
         format!("{} {headline}", symbol.text(style.symbols)),
     )];
     for (i, fact) in facts.iter().enumerate() {
-        let token = if fact.problem {
-            Token::Failure
-        } else {
-            Token::Muted
-        };
+        let token = fact.tone.unwrap_or(Token::Muted);
         if i == 0 {
             line.push(raw("  "));
             line.push(paint(token, fact.text.as_str()));
-        } else if fact.problem {
+        } else if fact.tone.is_some() {
             line.push(paint(Token::Muted, separator(style)));
             line.push(paint(token, fact.text.as_str()));
         } else {

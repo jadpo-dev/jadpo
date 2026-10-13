@@ -38,8 +38,6 @@ impl Status {
     }
 }
 
-const PROJECT_FILE: &str = "app.jadpo";
-
 pub fn fmt(call: &Call) -> Reply {
     let check = call.flag("--check");
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
@@ -48,12 +46,12 @@ pub fn fmt(call: &Call) -> Reply {
             Ok(found) => found,
             Err(diagnostic) => return Reply::failed(*diagnostic),
         },
-        None => match project_root(&cwd) {
+        None => match jadpo_db::find_root(&cwd) {
             Some(root) => {
                 let files = jadpo_files(&root);
                 (root, files)
             }
-            None => return project_not_found(),
+            None => return project_not_found("fmt"),
         },
     };
     let mut diagnostics = Vec::new();
@@ -67,20 +65,12 @@ pub fn fmt(call: &Call) -> Reply {
     report(check, results, diagnostics, sources)
 }
 
-/// The project around `start`: the nearest folder holding `app.jadpo`.
-fn project_root(start: &Path) -> Option<PathBuf> {
-    start
-        .ancestors()
-        .find(|folder| folder.join(PROJECT_FILE).is_file())
-        .map(Path::to_path_buf)
-}
-
 /// The root paths are shown from, and the files to format, for a named
 /// file or folder.
 fn named(cwd: &Path, argument: &str) -> Result<(PathBuf, Vec<PathBuf>), Box<Diagnostic>> {
     let path = cwd.join(argument);
     if path.is_dir() {
-        let root = project_root(&path).unwrap_or_else(|| path.clone());
+        let root = jadpo_db::find_root(&path).unwrap_or_else(|| path.clone());
         let files = jadpo_files(&path);
         return Ok((root, files));
     }
@@ -107,7 +97,7 @@ fn named(cwd: &Path, argument: &str) -> Result<(PathBuf, Vec<PathBuf>), Box<Diag
     let folder = path
         .parent()
         .map_or_else(|| cwd.to_path_buf(), Path::to_path_buf);
-    let root = project_root(&folder).unwrap_or(folder);
+    let root = jadpo_db::find_root(&folder).unwrap_or(folder);
     Ok((root, vec![path]))
 }
 
@@ -234,13 +224,16 @@ fn unformatted(shown: &str, text: &str, formatted: &str) -> Diagnostic {
         .edit(Span::new(shown, 0, text.len() as u32), formatted)
 }
 
-fn project_not_found() -> Reply {
+/// No `app.jadpo` at or above the folder a command runs in.
+pub(crate) fn project_not_found(command: &str) -> Reply {
     let diagnostic = Diagnostic::new(&rule::TOOLCHAIN_PROJECT_NOT_FOUND, "No Jadpo project here")
         .reason(
             "Jadpo looks for `app.jadpo` in this folder and every folder above it, and found none.",
         )
         .next_for(
-            "Run `jadpo fmt` inside a project, or give a file or folder: `jadpo fmt <path>`",
+            format!(
+                "Run `jadpo {command}` inside a project, or give a file or folder: `jadpo {command} <path>`"
+            ),
             Decider::Agent,
         );
     let screen = Screen::new().with(Block::diagnostic(&diagnostic, &()));

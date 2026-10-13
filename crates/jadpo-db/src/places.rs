@@ -1,0 +1,335 @@
+//! Where a file sits in the fixed layout (area 1): which domain owns it,
+//! what its folder is for, and what its name says. Read from the path
+//! alone, so it never needs the file's text.
+
+use crate::Layout;
+
+/// Who owns the code in a file, for visibility.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Ownership {
+    /// A business area under `domains/`.
+    Domain(String),
+    /// `shared/`: pure types, libraries and failures every domain may use.
+    Shared,
+    /// The root files and the other root folders (`tests/`, `database/`,
+    /// `providers/`, `acceptances/`): application-wide, owned by no domain.
+    Root,
+    /// Loose files: one implicit domain.
+    Loose,
+}
+
+impl Ownership {
+    pub fn domain(&self) -> Option<&str> {
+        match self {
+            Ownership::Domain(name) => Some(name),
+            _ => None,
+        }
+    }
+}
+
+/// The root files the layout fixes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RootFile {
+    App,
+    Config,
+    Authentication,
+    Policy,
+    Flags,
+}
+
+impl RootFile {
+    pub const ALL: [RootFile; 5] = [
+        RootFile::App,
+        RootFile::Config,
+        RootFile::Authentication,
+        RootFile::Policy,
+        RootFile::Flags,
+    ];
+
+    pub fn file_name(self) -> &'static str {
+        match self {
+            RootFile::App => "app.jadpo",
+            RootFile::Config => "config.jadpo",
+            RootFile::Authentication => "authentication.jadpo",
+            RootFile::Policy => "policy.jadpo",
+            RootFile::Flags => "flags.jadpo",
+        }
+    }
+}
+
+/// A domain's fixed folders, each named after what its files declare.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Folder {
+    Entities,
+    Types,
+    Failures,
+    Actions,
+    Queries,
+    Libraries,
+    Routes,
+    Schedules,
+    Events,
+    Subscribers,
+    Emails,
+    Fixtures,
+}
+
+impl Folder {
+    pub const ALL: [Folder; 12] = [
+        Folder::Entities,
+        Folder::Types,
+        Folder::Failures,
+        Folder::Actions,
+        Folder::Queries,
+        Folder::Libraries,
+        Folder::Routes,
+        Folder::Schedules,
+        Folder::Events,
+        Folder::Subscribers,
+        Folder::Emails,
+        Folder::Fixtures,
+    ];
+
+    /// The folders `shared/` may hold.
+    pub const SHARED: [Folder; 3] = [Folder::Types, Folder::Libraries, Folder::Failures];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Folder::Entities => "entities",
+            Folder::Types => "types",
+            Folder::Failures => "failures",
+            Folder::Actions => "actions",
+            Folder::Queries => "queries",
+            Folder::Libraries => "libraries",
+            Folder::Routes => "routes",
+            Folder::Schedules => "schedules",
+            Folder::Events => "events",
+            Folder::Subscribers => "subscribers",
+            Folder::Emails => "emails",
+            Folder::Fixtures => "fixtures",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Folder> {
+        Folder::ALL.into_iter().find(|folder| folder.name() == name)
+    }
+}
+
+/// What a file's place in the layout is for.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Place {
+    RootFile(RootFile),
+    /// `domains/<domain>/<folder>/` or `shared/<folder>/`.
+    Folder(Folder),
+    /// `domains/<domain>/monitoring.jadpo` (area 16).
+    Monitoring,
+    /// The root `tests/` folder: scenarios across domains.
+    Tests,
+    /// `database/seeds/`.
+    Seeds,
+    /// `database/migrations/<migration>/`: backfills written in Jadpo.
+    Migration,
+    /// `providers/`: provider packages (area 11).
+    Providers,
+    /// `acceptances/` (area 18).
+    Acceptances,
+    /// A loose file: no layout.
+    Loose,
+    /// Somewhere the layout has no place for a `.jadpo` file.
+    Stray(Stray),
+}
+
+/// Why a path is outside the layout, for the error that says so.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Stray {
+    /// A `.jadpo` file at the root that isn't one of the root files.
+    RootFile,
+    /// A root folder the layout doesn't have, or one that holds no Jadpo.
+    RootFolder(String),
+    /// A file directly in `domains/`, outside any domain.
+    DomainsFile,
+    /// A file directly in a domain folder that isn't `monitoring.jadpo`.
+    DomainFile(String),
+    /// A folder a domain can't hold.
+    DomainFolder(String, String),
+    /// A folder `shared/` can't hold, or a file directly in `shared/`.
+    SharedFolder(Option<String>),
+    /// A folder inside one of the fixed folders.
+    Nested(String),
+    /// A file in `tests/` that isn't a test.
+    NotATest,
+}
+
+/// A file's location: who owns it, its place, and the name its path gives it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Location {
+    pub ownership: Ownership,
+    pub place: Place,
+    /// The file name without `.jadpo`, and without `.test` for a test.
+    pub stem: String,
+    /// `<name>.test.jadpo`.
+    pub test: bool,
+}
+
+impl Location {
+    /// The fixed folder the file is in, if any.
+    pub fn folder(&self) -> Option<Folder> {
+        match self.place {
+            Place::Folder(folder) => Some(folder),
+            _ => None,
+        }
+    }
+}
+
+/// Root folders whose files are not Jadpo source.
+const RECORD_FOLDERS: [&str; 3] = ["api", "translations", "build"];
+
+/// Reads a project-relative path (`/` separators) against the layout.
+pub fn locate(path: &str, layout: Layout) -> Location {
+    let parts: Vec<&str> = path.split('/').collect();
+    let file = parts.last().copied().unwrap_or("");
+    let name = file.strip_suffix(".jadpo").unwrap_or(file);
+    let (stem, test) = match name.strip_suffix(".test") {
+        Some(stem) => (stem.to_string(), true),
+        None => (name.to_string(), false),
+    };
+    let at = |ownership: Ownership, place: Place| Location {
+        ownership,
+        place,
+        stem: stem.clone(),
+        test,
+    };
+    if layout == Layout::Loose {
+        return at(Ownership::Loose, Place::Loose);
+    }
+    let folders = &parts[..parts.len().saturating_sub(1)];
+    match folders {
+        [] => match RootFile::ALL
+            .into_iter()
+            .find(|root| root.file_name() == file)
+        {
+            Some(root) => at(Ownership::Root, Place::RootFile(root)),
+            None => at(Ownership::Root, Place::Stray(Stray::RootFile)),
+        },
+        ["domains"] => at(Ownership::Root, Place::Stray(Stray::DomainsFile)),
+        ["domains", domain] => {
+            let ownership = Ownership::Domain(domain.to_string());
+            if file == "monitoring.jadpo" {
+                at(ownership, Place::Monitoring)
+            } else {
+                at(
+                    ownership,
+                    Place::Stray(Stray::DomainFile(domain.to_string())),
+                )
+            }
+        }
+        ["domains", domain, folder, rest @ ..] => {
+            let ownership = Ownership::Domain(domain.to_string());
+            match (Folder::from_name(folder), rest) {
+                (Some(kind), []) => at(ownership, Place::Folder(kind)),
+                (Some(_), _) => at(ownership, Place::Stray(Stray::Nested(folders.join("/")))),
+                (None, _) => at(
+                    ownership,
+                    Place::Stray(Stray::DomainFolder(domain.to_string(), folder.to_string())),
+                ),
+            }
+        }
+        ["shared"] => at(Ownership::Shared, Place::Stray(Stray::SharedFolder(None))),
+        ["shared", folder, rest @ ..] => {
+            match (
+                Folder::from_name(folder).filter(|kind| Folder::SHARED.contains(kind)),
+                rest,
+            ) {
+                (Some(kind), []) => at(Ownership::Shared, Place::Folder(kind)),
+                (Some(_), _) => at(
+                    Ownership::Shared,
+                    Place::Stray(Stray::Nested(folders.join("/"))),
+                ),
+                (None, _) => at(
+                    Ownership::Shared,
+                    Place::Stray(Stray::SharedFolder(Some(folder.to_string()))),
+                ),
+            }
+        }
+        ["tests"] if test => at(Ownership::Root, Place::Tests),
+        ["tests"] => at(Ownership::Root, Place::Stray(Stray::NotATest)),
+        ["tests", ..] => at(
+            Ownership::Root,
+            Place::Stray(Stray::Nested(folders.join("/"))),
+        ),
+        ["database", "seeds"] => at(Ownership::Root, Place::Seeds),
+        ["database", "migrations", _] => at(Ownership::Root, Place::Migration),
+        ["providers", ..] => at(Ownership::Root, Place::Providers),
+        ["acceptances"] => at(Ownership::Root, Place::Acceptances),
+        [first, ..] if RECORD_FOLDERS.contains(first) => at(
+            Ownership::Root,
+            Place::Stray(Stray::RootFolder(first.to_string())),
+        ),
+        _ => at(
+            Ownership::Root,
+            Place::Stray(Stray::RootFolder(folders.join("/"))),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn place(path: &str) -> Place {
+        locate(path, Layout::Project).place
+    }
+
+    #[test]
+    fn the_fixed_layout_is_read_from_paths() {
+        assert_eq!(place("app.jadpo"), Place::RootFile(RootFile::App));
+        assert_eq!(place("flags.jadpo"), Place::RootFile(RootFile::Flags));
+        assert_eq!(
+            place("domains/planning/actions/complete_todo.jadpo"),
+            Place::Folder(Folder::Actions)
+        );
+        assert_eq!(
+            place("domains/planning/monitoring.jadpo"),
+            Place::Monitoring
+        );
+        assert_eq!(
+            place("shared/libraries/rounding.jadpo"),
+            Place::Folder(Folder::Libraries)
+        );
+        assert_eq!(place("tests/checkout.test.jadpo"), Place::Tests);
+        assert_eq!(place("database/seeds/local_demo.jadpo"), Place::Seeds);
+        let location = locate("domains/planning/entities/todo.test.jadpo", Layout::Project);
+        assert!(location.test);
+        assert_eq!(location.stem, "todo");
+        assert_eq!(location.ownership, Ownership::Domain("planning".into()));
+    }
+
+    #[test]
+    fn anything_else_is_stray() {
+        assert_eq!(place("utils.jadpo"), Place::Stray(Stray::RootFile));
+        assert_eq!(
+            place("domains/planning/helpers/x.jadpo"),
+            Place::Stray(Stray::DomainFolder("planning".into(), "helpers".into()))
+        );
+        assert_eq!(
+            place("domains/planning/actions/old/x.jadpo"),
+            Place::Stray(Stray::Nested("domains/planning/actions/old".into()))
+        );
+        assert_eq!(
+            place("shared/actions/x.jadpo"),
+            Place::Stray(Stray::SharedFolder(Some("actions".into())))
+        );
+        assert_eq!(place("tests/notes.jadpo"), Place::Stray(Stray::NotATest));
+        assert_eq!(
+            place("src/x.jadpo"),
+            Place::Stray(Stray::RootFolder("src".into()))
+        );
+    }
+
+    #[test]
+    fn loose_files_have_no_layout() {
+        let location = locate("anything/at/all.jadpo", Layout::Loose);
+        assert_eq!(location.ownership, Ownership::Loose);
+        assert_eq!(location.place, Place::Loose);
+    }
+}

@@ -1031,7 +1031,7 @@ error: `Dimensions` needs a base type
   rule: syntax.type_parent_required
   help: docs/language/02-values-and-types.html#syntax-type-parent-required
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.type_block_required`
@@ -1053,7 +1053,7 @@ error: `OrderId` needs a block
   rule: syntax.type_block_required
   help: docs/language/02-values-and-types.html#syntax-type-block-required
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.variable_type_required`
@@ -1083,7 +1083,7 @@ error: `price` needs a type
   rule: syntax.variable_type_required
   help: docs/language/02-values-and-types.html#syntax-variable-type-required
 
-fmt failed: 1 with syntax errors
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.expected_constraint`

@@ -14,13 +14,15 @@ python3 tools/language_docs.py           # check and render, including decisions
 - Front matter gives `title`, `area`, `status`, `checked-with` and `rules`: the
   compiler error IDs this area owns (globs allowed). Each rule belongs to one
   area, and the check fails until every owned rule has an example.
-- A ` ```jadpo check ` block is compiled by the new `jadpo`, built from this
-  checkout. While only the parser and formatter exist, that means `jadpo fmt
-  --check`: the block must parse and be canonically formatted, or, with
-  `expect=rule.id`, fail with that rule and be followed by a ` ```text output `
-  block holding the exact plain output (`python3 tools/language_docs.py
-  --bless` rewrites it). Each chunk converts its areas' blocks as it builds
-  them.
+- A ` ```jadpo check ` block is checked by the new `jadpo`, built from this
+  checkout, with `jadpo check`, which grows with each roadmap chunk: the
+  block must check cleanly and be canonically formatted (`jadpo fmt
+  --check`), or, with `expect=rule.id`, fail with that rule and be followed
+  by a ` ```text output ` block holding the exact plain output (`python3
+  tools/language_docs.py --bless` rewrites it). A project with an
+  `app.jadpo` block is checked as a project, with the layout rules on;
+  without one, its blocks are loose files. Each chunk converts its areas'
+  blocks as it builds them.
 - Every other non-fragment ` ```jadpo ` block shows how the archived v0 compiler
   treated it: its result is frozen in `reference/v0-results.json`, and a block
   whose source changes no longer matches and fails the check, so proposed code
