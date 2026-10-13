@@ -198,6 +198,9 @@ impl Body<'_> {
         let mut wildcard: Option<Span> = None;
         let mut closed_wildcard: Option<Span> = None;
         let mut after_wildcard = false;
+        // A pattern already reported leaves its cases unknown, so whether
+        // the arms cover everything isn't asked.
+        let mut misread = false;
         let mut completes = arms.is_empty();
         let mut value: Option<Ty> = None;
         let mut deferred: Vec<Expr> = Vec::new();
@@ -205,7 +208,9 @@ impl Body<'_> {
             self.scopes.push(Vec::new());
             if let Some(pat) = arm.pat() {
                 let span = self.span(&pat);
+                let before = self.out.len();
                 let reading = self.pattern(&subject, &pat, &written);
+                misread |= self.out.len() > before;
                 if let Some(first) = &wildcard {
                     if !after_wildcard {
                         after_wildcard = true;
@@ -250,7 +255,9 @@ impl Body<'_> {
                 }
             }
         }
-        self.exhaustive(&subject, &seen, wildcard.is_some(), closed_wildcard, head);
+        if !misread {
+            self.exhaustive(&subject, &seen, wildcard.is_some(), closed_wildcard, head);
+        }
         let ty = match mode {
             Mode::Value(Some(expected)) => expected.clone(),
             _ => value.unwrap_or(Ty::Error),

@@ -11,8 +11,12 @@
 //! workspace crate.
 
 pub mod collection;
+pub mod decimal;
+pub mod integer;
+mod rounding;
 mod value;
 
+pub use rounding::Rounding;
 pub use value::{Decimal, Value};
 
 /// Every standard-library operation implemented here, as
@@ -22,6 +26,8 @@ pub const BINDINGS: &[&str] = &[
     "collection.count",
     "collection.filter",
     "collection.map",
+    "decimal.divide",
+    "integer.divide",
 ];
 
 #[cfg(test)]

@@ -51,6 +51,7 @@ pub fn body_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         unknown_name: false,
         unused: Vec::new(),
         last_call: CallKind::Other,
+        dead: false,
         out: Vec::new(),
     };
     for decl in source.decls() {
@@ -141,6 +142,9 @@ struct Body<'a> {
     /// Locals whose scope has closed without a read.
     unused: Vec<Local>,
     last_call: CallKind,
+    /// Whether the statements being checked are already reported as
+    /// unreachable.
+    dead: bool,
     out: Vec<Diagnostic>,
 }
 
@@ -305,8 +309,10 @@ impl Body<'_> {
         };
         let span = self.span(&name);
         // A name resolution reports (area 1, and shadowing from area 3) is
-        // the mistake on this line; whether it is read is not another one.
-        let reported = self.is_local(&text)
+        // the mistake on this line, as is code that never runs; whether the
+        // name is read is not another one.
+        let reported = self.dead
+            || self.is_local(&text)
             || !is_lower_snake(&text)
             || StdNames::get().reserved(&text)
             || self.symbols.domains.contains(&text)
@@ -420,7 +426,10 @@ impl Body<'_> {
                 reported = true;
                 self.unreachable(&stmt, leaving.clone());
             }
+            let outer = self.dead;
+            self.dead |= !completes;
             let goes_on = self.stmt(&stmt);
+            self.dead = outer;
             if completes && !goes_on {
                 leaving = Some(line_span(self.path, stmt.syntax()));
             }

@@ -12,6 +12,7 @@
 mod body;
 pub(crate) mod decl;
 mod literal;
+mod recursion;
 mod rules;
 mod shape;
 mod signatures;
@@ -20,6 +21,7 @@ mod ty;
 
 pub use body::body_problems;
 pub use decl::type_problems;
+pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{Const, Num, Rules};
 pub use shape::{FieldsBase, Shape, type_shapes};
 pub use signatures::{Callables, Sig, callables};

@@ -1,0 +1,11 @@
+// The `integer` namespace (area 3, question 7). Each operation is bound to
+// the Rust function of the same qualified name in `jadpo-value`.
+//
+// `/` divides two values of the same named type and drops the remainder;
+// these operations divide values of different types, or round another way.
+
+public library integer {
+    /// `dividend` divided by `divisor`, rounded as `rounding` says. The
+    /// divisor is never zero.
+    function divide(dividend: T, divisor: U, rounding: Rounding) -> Int {}
+}

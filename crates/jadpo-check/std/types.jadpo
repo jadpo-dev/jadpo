@@ -21,3 +21,12 @@ public type UuidVersion = Enum {
     v7
     v8
 }
+
+/// How a division that doesn't come out exact is rounded (area 3,
+/// question 7): `half_even` to the nearest, ties to the even neighbour;
+/// `half_up` to the nearest, ties away from zero; `up` away from zero.
+public type Rounding = Enum {
+    half_even
+    half_up
+    up
+}
