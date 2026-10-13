@@ -7,7 +7,7 @@
 
 use std::cmp::Ordering;
 
-use crate::{Builtin, Num, TextFormat, UuidVersion};
+use crate::{Builtin, Dur, Num, TextFormat, UuidVersion};
 
 /// The rules one declaration adds: a type's block, or a field's settings.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -22,6 +22,9 @@ pub struct Rules {
     /// The most decimal places a number may have.
     pub scale: Option<u32>,
     pub version: Option<UuidVersion>,
+    /// `min:` and `max:` on a `Duration` type.
+    pub min_duration: Option<Dur>,
+    pub max_duration: Option<Dur>,
 }
 
 /// Why a value breaks a rule.
@@ -61,6 +64,21 @@ impl Rules {
                 format!("scale: {scale}"),
                 format!("has {} decimal places", value.significant_places()),
             );
+        }
+        Ok(())
+    }
+
+    /// A duration against `min` and `max`.
+    pub fn check_duration(&self, value: Dur) -> Result<(), Broken> {
+        if let Some(min) = self.min_duration
+            && value < min
+        {
+            return broken(format!("min: {min}"), format!("is shorter than {min}"));
+        }
+        if let Some(max) = self.max_duration
+            && value > max
+        {
+            return broken(format!("max: {max}"), format!("is longer than {max}"));
         }
         Ok(())
     }
@@ -167,6 +185,8 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
             Err("isn't a URL with a scheme and a host, such as `https://example.com`".into())
         }
         Builtin::IpAddress if !is_ip_address(text) => Err("isn't an IPv4 or IPv6 address".into()),
+        Builtin::Instant => crate::time::check_instant(text),
+        Builtin::CalendarDate => crate::time::check_calendar_date(text),
         _ => Ok(()),
     }
 }

@@ -65,6 +65,7 @@ completed_at
 configured_application
 contact_address
 contact_email
+count_refused
 count_todos
 countdown
 create_booking
@@ -117,6 +118,7 @@ due_date_in_past
 due_date_too_far
 due_dates
 due_time
+due_weights
 due_window
 duplicate_failure
 duplicate_success
@@ -148,7 +150,6 @@ group_name
 handle_tenant
 has_urgent
 health_report
-helpers
 home_zone
 http_status
 illegal_write
@@ -174,6 +175,7 @@ line_count
 line_total
 list_products
 list_todos
+list_view
 listed_name
 listing_pages
 listing_preview
@@ -380,6 +382,7 @@ tenant_owner
 test_configuration
 ticket_status
 tidy
+tidy_up
 title
 title_blank
 title_taken
@@ -424,6 +427,7 @@ user_role
 user_status
 user_todos
 webhooks_stripe
+weight
 welcome_email
 wildcard_failure
 with_delivery

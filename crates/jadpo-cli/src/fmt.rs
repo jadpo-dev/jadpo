@@ -21,6 +21,8 @@ enum Status {
     /// Differs from the canonical layout (`--check`).
     Unformatted,
     SyntaxErrors,
+    /// The formatter couldn't format it safely (`format.unsafe`).
+    Refused,
     Unreadable,
     Unwritable,
 }
@@ -32,6 +34,7 @@ impl Status {
             Status::Unchanged => "unchanged",
             Status::Unformatted => "unformatted",
             Status::SyntaxErrors => "syntaxErrors",
+            Status::Refused => "refused",
             Status::Unreadable => "unreadable",
             Status::Unwritable => "unwritable",
         }
@@ -149,7 +152,18 @@ fn format_one(
     diagnostics: &mut Vec<Diagnostic>,
     sources: &mut BTreeMap<String, String>,
 ) -> Status {
-    let text = match std::fs::read_to_string(file) {
+    // A pipe or a device named `.jadpo` would block or never end.
+    let regular = std::fs::metadata(file)
+        .map_err(|error| error.to_string())
+        .and_then(|meta| {
+            if meta.is_file() {
+                Ok(())
+            } else {
+                Err("it isn't a regular file".to_string())
+            }
+        });
+    let text = match regular.and_then(|()| std::fs::read_to_string(file).map_err(|e| e.to_string()))
+    {
         Ok(text) => text,
         Err(error) => {
             diagnostics.push(
@@ -168,8 +182,15 @@ fn format_one(
     let formatted = match jadpo_fmt::format_file(&text) {
         Ok(formatted) => formatted,
         Err(errors) => {
+            let refused = errors
+                .iter()
+                .any(|error| error.rule.id == jadpo_diag::rule::FORMAT_UNSAFE.id);
             diagnostics.extend(errors.iter().map(|error| error.to_diagnostic(shown)));
-            return Status::SyntaxErrors;
+            return if refused {
+                Status::Refused
+            } else {
+                Status::SyntaxErrors
+            };
         }
     };
     if formatted == text {
@@ -258,6 +279,7 @@ fn report(
     let tally = |status: Status| results.iter().filter(|(_, s)| *s == status).count();
     let problems = [
         (Status::SyntaxErrors, "with syntax errors"),
+        (Status::Refused, "refused by the formatter"),
         (Status::Unreadable, "couldn't be read"),
         (Status::Unwritable, "couldn't be written"),
         (Status::Unformatted, "not formatted"),

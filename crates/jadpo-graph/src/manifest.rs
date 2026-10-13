@@ -117,6 +117,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             default,
             section,
             copied_from,
+            replaces,
             rules,
         } => {
             out.set("type", ty.render(name));
@@ -124,6 +125,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("default", *default);
             out.set_some("section", section.map(|s| s.word()));
             out.set_some("copiedFrom", copied_from.as_ref().map(|key| key.as_str()));
+            out.set_some("replaces", replaces.as_ref().map(|key| key.as_str()));
             out.set_some("rules", rules_json(rules));
         }
         Detail::Variant { payload } => out.set_some("payload", *payload),
@@ -185,6 +187,7 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ("default", "An input field with a default"),
     ("section", "A failure field's block: client or internal"),
     ("copiedFrom", "The field an include or pick line copied"),
+    ("replaces", "The copied field a written field replaces"),
     ("payload", "A variant that carries data"),
     (
         "signature",

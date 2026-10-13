@@ -97,6 +97,12 @@ pub fn rule_pairs(rules: &Rules) -> Vec<(&'static str, String)> {
     if let Some(max) = rules.max {
         out.push(("max", max.to_string()));
     }
+    if let Some(min) = rules.min_duration {
+        out.push(("min", min.to_string()));
+    }
+    if let Some(max) = rules.max_duration {
+        out.push(("max", max.to_string()));
+    }
     if let Some(min) = rules.min_length {
         out.push(("min_length", min.to_string()));
     }

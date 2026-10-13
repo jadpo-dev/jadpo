@@ -133,6 +133,7 @@ pub enum SyntaxKind {
     ASSERT_STMT,
     EXPR_STMT,
     CONDITION,
+    ELSE_IF,
     ELSE_BRANCH,
     ASSERT_FAILS,
     LITERAL,
@@ -180,7 +181,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 170] = [
+const ALL: [SyntaxKind; 171] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -308,6 +309,7 @@ const ALL: [SyntaxKind; 170] = [
     ASSERT_STMT,
     EXPR_STMT,
     CONDITION,
+    ELSE_IF,
     ELSE_BRANCH,
     ASSERT_FAILS,
     LITERAL,

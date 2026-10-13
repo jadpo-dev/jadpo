@@ -31,6 +31,9 @@ pub enum Kind {
 pub struct Param {
     pub name: &'static str,
     pub kind: Kind,
+    /// A divisor: the checker rules zero out while compiling, as it does
+    /// for `/` (area 3, question 7), so the operation never divides by it.
+    pub never_zero: bool,
 }
 
 /// Which operation, for an exhaustive match in each executor.
@@ -70,7 +73,20 @@ impl Operation {
 }
 
 const fn param(name: &'static str, kind: Kind) -> Param {
-    Param { name, kind }
+    Param {
+        name,
+        kind,
+        never_zero: false,
+    }
+}
+
+/// A parameter whose value is never zero.
+const fn divisor(name: &'static str, kind: Kind) -> Param {
+    Param {
+        name,
+        kind,
+        never_zero: true,
+    }
 }
 
 const ROUNDING: Kind = Kind::Enum(Rounding::NAME);
@@ -119,7 +135,7 @@ pub const OPERATIONS: &[Operation] = &[
         name: "divide",
         params: &[
             param("dividend", Kind::Number),
-            param("divisor", Kind::Number),
+            divisor("divisor", Kind::Number),
             param("rounding", ROUNDING),
         ],
         result: Kind::Builtin(Builtin::Decimal),
@@ -132,7 +148,7 @@ pub const OPERATIONS: &[Operation] = &[
         name: "divide",
         params: &[
             param("dividend", Kind::Builtin(Builtin::Int)),
-            param("divisor", Kind::Builtin(Builtin::Int)),
+            divisor("divisor", Kind::Builtin(Builtin::Int)),
             param("rounding", ROUNDING),
         ],
         result: Kind::Builtin(Builtin::Int),

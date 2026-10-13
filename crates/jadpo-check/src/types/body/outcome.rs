@@ -36,7 +36,11 @@ impl Body<'_> {
         arms: &[ast::MatchArm],
         head: Span,
     ) -> (Ty, bool) {
-        let subject = node.expr();
+        // `match (risky(n))`: the brackets only group the call.
+        let mut subject = node.expr();
+        while let Some(Expr::ParenExpr(paren)) = &subject {
+            subject = paren.expr();
+        }
         let written = subject
             .as_ref()
             .map(|e| match e {

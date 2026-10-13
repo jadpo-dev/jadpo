@@ -148,6 +148,26 @@ fn calls_reach_what_the_check_resolved() {
     ));
 }
 
+/// An `else if` chain is one flat list of arms, however long (Phase 1
+/// review, finding 18): each condition is a branch, and so is the `else`.
+#[test]
+fn an_else_if_chain_is_one_flat_if() {
+    let chain = " else if (n == 1) {\n        return n\n    }".repeat(5_000);
+    let found = bodies(&format!(
+        "function f(n: Pence) -> Pence {{\n    if (n == 0) {{\n        return n\n    }}{chain} else {{\n        return n\n    }}\n}}\n"
+    ));
+    let (_, body) = &found[0];
+    let Stmt::If {
+        arms, otherwise, ..
+    } = stmt(body, body.block[0])
+    else {
+        panic!();
+    };
+    assert_eq!(arms.len(), 5_001);
+    assert_eq!(otherwise.len(), 1);
+    assert_eq!(body.branches.len(), 5_002);
+}
+
 #[test]
 fn constructions_say_which_failure_they_map_to() {
     let found = bodies(
@@ -160,17 +180,19 @@ fn constructions_say_which_failure_they_map_to() {
     );
     assert!(!body.open);
     let Stmt::If {
-        then,
-        then_branch,
+        arms,
         otherwise,
         otherwise_branch,
-        ..
     } = stmt(body, body.block[0])
     else {
         panic!();
     };
+    let [arm] = arms.as_slice() else {
+        panic!("one condition");
+    };
+    let then = &arm.then;
     assert_eq!(body.branches.len(), 2);
-    assert_ne!(then_branch, otherwise_branch);
+    assert_ne!(arm.branch, *otherwise_branch);
     assert!(
         otherwise.is_empty(),
         "no `else`, but a branch past the `if`"

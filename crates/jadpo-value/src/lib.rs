@@ -12,6 +12,13 @@
 //! This crate builds for `wasm32-unknown-unknown` and depends on no other
 //! workspace crate than `jadpo-std`, the leaf it shares with the compiler.
 
+// A panic aborts a Workers instance, so runtime code reports faults as
+// values (docs/compiler-runtime.md §2.6); tests may still unwrap.
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 pub mod collection;
 pub mod decimal;
 pub mod integer;

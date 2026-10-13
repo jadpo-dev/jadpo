@@ -175,11 +175,7 @@ impl Part<'_> {
             Decl::TestDecl(d) => {
                 if let Some(token) = d.string_token() {
                     let name = token.text().trim_matches('"').to_string();
-                    let key = self.lookup.registry().key(
-                        Kind::Test,
-                        &format!("{} \"{name}\"", self.path),
-                        None,
-                    );
+                    let key = super::test_key(self.lookup.registry(), self.path, &name);
                     self.runnable(key, Kind::Test, name, d.syntax(), index);
                 }
             }
@@ -523,6 +519,13 @@ impl Part<'_> {
             default: def.is_some_and(|def| def.default),
             section,
             copied_from: None,
+            replaces: def.and_then(|def| def.replaces.as_ref()).map(|source| {
+                field_key(
+                    self.lookup.registry(),
+                    source,
+                    std::slice::from_ref(&path[path.len() - 1]),
+                )
+            }),
             rules: def.map(|def| def.rules.clone()).unwrap_or_default(),
         };
         self.out.nodes.push(node);
@@ -568,6 +571,7 @@ impl Part<'_> {
             default: field.default,
             section: None,
             copied_from: from.clone(),
+            replaces: None,
             rules: field.rules.clone(),
         };
         self.out.nodes.push(node);

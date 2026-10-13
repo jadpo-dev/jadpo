@@ -35,8 +35,8 @@ const FILES: &[(&str, &str)] = &[
 const BROKEN: &str = "action broken(body: Body) -> Body {\n    return kepe(body)\n}\n";
 const FIXED: &str = "action broken(body: Body) -> Body {\n    return wording.keep(body)\n}\n";
 
-fn project() -> PathBuf {
-    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("lsp-project");
+fn project(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&root);
     for (path, text) in FILES {
         let path = root.join(path);
@@ -148,7 +148,7 @@ fn position(line: u32, character: u32) -> Value {
 
 #[test]
 fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
-    let root = project();
+    let root = project("lsp-project");
     let mut editor = Editor::start(&root);
     let initialized = editor.request(
         1,
@@ -330,4 +330,43 @@ fn lsp_hands_the_streams_to_the_server_and_takes_editors_stdio_flag() {
         "{}",
         wrong.stderr
     );
+}
+
+/// The editor opened the project through a symbolic link (as `/tmp` is on
+/// macOS): diagnostics come back under the path it gave, so they attach to
+/// its documents (Phase 1 review, finding 22).
+#[cfg(unix)]
+#[test]
+fn diagnostics_use_the_paths_the_editor_gave() {
+    let real = project("lsp-real");
+    let link = Path::new(env!("CARGO_TARGET_TMPDIR")).join("lsp-link");
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink(&real, &link).expect("symlink");
+    let mut editor = Editor::start(&link);
+    editor.request(
+        1,
+        "initialize",
+        json!({
+            "processId": null,
+            "rootUri": format!("file://{}", link.display()),
+            "capabilities": {},
+        }),
+    );
+    editor.notify("initialized", json!({}));
+    let broken = uri(&link, "domains/notes/actions/broken.jadpo");
+    let problems = editor.diagnostics(&broken);
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    let save = uri(&link, "domains/notes/actions/save_note.jadpo");
+    let found = editor.request(
+        2,
+        "textDocument/definition",
+        json!({"textDocument": {"uri": save}, "position": position(1, 25)}),
+    );
+    assert_eq!(
+        found["result"]["uri"],
+        uri(&link, "domains/notes/types/body.jadpo")
+    );
+    editor.request(3, "shutdown", Value::Null);
+    editor.notify("exit", Value::Null);
+    let _ = editor.child.wait();
 }

@@ -30,6 +30,9 @@ pub struct FieldDef {
     pub default: bool,
     /// Brought in by `include` or `pick`.
     pub copied: bool,
+    /// For a written field that replaces one an `include` or `pick` above
+    /// brought in: the type that field came from.
+    pub replaces: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -51,6 +54,10 @@ pub enum Def {
     Fields {
         base: FieldsBase,
         fields: Vec<FieldDef>,
+        /// When its `include` lines lead back to itself, so its fields
+        /// would be copied from themselves: the first name, in name order,
+        /// on that loop, where the loop is reported once.
+        copies_itself: Option<String>,
     },
     Enum {
         variants: Vec<VariantDef>,
@@ -100,6 +107,8 @@ pub struct RawField {
     pub source: Source,
     pub optional: bool,
     pub default: bool,
+    /// The type a copied field it replaced came from.
+    pub replaces: Option<String>,
 }
 
 /// What a name in a copying line turned out to be.
@@ -168,10 +177,15 @@ pub fn derive(
                     },
                     optional: input && setting_is_true(settings, "optional"),
                     default: input && settings.iter().any(|(key, _)| key == "default"),
+                    replaces: None,
                 };
                 match fields.iter().position(|f| f.name == *name) {
                     Some(at) if matches!(fields[at].source, Source::Copied { .. }) => {
-                        fields[at] = field;
+                        let replaces = match &fields[at].source {
+                            Source::Copied { host } => Some(host.clone()),
+                            Source::Written { .. } => None,
+                        };
+                        fields[at] = RawField { replaces, ..field };
                     }
                     Some(_) => problem(None, LineKind::Duplicate(name.clone())),
                     None => fields.push(field),
@@ -301,6 +315,7 @@ fn copy(fields: &mut Vec<RawField>, host: &str, name: &str, problem: &mut dyn Fn
         },
         optional: false,
         default: false,
+        replaces: None,
     });
 }
 
@@ -316,6 +331,11 @@ struct Deriver<'a> {
     shapes: &'a BTreeMap<String, ShapeKind>,
     /// Each body's fields; `None` while being computed, which stops a cycle.
     done: BTreeMap<String, Option<Vec<RawField>>>,
+    /// The bodies being computed, outermost first.
+    stack: Vec<String>,
+    /// Every body on a cycle of `include` lines, with the cycle's first
+    /// name.
+    cyclic: BTreeMap<String, String>,
 }
 
 impl Deriver<'_> {
@@ -323,10 +343,26 @@ impl Deriver<'_> {
         match self.shapes.get(name) {
             Some(ShapeKind::Fields { base, lines }) => {
                 if let Some(done) = self.done.get(name) {
+                    if done.is_none()
+                        && let Some(at) = self.stack.iter().position(|n| n == name)
+                    {
+                        let members = &self.stack[at..];
+                        let first = members
+                            .iter()
+                            .chain(members.iter().filter_map(|n| self.cyclic.get(n)))
+                            .min()
+                            .cloned()
+                            .unwrap_or_default();
+                        for member in members {
+                            self.cyclic.insert(member.clone(), first.clone());
+                        }
+                    }
                     return Found::Fields(done.iter().flatten().map(|f| f.name.clone()).collect());
                 }
                 self.done.insert(name.to_string(), None);
+                self.stack.push(name.to_string());
                 let (fields, _) = derive(*base, lines, &mut |other| self.fields(other));
+                self.stack.pop();
                 let names = fields.iter().map(|f| f.name.clone()).collect();
                 self.done.insert(name.to_string(), Some(fields));
                 Found::Fields(names)
@@ -343,11 +379,14 @@ impl TypeTable {
         let mut deriver = Deriver {
             shapes,
             done: BTreeMap::new(),
+            stack: Vec::new(),
+            cyclic: Default::default(),
         };
         for name in shapes.keys() {
             deriver.fields(name);
         }
         let derived = deriver.done;
+        let cyclic = deriver.cyclic;
         let placeholder = |raw: &RawField| FieldDef {
             name: raw.name.clone(),
             declared: Ty::Error,
@@ -355,6 +394,7 @@ impl TypeTable {
             optional: raw.optional,
             default: raw.default,
             copied: matches!(raw.source, Source::Copied { .. }),
+            replaces: raw.replaces.clone(),
         };
         let variant_fields = |lines: &[Line]| -> Vec<RawField> {
             derive(FieldsBase::Object, lines, &mut |_| Found::Unknown).0
@@ -384,6 +424,7 @@ impl TypeTable {
                     rules: Box::default(),
                 },
                 ShapeKind::Fields { base, .. } => Def::Fields {
+                    copies_itself: cyclic.get(name).cloned(),
                     base: *base,
                     fields: derived
                         .get(name)
@@ -430,6 +471,7 @@ impl TypeTable {
                     rules: Box::default(),
                 },
                 ShapeKind::Fields { base, .. } => Def::Fields {
+                    copies_itself: cyclic.get(name).cloned(),
                     base: *base,
                     fields: resolve_fields(
                         derived
@@ -485,7 +527,15 @@ impl TypeTable {
                     parent: parent.clone(),
                     rules: Box::new(table.rules_from(parent, settings)),
                 },
-                (Def::Fields { base, fields }, _) => Def::Fields {
+                (
+                    Def::Fields {
+                        base,
+                        fields,
+                        copies_itself,
+                    },
+                    _,
+                ) => Def::Fields {
+                    copies_itself: copies_itself.clone(),
                     base: *base,
                     fields: field_rules(
                         fields,

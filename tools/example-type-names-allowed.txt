@@ -1,0 +1,9 @@
+# Type names an example declares that the language itself also gives a
+# meaning to, so the compiler may write them alone in a string.
+# tools/example_names.py leaves these out of tools/example-type-names.txt.
+# Never add an example application's own types to make a check pass.
+
+# The standard library's stubs: any type built on `Int` or `Decimal`
+Number
+# The CLI's heading for a command's flags (area 14)
+Flags

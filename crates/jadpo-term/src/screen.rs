@@ -61,6 +61,38 @@ pub(crate) fn strong(token: Token, text: impl Into<String>) -> Piece {
 
 pub(crate) type Line = Vec<Piece>;
 
+/// Text as it may reach a terminal: control characters (escape sequences
+/// among them) and the characters that reorder text right to left are
+/// written as `\u{...}`, so source text can't restyle the terminal or show
+/// code in another order than the compiler reads it.
+pub fn visible(text: &str) -> String {
+    if !text.chars().any(hidden) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if hidden(c) {
+            out.push_str(&format!("\\u{{{:x}}}", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn hidden(c: char) -> bool {
+    (c.is_control() && c != '\t')
+        || matches!(
+            c,
+            '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+                | '\u{feff}'
+        )
+}
+
 /// Display width. Every symbol Jadpo prints is one cell wide.
 pub(crate) fn width(text: &str) -> usize {
     text.chars().count()
@@ -69,6 +101,10 @@ pub(crate) fn width(text: &str) -> usize {
 fn render_line(line: &Line, style: &Style) -> String {
     let mut out = String::new();
     for piece in line {
+        let piece = &Piece {
+            text: visible(&piece.text),
+            ..piece.clone()
+        };
         let mut codes = Vec::new();
         if piece.bold && style.bold {
             codes.push("1".to_string());
@@ -96,12 +132,38 @@ pub(crate) fn cut(text: &str, max: usize, style: &Style) -> String {
     format!("{}{mark}", kept.trim_end())
 }
 
+/// The words of prose for wrapping: split at spaces, except inside inline
+/// code (`` `jadpo check <path>` ``), which stays one word with whatever is
+/// attached to it, so a command is never broken across lines.
+pub(crate) fn words(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut in_code = false;
+    for (i, c) in text.char_indices() {
+        match c {
+            '`' => in_code = !in_code,
+            ' ' if !in_code => {
+                if i > start {
+                    out.push(&text[start..i]);
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if start < text.len() {
+        out.push(&text[start..]);
+    }
+    out
+}
+
 /// Splits prose into lines of at most `max` cells. A word longer than a
-/// line (a command, a path, a link) gets a line of its own, whole.
+/// line (a command, a path, a link, inline code) gets a line of its own,
+/// whole.
 pub(crate) fn wrap(text: &str, max: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current = String::new();
-    for word in text.split(' ').filter(|word| !word.is_empty()) {
+    for word in words(text) {
         if !current.is_empty() && width(&current) + 1 + width(word) > max {
             lines.push(std::mem::take(&mut current));
         }
@@ -540,7 +602,7 @@ pub(crate) fn field(label: &str, value: Vec<Piece>, style: &Style) -> Vec<Line> 
     let mut lines: Vec<Line> = vec![vec![raw("  "), paint(Token::Muted, label), raw(pad)]];
     let mut used = 0;
     for piece in value {
-        for word in piece.text.split(' ').filter(|word| !word.is_empty()) {
+        for word in words(&piece.text) {
             let last = lines.last_mut().expect("a line");
             if used > 0 && used + 1 + width(word) > room {
                 lines.push(vec![raw(" ".repeat(indent))]);
@@ -590,6 +652,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hidden_characters_are_spelt_out() {
+        assert_eq!(
+            visible("a\u{1b}[31mb\u{202e}c\td"),
+            "a\\u{1b}[31mb\\u{202e}c\td"
+        );
+        assert_eq!(visible("plain é"), "plain é");
+    }
+
+    #[test]
     fn wrap_keeps_long_words_whole() {
         assert_eq!(wrap("a bb ccc", 4), ["a bb", "ccc"]);
         assert_eq!(
@@ -597,6 +668,10 @@ mod tests {
             ["short", "https://example.test/a/very/long/link", "end"]
         );
         assert_eq!(wrap("", 10), [""]);
+        assert_eq!(
+            wrap("give a file: `jadpo check <path>` now", 20),
+            ["give a file:", "`jadpo check <path>`", "now"]
+        );
     }
 
     #[test]

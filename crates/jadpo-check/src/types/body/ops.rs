@@ -437,12 +437,51 @@ impl Body<'_> {
             }
         }
         let (ra, rb) = (self.rep(a), self.rep(b));
+        let (sa, sb) = (a.shown(), b.shown());
+        let span = self.span(binary);
+        // `+`, `-` and `/` take the same named type on both sides, or a
+        // literal, which takes the other side's type (area 3, "Expressions
+        // and operators"); joining text follows the same rule.
+        if matches!(op, "+" | "-" | "/") && !self.same_type(a, b) {
+            let literal = matches!(a, Operand::Literal(_)) || matches!(b, Operand::Literal(_));
+            let both_values = !Self::unitless(a) && !Self::unitless(b);
+            let numbers = ra.is_some_and(Prim::is_number) && rb.is_some_and(Prim::is_number);
+            let texts = op == "+" && ra == Some(Prim::Text) && rb == Some(Prim::Text);
+            if (literal && numbers) || (texts && both_values) {
+                let reason = if literal {
+                    format!(
+                        "A literal takes the type on the other side of `{op}`, and {} can't be one; write it the way that type's values are written.",
+                        if matches!(a, Operand::Literal(_)) {
+                            &sa
+                        } else {
+                            &sb
+                        }
+                    )
+                } else {
+                    format!(
+                        "`+` joins two values of the same named type, after widening, or a value and a literal; {sa} and {sb} are different types."
+                    )
+                };
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_ARITHMETIC_OPERAND,
+                        format!("{} and {} can't be {}", capital(&sa), sb, verb(op)),
+                    )
+                    .at(span, "different types")
+                    .reason(reason)
+                    .next(if literal {
+                        "Write the literal as the other side's kind of number, such as `3.0` for a `Decimal`".to_string()
+                    } else {
+                        "Use two values of the same type".to_string()
+                    }),
+                );
+                return Ty::Error;
+            }
+        }
         if op == "+" && ra == Some(Prim::Text) && rb == Some(Prim::Text) {
             return Ty::Prim(Prim::Text);
         }
         let numbers = ra.is_some_and(Prim::is_number) && rb.is_some_and(Prim::is_number);
-        let span = self.span(binary);
-        let (sa, sb) = (a.shown(), b.shown());
         if !numbers {
             let made = |operand: &Operand, prim: Option<Prim>| match (operand, prim) {
                 (Operand::Value(Ty::Prim(_)), _) | (Operand::Literal(_), _) => operand.shown(),
@@ -523,7 +562,7 @@ impl Body<'_> {
     /// Division by zero is ruled out while compiling (area 3, question 7):
     /// a literal divisor is not `0`, and any other divisor's type excludes
     /// zero.
-    fn divisor(&mut self, rhs: &Expr, operand: &Operand) {
+    pub(super) fn divisor(&mut self, rhs: &Expr, operand: &Operand) {
         let span = self.span(rhs);
         let written = tree::written(rhs.syntax());
         match operand {

@@ -91,6 +91,14 @@ pub fn path_of(uri: &Uri) -> Option<PathBuf> {
     })
 }
 
+/// The path a `file:` URI names, exactly as the editor wrote it, without
+/// resolving symbolic links.
+pub fn given_path_of(uri: &Uri) -> Option<PathBuf> {
+    let rest = uri.as_str().strip_prefix("file://")?;
+    let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+    Some(PathBuf::from(percent_decode(rest)?.trim_end_matches('/')))
+}
+
 /// The `file:` URI of an absolute path.
 pub fn uri_of(path: &Path) -> Option<Uri> {
     let mut text = String::from("file://");

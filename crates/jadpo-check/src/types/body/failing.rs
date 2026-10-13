@@ -207,6 +207,7 @@ impl Body<'_> {
             Some(Def::Fields {
                 base: FieldsBase::Failure,
                 fields,
+                ..
             }) => fields.clone(),
             _ => {
                 if let Some(record) = &record {

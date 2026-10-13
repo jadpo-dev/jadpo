@@ -90,12 +90,40 @@ impl UuidVersion {
     }
 }
 
-/// Every enum declared here, by name, with its variants in order.
-pub const ENUMS: [(&str, &[&str]); 3] = [
-    (Rounding::NAME, Rounding::NAMES),
-    (TextFormat::NAME, TextFormat::NAMES),
-    (UuidVersion::NAME, UuidVersion::NAMES),
-];
+std_enum! {
+    /// A day of the week (area 10).
+    Weekday: "Weekday" {
+        Monday: "monday",
+        Tuesday: "tuesday",
+        Wednesday: "wednesday",
+        Thursday: "thursday",
+        Friday: "friday",
+        Saturday: "saturday",
+        Sunday: "sunday",
+    }
+}
+
+/// The name of the built-in enum of IANA time zones (area 10).
+pub const ZONE: &str = "Zone";
+
+/// The name of the built-in enum of standard locales (area 10).
+pub const LOCALE: &str = "Locale";
+
+/// Every enum declared here, by name, with its variants in order: the
+/// ones Rust interprets, then `Zone` and `Locale` from their tables.
+pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
+    let names = |list: &'static [(&'static str, &'static str)]| {
+        list.iter().map(|(variant, _)| *variant).collect()
+    };
+    vec![
+        (Rounding::NAME, Rounding::NAMES.to_vec()),
+        (TextFormat::NAME, TextFormat::NAMES.to_vec()),
+        (UuidVersion::NAME, UuidVersion::NAMES.to_vec()),
+        (Weekday::NAME, Weekday::NAMES.to_vec()),
+        (ZONE, names(crate::zones::ZONES)),
+        (LOCALE, names(crate::zones::LOCALES)),
+    ]
+}
 
 #[cfg(test)]
 mod tests {
@@ -111,5 +139,23 @@ mod tests {
         );
         assert_eq!(UuidVersion::NAMES.len(), 8);
         assert_eq!(Rounding::from_name("down"), None);
+        let all = enums();
+        let zone = all.iter().find(|(name, _)| *name == ZONE).expect("Zone");
+        assert!(zone.1.contains(&"europe_london") && zone.1.contains(&"utc"));
+        let mut sorted = zone.1.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted, zone.1, "zones sorted, each once");
+        let locale = all
+            .iter()
+            .find(|(name, _)| *name == LOCALE)
+            .expect("Locale");
+        for tag in ["en_gb", "en_us", "fr_fr", "fr", "zh_hant_tw"] {
+            assert!(locale.1.contains(&tag), "{tag}");
+        }
+        let mut sorted = locale.1.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted, locale.1, "locales sorted, each once");
     }
 }

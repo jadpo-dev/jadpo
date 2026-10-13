@@ -2184,6 +2184,9 @@ impl IfStmt {
     pub fn block(&self) -> Option<Block> {
         support::child(&self.syntax)
     }
+    pub fn else_ifs(&self) -> AstChildren<ElseIf> {
+        support::children(&self.syntax)
+    }
     pub fn else_branch(&self) -> Option<ElseBranch> {
         support::child(&self.syntax)
     }
@@ -2352,6 +2355,42 @@ impl Condition {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ElseIf {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for ElseIf {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == ELSE_IF
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl ElseIf {
+    pub fn else_kw_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, ELSE_KW)
+    }
+    pub fn if_kw_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, IF_KW)
+    }
+    pub fn condition(&self) -> Option<Condition> {
+        support::child(&self.syntax)
+    }
+    pub fn block(&self) -> Option<Block> {
+        support::child(&self.syntax)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ElseBranch {
     pub(crate) syntax: SyntaxNode,
 }
@@ -2375,9 +2414,6 @@ impl AstNode for ElseBranch {
 impl ElseBranch {
     pub fn else_kw_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, ELSE_KW)
-    }
-    pub fn if_stmt(&self) -> Option<IfStmt> {
-        support::child(&self.syntax)
     }
     pub fn block(&self) -> Option<Block> {
         support::child(&self.syntax)

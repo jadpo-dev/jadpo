@@ -95,6 +95,23 @@ pub fn failures_with_code<'db>(
     failure_table(db, project).with_code(code.text(db)).to_vec()
 }
 
+/// Every test with the sentence `sentence`, as its file's path and
+/// position, in path order (area 13).
+#[salsa::tracked(returns(ref))]
+pub fn tests_called<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    sentence: Name<'db>,
+) -> Vec<(String, u32)> {
+    let mut found = symbols(db, project)
+        .tests
+        .get(sentence.text(db))
+        .cloned()
+        .unwrap_or_default();
+    found.sort();
+    found
+}
+
 /// Every declared name by the file name it folds to (`TodoList` and
 /// `todo_list` both become `todo_list.jadpo`), built once per symbol table
 /// rather than compared pairwise for each declaration.
@@ -182,7 +199,8 @@ pub struct Lookup<'db> {
 
 impl std::fmt::Debug for Lookup<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Lookup").finish_non_exhaustive()
+        f.debug_struct(std::any::type_name::<Self>())
+            .finish_non_exhaustive()
     }
 }
 

@@ -3,40 +3,6 @@ title: Logic
 area: 3
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
-rules:
-  - effect.*
-  - failure.attempt_infallible
-  - failure.attempt_required
-  - failure.outcome_*
-  - failure.propagate_placement
-  - semantic.missing_return
-  - semantic.unreachable_code
-  - semantic.unused_result
-  - semantic.unused_variable
-  - syntax.attempt_placement
-  - syntax.colon_required
-  - syntax.condition_brackets
-  - syntax.expected_expression
-  - syntax.expected_statement
-  - syntax.match_arrow
-  - syntax.match_pattern
-  - syntax.named_argument_duplicate
-  - syntax.positional_after_named
-  - syntax.unsupported_throw
-  - toolchain.not_built_yet
-  - type.argument_count
-  - type.arithmetic_operand
-  - type.assign_*
-  - type.divisor_zero
-  - type.incomparable
-  - type.inline_function_placement
-  - type.logical_operand
-  - type.match_*
-  - type.named_argument_unknown
-  - type.named_argument_unsupported
-  - type.ordering_operand
-  - type.unary_operand
-  - type.unknown_value
 ---
 
 # Logic
@@ -384,6 +350,12 @@ function size(count: Count, maximum: Count) -> Size {
 | 6 | `and` | `Bool` | `Bool` |
 | 7 (loosest) | `or` | `Bool` | `Bool` |
 
+In `+`, `-` and `/` a literal takes the other side's type exactly as it does
+in `==`, so `price + 3` with a `Decimal` price is an error as `price == 3`
+is (write `3.00`), and `+` joins two `Text` values only when they are the
+same named type after widening, or one is a literal, as `==` compares them
+(chunk 1.9, reading the table above conservatively). `*` and `%` still mix.
+
 Operators work on the representation, so their result is a plain `Int`,
 `Decimal`, `Text` or `Bool`, and turning it back into a named type is a
 constructor (area 2). Parentheses group. `and` and `or` stop as soon as the
@@ -689,7 +661,10 @@ var total: Pence = Pence(attempt price(a) + attempt price(b))   // rejected: ins
 
 Decided (question 11): `attempt` only starts a statement, so every point
 where a callable can stop early is at the start of a line, and `attempt` on
-a call that cannot fail is an error.
+a call that cannot fail is an error. `reject` and `propagate` follow the same
+rule: each starts a statement or is the result of a `match` arm, never part
+of a value (`failure.reject_placement`, `failure.propagate_placement`; chunk
+1.9).
 
 ::: today
 
@@ -1615,6 +1590,38 @@ error: `propagate` has no failure to pass on here
   next: Give a value, `return` or `reject` a failure here instead (agent)
   rule: failure.propagate_placement
   help: docs/language/03-logic.html#failure-propagate-placement
+
+check failed: 1 error, 1 file
+```
+
+### `failure.reject_placement`
+
+`reject` stops the callable, so it starts a statement or ends a `match` arm,
+never part of a value (question 11):
+
+```jadpo check project=e-reject-placement expect=failure.reject_placement
+type Count = Int {}
+
+type CountRefused = Failure {
+    kind: FailureKind.rejected
+}
+
+function capped(count: Count) fails CountRefused -> Count {
+    var checked: Count = reject CountRefused
+    return checked
+}
+```
+
+```text output
+error: `reject` can only start a statement
+ --> main.jadpo:8:26
+  |
+8 |     var checked: Count = reject CountRefused
+  |                          ^^^^^^ inside an expression
+  reason: Every place a callable can stop early is at the start of a line: `reject` is a statement of its own, or the result of a `match` arm, never part of a value.
+  next: Move `reject` to a line of its own, under an `if` or as a `match` arm (agent)
+  rule: failure.reject_placement
+  help: docs/language/03-logic.html#failure-reject-placement
 
 check failed: 1 error, 1 file
 ```

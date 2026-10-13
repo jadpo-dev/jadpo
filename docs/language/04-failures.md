@@ -3,30 +3,6 @@ title: Failures
 area: 4
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
-rules:
-  - failure.code_format
-  - failure.context_field_overlap
-  - failure.duplicate_code
-  - failure.duplicate_context_field
-  - failure.duplicate_declaration
-  - failure.invalid_mapping_required
-  - failure.kind_required
-  - failure.kind_runtime_only
-  - failure.mapping_kind
-  - failure.missing_context_field
-  - failure.mutation_conflict_not_conflict
-  - failure.patch_empty_not_invalid_value
-  - failure.required_mutation_not_not_found
-  - failure.required_query_not_not_found
-  - failure.stale_declaration
-  - failure.undeclared_propagation
-  - failure.unknown_context_field
-  - failure.unknown_mapping
-  - syntax.expected_failure_item
-  - syntax.fails_after_result
-  - syntax.failure_code_required
-  - syntax.failure_item_colon_required
-  - syntax.failure_kind_required
 ---
 
 # Failures

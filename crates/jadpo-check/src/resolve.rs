@@ -18,6 +18,9 @@ use crate::naming::{name_case, reserved};
 use crate::std_lib::{Namespace, StdNames};
 use crate::tree::{self, dotted, node_span};
 
+/// The operations every entity has (area 6).
+const ENTITY_OPERATIONS: [&str; 4] = ["get", "create", "update", "delete"];
+
 /// What a type position accepts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Want {
@@ -37,6 +40,7 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
         path: file.path(db),
         ownership: &location.ownership,
         table: &lookup,
+        types: &lookup,
         names: StdNames::get(),
         scopes: Vec::new(),
         library: None,
@@ -54,6 +58,8 @@ struct Resolver<'a> {
     /// The symbol table, read name by name (docs/compiler-runtime.md
     /// §2.4); suggestions on a mistake read it whole.
     table: &'a dyn NameView,
+    /// The type table, read name by name: an entity's fields.
+    types: &'a dyn crate::types::TypeView,
     names: &'static StdNames,
     /// Locals in scope, with where each is declared.
     scopes: Vec<Vec<(String, Span)>>,
@@ -515,10 +521,13 @@ impl Resolver<'_> {
             self.expr(&condition);
         }
         self.block(branch.block());
-        if let Some(otherwise) = branch.else_branch() {
-            if let Some(next) = otherwise.if_stmt() {
-                self.if_stmt(&next);
+        for next in branch.else_ifs() {
+            if let Some(condition) = next.condition().and_then(|c| c.expr()) {
+                self.expr(&condition);
             }
+            self.block(next.block());
+        }
+        if let Some(otherwise) = branch.else_branch() {
             self.block(otherwise.block());
         }
     }
@@ -542,12 +551,12 @@ impl Resolver<'_> {
                 Some(Expr::RecordExpr(record)) => {
                     match record.expr() {
                         Some(Expr::NameRef(name)) => self.type_name(&name, Want::Failure),
-                        Some(other) => self.expr(&other),
+                        Some(other) => self.not_a_failure_value(&other),
                         None => {}
                     }
                     self.member_values(record.member_list());
                 }
-                Some(other) => self.expr(&other),
+                Some(other) => self.not_a_failure_value(&other),
                 None => {}
             },
             Expr::AttemptExpr(attempt) => {
@@ -557,7 +566,7 @@ impl Resolver<'_> {
                 for mapping in attempt.mappings() {
                     match mapping.expr() {
                         Some(Expr::NameRef(name)) => self.type_name(&name, Want::Failure),
-                        Some(other) => self.expr(&other),
+                        Some(other) => self.not_a_failure_value(&other),
                         None => {}
                     }
                 }
@@ -616,6 +625,23 @@ impl Resolver<'_> {
             }
             _ => self.children(expr),
         }
+    }
+
+    /// Where a failure is named (`reject`, a mapping), anything but a
+    /// failure's name: an enum's variant such as `FailureKind.rejected`, a
+    /// field or any other value (area 4).
+    fn not_a_failure_value(&mut self, expr: &Expr) {
+        // `reject OutOfStock()`: the call is the mistake.
+        if let Expr::CallExpr(call) = expr
+            && let Some(Expr::NameRef(name)) = call.expr()
+            && starts_upper(&text(&name))
+        {
+            self.expr(expr);
+            return;
+        }
+        let written = tree::written(expr.syntax());
+        let span = self.span(expr);
+        self.out.push(not_a_failure(&written, "a value", span));
     }
 
     fn children(&mut self, expr: &Expr) {
@@ -890,6 +916,55 @@ impl Resolver<'_> {
         }
     }
 
+    /// `Entity.operation(...)`: an entity's operations are `get`,
+    /// `create`, `update`, `delete` and one per transition its lifecycle
+    /// names (area 6).
+    fn entity_operation(&mut self, entity: &str, operation: &ast::NameRef) {
+        let Some(symbol) = self
+            .table
+            .declared(entity)
+            .iter()
+            .find(|symbol| symbol.kind == ItemKind::Entity)
+            .cloned()
+        else {
+            return;
+        };
+        let name = text(operation);
+        // `Todo.title(value)` builds the field's type.
+        if self
+            .types
+            .fields(entity)
+            .is_some_and(|fields| fields.iter().any(|field| field.name == name))
+        {
+            return;
+        }
+        let mut operations: Vec<String> =
+            ENTITY_OPERATIONS.iter().map(|op| op.to_string()).collect();
+        operations.extend(symbol.transitions.iter().cloned());
+        if operations.contains(&name) {
+            return;
+        }
+        let span = self.span(operation);
+        let near = nearest(&name, operations.iter().map(String::as_str)).map(str::to_string);
+        let listed: Vec<String> = operations.iter().map(|op| format!("`{op}`")).collect();
+        let problem = Diagnostic::new(
+            &rule::SEMANTIC_UNKNOWN_CALLEE,
+            format!("`{entity}` has no operation `{name}`"),
+        )
+        .at(span.clone(), "not an operation")
+        .reason(format!(
+            "An entity's operations are {}, with one more for each transition its lifecycle names.{}",
+            crate::and_list(&listed),
+            did_you_mean(near.as_deref())
+        ));
+        self.out.push(match near {
+            Some(near) => problem
+                .next(format!("Use `{entity}.{near}`"))
+                .edit(span, near),
+            None => problem.next(format!("Call one of `{entity}`'s operations")),
+        });
+    }
+
     /// `Name.member` or `Name.member(...)` with an upper-case qualifier: a
     /// type, an entity or a package.
     fn type_qualifier(&mut self, name: &ast::NameRef, calls: bool) {
@@ -929,6 +1004,9 @@ impl Resolver<'_> {
         let qualifier = text(first);
         if starts_upper(&qualifier) {
             self.type_qualifier(first, true);
+            if let [operation] = rest {
+                self.entity_operation(&qualifier, operation);
+            }
             return;
         }
         if self.is_local(&qualifier) {
@@ -991,6 +1069,22 @@ impl Resolver<'_> {
             let Some((member, span)) = member else {
                 return;
             };
+            if *self.ownership == Ownership::Domain(qualifier.clone()) {
+                let end = span.start;
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_OWN_DOMAIN_QUALIFICATION,
+                        format!("`{member}` is in this file's own domain"),
+                    )
+                    .at(qualifier_span.clone(), "own domain")
+                    .reason(format!(
+                        "The dot names who owns what you call, and `{member}` belongs to `{qualifier}` itself, so code there calls it by its bare name."
+                    ))
+                    .next(format!("Call `{member}(...)` without `{qualifier}.`"))
+                    .edit(Span::new(self.path, qualifier_span.start, end), ""),
+                );
+                return;
+            }
             let in_domain =
                 |symbol: &&Symbol| symbol.ownership == Ownership::Domain(qualifier.clone());
             let found = self

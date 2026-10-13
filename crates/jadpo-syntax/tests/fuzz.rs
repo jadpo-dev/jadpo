@@ -10,131 +10,10 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use jadpo_syntax::{parse_file, parse_snippet, parse_template};
 
-/// xorshift64*: small, fast and the same on every platform.
-struct Rng(u64);
+#[path = "support/mutate.rs"]
+mod mutate;
 
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 >> 12;
-        self.0 ^= self.0 << 25;
-        self.0 ^= self.0 >> 27;
-        self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
-    }
-
-    fn below(&mut self, n: usize) -> usize {
-        if n == 0 {
-            0
-        } else {
-            (self.next() % n as u64) as usize
-        }
-    }
-}
-
-/// Pieces of Jadpo and of what models get wrong, to insert at random.
-const PIECES: &[&str] = &[
-    "{",
-    "}",
-    "(",
-    ")",
-    "[",
-    "]",
-    "<",
-    ">",
-    "\"",
-    ":",
-    ",",
-    ".",
-    "...",
-    "->",
-    "=>",
-    "=",
-    "==",
-    "?",
-    "/",
-    "//",
-    "///",
-    "\n",
-    " ",
-    "$",
-    ";",
-    "&&",
-    "!",
-    "é",
-    "_",
-    "{{",
-    "}}",
-    "\\",
-    "15m",
-    "1.5",
-    "type ",
-    "function ",
-    "action ",
-    "query ",
-    "entity ",
-    "routes ",
-    "public ",
-    "if ",
-    "else ",
-    "for ",
-    "in ",
-    "match ",
-    "return ",
-    "var ",
-    "var mut ",
-    "attempt ",
-    "reject ",
-    "fails ",
-    "GET /",
-    "/{id: Item.id}",
-    "prefix: /",
-    "test \"t\" ",
-    "seed ",
-    "config ",
-    "x: ",
-    "Name ",
-];
-
-fn char_boundary(text: &str, mut at: usize) -> usize {
-    at = at.min(text.len());
-    while !text.is_char_boundary(at) {
-        at -= 1;
-    }
-    at
-}
-
-fn mutate(text: &str, rng: &mut Rng) -> String {
-    let mut out = text.to_string();
-    for _ in 0..=rng.below(3) {
-        let len = out.len();
-        let at = char_boundary(&out, rng.below(len + 1));
-        match rng.below(5) {
-            0 => {
-                let end = char_boundary(&out, at + 1 + rng.below(12));
-                out.replace_range(at..end, "");
-            }
-            1 | 2 => {
-                let piece = PIECES[rng.below(PIECES.len())];
-                out.insert_str(at, piece);
-            }
-            3 => {
-                let end = char_boundary(&out, at + rng.below(40));
-                let copy = out[at..end].to_string();
-                let to = char_boundary(&out, rng.below(len + 1));
-                out.insert_str(to, &copy);
-            }
-            _ => {
-                let mut lines: Vec<&str> = out.split('\n').collect();
-                if lines.len() > 1 {
-                    let a = rng.below(lines.len());
-                    let b = rng.below(lines.len());
-                    lines.swap(a, b);
-                }
-                out = lines.join("\n");
-            }
-        }
-    }
-    out
-}
+use mutate::{Rng, mutate};
 
 fn check(text: &str) {
     let result = catch_unwind(AssertUnwindSafe(|| {
@@ -188,6 +67,14 @@ fn hostile_input_is_survived() {
         String::new(),
     ];
     inputs.push("not not not not ".repeat(5_000));
+    // A long `else if` chain and deeply nested template tags (Phase 1
+    // review, finding 18).
+    inputs.push(format!(
+        "function f(n: Count) -> Count {{\n    if (n == 0) {{\n        return n\n    }}{}\n    return n\n}}\n",
+        " else if (n == 1) {\n        return n\n    }".repeat(5_000)
+    ));
+    inputs.push("{{ if a }}".repeat(5_000));
+    inputs.push("{{ for a in b }}".repeat(5_000));
     inputs.push("- ".repeat(20_000));
     for input in inputs {
         check(&input);

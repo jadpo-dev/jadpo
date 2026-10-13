@@ -101,7 +101,7 @@ optimisation) are `xhigh`.
   references in the graph; value validators and a typed standard-library
   operation table in a leaf crate shared with the runtime; transitive
   crate-graph and wasm32 gates; the quadratic naming check.
-- [ ] **1.9 Phase 1 review fixes** `opus · high`: the review's correctness,
+- [x] **1.9 Phase 1 review fixes** `opus · high`: the review's correctness,
   formatter, parser-depth, docs-gate and LSP findings, and area 1's
   decided exception letting a type fold to the name of the callable in its
   file (`CreateTodo` beside `create_todo`).
@@ -113,6 +113,9 @@ reference only).
 ## Phase 2 — Interpreter and tests (area 13)
 
 - [ ] **2.1 Interpreter** `opus · xhigh` for pure logic, with errors at `.jadpo` lines.
+  It walks 1.8's typed bodies. Also fold `resolve.rs`'s separate body walk
+  into the typed-body query (left over from 1.9), so name errors and
+  unused-variable errors come from one walk.
 - [ ] **2.2 Test runner:** `opus · high` file, line, name, seed, failure reports as decided,
   `--json`.
 - [ ] **2.3 Watch mode** `opus · high` under the 1-second target on a fixture project.

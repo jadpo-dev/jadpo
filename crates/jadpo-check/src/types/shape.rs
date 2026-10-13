@@ -36,12 +36,23 @@ impl FieldsBase {
         })
     }
 
-    /// Whether area 2 decides its fields' settings and lines: the other
-    /// bases are checked by their own areas.
+    /// Whether area 2 decides all its lines, the copying ones included:
+    /// the other bases' copying lines are their own areas'. Every base's
+    /// fields follow area 2's settings.
     pub fn is_area_two(self) -> bool {
         matches!(
             self,
             FieldsBase::Object | FieldsBase::Input | FieldsBase::Output
+        )
+    }
+
+    /// Whether later areas add settings to its fields beside area 2's
+    /// (an entity's `on_delete:`, a personal-data mark): those are left to
+    /// the areas that decide them.
+    pub fn has_later_settings(self) -> bool {
+        matches!(
+            self,
+            FieldsBase::Entity | FieldsBase::Event | FieldsBase::EmailMessage
         )
     }
 }
@@ -179,7 +190,15 @@ fn line(member: &ast::Member, base: FieldsBase) -> Line {
     };
     let value = member.value();
     let copying = matches!(key.as_str(), "include" | "pick" | "omit" | "optional");
-    if copying && base != FieldsBase::Entity {
+    if copying && base == FieldsBase::Entity {
+        // An entity copies no fields (area 5), so a copying word with a
+        // type is a field that took a reserved name.
+        if value.as_ref().is_some_and(looks_like_type) {
+            return Line::Reserved(key);
+        }
+        return Line::Other;
+    }
+    if copying {
         // `optional: all` is a line; `optional: Flag` is a field that took
         // a reserved name. `pick: Todo.id` is a line missing its brackets.
         if key == "optional" && value.as_ref().is_some_and(looks_like_type) {

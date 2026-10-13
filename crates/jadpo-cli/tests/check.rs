@@ -224,3 +224,87 @@ check failed: 1 error, 4 files
 "
     );
 }
+
+/// A domain folder that can't be listed fails the check rather than
+/// passing a project with code missing (Phase 1 review, finding 22).
+#[cfg(unix)]
+#[test]
+fn an_unreadable_folder_fails_the_check() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = project("unreadable-folder");
+    write(
+        &root,
+        "domains/billing/types/amount.jadpo",
+        "type Amount = Int {}\n",
+    );
+    let locked = root.join("domains/billing");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("chmod");
+    let listable = fs::read_dir(&locked).is_ok();
+    let output = jadpo(&root, &["check"]);
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).expect("chmod back");
+    if listable {
+        // Running as root: every folder can be listed.
+        return;
+    }
+    assert_eq!(output.code, 1, "{}", output.stdout);
+    assert!(
+        output
+            .stdout
+            .contains("`domains/billing/` couldn't be read"),
+        "{}",
+        output.stdout
+    );
+    assert!(output.stdout.contains("rule: toolchain.source_read_failed"));
+}
+
+/// A pipe named like a source file is reported, never read (it would block).
+#[cfg(unix)]
+#[test]
+fn a_pipe_named_jadpo_is_not_read() {
+    let root = project("fifo");
+    let pipe = root.join("domains/planning/types/pipe.jadpo");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&pipe)
+        .status()
+        .expect("mkfifo");
+    assert!(made.success());
+    let output = jadpo(&root, &["check"]);
+    assert_eq!(output.code, 1, "{}", output.stdout);
+    assert!(
+        output
+            .stdout
+            .contains("`domains/planning/types/pipe.jadpo` couldn't be read"),
+        "{}",
+        output.stdout
+    );
+    let formatted = jadpo(&root, &["fmt", "--check"]);
+    assert!(
+        formatted.stdout.contains("isn't a regular file"),
+        "{}",
+        formatted.stdout
+    );
+}
+
+/// A 5,000-branch `else if` chain is one flat `if`: it checks and formats
+/// without a depth error or a stack overflow (Phase 1 review, finding 18).
+#[test]
+fn a_long_else_if_chain_checks_and_formats() {
+    let root = project("else-if-chain");
+    let chain = " else if (count == 1) {\n        return count\n    }".repeat(5_000);
+    write(
+        &root,
+        TALLY,
+        &format!(
+            "action tally(count: Count) -> Count {{\n    if (count == 0) {{\n        return count\n    }}{chain}\n    return count\n}}\n"
+        ),
+    );
+    let output = jadpo(&root, &["check"]);
+    assert_eq!(output.code, 0, "{}", output.stdout);
+    assert!(
+        output.stdout.starts_with("checked: 3 files"),
+        "{}",
+        output.stdout
+    );
+    let formatted = jadpo(&root, &["fmt", "--check"]);
+    assert_eq!(formatted.code, 0, "{}", formatted.stdout);
+}

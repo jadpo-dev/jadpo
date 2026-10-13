@@ -127,13 +127,13 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             }
         }
         Detail::Variant { payload: true } => {
-            let fields: Vec<String> = fields_of(graph, id);
+            let fields: Vec<String> = fields_of(graph, id, false);
             format!("{}: {{ {} }}", node.name, fields.join(" "))
         }
         Detail::Variant { payload: false } => node.name.clone(),
         Detail::None => match node.kind {
             Kind::Entity => {
-                let fields = fields_of(graph, id);
+                let fields = fields_of(graph, id, true);
                 if fields.is_empty() {
                     format!("entity {}", node.name)
                 } else {
@@ -159,7 +159,7 @@ fn members(graph: &Graph, id: NodeId, base: &Base) -> Vec<String> {
             variants
                 .into_iter()
                 .map(|variant| {
-                    let fields = fields_of(graph, variant);
+                    let fields = fields_of(graph, variant, false);
                     let name = short(&graph.node(variant).name);
                     if fields.is_empty() {
                         name.to_string()
@@ -177,7 +177,7 @@ fn members(graph: &Graph, id: NodeId, base: &Base) -> Vec<String> {
                     .filter(|&child| {
                         matches!(graph.node(child).detail, Detail::Field { section: Some(s), .. } if s == section)
                     })
-                    .map(|child| field_line(graph, child))
+                    .map(|child| field_line(graph, child, false))
                     .collect();
                 if !fields.is_empty() {
                     out.push(format!("{word}: {{ {} }}", fields.join(" ")));
@@ -186,7 +186,7 @@ fn members(graph: &Graph, id: NodeId, base: &Base) -> Vec<String> {
             out
         }
         Base::Refines(_) => Vec::new(),
-        _ => fields_of(graph, id),
+        _ => fields_of(graph, id, true),
     }
 }
 
@@ -201,22 +201,38 @@ fn ordered_children(graph: &Graph, id: NodeId) -> Vec<NodeId> {
     children
 }
 
-fn field_line(graph: &Graph, id: NodeId) -> String {
+/// A field as Jadpo, with where it came from when a copying line is
+/// involved (area 2): a copied field's type is the field it copies
+/// (`done: Todo.done`), and a written one that replaces a copied one says
+/// so (`title: Note  // ← written, replaces Todo.title`).
+fn field_line(graph: &Graph, id: NodeId, sourced: bool) -> String {
     let node = graph.node(id);
+    let name_of = |key: &Key| name_now(graph, key);
     match &node.detail {
-        Detail::Field { ty, .. } => format!(
-            "{}: {}",
-            short(&node.name),
-            ty.render(&|key| name_now(graph, key))
-        ),
+        Detail::Field {
+            ty,
+            copied_from,
+            replaces,
+            ..
+        } => {
+            let line = format!("{}: {}", short(&node.name), ty.render(&name_of));
+            match (copied_from, replaces) {
+                (None, Some(replaced)) if sourced => {
+                    format!("{line}  // ← written, replaces {}", name_of(replaced))
+                }
+                _ => line,
+            }
+        }
         _ => short(&node.name).to_string(),
     }
 }
 
-fn fields_of(graph: &Graph, id: NodeId) -> Vec<String> {
+/// A node's fields, each as [`field_line`]; `sourced` when they go one
+/// per line, with where each came from.
+fn fields_of(graph: &Graph, id: NodeId, sourced: bool) -> Vec<String> {
     ordered_children(graph, id)
         .into_iter()
-        .map(|child| field_line(graph, child))
+        .map(|child| field_line(graph, child, sourced))
         .collect()
 }
 
@@ -348,4 +364,35 @@ fn facts(graph: &Graph, id: NodeId) -> Vec<String> {
         out.push(place.join(" · "));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jadpo_check::graph::graph;
+    use jadpo_db::{Database, File, Layout, Project};
+
+    /// A built type's hover shows where each field came from (area 2,
+    /// "Building a type from other types").
+    #[test]
+    fn a_built_types_fields_say_where_they_came_from() {
+        let db = Database::default();
+        let text = "type Title = Text {}\n\ntype Note = Text {}\n\ntype Todo = Object {\n    title: Title\n    done: Bool\n}\n\ntype TodoDetail = Output {\n    include: [Todo]\n    title: Note\n    note: Note\n}\n";
+        let file = File::new(&db, "main.jadpo".to_string(), text.to_string());
+        let project = Project::new(
+            &db,
+            vec![file],
+            Vec::new(),
+            Layout::Loose,
+            Default::default(),
+        );
+        let graph = graph(&db, project);
+        let shown = render(graph, &Found::Node(Key::new(Kind::Type, "TodoDetail"))).expect("hover");
+        assert!(shown.contains("\n    done: Todo.done\n"), "{shown}");
+        assert!(
+            shown.contains("title: Note  // ← written, replaces Todo.title"),
+            "{shown}"
+        );
+        assert!(shown.contains("\n    note: Note\n"), "{shown}");
+    }
 }

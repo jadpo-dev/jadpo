@@ -244,6 +244,7 @@ version = "0.1.0"
 name = "jadpo-fmt"
 version = "0.1.0"
 dependencies = [
+ "jadpo-diag",
  "jadpo-syntax",
  "rowan",
 ]

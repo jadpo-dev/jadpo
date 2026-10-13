@@ -15,8 +15,11 @@ use super::super::table::{Def, FieldDef};
 use super::super::ty::{Prim, Ty};
 use super::{Body, did_you_mean, is_literal, node_key, text};
 use crate::case::starts_upper;
-use crate::std_lib::StdNames;
+use crate::std_lib::{Namespace, StdNames};
 use crate::tree::{self, dotted};
+
+/// The generated namespace whose one member is the time (area 10).
+const CLOCK: &str = "clock";
 
 impl Body<'_> {
     // --- checking against an expected type -------------------------------
@@ -49,6 +52,27 @@ impl Body<'_> {
                     }
                     let length = Const::List(list.exprs().map(|_| Const::Other).collect());
                     if let Err(problem) = literal::check(self.table, expected, &length) {
+                        self.literal_problem(expr, expected, problem, false);
+                        return;
+                    }
+                    let is_set = matches!(self.table.structure(expected), Ty::Set(_));
+                    // Literals and variants; a computed value is only
+                    // known when it runs.
+                    let items: Vec<Const> = list
+                        .exprs()
+                        .map(|e| match Const::from_expr(&e) {
+                            Const::Path(names)
+                                if !names.first().is_some_and(|n| starts_upper(n)) =>
+                            {
+                                Const::Other
+                            }
+                            other => other,
+                        })
+                        .collect();
+                    if is_set && let Some(twice) = literal::repeated(&items) {
+                        let problem = literal::Problem::Builtin(format!(
+                            "has {twice} twice, and a set holds each value once"
+                        ));
                         self.literal_problem(expr, expected, problem, false);
                     }
                     return;
@@ -251,16 +275,45 @@ impl Body<'_> {
                 self.misplaced_inline(lambda);
                 Ty::Error
             }
+            // Both start a statement or end an arm, which handle them
+            // before asking for a type; anywhere else they would stop the
+            // callable in the middle of a line (area 3, question 11).
             Expr::RejectExpr(reject) => {
+                self.misplaced_exit(expr, "reject");
                 self.reject(reject);
                 Ty::Error
             }
-            Expr::PropagateExpr(propagate) => {
-                self.propagate(propagate);
+            Expr::PropagateExpr(_) => {
+                self.misplaced_exit(expr, "propagate");
+                self.flow.open = true;
                 Ty::Error
             }
             _ => Ty::Error,
         }
+    }
+
+    /// `reject` or `propagate` inside an expression.
+    fn misplaced_exit(&mut self, expr: &Expr, word: &str) {
+        let span = super::line_span(self.path, expr.syntax());
+        let span = jadpo_diag::Span::new(self.path, span.start, span.start + word.len() as u32);
+        let rule = if word == "reject" {
+            &rule::FAILURE_REJECT_PLACEMENT
+        } else {
+            &rule::FAILURE_PROPAGATE_PLACEMENT
+        };
+        self.flow.open = true;
+        self.out.push(
+            Diagnostic::new(rule, format!("`{word}` can only start a statement"))
+                .at(span, "inside an expression")
+                .reason(format!(
+                    "Every place a callable can stop early is at the start of a line: `{word}` is a statement of its own, or the result of a `match` arm, never part of a value."
+                ))
+                .next(if word == "reject" {
+                    "Move `reject` to a line of its own, under an `if` or as a `match` arm".to_string()
+                } else {
+                    "Write `propagate` as the result of a failure arm of a `match`".to_string()
+                }),
+        );
     }
 
     // --- reading fields ---------------------------------------------------
@@ -276,6 +329,9 @@ impl Body<'_> {
         let head = text(&first);
         if starts_upper(&head) {
             return self.type_member(&head, &rest, expr);
+        }
+        if StdNames::get().namespace(&head) == Some(Namespace::Generated) {
+            return self.generated_value(&head, &rest, expr);
         }
         let Some(mut receiver) = self.read(&first) else {
             if !self.is_qualifier(&head) {
@@ -296,6 +352,48 @@ impl Body<'_> {
             }
         }
         receiver
+    }
+
+    /// A member of a namespace the compiler fills (`clock.now`,
+    /// `config.api_key`): built ones have their type, and the rest wait for
+    /// their area.
+    pub(super) fn generated_value(&mut self, head: &str, rest: &[ast::NameRef], expr: &Expr) -> Ty {
+        let members: Vec<String> = rest.iter().map(text).collect();
+        let written = format!("{head}.{}", members.join("."));
+        let span = self.span(expr);
+        match members.as_slice() {
+            [member] if StdNames::get().generated_member(head, member) => {
+                if head == CLOCK {
+                    self.clock_read(span, &written);
+                    return Ty::Prim(Prim::Instant);
+                }
+                Ty::Error
+            }
+            _ => {
+                self.not_built_yet(span, &written);
+                Ty::Error
+            }
+        }
+    }
+
+    /// `clock.now` is an effect only actions have (areas 3 and 10).
+    pub(super) fn clock_read(&mut self, span: jadpo_diag::Span, written: &str) {
+        if !self.context.is_pure() {
+            return;
+        }
+        let caller = self.context.with_a();
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_CLOCK_CONTEXT,
+                format!("{} can't read `{written}`", super::capital(caller)),
+            )
+            .at(span, "reads the clock")
+            .reason(format!(
+                "{} is pure: it gives the same result for the same arguments, so the time it needs arrives as a parameter; only actions read the clock.",
+                super::capital(caller)
+            ))
+            .next("Pass the time in as a parameter, read in the action that calls this"),
+        );
     }
 
     /// `Type.member` as a value: an enum's variant.
@@ -349,15 +447,14 @@ impl Body<'_> {
             .map(|variants| variants.iter().map(|v| v.name.clone()).collect())
             .unwrap_or_default();
         let near = nearest(&name, names.iter().map(String::as_str)).map(str::to_string);
-        let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
         let problem = Diagnostic::new(
             &rule::TYPE_UNKNOWN_ENUM_VARIANT,
             format!("`{host}` has no variant `{name}`"),
         )
         .at(span.clone(), "not a variant")
         .reason(format!(
-            "`{host}`'s variants are {}.{}",
-            crate::and_list(&listed),
+            "{}{}",
+            super::variants_line(host, &names),
             did_you_mean(near.as_deref())
         ));
         self.out.push(match near {
@@ -512,7 +609,7 @@ impl Body<'_> {
         }
         let head_span = self.span(&head);
         match (rest.as_slice(), self.table.def(&name)) {
-            ([], Some(Def::Fields { base, fields })) => {
+            ([], Some(Def::Fields { base, fields, .. })) => {
                 if matches!(base, FieldsBase::Entity | FieldsBase::Failure) {
                     self.failure_value(&Expr::RecordExpr(record.clone()));
                     return Ty::Error;

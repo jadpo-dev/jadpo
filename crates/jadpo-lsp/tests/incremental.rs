@@ -149,3 +149,34 @@ fn an_edit_rechecks_only_what_it_changes() {
     assert_eq!(count(&log, "file_part"), 1, "{log:?}");
     assert_eq!(count(&log, "graph"), 1, "{log:?}");
 }
+
+/// The language server reads a 5,000-branch `else if` chain without a
+/// depth error or a stack overflow (Phase 1 review, finding 18).
+#[test]
+fn a_long_else_if_chain_is_served() {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("lsp-else-if");
+    let _ = std::fs::remove_dir_all(&root);
+    let chain = " else if (body == \"b\") {\n        return body\n    }".repeat(5_000);
+    let files = [
+        ("app.jadpo", "application {}\n".to_string()),
+        (
+            "domains/notes/types/body.jadpo",
+            "type Body = Text {}\n".to_string(),
+        ),
+        (
+            "domains/notes/actions/save_note.jadpo",
+            format!(
+                "action save_note(body: Body) -> Body {{\n    if (body == \"a\") {{\n        return body\n    }}{chain}\n    return body\n}}\n"
+            ),
+        ),
+    ];
+    for (path, text) in &files {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        std::fs::write(path, text).expect("write");
+    }
+    let loaded = jadpo_db::load(&root.canonicalize().expect("real path"));
+    let mut server = Server::new(Some(loaded), Encoding::Utf16);
+    server.handle(notify("initialized", json!({})));
+    assert!(published(&server.flush()).is_empty());
+}

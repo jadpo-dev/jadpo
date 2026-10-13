@@ -8,7 +8,7 @@
 # Built-in types that later areas define (areas 3 to 18), and the setting
 # options they use.
 [types]
-InstantRange Zone Locale Weekday
+InstantRange
 Page PageCursor
 File Principal Response Access
 TimeFormat LocalGap LocalOverlap
@@ -22,10 +22,16 @@ ComponentStyle
 [namespaces]
 temporal: in_zone resolve format format_relative format_friendly between day_bounds
 
-# Namespaces the compiler fills from the project or the platform: any
-# member name is accepted until its area is built (areas 8, 10 and 13).
+# Namespaces the compiler fills from the project or the platform, with the
+# members built so far; any other member is `toolchain.not_built_yet` until
+# its area is built (areas 8, 10 and 13). `clock.now` is the time the
+# operation started, which only actions read (area 10).
 [generated]
-clock config translations sessions oauth
+clock: now
+config:
+translations:
+sessions:
+oauth:
 
 # Names too generic for a domain or a library (area 1).
 [generic]

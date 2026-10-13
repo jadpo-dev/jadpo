@@ -176,6 +176,9 @@ pub enum Detail {
         section: Option<Section>,
         /// For a field brought in by `include` or `pick`: where it comes from.
         copied_from: Option<Key>,
+        /// For a written field that replaces one an `include` or `pick`
+        /// brought in: the field it replaces.
+        replaces: Option<Key>,
         rules: Rules,
     },
     Variant {

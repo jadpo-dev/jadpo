@@ -28,6 +28,111 @@ fn described(symbol: &Symbol) -> String {
     format!("{} in `{}`", symbol.kind.with_a(), symbol.path)
 }
 
+/// Whether `item`, in `path`, and `other` are a type and the action, query
+/// or function declared in the same file, which may fold to one name
+/// (`CreateTodo` beside `create_todo`): only one file carries the name
+/// (area 1, decided 2026-10-13).
+fn callable_and_its_type(path: &str, item: &Item, in_library: bool, other: &Symbol) -> bool {
+    let callable = |kind: &ItemKind, library: bool| {
+        !library
+            && matches!(
+                kind,
+                ItemKind::Action | ItemKind::Query | ItemKind::Function
+            )
+    };
+    let is_type = |kind: &ItemKind| matches!(kind, ItemKind::Type(_));
+    other.path == path
+        && ((is_type(&item.kind) && callable(&other.kind, other.library.is_some()))
+            || (callable(&item.kind, in_library) && is_type(&other.kind)))
+}
+
+/// `public` on a declaration that isn't part of a domain's interface: only
+/// types (failures and events among them), entities, queries, libraries and
+/// actions are offered to other domains (area 1).
+fn public_not_allowed(path: &str, decl: &jadpo_syntax::ast::Decl) -> Option<Diagnostic> {
+    use jadpo_syntax::ast::{AstNode, Decl};
+    let word = match decl {
+        Decl::TypeDecl(_)
+        | Decl::EntityDecl(_)
+        | Decl::QueryDecl(_)
+        | Decl::LibraryDecl(_)
+        | Decl::ActionDecl(_) => return None,
+        Decl::FunctionDecl(_) => "function",
+        Decl::FixtureDecl(_) => "fixture",
+        Decl::RoutesDecl(_) => "route group",
+        Decl::ScheduleDecl(_) => "schedule",
+        Decl::SubscriberDecl(_) => "subscriber",
+        Decl::TestDecl(_) => "test",
+        Decl::SeedDecl(_) => "seed",
+        _ => "declaration",
+    };
+    let visibility = decl
+        .syntax()
+        .children()
+        .find(|child| child.kind() == jadpo_syntax::SyntaxKind::VISIBILITY)?;
+    let range = visibility.text_range();
+    let span = Span::new(path, range.start().into(), range.end().into());
+    let reason = match word {
+        "function" => "Another domain uses a helper through a public library, so a plain function stays with the code that calls it.".to_string(),
+        "route group" | "schedule" | "subscriber" => format!(
+            "A {word} is a trigger: nothing calls it, so there is nothing to offer another domain; who reaches a route is decided by the route and its policy."
+        ),
+        _ => format!(
+            "A domain offers other domains its types, entities, queries, libraries and actions; a {word} is never called from another domain."
+        ),
+    };
+    Some(
+        Diagnostic::new(
+            &rule::VISIBILITY_PUBLIC_NOT_ALLOWED,
+            format!("A {word} can't be `public`"),
+        )
+        .at(span.clone(), "not part of a domain's interface")
+        .reason(reason)
+        .next("Remove `public`")
+        .edit(Span::new(path, span.start, span.end + 1), ""),
+    )
+}
+
+/// A test's sentence is its name, unique across the project, so a report
+/// or a rerun names exactly one test (area 13; its key is its subject and
+/// sentence, area 18).
+fn duplicate_test(
+    db: &dyn Db,
+    project: Project,
+    source: &jadpo_syntax::ast::SourceFile,
+    path: &str,
+    item: &Item,
+) -> Option<Diagnostic> {
+    let name = crate::lookups::Name::new(db, item.name.clone());
+    let found = crate::lookups::tests_called(db, project, name);
+    let (first_path, _) = found
+        .iter()
+        .find(|(p, index)| (p.as_str(), *index) < (path, item.index))?;
+    let span = match tree::decl_at(source, item.index) {
+        Some(jadpo_syntax::ast::Decl::TestDecl(test)) => match test.string_token() {
+            Some(token) => Span::new(
+                path,
+                token.text_range().start().into(),
+                token.text_range().end().into(),
+            ),
+            None => name_span(source, path, item.index, None),
+        },
+        _ => name_span(source, path, item.index, None),
+    };
+    let sentence = &item.name;
+    Some(
+        Diagnostic::new(
+            &rule::SEMANTIC_DUPLICATE_DECLARATION,
+            format!("The test \"{sentence}\" is declared twice"),
+        )
+        .at(span, "declared again here")
+        .reason(format!(
+            "A test's sentence is its name, unique across the project, so a report or a rerun names exactly one test; it is already a test in `{first_path}`."
+        ))
+        .next("Reword this test's sentence to say what it checks that the other doesn't, or remove it if it's a copy"),
+    )
+}
+
 /// The naming problems of one file's declarations.
 #[salsa::tracked(returns(ref))]
 pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
@@ -37,13 +142,20 @@ pub fn naming_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
     let path = file.path(db);
     let table = Lookup::new(db, project);
     let mut out = Vec::new();
+    for decl in source.decls() {
+        out.extend(public_not_allowed(path, &decl));
+    }
     for item in &item_tree(db, file).items {
+        if item.kind == ItemKind::Test {
+            if let Some(problem) = duplicate_test(db, project, &source, path, item) {
+                out.push(problem);
+            }
+            continue;
+        }
         match item.kind {
-            ItemKind::Test
-            | ItemKind::Singleton
-            | ItemKind::Package
-            | ItemKind::Resource
-            | ItemKind::Provide => continue,
+            ItemKind::Singleton | ItemKind::Package | ItemKind::Resource | ItemKind::Provide => {
+                continue;
+            }
             _ => {}
         }
         let span = name_span(&source, path, item.index, None);
@@ -131,6 +243,7 @@ fn declaration(
         .same_file_name(&folded)
         .iter()
         .filter(|symbol| symbol.name != name)
+        .filter(|symbol| !callable_and_its_type(path, item, library.is_some(), symbol))
         .filter(|symbol| symbol_order(symbol) < here)
         .min_by_key(|symbol| symbol_order(symbol))
     {

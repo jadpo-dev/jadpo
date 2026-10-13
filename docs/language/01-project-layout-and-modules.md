@@ -3,26 +3,6 @@ title: Project layout and modules
 area: 1
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-11)
-rules:
-  - toolchain.empty_project
-  - layout.*
-  - naming.*
-  - visibility.*
-  - semantic.duplicate_declaration
-  - semantic.name_case
-  - semantic.unknown_name
-  - semantic.unknown_callee
-  - semantic.not_callable
-  - semantic.wrong_name_kind
-  - library.similar_exists
-  - semantic.standard_namespace_reserved
-  - semantic.standard_operation_qualification
-  - syntax.unexpected_character
-  - syntax.unterminated_string
-  - syntax.invalid_escape
-  - syntax.expected_declaration
-  - syntax.expected_name
-  - syntax.unexpected_token
 ---
 
 # Project layout and modules
@@ -154,6 +134,26 @@ Every name has one spelling, decided by what kind of thing it names.
 Identifiers are ASCII letters, digits and underscores, and cannot start with a
 digit. The compiler checks the case and suggests the right spelling.
 
+Control-flow and declaration words are reserved (question 7): none of them
+names a declaration, field, parameter, variable or variant, and using one is
+`syntax.expected_name`. They are `action`, `and`, `assert`, `attempt`,
+`else`, `emit`, `entity`, `fails`, `false`, `fixture`, `for`, `function`,
+`if`, `in`, `library`, `match`, `mut`, `none`, `not`, `or`, `package`,
+`propagate`, `provide`, `public`, `query`, `reject`, `resource`, `return`,
+`routes`, `schedule`, `seed`, `subscriber`, `test`, `true`, `type` and
+`var`. A setting the language defines may still use one as its key
+(`package: Stripe.v2024_06_20` in a connection, `test:` in configuration).
+
+These words mean something only where the language expects them, and stay
+usable as names everywhere else: `asc` and `desc` (a query's order), `end`
+(templates), `matches` (the pattern operator), `input` and `value`, and the
+words that open a declaration with no name, `acceptance`, `application`,
+`authentication`, `config`, `flags`, `locales`, `migration`, `policy` and
+`principal`. `include`, `pick`, `omit` and `optional` build a type's fields,
+so they name anything but a field (area 2), and the standard-library and
+generated namespaces (`collection`, `clock`, `config` ...) name no domain
+or library.
+
 ## Comments
 
 > **Changing.** `///` documentation comments were decided on 2026-10-12; see [Decided layout](#decided-layout).
@@ -273,9 +273,15 @@ check failed: 1 error, 1 file
 
 ### `naming.folded_collision`
 
-```jadpo check project=e-folded expect=naming.folded_collision
-type DueDate = CalendarDate {}
+Two names that become the same file name are an error, except a type beside
+the action, query or function in its own file (`CreateTodo` in
+`create_todo.jadpo`):
 
+```jadpo check project=e-folded file=due.jadpo
+type DueDate = CalendarDate {}
+```
+
+```jadpo check project=e-folded file=main.jadpo expect=naming.folded_collision
 function due_date(due: DueDate) -> DueDate {
     return due
 }
@@ -283,16 +289,16 @@ function due_date(due: DueDate) -> DueDate {
 
 ```text output
 error: `due_date` and `DueDate` share a file name
- --> main.jadpo:3:10
+ --> main.jadpo:1:10
   |
-3 | function due_date(due: DueDate) -> DueDate {
+1 | function due_date(due: DueDate) -> DueDate {
   |          ^^^^^^^^ also `due_date.jadpo`
-  reason: Both names become `due_date.jadpo`, so a search for one finds the other; `DueDate` is a type in `main.jadpo`.
+  reason: Both names become `due_date.jadpo`, so a search for one finds the other; `DueDate` is a type in `due.jadpo`.
   next: Rename one of them so their file names differ (agent)
   rule: naming.folded_collision
   help: docs/language/01-project-layout-and-modules.html#naming-folded-collision
 
-check failed: 1 error, 1 file
+check failed: 1 error, 2 files
 ```
 
 ### `naming.generic_name`
@@ -516,6 +522,68 @@ error: `reserve_stock` is private to domain `inventory`
   help: docs/language/01-project-layout-and-modules.html#visibility-private-cross-domain
 
 check failed: 1 error, 4 files
+```
+
+### `visibility.public_not_allowed`
+
+A domain offers other domains its types, entities, queries, libraries and
+actions; nothing else is `public`:
+
+```jadpo check project=e-public file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-public file=domains/planning/routes/todos.jadpo expect=visibility.public_not_allowed
+public routes Todos {
+    prefix: "/todos"
+}
+```
+
+```text output
+error: A route group can't be `public`
+ --> domains/planning/routes/todos.jadpo:1:1
+  |
+1 | public routes Todos {
+  | ^^^^^^ not part of a domain's interface
+  reason: A route group is a trigger: nothing calls it, so there is nothing to offer another domain; who reaches a route is decided by the route and its policy.
+  next: Remove `public` (agent)
+  rule: visibility.public_not_allowed
+  help: docs/language/01-project-layout-and-modules.html#visibility-public-not-allowed
+
+check failed: 1 error, 2 files
+```
+
+### `semantic.own_domain_qualification`
+
+The dot names the owner of what you call, so code calls its own domain's
+actions and queries by their bare names:
+
+```jadpo check project=e-own-domain file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-own-domain file=domains/planning/actions/snooze_todo.jadpo
+action snooze_todo() -> Unit {}
+```
+
+```jadpo check project=e-own-domain file=domains/planning/actions/tidy_up.jadpo expect=semantic.own_domain_qualification
+action tidy_up() -> Unit {
+    planning.snooze_todo()
+}
+```
+
+```text output
+error: `snooze_todo` is in this file's own domain
+ --> domains/planning/actions/tidy_up.jadpo:2:5
+  |
+2 |     planning.snooze_todo()
+  |     ^^^^^^^^ own domain
+  reason: The dot names who owns what you call, and `snooze_todo` belongs to `planning` itself, so code there calls it by its bare name.
+  next: Call `snooze_todo(...)` without `planning.` (agent)
+  rule: semantic.own_domain_qualification
+  help: docs/language/01-project-layout-and-modules.html#semantic-own-domain-qualification
+
+check failed: 1 error, 3 files
 ```
 
 ### `layout.unknown_location`
@@ -1116,7 +1184,8 @@ build/
   as an action, query or function may fold to that callable's name, as an
   input does (`type CreateTodo = Input` beside `action create_todo` in
   `actions/create_todo.jadpo`), because only one file carries the name. If
-  the type is promoted to its own file, the rule applies again.
+  the type is promoted to its own file, the rule applies again. Built in
+  chunk 1.9.
 - Tests sit beside their subject as `<name>.test.jadpo`. Scenarios that span
   several domains go in the root `tests/`. The kind of test (pure,
   integration, route, schedule) is known from what it calls, so it is not a
@@ -1163,7 +1232,11 @@ build/
 - A domain owns everything in it and is the visibility boundary.
   Declarations are private to their domain unless marked `public`.
 - Entity identities, types, failures, events, queries, libraries and actions
-  can be public. A public action is the domain's write interface: checkout in
+  can be public; `public` on anything else (a function, a route group, a
+  schedule, a subscriber, a test, a seed or a fixture) is
+  `visibility.public_not_allowed`, and an own-domain action or query called
+  as `planning.snooze_todo()` from inside `planning` is
+  `semantic.own_domain_qualification`. A public action is the domain's write interface: checkout in
   `ordering` can call `inventory.reserve_stock(...)` and both changes commit
   or roll back together in one database transaction, using the transaction
   machinery that exists today. Another domain never touches the entities
@@ -1328,7 +1401,8 @@ migration workflow (area 5). The layout only reserves their folders.
    fixed section order. Revisit with measured sizes from the order/payment app.
 7. **Reserved words.** *Decided 2026-10-12 (see Decisions):* build the chosen policy:
    control-flow and declaration words are fully reserved, with a short explicit
-   list of words such as `input` and `value` that can be used as names.
+   list of words such as `input` and `value` that can be used as names. Built
+   in chunk 1.9; the exact lists are under [Naming](#naming).
 8. **Documentation comments.** *Decided 2026-10-12 (see Decisions):* add `///` comments that
    attach to the following declaration and flow into generated documentation,
    the library catalogue and OpenAPI descriptions.

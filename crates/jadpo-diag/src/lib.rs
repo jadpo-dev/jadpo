@@ -169,6 +169,8 @@ rules! {
         "03-logic.html#failure-outcome-wildcard", "Outcome match uses a wildcard";
     FAILURE_PROPAGATE_PLACEMENT: "failure.propagate_placement", area 3, Error, Agent,
         "03-logic.html#failure-propagate-placement", "Propagate is used outside a failure arm";
+    FAILURE_REJECT_PLACEMENT: "failure.reject_placement", area 3, Error, Agent,
+        "03-logic.html#failure-reject-placement", "Reject is used inside an expression";
     FAILURE_STALE_DECLARATION: "failure.stale_declaration", area 4, Error, Agent,
         "04-failures.html#failure-stale-declaration", "Listed failure can never happen";
     FAILURE_UNDECLARED_PROPAGATION: "failure.undeclared_propagation", area 4, Error, Agent,
@@ -179,6 +181,8 @@ rules! {
         "04-failures.html#failure-unknown-mapping", "Mapping names a condition the operation does not have";
     FORMAT_CHANGES_REQUIRED: "format.changes_required", area 14, Error, Agent,
         "14-tooling.html#formatting", "Source file is not formatted";
+    FORMAT_UNSAFE: "format.unsafe", area 14, Error, Human,
+        "14-tooling.html#format-unsafe", "Formatting would change the file's meaning";
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
         "14-tooling.html#formatting", "Formatted source could not be written";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
@@ -213,6 +217,8 @@ rules! {
         "01-project-layout-and-modules.html#semantic-name-case", "Name has the wrong case for its kind";
     SEMANTIC_NOT_CALLABLE: "semantic.not_callable", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-not-callable", "Name cannot be called";
+    SEMANTIC_OWN_DOMAIN_QUALIFICATION: "semantic.own_domain_qualification", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#semantic-own-domain-qualification", "Own-domain call is qualified";
     SEMANTIC_STANDARD_NAMESPACE_RESERVED: "semantic.standard_namespace_reserved", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-standard-namespace-reserved", "Name belongs to a standard-library namespace";
     SEMANTIC_STANDARD_OPERATION_QUALIFICATION: "semantic.standard_operation_qualification", area 1, Error, Agent,
@@ -291,6 +297,8 @@ rules! {
         "03-logic.html#type-assign-unknown", "Assignment target is not declared";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
         "02-values-and-types.html#type-base-outside-declaration", "Base is used outside a type declaration";
+    TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
+        "10-configuration-and-time.html#type-clock-context", "The operation clock is unavailable in this context";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,
         "02-values-and-types.html#type-constraint-base", "Constraint does not fit the type's base";
     TYPE_CONSTRAINT_CONTRADICTION: "type.constraint_contradiction", area 2, Error, Agent,
@@ -303,6 +311,8 @@ rules! {
         "02-values-and-types.html#type-constructor-input", "Value cannot be converted to this type";
     TYPE_COPY_CLASH: "type.copy_clash", area 2, Error, Agent,
         "02-values-and-types.html#type-copy-clash", "Copied field would replace another field";
+    TYPE_COPY_CYCLE: "type.copy_cycle", area 2, Error, Agent,
+        "02-values-and-types.html#type-copy-cycle", "Type includes its own fields";
     TYPE_COPY_INTO_INPUT: "type.copy_into_input", area 2, Error, Human,
         "02-values-and-types.html#type-copy-into-input", "Input copies every field of another type";
     TYPE_DECIMAL_SCALE_REQUIRED: "type.decimal_scale_required", area 2, Error, Agent,
@@ -329,6 +339,8 @@ rules! {
         "02-values-and-types.html#type-invalid-pattern", "Pattern is not a supported regular expression";
     TYPE_LOGICAL_OPERAND: "type.logical_operand", area 3, Error, Agent,
         "03-logic.html#type-logical-operand", "Logical operator needs Bool operands";
+    TYPE_MAP_KEY_BOUNDARY: "type.map_key_boundary", area 2, Error, Agent,
+        "02-values-and-types.html#type-map-key-boundary", "Map key at a boundary isn't text";
     TYPE_MATCH_ARM_VALUE: "type.match_arm_value", area 3, Error, Agent,
         "03-logic.html#type-match-arm-value", "Match arm gives no value";
     TYPE_MATCH_DUPLICATE_PATTERN: "type.match_duplicate_pattern", area 3, Error, Agent,
@@ -393,6 +405,8 @@ rules! {
         "02-values-and-types.html#type-unknown-variant-field", "Variant has no such field";
     VISIBILITY_PRIVATE_CROSS_DOMAIN: "visibility.private_cross_domain", area 1, Error, Human,
         "01-project-layout-and-modules.html#visibility-private-cross-domain", "Another domain uses a private declaration";
+    VISIBILITY_PUBLIC_NOT_ALLOWED: "visibility.public_not_allowed", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#visibility-public-not-allowed", "Declaration can't be public";
 }
 
 /// Looks a rule up by id, for tools that read ids back from JSON.

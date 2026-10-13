@@ -23,6 +23,8 @@ pub struct Symbol {
     pub ownership: Ownership,
     pub place: Place,
     pub test: bool,
+    /// For an entity: its lifecycle's transitions (see [`Item::transitions`]).
+    pub transitions: Vec<String>,
 }
 
 impl Symbol {
@@ -49,6 +51,9 @@ pub struct Symbols {
     pub connections: BTreeSet<String>,
     /// Package names the connections use, and local provider packages.
     pub packages: BTreeSet<String>,
+    /// Tests by their sentence, each as its file's path and position, in
+    /// path order; more than one is a duplicate (area 13).
+    pub tests: BTreeMap<String, Vec<(String, u32)>>,
 }
 
 impl Symbols {
@@ -96,10 +101,16 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
             ownership: location.ownership.clone(),
             place: location.place.clone(),
             test: location.test,
+            transitions: item.transitions.clone(),
         };
         for item in &item_tree(db, file).items {
             match &item.kind {
-                ItemKind::Test | ItemKind::Resource | ItemKind::Provide => {}
+                ItemKind::Test => table
+                    .tests
+                    .entry(item.name.clone())
+                    .or_default()
+                    .push((path.clone(), item.index)),
+                ItemKind::Resource | ItemKind::Provide => {}
                 ItemKind::Singleton => {
                     table.connections.extend(item.connections.iter().cloned());
                     table.packages.extend(item.packages.iter().cloned());

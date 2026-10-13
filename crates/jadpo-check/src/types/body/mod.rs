@@ -352,6 +352,20 @@ fn did_you_mean(near: Option<&str>) -> String {
     near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
 }
 
+/// "`Status`'s variants are `open` and `done`.", or a few of them for a
+/// long enum such as `Zone`.
+fn variants_line(host: &str, names: &[String]) -> String {
+    let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
+    if listed.len() <= 12 {
+        return format!("`{host}`'s variants are {}.", crate::and_list(&listed));
+    }
+    format!(
+        "`{host}` has {} variants, such as {}.",
+        listed.len(),
+        crate::and_list(&listed[..3])
+    )
+}
+
 fn capital(text: &str) -> String {
     let mut chars = text.chars();
     match chars.next() {
@@ -852,19 +866,24 @@ impl Body<'_> {
         }
     }
 
+    /// An `if` with its `else if` branches, one after another, and its
+    /// `else`; whether the code after it can run.
     fn if_stmt(&mut self, branch: &ast::IfStmt) -> bool {
         if let Some(condition) = branch.condition().and_then(|c| c.expr()) {
             self.condition(&condition);
         }
-        let then = self.block(branch.block());
-        let otherwise = match branch.else_branch() {
-            Some(otherwise) => match otherwise.if_stmt() {
-                Some(next) => self.if_stmt(&next),
-                None => self.block(otherwise.block()),
-            },
-            None => true,
-        };
-        then || otherwise
+        let mut completes = self.block(branch.block());
+        for next in branch.else_ifs() {
+            if let Some(condition) = next.condition().and_then(|c| c.expr()) {
+                self.condition(&condition);
+            }
+            completes |= self.block(next.block());
+        }
+        completes
+            | match branch.else_branch() {
+                Some(otherwise) => self.block(otherwise.block()),
+                None => true,
+            }
     }
 
     /// A condition: a `Bool`, or a type built on `Bool`, never `none`.

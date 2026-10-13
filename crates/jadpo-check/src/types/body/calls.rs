@@ -16,6 +16,7 @@ use super::super::signatures::Sig;
 use super::super::table::Def;
 use super::super::ty::{Prim, Ty};
 use super::facts::Reach;
+use super::ops::Operand;
 use super::{Body, CallKind, Context, Fallible, LocalKind, capital, is_literal, node_key, text};
 use crate::case::starts_upper;
 use crate::std_lib::{Namespace, Operation, StdNames};
@@ -173,6 +174,14 @@ impl Body<'_> {
             return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
         };
         let names = StdNames::get();
+        if names.namespace(&head) == Some(Namespace::Generated) {
+            // Nothing a generated namespace holds is called: `clock.now` is
+            // a value, and the rest wait for their areas.
+            let span = self.span(callee);
+            self.not_built_yet(span, &written);
+            self.args_only(call);
+            return (Ty::Error, CallKind::Other, Reach::Unknown);
+        }
         if names.namespace(&head) == Some(Namespace::Standard) {
             if let Some(operation) = names.operation(&head, member) {
                 let ty = self.std_call(operation, call, &written, expected);
@@ -519,6 +528,7 @@ impl Body<'_> {
         for (lambda, from, to) in inline {
             self.inline(&lambda, &from, &to, &mut bound);
         }
+        self.divisors(&args, &slots, written);
         let given = args.len();
         let extra = slots.iter().filter(|slot| slot.is_none()).count();
         let missing: Vec<String> = params
@@ -557,6 +567,41 @@ impl Body<'_> {
             );
         }
         substitute(&result, &bound)
+    }
+
+    /// A standard-library divisor is checked as `/`'s is (area 3, question
+    /// 7): a literal isn't `0`, and a value's type excludes zero.
+    fn divisors(&mut self, args: &[ast::Arg], slots: &[Option<usize>], written: &str) {
+        let Some(operation) = written
+            .split_once('.')
+            .and_then(|(namespace, name)| jadpo_std::operation(namespace, name))
+        else {
+            return;
+        };
+        for (arg, slot) in args.iter().zip(slots) {
+            let (Some(value), Some(slot)) = (arg.expr(), slot) else {
+                continue;
+            };
+            if !operation.params.get(*slot).is_some_and(|p| p.never_zero) {
+                continue;
+            }
+            let operand = if is_literal(&value) {
+                Operand::Literal(Const::from_expr(&value))
+            } else {
+                match self.facts.types.get(&node_key(value.syntax())).cloned() {
+                    // A value that isn't a number is already reported.
+                    Some(ty)
+                        if !ty.has_error()
+                            && !self.table.is_nullable(&ty)
+                            && self.table.representation(&ty).is_some_and(Prim::is_number) =>
+                    {
+                        Operand::Value(ty)
+                    }
+                    _ => continue,
+                }
+            };
+            self.divisor(&value, &operand);
+        }
     }
 
     /// An argument to a parameter that takes any type built on one of

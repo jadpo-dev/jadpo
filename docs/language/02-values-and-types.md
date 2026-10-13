@@ -3,49 +3,6 @@ title: Values and types
 area: 2
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
-rules:
-  - type.absent_field
-  - type.base_outside_declaration
-  - type.constraint_base
-  - type.constraint_contradiction
-  - type.constraint_repeated
-  - type.constructor_argument_count
-  - type.constructor_input
-  - type.copy_clash
-  - type.copy_into_input
-  - type.decimal_scale_required
-  - type.duplicate_field
-  - type.duplicate_variant
-  - type.duplicate_variant_field
-  - type.enum_empty
-  - type.field_on_non_record
-  - type.invalid_literal
-  - type.invalid_pattern
-  - type.mismatch
-  - type.missing_field
-  - type.missing_variant_field
-  - type.not_record
-  - type.nullable_selection
-  - type.optional_outside_input
-  - type.primitive_signature
-  - type.redundant_nullability
-  - type.reserved_field_name
-  - type.setting_value
-  - type.sibling_mismatch
-  - type.type_argument_count
-  - type.unknown_enum_variant
-  - type.unknown_field
-  - type.unknown_setting
-  - type.unknown_variant_field
-  - syntax.constraint_colon_required
-  - syntax.enum_empty
-  - syntax.expected_constraint
-  - syntax.expected_constraint_value
-  - syntax.expected_field_initialiser
-  - syntax.expected_literal
-  - syntax.type_block_required
-  - syntax.type_parent_required
-  - syntax.variable_type_required
 ---
 
 # Values and types
@@ -131,6 +88,17 @@ function catalogue_name(name: ShortProductName) -> ProductName {
 
 Each constraint is written `name: value`, one per line. There are no other
 constraints and no custom validation functions.
+
+Built in chunk 1.9: a refinement can only add to the rules of the type it
+builds on, so a `max` below an inherited `min` (or the other way round, for
+lengths and durations too) is `type.constraint_contradiction`, and so is a
+`Decimal` refinement whose `scale` differs from the one it inherits, since
+the scale decides how the value is stored and sent. The same settings rules
+hold for the fields of every type with fields, entities and events included;
+the settings later areas add to an entity's or event's fields (`generated`,
+`on_delete`, `unique`, `immutable`, `role`, `personal`, `erase`,
+`retention`) are left to those areas. A number literal with more digits than
+an exact number holds (38) is `type.invalid_literal`.
 
 Today the compiler accepts constraints in some places where they have no
 effect: `min` on text, `min_length` on a number, a `pattern` other than
@@ -927,33 +895,27 @@ check failed: 1 error, 1 file
 ### `type.primitive_signature`
 
 ```jadpo check project=e-primitive expect=type.primitive_signature
-function normalise(value: Text) -> Text {
-    return value
+type Title = Text {
+    max_length: 200
+}
+
+function normalise(value: Text) -> Title {
+    return Title(value)
 }
 ```
 
 ```text output
 error: This parameter uses `Text` directly
- --> main.jadpo:1:27
+ --> main.jadpo:5:27
   |
-1 | function normalise(value: Text) -> Text {
+5 | function normalise(value: Text) -> Title {
   |                           ^^^^ a built-in type
   reason: Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `Text` says neither.
   next: Declare a named type built on `Text` and use it here (agent)
   rule: type.primitive_signature
   help: docs/language/02-values-and-types.html#type-primitive-signature
 
-error: This result uses `Text` directly
- --> main.jadpo:1:36
-  |
-1 | function normalise(value: Text) -> Text {
-  |                                    ^^^^ a built-in type
-  reason: Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `Text` says neither.
-  next: Declare a named type built on `Text` and use it here (agent)
-  rule: type.primitive_signature
-  help: docs/language/02-values-and-types.html#type-primitive-signature
-
-check failed: 2 errors, 1 file
+check failed: 1 error, 1 file
 ```
 
 ### `type.invalid_literal`
@@ -1797,6 +1759,69 @@ error: `title` is already in `TodoView`, from `Todo`
 check failed: 1 error, 2 files
 ```
 
+### `type.copy_cycle`
+
+An `include` that leads back to its own type would copy its fields from
+themselves:
+
+```jadpo check project=e-copy-cycle expect=type.copy_cycle
+type Title = Text {}
+
+type TodoView = Output {
+    include: [ListView]
+    title: Title
+}
+
+type ListView = Output {
+    include: [TodoView]
+}
+```
+
+```text output
+error: `ListView` includes its own fields
+ --> main.jadpo:9:15
+  |
+9 |     include: [TodoView]
+  |               ^^^^^^^^ leads back here
+  reason: `TodoView` leads back to `ListView` through its own `include`, so its fields would be copied from themselves and the type could never be written out.
+  next: Remove `TodoView` from `include`, or write the fields it needs (agent)
+  rule: type.copy_cycle
+  help: docs/language/02-values-and-types.html#type-copy-cycle
+
+check failed: 1 error, 1 file
+```
+
+### `type.map_key_boundary`
+
+A map in an `Input` or an `Output` is a JSON object, whose keys are text, so
+its key type is built on `Text` or `Uuid` (question 5):
+
+```jadpo check project=e-map-key expect=type.map_key_boundary
+type DueAt = Instant {}
+
+type Weight = Int {
+    min: 0
+}
+
+type DueWeights = Output {
+    weights: Map<DueAt, Weight>
+}
+```
+
+```text output
+error: `DueWeights` holds a map keyed by `DueAt`
+ --> main.jadpo:8:14
+  |
+8 |     weights: Map<DueAt, Weight>
+  |              ^^^^^^^^^^^^^^^^^^ keys are `DueAt`
+  reason: `DueWeights` crosses a boundary as JSON, where a map is an object and its keys are text; `DueAt` is built on `Instant`.
+  next: Key the map by a type built on `Text` or `Uuid`, or send a list of objects instead (agent)
+  rule: type.map_key_boundary
+  help: docs/language/02-values-and-types.html#type-map-key-boundary
+
+check failed: 1 error, 1 file
+```
+
 ### `syntax.type_parent_required`
 
 ```jadpo check project=e-parent expect=syntax.type_parent_required
@@ -2197,6 +2222,8 @@ Rules:
   `Input`.
 - **Copied fields follow their source.** Renaming `Todo.title` renames it in
   every type that copies it, and its validation rules come with it.
+- **No type includes itself.** An `include` that leads back to its own type,
+  directly or through another, is `type.copy_cycle` (chunk 1.9).
 - **Every built type has a name;** there are no inline types in signatures.
   Hover and `jadpo inspect TodoDetail` show the final fields and where each
   came from (`title ← Todo.title`, `lines ← written, replaces Order.lines`).
@@ -2263,7 +2290,13 @@ action make_badge(user: User) fails BadgeNameTooLong -> Badge {
 
 #### Q3: `optional` only on inputs, read as nullable
 
-```jadpo fragment
+```jadpo check project=q3-optional file=names.jadpo hidden
+type Nickname = Text {
+    max_length: 30
+}
+```
+
+```jadpo check project=q3-optional file=update_profile.jadpo
 type UpdateProfile = Input {
     nickname: Nickname {
         optional: true
@@ -2271,7 +2304,7 @@ type UpdateProfile = Input {
 }
 
 action update_profile(request: UpdateProfile) -> Nickname? {
-    var nickname: Nickname? = request.nickname    // left out reads as none
+    var nickname: Nickname? = request.nickname  // left out reads as none
     return nickname
 }
 ```
@@ -2308,7 +2341,10 @@ type RetagTodo = Input {
 ```
 
 `["urgent", "urgent"]` is rejected as a duplicate. `Map<Instant, Weight>` at a
-boundary is a compile error, because JSON object keys are text.
+boundary is a compile error, because JSON object keys are text. Built in
+chunk 1.9: a map in an `Input` or `Output`, however nested, is keyed by a type
+built on `Text` or `Uuid` (`type.map_key_boundary`), and a set literal that
+repeats a value is `type.invalid_literal`.
 
 #### Q6: no transparent aliases
 

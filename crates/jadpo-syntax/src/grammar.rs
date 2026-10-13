@@ -221,6 +221,22 @@ fn contextual_decl(p: &Parser<'_>, n: usize) -> Option<SyntaxKind> {
     Some(kind)
 }
 
+/// Whether a block that hasn't seen its `}` ends here, because a new
+/// declaration starts: a declaration keyword on a new line, or a word that
+/// only sometimes starts one (`config {`, `test "..."`) written at the
+/// start of a line. Indented, such a word is a member of the block.
+pub(crate) fn ends_block(p: &Parser<'_>) -> bool {
+    if !p.on_new_line() || !at_decl(p) {
+        return false;
+    }
+    // `type: Name` is a member that took a reserved word, not a declaration.
+    if p.current().is_keyword() && p.nth(1) == COLON {
+        return false;
+    }
+    let n = usize::from(p.at(PUBLIC_KW));
+    p.nth(n) != IDENT || p.at_column_zero()
+}
+
 pub(crate) fn at_decl(p: &Parser<'_>) -> bool {
     let n = usize::from(p.at(PUBLIC_KW));
     match p.nth(n) {
@@ -602,8 +618,19 @@ fn ret_type(p: &mut Parser<'_>) {
 
 /// A declared name. Reserved words are reported and kept, so the rest
 /// still parses.
+/// Declaration words the lexer reads as names, because a setting may use
+/// them as its key (`package: Stripe.v2024_06_20`, `test: "..."`): they
+/// are reserved wherever something is named (area 1, question 7).
+pub const RESERVED_NAMES: &[&str] = &["package", "provide", "resource", "seed", "test"];
+
 fn name(p: &mut Parser<'_>, what: &str) {
     match p.current() {
+        IDENT if RESERVED_NAMES.contains(&p.current_text()) => {
+            reserved_word(p);
+            let m = p.start();
+            p.bump(IDENT);
+            m.complete(p, NAME);
+        }
         IDENT => {
             let m = p.start();
             p.bump(IDENT);
@@ -849,7 +876,7 @@ fn member_list(p: &mut Parser<'_>, context: Members) -> CompletedMarker {
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
-                if p.on_new_line() && at_decl(p) && !p.at(FUNCTION_KW) {
+                if ends_block(p) && !p.at(FUNCTION_KW) {
                     break;
                 }
                 let before = p.position();
@@ -905,7 +932,7 @@ fn member_key_len(p: &Parser<'_>) -> Option<usize> {
 fn member_item(p: &mut Parser<'_>, context: Members) {
     match p.current() {
         DOT3 => elision(p),
-        _ if at_decl(p) => decl(p),
+        _ if at_decl(p) && !(p.current().is_keyword() && p.nth(1) == COLON) => decl(p),
         _ if at_route_entry(p) => route_entry(p),
         IDENT => {
             if member_key_len(p).is_some() {
@@ -1187,7 +1214,7 @@ fn block(p: &mut Parser<'_>) -> CompletedMarker {
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
-                if p.on_new_line() && at_decl(p) {
+                if ends_block(p) {
                     break;
                 }
                 let before = p.position();
@@ -1435,27 +1462,21 @@ fn if_stmt(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump(IF_KW);
     condition(p);
-    if p.at(L_BRACE) {
-        block(p);
-    } else {
-        let found = p.found();
-        let error = p
-            .error_here(
-                &rule::SYNTAX_UNEXPECTED_TOKEN,
-                "Expected `{` after the condition",
-            )
-            .label("expected `{`")
-            .reason(format!("An `if` runs a block in braces; found {found}."))
-            .next("Add `{` after the condition, and `}` after the block");
-        p.push_error(error);
-        skip_line(p);
+    if_block(p);
+    // `else if` branches are siblings in one list, however many there are:
+    // a chain never nests the tree.
+    while p.at(ELSE_KW) && p.nth(1) == IF_KW {
+        let branch = p.start();
+        p.bump(ELSE_KW);
+        p.bump(IF_KW);
+        condition(p);
+        if_block(p);
+        branch.complete(p, ELSE_IF);
     }
     if p.at(ELSE_KW) {
         let e = p.start();
         p.bump(ELSE_KW);
-        if p.at(IF_KW) {
-            if_stmt(p);
-        } else if p.at(L_BRACE) {
+        if p.at(L_BRACE) {
             block(p);
         } else {
             let found = p.found();
@@ -1474,6 +1495,25 @@ fn if_stmt(p: &mut Parser<'_>) {
         e.complete(p, ELSE_BRANCH);
     }
     m.complete(p, IF_STMT);
+}
+
+/// The block after an `if` or `else if` condition.
+fn if_block(p: &mut Parser<'_>) {
+    if p.at(L_BRACE) {
+        block(p);
+    } else {
+        let found = p.found();
+        let error = p
+            .error_here(
+                &rule::SYNTAX_UNEXPECTED_TOKEN,
+                "Expected `{` after the condition",
+            )
+            .label("expected `{`")
+            .reason(format!("An `if` runs a block in braces; found {found}."))
+            .next("Add `{` after the condition, and `}` after the block");
+        p.push_error(error);
+        skip_line(p);
+    }
 }
 
 fn condition(p: &mut Parser<'_>) {
@@ -2064,7 +2104,7 @@ fn match_expr(p: &mut Parser<'_>) {
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
-                if p.on_new_line() && at_decl(p) {
+                if ends_block(p) {
                     break;
                 }
                 let before = p.position();
@@ -2255,9 +2295,17 @@ fn at_tag_word(p: &Parser<'_>, word: &str) -> bool {
 }
 
 /// Parts up to the end of the input, or to an `{{ else }}` or `{{ end }}`
-/// when inside a block.
+/// when inside a block. Past the depth limit, the rest of the template is
+/// skipped without recursing.
 fn template_body(p: &mut Parser<'_>) {
     let m = p.start();
+    if !p.enter() {
+        while !p.at_eof() {
+            p.bump_error();
+        }
+        m.complete(p, TEMPLATE_BODY);
+        return;
+    }
     while !p.at_eof() {
         if at_tag(p, ELSE_KW) || at_tag_word(p, "end") {
             break;
@@ -2288,6 +2336,7 @@ fn template_body(p: &mut Parser<'_>) {
             _ => p.bump_error(),
         }
     }
+    p.leave();
     m.complete(p, TEMPLATE_BODY);
 }
 
