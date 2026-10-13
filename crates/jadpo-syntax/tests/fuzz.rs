@@ -183,6 +183,8 @@ fn hostile_input_is_survived() {
         "/{a}/{b}".repeat(500),
         String::from_utf8_lossy(&(0u8..=255).collect::<Vec<u8>>()).into_owned(),
         "\u{feff}type A = Int {}\r\n".to_string(),
+        // An `if` with no condition before a closing brace.
+        "type A = Int {}\nif }\n".to_string(),
         String::new(),
     ];
     inputs.push("not not not not ".repeat(5_000));

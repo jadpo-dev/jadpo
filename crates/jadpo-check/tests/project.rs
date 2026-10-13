@@ -362,7 +362,7 @@ fn types_built_from_other_types_resolve_what_they_copy() {
             Layout::Loose,
             &[(
                 "a.jadpo",
-                "entity Basket {}\n\ntype BasketView = Output {\n    include: [Basket]\n    omit: [Basket.note]\n}\n\ntype PatchBasket = Input {\n    pick: [Basket.note, Baskit.size]\n    optional: all\n}\n"
+                "type BasketNote = Text {}\n\nentity Basket {\n    note: BasketNote\n}\n\ntype BasketView = Output {\n    include: [Basket]\n    omit: [Basket.note]\n}\n\ntype PatchBasket = Input {\n    pick: [Basket.note, Baskit.size]\n    optional: all\n}\n"
             )]
         ),
         ["a.jadpo semantic.unknown_name: `Baskit` isn't declared"]

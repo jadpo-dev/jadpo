@@ -203,6 +203,72 @@ rules! {
         "14-tooling.html#the-jadpo-command", "Project could not be found";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "14-tooling.html#the-jadpo-command", "Jadpo source file could not be read";
+    TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
+        "02-values-and-types.html#type-absent-field", "Omitted or optional field is not present";
+    TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
+        "02-values-and-types.html#type-base-outside-declaration", "Base is used outside a type declaration";
+    TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,
+        "02-values-and-types.html#type-constraint-base", "Constraint does not fit the type's base";
+    TYPE_CONSTRAINT_CONTRADICTION: "type.constraint_contradiction", area 2, Error, Agent,
+        "02-values-and-types.html#type-constraint-contradiction", "Constraints contradict each other";
+    TYPE_CONSTRAINT_REPEATED: "type.constraint_repeated", area 2, Error, Agent,
+        "02-values-and-types.html#type-constraint-repeated", "Constraint is given twice";
+    TYPE_CONSTRUCTOR_ARGUMENT_COUNT: "type.constructor_argument_count", area 2, Error, Agent,
+        "02-values-and-types.html#type-constructor-argument-count", "Constructor is not given exactly one value";
+    TYPE_CONSTRUCTOR_INPUT: "type.constructor_input", area 2, Error, Agent,
+        "02-values-and-types.html#type-constructor-input", "Value cannot be converted to this type";
+    TYPE_COPY_CLASH: "type.copy_clash", area 2, Error, Agent,
+        "02-values-and-types.html#type-copy-clash", "Copied field would replace another field";
+    TYPE_COPY_INTO_INPUT: "type.copy_into_input", area 2, Error, Human,
+        "02-values-and-types.html#type-copy-into-input", "Input copies every field of another type";
+    TYPE_DECIMAL_SCALE_REQUIRED: "type.decimal_scale_required", area 2, Error, Agent,
+        "02-values-and-types.html#type-decimal-scale-required", "Decimal type has no scale";
+    TYPE_DUPLICATE_FIELD: "type.duplicate_field", area 2, Error, Agent,
+        "02-values-and-types.html#type-duplicate-field", "Field is given twice";
+    TYPE_DUPLICATE_VARIANT: "type.duplicate_variant", area 2, Error, Agent,
+        "02-values-and-types.html#type-duplicate-variant", "Enum variant is declared twice";
+    TYPE_DUPLICATE_VARIANT_FIELD: "type.duplicate_variant_field", area 2, Error, Agent,
+        "02-values-and-types.html#type-duplicate-variant-field", "Variant field is given twice";
+    TYPE_ENUM_EMPTY: "type.enum_empty", area 2, Error, Agent,
+        "02-values-and-types.html#type-enum-empty", "Enum declares no variants";
+    TYPE_FIELD_ON_NON_RECORD: "type.field_on_non_record", area 2, Error, Agent,
+        "02-values-and-types.html#type-field-on-non-record", "Field is read from a value without fields";
+    TYPE_INVALID_LITERAL: "type.invalid_literal", area 2, Error, Agent,
+        "02-values-and-types.html#type-invalid-literal", "Literal breaks its type's rules";
+    TYPE_INVALID_PATTERN: "type.invalid_pattern", area 2, Error, Agent,
+        "02-values-and-types.html#type-invalid-pattern", "Pattern is not a supported regular expression";
+    TYPE_MISMATCH: "type.mismatch", area 2, Error, Agent,
+        "02-values-and-types.html#type-mismatch", "Value has the wrong type";
+    TYPE_MISSING_FIELD: "type.missing_field", area 2, Error, Agent,
+        "02-values-and-types.html#type-missing-field", "Object is missing a field";
+    TYPE_MISSING_VARIANT_FIELD: "type.missing_variant_field", area 2, Error, Agent,
+        "02-values-and-types.html#type-missing-variant-field", "Variant is missing a field";
+    TYPE_NOT_RECORD: "type.not_record", area 2, Error, Agent,
+        "02-values-and-types.html#type-not-record", "Braces build a type that has no fields";
+    TYPE_NULLABLE_SELECTION: "type.nullable_selection", area 2, Error, Agent,
+        "02-values-and-types.html#type-nullable-selection", "Field is read from a value that may be none";
+    TYPE_OPTIONAL_OUTSIDE_INPUT: "type.optional_outside_input", area 2, Error, Agent,
+        "02-values-and-types.html#type-optional-outside-input", "Optional or default field outside an Input";
+    TYPE_PRIMITIVE_SIGNATURE: "type.primitive_signature", area 2, Error, Agent,
+        "02-values-and-types.html#type-primitive-signature", "Signature uses a built-in type directly";
+    TYPE_REDUNDANT_NULLABILITY: "type.redundant_nullability", area 2, Error, Agent,
+        "02-values-and-types.html#type-redundant-nullability", "Type is already nullable";
+    TYPE_RESERVED_FIELD_NAME: "type.reserved_field_name", area 2, Error, Agent,
+        "02-values-and-types.html#type-reserved-field-name", "Field uses a reserved name";
+    TYPE_SETTING_VALUE: "type.setting_value", area 2, Error, Agent,
+        "02-values-and-types.html#type-setting-value", "Setting has the wrong kind of value";
+    TYPE_SIBLING_MISMATCH: "type.sibling_mismatch", area 2, Error, Agent,
+        "02-values-and-types.html#type-sibling-mismatch", "Field type is used for a sibling field type";
+    TYPE_TYPE_ARGUMENT_COUNT: "type.type_argument_count", area 2, Error, Agent,
+        "02-values-and-types.html#type-type-argument-count", "Type has the wrong number of type arguments";
+    TYPE_UNKNOWN_ENUM_VARIANT: "type.unknown_enum_variant", area 2, Error, Agent,
+        "02-values-and-types.html#type-unknown-enum-variant", "Enum has no such variant";
+    TYPE_UNKNOWN_FIELD: "type.unknown_field", area 2, Error, Agent,
+        "02-values-and-types.html#type-unknown-field", "Type has no such field";
+    TYPE_UNKNOWN_SETTING: "type.unknown_setting", area 2, Error, Agent,
+        "02-values-and-types.html#type-unknown-setting", "Setting is not one Jadpo knows";
+    TYPE_UNKNOWN_VARIANT_FIELD: "type.unknown_variant_field", area 2, Error, Agent,
+        "02-values-and-types.html#type-unknown-variant-field", "Variant has no such field";
     VISIBILITY_PRIVATE_CROSS_DOMAIN: "visibility.private_cross_domain", area 1, Error, Human,
         "01-project-layout-and-modules.html#visibility-private-cross-domain", "Another domain uses a private declaration";
 }

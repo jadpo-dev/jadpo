@@ -2508,7 +2508,7 @@ impl FieldExpr {
         support::token(&self.syntax, DOT)
     }
     pub fn name_ref(&self) -> Option<NameRef> {
-        support::child(&self.syntax)
+        support::child_after(&self.syntax, Expr::can_cast)
     }
 }
 

@@ -90,22 +90,13 @@ pub fn dotted(expr: &Expr) -> Option<(ast::NameRef, Vec<ast::NameRef>)> {
     match expr {
         Expr::NameRef(name) => Some((name.clone(), Vec::new())),
         Expr::FieldExpr(field) => {
-            let inner = field.syntax().children().next().and_then(Expr::cast)?;
+            let inner = field.expr()?;
             let (first, mut rest) = dotted(&inner)?;
-            rest.push(field_name(field)?);
+            rest.push(field.name_ref()?);
             Some((first, rest))
         }
         _ => None,
     }
-}
-
-/// The name after the dot of `a.b`.
-pub fn field_name(field: &ast::FieldExpr) -> Option<ast::NameRef> {
-    field
-        .syntax()
-        .children()
-        .filter_map(ast::NameRef::cast)
-        .last()
 }
 
 /// The members of a block with a single-name key.

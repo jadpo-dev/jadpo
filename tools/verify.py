@@ -14,6 +14,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+WASM = 'wasm32-unknown-unknown'
+# The runtime crates (docs/compiler-runtime.md §2.1), which must build for
+# WebAssembly. More join as they are created.
+RUNTIME_CRATES = ['jadpo-value']
+
+
+def wasm_installed() -> bool:
+    result = subprocess.run(['rustup', 'target', 'list', '--installed'], cwd=ROOT,
+                            capture_output=True, text=True)
+    return result.returncode == 0 and WASM in result.stdout.split()
 
 
 def step(name: str, command: list[str]) -> bool:
@@ -42,7 +52,14 @@ def main() -> int:
             # generated AST's drift test.
             ('compiler tests', ['cargo', 'test', '--locked', '--workspace']),
         ]
+        if wasm_installed():
+            packages = [arg for name in RUNTIME_CRATES for arg in ('-p', name)]
+            checks.append(('runtime crates for wasm32',
+                           ['cargo', 'build', '--locked', '--target', WASM, *packages]))
     results = [step(name, command) for name, command in checks]
+    if (ROOT / 'Cargo.toml').exists() and not wasm_installed():
+        # CI installs the target; locally, `rustup target add` it to run this step.
+        print(f'== runtime crates for wasm32\nskipped: the {WASM} target is not installed\n', flush=True)
     return 0 if all(results) else 1
 
 

@@ -14,7 +14,7 @@ use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, MemberItem, Pat, S
 
 use crate::case::{is_lower_snake, starts_upper, to_snake};
 use crate::naming::{name_case, reserved};
-use crate::std_names::{Namespace, StdNames};
+use crate::std_lib::{Namespace, StdNames};
 use crate::tree::{self, dotted, node_span};
 
 /// What a type position accepts.
@@ -918,7 +918,7 @@ impl Resolver<'_> {
                 if let Some((member, span)) = member
                     && !self.names.has_operation(&qualifier, &member)
                 {
-                    let operations: Vec<&str> = self.names.operations(&qualifier).collect();
+                    let operations = self.names.operations(&qualifier);
                     let near = nearest(&member, operations.iter().copied());
                     self.out.push(no_member(
                         &format!("`{qualifier}` has no operation `{member}`"),

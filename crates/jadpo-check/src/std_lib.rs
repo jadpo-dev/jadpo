@@ -1,0 +1,304 @@
+//! The names and declarations the language itself provides
+//! (docs/compiler-runtime.md §2.1).
+//!
+//! The standard library is declared in Jadpo stub files embedded here
+//! (`std/*.jadpo`): its enums, and its namespaces as libraries whose
+//! functions have signatures and no bodies, each bound to the Rust
+//! function of the same qualified name in `jadpo-value`. The types built
+//! into the checker ([`Prim`], the bases and the containers) are listed in
+//! Rust, since no declaration can say what they are made of. `std/names.txt`
+//! still lists, by name only, what later areas have not declared yet.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
+
+use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
+
+use crate::tree;
+use crate::types::{BASES, Prim, TypeRef, container_arity};
+
+const NAMES: &str = include_str!("../std/names.txt");
+
+/// The stub files, by name.
+const STUBS: [(&str, &str); 2] = [
+    ("types.jadpo", include_str!("../std/types.jadpo")),
+    ("collection.jadpo", include_str!("../std/collection.jadpo")),
+];
+
+/// A standard-library operation's signature, as declared in its stub.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Operation {
+    pub params: Vec<(String, TypeRef)>,
+    pub result: TypeRef,
+}
+
+#[derive(Debug, Default)]
+pub struct StdNames {
+    /// Built-in types later areas define, known by name only.
+    opaque: BTreeSet<&'static str>,
+    /// Enums declared in the stubs, with their variants in order.
+    enums: BTreeMap<String, Vec<String>>,
+    /// Namespaces declared in the stubs, with their operations.
+    declared: BTreeMap<String, BTreeMap<String, Operation>>,
+    /// Namespaces known by name only, with their operations' names.
+    named: BTreeMap<&'static str, BTreeSet<&'static str>>,
+    generated: BTreeSet<&'static str>,
+    generic: BTreeSet<&'static str>,
+}
+
+/// What a lower-case qualifier is in the standard library.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Namespace {
+    /// A standard-library namespace with a fixed list of operations.
+    Standard,
+    /// A namespace the compiler fills from the project or platform.
+    Generated,
+}
+
+impl StdNames {
+    pub fn get() -> &'static StdNames {
+        static NAMES_TABLE: OnceLock<StdNames> = OnceLock::new();
+        NAMES_TABLE.get_or_init(|| {
+            let mut table = StdNames::parse(NAMES);
+            for (_, stub) in STUBS {
+                table.declare(stub);
+            }
+            table
+        })
+    }
+
+    fn parse(text: &'static str) -> StdNames {
+        let mut table = StdNames::default();
+        let mut section = "";
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+                section = name;
+                continue;
+            }
+            match section {
+                "types" => table.opaque.extend(line.split_whitespace()),
+                "namespaces" => {
+                    if let Some((name, operations)) = line.split_once(':') {
+                        table
+                            .named
+                            .entry(name.trim())
+                            .or_default()
+                            .extend(operations.split_whitespace());
+                    }
+                }
+                "generated" => table.generated.extend(line.split_whitespace()),
+                "generic" => table.generic.extend(line.split_whitespace()),
+                _ => {}
+            }
+        }
+        table
+    }
+
+    /// Reads one stub file's enums and libraries.
+    fn declare(&mut self, stub: &str) {
+        let parse = jadpo_syntax::parse_file(stub);
+        let Some(source) = ast::SourceFile::cast(parse.syntax()) else {
+            return;
+        };
+        for decl in source.decls() {
+            match decl {
+                Decl::TypeDecl(decl) => {
+                    let Some(name) = decl.name().as_ref().and_then(tree::name_text) else {
+                        continue;
+                    };
+                    let variants = decl
+                        .member_list()
+                        .into_iter()
+                        .flat_map(|list| list.member_items())
+                        .filter_map(|item| match item {
+                            MemberItem::BareMember(variant) => {
+                                variant.name().as_ref().and_then(tree::name_text)
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    self.enums.insert(name, variants);
+                }
+                Decl::LibraryDecl(library) => {
+                    let Some(namespace) = library.name().as_ref().and_then(tree::name_text) else {
+                        continue;
+                    };
+                    let operations = self.declared.entry(namespace).or_default();
+                    for function in tree::library_functions(&library) {
+                        let Some(name) = function.name().as_ref().and_then(tree::name_text) else {
+                            continue;
+                        };
+                        let params = function
+                            .param_list()
+                            .into_iter()
+                            .flat_map(|list| list.params())
+                            .filter_map(|param| {
+                                Some((
+                                    param.name().as_ref().and_then(tree::name_text)?,
+                                    TypeRef::from_type(&param.ty()?),
+                                ))
+                            })
+                            .collect();
+                        let result = function
+                            .ret_type()
+                            .and_then(|ret| ret.ty())
+                            .map_or(TypeRef::Invalid, |ty| TypeRef::from_type(&ty));
+                        operations.insert(name, Operation { params, result });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Whether `name` is a type the language provides: built in, declared
+    /// in a stub, or named for a later area.
+    pub fn is_type(&self, name: &str) -> bool {
+        Prim::from_name(name).is_some()
+            || BASES.contains(&name)
+            || container_arity(name).is_some()
+            || self.enums.contains_key(name)
+            || self.opaque.contains(name)
+    }
+
+    pub fn types(&self) -> impl Iterator<Item = &str> + '_ {
+        Prim::ALL
+            .iter()
+            .map(|prim| prim.name())
+            .chain(BASES)
+            .chain(["List", "Set", "Map"])
+            .chain(self.enums.keys().map(String::as_str))
+            .chain(self.opaque.iter().copied())
+    }
+
+    /// A built-in type a later area defines, known by name only.
+    pub fn is_opaque(&self, name: &str) -> bool {
+        self.opaque.contains(name)
+    }
+
+    /// The enums the stubs declare, with their variants.
+    pub fn enums(&self) -> &BTreeMap<String, Vec<String>> {
+        &self.enums
+    }
+
+    pub fn namespace(&self, name: &str) -> Option<Namespace> {
+        if self.declared.contains_key(name) || self.named.contains_key(name) {
+            Some(Namespace::Standard)
+        } else if self.generated.contains(name) {
+            Some(Namespace::Generated)
+        } else {
+            None
+        }
+    }
+
+    /// The operations of a standard namespace, in name order.
+    pub fn operations(&self, namespace: &str) -> Vec<&str> {
+        let mut found: Vec<&str> = self
+            .declared
+            .get(namespace)
+            .into_iter()
+            .flat_map(|operations| operations.keys().map(String::as_str))
+            .chain(
+                self.named
+                    .get(namespace)
+                    .into_iter()
+                    .flat_map(|operations| operations.iter().copied()),
+            )
+            .collect();
+        found.sort_unstable();
+        found
+    }
+
+    pub fn has_operation(&self, namespace: &str, operation: &str) -> bool {
+        self.operations(namespace).contains(&operation)
+    }
+
+    /// The declared signature of `namespace.operation`, if its stub exists.
+    pub fn operation(&self, namespace: &str, operation: &str) -> Option<&Operation> {
+        self.declared.get(namespace)?.get(operation)
+    }
+
+    /// Every operation declared in a stub, as `namespace.operation`.
+    pub fn bindings(&self) -> Vec<String> {
+        self.declared
+            .iter()
+            .flat_map(|(namespace, operations)| {
+                operations
+                    .keys()
+                    .map(move |name| format!("{namespace}.{name}"))
+            })
+            .collect()
+    }
+
+    /// The first namespace, in name order, with an operation called `name`.
+    pub fn namespace_of(&self, operation: &str) -> Option<String> {
+        let mut namespaces: Vec<&str> = self
+            .declared
+            .keys()
+            .map(String::as_str)
+            .chain(self.named.keys().copied())
+            .collect();
+        namespaces.sort_unstable();
+        namespaces
+            .into_iter()
+            .find(|namespace| self.has_operation(namespace, operation))
+            .map(str::to_string)
+    }
+
+    /// Every reserved namespace name: standard and generated.
+    pub fn reserved(&self, name: &str) -> bool {
+        self.namespace(name).is_some()
+    }
+
+    pub fn is_generic(&self, name: &str) -> bool {
+        self.generic.contains(name)
+    }
+
+    pub fn generic_names(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.generic.iter().copied()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_names_file_and_stubs_read() {
+        let names = StdNames::get();
+        assert!(names.is_type("Int") && names.is_type("FailureKind"));
+        assert!(names.is_type("TextFormat") && names.is_type("List"));
+        assert_eq!(names.namespace("temporal"), Some(Namespace::Standard));
+        assert_eq!(names.namespace("collection"), Some(Namespace::Standard));
+        assert_eq!(names.namespace("clock"), Some(Namespace::Generated));
+        assert_eq!(names.namespace_of("in_zone").as_deref(), Some("temporal"));
+        assert!(names.has_operation("collection", "count"));
+        assert!(names.is_generic("utils"));
+        assert_eq!(
+            names.enums().get("UuidVersion").map(Vec::len),
+            Some(8),
+            "v1 to v8"
+        );
+    }
+
+    #[test]
+    fn every_stub_parses_cleanly() {
+        for (name, stub) in STUBS {
+            let parse = jadpo_syntax::parse_file(stub);
+            assert!(parse.errors().is_empty(), "{name}: {:#?}", parse.errors());
+        }
+    }
+
+    #[test]
+    fn stub_signatures_are_read() {
+        let count = StdNames::get()
+            .operation("collection", "count")
+            .expect("collection.count");
+        assert_eq!(count.params.len(), 1);
+        assert_eq!(count.result, TypeRef::Path(vec!["Int".into()], Vec::new()));
+    }
+}

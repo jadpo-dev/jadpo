@@ -8,7 +8,7 @@ use jadpo_db::{
 use jadpo_diag::{Decider, Diagnostic, Span, rule};
 
 use crate::case::{is_lower_snake, is_upper_camel, round_trips, to_camel, to_snake};
-use crate::std_names::StdNames;
+use crate::std_lib::StdNames;
 use crate::tree::{self, file_span, name_span};
 
 /// Where a declaration sits, to tell the first of two from the second.
