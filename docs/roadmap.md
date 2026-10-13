@@ -91,7 +91,7 @@ optimisation) are `xhigh`.
 - [x] **1.4 Values and types** `opus · high` (area 2).
 - [x] **1.5 Logic** `opus · high` (area 3).
 - [x] **1.6 Failures** `opus · high` (area 4).
-- [ ] **1.7 The graph, identity and manifest:** `opus · xhigh` `jadpo check` writes
+- [x] **1.7 The graph, identity and manifest:** `opus · xhigh` `jadpo check` writes
   `build/manifest.json`; the language server gives diagnostics and hover.
 
 Done when areas 1–4's decided examples check, and each area's errors are
