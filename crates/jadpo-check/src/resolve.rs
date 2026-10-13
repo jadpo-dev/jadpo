@@ -18,6 +18,9 @@ use crate::naming::{name_case, reserved};
 use crate::std_lib::{Namespace, StdNames};
 use crate::tree::{self, dotted, node_span};
 
+/// The operations every entity has (area 6).
+const ENTITY_OPERATIONS: [&str; 4] = ["get", "create", "update", "delete"];
+
 /// What a type position accepts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Want {
@@ -37,6 +40,7 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
         path: file.path(db),
         ownership: &location.ownership,
         table: &lookup,
+        types: &lookup,
         names: StdNames::get(),
         scopes: Vec::new(),
         library: None,
@@ -54,6 +58,8 @@ struct Resolver<'a> {
     /// The symbol table, read name by name (docs/compiler-runtime.md
     /// §2.4); suggestions on a mistake read it whole.
     table: &'a dyn NameView,
+    /// The type table, read name by name: an entity's fields.
+    types: &'a dyn crate::types::TypeView,
     names: &'static StdNames,
     /// Locals in scope, with where each is declared.
     scopes: Vec<Vec<(String, Span)>>,
@@ -907,6 +913,55 @@ impl Resolver<'_> {
         }
     }
 
+    /// `Entity.operation(...)`: an entity's operations are `get`,
+    /// `create`, `update`, `delete` and one per transition its lifecycle
+    /// names (area 6).
+    fn entity_operation(&mut self, entity: &str, operation: &ast::NameRef) {
+        let Some(symbol) = self
+            .table
+            .declared(entity)
+            .iter()
+            .find(|symbol| symbol.kind == ItemKind::Entity)
+            .cloned()
+        else {
+            return;
+        };
+        let name = text(operation);
+        // `Todo.title(value)` builds the field's type.
+        if self
+            .types
+            .fields(entity)
+            .is_some_and(|fields| fields.iter().any(|field| field.name == name))
+        {
+            return;
+        }
+        let mut operations: Vec<String> =
+            ENTITY_OPERATIONS.iter().map(|op| op.to_string()).collect();
+        operations.extend(symbol.transitions.iter().cloned());
+        if operations.contains(&name) {
+            return;
+        }
+        let span = self.span(operation);
+        let near = nearest(&name, operations.iter().map(String::as_str)).map(str::to_string);
+        let listed: Vec<String> = operations.iter().map(|op| format!("`{op}`")).collect();
+        let problem = Diagnostic::new(
+            &rule::SEMANTIC_UNKNOWN_CALLEE,
+            format!("`{entity}` has no operation `{name}`"),
+        )
+        .at(span.clone(), "not an operation")
+        .reason(format!(
+            "An entity's operations are {}, with one more for each transition its lifecycle names.{}",
+            crate::and_list(&listed),
+            did_you_mean(near.as_deref())
+        ));
+        self.out.push(match near {
+            Some(near) => problem
+                .next(format!("Use `{entity}.{near}`"))
+                .edit(span, near),
+            None => problem.next(format!("Call one of `{entity}`'s operations")),
+        });
+    }
+
     /// `Name.member` or `Name.member(...)` with an upper-case qualifier: a
     /// type, an entity or a package.
     fn type_qualifier(&mut self, name: &ast::NameRef, calls: bool) {
@@ -946,6 +1001,9 @@ impl Resolver<'_> {
         let qualifier = text(first);
         if starts_upper(&qualifier) {
             self.type_qualifier(first, true);
+            if let [operation] = rest {
+                self.entity_operation(&qualifier, operation);
+            }
             return;
         }
         if self.is_local(&qualifier) {

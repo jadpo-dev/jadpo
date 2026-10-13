@@ -23,6 +23,8 @@ pub struct Symbol {
     pub ownership: Ownership,
     pub place: Place,
     pub test: bool,
+    /// For an entity: its lifecycle's transitions (see [`Item::transitions`]).
+    pub transitions: Vec<String>,
 }
 
 impl Symbol {
@@ -99,6 +101,7 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
             ownership: location.ownership.clone(),
             place: location.place.clone(),
             test: location.test,
+            transitions: item.transitions.clone(),
         };
         for item in &item_tree(db, file).items {
             match &item.kind {

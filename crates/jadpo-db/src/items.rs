@@ -150,6 +150,9 @@ pub struct Item {
     pub connections: Vec<String>,
     /// For `application { }`: the packages its connections name.
     pub packages: Vec<String>,
+    /// For an entity: the transitions its `lifecycle:` names, each an
+    /// operation beside `get`, `create`, `update` and `delete` (area 6).
+    pub transitions: Vec<String>,
 }
 
 /// A file's declarations, in source order.
@@ -225,6 +228,7 @@ fn item(kind: ItemKind, name: String, public: bool, index: u32) -> Item {
         prefix: None,
         connections: Vec::new(),
         packages: Vec::new(),
+        transitions: Vec::new(),
     }
 }
 
@@ -272,12 +276,21 @@ fn lower(decl: &Decl, index: u32) -> Option<Item> {
             signature: signature(decl.param_list(), None, decl.ret_type()),
             ..item(ItemKind::Fixture, name_of(decl.name())?, false, index)
         },
-        Decl::EntityDecl(decl) => item(
-            ItemKind::Entity,
-            name_of(decl.name())?,
-            decl.visibility().is_some(),
-            index,
-        ),
+        Decl::EntityDecl(decl) => Item {
+            transitions: members(decl.member_list())
+                .filter(|(key, _)| key == "lifecycle")
+                .flat_map(|(_, lifecycle)| members(lifecycle.block()))
+                .filter(|(key, _)| key == "transitions")
+                .flat_map(|(_, transitions)| members(transitions.block()))
+                .map(|(name, _)| name)
+                .collect(),
+            ..item(
+                ItemKind::Entity,
+                name_of(decl.name())?,
+                decl.visibility().is_some(),
+                index,
+            )
+        },
         Decl::LibraryDecl(decl) => {
             let functions = decl
                 .member_list()

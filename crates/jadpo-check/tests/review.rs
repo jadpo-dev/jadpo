@@ -493,3 +493,22 @@ fn an_own_domain_call_is_bare() {
         ["semantic.own_domain_qualification"]
     );
 }
+
+// --- finding 25: an entity's operations --------------------------------------
+
+#[test]
+fn an_entity_has_only_its_operations() {
+    let entity = "entity Order {\n    id: Uuid\n    deleted_at: Instant?\n\n    lifecycle: {\n        transitions: {\n            archive: {\n                set: {\n                    deleted_at: clock.now\n                }\n            }\n        }\n    }\n}\n\n";
+    assert_eq!(
+        check(&format!(
+            "{entity}action f(id: Order.id) -> Order.id {{\n    var order: Order = attempt Order.fetch(id)\n    return order.id\n}}\n"
+        )),
+        ["semantic.unknown_callee"]
+    );
+    assert_eq!(
+        check(&format!(
+            "{entity}action f(id: Order.id) -> Order.id {{\n    Order.archive(id)\n    return Order.id(id)\n}}\n"
+        )),
+        CLEAN
+    );
+}
