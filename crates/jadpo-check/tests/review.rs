@@ -161,3 +161,90 @@ fn a_generated_namespace_member_not_built_yet_is_reported() {
         ["toolchain.not_built_yet"]
     );
 }
+
+// --- finding 5: literals never fail at runtime ----------------------------
+
+fn literal_into(ty: &str, base: &str, literal: &str) -> Vec<String> {
+    check(&format!(
+        "type {ty} = {base} {{}}\n\nfunction f() -> {ty} {{\n    return {literal}\n}}\n"
+    ))
+}
+
+#[test]
+fn time_literals_are_iso_8601_and_durations_have_units() {
+    let invalid = ["type.invalid_literal"];
+    assert_eq!(literal_into("At", "Instant", "\"not a time\""), invalid);
+    assert_eq!(
+        literal_into("At", "Instant", "\"2026-10-25T08:30:00.123456Z\""),
+        invalid
+    );
+    assert_eq!(
+        literal_into("At", "Instant", "\"2026-10-25T08:30:00Z\""),
+        CLEAN
+    );
+    assert_eq!(
+        literal_into("On", "CalendarDate", "\"2026-13-45\""),
+        invalid
+    );
+    assert_eq!(literal_into("On", "CalendarDate", "\"2026-10-25\""), CLEAN);
+    assert_eq!(
+        literal_into("Wait", "Duration", "\"banana\""),
+        ["type.mismatch"]
+    );
+    assert_eq!(literal_into("Wait", "Duration", "15m"), CLEAN);
+}
+
+#[test]
+fn duration_bounds_are_checked() {
+    assert_eq!(
+        check(
+            "type Delay = Duration {\n    max: 1h\n}\n\nfunction f() -> Delay {\n    return 2h\n}\n"
+        ),
+        ["type.invalid_literal"]
+    );
+    assert_eq!(
+        check(
+            "type Delay = Duration {\n    max: 1h\n}\n\nfunction f() -> Delay {\n    return 30m\n}\n"
+        ),
+        CLEAN
+    );
+}
+
+#[test]
+fn zones_weekdays_and_locales_are_enums() {
+    assert_eq!(
+        check("function f() -> Zone {\n    return Zone.mars_olympus\n}\n"),
+        ["type.unknown_enum_variant"]
+    );
+    assert_eq!(
+        check("function f() -> Zone {\n    return 5\n}\n"),
+        ["type.mismatch"]
+    );
+    assert_eq!(
+        check("function f() -> Weekday {\n    return \"monday\"\n}\n"),
+        ["type.mismatch"]
+    );
+    assert_eq!(
+        check(
+            "function f(z: Zone) -> Zone {\n    var other: Zone = z.anything\n    return other\n}\n"
+        ),
+        ["type.field_on_non_record"]
+    );
+    assert_eq!(
+        check(
+            "function f() -> Zone {\n    return Zone.europe_london\n}\n\nfunction g() -> Locale {\n    return Locale.en_gb\n}\n\nfunction h() -> Weekday {\n    return Weekday.monday\n}\n"
+        ),
+        CLEAN
+    );
+}
+
+#[test]
+fn a_number_too_long_to_hold_is_invalid() {
+    assert_eq!(
+        check(&format!(
+            "type Count = Int {{\n    max: 10\n}}\n\nfunction f() -> Count {{\n    return {}\n}}\n",
+            "9".repeat(42)
+        )),
+        ["type.invalid_literal"]
+    );
+}

@@ -55,8 +55,8 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
             Some(Kind::Any)
         }
         (other, 0) => Builtin::from_name(other).map(Kind::Builtin).or_else(|| {
-            jadpo_std::ENUMS
-                .iter()
+            jadpo_std::enums()
+                .into_iter()
                 .find(|(enum_name, _)| *enum_name == other)
                 .map(|(enum_name, _)| Kind::Enum(enum_name))
         }),
@@ -103,7 +103,7 @@ impl StdNames {
             for (_, stub) in STUBS {
                 table.declare(stub);
             }
-            for (name, variants) in jadpo_std::ENUMS {
+            for (name, variants) in jadpo_std::enums() {
                 table.enums.insert(
                     name.to_string(),
                     variants.iter().map(|variant| variant.to_string()).collect(),

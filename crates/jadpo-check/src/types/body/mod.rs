@@ -352,6 +352,20 @@ fn did_you_mean(near: Option<&str>) -> String {
     near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
 }
 
+/// "`Status`'s variants are `open` and `done`.", or a few of them for a
+/// long enum such as `Zone`.
+fn variants_line(host: &str, names: &[String]) -> String {
+    let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
+    if listed.len() <= 12 {
+        return format!("`{host}`'s variants are {}.", crate::and_list(&listed));
+    }
+    format!(
+        "`{host}` has {} variants, such as {}.",
+        listed.len(),
+        crate::and_list(&listed[..3])
+    )
+}
+
 fn capital(text: &str) -> String {
     let mut chars = text.chars();
     match chars.next() {

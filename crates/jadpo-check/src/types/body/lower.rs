@@ -154,7 +154,7 @@ fn literal(value: &Const) -> Option<Literal> {
         Const::Str(text) => Literal::Text(text.clone()),
         Const::Bool(value) => Literal::Bool(*value),
         Const::None => Literal::None,
-        Const::Path(_) | Const::List(_) | Const::Other => return None,
+        Const::Path(_) | Const::List(_) | Const::TooLong | Const::Other => return None,
     })
 }
 

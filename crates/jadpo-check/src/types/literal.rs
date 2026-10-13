@@ -66,16 +66,14 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
     let fits = match value {
         Const::Number { decimal: false, .. } => representation == Prim::Int,
         Const::Number { decimal: true, .. } => representation == Prim::Decimal,
+        // Instants and dates are written in ISO 8601, durations only with
+        // a unit (area 10), and a `Time` is never a literal.
         Const::Str(_) => matches!(
             representation,
-            Prim::Text
-                | Prim::Uuid
-                | Prim::Instant
-                | Prim::CalendarDate
-                | Prim::Time
-                | Prim::Duration
+            Prim::Text | Prim::Uuid | Prim::Instant | Prim::CalendarDate
         ),
         Const::Duration(_) => representation == Prim::Duration,
+        Const::TooLong => representation.is_number(),
         Const::Bool(_) => representation == Prim::Bool,
         _ => false,
     };
@@ -102,6 +100,9 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
         return Err(Problem::Kind { fix });
     }
     check_builtin(base, value).map_err(Problem::Builtin)?;
+    if representation != base {
+        check_builtin(representation, value).map_err(Problem::Builtin)?;
+    }
     if representation == Prim::Int {
         check_builtin(Prim::Int, value).map_err(Problem::Builtin)?;
     }

@@ -28,6 +28,8 @@ pub enum Const {
     /// A name or a dotted name: `email`, `TextFormat.email`.
     Path(Vec<String>),
     List(Vec<Const>),
+    /// A number with more digits than an exact number holds (38).
+    TooLong,
     /// Anything else: computed, not a constant.
     Other,
 }
@@ -70,13 +72,13 @@ impl Const {
         let sign = if negative { "-" } else { "" };
         match token.kind() {
             jadpo_syntax::SyntaxKind::INT_NUMBER => {
-                Num::parse(&format!("{sign}{text}")).map_or(Const::Other, |value| Const::Number {
+                Num::parse(&format!("{sign}{text}")).map_or(Const::TooLong, |value| Const::Number {
                     value,
                     decimal: false,
                 })
             }
             jadpo_syntax::SyntaxKind::DECIMAL_NUMBER => Num::parse(&format!("{sign}{text}"))
-                .map_or(Const::Other, |value| Const::Number {
+                .map_or(Const::TooLong, |value| Const::Number {
                     value,
                     decimal: true,
                 }),
@@ -100,6 +102,7 @@ impl Const {
             Const::None => "`none`",
             Const::Path(_) => "a name",
             Const::List(_) => "a list",
+            Const::TooLong => "a number",
             Const::Other => "a computed value",
         }
     }
@@ -214,8 +217,17 @@ pub fn constraint(
                         None,
                     ));
                 }
-                // Duration bounds are checked when area 10 is built.
-                (Subject::Prim(Prim::Duration), Const::Duration(_)) => None,
+                (Subject::Prim(Prim::Duration), Const::Duration(text)) => {
+                    let Some(bound) = jadpo_std::Dur::parse(text) else {
+                        return Err(Problem::Value("a duration, such as `30s`".into(), None));
+                    };
+                    if name == "min" {
+                        rules.min_duration = Some(bound);
+                    } else {
+                        rules.max_duration = Some(bound);
+                    }
+                    return Ok(());
+                }
                 (Subject::Prim(Prim::Duration), _) => {
                     return Err(Problem::Value("a duration, such as `30s`".into(), None));
                 }
@@ -362,6 +374,10 @@ pub fn constraint(
 pub fn check_rules(rules: &Rules, value: &Const) -> Result<(), Broken> {
     match value {
         Const::Number { value, .. } => rules.check_number(*value),
+        Const::Duration(text) => match jadpo_std::Dur::parse(text) {
+            Some(value) => rules.check_duration(value),
+            None => Ok(()),
+        },
         Const::Str(text) => rules.check_text(text),
         Const::List(items) => rules.check_length(items.len() as u64, "items"),
         _ => Ok(()),
@@ -380,6 +396,10 @@ pub fn check_builtin(prim: Prim, value: &Const) -> Result<(), String> {
             Err("is outside `Int`'s range, a 64-bit integer".into())
         }
         (prim, Const::Str(text)) => jadpo_std::check_builtin_text(prim, text),
+        (Prim::Duration, Const::Duration(text)) if jadpo_std::Dur::parse(text).is_none() => {
+            Err("isn't a duration, written with a unit: `500ms`, `30s`, `5m`, `2h` or `30d`".into())
+        }
+        (_, Const::TooLong) => Err("has more digits than any Jadpo number holds".into()),
         _ => Ok(()),
     }
 }

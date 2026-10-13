@@ -9,7 +9,8 @@
 //! - [`Rules`]: the rules a valid value follows (area 2), and the
 //!   validators that check text, numbers and lengths against them and
 //!   against the validated built-in types (email, URL, UUID, IP address).
-//! - [`Rounding`], [`TextFormat`] and [`UuidVersion`]: the standard
+//! - [`Rounding`], [`TextFormat`], [`UuidVersion`] and [`Weekday`], and
+//!   the `Zone` and `Locale` tables ([`ZONES`], [`LOCALES`]): the standard
 //!   library's enums that Rust code interprets, declared once.
 //! - [`OPERATIONS`]: every standard-library operation with its parameters'
 //!   kinds, its result and the Rust function that runs it in
@@ -25,12 +26,16 @@ mod enums;
 mod num;
 mod operations;
 mod rules;
+mod time;
+mod zones;
 
 pub use builtin::Builtin;
-pub use enums::{ENUMS, Rounding, TextFormat, UuidVersion};
+pub use enums::{LOCALE, Rounding, TextFormat, UuidVersion, Weekday, ZONE, enums};
 pub use num::Num;
 pub use operations::{Kind, OPERATIONS, Op, Operation, Param, operation};
 pub use rules::{
     Broken, Rules, check_builtin_text, compile_pattern, is_email, is_ip_address, is_url,
     uuid_version,
 };
+pub use time::{Dur, check_calendar_date, check_instant};
+pub use zones::{LOCALES, ZONES};

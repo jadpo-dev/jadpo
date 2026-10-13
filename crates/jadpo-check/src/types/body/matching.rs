@@ -611,15 +611,14 @@ impl Body<'_> {
             .map(|variants| variants.iter().map(|v| v.name.clone()).collect())
             .unwrap_or_default();
         let near = nearest(&name, names.iter().map(String::as_str)).map(str::to_string);
-        let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
         let problem = Diagnostic::new(
             &rule::TYPE_MATCH_UNKNOWN_VARIANT,
             format!("`{host}` has no variant `{name}`"),
         )
         .at(span.clone(), "not a variant")
         .reason(format!(
-            "`{host}`'s variants are {}.{}",
-            crate::and_list(&listed),
+            "{}{}",
+            super::variants_line(host, &names),
             did_you_mean(near.as_deref())
         ));
         self.out.push(match near {
