@@ -9,6 +9,12 @@ tools/example-identifiers-allowed.txt, and checks that no listed name appears,
 in any case style, as an identifier or string in crates/*/src/. Comments are
 not checked, and tests may use the names freely.
 
+An example entity whose name is an allowed word (`Order`, `Session`) is still
+a sign of special-casing when it stands as a string, so those names go to
+tools/example-type-names.txt and may not appear exactly, as a name, in a
+string literal without spaces (`"Order"`, `"Order.get"`). Inline
+`#[cfg(test)]` modules count as tests.
+
   python3 tools/example_names.py           # rewrite tools/example-identifiers.txt
   python3 tools/example_names.py --check   # fail if the list is stale or a name is used
 """
@@ -22,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LIST = ROOT / 'tools/example-identifiers.txt'
 ALLOWED = ROOT / 'tools/example-identifiers-allowed.txt'
+TYPE_LIST = ROOT / 'tools/example-type-names.txt'
 SOURCES = [ROOT / 'docs/language', ROOT / 'examples']
 FENCE = re.compile(r'^```(\S*)(.*)$')
 IDENT = r'[A-Za-z_][A-Za-z0-9_]*'
@@ -42,6 +49,7 @@ FIELD = re.compile(rf'^\s*({IDENT})\??\s*:\s*[A-Z]')
 VARIANT = re.compile(rf'^\s*({IDENT})\s*(?::?\s*\{{)?\s*,?\s*(?://.*)?$')
 CALLABLE = re.compile(rf'^\s*(?:public\s+)?(?:function|action|query|fixture|seed)\s+{IDENT}\s*\(([^)]*)\)')
 PARAMETER = re.compile(rf'({IDENT})\??\s*:')
+ENTITY = re.compile(rf'^\s*(?:public\s+)?entity\s+([A-Z][A-Za-z0-9_]*)', re.MULTILINE)
 DOMAIN_PATH = re.compile(r'(?:^|/)domains/([a-z_][a-z0-9_]*)/')
 
 
@@ -129,6 +137,19 @@ def banned_list() -> list[str]:
     return sorted({'_'.join(key) for key in keep})
 
 
+def banned_type_names() -> list[str]:
+    """Example entity names left out of the main list because their words are allowed."""
+    allowed = load_allowed()
+    entities = set()
+    for root in SOURCES:
+        for path in sorted(root.rglob('*.md')):
+            for _, lines in code_blocks(path):
+                entities.update(ENTITY.findall('\n'.join(lines)))
+        for path in sorted(root.rglob('*.jadpo')):
+            entities.update(ENTITY.findall(path.read_text()))
+    return sorted(name for name in entities if words(name) in allowed)
+
+
 # --- scanning Rust source --------------------------------------------------
 
 RUST_TOKEN = re.compile(r'''
@@ -181,11 +202,16 @@ def contains(haystack: tuple[str, ...], needle: tuple[str, ...]) -> bool:
     return any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
 
 
-def scan(banned: list[str]) -> list[str]:
+def scan(banned: list[str], type_names: list[str]) -> list[str]:
     needles = [(name, tuple(name.split('_'))) for name in banned]
+    exact = set(type_names)
     found = []
     for path in sorted(ROOT.glob('crates/*/src/**/*.rs')):
-        for line, kind, text in rust_tokens(path.read_text()):
+        source = path.read_text().split('#[cfg(test)]', 1)[0]
+        for line, kind, text in rust_tokens(source):
+            if kind == 'string' and not re.search(r'\s', text):
+                for piece in sorted(exact.intersection(re.findall(IDENT, text))):
+                    found.append(f'{path.relative_to(ROOT)}:{line}: string {text} names the example type `{piece}`')
             pieces = re.findall(IDENT, text) if kind == 'string' else [text]
             for piece in pieces:
                 key = words(piece)
@@ -207,6 +233,7 @@ def self_test() -> None:
     assert ('identifier', 'c') in [(kind, text) for _, kind, text in tokens]
     assert declared_names('', ['type Pair = Object {', '    left_side: Int', '}', 'function f(amount: Int) -> Int {']) == {
         'Pair', 'left_side', 'f', 'amount'}
+    assert ENTITY.findall('entity Order {\n    public entity Session {') == ['Order', 'Session']
 
 
 def main() -> int:
@@ -215,20 +242,23 @@ def main() -> int:
     args = parser.parse_args()
     self_test()
     banned = banned_list()
-    text = ''.join(f'{name}\n' for name in banned)
+    type_names = banned_type_names()
+    lists = [(LIST, banned), (TYPE_LIST, type_names)]
     if not args.check:
-        LIST.write_text(text)
-        print(f'wrote {len(banned)} names to {LIST.relative_to(ROOT)}')
+        for path, names in lists:
+            path.write_text(''.join(f'{name}\n' for name in names))
+            print(f'wrote {len(names)} names to {path.relative_to(ROOT)}')
         return 0
     failed = False
-    if not LIST.exists() or LIST.read_text() != text:
-        print(f'{LIST.relative_to(ROOT)} is stale: run python3 tools/example_names.py and commit it')
-        failed = True
-    for problem in scan(banned):
+    for path, names in lists:
+        if not path.exists() or path.read_text() != ''.join(f'{name}\n' for name in names):
+            print(f'{path.relative_to(ROOT)} is stale: run python3 tools/example_names.py and commit it')
+            failed = True
+    for problem in scan(banned, type_names):
         print(problem)
         failed = True
     if not failed:
-        print(f'{len(banned)} example names, none used in crates/*/src')
+        print(f'{len(banned)} example names and {len(type_names)} example type names, none used in crates/*/src')
     return 1 if failed else 0
 
 
