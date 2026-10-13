@@ -1,7 +1,0 @@
-value Customer {
-    email: Email
-}
-
-function customer_email(customer: Customer) -> Email {
-    return customer.emali
-}

@@ -1,4 +1,0 @@
-function fail_with_exception() -> Email {
-    throw Error("boom")
-}
-

@@ -1,8 +1,0 @@
-{
-  "result": "fail",
-  "diagnostics": [
-    {
-      "code": "DATA_PROJECT_ROLE_INVALID"
-    }
-  ]
-}

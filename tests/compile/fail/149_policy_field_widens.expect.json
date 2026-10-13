@@ -1,7 +1,0 @@
-{
-  "fixture_version": 1,
-  "result": "fail",
-  "diagnostics": [
-    { "code": "POLICY_FIELD_WIDENS_ENTITY", "primary_match": "policy {\n            NoteRole.owner: [read, update]\n        }" }
-  ]
-}

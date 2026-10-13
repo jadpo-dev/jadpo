@@ -1,3 +1,0 @@
-type LegacyEmail = Text {
-    format email
-}

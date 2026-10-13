@@ -1,7 +1,0 @@
-{
-  "machdep.cpu.brand_string": "unavailable",
-  "hw.memsize": "unavailable",
-  "hw.ncpu": "unavailable",
-  "kern.osrelease": "unavailable",
-  "uname": "Darwin arm64"
-}

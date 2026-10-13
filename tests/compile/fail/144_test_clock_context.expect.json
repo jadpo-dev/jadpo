@@ -1,7 +1,0 @@
-{
-  "fixture_version": 1,
-  "result": "fail",
-  "diagnostics": [
-    { "code": "TYPE_TEST_CLOCK_CONTEXT", "primary_match": "advance clock by Duration(\"PT5M\")" }
-  ]
-}

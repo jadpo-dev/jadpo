@@ -1,9 +1,0 @@
-entity Customer {
-    email: Text?
-}
-
-action find_customer(email: Customer.email) -> Customer? {
-    return attempt query optional Customer {
-        where: email == email
-    }
-}

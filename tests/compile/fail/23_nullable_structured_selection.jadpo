@@ -1,9 +1,0 @@
-value Address {
-    postal_code: Text {
-        min_length: 3
-    }
-}
-
-function postal_code(address: Address?) -> Address.postal_code {
-    return address.postal_code
-}

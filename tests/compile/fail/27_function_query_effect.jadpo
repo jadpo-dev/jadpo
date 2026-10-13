@@ -1,9 +1,0 @@
-entity Customer {
-    id: Uuid
-}
-
-function invalid_query(id: Customer.id) -> Customer? {
-    return attempt query optional Customer {
-        where: id == id
-    }
-}

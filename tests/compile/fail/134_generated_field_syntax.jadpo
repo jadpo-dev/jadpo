@@ -1,5 +1,0 @@
-entity AuditEntry {
-    id: Uuid identity
-    created_at: Instant generated { when: create }
-    updated_at: Instant generated { on: every_write }
-}

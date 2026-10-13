@@ -1,7 +1,0 @@
-output Receipt {
-    email: Email
-}
-
-function incomplete_receipt() -> Receipt {
-    return Receipt {}
-}

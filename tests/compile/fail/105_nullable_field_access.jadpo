@@ -1,9 +1,0 @@
-type Name = Text {}
-
-value Profile {
-    name: Name
-}
-
-function profile_name(profile: Profile?) -> Name {
-    return profile.name
-}

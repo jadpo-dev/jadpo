@@ -1,6 +1,0 @@
-type CustomerId = Uuid {}
-type Name = Text {}
-
-function invalid_id(name: Name) -> CustomerId {
-    return CustomerId(name)
-}

@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """Check and render the language reference in docs/language.
 
-Every ```jadpo block is compiled with the current compiler. Passing projects
-must also be canonically formatted; failing projects must report the rule named
-in `expect=`. `## Errors` sections show the compiler's real output, and every
-catalogue rule an area claims must have an example there.
+Every compiled ```jadpo block shows how the archived v0 compiler treated it.
+The v0 compiler was removed on 2026-10-13 (tag archive/compiler-v0); its
+results are frozen in docs/language/reference/v0-results.json, and a block
+whose source no longer matches its frozen result fails the check. Passing
+projects were also canonically formatted; failing projects reported the rule
+named in `expect=`. `## Errors` sections show the v0 compiler's real output, and
+every v0 catalogue rule an area claims must have an example there. Proposed
+code is written in `fragment` blocks, which are not compiled.
 
   python3 tools/language_docs.py --check     # verify only
   python3 tools/language_docs.py             # verify and write build/language-site
+  python3 tools/language_docs.py --freeze    # with the v0 compiler built: rewrite the frozen results
 """
 
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -24,6 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'docs/language'
 COMPILER = ROOT / 'jadpo/target/debug/jadpo'
+FROZEN = DOCS / 'reference/v0-results.json'
 TEMPLATE = Path(__file__).resolve().parent / 'language_docs_template.html'
 OUT_DEFAULT = ROOT / 'build/language-site'
 # Optional build/language-site/published.json maps page stems to published URLs for cross-page links.
@@ -35,7 +42,20 @@ def run(args, cwd=None):
     return result.returncode, result.stdout + result.stderr
 
 
-def load_catalogue():
+def load_frozen():
+    return json.loads(FROZEN.read_text()) if FROZEN.exists() else None
+
+
+def project_digest(blocks):
+    h = hashlib.sha256()
+    for block in blocks:
+        h.update(block['attrs']['file'].encode() + b'\0' + block['source'].encode() + b'\0')
+    return h.hexdigest()
+
+
+def load_catalogue(frozen):
+    if frozen is not None:
+        return frozen['catalogue']
     with tempfile.TemporaryDirectory() as tmp:
         (Path(tmp) / 'a.jadpo').write_text('type Count = Int {\n    min: 0\n}\n')
         code, out = run([str(COMPILER), 'artifacts', tmp])
@@ -69,9 +89,10 @@ def parse_attrs(text):
 
 
 class Page:
-    def __init__(self, path, catalogue):
+    def __init__(self, path, catalogue, frozen=None):
         self.path = path
         self.catalogue = catalogue
+        self.frozen = None if frozen is None else frozen['pages'].get(path.name, {})
         self.meta, self.body = parse_front_matter(path.read_text())
         self.blocks = []
         self.problems = []
@@ -105,6 +126,16 @@ class Page:
             if len(expected) > 1:
                 self.problems.append(f'{name}: blocks disagree on expect=')
             expected = expected.pop()
+            digest = project_digest(blocks)
+            if self.frozen is not None:
+                saved = self.frozen.get(name)
+                if saved is None or saved['digest'] != digest:
+                    self.problems.append(f'{name}: changed after the v0 compiler was archived; restore it or mark it fragment')
+                    continue
+                self.results[name] = saved
+                if not saved['ok']:
+                    self.problems.append(f'{name}: the frozen v0 result does not match expect={expected}')
+                continue
             with tempfile.TemporaryDirectory() as tmp:
                 for block in blocks:
                     target = Path(tmp) / block['attrs']['file']
@@ -127,7 +158,7 @@ class Page:
                 ok = expected in rules
                 if not ok:
                     self.problems.append(f'{name}: expected {expected} but got {rules[:3] or "a pass"}')
-            self.results[name] = {'expected': expected, 'ok': ok, 'output': out.strip(), 'rules': rules}
+            self.results[name] = {'expected': expected, 'ok': ok, 'output': out.strip(), 'rules': rules, 'digest': digest}
 
     def claimed_rules(self):
         patterns = self.meta.get('rules', [])
@@ -524,11 +555,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--check', action='store_true', help='verify examples without writing pages')
     parser.add_argument('--out', default=str(OUT_DEFAULT))
+    parser.add_argument('--freeze', action='store_true', help='compile with the v0 compiler and rewrite the frozen results')
     args = parser.parse_args()
-    if not COMPILER.exists():
-        sys.exit('build the compiler first: cargo build --manifest-path jadpo/Cargo.toml -p jadpo-cli')
-    catalogue = load_catalogue()
-    pages = [Page(p, catalogue) for p in sorted(DOCS.glob('[0-9][0-9]-*.md'))]
+    if args.freeze:
+        if not COMPILER.exists():
+            sys.exit('--freeze needs the v0 compiler: git checkout archive/compiler-v0 and build it')
+        frozen = None
+    else:
+        frozen = load_frozen()
+        if frozen is None and not COMPILER.exists():
+            sys.exit(f'no frozen results at {FROZEN} and no compiler to run')
+    catalogue = load_catalogue(frozen)
+    pages = [Page(p, catalogue, frozen) for p in sorted(DOCS.glob('[0-9][0-9]-*.md'))]
     failed = False
     owners = {}
     for page in pages:
@@ -545,6 +583,14 @@ def main():
             failed = True
             print(f'  FAIL {rule} is claimed by {", ".join(files)}')
     print(f'{len(owners)}/{len(catalogue)} catalogue errors are assigned to an area')
+    if args.freeze and not failed:
+        FROZEN.parent.mkdir(parents=True, exist_ok=True)
+        FROZEN.write_text(json.dumps({
+            'compiler': 'archive/compiler-v0',
+            'catalogue': catalogue,
+            'pages': {page.path.name: page.results for page in pages},
+        }, indent=1, sort_keys=True) + '\n')
+        print(f'froze {sum(len(p.results) for p in pages)} results to {FROZEN.relative_to(ROOT)}')
     if not args.check:
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)

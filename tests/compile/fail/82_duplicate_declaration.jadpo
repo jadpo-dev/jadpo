@@ -1,2 +1,0 @@
-type CustomerId = Uuid {}
-type CustomerId = Uuid {}

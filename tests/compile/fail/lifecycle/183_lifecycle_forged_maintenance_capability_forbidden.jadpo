@@ -1,8 +1,0 @@
-type RetentionMaintenanceCapability = Object {
-    entity: Text
-}
-
-action forge_and_invoke() -> Unit {
-    var capability = RetentionMaintenanceCapability { entity: "Todo" }
-    return retention_purge_Todo(capability)
-}

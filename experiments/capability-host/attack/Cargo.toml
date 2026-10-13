@@ -1,9 +1,0 @@
-[package]
-name = "jadpo-capability-host-attack"
-version = "0.0.0"
-edition = "2021"
-publish = false
-[lib]
-crate-type = ["cdylib"]
-[dependencies]
-serde_json = "=1.0.133"

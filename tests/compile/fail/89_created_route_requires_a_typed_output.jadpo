@@ -1,8 +1,0 @@
-action create_item() -> Unit {
-}
-
-route POST /items {
-    auth: none
-    run: create_item()
-    success: created
-}

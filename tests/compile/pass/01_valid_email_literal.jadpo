@@ -1,4 +1,0 @@
-function support_email() -> Email {
-    return Email("support@example.com")
-}
-

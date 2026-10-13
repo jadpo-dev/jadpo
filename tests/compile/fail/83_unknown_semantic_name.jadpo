@@ -1,5 +1,0 @@
-type CustomerId = Uuid {}
-
-value Customer {
-    id: CustomerID
-}

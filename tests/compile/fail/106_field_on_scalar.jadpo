@@ -1,5 +1,0 @@
-type Name = Text {}
-
-function invalid_field(name: Name) -> Name {
-    return name.value
-}

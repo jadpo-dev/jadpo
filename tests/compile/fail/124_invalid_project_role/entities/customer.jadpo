@@ -1,8 +1,0 @@
-entity Customer {
-    id: Uuid
-    identity: id
-}
-
-action unrelated() -> Bool {
-    return true
-}

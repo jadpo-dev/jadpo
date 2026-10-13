@@ -1,5 +1,0 @@
-locales {
-    fallback: "en-GB"
-    available: ["en-GB"]
-    otherwise: guess
-}

@@ -1,7 +1,0 @@
-{
-  "fixture_version": 1,
-  "result": "fail",
-  "diagnostics": [
-    { "code": "TYPE_TEST_CALL_CONTEXT", "primary_match": "call read_clock()" }
-  ]
-}

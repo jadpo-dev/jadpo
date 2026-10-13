@@ -1,7 +1,0 @@
-function invalid_url() -> Url {
-    return Url("not a url")
-}
-
-function invalid_ip_address() -> IpAddress {
-    return IpAddress("999.999.999.999")
-}

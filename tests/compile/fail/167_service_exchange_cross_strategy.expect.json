@@ -1,7 +1,0 @@
-{
-  "fixture_version": 1,
-  "result": "fail",
-  "diagnostics": [
-    { "code": "TYPE_AUTH_EXCHANGE_BINDING", "primary_match": "exchange {\n        path: \"/auth/exchange\"\n        key: service_key\n        signed: other_service_signed\n    }" }
-  ]
-}

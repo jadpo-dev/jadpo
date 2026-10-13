@@ -1,7 +1,0 @@
-{
-  "fixture_version": 1,
-  "result": "fail",
-  "diagnostics": [
-    { "code": "SEM_UNKNOWN_CALLEE", "primary_match": "Todo.retention_purge" }
-  ]
-}
