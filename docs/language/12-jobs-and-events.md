@@ -97,9 +97,11 @@ or undoes the rest (question 11).
 action queue_overdue_reminders() -> Unit {
     // a query in queries/ returning at most 500 todos not yet queued
     var cutoff: ReminderCutoff = ReminderCutoff(clock.now)
-    var todos: List<Todo> = overdue_todos(cutoff)
+    var todos: List<Todo> = overdue_todos(cutoff)   // a list query declares no failures
     for todo in todos {
-        mark_reminder_queued(todo.id)    // sets reminder_queued_at (area 6)
+        attempt Todo.update(todo) {
+            set: { reminder_queued_at: clock.now }
+        }
         emit ReminderDue {
             todo_id: todo.id
         }
@@ -113,7 +115,11 @@ subscriber send_reminder {
 }
 ```
 
-The query's limit bounds each run; anything left over is picked up by the
+A query returning a list has no declared failures, so it takes no
+`attempt`; a database outage is a fault, and the next tick retries. The update
+can fail (the todo changed since it was read), so it takes `attempt`: the
+failure ends the run, nothing commits, and the next tick tries again. The
+query's limit bounds each run; anything left over is picked up by the
 next tick. Marking each todo in the same transaction stops the next tick from
 queuing it twice.
 
@@ -1029,6 +1035,9 @@ build`, or read from source and the design documents.
    action takes no arguments and reads `clock.now`, fixed for the run;
    `concurrency` and `retry` become defaults (one run at a time, missed ticks
    merged, next tick retries); `every:` gains days. *Recommendation:* yes.
+   Runs never overlap: a tick that arrives while a run is going is skipped,
+   not queued, and there is no option to allow overlap (Richard asked,
+   2026-10-13); work too large for one run emits one event per item.
    Rails' Solid Queue (`schedule: every day at 9am`) and Oban's cron plugin
    also offer calendar times; add them only when an application needs them.
 2. **Delete the delivery descriptor?** It is 45 lines of closed syntax for
@@ -1092,6 +1101,36 @@ build`, or read from source and the design documents.
     Area 13 calls `overdue_reminders.run()`, relies on subscriber delivery
     order and needs retries of a failing subscriber. Does this page define
     those, and in what order are subscribers delivered in tests?
+16. **Where does a schedule's tick come from on each host?** Raised by
+    Richard (2026-10-13) with the move to native Rust and WebAssembly
+    targets. Cloudflare's cron triggers can fire more than once and do not
+    wait for a running invocation; Durable Objects guarantee one alarm at a
+    time but exist only on Cloudflare. *Recommendation:* split the *tick*
+    from the *state*. The state always lives in the application's main
+    store: a generated table holding each schedule's next due time and a
+    lease (`running_until`). On every tick the runtime takes due schedules
+    whose lease is free in one conditional update, runs them, and releases
+    the lease; a tick that finds the lease taken skips, and a crashed run's
+    lease expires after the 15-minute limit. The tick is pluggable,
+    `schedules: { trigger: ScheduleTrigger.native }` (default: an in-process
+    timer) or `ScheduleTrigger.external` (the host calls a generated tick
+    once a minute: a Cloudflare cron trigger, a Kubernetes CronJob, AWS
+    EventBridge Scheduler). One external entry per application, whatever the
+    number of schedules, so `every: 7m` works where cron syntax cannot and
+    Cloudflare's per-account cron limit is never reached. Duplicate ticks
+    are harmless because the lease decides. Durable Objects stay a possible
+    later optimisation, not the design.
+17. **Can a request's whole effect be traced through events?** Raised by
+    Richard (2026-10-13). *Recommendation:* yes, always on. An event is
+    stored with the trace context of the action that emitted it (W3C
+    `traceparent`, in the same transaction), and each subscriber run is a
+    child of it, so route → action → events → subscribers → further events
+    → provider calls form one trace. Schedules start a trace per run;
+    provider webhooks start one linked to the provider's event id; calls
+    between Jadpo applications pass the context on. Each event also records
+    what caused it (request id or parent event), which the 16-deep chain
+    limit already needs. `jadpo trace <request id>` and the console (area 17)
+    show the whole tree; area 16's OpenTelemetry export carries it.
 
 ### Decisions
 
@@ -1119,3 +1158,5 @@ Nothing is decided on this page yet.
 | Snapshot reads for exports | | |
 | Work after an accepted response | | |
 | Schedules and subscribers in tests | | |
+| Schedule ticks on every host | | |
+| Tracing through events | | |
