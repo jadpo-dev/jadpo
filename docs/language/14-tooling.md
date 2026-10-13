@@ -584,8 +584,9 @@ what other areas carried here and where this page answers it.
 8. **Should the formatter write one member per line?** Today it keeps
    `Object { done: Bool pinned: Bool }`. *Recommendation:* yes, and add a
    blank line between declarations, so `fmt --check` enforces the colon and
-   one-per-line rules from areas 2 and 3. A short `pick: [id, title]` list
-   stays on one line.
+   one-per-line rules from areas 2 and 3. A short `pick: [Todo.id, Todo.title]`
+   list stays on one line; `include`, `pick` and `omit` lines keep the
+   order written (area 2).
 9. **What does `jadpo new` create?** *Recommendation:* the fixed root from
    area 1 (`app.jadpo`, `config.jadpo`, `domains/`, `database/`, `tests/`),
    one small domain with an action, a route and a test, and no hidden

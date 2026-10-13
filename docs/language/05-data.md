@@ -2963,7 +2963,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Colon rule | Carried from area 3: entity sections are `name: { ... }` (`lifecycle: { }`, `policy: { }`) | 2026-10-12 |
 | Setting options and lists | Carried from area 2: closed options are lower_snake_case names (`on_delete: restrict`); lists are `[ ]` (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
 | UUID versions | Carried from area 2: new identities are version 7; a named type can pin another version | 2026-10-12 |
-| Derived types | Carried from area 2: `type X = Output from Todo { pick: [...] }`; generated fields never in an `Input` | 2026-10-12 |
+| Building types | Carried from area 2: `type X = Output { include: [...] pick: [...] omit: [...] }` read top to bottom; no `include` on an `Input`; generated fields never in an `Input` | 2026-10-13 |
 | Calls and settings | Carried from areas 1 and 3: the dot names the owner (`Todo.get(id)`); actions have no settings and every write checks for concurrent change | 2026-10-12 |
 | Mapping form | Carried from area 4: write conflicts map with `condition: Failure`, a hidden record reports the same `not_found` failure | 2026-10-12 |
 | Identity | One field `id`, `Uuid`, generated as version 7, never supplied by callers; no composite identity: many-to-many links are entities with their own `id` and a compound unique rule | 2026-10-12 |

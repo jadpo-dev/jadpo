@@ -1195,104 +1195,83 @@ type OrderView = Output {              // an object sent back
 - `value`, `enum`, `input` and `output` disappear as keywords, and the
   `types/` folder holds only `type` declarations.
 
-### Decided: derived types
+### Decided: building a type from other types
+
+*Revised 2026-10-13 (Richard): replaces `Output from Todo { pick: [...] }`.*
 
 Most object types in a real application are slices of an entity or of another
-object: a create input without the generated fields, a patch input where every
-field is optional, a public view without private fields, a list summary with
-fewer fields than the detail view, a v2 response that adds a field. Today each
-is written out field by field (`title: Todo.title`). The proposal adds
-`from <source>` after the base, three operations, and new fields listed after
-them.
+object: a create input, a patch input where every field is optional, a public
+view, a list summary, a v2 response that adds a field. Instead of writing each
+field out (`title: Todo.title`), a type's body can copy fields from other
+types. The body keeps its ordinary `Output { }` form; four kinds of line build
+it, **read from top to bottom**, each changing the result of the lines above:
 
-**`pick`** keeps the listed fields, with their types and validation rules:
+| Line | Does |
+|---|---|
+| `include: [Todo]` | adds every field of each listed type (types only; never on an `Input`) |
+| `pick: [Todo.id, Todo.title]` | adds just the listed fields, each keeping its own name |
+| `omit: [Todo.internal_note]` | removes fields present at that point |
+| `bar: User.bar` | a written field: replaces a field of the same name above, or adds a new one |
 
 ```jadpo fragment
-type TodoView = Output from Todo {
-    pick: [id, title, status, due_at]
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.status, Todo.due_at]
 }
-```
 
-**`omit`** keeps every field except the listed ones (never on an `Output`):
-
-```jadpo fragment
-type ImportTodo = Input from Todo {
-    omit: [id, owner_id, created_at, deleted_at]
+type TodoDetail = Output {
+    include: [Todo]
+    omit: [Todo.deleted_at]
+    owner_email: User.email
 }
-```
 
-**`optional`** makes the listed fields, or `all` of them, optional (only on an
-`Input`, because only incoming data can leave fields out):
-
-```jadpo fragment
-type PatchTodo = Input from Todo {
-    pick: [title, due_at]
+type PatchTodo = Input {
+    pick: [Todo.title, Todo.due_at]
     optional: all
 }
-```
 
-**New fields** are listed after the operations, written exactly like fields
-anywhere else. A new field's type can be any type, including another
-entity's field type. With `Object` as the base, the result is a plain object
-used inside the application:
+type OrderView = Output {
+    include: [Order]
+    lines: List<OrderLineView>          // replaces Order.lines with a view of each line
+}
 
-```jadpo fragment
-type TodoReminder = Object from Todo {
-    pick: [id, title, due_at]
+type TodoReminder = Object {
+    pick: [Todo.id, Todo.title, Todo.due_at]
     owner_email: User.email
     days_overdue: DayCount
 }
 ```
 
-**Objects inside objects, and lists.** Picking a field keeps its whole type,
-so `pick: [lines]` on an order keeps `List<OrderLine>`. To change what a nested
-field holds, leave it out of `pick` and list a field of the same name with the
-new type. This is the only way to change a field's type, and it is visible in
-the declaration:
-
-```jadpo fragment
-type OrderLineView = Output from OrderLine {
-    pick: [product_name, quantity, line_total]
-}
-
-type OrderView = Output from Order {
-    pick: [id, placed_at, total]
-    lines: List<OrderLineView>
-}
-```
-
-**Deriving from a derived type** works the same way, so versions and
-summaries build on each other:
-
-```jadpo fragment
-type TodoSummary = Output from TodoView {
-    pick: [id, title]
-}
-
-type TodoViewV2 = Output from TodoView {
-    pick: [id, title, status, due_at]
-    tags: List<TagName>
-}
-```
-
 Rules:
 
-- Three operations only: `pick`, `omit` and `optional`, followed by any new
-  fields. `pick` and `omit` cannot both appear. No renaming. A new field
-  cannot reuse the name of a field that was picked, but can reuse one that was
-  left out, which is how a field's type is changed. `pick`, `omit` and
-  `optional` are reserved and cannot be used as field names.
-- Picked fields follow their source: renaming `Todo.title` renames it in
-  every type that picked it, and its validation rules come with it.
-- Every derived type has a name. There are no inline `Pick<...>` types in
-  signatures, so OpenAPI schemas and error messages always have a name, and
-  the editor and generated docs show the expanded fields.
-- An `Output` may only use `pick`. With `omit`, adding a sensitive field to
-  the entity later (a password hash, an internal note) would silently expose
-  it in every response; an allowlist cannot leak by addition. Generated
-  fields such as `id` and `created_at` can never appear in an `Input`, which
-  closes the mirror-image mass-assignment bug.
-- Policy checks still apply to every derived output.
+- **Top to bottom.** The same kind of line may appear more than once, and the
+  formatter keeps the order written, because order matters here.
+- **Lists are always in brackets**, even with one entry: `include: [Todo]`.
+- **`omit` removes only what is there.** Omitting a field that is not present
+  at that point is an error, which catches typos and fields since removed.
+- **Written fields win.** A field you write replaces any field of the same
+  name above it, visibly; otherwise it is added.
+- **Copied fields never silently replace copied fields.** An `include` or
+  `pick` that would replace a field brought in by an earlier `include` or
+  `pick` is an error: resolve it with `omit` or by writing the field. Copied
+  fields are not visible in the declaration, so a clash there would change a
+  type unseen when a source type gains a field.
+- **No `include` on an `Input`.** Taking every field of `User` would accept
+  any field added to `User` later (the mass-assignment bug). Inputs `pick` or
+  write their fields. Generated fields such as `id` and `created_at` can never
+  appear in an `Input`.
+- **`optional`** makes the listed fields, or `all`, optional, only on an
+  `Input`.
+- **Copied fields follow their source.** Renaming `Todo.title` renames it in
+  every type that copies it, and its validation rules come with it.
+- **Every built type has a name;** there are no inline types in signatures.
+  Hover and `jadpo inspect TodoDetail` show the final fields and where each
+  came from (`title ← Todo.title`, `lines ← written, replaces Order.lines`).
+- **Outputs may `include`.** A field added to `Todo` later reaches
+  `TodoDetail`, and the committed API record (area 7) shows the addition in
+  review; fields policy hides from clients stay hidden at runtime (area 9).
+  This replaces the earlier "an `Output` may only `pick`" rule.
+- `include`, `pick`, `omit` and `optional` are reserved and cannot be field
+  names.
 
 ### Decided changes in examples
 
@@ -1675,12 +1654,15 @@ to when that page is written.
     accepted and what is generated (for example where a version 7 ID would
     reveal sensitive creation times, or another system dictates the version).
 
-14. **Adopt derived types?** See "Derived types" above. *Decided 2026-10-12 (agreed in discussion, with new fields listed directly and lists in brackets):*
+14. **Adopt derived types?** See "Building a type from other types" above. *Decided 2026-10-12 (agreed in discussion, with new fields listed directly and lists in brackets):*
     yes, with exactly `pick`, `omit` and `optional` plus listed new fields,
     named results only, and outputs restricted to `pick`. This covers create,
     patch, view, summary and versioned shapes without TypeScript's anonymous
     type algebra, whose expanded types reviewers and error messages cannot
     name.
+    *Revised 2026-10-13 (Richard):* the syntax changed to body lines read top
+    to bottom (`include:`, `pick:`, `omit:`, written fields), keeping the
+    plain `Output { }` header; see "Building a type from other types".
 
 15. **Should a literal take on the type it is going into?** Today
     `var price: Price = 0.0`, `return 0.0` and `Item { price: 0.0 }` are all
@@ -1760,11 +1742,12 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Signature rule scope | Applies to representation types and `Instant`, `CalendarDate`, `Time`, `Duration`; `Zone`, `Locale` and `Weekday` may be used directly; list element types are checked | 2026-10-12 |
 | Equality | `==` compares contents field by field on objects, lists and enum payloads; sets and maps compare as sets | 2026-10-12 |
 | UUID versions | Any version accepted by default, normalised to lowercase; new identities are version 7; a named type can pin one, `type PartnerRef = Uuid { version: v4 }`, governing what is accepted and generated (Written `UuidVersion.v4` under the revised question 17.) | 2026-10-12 |
-| Derived types | `type X = Base from Source { pick/omit/optional, then new fields }`; named results only; `Output` may only `pick`; generated fields never in an `Input` | 2026-10-12 |
+| Derived types | `type X = Base from Source { pick/omit/optional, then new fields }`; named results only; `Output` may only `pick`; generated fields never in an `Input` (Superseded 2026-10-13: see "Building types".) | 2026-10-12 |
+| Building types | Body lines read top to bottom: `include: [Type]` (all fields; never on an `Input`), `pick: [Type.field]`, `omit: [Type.field]` (only what is present), written fields replace or add; copied fields never silently replace copied fields; lists always bracketed; `optional` on `Input` only (Richard) | 2026-10-13 |
 | Literal typing | A literal takes the expected type where it is known and is checked while compiling; computed values need an explicit constructor | 2026-10-12 |
 | Variable types | Every `var` states its type; loop and `match` bindings take theirs from what they bind | 2026-10-12 |
 | Setting options | A setting with a fixed set of options takes an enum value written `Type.value` (`version: UuidVersion.v7`, `kind: FailureKind.not_found`, `on_delete: OnDelete.cascade`); a bare word in a setting is always a declared name; option values read as values or moments, not verbs; quantities stay numbers (revised 2026-10-12, Richard) | 2026-10-12 |
 | Object keyword | `value` is dropped; objects are `type Name = Object { fields }` | 2026-10-12 |
 | `Object` | Only a base in a `type` declaration; no anonymous inline objects | 2026-10-12 |
 | Field settings | A field's settings go in a block after its type, one per line (`optional: true`, `default: 25`) | 2026-10-12 |
-| Lists | Square brackets are the only way to write a list: `pick: [id, title]`, `[create, read]`; braces never hold comma lists; signatures keep their commas (parameters, `fails A, B`) | 2026-10-12 |
+| Lists | Square brackets are the only way to write a list: `pick: [Todo.id, Todo.title]`, `[create, read]`; braces never hold comma lists; signatures keep their commas (parameters, `fails A, B`) | 2026-10-12 |

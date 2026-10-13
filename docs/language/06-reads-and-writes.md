@@ -105,7 +105,7 @@ come back, so there is no separate word for it:
 | `Page<TodoView>` | one page and a cursor for the next | `order:` and `page:` |
 
 The element type is the entity or a type derived from it
-(`type TodoView = Output from Todo { pick: [...] }`, area 2); the compiler
+(`type TodoView = Output { pick: [Todo.id, Todo.title] }`, area 2); the compiler
 reads only the fields that type needs. Records hidden by the entity's
 lifecycle are left out of every query. The generated SQL selects only the
 columns the result type needs, plus the `order:` fields a page cursor needs
@@ -325,8 +325,8 @@ query project_board(project_id: Project.id) fails ProjectNotFound -> ProjectBoar
     }
 }
 
-type ProjectBoardView = Output from Project {
-    pick: [id, name]
+type ProjectBoardView = Output {
+    pick: [Project.id, Project.name]
     owner: UserView
     todos: List<TodoView>
 }

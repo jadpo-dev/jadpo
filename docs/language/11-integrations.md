@@ -1590,8 +1590,7 @@ Questions keep their numbers, because other pages cite 6 and 7. Questions
 1. **How are request and response types written?** *Reopened 2026-10-13;*
    first answered as hand-written types checked against the contract.
    *Recommendation:* they come from the package and the app writes none; a
-   derived type (`type X = Output from Stripe.PaymentIntent { pick: [...] }`)
-   narrows one. At runtime a response is checked only for the fields the
+   type built from one (`pick: [Stripe.PaymentIntent.id, ...]`) narrows it. At runtime a response is checked only for the fields the
    code reads. TypeScript SDKs and Smithy clients work the same way.
    *Decided 2026-10-13 (Richard):* package types come in namespaced
    (`Stripe.PaymentIntent`) and are usable anywhere in code; no narrowing or
