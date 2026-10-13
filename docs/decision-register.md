@@ -202,6 +202,9 @@ bytes or general application permissions are changed by these records.
 
 ### Durable delivery contract — 2026-10-04
 
+*Partly reversed 2026-10-13:* Richard dropped per-key FIFO in language area 12
+(question 6): no delivery order is promised. The rest stands as amended there.
+
 The owner-approved database-backed durable-job directions are now frozen as
 [ASYNC-001](async-plan.md), after the
 independent transaction/effect review.

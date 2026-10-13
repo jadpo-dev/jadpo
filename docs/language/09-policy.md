@@ -37,13 +37,14 @@ entity Todo {
 }
 ```
 
-"Who" is always one of three things:
+"Who" is always one of four things:
 
 | Who | Written | Means |
 |---|---|---|
 | A user field on the record | `owner_id` | the user that field points to |
 | A membership role | `CompanyRole.editor` | a user with that role in the record's company |
 | Everyone | `Access.authenticated`, `Access.public` | anyone signed in; anyone at all |
+| Background work | `Access.system` | schedules and subscribers, limited to the tenant their event came from (added from area 12, 2026-10-13) |
 
 ## Grants
 
@@ -1353,3 +1354,4 @@ the code generated for `examples/golden-todo-migration` and
 | Calling integrations | Whoever may run the action; no separate grant; `external_effect` goes | 2026-10-12 |
 | Accepting policy weakening | Carried from area 7: one acceptance file per weakening in `acceptances/`, the shared form | 2026-10-12 |
 | Personal data and log redaction | Designed in area 15 (Personal data); erase needs `delete`, export needs `read` | 2026-10-12 |
+| Background work | Carried from area 12: schedules and subscribers act as `Access.system`, which an entity grants explicitly; subscribers stay in their event's tenant | 2026-10-13 |
