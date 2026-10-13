@@ -166,9 +166,25 @@ fn finish(
 ) -> Output {
     let (data, diagnostic, text) = match reply {
         Reply::Session(session) => {
+            // A person who starts it by hand learns what it is waiting for;
+            // an editor, which pipes standard input, sees nothing.
+            let stderr = if env.stdin_terminal {
+                let header = Block::header(
+                    format!("jadpo {}", name.unwrap_or("lsp")),
+                    ["waiting for an editor on standard input", "ctrl-c stops it"],
+                );
+                Screen::new().with(header).render(&Style::detect(
+                    env,
+                    false,
+                    choice,
+                    Stream::Stderr,
+                ))
+            } else {
+                String::new()
+            };
             return Output {
                 stdout: String::new(),
-                stderr: String::new(),
+                stderr,
                 code: 0,
                 session: Some(session),
             };

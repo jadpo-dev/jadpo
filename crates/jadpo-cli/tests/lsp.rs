@@ -259,3 +259,41 @@ fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
     let status = editor.child.wait().expect("exits");
     assert!(status.success(), "{status}");
 }
+
+fn jadpo(env: jadpo_term::Environment, args: &[&str]) -> jadpo_cli::Output {
+    let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+    jadpo_cli::run(&args, &env.with_cwd("/projects/notes"))
+}
+
+#[test]
+fn lsp_hands_the_streams_to_the_server_and_takes_editors_stdio_flag() {
+    let editor = jadpo_term::Environment::empty();
+    for args in [&["lsp"][..], &["lsp", "--stdio"][..]] {
+        let output = jadpo(editor.clone(), args);
+        assert_eq!(
+            output.session,
+            Some(jadpo_cli::Session::Lsp(PathBuf::from("/projects/notes")))
+        );
+        assert_eq!(
+            (output.stdout.as_str(), output.stderr.as_str(), output.code),
+            ("", "", 0)
+        );
+    }
+    // A person at a terminal is told what it waits for, on stderr.
+    let person = jadpo_term::Environment::empty().with_terminals(true, true, true);
+    let output = jadpo(person, &["lsp"]);
+    assert!(output.session.is_some());
+    assert!(
+        output.stderr.contains("jadpo lsp") && output.stderr.contains("waiting for an editor"),
+        "{}",
+        output.stderr
+    );
+    let wrong = jadpo(editor, &["lsp", "now"]);
+    assert_eq!(wrong.session, None);
+    assert_eq!(wrong.code, 2);
+    assert!(
+        wrong.stderr.contains("rule: cli.lsp_arguments"),
+        "{}",
+        wrong.stderr
+    );
+}

@@ -263,7 +263,13 @@ pub static COMMANDS: &[Command] = &[
                       descriptions, the failures a call can produce and who calls it, and go to \
                       definition. The project is the one holding the editor's workspace folder.",
         arguments: &[],
-        flags: &[],
+        // Editors' language clients pass `--stdio`.
+        flags: &[Flag {
+            name: "--stdio",
+            value: None,
+            description: "Talk on standard input and output (default)",
+            values: &[],
+        }],
         examples: &[Example {
             description: "Start the language server, as an editor does",
             command: "jadpo lsp",
