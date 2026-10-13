@@ -80,7 +80,7 @@ fn without(files: &[(&'static str, String)], path: &str) -> Vec<(&'static str, S
 fn build(files: &[(&'static str, String)]) -> (Graph, usize) {
     let db = Database::default();
     let borrowed: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
-    let project = support::project(&db, Layout::Project, &borrowed);
+    let project = support::project_in_path_order(&db, Layout::Project, &borrowed);
     let problems = jadpo_check::check(&db, project);
     (graph(&db, project).clone(), problems.len())
 }
@@ -286,6 +286,8 @@ fn an_edit_changes_only_the_digests_of_what_it_touches() {
     assert!(what.digest && !what.detail && what.edges.is_empty());
 }
 
+/// Files read in any order give the same bytes (they are always listed in
+/// path order, as `jadpo_db::load` lists them).
 #[test]
 fn the_manifest_is_the_same_bytes_in_any_file_order() {
     let files = fixture();

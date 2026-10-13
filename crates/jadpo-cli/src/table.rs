@@ -156,9 +156,10 @@ pub static COMMANDS: &[Command] = &[
         group: "Build and check",
         summary: "Check the project for errors",
         description: "Check every Jadpo file in the project: where each file sits, how things are \
-                      named, what each name refers to and who may use it. Without a path, the project \
-                      is found by walking up to app.jadpo. A file or folder outside any project is \
-                      checked on its own, with the layout rules off.",
+                      named, what each name refers to and who may use it, types, logic and failures. \
+                      Then write the manifest and the catalogues to build/, errors or not. Without a \
+                      path, the project is found by walking up to app.jadpo. A file or folder outside \
+                      any project is checked on its own, with the layout rules off, and writes nothing.",
         arguments: &[Argument {
             name: "path",
             description: "A project, file or folder to check",

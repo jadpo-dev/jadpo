@@ -13,6 +13,18 @@ pub fn project(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project
     Project::new(db, files, Vec::new(), layout)
 }
 
+/// A project of `files`, created in the order given and listed in path
+/// order, as `jadpo_db::load` lists them: only the order the inputs were
+/// made in differs.
+pub fn project_in_path_order(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project {
+    let mut files: Vec<File> = files
+        .iter()
+        .map(|(path, text)| File::new(db, path.to_string(), text.to_string()))
+        .collect();
+    files.sort_by(|a, b| a.path(db).cmp(b.path(db)));
+    Project::new(db, files, Vec::new(), layout)
+}
+
 /// Each problem as `path rule: message`.
 pub fn problems(layout: Layout, files: &[(&str, &str)]) -> Vec<String> {
     let db = Database::default();

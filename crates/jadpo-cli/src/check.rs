@@ -1,8 +1,8 @@
 //! `jadpo check`: checks the project, found by walking up to `app.jadpo`,
 //! or the file or folder named, and prints every problem then one summary
 //! line. Outside a project, the files named are checked as loose files: one
-//! implicit domain with the layout rules off (area 1). Writing `build/`
-//! arrives with the graph (chunk 1.7).
+//! implicit domain with the layout rules off (area 1). In a project it also
+//! writes the derived files in `build/` ([`crate::derived`]).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -12,6 +12,7 @@ use jadpo_db::Layout;
 use jadpo_diag::{Diagnostic, Severity, Span, rule};
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
 
+use crate::derived;
 use crate::fmt::project_not_found;
 use crate::run::{Call, Reply};
 
@@ -77,6 +78,19 @@ pub fn check(call: &Call) -> Reply {
                 .filter(|diagnostic| diagnostic.rule.id.starts_with("syntax.")),
         );
     }
+    let layout = loaded.project.layout(db);
+    let mut written = Vec::new();
+    if layout == Layout::Project && loaded.unreadable.is_empty() {
+        let errors = diagnostics
+            .iter()
+            .filter(|d| d.severity() == Severity::Error)
+            .count();
+        let graph = jadpo_check::graph::graph(db, loaded.project);
+        match derived::write(&loaded.root, graph, errors) {
+            Ok(paths) => written = paths,
+            Err(problem) => diagnostics.push(*problem),
+        }
+    }
     let elapsed = started.elapsed();
     let files = loaded.project.files(db);
     let sources: BTreeMap<String, String> = files
@@ -89,7 +103,7 @@ pub fn check(call: &Call) -> Reply {
         sources,
         &paths,
         loaded.unreadable.len(),
-        loaded.project.layout(db),
+        (layout, written),
         elapsed,
     )
 }
@@ -103,7 +117,7 @@ fn report(
     sources: BTreeMap<String, String>,
     paths: &[&String],
     unreadable: usize,
-    layout: Layout,
+    (layout, written): (Layout, Vec<String>),
     elapsed: Duration,
 ) -> Reply {
     let errors = diagnostics
@@ -146,6 +160,7 @@ fn report(
         ("files", Json::array(paths.iter().map(|path| path.as_str()))),
         ("errors", errors.into()),
         ("warnings", warnings.into()),
+        ("build", Json::array(written)),
     ]);
     Reply::Report {
         screen,

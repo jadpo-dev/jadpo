@@ -5,6 +5,7 @@
 mod check;
 mod commands;
 mod completion;
+mod derived;
 mod fmt;
 mod help;
 mod run;

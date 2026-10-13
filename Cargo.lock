@@ -197,6 +197,7 @@ dependencies = [
  "jadpo-db",
  "jadpo-diag",
  "jadpo-fmt",
+ "jadpo-graph",
  "jadpo-syntax",
  "jadpo-term",
  "serde_json",
