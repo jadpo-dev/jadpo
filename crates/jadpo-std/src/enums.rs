@@ -146,5 +146,16 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted, zone.1, "zones sorted, each once");
+        let locale = all
+            .iter()
+            .find(|(name, _)| *name == LOCALE)
+            .expect("Locale");
+        for tag in ["en_gb", "en_us", "fr_fr", "fr", "zh_hant_tw"] {
+            assert!(locale.1.contains(&tag), "{tag}");
+        }
+        let mut sorted = locale.1.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted, locale.1, "locales sorted, each once");
     }
 }

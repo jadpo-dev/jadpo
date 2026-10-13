@@ -251,8 +251,11 @@ recovers (health checks are area 11).
   built-in enums: `Zone` has a variant for each zone in the IANA database's
   `zone.tab` (2026d) plus `utc`, named in lower_snake_case
   (`Zone.america_argentina_buenos_aires`); `Locale` has one for each
-  standard language and region locale (`Locale.en_gb`, 83 of them). Both
-  tables live in `jadpo-std` and change only in a change of their own.
+  locale Unicode CLDR 48.2.3 gives modern coverage, plus the language with
+  its likely region for each without one (`Locale.fr` and `Locale.fr_fr`,
+  `Locale.en_gb`; 533 in all), named in lower_snake_case from the BCP 47
+  tag. Both tables live in `jadpo-std` (`src/zones.rs`, which says how each
+  was made) and change only in a change of their own.
 - `clock.now` in a function, a library function or an inline function is
   `type.clock_context`; any other member of `clock`, `config`,
   `translations`, `sessions` or `oauth` is `toolchain.not_built_yet` until
