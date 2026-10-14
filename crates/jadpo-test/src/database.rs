@@ -446,7 +446,7 @@ pub struct TestHost<'d> {
 }
 
 enum Held {
-    Ready {
+    Holding {
         copy: Copy,
         stores: BTreeMap<String, jadpo_host_native::Postgres>,
     },
@@ -494,7 +494,7 @@ impl<'d> TestHost<'d> {
                         }
                     }
                 }
-                Held::Ready { copy, stores }
+                Held::Holding { copy, stores }
             }
             Err(error) => Held::Failed(Unready(format!(
                 "the test database couldn't be made: {error}"
@@ -506,7 +506,7 @@ impl<'d> TestHost<'d> {
     /// kept for a failed test come back to report.
     pub fn finish(self, failed: bool) -> Vec<String> {
         match self.held.into_inner() {
-            Some(Held::Ready { copy, stores }) => {
+            Some(Held::Holding { copy, stores }) => {
                 drop(stores);
                 self.databases.release(copy, failed)
             }
@@ -518,7 +518,7 @@ impl<'d> TestHost<'d> {
 impl jadpo_runtime::Host for TestHost<'_> {
     fn database(&self, store: &str) -> Option<&dyn jadpo_runtime::Database> {
         match self.held() {
-            Held::Ready { stores, .. } => stores
+            Held::Holding { stores, .. } => stores
                 .get(store)
                 .map(|database| database as &dyn jadpo_runtime::Database),
             Held::Failed(unready) => Some(unready),

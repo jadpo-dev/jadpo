@@ -1,0 +1,3 @@
+// No `connections:` block declares a database, so the project has one
+// store, `main`, on PostgreSQL, and every entity lives there.
+application {}

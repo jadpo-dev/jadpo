@@ -223,7 +223,7 @@ pub fn records(db: &dyn Db, project: Project) -> Vec<Node> {
     let mut out = Vec::new();
     for (store_name, store) in &crate::data::schema(db, project).stores {
         for (table_name, table) in &store.tables {
-            if !matches!(table.owner, jadpo_graph::schema::Owner::System(_)) {
+            if !matches!(table.holds, jadpo_graph::schema::Holds::System(_)) {
                 continue;
             }
             let name = format!("{store_name}.{table_name}");

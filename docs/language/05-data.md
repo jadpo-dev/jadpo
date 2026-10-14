@@ -55,7 +55,7 @@ entity Product {
 /// A customer's order.
 entity Order {
     id: Uuid
-    placed_at: Instant {
+    ordered_at: Instant {
         generated: Generated.on_create
     }
 
@@ -724,16 +724,16 @@ entity User {
 
 entity Todo {
     id: Uuid
-    owner: User
+    keeper: User
 }
 ```
 
 ```text output
-error: `Todo.owner` holds a whole `User`
- --> main.jadpo:7:12
+error: `Todo.keeper` holds a whole `User`
+ --> main.jadpo:7:13
   |
-7 |     owner: User
-  |            ^^^^ a `User` record
+7 |     keeper: User
+  |             ^^^^ a `User` record
   reason: An entity value is a snapshot, never stored inside another record; a field refers to a record by its identity, `User.id`, which the database keeps as a foreign key.
   next: Store `User.id` instead (agent)
   rule: data.entity_in_field
@@ -989,23 +989,23 @@ check failed: 1 error, 1 file
 ```jadpo check project=e-field-list expect=data.field_list_required
 entity Project {
     id: Uuid
-    owner: Text
+    keeper: Text
     name: Text
 
     unique: {
-        name_per_owner: owner
+        name_per_keeper: keeper
     }
 }
 ```
 
 ```text output
-error: The unique rule `name_per_owner` isn't a list of fields
- --> main.jadpo:7:25
+error: The unique rule `name_per_keeper` isn't a list of fields
+ --> main.jadpo:7:26
   |
-7 |         name_per_owner: owner
-  |                         ^^^^^ not a list
-  reason: Each unique rule is a list of the entity's fields in brackets: `name_per_owner: [field, other]`.
-  next: Write `name_per_owner: [field, ...]` (agent)
+7 |         name_per_keeper: keeper
+  |                          ^^^^^^ not a list
+  reason: Each unique rule is a list of the entity's fields in brackets: `name_per_keeper: [field, other]`.
+  next: Write `name_per_keeper: [field, ...]` (agent)
   rule: data.field_list_required
   help: docs/language/05-data.html#data-field-list-required
 
@@ -1202,7 +1202,7 @@ error: `JadpoAudit`'s table would be called `jadpo_audit`
   |
 1 | entity JadpoAudit {
   |        ^^^^^^^^^^ a system table's prefix
-  reason: Tables whose names start with `jadpo_` are the runtime's own (the outbox, delivery records, idempotency keys), so no entity's table may take that prefix.
+  reason: Tables whose names start with `jadpo_` are the runtime's own (the outbox, event deliveries, idempotency keys), so no entity's table may take that prefix.
   next: Rename `JadpoAudit` (agent)
   rule: data.reserved_table_name
   help: docs/language/05-data.html#data-reserved-table-name
@@ -1490,39 +1490,45 @@ check failed: 1 error, 4 files
 
 ### Status
 
-Bugs and gaps in today's compiler. Each was found by compiling with
-`jadpo check`, building and reading the generated SQL or TypeScript, or
-running the `jadpo schema` commands; nothing was run against a live database.
+Built in chunk 3.1 (run, with the examples above and `crates/jadpo-check`,
+`jadpo-graph` and `jadpo-cli`'s tests):
 
-- **Whether an entity is stored depends on how its identity is spelled
-  (compiled, built).** An entity with no identity gets a table with no
-  primary key; one without `identity:` has its `persistence { }` block
-  silently ignored (`store: warehouse` passes `jadpo build`); one with
-  `identity: id` and no `persistence` block cannot be created.
-- **Generated ids are version 4** (`crypto.randomUUID()`, read from generated
-  code); area 2 decided version 7.
-- **An `input` may contain a generated field** (compiled); only its use as a
-  patch is rejected.
-- **Duplicate unique rules are accepted silently** (compiled), and
-  `constraint` is accepted inside a `persistence` block, which the grammar
-  does not list.
-- **A cycle of `restrict` references reports "Required cascading references
-  form a delete cycle"** (compiled); the cycle is wrong because neither row
-  can be inserted first, whatever the delete rule.
-- **`purge after 30d from deleted_at` is misread** as
-  `syntax.lifecycle_purge_from_required` (compiled).
-- **A `cache` builds and generates nothing, and `strategy:` accepts any word**
-  (built).
-- **The PostgreSQL schema cannot be created** when an entity has an `Object`,
-  `List` or `Bytes` field, which become `BLOB` (generated SQL, not run). UUIDs
-  are `TEXT`, every `Int` is `BIGINT`, and `Decimal` is a float on SQLite.
-- **The identity registry cannot record a removal** (run): after deleting a
-  field, `jadpo check` fails with `migration.identity_registry_drift` and no
-  command accepts it. A rename fails while any other change is pending. The
-  golden todo app has no registry.
-- **Nothing applies a migration** (read from generated code): the runtime runs
-  `CREATE TABLE IF NOT EXISTS` at startup, so an existing database never gains
-  a new column.
+- **Entities** are checked as decided: the `id` (a required `Uuid`), each
+  field's column type, `generated:`, `unique: true`, references with a
+  required `on_delete:`, cycles of required references, compound `unique:`
+  rules, `indexes:`, `store:` against `app.jadpo`'s connections (with `main`
+  on PostgreSQL implied when none is a database), and the names the
+  database keeps. The manifest holds a node for each entity's placement,
+  unique rule, index and reference, with `references` edges between
+  entities, and one for each system table and migration snapshot.
+- **Migrations**: `jadpo migrate new` writes the snapshot, the SQL and the
+  decisions to make, and finishes the migration once they are written;
+  `jadpo check` fails on drift and on a migration still waiting for its
+  decisions; `jadpo migrate apply` and `status` run against the database
+  `--url` names. Adding entities, fields, unique rules, indexes and
+  references, backfilling required fields, retiring removed fields and
+  widening whole-number and decimal columns are migrated.
+- **The test database**: `jadpo test` gives each action test its own copy
+  of a template built from the migrations, on the server
+  `JADPO_TEST_DATABASE_URL` names or a disposable one, with copies
+  prepared in the background; `--keep-failed` keeps a failed test's.
+
+Not built yet, and said so where it is used (`toolchain.not_built_yet`):
+
+- Removing an entity, moving one between stores, dropping a retired column
+  (it needs acceptances, area 18) and other column type changes, in
+  `jadpo migrate new`.
+- Entities in Redis, whose expiry syntax is open (question 15), record
+  caches (`caches:`), and indexes with a `kind:` option.
+- `lifecycle:` and `policy:` are read but not checked: chunk 3.4 and area 9
+  build them. Seeds and `jadpo seed` are not built.
+- `jadpo rename`, which writes the identity registry (area 18), comes with
+  area 14's tooling; until then a field renamed by hand reads as one
+  removed and one added.
+- Each connection's URL comes from configuration (area 10); until then
+  `jadpo migrate` takes it with `--url`, and the application's refusal to
+  start against a database that doesn't match comes with the compiled
+  deployables (Phase 8).
 
 ### Carried to later areas
 
@@ -1624,7 +1630,7 @@ running the `jadpo schema` commands; nothing was run against a live database.
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
+Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says otherwise.
 
 | Topic | Decision | Date |
 |---|---|---|

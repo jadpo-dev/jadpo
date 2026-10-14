@@ -1,0 +1,8 @@
+/// How long a copy in this condition may be lent.
+action loan_period(wear: Wear) -> LoanDays {
+    return match wear {
+        Wear.pristine -> 21
+        Wear.worn -> 14
+        Wear.fragile -> 7
+    }
+}

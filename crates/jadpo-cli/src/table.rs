@@ -434,7 +434,7 @@ pub static COMMANDS: &[Command] = &[
         examples: &[
             Example {
                 description: "Write the migration for a new field",
-                command: "jadpo migrate new add_priority",
+                command: "jadpo migrate new add_rating",
             },
             Example {
                 description: "Finish the latest migration once its decisions are written",
@@ -442,11 +442,11 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Apply the pending migrations to a database",
-                command: "jadpo migrate apply --url postgresql://localhost/todos",
+                command: "jadpo migrate apply --url postgresql://localhost/shop",
             },
             Example {
                 description: "List the migrations and which a database has applied",
-                command: "jadpo migrate status --url postgresql://localhost/todos",
+                command: "jadpo migrate status --url postgresql://localhost/shop",
             },
         ],
         arguments_rule: &rule::CLI_MIGRATE_ARGUMENTS,

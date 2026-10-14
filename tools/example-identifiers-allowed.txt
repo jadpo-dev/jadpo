@@ -266,3 +266,9 @@ percent
 reserved
 used
 whole
+# ordinary words the test database harness and decimal rounding use
+# (Condvar::notify_all, a template being ready, low and high bounds)
+notify
+ready
+low
+high

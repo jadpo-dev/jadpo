@@ -1,0 +1,5 @@
+/// What a member is called on their card.
+type Nickname = Text {
+    min_length: 1
+    max_length: 80
+}

@@ -21,7 +21,7 @@ use jadpo_diag::{Decider, Diagnostic, Severity, rule};
 use jadpo_graph::migration::{
     Needed, NeededKind, Refusal, Sql, decisions_needed, migration_sql, next_snapshot,
 };
-use jadpo_graph::schema::{Change, Owner, Schema};
+use jadpo_graph::schema::{Change, Holds, Schema};
 use jadpo_term::{Block, ChangeMark, Fact, Json, Outcome, Screen};
 
 use crate::fmt::project_not_found;
@@ -182,7 +182,7 @@ fn new(call: &Call) -> Reply {
         if !valid_purpose(&purpose) {
             return Reply::failed(arguments(
                 format!("`{purpose}` isn't a purpose a folder can be named after"),
-                "A purpose is lower_snake_case words, such as `add_priority`.".to_string(),
+                "A purpose is lower_snake_case words, such as `add_rating`.".to_string(),
                 format!("Write it as `{}`", snake(&purpose)),
             ));
         }
@@ -630,9 +630,9 @@ fn change_groups(
         let Some(found) = table(after, store, name).or_else(|| table(before, store, name)) else {
             continue;
         };
-        let (system, heading) = match &found.owner {
-            Owner::Entity(born) => (false, now(born)),
-            Owner::System(_) => (true, "System tables".to_string()),
+        let (system, heading) = match &found.holds {
+            Holds::Entity(born) => (false, now(born)),
+            Holds::System(_) => (true, "System tables".to_string()),
         };
         let column = |schema: &Schema, column: &str| {
             table(schema, store, name).and_then(|t| t.columns.get(column).cloned())
@@ -644,7 +644,7 @@ fn change_groups(
                     "table".into(),
                     table.clone(),
                     if system {
-                        found.owner.to_string()
+                        found.holds.to_string()
                     } else {
                         "new entity".into()
                     },
@@ -813,7 +813,7 @@ fn runtime_steps(steps: &[Step]) -> Vec<jadpo_runtime::Migration> {
 
 /// Whether the migrations may be applied: their records read, and the
 /// latest finished. Code that doesn't check doesn't stop it.
-fn ready(loaded: &Loaded) -> Vec<Diagnostic> {
+fn migratable(loaded: &Loaded) -> Vec<Diagnostic> {
     jadpo_check::data::migrations::migration_problems(&loaded.db, loaded.project)
         .iter()
         .filter(|d| d.rule.id != rule::MIGRATION_OUT_OF_DATE.id)
@@ -826,7 +826,7 @@ fn apply(call: &Call) -> Reply {
         Ok(found) => found,
         Err(reply) => return reply,
     };
-    let problems = ready(&loaded);
+    let problems = migratable(&loaded);
     if !problems.is_empty() {
         return blocked(&loaded, &cwd, problems, "migrate apply stopped");
     }

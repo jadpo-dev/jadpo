@@ -1,0 +1,4 @@
+/// A book's 13-digit ISBN.
+type Isbn = Text {
+    pattern: "[0-9]{13}"
+}

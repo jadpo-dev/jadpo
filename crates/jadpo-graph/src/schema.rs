@@ -39,7 +39,7 @@ pub struct Store {
 
 /// What a table holds.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Owner {
+pub enum Holds {
     /// An entity's records, by the entity's born name.
     Entity(String),
     /// One of the runtime's system tables (area 5, "System tables"), by
@@ -47,11 +47,11 @@ pub enum Owner {
     System(String),
 }
 
-impl fmt::Display for Owner {
+impl fmt::Display for Holds {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Owner::Entity(name) => write!(f, "entity `{name}`"),
-            Owner::System(name) => write!(f, "system table for {}", name.replace('_', " ")),
+            Holds::Entity(name) => write!(f, "entity `{name}`"),
+            Holds::System(name) => write!(f, "system table for {}", name.replace('_', " ")),
         }
     }
 }
@@ -59,7 +59,7 @@ impl fmt::Display for Owner {
 /// One table.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Table {
-    pub owner: Owner,
+    pub holds: Holds,
     /// By physical name.
     pub columns: BTreeMap<String, Column>,
     pub primary_key: Key,
@@ -251,9 +251,9 @@ impl Schema {
 impl Table {
     fn to_value(&self) -> Value {
         let mut value = Value::object();
-        match &self.owner {
-            Owner::Entity(name) => value.set("entity", name),
-            Owner::System(name) => value.set("system", name),
+        match &self.holds {
+            Holds::Entity(name) => value.set("entity", name),
+            Holds::System(name) => value.set("system", name),
         }
         let mut columns = Value::object();
         for (name, column) in &self.columns {
@@ -301,9 +301,9 @@ impl Table {
     }
 
     fn from_value(value: &Value) -> Result<Table, String> {
-        let owner = match (value.get("entity"), value.get("system")) {
-            (Some(Value::Str(name)), None) => Owner::Entity(name.clone()),
-            (None, Some(Value::Str(name))) => Owner::System(name.clone()),
+        let holds = match (value.get("entity"), value.get("system")) {
+            (Some(Value::Str(name)), None) => Holds::Entity(name.clone()),
+            (None, Some(Value::Str(name))) => Holds::System(name.clone()),
             _ => return Err("it names neither an `entity` nor a `system` table".into()),
         };
         let mut columns = BTreeMap::new();
@@ -362,7 +362,7 @@ impl Table {
             );
         }
         Ok(Table {
-            owner,
+            holds,
             columns,
             primary_key,
             unique,
@@ -643,16 +643,16 @@ impl Change {
                 .and_then(|s| s.tables.get(table))
                 .cloned()
         };
-        let owner = |store: &str, name: &str| {
+        let holds = |store: &str, name: &str| {
             table(after, store, name)
                 .or_else(|| table(before, store, name))
-                .map_or_else(|| format!("table `{name}`"), |t| t.owner.to_string())
+                .map_or_else(|| format!("table `{name}`"), |t| t.holds.to_string())
         };
         let field = |store: &str, name: &str, column: &str| {
             let found = table(after, store, name).or_else(|| table(before, store, name));
             match found {
                 Some(Table {
-                    owner: Owner::Entity(entity),
+                    holds: Holds::Entity(entity),
                     columns,
                     ..
                 }) => {
@@ -666,14 +666,14 @@ impl Change {
                         .unwrap_or_else(|| column.to_string());
                     format!("field `{entity}.{field}`")
                 }
-                Some(t) => format!("column `{column}` of the {}", t.owner),
+                Some(t) => format!("column `{column}` of the {}", t.holds),
                 None => format!("column `{name}.{column}`"),
             }
         };
         match self {
             Change::AddStore { store } => format!("new store `{store}`"),
-            Change::AddTable { store, table } => format!("new {}", owner(store, table)),
-            Change::DropTable { store, table } => format!("{} removed", owner(store, table)),
+            Change::AddTable { store, table } => format!("new {}", holds(store, table)),
+            Change::DropTable { store, table } => format!("{} removed", holds(store, table)),
             Change::AddColumn {
                 store,
                 table,
@@ -721,7 +721,7 @@ impl Change {
                 } else {
                     "removed"
                 };
-                format!("{verb} reference `{name}` on {}", owner(store, table))
+                format!("{verb} reference `{name}` on {}", holds(store, table))
             }
             Change::AddIndex { store, table, name } | Change::DropIndex { store, table, name } => {
                 let reason = self::table(after, store, table)
@@ -778,7 +778,7 @@ mod tests {
             );
         }
         let table = Table {
-            owner: Owner::Entity("Todo".into()),
+            holds: Holds::Entity("Todo".into()),
             columns,
             primary_key: Key {
                 name: "todo_pkey".into(),

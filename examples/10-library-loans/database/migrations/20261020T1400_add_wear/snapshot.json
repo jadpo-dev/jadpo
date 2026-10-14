@@ -1,0 +1,343 @@
+{
+  "format": 1,
+  "stores": {
+    "main": {
+      "driver": "postgres",
+      "tables": {
+        "book": {
+          "columns": {
+            "id": {
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "isbn": {
+              "field": "isbn",
+              "position": 1,
+              "type": "text"
+            },
+            "shelf_code": {
+              "field": "shelf_code",
+              "nullable": true,
+              "position": 3,
+              "retired": true,
+              "type": "text"
+            },
+            "title": {
+              "field": "title",
+              "position": 2,
+              "type": "text"
+            },
+            "wear": {
+              "field": "wear",
+              "position": 3,
+              "type": "text"
+            }
+          },
+          "entity": "Book",
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "book_pkey"
+          }
+        },
+        "jadpo_deliveries": {
+          "columns": {
+            "attempts": {
+              "position": 4,
+              "type": "integer"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "last_failure": {
+              "nullable": true,
+              "position": 6,
+              "type": "jsonb"
+            },
+            "last_tried_at": {
+              "position": 7,
+              "type": "timestamptz(3)"
+            },
+            "next_attempt_at": {
+              "nullable": true,
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "outbox_id": {
+              "position": 1,
+              "type": "uuid"
+            },
+            "status": {
+              "position": 3,
+              "type": "text"
+            },
+            "subscriber": {
+              "position": 2,
+              "type": "text"
+            }
+          },
+          "foreign_keys": {
+            "jadpo_deliveries_outbox_id_fkey": {
+              "columns": [
+                "outbox_id"
+              ],
+              "on_delete": "cascade",
+              "table": "jadpo_outbox"
+            }
+          },
+          "indexes": {
+            "jadpo_deliveries_status_next_attempt_at_idx": {
+              "columns": [
+                "status",
+                "next_attempt_at"
+              ],
+              "reason": "system deliveries"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_deliveries_pkey"
+          },
+          "system": "deliveries",
+          "unique": {
+            "jadpo_deliveries_outbox_id_subscriber_key": {
+              "columns": [
+                "outbox_id",
+                "subscriber"
+              ],
+              "rule": "system deliveries"
+            }
+          }
+        },
+        "jadpo_idempotency_keys": {
+          "columns": {
+            "kept_until": {
+              "position": 6,
+              "type": "timestamptz(3)"
+            },
+            "key": {
+              "position": 1,
+              "type": "text"
+            },
+            "request_digest": {
+              "position": 2,
+              "type": "text"
+            },
+            "response": {
+              "nullable": true,
+              "position": 4,
+              "type": "jsonb"
+            },
+            "scope": {
+              "position": 0,
+              "type": "text"
+            },
+            "status": {
+              "nullable": true,
+              "position": 3,
+              "type": "smallint"
+            },
+            "stored_at": {
+              "position": 5,
+              "type": "timestamptz(3)"
+            }
+          },
+          "indexes": {
+            "jadpo_idempotency_keys_kept_until_idx": {
+              "columns": [
+                "kept_until"
+              ],
+              "reason": "system idempotency keys"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "scope",
+              "key"
+            ],
+            "name": "jadpo_idempotency_keys_pkey"
+          },
+          "system": "idempotency_keys"
+        },
+        "jadpo_outbox": {
+          "columns": {
+            "emitted_at": {
+              "position": 3,
+              "type": "timestamptz(3)"
+            },
+            "event": {
+              "position": 1,
+              "type": "text"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "payload": {
+              "position": 2,
+              "type": "jsonb"
+            },
+            "traceparent": {
+              "nullable": true,
+              "position": 4,
+              "type": "text"
+            }
+          },
+          "indexes": {
+            "jadpo_outbox_emitted_at_idx": {
+              "columns": [
+                "emitted_at"
+              ],
+              "reason": "system outbox"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_outbox_pkey"
+          },
+          "system": "outbox"
+        },
+        "loan": {
+          "columns": {
+            "book_id": {
+              "field": "book_id",
+              "position": 1,
+              "type": "uuid"
+            },
+            "changed_at": {
+              "field": "changed_at",
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "due_on": {
+              "field": "due_on",
+              "position": 4,
+              "type": "date"
+            },
+            "id": {
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "member_id": {
+              "field": "member_id",
+              "position": 2,
+              "type": "uuid"
+            },
+            "vouched_by": {
+              "field": "vouched_by",
+              "nullable": true,
+              "position": 3,
+              "type": "uuid"
+            }
+          },
+          "entity": "Loan",
+          "foreign_keys": {
+            "loan_book_id_fkey": {
+              "columns": [
+                "book_id"
+              ],
+              "on_delete": "restrict",
+              "table": "book"
+            },
+            "loan_member_id_fkey": {
+              "columns": [
+                "member_id"
+              ],
+              "on_delete": "cascade",
+              "table": "member"
+            },
+            "loan_vouched_by_fkey": {
+              "columns": [
+                "vouched_by"
+              ],
+              "on_delete": "set_null",
+              "table": "member"
+            }
+          },
+          "indexes": {
+            "loan_by_due_on_idx": {
+              "columns": [
+                "due_on"
+              ],
+              "reason": "index Loan.by_due_on"
+            },
+            "loan_member_id_idx": {
+              "columns": [
+                "member_id"
+              ],
+              "reason": "reference Loan.member_id"
+            },
+            "loan_vouched_by_idx": {
+              "columns": [
+                "vouched_by"
+              ],
+              "reason": "reference Loan.vouched_by"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "loan_pkey"
+          },
+          "unique": {
+            "loan_one_loan_per_due_date_key": {
+              "columns": [
+                "book_id",
+                "due_on"
+              ],
+              "rule": "Loan.one_loan_per_due_date"
+            }
+          }
+        },
+        "member": {
+          "columns": {
+            "email": {
+              "field": "email",
+              "position": 1,
+              "type": "text"
+            },
+            "id": {
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "joined_at": {
+              "field": "joined_at",
+              "position": 3,
+              "type": "timestamptz(3)"
+            },
+            "name": {
+              "field": "name",
+              "position": 2,
+              "type": "text"
+            }
+          },
+          "entity": "Member",
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "member_pkey"
+          },
+          "unique": {
+            "member_email_key": {
+              "columns": [
+                "email"
+              ],
+              "rule": "Member.email"
+            }
+          }
+        }
+      }
+    }
+  }
+}

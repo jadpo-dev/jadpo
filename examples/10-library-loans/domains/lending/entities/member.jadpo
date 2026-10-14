@@ -1,0 +1,19 @@
+// An entity is a stored record with a lasting identity, one per file in
+// its domain's `entities/` folder. Its first field is always `id`: a
+// `Uuid` the store generates when the record is created.
+
+/// Someone who may borrow books.
+entity Member {
+    id: Uuid
+    // `unique: true` lets no two members share an address: the database
+    // keeps a unique constraint, and a write that breaks it is a conflict.
+    email: Email {
+        unique: true
+    }
+    name: Nickname
+    // A generated field is a required `Instant` the store sets from the
+    // operation's clock; code never assigns it.
+    joined_at: Instant {
+        generated: Generated.on_create
+    }
+}

@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::schema::{Change, Column, Owner, Schema, Table, changes};
+use crate::schema::{Change, Column, Holds, Schema, Table, changes};
 
 /// A decision a change needs before its SQL can be written.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,7 +70,7 @@ pub fn next_snapshot(latest: &Schema, source: &Schema) -> Schema {
             else {
                 continue;
             };
-            if !matches!(table.owner, Owner::Entity(_)) {
+            if !matches!(table.holds, Holds::Entity(_)) {
                 continue;
             }
             for (column_name, column) in &table.columns {
@@ -114,7 +114,7 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
         ) else {
             continue;
         };
-        let Owner::Entity(entity) = &new.owner else {
+        let Holds::Entity(entity) = &new.holds else {
             continue;
         };
         let was = old.columns.get(column);
@@ -225,14 +225,14 @@ pub fn section_digest(sql: &str) -> String {
 
 /// A double-quoted identifier, so a table called `user` is a name, not a
 /// keyword.
-pub fn quote(name: &str) -> String {
+pub fn ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
-fn quoted(names: &[String]) -> String {
+fn idents(names: &[String]) -> String {
     names
         .iter()
-        .map(|n| quote(n))
+        .map(|n| ident(n))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -274,7 +274,7 @@ pub fn migration_sql(
                 }
             }
             Change::DropTable { table, .. } => {
-                let what = old.map_or_else(|| format!("table `{table}`"), |t| t.owner.to_string());
+                let what = old.map_or_else(|| format!("table `{table}`"), |t| t.holds.to_string());
                 refusals.push(Refusal {
                     change: format!("{what} removed"),
                     reason: "Removing an entity, or moving it to another store, needs a decision whose form isn't decided yet, so this compiler can't migrate it.".into(),
@@ -289,8 +289,8 @@ pub fn migration_sql(
                     .find(|n| &n.table == table && &n.column == column);
                 let add = format!(
                     "ALTER TABLE {} ADD COLUMN {} {}",
-                    quote(table),
-                    quote(column),
+                    ident(table),
+                    ident(column),
                     col.sql_type
                 );
                 plan.columns.push(Statement {
@@ -313,8 +313,8 @@ pub fn migration_sql(
                         plan.columns.push(Statement {
                             sql: format!(
                                 "ALTER TABLE {} ALTER COLUMN {} TYPE {}",
-                                quote(table),
-                                quote(column),
+                                ident(table),
+                                ident(column),
                                 now.sql_type
                             ),
                             does: "change column type",
@@ -345,8 +345,8 @@ pub fn migration_sql(
                     None if !was.nullable && now.nullable => plan.columns.push(Statement {
                         sql: format!(
                             "ALTER TABLE {} ALTER COLUMN {} DROP NOT NULL",
-                            quote(table),
-                            quote(column)
+                            ident(table),
+                            ident(column)
                         ),
                         does: "allow none",
                     }),
@@ -363,14 +363,14 @@ pub fn migration_sql(
                 plan.drop.push(Statement {
                     sql: format!(
                         "ALTER TABLE {} DROP CONSTRAINT {}",
-                        quote(table),
-                        quote(name)
+                        ident(table),
+                        ident(name)
                     ),
                     does: "drop constraint",
                 });
             }
             Change::DropIndex { name, .. } => plan.drop.push(Statement {
-                sql: format!("DROP INDEX {}", quote(name)),
+                sql: format!("DROP INDEX {}", ident(name)),
                 does: "drop index",
             }),
             Change::AddUnique { table, name, .. } => {
@@ -430,7 +430,7 @@ fn backfill(
     need: &Needed,
     decided: &dyn Fn(&Needed) -> Option<Decided>,
 ) -> Vec<Statement> {
-    let (table, column) = (quote(table), quote(column));
+    let (table, column) = (ident(table), ident(column));
     match (need.kind, decided(need)) {
         (NeededKind::Backfill, Some(Decided::Backfill(value))) => vec![
             Statement {
@@ -483,13 +483,13 @@ fn add_unique(table: &str, name: &str, def: &Table) -> Statement {
     let columns = def
         .unique
         .get(name)
-        .map(|u| quoted(&u.columns))
+        .map(|u| idents(&u.columns))
         .unwrap_or_default();
     Statement {
         sql: format!(
             "ALTER TABLE {} ADD CONSTRAINT {} UNIQUE ({columns})",
-            quote(table),
-            quote(name)
+            ident(table),
+            ident(name)
         ),
         does: "add unique rule",
     }
@@ -498,13 +498,13 @@ fn add_unique(table: &str, name: &str, def: &Table) -> Statement {
 fn add_foreign_key(table: &str, name: &str, def: &Table) -> Statement {
     let (columns, target, on_delete) = def.foreign_keys.get(name).map_or_else(
         || (String::new(), String::new(), "RESTRICT"),
-        |key| (quoted(&key.columns), quote(&key.table), key.on_delete.sql()),
+        |key| (idents(&key.columns), ident(&key.table), key.on_delete.sql()),
     );
     Statement {
         sql: format!(
             "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({columns}) REFERENCES {target} (\"id\") ON DELETE {on_delete}",
-            quote(table),
-            quote(name)
+            ident(table),
+            ident(name)
         ),
         does: "add reference",
     }
@@ -514,13 +514,13 @@ fn create_index(table: &str, name: &str, def: &Table) -> Statement {
     let columns = def
         .indexes
         .get(name)
-        .map(|i| quoted(&i.columns))
+        .map(|i| idents(&i.columns))
         .unwrap_or_default();
     Statement {
         sql: format!(
             "CREATE INDEX {} ON {} ({columns})",
-            quote(name),
-            quote(table)
+            ident(name),
+            ident(table)
         ),
         does: "create index",
     }
@@ -532,15 +532,15 @@ fn create_table(name: &str, table: &Table) -> String {
         .into_iter()
         .map(|(column, def)| {
             let null = if def.nullable { "" } else { " NOT NULL" };
-            format!("    {} {}{null}", quote(column), def.sql_type)
+            format!("    {} {}{null}", ident(column), def.sql_type)
         })
         .collect();
     lines.push(format!(
         "    CONSTRAINT {} PRIMARY KEY ({})",
-        quote(&table.primary_key.name),
-        quoted(&table.primary_key.columns)
+        ident(&table.primary_key.name),
+        idents(&table.primary_key.columns)
     ));
-    format!("CREATE TABLE {} (\n{}\n)", quote(name), lines.join(",\n"))
+    format!("CREATE TABLE {} (\n{}\n)", ident(name), lines.join(",\n"))
 }
 
 #[cfg(test)]
@@ -550,7 +550,7 @@ mod tests {
 
     fn schema(columns: &[(&str, &str, bool, bool)]) -> Schema {
         let mut table = Table {
-            owner: Owner::Entity("Todo".into()),
+            holds: Holds::Entity("Todo".into()),
             columns: BTreeMap::new(),
             primary_key: Key {
                 name: "todo_pkey".into(),

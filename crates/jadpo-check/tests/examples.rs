@@ -103,7 +103,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "not built: email templates (area 16)",
     ),
     // Later areas' declarations and the syntax only they use.
-    ("syntax ENTITY_DECL", "not built: entities (area 5)"),
     ("syntax SEED_DECL", "not built: seeds (area 5)"),
     (
         "graph node seed",
@@ -176,7 +175,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     ("root file policy.jadpo", "not built: policy (area 9)"),
     ("root file flags.jadpo", "not built: flags (area 16)"),
-    ("domain folder entities", "not built: entities (area 5)"),
     ("domain folder queries", "not built: queries (area 6)"),
     ("domain folder routes", "not built: routes (area 7)"),
     ("domain folder schedules", "not built: schedules (area 12)"),
@@ -188,7 +186,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ("domain folder emails", "not built: emails (area 16)"),
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),
-    ("place migration", "not built: migrations (area 5)"),
     ("place providers", "not built: provider packages (area 11)"),
     ("place acceptances", "not built: acceptances (area 18)"),
 ];

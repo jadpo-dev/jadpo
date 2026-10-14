@@ -18,7 +18,7 @@ use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::migration::{
     Decided, Needed, NeededKind, decisions_needed, migration_sql, next_snapshot,
 };
-use jadpo_graph::schema::{self, Change, Owner, Schema};
+use jadpo_graph::schema::{self, Change, Holds, Schema};
 use jadpo_std::{Builtin, FieldChange, Num};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr};
 
@@ -430,7 +430,7 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     format!("`{}` isn't a migration's name", migration.name),
                 )
                 .at(file_span(&migration.folder()), "not a timestamp and a purpose")
-                .reason("A migration folder is named by when `jadpo migrate new` made it and what it does, `20261020T1400_add_priority`, so the folders sort in the order they apply.")
+                .reason("A migration folder is named by when `jadpo migrate new` made it and what it does, `20261020T1400_add_rating`, so the folders sort in the order they apply.")
                 .next("Put the folder back as `jadpo migrate new` named it"),
             );
             continue;
@@ -480,14 +480,14 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 pub fn readable_changes(latest: &Schema, next: &Schema) -> Vec<Change> {
     let system = |change: &Change| {
         let (store, table) = change.table();
-        let owner = |schema: &Schema| {
+        let holds = |schema: &Schema| {
             schema
                 .stores
                 .get(store)
                 .and_then(|s| s.tables.get(table?))
-                .map(|t| matches!(t.owner, Owner::System(_)))
+                .map(|t| matches!(t.holds, Holds::System(_)))
         };
-        owner(next).or_else(|| owner(latest)).unwrap_or(true)
+        holds(next).or_else(|| holds(latest)).unwrap_or(true)
     };
     let mut changes: Vec<Change> = schema::changes(latest, next)
         .into_iter()
@@ -514,12 +514,12 @@ fn out_of_date(set: &Migrations, model: &DataModel, latest: &Schema, next: &Sche
         .iter()
         .find_map(|change| {
             let (store, table) = change.table();
-            let owner = next
+            let holds = next
                 .stores
                 .get(store)
                 .and_then(|s| s.tables.get(table?))
-                .map(|t| t.owner.clone())?;
-            let Owner::Entity(born) = owner else {
+                .map(|t| t.holds.clone())?;
+            let Holds::Entity(born) = holds else {
                 return None;
             };
             model
@@ -571,11 +571,11 @@ pub fn purpose(changes: &[Change], after: &Schema) -> String {
     for change in changes {
         match change {
             Change::AddTable { store, table } => {
-                if let Some(Owner::Entity(name)) = after
+                if let Some(Holds::Entity(name)) = after
                     .stores
                     .get(store)
                     .and_then(|s| s.tables.get(table))
-                    .map(|t| &t.owner)
+                    .map(|t| &t.holds)
                 {
                     return format!("add_{}", crate::case::to_snake(name));
                 }

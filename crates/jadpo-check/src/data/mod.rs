@@ -428,7 +428,7 @@ impl Reader<'_> {
                     format!("`{name}`'s table would be called `{table}`"),
                 )
                 .at(name_span.clone(), "a system table's prefix")
-                .reason("Tables whose names start with `jadpo_` are the runtime's own (the outbox, delivery records, idempotency keys), so no entity's table may take that prefix.")
+                .reason("Tables whose names start with `jadpo_` are the runtime's own (the outbox, event deliveries, idempotency keys), so no entity's table may take that prefix.")
                 .next(format!("Rename `{name}`")),
             );
         } else if table.len() > MAX_NAME {
@@ -843,7 +843,7 @@ impl Reader<'_> {
                         )
                         .at(entry_span, "not a field's name")
                         .reason(format!(
-                            "{} lists the entity's own fields by name, such as `owner_id`.",
+                            "{} lists the entity's own fields by name.",
                             capitalise(a_what)
                         ))
                         .next("Write the field's name"),
@@ -1171,7 +1171,7 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
 fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> physical::Table {
     let table = entity.table.as_str();
     let mut out = physical::Table {
-        owner: physical::Owner::Entity(entity.born.clone()),
+        holds: physical::Holds::Entity(entity.born.clone()),
         columns: BTreeMap::new(),
         primary_key: physical::Key {
             name: physical::object_name(&[table], "pkey"),

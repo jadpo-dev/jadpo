@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use jadpo_graph::schema::{Column, Key, Owner, Table, object_name};
+use jadpo_graph::schema::{Column, Holds, Key, Table, object_name};
 use jadpo_std::{Builtin, Num};
 
 use crate::types::{Def, Ty, TypeView};
@@ -154,7 +154,7 @@ pub fn system_table(name: &str) -> Table {
             add("attempts", "integer", false);
             add("next_attempt_at", "timestamptz(3)", true);
             add("last_failure", "jsonb", true);
-            add("updated_at", "timestamptz(3)", false);
+            add("last_tried_at", "timestamptz(3)", false);
             unique.insert(
                 object_name(&[&table, "outbox_id", "subscriber"], "key"),
                 jadpo_graph::schema::Unique {
@@ -185,20 +185,20 @@ pub fn system_table(name: &str) -> Table {
             add("request_digest", "text", false);
             add("status", "smallint", true);
             add("response", "jsonb", true);
-            add("created_at", "timestamptz(3)", false);
-            add("expires_at", "timestamptz(3)", false);
+            add("stored_at", "timestamptz(3)", false);
+            add("kept_until", "timestamptz(3)", false);
             primary = vec!["scope".into(), "key".into()];
             indexes.insert(
-                object_name(&[&table, "expires_at"], "idx"),
+                object_name(&[&table, "kept_until"], "idx"),
                 jadpo_graph::schema::Index {
-                    columns: vec!["expires_at".into()],
+                    columns: vec!["kept_until".into()],
                     reason: "system idempotency keys".into(),
                 },
             );
         }
     }
     Table {
-        owner: Owner::System(name.to_string()),
+        holds: Holds::System(name.to_string()),
         columns,
         primary_key: Key {
             name: object_name(&[&table], "pkey"),
