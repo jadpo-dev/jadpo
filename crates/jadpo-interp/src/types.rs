@@ -122,10 +122,13 @@ impl Types {
         self.chain(ty, &mut Vec::new()).map(Builtin::representation)
     }
 
-    /// Whether `ty` is a set.
+    /// Whether `ty` is a set: written `Set<T>`, or a named type or a field
+    /// type built on one.
     pub fn is_set(&self, ty: &TypeRef) -> bool {
         let mut current = ty;
-        loop {
+        // A chain is acyclic once checked; the bound only keeps a defect
+        // from looping.
+        for _ in 0..256 {
             match current {
                 TypeRef::Set(_) => return true,
                 TypeRef::Nullable(inner) => current = inner,
@@ -133,9 +136,17 @@ impl Types {
                     Some(Detail::Field { ty, .. }) => current = ty,
                     _ => return false,
                 },
+                TypeRef::Node(key) => match self.node(key).map(|node| &node.detail) {
+                    Some(Detail::Type {
+                        base: Base::Refines(parent),
+                        ..
+                    }) => current = parent,
+                    _ => return false,
+                },
                 _ => return false,
             }
         }
+        false
     }
 
     /// A literal as a value of `ty`, the type it goes into (area 2,

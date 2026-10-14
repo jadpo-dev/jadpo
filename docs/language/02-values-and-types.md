@@ -2707,7 +2707,12 @@ type RetagTodo = Input {
 boundary is a compile error, because JSON object keys are text. Built in
 chunk 1.9: a map in an `Input` or `Output`, however nested, is keyed by a type
 built on `Text` or `Uuid` (`type.map_key_boundary`), and a set literal that
-repeats a value is `type.invalid_literal`.
+repeats a value is `type.invalid_literal`. Built in chunk 2.7: a list
+written where a named set type is expected (`type Tags = Set<TagName> {}`)
+is a set, so `[b, a]` equals `[a, b]`; and since equal computed items
+collapse, a set literal's `min_length` counts only its distinct literals,
+or one value when it has any items, so `[a, b]` into a set type with
+`min_length: 2` is `type.invalid_literal`.
 
 #### Q6: no transparent aliases
 

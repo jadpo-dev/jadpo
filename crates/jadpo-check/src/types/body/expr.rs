@@ -74,6 +74,8 @@ impl Body<'_> {
                             "has {twice} twice, and a set holds each value once"
                         ));
                         self.literal_problem(expr, expected, problem, false);
+                    } else if is_set {
+                        self.set_length(expr, expected, &items);
                     }
                     return;
                 }
@@ -98,6 +100,54 @@ impl Body<'_> {
         }
         let actual = self.infer(expr);
         self.require(expr, &actual, expected);
+    }
+
+    /// A set literal's `min_length`: equal items collapse, so computed
+    /// ones may hold fewer values than are written. It holds at least its
+    /// distinct literal items (repeated ones are already an error), and at
+    /// least one when it has any items at all; the length is proved only
+    /// from that.
+    fn set_length(&mut self, expr: &Expr, expected: &Ty, items: &[Const]) {
+        if !items.iter().any(|item| matches!(item, Const::Other)) {
+            return;
+        }
+        let literals = items
+            .iter()
+            .filter(|item| !matches!(item, Const::Other))
+            .count();
+        let fewest = literals.max(usize::from(!items.is_empty())) as u64;
+        let Some((host, needed)) = self
+            .table
+            .rule_chain(expected)
+            .into_iter()
+            .filter_map(|(host, rules)| rules.min_length.map(|n| (host, n)))
+            .max_by_key(|(_, n)| *n)
+        else {
+            return;
+        };
+        if needed <= fewest {
+            return;
+        }
+        let written = tree::written(expr.syntax());
+        let span = self.span(expr);
+        let at_least = if fewest == 1 {
+            "1 value".to_string()
+        } else {
+            format!("{fewest} values")
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_INVALID_LITERAL,
+                format!("`{written}` might not be a valid `{expected}`"),
+            )
+            .at(span, format!("might break `min_length: {needed}`"))
+            .reason(format!(
+                "A set holds each value once, so when its computed items are equal it holds as few as {at_least}, and `{host}` declares `min_length: {needed}`. A literal is checked against every rule while compiling, so its length must hold however its items turn out."
+            ))
+            .next(format!(
+                "Write at least {needed} different literals in the set, or drop `min_length` from `{host}`"
+            )),
+        );
     }
 
     /// Checks `expr` where `expected` is required, and records the type it
