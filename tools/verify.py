@@ -67,6 +67,10 @@ def main() -> int:
             # in the test (crates/jadpo-check/tests/examples.rs).
             ('teaching examples cover every built feature',
              ['cargo', 'test', '--locked', '-p', 'jadpo-check', '--test', 'examples']),
+            # Every construction the checker proved, across the spec corpus,
+            # checked again as it runs (docs/compiler-runtime.md §2.7).
+            ('proofs hold when they run',
+             ['cargo', 'test', '--locked', '-p', 'jadpo-interp', '--test', 'proofs']),
             # Includes the crate-graph test (crates/jadpo-cli/tests/crate_graph.rs),
             # the parser's documentation, error and fuzz tests, and the
             # generated AST's drift test.

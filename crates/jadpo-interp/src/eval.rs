@@ -453,13 +453,15 @@ impl<'p> Interp<'p> {
     fn subject(&mut self, f: &mut Running<'p>, id: SiteId) -> Eval<Eval<Value>> {
         let body = f.body;
         let called = match body.sites.get(id.0 as usize).map(|site| &site.node) {
-            Some(Node::Expr(Expr::Call { callee, args, .. })) => match callee {
-                Callee::Function(key)
-                | Callee::Action(key)
-                | Callee::Fixture(key)
-                | Callee::LibraryFunction(key) => Some((key, args)),
-                _ => None,
-            },
+            Some(Node::Expr(Expr::Call {
+                callee:
+                    Callee::Function(key)
+                    | Callee::Action(key)
+                    | Callee::Fixture(key)
+                    | Callee::LibraryFunction(key),
+                args,
+                ..
+            })) => Some((key, args)),
             _ => None,
         };
         let Some((key, args)) = called else {
@@ -520,11 +522,19 @@ impl<'p> Interp<'p> {
                 for item in items {
                     values.push(self.eval(f, *item)?);
                 }
-                Ok(if self.program.types.is_set(&site.ty) {
+                let list = if self.program.types.is_set(&site.ty) {
                     Value::set(values)
                 } else {
                     Value::list(values)
-                })
+                };
+                // A list written into a type with lengths is proved by the
+                // checker, as a literal is.
+                if self.program.proof_checks
+                    && let Err(invalid) = self.program.types.validator(&site.ty).check(&list)
+                {
+                    return Err(self.proof_broken(&invalid, id));
+                }
+                Ok(list)
             }
             Expr::Binary { op, lhs, rhs } => self.binary(f, id, *op, *lhs, *rhs),
             Expr::Unary { op, operand } => {
@@ -758,15 +768,32 @@ impl<'p> Interp<'p> {
         let Some(value) = validator.store(value) else {
             return Err(self.fault(FaultKind::DecimalOverflow, id));
         };
-        if matches!(fallible, Fallible::Construction { .. })
+        if matches!(fallible, Fallible::Construction { .. }) {
+            if let Err(invalid) = validator.check(&value) {
+                return Err(Stop::Invalid {
+                    rule: invalid.key().to_string(),
+                    written: format!("`{}`", invalid.rule()),
+                });
+            }
+        } else if self.program.proof_checks
             && let Err(invalid) = validator.check(&value)
         {
-            return Err(Stop::Invalid {
-                rule: invalid.key().to_string(),
-                written: format!("`{}`", invalid.rule()),
-            });
+            return Err(self.proof_broken(&invalid, id));
         }
         Ok(value)
+    }
+
+    /// A value the checker proved follows its type's rules, breaking one:
+    /// a hole in the proof, found only when proofs are checked again
+    /// ([`Program::with_proof_checks`]).
+    fn proof_broken(&mut self, invalid: &jadpo_value::Invalid, id: SiteId) -> Stop {
+        self.defect(
+            &format!(
+                "a value the checker proved follows its type's rules, breaking `{}`",
+                invalid.rule()
+            ),
+            id,
+        )
     }
 
     /// `Type { ... }` or `Enum.variant { ... }`: each field as its field
@@ -789,14 +816,18 @@ impl<'p> Interp<'p> {
             let Some(value) = validator.store(value) else {
                 return Err(self.fault(FaultKind::DecimalOverflow, id));
             };
-            if matches!(fallible, Fallible::Construction { .. })
+            if matches!(fallible, Fallible::Construction { .. }) {
+                if let Err(invalid) = validator.check(&value) {
+                    let name = self.program.types.field_name(field).to_string();
+                    return Err(Stop::Invalid {
+                        rule: invalid.key().to_string(),
+                        written: format!("`{}` on `{name}`", invalid.rule()),
+                    });
+                }
+            } else if self.program.proof_checks
                 && let Err(invalid) = validator.check(&value)
             {
-                let name = self.program.types.field_name(field).to_string();
-                return Err(Stop::Invalid {
-                    rule: invalid.key().to_string(),
-                    written: format!("`{}` on `{name}`", invalid.rule()),
-                });
+                return Err(self.proof_broken(&invalid, *site));
             }
             given.push((field.clone(), value));
         }

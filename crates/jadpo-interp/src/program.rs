@@ -36,6 +36,9 @@ pub struct Program {
     pub(crate) types: Types,
     /// Each file's text, by project-relative path, for reports.
     pub(crate) texts: HashMap<String, String>,
+    /// Whether constructions the checker proved are checked again as they
+    /// run ([`Program::with_proof_checks`]).
+    pub(crate) proof_checks: bool,
 }
 
 /// Where a frame stands: its callable's file, the bytes of its site and
@@ -135,7 +138,45 @@ impl Program {
             places,
             types: Types::new(graph),
             texts,
+            proof_checks: false,
         })
+    }
+
+    /// The same program, checking again every construction the checker
+    /// proved follows its type's rules (`Type(value)`, an object's fields
+    /// and a list written into a type with lengths): one that breaks a
+    /// rule ends in a defect naming it. Compiled code never checks a proven
+    /// construction, so a hole in a proof would pass an invalid value
+    /// silently; tests run with this on to find one (chunk 2.7).
+    pub fn with_proof_checks(mut self) -> Program {
+        self.proof_checks = true;
+        self
+    }
+
+    /// Every callable with a body, by key: functions, actions, fixtures,
+    /// library functions, tests and seeds.
+    pub fn keys(&self) -> impl Iterator<Item = &Key> + '_ {
+        self.callables.iter().map(|callable| &callable.key)
+    }
+
+    /// Arguments to probe callable `name` with: for each parameter, values
+    /// its type allows at and near the edges of its rules, combined, at
+    /// most `limit` sets in all. `None` when a parameter's type isn't a
+    /// number, text or a flag, which this doesn't sample.
+    pub fn probe_arguments(&self, name: &str, limit: usize) -> Option<Vec<Vec<Value>>> {
+        let key = self.find(name)?;
+        let callable = self.callable(self.id(key)?)?;
+        let choices: Vec<Vec<Value>> = callable
+            .body
+            .params
+            .iter()
+            .map(|param| {
+                let ty = &callable.body.locals.get(param.0 as usize)?.ty;
+                let values = crate::probe::values(&self.types, ty)?;
+                (!values.is_empty()).then_some(values)
+            })
+            .collect::<Option<_>>()?;
+        Some(crate::probe::combine(&choices, limit))
     }
 
     /// Where every frame is.

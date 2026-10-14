@@ -96,7 +96,7 @@ fn magnitude(x: u128, y: u128, places: u32) -> Ordering {
     // `x × factor` against `y` is `x` against `y / factor`, with the
     // remainder deciding a tie.
     match x.cmp(&(y / factor)) {
-        Ordering::Equal if y % factor != 0 => Ordering::Less,
+        Ordering::Equal if !y.is_multiple_of(factor) => Ordering::Less,
         other => other,
     }
 }

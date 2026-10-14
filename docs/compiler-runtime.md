@@ -356,7 +356,11 @@ file's resolution query resolves its declarations only (types, fields,
 signatures, a query's parameters); a body's names are resolved by the walk
 that types it (`typed_body`), at each node it checks and over the same
 scopes, so name errors and unused-variable errors come from one walk, and
-a changed signature no longer re-resolves the files that call it.
+a changed signature no longer re-resolves the files that call it. Since
+chunk 2.7 a call names one owner (a call through three names is reported,
+except a connection's, which is not built yet), a collection type is never
+a constructor, and a call that reaches nothing is always reported, so no
+call checks clean and then faults as something that can't be called.
 
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard
@@ -389,7 +393,10 @@ loses the typed shape every consumer relies on. Built in chunk 1.7 as one
 key-sorted node list with typed `NodeId`s and a typed detail per kind; since
 chunk 1.8 a detail's types and rules are typed too (`TypeRef` names declared
 types, entities, fields and variants by identity key; rules are
-`jadpo-std`'s `Rules`), and the manifest prints them as Jadpo writes them.
+`jadpo-std`'s `Rules`), and the manifest prints them as Jadpo writes them. Since chunk 2.7 each field
+records its place among its owner's fields (`order`), copied fields where
+the line that copied them stands, and every reader takes fields in that
+order rather than by key or source offset.
 Each callable's typed body (below) is its own arena, which both executors
 walk (§2.5).
 
@@ -593,10 +600,17 @@ run through `jadpo-value`'s one implementation: arithmetic is checked, so
 overflow is the `int_overflow` or `decimal_overflow` fault; `Int` `/`
 drops the remainder; a `Decimal` `/` is exact to 18 places past its
 operands and, like any computed decimal, is rounded half to even where a
-type with a fixed `scale` stores it; constructions run their rules only
+type with a fixed `scale` stores it (since chunk 2.7 the scaled dividend is
+worked out as wide as it needs, so large operands keep all 18 places, and
+a quotient is `decimal_overflow` only when it is itself past 38 digits or
+38 places; decimals compare exactly whatever their scales, through the one
+comparison `jadpo-std` gives the checker's bounds too); constructions run their rules only
 where the checker couldn't prove them from the declared ranges and the
 conditions around them, and a broken one becomes the
-failure its arm names, or `invalid:`'s; an object literal never fails. Effects later areas build (an entity's
+failure its arm names, or `invalid:`'s (a validated built-in type's own
+check, such as `Email`'s, is the `format` rule); an object literal never
+fails. An outcome `match` and `assert … fails` work out their call's
+arguments first, so only the call's own failures reach their arms. Effects later areas build (an entity's
 operations, queries, `emit`, `clock.now`) end in the `not_built_yet`
 fault where they are reached. A call walks the Rust stack a few frames per
 Jadpo frame, so recursion to the depth limit runs inside
@@ -785,6 +799,18 @@ an exemption names a feature that can't appear in runnable code yet, with
 its reason, and fails once an example uses that feature. Every chunk adds
 or extends examples for what it builds.
 
+**Proof holes** (chunk 2.7). Compiled code never checks a construction
+the checker proved follows its type's rules, so a hole in a proof would
+pass an invalid value silently. `Program::with_proof_checks` checks every
+proven construction again as it runs (`Type(value)`, an object literal's
+fields, a list written into a type with lengths) and turns a broken rule
+into a defect; `crates/jadpo-interp/tests/proofs.rs` runs every project of
+the specification corpus that checks clean that way, its tests as written
+and every callable whose parameters are numbers, text, UUIDs or flags with
+values its types allow at and near the edges of their rules
+(`Program::probe_arguments`), and fails on any defect. The gate runs it as
+its own step.
+
 **PostgreSQL harness.** `JADPO_TEST_DATABASE_URL`, or a disposable server
 from the local tools (`initdb`, `pg_ctl`) on a Unix socket with `fsync`
 off. Migrations build one template per migration digest; per-test copies
@@ -809,7 +835,7 @@ it), may use them.
 | Phase | `tools/verify.py` adds |
 |---|---|
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
-| 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a generous ceiling (both built: chunks 2.2 and 2.3); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4) |
+| 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a generous ceiling (both built: chunks 2.2 and 2.3); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
 | 3 | Live PostgreSQL (`--profile quick` skips it) |
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |

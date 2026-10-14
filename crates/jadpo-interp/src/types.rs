@@ -117,6 +117,31 @@ impl Types {
         None
     }
 
+    /// What `ty` is built on and its rules along the way, most specific
+    /// first; `None` for an object, an enum or a container.
+    pub fn rules(&self, ty: &TypeRef) -> Option<(Builtin, Vec<Rules>)> {
+        let mut rules = Vec::new();
+        let builtin = self.chain(ty, &mut rules)?;
+        Some((builtin, rules))
+    }
+
+    /// Whether a value of `ty` may be `none`: a `T?`, or a field type
+    /// declared as one.
+    pub fn is_nullable(&self, ty: &TypeRef) -> bool {
+        let mut current = ty;
+        for _ in 0..256 {
+            match current {
+                TypeRef::Nullable(_) => return true,
+                TypeRef::Field(key) => match self.node(key).map(|node| &node.detail) {
+                    Some(Detail::Field { ty, .. }) => current = ty,
+                    _ => return false,
+                },
+                _ => return false,
+            }
+        }
+        false
+    }
+
     /// What values of `ty` are made of: `Text` for an `Email`.
     pub fn representation(&self, ty: &TypeRef) -> Option<Builtin> {
         self.chain(ty, &mut Vec::new()).map(Builtin::representation)
