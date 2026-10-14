@@ -1,0 +1,33 @@
+// Saying what can fail, and raising a failure.
+//
+// `fails` lists exactly the failures that can leave a callable, before
+// its `->`. A missing one is an error, and so is one that can never
+// happen, so the list is always true. `reject` raises a failure: it names
+// a declared failure and gives every client and internal field.
+
+/// `asked`, if the shelf has that many left. Functions can fail too:
+/// they declare `fails` and `reject` exactly as actions do.
+function check_shelf(left: Stock, asked: CakeCount) fails CakeSoldOut -> CakeCount {
+    // `Stock(asked)` moves the count into `Stock` so the two can be
+    // compared: ordering needs the same type on both sides. Every
+    // `CakeCount` (1 to 24) is a valid `Stock` (0 to 500), so the compiler
+    // proves this can't fail.
+    if (Stock(asked) > left) {
+        reject CakeSoldOut {
+            left: left
+            asked: asked
+        }
+    }
+    return asked
+}
+
+/// Sets `asked` cakes aside from the `left` on the shelf.
+action reserve_cakes(left: Stock, asked: CakeCount) fails CakeSoldOut -> CakeCount {
+    // A call that can fail must say so where it is made. `attempt` passes
+    // the call's failures on to this action's caller, so `CakeSoldOut` is
+    // in this action's `fails` list too. `attempt` always starts a
+    // statement, so every place a callable can stop early is at the start
+    // of a line.
+    var reserved: CakeCount = attempt check_shelf(left, asked)
+    return reserved
+}

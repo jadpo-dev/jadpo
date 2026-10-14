@@ -1,0 +1,11 @@
+// A collection is a type like any other: a field, a parameter or a result
+// can be one, and collections can hold objects or other collections. A
+// collection keeps its element type: a `List<IngredientName>` is not a
+// `List<Text>`.
+
+/// A recipe: its ingredients in the order they go in, and the allergens
+/// it contains.
+type Recipe = Object {
+    ingredients: List<Ingredient>
+    allergens: List<Allergen>
+}

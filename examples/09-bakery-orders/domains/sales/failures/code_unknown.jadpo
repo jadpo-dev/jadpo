@@ -1,0 +1,8 @@
+/// No discount has that code.
+type CodeUnknown = Failure {
+    kind: FailureKind.not_found
+    message: "That discount code doesn't exist."
+    internal: {
+        code: DiscountCode
+    }
+}

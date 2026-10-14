@@ -1,0 +1,5 @@
+/// One ingredient of a recipe and how much of it.
+type Ingredient = Object {
+    name: IngredientName
+    weight: Grams
+}

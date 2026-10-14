@@ -752,6 +752,28 @@ fail exactly one test with that code and show `jadpo test`'s plain output,
 both with `--seed 1`; `language_docs.py --export-corpus` writes each
 project and its `test.json`, and `build/` is not committed).
 
+**Teaching examples** (chunk 2.4; decision "Examples teach every feature",
+2026-10-14). Each project in `examples/` (a folder holding `app.jadpo`;
+`golden-todo/` holds only the golden contract) is copied to a temporary
+folder by `tools/examples.py`, which fails unless `jadpo check --json`
+reports no diagnostics at all, `jadpo fmt --check` passes, and `jadpo test
+--json --seed 1` runs at least one test with every test passing; each
+project also needs its own `README.md` and a line in `examples/README.md`.
+`--export-corpus` writes each project and its `test.json` to
+`build/spec-corpus/examples/<project>/`, beside the pages' projects, and
+the determinism test and format idempotence cover the examples too. The
+coverage test (`crates/jadpo-check/tests/examples.rs`) loads each project,
+reads its parse trees, graph and typed bodies, and fails naming any built
+feature no example uses. The features come from the compiler's own tables
+(the grammar's node kinds, graph node and edge kinds by status and area,
+type bases, constraints, input field settings, failure members and
+declarable kinds, the copying lines, the operation table and the enums its
+operations take, the generated namespaces' built members, the layout's
+root files and folders) and from exhaustive matches over the typed body;
+an exemption names a feature that can't appear in runnable code yet, with
+its reason, and fails once an example uses that feature. Every chunk adds
+or extends examples for what it builds.
+
 **PostgreSQL harness.** `JADPO_TEST_DATABASE_URL`, or a disposable server
 from the local tools (`initdb`, `pg_ctl`) on a Unix socket with `fsync`
 off. Migrations build one template per migration digest; per-test copies
@@ -776,7 +798,7 @@ it), may use them.
 | Phase | `tools/verify.py` adds |
 |---|---|
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
-| 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a generous ceiling (both built: chunks 2.2 and 2.3) |
+| 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a generous ceiling (both built: chunks 2.2 and 2.3); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4) |
 | 3 | Live PostgreSQL (`--profile quick` skips it) |
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |

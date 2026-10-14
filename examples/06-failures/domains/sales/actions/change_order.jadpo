@@ -1,0 +1,64 @@
+// Handling a failure. Instead of passing a call's failures on with
+// `attempt`, a `match` on the call handles them: `success(name)` names the
+// value when the call succeeds, and every failure the call can give needs
+// an arm, with no `_`. A failure arm can recover with a value, turn the
+// failure into another with `reject`, or pass it on with `propagate`.
+
+/// Where an order is in the kitchen.
+type OrderState = Enum {
+    waiting
+    baking
+}
+
+/// An order on the books.
+type Order = Object {
+    owner: CustomerNumber
+    state: OrderState
+    count: CakeCount
+}
+
+/// `order`, if `caller` may still change it.
+function may_change(order: Order, caller: CustomerNumber) fails NotYourOrder, OrderLocked -> Order {
+    if (order.owner != caller) {
+        reject NotYourOrder
+    }
+    // `reject` can end a block arm of a `match` statement too.
+    match order.state {
+        OrderState.waiting -> {}
+        OrderState.baking -> {
+            reject OrderLocked
+        }
+    }
+    return order
+}
+
+/// `order` changed to `asked` cakes for `caller`, taken from the `left`
+/// on the shelf. When the shelf is short, the order keeps its old count.
+action change_order(
+    order: Order,
+    caller: CustomerNumber,
+    asked: CakeCount,
+    left: Stock
+) fails OrderNotFound, OrderLocked -> Order {
+    var allowed: Order = match may_change(order, caller) {
+        success(checked) -> checked
+        // Someone else's order is reported as missing, so a caller can't
+        // tell an order they may not see from one that doesn't exist. The
+        // failure that was mapped is kept as the new one's cause, so the
+        // log shows both.
+        NotYourOrder -> reject OrderNotFound
+        // `propagate` passes the failure on unchanged, as `attempt` would,
+        // so `OrderLocked` stays in this action's `fails` list.
+        OrderLocked -> propagate
+    }
+    var count: CakeCount = match reserve_cakes(left, asked) {
+        success(reserved) -> reserved
+        // Recovering: a handled failure leaves the `fails` list.
+        CakeSoldOut -> allowed.count
+    }
+    return Order {
+        owner: allowed.owner
+        state: allowed.state
+        count: count
+    }
+}

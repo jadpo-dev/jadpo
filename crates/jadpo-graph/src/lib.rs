@@ -29,6 +29,7 @@ pub use jadpo_std::Rules;
 pub use key::{Key, Registry};
 pub use kind::{EdgeKind, Group, Kind, Status};
 pub use node::{
-    Base, DIGEST_DIGITS, Detail, Digest, FailureDetail, Node, Place, Section, Signature,
+    Base, DIGEST_DIGITS, Detail, Digest, FailureDetail, FieldDefault, Node, Place, Section,
+    Signature,
 };
 pub use types::{TypeRef, rule_pairs};

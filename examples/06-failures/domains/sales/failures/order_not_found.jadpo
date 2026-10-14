@@ -1,0 +1,5 @@
+/// No order has that number.
+type OrderNotFound = Failure {
+    kind: FailureKind.not_found
+    message: "Order not found."
+}

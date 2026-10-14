@@ -1,0 +1,31 @@
+// Calling across domains. The dot names the owner of what is called:
+//
+//   pantry.take_flour(...)    a public action of another domain
+//   portions.together(...)    a library, here a shared one
+//   collection.count(...)     the standard library
+//   flour_for(...)            a helper in this file, by its bare name
+//
+// Searching for `pantry.` finds every call into that domain.
+
+/// How many loaves a bake makes.
+type LoafCount = Int {
+    min: 1
+    max: 100
+}
+
+/// The flour for `loaves` loaves of 450 grams, or at least the 2000 grams
+/// the mixer needs to turn.
+function flour_for(loaves: LoafCount) fails TooHeavy -> Grams {
+    var needed: Grams = attempt portions.together(450, PortionCount(loaves))
+    return portions.larger(needed, 2000)
+}
+
+/// Bakes `loaves` loaves with flour from the `in_store` sacks in the pantry.
+/// Public, so the scenario in the root `tests/` folder can call it.
+public action bake_loaves(
+    loaves: LoafCount,
+    in_store: SackCount
+) fails TooHeavy, FlourShort -> Grams {
+    var flour: Grams = attempt flour_for(loaves)
+    return attempt pantry.take_flour(flour, in_store)
+}

@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, Project};
 
-use super::rules::{self, Rules, Subject};
+use super::rules::{self, Const, Rules, Subject};
 use super::shape::{FieldsBase, Line, Setting, ShapeKind, type_shapes};
 use super::ty::{BASES, Prim, Ty, TypeRef, container_arity};
 use crate::std_lib::StdNames;
@@ -27,7 +27,8 @@ pub struct FieldDef {
     pub rules: Rules,
     /// An `Input` field the sender may leave out: reading it gives `T?`.
     pub optional: bool,
-    pub default: bool,
+    /// An `Input` field's `default:`, filled in when it is left out.
+    pub default: Option<Const>,
     /// Brought in by `include` or `pick`.
     pub copied: bool,
     /// For a written field that replaces one an `include` or `pick` above
@@ -106,7 +107,7 @@ pub struct RawField {
     pub name: String,
     pub source: Source,
     pub optional: bool,
-    pub default: bool,
+    pub default: Option<Const>,
     /// The type a copied field it replaced came from.
     pub replaces: Option<String>,
 }
@@ -176,7 +177,10 @@ pub fn derive(
                         settings: settings.clone(),
                     },
                     optional: input && setting_is_true(settings, "optional"),
-                    default: input && settings.iter().any(|(key, _)| key == "default"),
+                    default: settings
+                        .iter()
+                        .find(|(key, _)| input && key == "default")
+                        .map(|(_, value)| value.clone()),
                     replaces: None,
                 };
                 match fields.iter().position(|f| f.name == *name) {
@@ -314,7 +318,7 @@ fn copy(fields: &mut Vec<RawField>, host: &str, name: &str, problem: &mut dyn Fn
             host: host.to_string(),
         },
         optional: false,
-        default: false,
+        default: None,
         replaces: None,
     });
 }
@@ -392,7 +396,7 @@ impl TypeTable {
             declared: Ty::Error,
             rules: Rules::default(),
             optional: raw.optional,
-            default: raw.default,
+            default: raw.default.clone(),
             copied: matches!(raw.source, Source::Copied { .. }),
             replaces: raw.replaces.clone(),
         };

@@ -844,8 +844,11 @@ def export_corpus(corpus):
     `jadpo test --json` document to build/spec-corpus/<page>/<project>/,
     replacing what was there (docs/compiler-runtime.md §2.7)."""
     import shutil
+    # The pages' projects only: tools/examples.py owns examples/.
     if CORPUS.exists():
-        shutil.rmtree(CORPUS)
+        for folder in CORPUS.iterdir():
+            if folder.name != 'examples':
+                shutil.rmtree(folder) if folder.is_dir() else folder.unlink()
     for page, (name, files, document) in corpus:
         folder = CORPUS / page.path.stem / name
         for path, source in files:

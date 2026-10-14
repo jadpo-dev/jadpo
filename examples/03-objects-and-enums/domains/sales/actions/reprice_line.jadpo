@@ -1,0 +1,30 @@
+// Values never change. Passing an object to a function or returning it
+// never lets anyone else change it, and fields can't be assigned: to
+// change an object, build a new one from the old one's fields.
+
+/// A price change: the line to change and its new price per cake.
+type Reprice = Object {
+    line: CakeLine
+    each: CakeLine.each
+}
+
+/// A copy of `change.line` at its new price.
+action reprice_line(change: Reprice) -> CakeLine {
+    return CakeLine {
+        cake: change.line.cake
+        count: change.line.count
+        each: change.each
+    }
+}
+
+/// `line` with `count` cakes instead, at the same price.
+function with_count(line: CakeLine, count: CakeCount) -> CakeLine {
+    // `CakeLine.count(...)` uses the field as a constructor: it checks a
+    // value against the field's rules to move it into the field's type on
+    // purpose. `count` is already a `CakeCount`, so this one can't fail.
+    return CakeLine {
+        cake: line.cake
+        count: CakeLine.count(count)
+        each: line.each
+    }
+}

@@ -1,0 +1,53 @@
+test "a basket without a code pays its subtotal" {
+    var receipt: Receipt = attempt price_basket(family_basket(none))
+    assert receipt == Receipt {
+        subtotal: 3860
+        discount: 0
+        total: 3860
+    }
+}
+
+test "a percentage code takes its share off" {
+    var receipt: Receipt = attempt price_basket(family_basket("TENOFF"))
+    assert receipt.discount == 386
+    assert receipt.total == 3474
+}
+
+test "a fixed code takes its amount off" {
+    var receipt: Receipt = attempt price_basket(family_basket("FIVEPOUNDS"))
+    assert receipt.total == 3360
+}
+
+test "a fixed code worth more than the basket is refused" {
+    var coffee: Basket = Basket {
+        lines: [
+            BasketLine {
+                item: MenuItem.coffee
+                count: 1
+            }
+        ]
+        code: "FIVEPOUNDS"
+    }
+    assert price_basket(coffee) fails DiscountTooLarge
+}
+
+test "an empty basket and an unknown code fail" {
+    assert price_basket(
+        Basket {
+            lines: []
+        }
+    ) fails BasketEmpty
+    assert price_basket(family_basket("NOSUCHCODE")) fails CodeUnknown
+}
+
+test "the till charges full price when a code is unknown" {
+    // A test handles a failure with `match` like any other code: each
+    // failure the call can give needs an arm.
+    var charged: Pence = match price_basket(family_basket("OLDCODE")) {
+        success(receipt) -> receipt.total
+        CodeUnknown -> 3860
+        BasketEmpty -> 0
+        DiscountTooLarge -> 0
+    }
+    assert charged == 3860
+}

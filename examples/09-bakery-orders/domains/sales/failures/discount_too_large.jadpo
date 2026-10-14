@@ -1,0 +1,8 @@
+/// A fixed discount would take the total below zero.
+type DiscountTooLarge = Failure {
+    kind: FailureKind.invalid_value
+    message: "That discount is worth more than the basket."
+    client: {
+        subtotal: Pence
+    }
+}

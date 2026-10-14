@@ -1,0 +1,79 @@
+// Operators, from the tightest to the loosest:
+//
+//   not, unary -        a Bool; a number
+//   *, /, %             numbers; `*` and `%` may mix named types
+//   +, -                the same named type, or a literal; `+` joins texts
+//   <, <=, >, >=        two numbers or two time values of the same type
+//   ==, !=              two values of the same type, or a value and none
+//   and                 two Bools
+//   or                  two Bools
+//
+// Brackets group. `and` and `or` stop as soon as the answer is known.
+// Logical operators are words: `!`, `&&` and `||` are not Jadpo.
+
+/// A weight in grams, never negative.
+type Grams = Int {
+    min: 0
+}
+
+/// A temperature in degrees, which may be below freezing.
+type Celsius = Int {
+    min: -40
+    max: 300
+}
+
+/// Water hotter or colder than a dough wants, in degrees either way.
+type Difference = Int {
+    min: -340
+    max: 340
+}
+
+/// How long a dough has been kneaded, in minutes.
+type Minutes = Int {
+    min: 0
+}
+
+/// Whether dough is ready to shape.
+type Ready = Bool {}
+
+/// How far the water is from the 26 degrees a dough wants: positive when
+/// too warm, negative when too cold.
+function water_difference(water: Celsius) -> Difference {
+    // Subtracting two values gives a plain `Int`; the range of `Celsius`
+    // proves the result fits `Difference`, so no check can fail.
+    return Difference(water - 26)
+}
+
+/// The same difference the other way round.
+function flipped(difference: Difference) -> Difference {
+    // Unary minus flips a number's sign. `Difference` is symmetric, so the
+    // flipped value always fits.
+    return Difference(-difference)
+}
+
+/// Whether a dough of `flour` and `water` grams, mixed with water at
+/// `temperature` and kneaded for `minutes`, is ready: wet enough, mixed
+/// within 4 degrees of 26, and either kneaded long enough or rested.
+action mix_dough(
+    flour: Grams,
+    water: Grams,
+    temperature: Celsius,
+    minutes: Minutes,
+    rested: Ready
+) -> Ready {
+    // `*` binds tighter than `>=`, which binds tighter than `and`, which
+    // binds tighter than `or`. Hydration is water as a share of flour,
+    // worked out in whole numbers: 100 * water >= 65 * flour means at
+    // least 65%.
+    var wet_enough: Bool = 100 * water >= 65 * flour
+    var difference: Difference = water_difference(temperature)
+    var close_enough: Bool = difference <= 4 and flipped(difference) <= 4
+    // The brackets make the `or` happen before the `and`.
+    return Ready(wet_enough and close_enough and (minutes >= 10 or rested))
+}
+
+/// Whether `grams` is an odd weight, which the scale rounds.
+function odd_weight(grams: Grams) -> Ready {
+    // `%` gives the remainder after dividing whole numbers.
+    return Ready(grams % 2 != 0)
+}

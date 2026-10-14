@@ -1,0 +1,10 @@
+test "a quiet kitchen with lit ovens takes orders" {
+    // A `Unit` action that can fail is called with `attempt` on its own
+    // line: its result isn't needed, only whether it failed.
+    attempt check_kitchen(3, true)
+}
+
+test "a busy kitchen or cold ovens turn orders away" {
+    assert check_kitchen(25, true) fails KitchenBusy
+    assert check_kitchen(3, false) fails OvenDown
+}

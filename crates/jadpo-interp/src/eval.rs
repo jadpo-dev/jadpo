@@ -15,8 +15,8 @@ use jadpo_graph::body::{
 };
 use jadpo_graph::{Key, TypeRef};
 use jadpo_runtime::{Ctx, Failure, Fault, FaultKind, Frame};
-use jadpo_std::{Builtin, Dur, Kind as ParamKind};
-use jadpo_value::{Decimal, Value, ops};
+use jadpo_std::{Builtin, Kind as ParamKind};
+use jadpo_value::{Value, ops};
 
 use crate::program::Program;
 use crate::{Assertion, Outcome, Part};
@@ -501,7 +501,11 @@ impl<'p> Interp<'p> {
                 outcome,
                 arms,
             } => self.matching(f, id, *subject, *outcome, arms),
-            Expr::Attempt { inner, invalid } => self.attempt(id, *inner, invalid.as_ref(), f),
+            Expr::Attempt {
+                inner,
+                invalid,
+                fields,
+            } => self.attempt(id, *inner, invalid.as_ref(), fields, f),
             Expr::Reject { failure, fields } => self.reject(f, id, failure.as_ref(), fields),
             Expr::Propagate { .. } => match f.handling.last() {
                 Some(failure) => Err(Stop::Failed(Box::new(failure.clone()))),
@@ -519,35 +523,7 @@ impl<'p> Interp<'p> {
 
     /// A literal as the type it goes into holds it (area 2, question 15).
     fn literal(&mut self, literal: &Literal, ty: &TypeRef, id: SiteId) -> Eval<Value> {
-        let program = self.program;
-        let types = &program.types;
-        let value = match literal {
-            Literal::Bool(value) => Some(Value::Bool(*value)),
-            Literal::None => Some(Value::None),
-            Literal::Text(text) => match types.representation(ty) {
-                Some(builtin) => text_literal(builtin, text),
-                None => Some(Value::text(text)),
-            },
-            Literal::Duration(written) => Dur::parse(written)
-                .and_then(|dur| i64::try_from(dur.millis).ok())
-                .map(Value::Duration),
-            Literal::Number { value, decimal } => {
-                let decimal = match types.representation(ty) {
-                    Some(builtin) => builtin == Builtin::Decimal,
-                    None => *decimal,
-                };
-                if decimal {
-                    types
-                        .validator(ty)
-                        .store(Value::Decimal(Decimal::new(value.mantissa, value.scale)))
-                } else if value.scale == 0 {
-                    i64::try_from(value.mantissa).ok().map(Value::Int)
-                } else {
-                    None
-                }
-            }
-        };
-        match value {
+        match self.program.types.literal(literal, ty) {
             Some(value) => Ok(value),
             None => Err(self.defect("a literal the checker would have refused", id)),
         }
@@ -826,6 +802,7 @@ impl<'p> Interp<'p> {
         id: SiteId,
         inner: Option<SiteId>,
         invalid: Option<&Key>,
+        fields: &'p [(Key, SiteId)],
         f: &mut Running<'p>,
     ) -> Eval<Value> {
         let Some(inner) = inner else {
@@ -833,7 +810,10 @@ impl<'p> Interp<'p> {
         };
         match self.eval(f, inner) {
             Err(Stop::Invalid(broken)) => {
-                let failure = invalid.and_then(|key| self.program.types.failure(key, Vec::new()));
+                // The failure's fields are worked out only when it is
+                // raised, as a `reject`'s are.
+                let given = self.given(f, fields)?;
+                let failure = invalid.and_then(|key| self.program.types.failure(key, given));
                 let Some(mut failure) = failure else {
                     return Err(
                         self.defect("a construction that can fail, with no failure for it", id)

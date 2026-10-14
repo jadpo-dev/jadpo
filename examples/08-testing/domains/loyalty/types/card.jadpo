@@ -1,0 +1,5 @@
+/// A loyalty card.
+type Card = Object {
+    name: CardName
+    stamp_count: StampCount
+}

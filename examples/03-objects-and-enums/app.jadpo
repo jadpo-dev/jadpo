@@ -1,0 +1,10 @@
+// Example 03: objects and enums.
+//
+// Values with parts. An object is a fixed set of named fields; an enum is
+// a closed list of alternatives, and an alternative can carry fields of
+// its own. Every shape has a name, and two shapes with the same fields
+// are still different types.
+//
+// The project is a bakery's cake orders. README.md lists the files in
+// reading order.
+application {}

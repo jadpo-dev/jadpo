@@ -1,0 +1,11 @@
+// Example 09: a bakery's orders, from basket to receipt.
+//
+// A fuller project that puts the earlier examples together: two domains,
+// shared types and a shared library, inputs and outputs built from other
+// types, tagged unions, loops, the standard library, failures declared,
+// raised, passed on and handled, fixtures, and tests at every level. Its
+// comments point out what each part is for rather than re-teaching it;
+// the earlier examples teach each idea on its own.
+//
+// README.md lists the files in reading order.
+application {}

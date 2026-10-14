@@ -1,0 +1,41 @@
+// Walking a list with `for`.
+
+/// How many ingredients a recipe has.
+type IngredientCount = Int {
+    min: 0
+}
+
+/// The total weight of everything in `recipe`.
+action weigh_recipe(recipe: Recipe) -> Grams {
+    // `var mut` names a value that can be pointed at a new value of the
+    // same type. Only a `var mut` local can be assigned; parameters and
+    // fields never can.
+    var mut total: Grams = 0
+    // `for` is the only loop. The loop item takes its type from the list:
+    // here each `ingredient` is an `Ingredient`. There is no `while`,
+    // `break` or `continue`.
+    for ingredient in recipe.ingredients {
+        total = Grams(total + ingredient.weight)
+    }
+    return total
+}
+
+/// How many ingredients `recipe` has.
+function count_ingredients(recipe: Recipe) -> IngredientCount {
+    // `collection.count` gives a plain `Int`. The standard library is
+    // always called through its namespace, so `collection.` always means
+    // the standard library. The compiler knows a count is never below
+    // zero, so `IngredientCount(...)` can't fail.
+    return IngredientCount(collection.count(recipe.ingredients))
+}
+
+/// The weight of the first ingredient called `name`, or `none`.
+function weight_of(recipe: Recipe, name: IngredientName) -> Grams? {
+    for ingredient in recipe.ingredients {
+        // `return` inside a loop ends the whole function at once.
+        if (ingredient.name == name) {
+            return ingredient.weight
+        }
+    }
+    return none
+}

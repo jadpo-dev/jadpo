@@ -1,0 +1,15 @@
+test "a small bake still uses the mixer's 2000 grams" {
+    // `flour_for` can fail, so even in a test its value comes through
+    // `attempt` (or `match`), never by calling it bare.
+    var flour: Grams = attempt flour_for(2)
+    assert flour == 2000
+}
+
+test "a large bake uses 450 grams a loaf" {
+    var used: Grams = attempt bake_loaves(10, 1)
+    assert used == 4500
+}
+
+test "the shared library gives the larger weight" {
+    assert portions.larger(10, 20) == 20
+}

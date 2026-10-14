@@ -1,0 +1,11 @@
+// A library private to its domain: only `pantry` calls it.
+
+/// Sacks of flour and the grams in them.
+library sacks {
+    /// The grams of flour in `count` full sacks.
+    function grams_in(count: SackCount) -> Grams {
+        // 6 sacks of 16000 grams is 96000, inside `Grams`' 100000, so the
+        // ranges prove this can't fail.
+        return Grams(count * 16000)
+    }
+}

@@ -1,0 +1,27 @@
+// A check that can fail at runtime. `Type(value)` checks a value against
+// a type's rules. When the value is a literal, the compiler checks it
+// while compiling. When it is computed and the declared ranges don't
+// prove it follows the rules, building it can fail, and the code must
+// say what that failure is: `attempt Type(value) invalid: SomeFailure`.
+// The failure named must have the kind `invalid_value`.
+
+/// A number of cakes counted for the kitchen, never negative.
+type KitchenCount = Int {
+    min: 0
+}
+
+/// The same order twice over, as a party often asks.
+action double_order(count: CakeCount) fails OrderTooLarge -> CakeCount {
+    // `count * 2` can reach 48, and `CakeCount` stops at 24, so this
+    // construction can fail; `invalid:` turns that into `OrderTooLarge`.
+    var doubled: CakeCount = attempt CakeCount(count * 2) invalid: OrderTooLarge
+    return doubled
+}
+
+/// How many cakes the kitchen bakes for `count` orders of `each`.
+function kitchen_count(each: CakeCount, count: CakeCount) -> KitchenCount {
+    // Both sides are at least 1, so the product is at least 0, and
+    // `KitchenCount` has no maximum: the compiler proves this can't fail,
+    // so it takes no `attempt`. (Writing one would be an error.)
+    return KitchenCount(each * count)
+}

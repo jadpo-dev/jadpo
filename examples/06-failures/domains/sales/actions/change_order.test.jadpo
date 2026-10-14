@@ -1,0 +1,38 @@
+test "a waiting order changes to the new count" {
+    var order: Order = Order {
+        owner: 7
+        state: OrderState.waiting
+        count: 2
+    }
+    var changed: Order = attempt change_order(order, 7, 5, 10)
+    assert changed.count == 5
+}
+
+test "a short shelf keeps the old count" {
+    var order: Order = Order {
+        owner: 7
+        state: OrderState.waiting
+        count: 2
+    }
+    var changed: Order = attempt change_order(order, 7, 5, 1)
+    assert changed == order
+}
+
+test "someone else's order looks missing" {
+    var order: Order = Order {
+        owner: 7
+        state: OrderState.waiting
+        count: 2
+    }
+    assert change_order(order, 8, 5, 10) fails OrderNotFound
+    assert may_change(order, 8) fails NotYourOrder
+}
+
+test "an order in the oven can't change" {
+    var order: Order = Order {
+        owner: 7
+        state: OrderState.baking
+        count: 2
+    }
+    assert change_order(order, 7, 5, 10) fails OrderLocked
+}

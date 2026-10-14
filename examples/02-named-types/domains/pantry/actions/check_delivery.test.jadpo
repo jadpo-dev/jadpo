@@ -1,0 +1,43 @@
+// Literals for these types are text, checked while compiling: a moment
+// needs its offset (`Z` here), a day is `YYYY-MM-DD`, and a UUID, an email
+// address, a link or an IP address must be a valid one. A duration is a
+// number with a unit: `ms`, `s`, `m`, `h` or `d`.
+
+test "fresh flour that arrived on time goes on the shelf" {
+    assert check_delivery(
+        "2026-03-02T07:45:00Z",
+        "2026-03-02T09:00:00Z",
+        "2026-06-30",
+        "2026-03-02",
+        90m
+    )
+}
+
+test "a late delivery waits for tomorrow" {
+    var late: ArrivedAt = "2026-03-02T09:30:00Z"
+    assert not check_delivery(late, "2026-03-02T09:00:00Z", "2026-06-30", "2026-03-02", 90m)
+}
+
+test "a proving time over two hours is refused" {
+    assert not check_delivery(
+        "2026-03-02T07:45:00Z",
+        "2026-03-02T09:00:00Z",
+        "2026-06-30",
+        "2026-03-02",
+        3h
+    )
+}
+
+test "the expected delivery is recognised by its identity" {
+    assert expected_delivery("6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
+    assert not expected_delivery("0b6f3a52-91c4-4d2e-8f7a-1c2d3e4f5a6b")
+}
+
+test "the usual contacts are recognised" {
+    assert usual_contacts(
+        "orders@mill.example",
+        "https://mill.example/orders",
+        "10.0.0.7",
+        "accounts@mill.example"
+    )
+}

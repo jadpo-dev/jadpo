@@ -1,0 +1,12 @@
+// Example 06: failures.
+//
+// How code says that something went wrong. Application code says what
+// failed; the compiler and runtime decide how that is shown to whoever
+// called. There is no `throw`, no exception and no error code chosen by
+// hand: a failure is a declared type, every callable lists the failures
+// that can leave it, and every call that can fail says at the call site
+// what happens when it does.
+//
+// The project takes cake orders. README.md lists the files in reading
+// order.
+application {}

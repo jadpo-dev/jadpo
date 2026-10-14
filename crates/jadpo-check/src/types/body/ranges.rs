@@ -9,12 +9,40 @@
 
 use std::cmp::Ordering;
 
+use jadpo_std::Op;
 use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::rules::{Const, Num, Rules};
 use super::super::ty::Ty;
 use super::{Body, node_key};
+
+/// Dividing `a` by `b`, or taking the remainder: a value that is never
+/// negative divided by a divisor above zero is never negative either, and
+/// no larger than the dividend once the divisor is at least 1; anything
+/// finer is left to an explicit check.
+fn divided(a: Interval, b: Interval, remainder: bool) -> Interval {
+    let zero = End::At(Num {
+        mantissa: 0,
+        scale: 0,
+    });
+    let one = End::At(Num {
+        mantissa: 1,
+        scale: 0,
+    });
+    if a.low.cmp(zero).is_ge() && b.low.cmp(zero).is_gt() {
+        let high = if remainder {
+            b.high
+        } else if b.low.cmp(one).is_ge() {
+            a.high
+        } else {
+            End::Above
+        };
+        Interval { low: zero, high }
+    } else {
+        Interval::ANY
+    }
+}
 
 /// One end of a range: unbounded below, a number, or unbounded above.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -196,6 +224,28 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
 impl Body<'_> {
     /// The smallest result a standard-library call gives, when the
     /// operation table says.
+    /// The dividend and divisor of a call to a standard-library division,
+    /// given by position or by name.
+    fn division(&self, call: &ast::CallExpr) -> Option<(Expr, Expr)> {
+        let super::facts::Reach::Std(op) = self.facts.reaches.get(&node_key(call.syntax()))? else {
+            return None;
+        };
+        if !matches!(op, Op::IntegerDivide | Op::DecimalDivide) {
+            return None;
+        }
+        let args: Vec<ast::Arg> = call.arg_list()?.args().collect();
+        let find = |name: &str, position: usize| {
+            let named = args.iter().find(|arg| {
+                arg.name()
+                    .and_then(|n| n.ident_token())
+                    .is_some_and(|t| t.text() == name)
+            });
+            let positional = args.get(position).filter(|arg| arg.name().is_none());
+            named.or(positional).and_then(ast::Arg::expr)
+        };
+        Some((find("dividend", 0)?, find("divisor", 1)?))
+    }
+
     fn floor(&self, call: &ast::CallExpr) -> Option<i64> {
         match self.facts.reaches.get(&node_key(call.syntax()))? {
             super::facts::Reach::Std(op) => op.operation().at_least,
@@ -270,6 +320,12 @@ impl Body<'_> {
                 low: End::At(Num::whole(i128::from(floor))),
                 high: End::Above,
             },
+            // `integer.divide` and `decimal.divide` are bounded as `/` is,
+            // whichever way they round: rounding away from zero never
+            // passes the dividend while the divisor is at least 1.
+            Expr::CallExpr(call) if let Some((dividend, divisor)) = self.division(call) => {
+                divided(self.interval(&dividend), self.interval(&divisor), false)
+            }
             other => match self.facts.types.get(&node_key(other.syntax())) {
                 Some(ty) => self.type_interval(ty),
                 None => Interval::ANY,
@@ -313,29 +369,8 @@ impl Body<'_> {
                 mul(a.high, b.low),
                 mul(a.high, b.high),
             ]),
-            // Dividing or taking the remainder of a value that is never
-            // negative by a divisor above zero is never negative either;
-            // anything finer is left to an explicit check.
-            "/" | "%" => {
-                let zero = End::At(Num {
-                    mantissa: 0,
-                    scale: 0,
-                });
-                let one = End::At(Num {
-                    mantissa: 1,
-                    scale: 0,
-                });
-                if a.low.cmp(zero).is_ge() && b.low.cmp(zero).is_gt() {
-                    let high = match op.as_str() {
-                        "%" => b.high,
-                        _ if b.low.cmp(one).is_ge() => a.high,
-                        _ => End::Above,
-                    };
-                    Interval { low: zero, high }
-                } else {
-                    Interval::ANY
-                }
-            }
+            "/" => divided(a, b, false),
+            "%" => divided(a, b, true),
             _ => Interval::ANY,
         }
     }

@@ -13,7 +13,7 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 use super::super::literal;
 use super::super::rules::Const;
 use super::super::ty::{Prim, Ty};
-use super::{Body, capital, is_literal};
+use super::{Body, capital, is_literal, node_key};
 use crate::tree;
 
 /// One side of an operator.
@@ -231,8 +231,11 @@ impl Body<'_> {
             }
             return Ty::Error;
         };
-        let a = self.operand(&lhs);
-        let b = self.operand(&rhs);
+        let (a, b) = if matches!(op.as_str(), "==" | "!=") {
+            self.compared(&lhs, &rhs)
+        } else {
+            (self.operand(&lhs), self.operand(&rhs))
+        };
         let comparison = matches!(
             op.as_str(),
             "and" | "or" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "matches"
@@ -263,6 +266,44 @@ impl Body<'_> {
             }
             "+" | "-" | "*" | "/" | "%" => self.arithmetic(binary, &op, (&lhs, &a), (&rhs, &b)),
             _ => Ty::Prim(Prim::Bool),
+        }
+    }
+
+    /// Both sides of `==` or `!=`. A list written on one side is checked
+    /// against a collection on the other, as a literal takes the other
+    /// side's type, so `tags == ["a", "b"]` compares two sets when `tags`
+    /// is a set.
+    fn compared(&mut self, lhs: &Expr, rhs: &Expr) -> (Operand, Operand) {
+        let written = |expr: &Expr| matches!(expr, Expr::ListExpr(_));
+        if written(lhs) && !written(rhs) {
+            let b = self.operand(rhs);
+            let a = self.against(lhs, &b);
+            return (a, b);
+        }
+        let a = self.operand(lhs);
+        let b = if written(rhs) && !written(lhs) {
+            self.against(rhs, &a)
+        } else {
+            self.operand(rhs)
+        };
+        (a, b)
+    }
+
+    /// A written list beside `other`: checked as `other`'s collection type
+    /// when it is one.
+    fn against(&mut self, list: &Expr, other: &Operand) -> Operand {
+        match other {
+            Operand::Value(ty)
+                if matches!(
+                    self.table.structure(ty),
+                    Ty::List(_) | Ty::Set(_) | Ty::Map(..)
+                ) =>
+            {
+                let ty = ty.strip_nullable().clone();
+                self.check(list, &ty);
+                Operand::Value(ty)
+            }
+            _ => self.operand(list),
         }
     }
 
@@ -324,6 +365,16 @@ impl Body<'_> {
             }
         }
         if self.same_type(a, b) {
+            // A literal takes the other side's type, so text written for a
+            // UUID, an instant or a date is read as one (area 3).
+            for (literal, other, literal_expr) in [(a, b, lhs), (b, a, rhs)] {
+                if let (Operand::Literal(_), Operand::Value(ty)) = (literal, other) {
+                    self.facts
+                        .types
+                        .entry(node_key(literal_expr.syntax()))
+                        .or_insert_with(|| ty.strip_nullable().clone());
+                }
+            }
             return;
         }
         let (sa, sb) = (a.shown(), b.shown());

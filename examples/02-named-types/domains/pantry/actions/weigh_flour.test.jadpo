@@ -1,0 +1,17 @@
+// A test may call the helpers in the file it sits beside, not only its
+// action: these first two are pure tests, which call functions only.
+
+test "a sack's weight multiplies by the number of sacks" {
+    assert total_weight(16000, 3) == 48000
+}
+
+test "a warm pantry needs cooling and a cold one doesn't" {
+    // `-5` is a negative literal: `Celsius` allows it.
+    assert needs_cooling(30)
+    assert not needs_cooling(-5)
+}
+
+test "a very heavy delivery needs cooling whatever the temperature" {
+    assert weigh_flour(16000, 7, 12)
+    assert weigh_flour(16000, 6, 12) == false
+}

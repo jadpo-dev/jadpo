@@ -1,0 +1,10 @@
+// `code:` keeps a public code that clients already use after the failure
+// is renamed. Without it the code would be `order_locked`; with it,
+// clients keep receiving `too_late_to_change`.
+
+/// The kitchen has started the order, so it can't change.
+type OrderLocked = Failure {
+    kind: FailureKind.rejected
+    code: "too_late_to_change"
+    message: "The kitchen has started this order."
+}

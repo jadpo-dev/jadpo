@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use jadpo_db::{Db, File, Item, Project, item_tree, location};
 use jadpo_graph::body::Refers;
 use jadpo_graph::{
-    Base, Detail, EdgeKind, FailureDetail, Key, Kind, Node, Section, Signature, TypeRef,
-    catalogue::status_of,
+    Base, Detail, EdgeKind, FailureDetail, FieldDefault, Key, Kind, Node, Registry, Section,
+    Signature, TypeRef, catalogue::status_of,
 };
 use jadpo_syntax::SyntaxNode;
 use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
@@ -516,7 +516,8 @@ impl Part<'_> {
                     type_ref(self.lookup, &def.declared)
                 }),
             optional: def.is_some_and(|def| def.optional),
-            default: def.is_some_and(|def| def.default),
+            default: def
+                .and_then(|def| field_default(self.lookup.registry(), def.default.as_ref()?)),
             section,
             copied_from: None,
             replaces: def.and_then(|def| def.replaces.as_ref()).map(|source| {
@@ -568,7 +569,10 @@ impl Part<'_> {
         node.detail = Detail::Field {
             ty: type_ref(self.lookup, &field.declared),
             optional: field.optional,
-            default: field.default,
+            default: field
+                .default
+                .as_ref()
+                .and_then(|value| field_default(self.lookup.registry(), value)),
             section: None,
             copied_from: from.clone(),
             replaces: None,
@@ -605,6 +609,17 @@ impl Part<'_> {
                 self.field(host, &key, vec![variant.to_string(), field], &member, None);
             }
         }
+    }
+}
+
+/// An input field's `default:` as the graph holds it: a literal, or a
+/// plain variant written `Enum.variant`.
+fn field_default(registry: &Registry, value: &Const) -> Option<FieldDefault> {
+    match value {
+        Const::Path(path) if path.len() == 2 => Some(FieldDefault::Variant(variant_key(
+            registry, &path[0], &path[1],
+        ))),
+        other => other.literal().map(FieldDefault::Literal),
     }
 }
 

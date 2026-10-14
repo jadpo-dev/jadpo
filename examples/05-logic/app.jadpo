@@ -1,0 +1,9 @@
+// Example 05: logic.
+//
+// How behaviour is written: operators and the order they apply in,
+// choices with `if` and `match`, division that says how it rounds, and
+// recursion over a shape that contains itself.
+//
+// The project is a bakery's kitchen. README.md lists the files in
+// reading order.
+application {}

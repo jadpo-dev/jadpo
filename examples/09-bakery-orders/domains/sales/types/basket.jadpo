@@ -1,0 +1,20 @@
+/// A code a customer types in for money off.
+public type DiscountCode = Text {
+    pattern: "[A-Z0-9]{4,12}"
+}
+
+// The basket as it arrives from the shop's website: an `Input`, so the
+// code may be left out, and a list whose length is part of its rules.
+// `public`, with the types it is made of, because the scenario in the root
+// `tests/` folder builds baskets, and a scenario sees only what domains
+// make public.
+
+/// What a customer asks to buy.
+public type Basket = Input {
+    lines: List<BasketLine> {
+        max_length: 20
+    }
+    code: DiscountCode {
+        optional: true
+    }
+}

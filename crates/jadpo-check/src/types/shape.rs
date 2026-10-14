@@ -184,12 +184,16 @@ pub fn lines(list: Option<ast::MemberList>, base: FieldsBase) -> Vec<Line> {
         .collect()
 }
 
+/// The lines that build a type's fields from other types (area 2), read
+/// from top to bottom.
+pub const COPY_LINES: [&str; 4] = ["include", "pick", "omit", "optional"];
+
 fn line(member: &ast::Member, base: FieldsBase) -> Line {
     let Some(key) = single_key(member) else {
         return Line::Other;
     };
     let value = member.value();
-    let copying = matches!(key.as_str(), "include" | "pick" | "omit" | "optional");
+    let copying = COPY_LINES.contains(&key.as_str());
     if copying && base == FieldsBase::Entity {
         // An entity copies no fields (area 5), so a copying word with a
         // type is a field that took a reserved name.

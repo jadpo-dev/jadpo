@@ -1,0 +1,19 @@
+test "collecting in the shop is free" {
+    assert choose_handover(Handover.in_shop).fee == 0
+}
+
+test "a delivery charges its fee and says where to go" {
+    var charge: HandoverCharge = choose_handover(deliver("12 Mill Lane", 450))
+    assert charge.fee == 450
+    assert charge.deliver_to == "12 Mill Lane"
+}
+
+test "a locker costs 50 pence" {
+    var locker: Handover = Handover.locker {
+        code: "4821"
+    }
+    assert choose_handover(locker) == HandoverCharge {
+        fee: 50
+        deliver_to: none
+    }
+}

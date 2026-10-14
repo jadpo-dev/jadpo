@@ -1,0 +1,10 @@
+// `sales` passes a sack count to `pantry.take_flour`, so `SackCount` is
+// used by two domains and lives here. The compiler asks for that move
+// (`layout.promotion_required`) the moment a second domain uses a type,
+// with a one-step fix; it never moves code back on its own.
+
+/// How many 16-kilogram sacks of flour the pantry holds.
+type SackCount = Int {
+    min: 0
+    max: 6
+}

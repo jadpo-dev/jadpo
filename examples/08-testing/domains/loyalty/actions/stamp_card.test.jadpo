@@ -1,0 +1,23 @@
+// The kind of a test is known from what it calls, never declared: a test
+// that calls only functions is a pure test, and one that calls an action
+// or a fixture is an action test. `jadpo test --kind pure` runs one kind,
+// and the report counts each kind, because each proves something
+// different. Every test starts from nothing, so tests never depend on
+// each other and run in any order: the order changes with `--seed`.
+
+test "a stamp adds one to the card" {
+    var card: Card = attempt stamp_card(new_card(3))
+    assert card.stamp_count == 4
+    assert card.name == "Ada"
+}
+
+test "a fixture can build on an action" {
+    assert stamped_once().stamp_count == 1
+}
+
+test "a full card takes no more stamps" {
+    // `assert ... fails` checks the call fails with exactly this failure.
+    // Had it returned a card instead, or failed another way, the report
+    // would show the value or the other failure.
+    assert stamp_card(new_card(10)) fails CardFull
+}

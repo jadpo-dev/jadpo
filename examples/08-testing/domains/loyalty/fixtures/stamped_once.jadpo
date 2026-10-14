@@ -1,0 +1,8 @@
+/// A new card stamped once, the way a customer's is: through the real
+/// action, so the stamp follows the same rules. A fixture may call other
+/// fixtures and actions; `attempt` here would fail the calling test if
+/// the stamp were refused.
+fixture stamped_once() -> Card {
+    var card: Card = attempt stamp_card(new_card(0))
+    return card
+}

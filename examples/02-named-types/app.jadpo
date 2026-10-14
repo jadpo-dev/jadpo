@@ -1,0 +1,11 @@
+// Example 02: named types.
+//
+// The rule behind Jadpo's types: representation is not meaning. A weight
+// and a temperature are both whole numbers underneath, but they mean
+// different things, so they are different types, and the compiler never
+// converts between them silently. A value becomes a type only by being
+// checked against that type's rules.
+//
+// The project is a bakery's pantry; each action shows one family of
+// built-in types. README.md lists the files in reading order.
+application {}

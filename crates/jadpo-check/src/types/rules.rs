@@ -35,6 +35,23 @@ pub enum Const {
 }
 
 impl Const {
+    /// The literal it is, as typed bodies and the graph hold one; `None`
+    /// for a name, a list or anything computed.
+    pub fn literal(&self) -> Option<jadpo_graph::body::Literal> {
+        use jadpo_graph::body::Literal;
+        Some(match self {
+            Const::Number { value, decimal } => Literal::Number {
+                value: *value,
+                decimal: *decimal,
+            },
+            Const::Duration(written) => Literal::Duration(written.clone()),
+            Const::Str(text) => Literal::Text(text.clone()),
+            Const::Bool(value) => Literal::Bool(*value),
+            Const::None => Literal::None,
+            Const::Path(_) | Const::List(_) | Const::TooLong | Const::Other => return None,
+        })
+    }
+
     /// Reads a member's value or an expression as a constant.
     pub fn from_expr(expr: &Expr) -> Const {
         match expr {

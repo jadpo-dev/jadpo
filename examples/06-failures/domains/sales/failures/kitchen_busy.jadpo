@@ -1,0 +1,4 @@
+/// The kitchen takes no more orders this hour; try again later.
+type KitchenBusy = Failure {
+    kind: FailureKind.rate_limited
+}

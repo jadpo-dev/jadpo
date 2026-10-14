@@ -82,6 +82,20 @@ fn a_construction_the_ranges_prove_safe_never_fails_and_one_they_dont_can() {
     assert_eq!(lines(&program, &too_large.frames), ["main.jadpo:7"]);
 }
 
+#[test]
+fn a_construction_mapping_gives_its_failure_fields() {
+    // `invalid:` names its failure as `reject` does, fields and all
+    // (question 7: every mapping is `condition: Failure`).
+    let program = main(
+        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n    client: {\n        largest: Quantity\n    }\n    internal: {\n        asked: Quantity\n    }\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge {\n        largest: 1000\n        asked: quantity\n    }\n    return result\n}\n",
+    );
+    assert_eq!(value(&program, "doubled", vec![int(500)]), int(1000));
+    let too_large = failure(&program, "doubled", vec![int(501)]);
+    assert_eq!(too_large.client, [("largest".to_string(), int(1000))]);
+    assert_eq!(too_large.internal, [("asked".to_string(), int(501))]);
+    assert_eq!(too_large.broken.as_deref(), Some("`max: 1000`"));
+}
+
 const LOOKUP: &str = "type LookupCode = Text {}\n\ntype LookupResult = Text {}\n\ntype LookupMissing = Failure {\n    kind: FailureKind.not_found\n}\n\ntype LookupRefused = Failure {\n    kind: FailureKind.rejected\n    internal: {\n        reason: LookupResult\n    }\n}\n\ntype LookupRejected = Failure {\n    kind: FailureKind.rejected\n}\n\nfunction lookup(key: LookupCode) fails LookupMissing, LookupRefused -> LookupResult {\n    if (key == \"missing\") {\n        reject LookupMissing\n    }\n    if (key == \"refused\") {\n        reject LookupRefused {\n            reason: \"on the deny list\"\n        }\n    }\n    return \"found\"\n}\n";
 
 #[test]

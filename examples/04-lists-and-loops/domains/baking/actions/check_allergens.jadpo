@@ -1,0 +1,44 @@
+// Searching a list, and a `Set`.
+
+/// Whether a recipe is safe for someone.
+type SafeToEat = Bool {}
+
+/// Whether `recipe` avoids every allergen in `avoid`.
+action check_allergens(recipe: Recipe, avoid: List<Allergen>) -> SafeToEat {
+    for allergen in avoid {
+        // `collection.contains` asks whether a list holds a value equal to
+        // the one given.
+        if (collection.contains(recipe.allergens, allergen)) {
+            return false
+        }
+    }
+    return true
+}
+
+/// A badge the menu prints beside a recipe.
+type Badge = Enum {
+    vegan
+    vegetarian
+    nut_free
+}
+
+/// The badges `recipe` earns; this bakery bakes no meat, so every
+/// recipe is vegetarian. A `Set` holds each value once and has no
+/// order, so two sets are equal when they hold the same values. A set is
+/// written as a list in square brackets where a set is expected; a set
+/// literal that repeats a value doesn't compile.
+function badges(recipe: Recipe) -> Set<Badge> {
+    var animal_free: Bool = not collection.contains(
+        recipe.allergens,
+        Allergen.milk
+    ) and not collection.contains(recipe.allergens, Allergen.egg)
+    var nut_free: Bool = not collection.contains(recipe.allergens, Allergen.nuts)
+    if (animal_free and nut_free) {
+        return [Badge.vegan, Badge.vegetarian, Badge.nut_free]
+    } else if (animal_free) {
+        return [Badge.vegan, Badge.vegetarian]
+    } else if (nut_free) {
+        return [Badge.vegetarian, Badge.nut_free]
+    }
+    return [Badge.vegetarian]
+}

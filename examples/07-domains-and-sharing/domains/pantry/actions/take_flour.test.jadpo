@@ -1,0 +1,12 @@
+// A test beside its subject can call anything in its own domain, private
+// or not: here the private library `sacks` as well as the action.
+
+test "the pantry gives flour it holds" {
+    var taken: Grams = attempt take_flour(20000, 2)
+    assert taken == 20000
+    assert sacks.grams_in(2) == 32000
+}
+
+test "the pantry refuses more flour than it holds" {
+    assert take_flour(40000, 2) fails FlourShort
+}

@@ -1,0 +1,83 @@
+// Identities, contacts, links and time: built-in types that check their
+// text, and types that hold moments, days and lengths of time.
+
+/// A delivery's identity. `Uuid` values are written as text and checked
+/// as UUIDs; `version` pins which version is accepted.
+type DeliveryId = Uuid {
+    version: UuidVersion.v4
+}
+
+// `Email`, `Url` and `IpAddress` are ready-made named types built on
+// `Text`, each checking its own format. Wrapping one in your own type
+// names what it is for; `format: TextFormat.email` gives a plain `Text`
+// type the same email check.
+
+/// Where to send questions about a delivery.
+type SupplierDesk = Email {}
+
+/// The supplier's order page.
+type SupplierSite = Url {}
+
+/// The address of the scale that weighed the delivery.
+type ScaleAddress = IpAddress {}
+
+/// A contact address checked by a rule rather than by its base.
+type InvoiceAddress = Text {
+    format: TextFormat.email
+}
+
+// Time: an `Instant` is a moment, written in ISO 8601 with its offset; a
+// `CalendarDate` is a day with no time or zone; a `Duration` is a length
+// of time, written with a unit (`45m`, `2h`), and its bounds are written
+// the same way.
+
+/// When the delivery arrived.
+type ArrivedAt = Instant {}
+
+/// The last day the flour is good.
+type BestBefore = CalendarDate {}
+
+/// How long the dough proves, between 30 minutes and 4 hours.
+type ProvingTime = Duration {
+    min: 30m
+    max: 4h
+}
+
+/// Whether a delivery can go on the shelf.
+type Shelvable = Bool {}
+
+/// Whether a delivery can go on the shelf: it arrived before the day's
+/// `cutoff`, its flour is good after `today`, and the proving time printed
+/// on the sack is one the bakery can use.
+action check_delivery(
+    arrived: ArrivedAt,
+    cutoff: ArrivedAt,
+    best_before: BestBefore,
+    today: BestBefore,
+    proving: ProvingTime
+) -> Shelvable {
+    // Moments, days and durations are ordered, so `<`, `<=`, `>` and `>=`
+    // work on them as on numbers. Text has no order.
+    return Shelvable(arrived < cutoff and best_before > today and proving <= 2h)
+}
+
+// Helpers the action's tests call directly. A text literal compared with
+// `==` takes the other side's type, so `"6f1c…"` below is read as a UUID
+// and checked as one, not compared as text.
+
+/// Whether `id` is the delivery the bakery is waiting for.
+function expected_delivery(id: DeliveryId) -> Shelvable {
+    return Shelvable(id == "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
+}
+
+/// Whether a delivery note names the supplier's usual contacts.
+function usual_contacts(
+    desk: SupplierDesk,
+    site: SupplierSite,
+    scale: ScaleAddress,
+    invoices: InvoiceAddress
+) -> Shelvable {
+    return Shelvable(
+        desk == "orders@mill.example" and site == "https://mill.example/orders" and scale == "10.0.0.7" and invoices == "accounts@mill.example"
+    )
+}

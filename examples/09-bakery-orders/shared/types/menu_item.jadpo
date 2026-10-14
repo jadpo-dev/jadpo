@@ -1,0 +1,27 @@
+// The menu's items, shared because `menu` prices them and `sales` puts
+// them in baskets. A tagged union: each kind of item carries only the
+// choices that make sense for it.
+
+/// A grain a loaf can be baked from.
+type Grain = Enum {
+    white
+    wholemeal
+    rye
+}
+
+/// How many slices of a cake.
+type SliceCount = Int {
+    min: 1
+    max: 16
+}
+
+/// Something on the menu, with the customer's choices for it.
+type MenuItem = Enum {
+    loaf: {
+        grain: Grain
+    }
+    cake: {
+        slices: SliceCount
+    }
+    coffee
+}

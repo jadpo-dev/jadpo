@@ -41,7 +41,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/ordering/actions/checkout.jadpo",
-        "type CheckoutTotal = Output {\n    total: Price\n}\n\naction checkout(subtotal: Price, quantity: Quantity) fails CartEmpty -> CheckoutTotal {\n    if (subtotal == Price(0.00)) {\n        reject CartEmpty\n    }\n    inventory.reserve_stock(quantity)\n    var total: Price = rounding.half_even(subtotal)\n    emit OrderPlaced {\n        total: total\n    }\n    return CheckoutTotal {\n        total: total\n    }\n}\n",
+        "type CheckoutTotal = Output {\n    total: Price\n}\n\npublic action checkout(subtotal: Price, quantity: Quantity) fails CartEmpty -> CheckoutTotal {\n    if (subtotal == Price(0.00)) {\n        reject CartEmpty\n    }\n    inventory.reserve_stock(quantity)\n    var total: Price = rounding.half_even(subtotal)\n    emit OrderPlaced {\n        total: total\n    }\n    return CheckoutTotal {\n        total: total\n    }\n}\n",
     ),
     (
         "domains/ordering/events/order_placed.jadpo",
@@ -215,6 +215,32 @@ fn domains_see_only_what_others_make_public() {
         [
             "domains/ordering/actions/peek.jadpo visibility.private_cross_domain: `StockLevel` is private to domain `inventory`",
             "domains/ordering/actions/peek.jadpo visibility.private_cross_domain: `StockLevel` belongs to domain `inventory`",
+        ]
+    );
+}
+
+#[test]
+fn a_scenario_sees_only_what_domains_make_public() {
+    // Area 13, question 1: a test in the root `tests/` folder sees what
+    // another domain would see. A test beside its subject sees its whole
+    // domain.
+    assert_eq!(
+        with(&[
+            (
+                "domains/inventory/actions/count_stock.jadpo",
+                "action count_stock(quantity: Quantity) -> Quantity {\n    return quantity\n}\n"
+            ),
+            (
+                "domains/inventory/actions/count_stock.test.jadpo",
+                "test \"counting stock\" {\n    assert count_stock(Quantity(2)) == 2\n}\n"
+            ),
+            (
+                "tests/stock_is_counted.test.jadpo",
+                "test \"stock is counted\" {\n    assert inventory.count_stock(Quantity(2)) == 2\n}\n"
+            ),
+        ]),
+        [
+            "tests/stock_is_counted.test.jadpo visibility.private_cross_domain: `count_stock` is private to domain `inventory`"
         ]
     );
 }

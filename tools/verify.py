@@ -43,6 +43,12 @@ def main() -> int:
         # and are exported to build/spec-corpus/ (docs/compiler-runtime.md §2.7).
         ('language specification and jadpo test over the spec corpus',
          [sys.executable, 'tools/language_docs.py', '--check', '--export-corpus']),
+        # Every teaching example in examples/ checks with no diagnostics,
+        # is formatted, passes its own tests under `jadpo test`, has its
+        # README, and is exported beside the pages' projects
+        # (docs/compiler-runtime.md §2.7).
+        ('teaching examples: check, format and jadpo test',
+         [sys.executable, 'tools/examples.py', '--export-corpus']),
         ('example names', [sys.executable, 'tools/example_names.py', '--check']),
     ]
     if (ROOT / 'Cargo.toml').exists():
@@ -56,6 +62,11 @@ def main() -> int:
             # corpus project's manifest twice, its files read in two orders,
             # and no key or digest moved by formatting.
             ('manifest determinism', ['cargo', 'test', '--locked', '-p', 'jadpo-check', '--test', 'determinism']),
+            # The examples use every feature the compiler builds, read from
+            # its own tables; the exemptions are listed with their reasons
+            # in the test (crates/jadpo-check/tests/examples.rs).
+            ('teaching examples cover every built feature',
+             ['cargo', 'test', '--locked', '-p', 'jadpo-check', '--test', 'examples']),
             # Includes the crate-graph test (crates/jadpo-cli/tests/crate_graph.rs),
             # the parser's documentation, error and fuzz tests, and the
             # generated AST's drift test.

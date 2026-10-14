@@ -1,0 +1,5 @@
+/// A whole percentage.
+type Percent = Int {
+    min: 0
+    max: 100
+}

@@ -1,0 +1,7 @@
+/// A card can only be redeemed once it has all ten stamps.
+type CardNotFull = Failure {
+    kind: FailureKind.rejected
+    client: {
+        stamp_count: StampCount
+    }
+}

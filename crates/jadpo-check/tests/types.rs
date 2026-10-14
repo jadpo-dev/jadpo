@@ -407,12 +407,18 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
             &["type.mismatch"],
         ),
         (
-            "function f(total: Price, people: Quantity) -> Price {\n    return attempt Price(decimal.divide(total, people, rounding: Rounding.half_even)) invalid: Refused\n}\n\ntype Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+            "function f(total: Price, people: Quantity) -> Tip {\n    return attempt Tip(decimal.divide(total, people, rounding: Rounding.half_even)) invalid: Refused\n}\n\ntype Tip = Decimal {\n    scale: 2\n    min: 0.00\n    max: 1.00\n}\n\ntype Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n",
             &["failure.undeclared_propagation"],
         ),
         (
-            "function f(total: Pence, boxes: Quantity) -> Pence {\n    return Pence(integer.divide(total, boxes, rounding: Rounding.up))\n}\n",
+            "function f(total: Pence, boxes: Quantity) -> Quantity {\n    return Quantity(integer.divide(total, boxes, rounding: Rounding.up))\n}\n",
             &["failure.attempt_required"],
+        ),
+        // A division of a value never below zero by a divisor of at least
+        // 1 is proved like `/`: from zero up to the dividend.
+        (
+            "function f(total: Pence, boxes: Quantity) -> Pence {\n    return Pence(integer.divide(total, boxes, rounding: Rounding.up))\n}\n",
+            &[],
         ),
         // An empty list fixes no type variable, and needs none.
         (

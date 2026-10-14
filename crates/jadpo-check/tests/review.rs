@@ -102,7 +102,7 @@ fn a_standard_division_needs_a_divisor_that_excludes_zero() {
     );
     assert_eq!(
         with_counts(
-            "function f(a: Count, b: Quantity) fails TooBig -> Count {\n    return attempt Count(integer.divide(a, b, rounding: Rounding.up)) invalid: TooBig\n}\n"
+            "function f(a: Count, b: Quantity) -> Count {\n    return Count(integer.divide(a, b, rounding: Rounding.up))\n}\n"
         ),
         CLEAN
     );

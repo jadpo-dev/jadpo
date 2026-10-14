@@ -3,7 +3,7 @@
 mod support;
 
 use jadpo_interp::Value;
-use support::{decimal, failure, int, main, program, text, value};
+use support::{decimal, failure, int, list, main, program, text, value};
 
 const NAMES: &str = "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype Pence = Int {\n    min: 0\n}\n";
 
@@ -295,7 +295,7 @@ fn lists_are_built_counted_searched_and_looped_over() {
 fn a_share_is_divided_with_a_named_rounding() {
     // Question 8.
     let program = main(
-        "type Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\ntype ShareBelowZero = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction share(total: Price, people: People) fails ShareBelowZero -> Price {\n    var share: Price = attempt Price(decimal.divide(total, people, rounding: Rounding.half_even)) invalid: ShareBelowZero\n    return share\n}\n",
+        "type Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\nfunction share(total: Price, people: People) -> Price {\n    var share: Price = Price(decimal.divide(total, people, rounding: Rounding.half_even))  // from zero up to the total\n    return share\n}\n",
     );
     assert_eq!(
         value(&program, "share", vec![decimal("10.00"), int(3)]).to_string(),
@@ -372,5 +372,65 @@ fn uuids_are_normalised_to_lowercase() {
     assert_eq!(
         value(&program, "partner", vec![]),
         Value::uuid("0192f0c4-3b5e-4c1a-9d2e-4f6a8b0c1d2e")
+    );
+}
+
+#[test]
+fn a_text_literal_compared_with_a_value_takes_its_type() {
+    // `==` gives a literal the other side's type (area 3), so text written
+    // for a UUID, an instant or a date is read as one, not compared as text.
+    let program = main(
+        "type Ref = Uuid {}\n\ntype When = Instant {}\n\ntype Day = CalendarDate {}\n\ntype Same = Bool {}\n\nfunction known_ref(id: Ref) -> Same {\n    return Same(id == \"6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d\")\n}\n\nfunction new_year(at: When) -> Same {\n    return Same(\"2026-01-01T00:00:00Z\" == at)\n}\n\nfunction not_today(day: Day?) -> Same {\n    return Same(day != \"2026-01-14\")\n}\n",
+    );
+    let at = |name: &str, ty: &str, text: &str| {
+        let given = program.text_value(ty, text).expect("a value");
+        value(&program, name, vec![given])
+    };
+    assert_eq!(
+        at("known_ref", "Ref", "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        at("new_year", "When", "2026-01-01T00:00:00Z"),
+        Value::Bool(true)
+    );
+    assert_eq!(at("not_today", "Day", "2026-01-14"), Value::Bool(false));
+}
+
+#[test]
+fn a_list_written_beside_a_set_is_a_set() {
+    // A list literal compared with a set takes the set's type, so order
+    // and repeats don't matter, as they don't for sets (area 2).
+    let program = main(
+        "type Tag = Text {\n    max_length: 10\n}\n\ntype Ref = Uuid {}\n\ntype Same = Bool {}\n\ntype Labels = Object {\n    tags: Set<Tag>\n}\n\nfunction same_tags(labels: Labels) -> Same {\n    return Same(labels.tags == [\"b\", \"a\"])\n}\n\nfunction one_ref(refs: List<Ref>) -> Same {\n    return Same([\"6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d\"] == refs)\n}\n",
+    );
+    let tags = program.text_value("Tag", "a").expect("a");
+    let other = program.text_value("Tag", "b").expect("b");
+    let labels = program
+        .object("Labels", vec![("tags", Value::set(vec![tags, other]))])
+        .expect("Labels");
+    assert_eq!(
+        value(&program, "same_tags", vec![labels]),
+        Value::Bool(true)
+    );
+    let one = program
+        .text_value("Ref", "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
+        .expect("a ref");
+    assert_eq!(
+        value(&program, "one_ref", vec![list(vec![one])]),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn an_input_left_without_a_field_takes_its_default_or_none() {
+    // A field an `Input` may leave out reads as `none`, and one with a
+    // `default:` as that value (area 2, "Absent values").
+    let program = main(
+        "type ProductName = Text {\n    max_length: 120\n}\n\ntype PageSize = Int {\n    min: 1\n    max: 100\n}\n\ntype Price = Decimal {\n    scale: 2\n}\n\ntype ListProducts = Input {\n    name: ProductName {\n        optional: true\n    }\n    page_size: PageSize {\n        default: 25\n    }\n    subtitle: ProductName? {\n        default: none\n    }\n    floor: Price {\n        default: 1.5\n    }\n    sort: Sort {\n        default: Sort.newest\n    }\n}\n\ntype Sort = Enum {\n    newest\n    cheapest\n}\n\nfunction first_page() -> ListProducts {\n    return ListProducts {}\n}\n",
+    );
+    assert_eq!(
+        value(&program, "first_page", vec![]).to_string(),
+        "ListProducts { name: none, page_size: 25, subtitle: none, floor: 1.50, sort: Sort.newest }"
     );
 }

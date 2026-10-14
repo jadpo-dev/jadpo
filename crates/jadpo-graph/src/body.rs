@@ -245,6 +245,9 @@ pub enum Expr {
     Attempt {
         inner: Option<SiteId>,
         invalid: Option<Key>,
+        /// The fields given to the failure `invalid:` names, as `reject`
+        /// gives them.
+        fields: Vec<(Key, SiteId)>,
     },
     Reject {
         failure: Option<Key>,
@@ -275,6 +278,19 @@ pub enum Literal {
     Text(String),
     Bool(bool),
     None,
+}
+
+impl Literal {
+    /// As Jadpo writes it: `25`, `1.50`, `"text"`, `15m`, `none`.
+    pub fn written(&self) -> String {
+        match self {
+            Literal::Number { value, .. } => value.to_string(),
+            Literal::Duration(written) => written.clone(),
+            Literal::Text(text) => format!("{text:?}"),
+            Literal::Bool(value) => value.to_string(),
+            Literal::None => "none".to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

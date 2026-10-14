@@ -1,0 +1,52 @@
+// An action is an operation the application offers. Each action has its
+// own file in its domain's `actions/` folder, named after it, so a search
+// for a name always finds exactly one file.
+//
+// Types and helpers that only this file uses live here too. When a second
+// file needs one, the compiler asks you to move it to a shared place
+// (example 07 shows where).
+
+// A named type: a built-in representation (`Int`), a name that says what
+// the value means, and the rules every valid value follows. `Pence` and
+// `LoafCount` are both whole numbers, but Jadpo treats them as different
+// types, so one can never be passed where the other is expected.
+
+/// An amount of money in pence, never negative.
+type Pence = Int {
+    min: 0
+}
+
+/// How many loaves one customer may buy at once.
+type LoafCount = Int {
+    min: 1
+    max: 50
+}
+
+// A function is pure: it works its result out from its arguments and
+// nothing else. A helper used only in this file is called by its bare
+// name. `///` above a declaration describes it, for editors and generated
+// documentation; `//` comments like this one are notes for the reader.
+
+/// The price of `loaves` loaves at `each` pence a loaf.
+function loaves_total(each: Pence, loaves: LoafCount) -> Pence {
+    // Arithmetic works on the representation, so `each * loaves` is a
+    // plain `Int`. `Pence(...)` turns it back into `Pence` by checking the
+    // rules; it is validation, never a cast. Both sides are at least 0 and
+    // `Pence` has no maximum, so the compiler can prove it never fails.
+    return Pence(each * loaves)
+}
+
+/// What a customer pays for `loaves` loaves: more than three need a
+/// paper bag, which costs 5 pence.
+action price_loaves(each: Pence, loaves: LoafCount) -> Pence {
+    // Every variable states its type. `var` names a value that never
+    // changes; example 04 shows `var mut` for one that does.
+    var total: Pence = loaves_total(each, loaves)
+    // A condition is always in brackets and must be a `Bool`: Jadpo has no
+    // truthiness. Comparing a `LoafCount` with the literal 3 is fine,
+    // because a literal takes the type of the other side.
+    if (loaves > 3) {
+        return Pence(total + 5)
+    }
+    return total
+}
