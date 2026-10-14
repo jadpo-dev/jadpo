@@ -351,7 +351,12 @@ never invalidates another file's resolution.
 across the project and across kinds (area 1). A dotted prefix resolves to
 its owner: domain, library, entity, connection, package or standard
 namespace. Visibility is the domain unless `public`. Layout rules (folder,
-kind, file name, promotion) are checked from paths.
+kind, file name, promotion) are checked from paths. Since chunk 2.1 a
+file's resolution query resolves its declarations only (types, fields,
+signatures, a query's parameters); a body's names are resolved by the walk
+that types it (`typed_body`), at each node it checks and over the same
+scopes, so name errors and unused-variable errors come from one walk, and
+a changed signature no longer re-resolves the files that call it.
 
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard
@@ -552,6 +557,24 @@ same type plans the generator uses. It runs on `jadpo-host-native`, so
 *Rejected:* compiling to bytecode first; a tree walker over checked bodies
 is fast enough when the real cost is I/O.
 
+Built in chunk 2.1 (`jadpo-interp`), for pure logic: `Program::load` reads
+a project that checked without errors (each callable's typed body, the
+graph's types, fields, variants and failures, and the places of every
+site), and `Program::call` runs one callable with argument values,
+synchronously, giving its value, the declared failure that left it, a
+fault, or a test's failed assertion. Operators and the standard library
+run through `jadpo-value`'s one implementation: arithmetic is checked, so
+overflow is the `int_overflow` or `decimal_overflow` fault; `Int` `/`
+drops the remainder; a `Decimal` `/` is exact to 18 places past its
+operands and, like any computed decimal, is rounded half to even where a
+type with a fixed `scale` stores it; constructions run their rules only
+where the checker couldn't prove them, and a broken one becomes the
+failure `invalid:` names. Effects later areas build (an entity's
+operations, queries, `emit`, `clock.now`) end in the `not_built_yet`
+fault where they are reached. A call walks the Rust stack a few frames per
+Jadpo frame, so recursion to the depth limit runs inside
+`on_large_stack`; hosts, `async` frames and codecs come with their areas.
+
 **Code generation.** `quote!` into a `syn` tree, printed with
 [prettyplease](https://github.com/dtolnay/prettyplease): deterministic,
 never fails to format, about twenty times faster than rustfmt, and
@@ -577,7 +600,16 @@ from the graph (a static array in compiled code). A fault renders its
 frames from that stack, with `runtime: <component>` for the runtime's own
 work, so nothing depends on unwinding or debug information, which Workers
 does not keep (area 18). Path numbers come from the same branch increments
-in both.
+in both. Built in chunk 2.1: `jadpo-runtime`'s `Ctx` keeps the stack
+(`enter(callable, site)`, `leave`), `fault` and `fail` capture it, and
+`Places` turns a frame into `file:line  label`; past `MAX_DEPTH` (1,000)
+frames a call is the `recursion_limit` fault at its site. A failure keeps
+the stack where it was raised, so the path it travelled, and the failure
+it was mapped from as its cause (area 4). `jadpo-interp`'s `Report`
+renders a fault, a failure or a failed assertion in the shape compiler
+errors have: the headline (`fault` or `failed`), the `.jadpo` site with
+its code frame, then `reason`, `next` and the frames, or a failure's
+code, kind, fields, cause and path.
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
@@ -590,6 +622,11 @@ function bodies add fuzzed comparisons, as Cranelift does against its
 interpreter.
 
 ### 2.6 The runtime
+
+Built so far (chunk 2.1): what pure execution needs from the context,
+in `jadpo-runtime` (frames, failures, faults, limits); `jadpo-value`'s
+values are `Rc`-shared, with time values held as numbers. The components
+below come with their areas.
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`

@@ -141,8 +141,8 @@ pub fn check_calendar_date(text: &str) -> Result<(), String> {
 }
 
 /// Days since 1970-01-01 of a date in the proleptic Gregorian calendar
-/// (Howard Hinnant's `days_from_civil`).
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+/// (Howard Hinnant's `epoch_day_from_civil`).
+fn epoch_day_from_civil(year: i64, month: i64, day: i64) -> i64 {
     let year = if month <= 2 { year - 1 } else { year };
     let era = year.div_euclid(400);
     let year_of_era = year - era * 400;
@@ -152,11 +152,11 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     era * 146_097 + day_of_era - 719_468
 }
 
-/// The date `days` after 1970-01-01, as year, month and day.
-fn civil_from_days(days: i64) -> (i64, i64, i64) {
-    let days = days + 719_468;
-    let era = days.div_euclid(146_097);
-    let day_of_era = days - era * 146_097;
+/// The date `epoch_day` days after 1970-01-01, as year, month and day.
+fn civil_from_epoch_day(epoch_day: i64) -> (i64, i64, i64) {
+    let shifted = epoch_day + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted - era * 146_097;
     let year_of_era =
         (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
@@ -173,7 +173,7 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
 
 /// A `CalendarDate` as the runtime holds it: days since 1970-01-01; `None`
 /// when `text` isn't one ([`check_calendar_date`] says why).
-pub fn date_days(text: &str) -> Option<i32> {
+pub fn date_number(text: &str) -> Option<i32> {
     check_calendar_date(text).ok()?;
     let mut parts = text.split('-').map(|part| part.parse::<i64>().ok());
     let (Some(Some(year)), Some(Some(month)), Some(Some(day))) =
@@ -181,7 +181,7 @@ pub fn date_days(text: &str) -> Option<i32> {
     else {
         return None;
     };
-    i32::try_from(days_from_civil(year, month, day)).ok()
+    i32::try_from(epoch_day_from_civil(year, month, day)).ok()
 }
 
 /// An `Instant` as the runtime holds it: milliseconds since
@@ -190,7 +190,7 @@ pub fn date_days(text: &str) -> Option<i32> {
 pub fn instant_millis(text: &str) -> Option<i64> {
     check_instant(text).ok()?;
     let (date, time) = text.split_once('T')?;
-    let days = i64::from(date_days(date)?);
+    let epoch_day = i64::from(date_number(date)?);
     let (clock, offset) = match time.strip_suffix('Z') {
         Some(clock) => (clock, 0),
         None => {
@@ -214,7 +214,7 @@ pub fn instant_millis(text: &str) -> Option<i64> {
         format!("{fraction:0<3}").parse::<i64>().ok()?
     };
     let clock = ((hour * 60 + minute) * 60 + second) * 1000 + millis;
-    Some(days * 86_400_000 + clock - offset)
+    Some(epoch_day * 86_400_000 + clock - offset)
 }
 
 /// A `Time` of day as the runtime holds it: milliseconds since midnight,
@@ -245,16 +245,16 @@ pub fn time_millis(text: &str) -> Option<u32> {
 }
 
 /// `2026-10-25`.
-pub fn format_date(days: i32) -> String {
-    let (year, month, day) = civil_from_days(i64::from(days));
+pub fn format_date(epoch_day: i32) -> String {
+    let (year, month, day) = civil_from_epoch_day(i64::from(epoch_day));
     format!("{year:04}-{month:02}-{day:02}")
 }
 
 /// `2026-10-25T08:30:00Z`, with milliseconds only when it has some.
 pub fn format_instant(millis: i64) -> String {
-    let days = millis.div_euclid(86_400_000);
+    let epoch_day = millis.div_euclid(86_400_000);
     let clock = millis.rem_euclid(86_400_000);
-    let (year, month, day) = civil_from_days(days);
+    let (year, month, day) = civil_from_epoch_day(epoch_day);
     format!(
         "{year:04}-{month:02}-{day:02}T{}Z",
         format_clock(u32::try_from(clock).unwrap_or(0), true)
@@ -285,13 +285,13 @@ mod tests {
 
     #[test]
     fn time_values_read_as_numbers_and_print_back() {
-        assert_eq!(date_days("1970-01-01"), Some(0));
+        assert_eq!(date_number("1970-01-01"), Some(0));
         assert_eq!(
-            date_days("2024-02-29").map(format_date).as_deref(),
+            date_number("2024-02-29").map(format_date).as_deref(),
             Some("2024-02-29")
         );
-        assert_eq!(date_days("1969-12-31"), Some(-1));
-        assert_eq!(date_days("2026-02-29"), None);
+        assert_eq!(date_number("1969-12-31"), Some(-1));
+        assert_eq!(date_number("2026-02-29"), None);
         assert_eq!(instant_millis("1970-01-01T00:00:01Z"), Some(1000));
         assert_eq!(
             instant_millis("2026-10-25T09:30:00+01:00"),

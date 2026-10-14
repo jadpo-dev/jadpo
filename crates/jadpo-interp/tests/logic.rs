@@ -393,3 +393,72 @@ fn a_library_function_is_called_through_its_library() {
         "24.68"
     );
 }
+
+#[test]
+fn a_set_literal_holds_each_value_once_in_order() {
+    let program = main(
+        "type Tag = Text {\n    min_length: 1\n}\n\ntype Tags = Object {\n    tags: Set<Tag>\n}\n\nfunction tags() -> Tags {\n    return Tags {\n        tags: [\"home\", \"urgent\"]\n    }\n}\n",
+    );
+    let tags = value(&program, "tags", vec![]);
+    let expected = program
+        .object(
+            "Tags",
+            vec![("tags", Value::set(vec![text("urgent"), text("home")]))],
+        )
+        .expect("Tags");
+    assert_eq!(tags, expected);
+}
+
+#[test]
+fn an_inline_function_reads_the_variables_around_it() {
+    let program = main(
+        "type Score = Int {}\n\nfunction above(scores: List<Score>, limit: Score) -> List<Score> {\n    var kept: List<Score> = collection.filter(scores, score -> score > limit)\n    return kept\n}\n\nfunction squares(scores: List<Score>) -> List<Score> {\n    var squared: List<Score> = collection.map(scores, score -> Score(score * score))\n    return squared\n}\n",
+    );
+    assert_eq!(
+        value(
+            &program,
+            "above",
+            vec![list(vec![int(1), int(7), int(3), int(9)]), int(4)]
+        ),
+        list(vec![int(7), int(9)])
+    );
+    let overflow = fault(&program, "squares", vec![list(vec![int(2), int(i64::MAX)])]);
+    assert_eq!(
+        where_fault(&program, &overflow),
+        (FaultKind::IntOverflow, vec!["main.jadpo:9".to_string()]),
+        "a fault inside an inline function stops the operation at its line"
+    );
+}
+
+#[test]
+fn a_return_inside_a_match_arm_leaves_the_callable() {
+    let program = main(
+        "type TodoStatus = Enum {\n    open\n    done\n}\n\ntype Label = Text {}\n\nfunction describe(status: TodoStatus) -> Label {\n    match status {\n        TodoStatus.open -> {\n            return \"to do\"\n        }\n        TodoStatus.done -> {}\n    }\n    return \"finished\"\n}\n",
+    );
+    let status = |name: &str| program.variant("TodoStatus", name, vec![]).expect("status");
+    assert_eq!(
+        value(&program, "describe", vec![status("open")]),
+        text("to do")
+    );
+    assert_eq!(
+        value(&program, "describe", vec![status("done")]),
+        text("finished")
+    );
+}
+
+#[test]
+fn a_decimal_past_38_digits_is_a_fault() {
+    let program = main(
+        "type Amount = Decimal {\n    scale: 2\n}\n\nfunction squared(a: Amount) -> Amount {\n    return Amount(a * a)\n}\n",
+    );
+    assert_eq!(
+        value(&program, "squared", vec![decimal("1.50")]).to_string(),
+        "2.25"
+    );
+    let big = decimal("12345678901234567890.00");
+    let overflow = fault(&program, "squared", vec![big]);
+    assert_eq!(
+        where_fault(&program, &overflow),
+        (FaultKind::DecimalOverflow, vec!["main.jadpo:6".to_string()])
+    );
+}

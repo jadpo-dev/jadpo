@@ -55,7 +55,7 @@ pub(crate) fn text_literal(builtin: Builtin, text: &str) -> Option<Value> {
     Some(match builtin.representation() {
         Builtin::Uuid => Value::uuid(text),
         Builtin::Instant => Value::Instant(jadpo_std::instant_millis(text)?),
-        Builtin::CalendarDate => Value::Date(jadpo_std::date_days(text)?),
+        Builtin::CalendarDate => Value::Date(jadpo_std::date_number(text)?),
         Builtin::Time => Value::Time(jadpo_std::time_millis(text)?),
         _ => Value::text(text),
     })
@@ -135,8 +135,9 @@ impl<'p> Interp<'p> {
         self.fault(kind, at)
     }
 
-    /// The source a site is written as, on its first line: what a fault
-    /// for something not built yet names.
+    /// What a site is written as, up to its arguments or its block: what
+    /// a fault for something not built yet names (`clock.now`,
+    /// `Todo.update`).
     fn written(&self, f: &Running<'p>, at: SiteId) -> String {
         let Some(site) = f.body.sites.get(at.0 as usize) else {
             return String::new();
@@ -147,7 +148,9 @@ impl<'p> Interp<'p> {
             .and_then(|callable| self.program.text(&callable.file))
             .and_then(|text| text.get(site.start as usize..site.end as usize))
             .unwrap_or_default();
-        text.lines().next().unwrap_or_default().trim().to_string()
+        let line = text.lines().next().unwrap_or_default();
+        let end = line.find(['(', '{']).unwrap_or(line.len());
+        line[..end].trim().to_string()
     }
 
     // --- callables --------------------------------------------------------

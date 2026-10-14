@@ -74,11 +74,11 @@ impl Decimal {
     /// `self × other`, exact; places beyond the larger operand's that are
     /// only trailing zeros are dropped. `None` past 38 digits.
     pub fn checked_mul(self, other: Decimal) -> Option<Decimal> {
-        let product = Decimal::new(
+        let multiplied = Decimal::new(
             self.mantissa.checked_mul(other.mantissa)?,
             self.scale.checked_add(other.scale)?,
         );
-        bounded(product.trimmed(self.scale.max(other.scale)))
+        bounded(multiplied.trimmed(self.scale.max(other.scale)))
     }
 
     pub fn checked_neg(self) -> Option<Decimal> {
@@ -315,7 +315,7 @@ impl fmt::Display for Value {
             Value::Text(text) | Value::Uuid(text) => quoted(f, text),
             Value::Bytes(bytes) => write!(f, "<{} bytes>", bytes.len()),
             Value::Instant(millis) => quoted(f, &jadpo_std::format_instant(*millis)),
-            Value::Date(days) => quoted(f, &jadpo_std::format_date(*days)),
+            Value::Date(day) => quoted(f, &jadpo_std::format_date(*day)),
             Value::Time(millis) => quoted(f, &jadpo_std::format_time(*millis)),
             Value::Duration(millis) => write!(
                 f,

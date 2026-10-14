@@ -1580,7 +1580,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (roadmap chunk 1.6): declarations, kinds, codes, `fails`, `reject`, `attempt`, `invalid:` and outcome `match`. Data operations' mappings come with area 6, the client envelope and OpenAPI with area 7, and what runs (logging, causes, faults) with the interpreter (chunk 2.1).
+Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (roadmap chunk 1.6): declarations, kinds, codes, `fails`, `reject`, `attempt`, `invalid:` and outcome `match`. Data operations' mappings come with area 6, and the client envelope and OpenAPI with area 7. What runs came with the interpreter on 2026-10-14 (chunk 2.1): failures with their fields, where they were raised and the path they travelled, mapped failures keeping their cause, and the `int_overflow` and `recursion_limit` faults with their `.jadpo` frames; the log events come with the runtime's hosts.
 
 | Topic | Decision | Date |
 |---|---|---|

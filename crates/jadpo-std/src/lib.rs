@@ -45,7 +45,7 @@ pub use rules::{
     uuid_version,
 };
 pub use time::{
-    Dur, check_calendar_date, check_instant, date_days, format_date, format_instant, format_time,
+    Dur, check_calendar_date, check_instant, date_number, format_date, format_instant, format_time,
     instant_millis, time_millis,
 };
 pub use zones::{LOCALES, ZONES};
