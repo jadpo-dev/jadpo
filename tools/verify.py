@@ -116,6 +116,12 @@ def main() -> int:
             checks.append(('live PostgreSQL: queries',
                            ['cargo', 'test', '--locked', '-p', 'jadpo-cli',
                             '--test', 'queries']))
+            # Writes, their conflicts and counters through `jadpo test`, and
+            # a concurrent change forced from a second connection, rerunning
+            # the whole action (area 6).
+            checks.append(('live PostgreSQL: writes and concurrent changes',
+                           ['cargo', 'test', '--locked', '-p', 'jadpo-cli',
+                            '--test', 'writes']))
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
         # have, so tokio-postgres is proven to build for wasm32 too.

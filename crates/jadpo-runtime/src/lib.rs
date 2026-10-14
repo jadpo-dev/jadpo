@@ -59,8 +59,8 @@ pub use executor::{Executor, Stalled, block_on};
 pub use failure::Failure;
 pub use fault::{Fault, FaultKind};
 pub use host::{
-    Database, Event, Host, LocalFuture, MemoryHost, NoStore, Row, SqlType, SqlValue, StoreError,
-    Transaction,
+    Database, Event, Host, LocalFuture, MemoryHost, NoStore, RELEASE_SAVEPOINT,
+    ROLLBACK_TO_SAVEPOINT, Row, SAVEPOINT, SqlType, SqlValue, StoreError, Transaction,
 };
 pub use limits::MAX_DEPTH;
 pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, standing};

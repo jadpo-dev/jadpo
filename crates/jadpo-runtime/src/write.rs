@@ -35,9 +35,6 @@ pub enum Written {
     Refused { at: u32, cause: Box<Failure> },
 }
 
-/// Where a savepoint around a write that can be refused is kept.
-const SAVEPOINT: &str = "\"jadpo_write\"";
-
 /// Runs `plan` with `inputs`, the values its site worked out, called from
 /// site `site` of the frame on top of `ctx`.
 pub async fn write(
@@ -86,8 +83,7 @@ pub async fn write(
             Err(error) => return Err(refused(ctx, error, site)),
         };
         let mut result = Ok(Vec::new());
-        if savepoint && let Err(error) = transaction.batch(&format!("SAVEPOINT {SAVEPOINT}")).await
-        {
+        if savepoint && let Err(error) = transaction.savepoint().await {
             result = Err(error);
         }
         if result.is_ok() {
@@ -99,17 +95,17 @@ pub async fn write(
                     .map(|changed| (0..changed).map(|_| Vec::new()).collect()),
             };
         }
-        let settle = match &result {
-            Ok(_) => format!("RELEASE SAVEPOINT {SAVEPOINT}"),
-            Err(_) => format!("ROLLBACK TO SAVEPOINT {SAVEPOINT}"),
-        };
         let mapped = matches!(&result, Err(StoreError::Conflict { constraint })
             if plan.refusals.contains(constraint));
-        if savepoint
-            && (result.is_ok() || mapped)
-            && let Err(error) = transaction.batch(&settle).await
-        {
-            result = Err(error);
+        if savepoint && (result.is_ok() || mapped) {
+            let settled = if result.is_ok() {
+                transaction.release_savepoint().await
+            } else {
+                transaction.rollback_to_savepoint().await
+            };
+            if let Err(error) = settled {
+                result = Err(error);
+            }
         }
         result
     };

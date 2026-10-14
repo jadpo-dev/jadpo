@@ -125,6 +125,7 @@ impl Postgres {
             client,
             idle: Rc::clone(&self.idle),
             failed: None,
+            saved: Vec::new(),
         })
     }
 }
@@ -168,6 +169,9 @@ struct PgTransaction {
     /// The first error a statement gave: PostgreSQL aborts the transaction
     /// then, and answers a later `COMMIT` by rolling back.
     failed: Option<StoreError>,
+    /// What `failed` was at each savepoint still open, latest last: going
+    /// back to one undoes the error after it.
+    saved: Vec<Option<StoreError>>,
 }
 
 impl PgTransaction {
@@ -230,6 +234,37 @@ impl Transaction for PgTransaction {
         Box::pin(async move {
             let done = self.client.batch_execute(sql).await;
             self.note(done)
+        })
+    }
+
+    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        Box::pin(async move {
+            let done = self.client.batch_execute(jadpo_runtime::SAVEPOINT).await;
+            self.note(done)?;
+            self.saved.push(self.failed.clone());
+            Ok(())
+        })
+    }
+
+    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        Box::pin(async move {
+            let done = self.client.batch_execute(jadpo_runtime::RELEASE_SAVEPOINT).await;
+            self.note(done)?;
+            self.saved.pop();
+            Ok(())
+        })
+    }
+
+    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        Box::pin(async move {
+            let done = self
+                .client
+                .batch_execute(jadpo_runtime::ROLLBACK_TO_SAVEPOINT)
+                .await;
+            self.note(done)?;
+            // The refused statement is undone, and with it its error.
+            self.failed = self.saved.pop().flatten();
+            Ok(())
         })
     }
 

@@ -915,16 +915,17 @@ impl Body<'_> {
         if matches!(value, Expr::Literal(_)) && tree::written(value.syntax()) == "none" {
             return true;
         }
-        let Expr::FieldExpr(field) = &value else {
+        if !matches!(value, Expr::FieldExpr(_)) {
+            return false;
+        }
+        // The field read, as its host and path: `Shelf` and `id`.
+        let Some((holder, path)) = self.facts.fields.get(&node_key(value.syntax())) else {
             return false;
         };
-        let (Some(receiver), Some(name)) = (field.expr(), field.name_ref()) else {
+        let [name] = path.as_slice() else {
             return false;
         };
-        let name = text(&name);
-        let Some(Ty::Named(holder)) = self.facts.types.get(&node_key(receiver.syntax())) else {
-            return false;
-        };
+        let name = name.clone();
         if self.callable_kind(holder) != Some(ItemKind::Entity) {
             return false;
         }
