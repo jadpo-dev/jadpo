@@ -1,0 +1,79 @@
+// Pricing a basket: the menu's prices for each line, then a discount code
+// if the customer gave one. Three failures can leave it, each a declared
+// type in `failures/`, and `menu` is reached only through its public
+// action.
+
+/// What a discount code is worth: a share of the basket, or an amount.
+type Discount = Enum {
+    percent: {
+        off: Percent
+    }
+    fixed: {
+        off: Pence
+    }
+}
+
+/// What the customer pays, and how it was worked out.
+type Receipt = Output {
+    subtotal: Pence
+    discount: Pence
+    total: Pence
+}
+
+/// The discount the code `code` gives.
+function discount_for(code: DiscountCode) fails CodeUnknown -> Discount {
+    return match code {
+        "TENOFF" -> Discount.percent {
+            off: 10
+        }
+        "FIVEPOUNDS" -> Discount.fixed {
+            off: 500
+        }
+        _ -> reject CodeUnknown {
+            code: code
+        }
+    }
+}
+
+/// What `discount` takes off `subtotal`.
+function amount_off(discount: Discount, subtotal: Pence) -> Pence {
+    return match discount {
+        Discount.percent(percent) -> money.percent_of(subtotal, percent.off)
+        Discount.fixed(fixed) -> fixed.off
+    }
+}
+
+/// The receipt for `basket`.
+public action price_basket(
+    basket: Basket
+) fails BasketEmpty, CodeUnknown, DiscountTooLarge -> Receipt {
+    if (collection.count(basket.lines) == 0) {
+        reject BasketEmpty
+    }
+    var mut subtotal: Pence = 0
+    for line in basket.lines {
+        var each: Pence = menu.price_item(line.item)
+        subtotal = Pence(subtotal + each * line.count)
+    }
+    var mut off: Pence = 0
+    // `attempt` starts a statement, so a code's discount is worked out in
+    // a block arm rather than inside a value.
+    match basket.code {
+        some(code) -> {
+            var discount: Discount = attempt discount_for(code)
+            off = amount_off(discount, subtotal)
+        }
+        none -> {}
+    }
+    // A fixed discount can be worth more than a small basket, so this is
+    // checked when it runs. `invalid:` names the failure and gives its
+    // fields, as `reject` does.
+    var total: Pence = attempt Pence(subtotal - off) invalid: DiscountTooLarge {
+        subtotal: subtotal
+    }
+    return Receipt {
+        subtotal: subtotal
+        discount: off
+        total: total
+    }
+}

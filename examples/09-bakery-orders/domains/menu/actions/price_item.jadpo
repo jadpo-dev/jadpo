@@ -1,0 +1,31 @@
+// The menu's prices. `ordering` asks for them through this public action
+// rather than keeping prices of its own, so a price changes in one place.
+
+/// What one of `item` costs.
+public action price_item(item: MenuItem) -> Pence {
+    return match item {
+        MenuItem.loaf(loaf) -> loaf_price(loaf.grain)
+        MenuItem.cake(cake) -> cake_price(cake.slices)
+        MenuItem.coffee -> 280
+    }
+}
+
+/// A loaf's price by its grain.
+function loaf_price(grain: Grain) -> Pence {
+    return match grain {
+        Grain.white -> 250
+        Grain.wholemeal -> 290
+        Grain.rye -> 340
+    }
+}
+
+/// A cake's price: 350 a slice, and a whole cake of 16 slices is 10% off.
+function cake_price(slices: SliceCount) -> Pence {
+    var full: Pence = Pence(slices * 350)
+    if (slices == 16) {
+        // Taking 90% rather than subtracting 10% keeps the result provably
+        // never below zero, so no check is needed.
+        return money.percent_of(full, 90)
+    }
+    return full
+}

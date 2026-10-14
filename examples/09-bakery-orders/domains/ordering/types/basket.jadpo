@@ -1,0 +1,17 @@
+/// A code a customer types in for money off.
+type DiscountCode = Text {
+    pattern: "[A-Z0-9]{4,12}"
+}
+
+// The basket as it arrives from the shop's website: an `Input`, so the
+// code may be left out, and a list whose length is part of its rules.
+
+/// What a customer asks to buy.
+type Basket = Input {
+    lines: List<BasketLine> {
+        max_length: 20
+    }
+    code: DiscountCode {
+        optional: true
+    }
+}

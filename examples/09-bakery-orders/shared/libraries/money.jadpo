@@ -1,0 +1,8 @@
+/// Sums of money.
+library money {
+    /// `percent` per cent of `amount`, to the nearest penny; a half penny
+    /// goes to the even penny.
+    function percent_of(amount: Pence, percent: Percent) -> Pence {
+        return Pence(integer.divide(amount * percent, 100, rounding: Rounding.half_even))
+    }
+}

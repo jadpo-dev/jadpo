@@ -1,0 +1,18 @@
+// A scenario across both domains, through their public actions only: the
+// menu's price for each item is what the basket charges.
+
+test "a basket charges the menu's prices" {
+    var loaf: MenuItem = MenuItem.loaf {
+        grain: Grain.wholemeal
+    }
+    var basket: Basket = Basket {
+        lines: [
+            BasketLine {
+                item: loaf
+                count: 3
+            }
+        ]
+    }
+    var receipt: Receipt = attempt ordering.price_basket(basket)
+    assert receipt.total == menu.price_item(loaf) * 3
+}
