@@ -431,7 +431,17 @@ reaches: a function, action, query, fixture or library function by key, a
 standard-library operation by the operation table's `Op`, a constructor by
 its type, an object or variant by key, or an entity operation (area 6). A
 construction lists the rules it can break, its `attempt` the failure each
-rule maps to (an arm per rule, `invalid:` for the rest), and the body lists the failures that can leave it. Locals are
+rule maps to (an arm per rule, `invalid:` for the rest), and the body lists the failures that can leave it.
+Since chunk 2.6 a construction's proof reads the declared ranges and what
+the `if` conditions around it say (area 2, "Conditions as proof"): the
+walk keeps a bound per compared number as it goes, from each branch's
+condition and from what holds after an `if` whose other branches leave,
+forgetting a `var mut`'s bounds where it is assigned and around a loop
+that assigns it. The bounds live only in the walk, so `typed_body` still
+depends only on the names it reads, and the body lists each construction
+a condition proves with the comparisons that prove it, which the errors at
+a site that flips point at. A target with a fixed `scale` has its proven
+range rounded as the value will be. Locals are
 numbered with parameters first, and a table records what every name in the
 body refers to. Every reader goes through it: the graph's `calls`, `uses`
 and `raises` edges, usage and promotion (area 1), action cycles (area 3)
@@ -584,7 +594,8 @@ overflow is the `int_overflow` or `decimal_overflow` fault; `Int` `/`
 drops the remainder; a `Decimal` `/` is exact to 18 places past its
 operands and, like any computed decimal, is rounded half to even where a
 type with a fixed `scale` stores it; constructions run their rules only
-where the checker couldn't prove them, and a broken one becomes the
+where the checker couldn't prove them from the declared ranges and the
+conditions around them, and a broken one becomes the
 failure its arm names, or `invalid:`'s; an object literal never fails. Effects later areas build (an entity's
 operations, queries, `emit`, `clock.now`) end in the `not_built_yet`
 fault where they are reached. A call walks the Rust stack a few frames per

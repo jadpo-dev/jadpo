@@ -465,13 +465,20 @@ impl Body<'_> {
         let out = &mut verdict.breakable;
         let proved = &mut verdict.proved;
         if needs.min.is_some() || needs.max.is_some() {
+            // The scale the value is kept at: the most specific along the
+            // chain, as the runtime's validator takes it.
+            let kept = self
+                .table
+                .rule_chain(target)
+                .into_iter()
+                .find_map(|(_, rules)| rules.scale);
             let mut reading = Reading::with_conditions();
-            let interval = self.interval(value, &mut reading).rounded(needs.scale);
+            let interval = self.interval(value, &mut reading).rounded(kept);
             // Read again without the conditions only when one narrowed it,
             // to tell the rules they prove from those the ranges do.
             let plain = (!reading.used.is_empty()).then(|| {
                 self.interval(value, &mut Reading::ranges_only())
-                    .rounded(needs.scale)
+                    .rounded(kept)
             });
             let by: Vec<Origin> = reading.used.iter().cloned().collect();
             if let Some(min) = needs.min {

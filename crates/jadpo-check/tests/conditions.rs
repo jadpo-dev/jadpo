@@ -23,9 +23,12 @@ fn with_types(source: &str) -> Vec<String> {
     )
 }
 
+/// A diagnostic's rule, reason, and each label's source and text.
+type Explained = (String, String, Vec<(String, String)>);
+
 /// The diagnostics of `source` beside [`TYPES`], each as its rule, its
 /// reason, and its labels' text with the source they point at.
-fn explained(source: &str) -> Vec<(String, String, Vec<(String, String)>)> {
+fn explained(source: &str) -> Vec<Explained> {
     let db = Database::default();
     let project = project(
         &db,

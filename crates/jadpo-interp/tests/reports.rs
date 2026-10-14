@@ -30,7 +30,9 @@ fault: int_overflow in function line_total
     );
 }
 
-const COUNTDOWN: &str = "type Count = Int {\n    min: 0\n}\n\ntype CountBelowZero = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction countdown(n: Count) fails CountBelowZero -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = attempt Count(n - 1) {\n        min: CountBelowZero\n    }\n    return attempt countdown(next)\n}\n\naction start(n: Count) fails CountBelowZero -> Count {\n    return attempt countdown(n)\n}\n";
+/// `n` isn't 0 past the `if`, so `Count(n - 1)` can't fail (area 2,
+/// "Conditions as proof").
+const COUNTDOWN: &str = "type Count = Int {\n    min: 0\n}\n\nfunction countdown(n: Count) -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = Count(n - 1)\n    return countdown(next)\n}\n\naction start(n: Count) -> Count {\n    return countdown(n)\n}\n";
 
 #[test]
 fn the_recursion_limit_shows_a_repeated_frame_once() {
@@ -43,14 +45,14 @@ fn the_recursion_limit_shows_a_repeated_frame_once() {
         shown,
         "\
 fault: recursion_limit in function countdown
- --> main.jadpo:16:20
+ --> main.jadpo:10:12
    |
-16 |     return attempt countdown(next)
-   |                    ^^^^^^^^^^^^^^^ 1000 calls deep
+10 |     return countdown(next)
+   |            ^^^^^^^^^^^^^^^ 1000 calls deep
   reason: The call stack reached 1000 frames, the most Jadpo allows, so the recursion stopped here instead of exhausting the stack.
   next: Make the recursion end sooner, or recurse over smaller values (agent)
-  stack: main.jadpo:16  function countdown (999 times)
-         main.jadpo:20  action start
+  stack: main.jadpo:10  function countdown (999 times)
+         main.jadpo:14  action start
 "
     );
 }
