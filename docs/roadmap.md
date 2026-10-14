@@ -136,6 +136,51 @@ reference only).
 - [x] **2.6 Conditions as proof** `opus · xhigh`: an `if` condition narrows
   the ranges the checker knows, so a construction it makes safe needs no
   `attempt`, and the compiler reports the call sites that flip.
+- [ ] **2.7 Phase 2 review: soundness** `opus · xhigh`. Proofs that pass
+  invalid values: a `Text` built into an `Email`, `Url` or `IpAddress` type
+  unchecked (the built-in check becomes a `format` rule, reachable from a
+  `format:` arm); decimal comparison and ordering that overflow into a
+  wrong answer; decimal `/` keeping fewer than 18 extra places on large
+  operands. Wrong results: a failure inside an outcome `match`'s
+  arguments caught by that `match`; a set literal in a named set type built
+  as a list; `include` copying fields alphabetically instead of in declared
+  order; `i64::MIN % -1`. Silent passes: `List<T>(xs)` and three-part calls
+  (`a.b.c()`) that check clean and fault at run time. A refinement that
+  loosens an inherited rule (`max_length: 50` on a 40) is an error, as
+  area 2 says a refinement only adds rules.
+- [ ] **2.8 Phase 2 review: tooling and docs** `opus · high`. Rerun
+  commands and locations that work from where the command was run; a
+  callable's undeclared failures no longer give its callers wrong `next`
+  steps; `--watch` exits when its output closes and says when errors
+  clear, including after a file is removed; location paths never cut; one
+  location shape in `--json` and the `jadpo test --json` schema documented;
+  `--failed` when the failed tests are gone; decided but unbuilt flags say
+  `not_built_yet`; the smaller wording and completion findings. Gate: rich
+  snapshots stripped of the run time, the watch latency ceiling near the
+  1-second target, README "try next" outcomes checked. Docs: areas 1, 13
+  and 14 stop calling archived-compiler behaviour current.
+- [ ] **2.9 Phase 2 review: teaching examples** `opus · high`. Types that
+  carry meaning, not just the right representation; business rules raised
+  with `reject` (a stock problem is a `conflict`, not an `invalid_value`),
+  with `if` checks as proof beside rule arms; a genuine `invalid:`
+  catch-all; failures handled in application code, not turned into zero in
+  tests; fixtures taught before public fixtures (08 before 07); the wrong
+  comments and README claims the review lists; sets and maps described as
+  far as they work.
+- [ ] **2.10 Executor shape for Phase 3** `opus · xhigh`, from the Phase 2
+  review, before any database work. The typed body says which sites and
+  callables can pause; the interpreter walks actions, tests and fixtures
+  asynchronously and functions synchronously; `Ctx` is passed in, and the
+  runtime owns the action boundary (transaction, rerun, commit) as §2.5
+  says. `jadpo-plan` begins: type plans with declared field order,
+  validator chains, field defaults, failure shapes, the frame table and
+  callable numbering, literals decoded once, typed rule keys. Outcomes and
+  assertion recording move into the runtime behind an executor trait the
+  runner calls; the runner takes a per-test environment, and `Program`
+  splits into shared data and per-thread caches. Watch keeps the previous
+  graph and classifies every edge kind, so later edges can't be missed.
+  Bodies and the graph shared behind `Arc`; the duplicated report code
+  merged. A set's canonical order is **needs Richard**.
 
 ## Phase 3 — Data (areas 5, 6)
 
