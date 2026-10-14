@@ -511,7 +511,10 @@ impl Names<'_> {
             }
             return;
         }
-        if !symbol.visible_from(self.ownership)
+        // A scenario in the root `tests/` folder sees what another domain
+        // would see: only what a domain makes public (area 13, question 1).
+        let scenario = *self.ownership == Ownership::Root && self.path.starts_with("tests/");
+        if (!symbol.visible_from(self.ownership) || scenario && !symbol.public)
             && let Ownership::Domain(domain) = &symbol.ownership
         {
             out.push(private(symbol, domain, span));

@@ -1,5 +1,5 @@
 /// One line of a basket: an item and how many of it.
-type BasketLine = Object {
+public type BasketLine = Object {
     item: MenuItem
     count: ItemCount
 }

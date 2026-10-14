@@ -14,7 +14,7 @@ type Discount = Enum {
 }
 
 /// What the customer pays, and how it was worked out.
-type Receipt = Output {
+public type Receipt = Output {
     subtotal: Pence
     discount: Pence
     total: Pence
