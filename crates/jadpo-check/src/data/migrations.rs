@@ -456,9 +456,13 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         return out;
     }
     let model = data_model(db, project);
-    if !model.problems.is_empty() {
-        // The schema is partial until the entities check: their own
-        // errors come first.
+    if !model.problems.is_empty()
+        || !super::queries::query_models(db, project)
+            .problems
+            .is_empty()
+    {
+        // The schema is partial until the entities and the queries, which
+        // ask for indexes, check: their own errors come first.
         return out;
     }
     let source = super::schema(db, project);
@@ -600,7 +604,20 @@ pub fn purpose(changes: &[Change], after: &Schema) -> String {
                     format!("change_{column}")
                 };
             }
-            Change::AddIndex { name, .. } | Change::AddUnique { name, .. } => {
+            Change::AddIndex { store, table, name } => {
+                // An index a query needs is named after the query.
+                let reason = after
+                    .stores
+                    .get(store)
+                    .and_then(|s| s.tables.get(table))
+                    .and_then(|t| t.indexes.get(name))
+                    .map(|i| i.reason.as_str());
+                return match reason.and_then(|r| r.strip_prefix("query ")) {
+                    Some(query) => format!("index_{query}"),
+                    None => format!("add_{name}"),
+                };
+            }
+            Change::AddUnique { name, .. } => {
                 return format!("add_{name}");
             }
             _ => {}

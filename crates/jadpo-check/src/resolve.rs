@@ -29,7 +29,7 @@ use crate::std_lib::{Namespace, StdNames};
 use crate::tree::{self, dotted, node_span};
 
 /// The operations every entity has (area 6).
-const ENTITY_OPERATIONS: [&str; 4] = ["get", "create", "update", "delete"];
+pub(crate) const ENTITY_OPERATIONS: [&str; 4] = ["get", "create", "update", "delete"];
 
 /// What a type position accepts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

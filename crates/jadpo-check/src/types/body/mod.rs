@@ -27,6 +27,7 @@ mod matching;
 mod ops;
 mod outcome;
 mod ranges;
+mod writes;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -166,6 +167,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         deferred: Vec::new(),
         undeclared: false,
         resolved: Vec::new(),
+        loops: 0,
     };
     let Some(target) = checker.target(&decl, callable.function(db)) else {
         return Checked::default();
@@ -397,6 +399,9 @@ struct Body<'a> {
     /// `out`, whose length tells the checks what is already reported, so
     /// a name error never changes what the type checks decide.
     resolved: Vec<Diagnostic>,
+    /// How many `for` loops the code being checked is inside: a read there
+    /// reads once per item (area 6).
+    loops: u32,
 }
 
 /// One callable to check.
@@ -975,7 +980,9 @@ impl Body<'_> {
                 }
                 self.scopes.push(Vec::new());
                 self.declare(each.name(), item, LocalKind::Item, None, "variable");
+                self.loops += 1;
                 self.block(each.block());
+                self.loops -= 1;
                 self.pop_scope();
                 true
             }

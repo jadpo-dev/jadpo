@@ -26,7 +26,6 @@ Money
 Name
 Note
 Order
-PageSize
 Pair
 Percent
 Phrase

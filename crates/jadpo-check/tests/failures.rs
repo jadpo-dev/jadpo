@@ -234,12 +234,13 @@ fn entity_operations_fail_as_area_6_decides() {
         )),
         ["failure.undeclared_propagation"]
     );
-    // Without one, the compiler provides it (area 6): nothing is known.
+    // Without one, the compiler provides it (area 6), which isn't built
+    // yet: the domain declares it for now.
     assert_eq!(
         one(
             "entity Note {\n    id: Uuid\n}\n\naction load(note_id: Note.id) -> Note {\n    return attempt Note.get(note_id)\n}\n"
         ),
-        CLEAN
+        ["toolchain.not_built_yet"]
     );
 }
 

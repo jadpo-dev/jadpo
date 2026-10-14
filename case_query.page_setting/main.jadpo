@@ -1,0 +1,18 @@
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query shelf() -> Page<Book> {
+    from: Book
+    order: [Book.title asc]
+    page: {
+        size: 20
+    }
+}

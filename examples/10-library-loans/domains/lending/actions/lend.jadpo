@@ -1,0 +1,12 @@
+/// Lends a copy to a member until a date.
+action lend(book_id: Book.id, member: Member, due_on: Loan.due_on) fails BookNotFound -> Loan {
+    var book: Book = attempt Book.get(book_id)
+    return Loan.create {
+        set: {
+            book_id: book.id
+            member_id: member.id
+            vouched_by: none
+            due_on: due_on
+        }
+    }
+}

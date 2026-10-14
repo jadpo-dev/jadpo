@@ -1,0 +1,8 @@
+// A field named after an include holds the related records: `book` is
+// the one book a loan's `book_id` points at.
+
+/// A loan with the book it lends.
+type LoanView = Output {
+    pick: [Loan.id, Loan.due_on]
+    book: BookView
+}

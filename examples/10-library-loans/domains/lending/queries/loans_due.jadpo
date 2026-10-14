@@ -1,0 +1,19 @@
+// Conditions compare a field with a value: `in` a list, `== none` for an
+// empty field, and `and`, `or` and `not` between them. A list query is
+// bounded by `limit:`. Reading a set of records by their ids is one
+// query with `in`: a read inside a `for` loop is refused, since it would
+// read once per item.
+
+/// The loans of these copies due between two dates, soonest first; a
+/// loan someone vouched for counts only once it is overdue.
+query loans_due(book_ids: List<Book.id>, from: Loan.due_on, by: Loan.due_on) -> List<LoanView> {
+    from: Loan
+    where: Loan.book_id in book_ids
+    where: not (Loan.due_on < from) and Loan.due_on <= by
+    where: Loan.vouched_by == none or Loan.due_on < by
+    order: [Loan.due_on asc]
+    limit: 100
+    include: {
+        book: Loan.book_id
+    }
+}

@@ -1,0 +1,5 @@
+test "a member is found by address" {
+    var ada: Borrower = ada_borrows_two()
+    assert member_by_email("ada@example.test") == ada.member
+    assert member_by_email("bob@example.test") == none
+}

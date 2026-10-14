@@ -1,6 +1,7 @@
 //! Effects later areas build stop where they are reached, with the
 //! `not_built_yet` fault naming them at their `.jadpo` line, never a panic;
-//! the pure parts of actions and tests run.
+//! a read or write on a host with no store stops with the store's fault at
+//! its line; the pure parts of actions and tests run.
 
 mod support;
 
@@ -8,7 +9,7 @@ use jadpo_interp::{AssertionDetail, FaultKind, Got, Outcome, Value};
 use support::{fault, int, main, program, run, value, where_fault};
 
 #[test]
-fn an_entity_operation_is_not_built_yet() {
+fn a_read_without_a_store_faults_at_its_line() {
     // Area 3, "Statements": `archive_todo` reads a stored todo first.
     let program = program(&[
         (
@@ -25,11 +26,11 @@ fn an_entity_operation_is_not_built_yet() {
     assert_eq!(
         where_fault(&program, &stopped),
         (
-            FaultKind::NotBuiltYet("Todo.get".to_string()),
+            FaultKind::Store("no store holds any data".to_string()),
             vec!["main.jadpo:2".to_string()]
         )
     );
-    assert_eq!(stopped.kind.classification(), "not_built_yet");
+    assert_eq!(stopped.kind.classification(), "internal_fault");
     // The pure parts around it run.
     assert_eq!(
         value(&program, "already_archived", vec![id.clone()]),
@@ -170,31 +171,15 @@ fn a_tests_assertions_run() {
 }
 
 #[test]
-fn an_entity_write_is_named_by_its_operation() {
+fn a_write_without_a_store_faults_at_its_line() {
     let program = main(
-        "type TodoStatus = Enum {\n    open\n    done\n}\n\nentity Todo {\n    id: Uuid\n    status: TodoStatus\n}\n\naction finish(todo: Todo) -> Todo {\n    var done: Todo = Todo.update(todo) {\n        set: {\n            status: TodoStatus.done\n        }\n    }\n    return done\n}\n",
+        "type TodoStatus = Enum {\n    open\n    done\n}\n\nentity Todo {\n    id: Uuid\n    status: TodoStatus\n}\n\naction start() -> Todo {\n    var todo: Todo = Todo.create {\n        set: {\n            status: TodoStatus.open\n        }\n    }\n    return todo\n}\n",
     );
-    let todo = program
-        .codec()
-        .object(
-            "Todo",
-            vec![
-                ("id", Value::uuid("01908f6e-1c2a-7b3c-9d4e-5f6a7b8c9d0e")),
-                (
-                    "status",
-                    program
-                        .codec()
-                        .variant("TodoStatus", "open", vec![])
-                        .expect("open"),
-                ),
-            ],
-        )
-        .expect("Todo");
-    let stopped = fault(&program, "finish", vec![todo]);
+    let stopped = fault(&program, "start", vec![]);
     assert_eq!(
         where_fault(&program, &stopped),
         (
-            FaultKind::NotBuiltYet("Todo.update".to_string()),
+            FaultKind::Store("no store holds any data".to_string()),
             vec!["main.jadpo:12".to_string()]
         )
     );

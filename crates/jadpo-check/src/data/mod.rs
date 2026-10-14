@@ -11,6 +11,7 @@
 
 mod columns;
 pub mod migrations;
+pub mod queries;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -1158,6 +1159,7 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             .tables;
         tables.insert(entity.table.clone(), table_of(entity, &by_name));
     }
+    derived_indexes(db, project, model, &mut schema);
     for store in schema.stores.values_mut() {
         for name in SYSTEM_TABLES {
             store
@@ -1166,6 +1168,130 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         }
     }
     Arc::new(schema)
+}
+
+/// The indexes the queries need (area 5, "Indexes"): for each query, and
+/// each list it includes, the fields it always tests with `==` or `in`,
+/// in the order its lines name them, then its order's fields, unless an
+/// index the table has already starts with those columns. The columns are
+/// ascending: PostgreSQL reads an index backwards for a descending order.
+/// Partial indexes for a lifecycle's `visible:` come with chunk 3.4.
+fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mut Schema) {
+    use queries::{Condition, Include, IncludeKind, OrderField};
+    let queries = queries::query_models(db, project);
+    let mut wanted: Vec<(String, (Vec<String>, usize), String)> = Vec::new();
+    fn equal_fields(filter: &[Condition], out: &mut Vec<String>) {
+        for line in filter {
+            let mut push = |field: &String| {
+                if !out.contains(field) {
+                    out.push(field.clone());
+                }
+            };
+            match line {
+                Condition::Compare {
+                    field,
+                    op: queries::Compare::Equal,
+                    ..
+                }
+                | Condition::In { field, .. } => push(field),
+                Condition::And(parts) => equal_fields(parts, out),
+                _ => {}
+            }
+        }
+    }
+    /// The columns, and how many of them lead as equality tests.
+    fn columns(
+        prefix: &[String],
+        filter: &[Condition],
+        order: &[OrderField],
+    ) -> (Vec<String>, usize) {
+        let mut out = prefix.to_vec();
+        equal_fields(filter, &mut out);
+        let equal = out.len();
+        for field in order {
+            if !out.contains(&field.field) {
+                out.push(field.field.clone());
+            }
+        }
+        (out, equal)
+    }
+    #[allow(clippy::type_complexity)]
+    fn walk(
+        includes: &[Include],
+        query: &str,
+        wanted: &mut Vec<(String, (Vec<String>, usize), String)>,
+    ) {
+        for include in includes {
+            if include.kind == IncludeKind::Children {
+                let cols = columns(
+                    std::slice::from_ref(&include.via),
+                    &include.filter,
+                    &include.order,
+                );
+                wanted.push((include.entity.clone(), cols, query.to_string()));
+            }
+            walk(&include.includes, query, wanted);
+        }
+    }
+    for query in &queries.queries {
+        let cols = columns(&[], &query.filter, &query.order);
+        if !cols.0.is_empty() {
+            wanted.push((query.entity.clone(), cols, query.name.clone()));
+        }
+        walk(&query.includes, &query.name, &mut wanted);
+    }
+    for (entity_name, (fields, equal), query) in wanted {
+        let Some(entity) = model.entity(&entity_name) else {
+            continue;
+        };
+        let Some(store) = &entity.store else { continue };
+        let Some(table) = schema
+            .stores
+            .get_mut(store)
+            .and_then(|store| store.tables.get_mut(&entity.table))
+        else {
+            continue;
+        };
+        let born: Vec<String> = fields
+            .iter()
+            .filter_map(|f| entity.fields.iter().find(|field| field.name == *f))
+            .map(|field| field.born.clone())
+            .collect();
+        if born.len() != fields.len() {
+            continue;
+        }
+        // An index that starts with these columns already serves the
+        // query, and so does a unique key all of whose columns it tests
+        // for equality: at most one record matches each value.
+        let tested = &born[..equal];
+        let covered = std::iter::once(&table.primary_key.columns)
+            .chain(table.indexes.values().map(|i| &i.columns))
+            .chain(table.unique.values().map(|u| &u.columns))
+            .any(|existing| existing.len() >= born.len() && existing[..born.len()] == born[..])
+            || std::iter::once(&table.primary_key.columns)
+                .chain(table.unique.values().map(|u| &u.columns))
+                .any(|key| key.iter().all(|column| tested.contains(column)));
+        if covered {
+            continue;
+        }
+        // A reference's own index is no longer needed once this one
+        // starts with its column (area 5).
+        table.indexes.retain(|_, index| {
+            !(index.reason.starts_with("reference ")
+                && index.columns.len() == 1
+                && born.first() == index.columns.first()
+                && born.len() > 1)
+        });
+        let mut parts: Vec<&str> = vec![entity.table.as_str()];
+        parts.extend(born.iter().map(String::as_str));
+        table.indexes.insert(
+            physical::object_name(&parts, "idx"),
+            physical::Index {
+                columns: born,
+                reason: format!("query {query}"),
+            },
+        );
+    }
 }
 
 fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> physical::Table {

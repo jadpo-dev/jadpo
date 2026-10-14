@@ -63,6 +63,7 @@ Build and check
 
 Data
   migrate       Write and apply migrations    new, apply, status
+  sql           Show the SQL a query sends
 
 Set up
   completions   Turn on Tab completion        zsh, bash, fish
@@ -113,6 +114,7 @@ Build and check
 
 Data
   migrate       Write and apply migrations    new · apply · status
+  sql           Show the SQL a query sends
 
 Set up
   completions   Turn on Tab completion        zsh · bash · fish
@@ -265,13 +267,14 @@ fn help_json_is_the_whole_command_reference() {
             "test",
             "fmt",
             "migrate",
+            "sql",
             "completions",
             "lsp",
             "help",
             "version"
         ]
     );
-    let completions = &data["commands"][4];
+    let completions = &data["commands"][5];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -644,6 +647,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "test\tRun tests",
             "fmt\tFormat source files",
             "migrate\tWrite and apply migrations",
+            "sql\tShow the SQL a query sends",
             "completions\tTurn on Tab completion",
             "lsp\tRun the language server for editors",
             "help\tShow commands, flags and examples",

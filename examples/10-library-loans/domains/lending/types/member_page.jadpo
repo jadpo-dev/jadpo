@@ -1,0 +1,6 @@
+/// A member with their card and their loans, soonest due first.
+type MemberPage = Output {
+    pick: [Member.id, Member.name]
+    card: CardView?
+    loans: List<LoanView>
+}

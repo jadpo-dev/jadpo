@@ -80,6 +80,8 @@ pub enum Values {
     Path,
     /// A test file or a folder: `.test.jadpo` files, and folders.
     TestPath,
+    /// The name of one of the project's queries.
+    Query,
 }
 
 #[derive(Debug)]
@@ -458,6 +460,40 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::migrate,
+    },
+    Command {
+        name: "sql",
+        synonyms: &[],
+        group: "Data",
+        summary: "Show the SQL a query sends",
+        description: "Print the PostgreSQL a query compiles to (area 6): its statement, then one more \
+                      for each include, however many records it is included in, each with the \
+                      parameters that fill it and where their values come from. The statements are \
+                      fixed when the project is compiled, so the same query always sends the same \
+                      text. The project must check without errors first. --explain, which runs the \
+                      query on a disposable database and shows PostgreSQL's plan, comes later.",
+        arguments: &[Argument {
+            name: "query",
+            description: "The query's name",
+            required: false,
+            values: Values::Query,
+        }],
+        flags: &[Flag {
+            name: "--explain",
+            value: None,
+            description: "Show PostgreSQL's plan (not built yet)",
+            values: &[],
+        }],
+        examples: &[Example {
+            description: "Show the statements a page query sends",
+            command: "jadpo sql latest_entries",
+        }],
+        arguments_rule: &rule::CLI_SQL_ARGUMENTS,
+        raises: &[
+            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::sql,
     },
     Command {
         name: "completions",

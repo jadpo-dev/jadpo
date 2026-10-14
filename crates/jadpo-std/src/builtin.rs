@@ -19,10 +19,36 @@ pub enum Builtin {
     Time,
     Duration,
     Unit,
+    /// The opaque cursor a page of results gives for the next one (area
+    /// 6, "Order and pages"): text to the program, read only by the query
+    /// that made it.
+    PageCursor,
+    /// How many records a page holds: an `Int` from 1 to 100 (area 6).
+    PageSize,
 }
 
+/// `PageSize`'s own rules: from 1 to 100 (area 6, "Order and pages").
+static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
+    min: Some(crate::Num {
+        mantissa: 1,
+        scale: 0,
+    }),
+    max: Some(crate::Num {
+        mantissa: 100,
+        scale: 0,
+    }),
+    min_length: None,
+    max_length: None,
+    pattern: None,
+    format: None,
+    scale: None,
+    version: None,
+    min_duration: None,
+    max_duration: None,
+};
+
 impl Builtin {
-    pub const ALL: [Builtin; 14] = [
+    pub const ALL: [Builtin; 16] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -37,6 +63,8 @@ impl Builtin {
         Builtin::Time,
         Builtin::Duration,
         Builtin::Unit,
+        Builtin::PageCursor,
+        Builtin::PageSize,
     ];
 
     pub fn name(self) -> &'static str {
@@ -55,6 +83,8 @@ impl Builtin {
             Builtin::Time => "Time",
             Builtin::Duration => "Duration",
             Builtin::Unit => "Unit",
+            Builtin::PageCursor => "PageCursor",
+            Builtin::PageSize => "PageSize",
         }
     }
 
@@ -67,7 +97,10 @@ impl Builtin {
     /// What its values are made of: the validated text types are text.
     pub fn representation(self) -> Builtin {
         match self {
-            Builtin::Email | Builtin::Url | Builtin::IpAddress => Builtin::Text,
+            Builtin::Email | Builtin::Url | Builtin::IpAddress | Builtin::PageCursor => {
+                Builtin::Text
+            }
+            Builtin::PageSize => Builtin::Int,
             other => other,
         }
     }
@@ -78,8 +111,22 @@ impl Builtin {
     pub fn is_representation(self) -> bool {
         !matches!(
             self,
-            Builtin::Email | Builtin::Url | Builtin::IpAddress | Builtin::Unit
+            Builtin::Email
+                | Builtin::Url
+                | Builtin::IpAddress
+                | Builtin::Unit
+                | Builtin::PageCursor
+                | Builtin::PageSize
         )
+    }
+
+    /// The rules the type itself carries, below any a declaration adds:
+    /// `PageSize`'s range.
+    pub fn rules(self) -> Option<&'static crate::Rules> {
+        match self {
+            Builtin::PageSize => Some(&PAGE_SIZE_RULES),
+            _ => None,
+        }
     }
 
     pub fn is_number(self) -> bool {
@@ -98,5 +145,10 @@ mod tests {
         }
         assert_eq!(Builtin::Email.representation(), Builtin::Text);
         assert!(!Builtin::Url.is_representation());
+        assert_eq!(Builtin::PageSize.representation(), Builtin::Int);
+        assert_eq!(
+            Builtin::PageSize.rules().and_then(|rules| rules.max),
+            Some(crate::Num::whole(100))
+        );
     }
 }

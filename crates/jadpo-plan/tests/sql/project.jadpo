@@ -1,0 +1,203 @@
+// The project every golden SQL file in this folder is planned from: one
+// query per shape area 6 decides, and the entities' operations.
+
+type UserName = Text {
+    max_length: 80
+}
+
+type ProjectName = Text {
+    max_length: 80
+}
+
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type Bio = Text {
+    max_length: 400
+}
+
+type TodoStatus = Enum {
+    open
+    waiting
+    done
+}
+
+type Score = Int {
+    min: 0
+    max: 1000
+}
+
+type UserView = Output {
+    pick: [User.id, User.name]
+}
+
+type ProfileView = Output {
+    pick: [Profile.bio]
+}
+
+type UserCard = Output {
+    pick: [User.id, User.name]
+    profile: ProfileView?
+}
+
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.status]
+}
+
+type TodoWithOwner = Output {
+    pick: [Todo.id, Todo.title]
+    owner: UserView
+}
+
+type ProjectBoardView = Output {
+    pick: [Project.id, Project.name]
+    owner: UserCard
+    todos: List<TodoWithOwner>
+}
+
+type ListTodos = Input {
+    status: TodoStatus {
+        optional: true
+    }
+    due_before: Instant {
+        optional: true
+    }
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+type ProjectNotFound = Failure {
+    kind: FailureKind.not_found
+    client: {
+        project_id: Project.id
+    }
+}
+
+type TodoNotFound = Failure {
+    kind: FailureKind.not_found
+}
+
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+    name: UserName
+}
+
+entity Profile {
+    id: Uuid
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+        unique: true
+    }
+    bio: Bio
+}
+
+entity Project {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    name: ProjectName
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id? {
+        on_delete: OnDelete.cleared
+    }
+    title: TodoTitle
+    status: TodoStatus
+    score: Score
+    due_at: Instant?
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+}
+
+/// Exactly one record, or the `missing:` failure with its fields.
+query project_by_id(project_id: Project.id) fails ProjectNotFound -> Project {
+    from: Project
+    where: Project.id == project_id
+    missing: ProjectNotFound {
+        project_id: project_id
+    }
+}
+
+/// At most one record, by a unique field.
+query user_by_email(email: User.email) -> UserView? {
+    from: User
+    where: User.email == email
+}
+
+/// A bounded list: `in`, `or`, `none`, `not` and `clock.now`.
+query todos_by_ids(todo_ids: List<Todo.id>) -> List<TodoView> {
+    from: Todo
+    where: Todo.id in todo_ids
+    where: Todo.due_at == none or Todo.due_at > clock.now
+    where: Todo.status in [TodoStatus.open, TodoStatus.waiting]
+    where: not (Todo.score < 10)
+    where: Todo.project_id != none and not (Todo.due_at < clock.now)
+    order: [Todo.created_at asc]
+    limit: 100
+}
+
+/// A page: optional filters, and a cursor over one direction.
+query todos_for_owner(owner_id: User.id, filter: ListTodos) -> Page<TodoView> {
+    from: Todo
+    where: Todo.owner_id == owner_id
+    where_present: Todo.status == filter.status
+    where_present: Todo.due_at <= filter.due_before
+    order: [Todo.created_at desc]
+    page: {
+        size: filter.page_size
+        after: filter.after
+    }
+}
+
+/// A page over two directions, sorted by text.
+query todos_by_title(owner_id: User.id, after: PageCursor?) -> Page<TodoView> {
+    from: Todo
+    where: Todo.owner_id == owner_id
+    order: [Todo.title asc, Todo.score desc]
+    page: {
+        size: 20
+        after: after
+    }
+}
+
+/// Includes: a parent with its unique child, and children ordered and
+/// limited per record, each with its parent.
+query project_board(project_id: Project.id) fails ProjectNotFound -> ProjectBoardView {
+    from: Project
+    where: Project.id == project_id
+    missing: ProjectNotFound {
+        project_id: project_id
+    }
+    include: {
+        owner: {
+            via: Project.owner_id
+            include: {
+                profile: Profile.user_id
+            }
+        }
+        todos: {
+            via: Todo.project_id
+            where: Todo.status != TodoStatus.done
+            order: [Todo.created_at asc]
+            limit: 50
+            include: {
+                owner: Todo.owner_id
+            }
+        }
+    }
+}

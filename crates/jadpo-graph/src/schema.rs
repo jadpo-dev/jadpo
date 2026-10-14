@@ -737,6 +737,8 @@ impl Change {
                     "removed"
                 };
                 match reason.split_once(' ') {
+                    Some(("query", what)) => format!("{verb} index for query `{what}`"),
+                    Some(("reference", what)) => format!("{verb} index on reference `{what}`"),
                     Some((kind, what)) => format!("{verb} {kind} `{what}`"),
                     None => format!("{verb} {reason}"),
                 }

@@ -9,7 +9,7 @@
 # options they use.
 [types]
 InstantRange
-Page PageCursor
+Page
 File Principal Response Access
 TimeFormat LocalGap LocalOverlap
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol HttpMethod

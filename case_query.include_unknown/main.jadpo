@@ -1,0 +1,24 @@
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+type ShelfCard = Output {
+    pick: [Book.id]
+    name: Title
+}
+
+query cards() -> List<ShelfCard> {
+    from: Book
+    order: [Book.title asc]
+    limit: 20
+    include: {
+        name: Book.title
+    }
+}

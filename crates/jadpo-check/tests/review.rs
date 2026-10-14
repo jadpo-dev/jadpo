@@ -535,7 +535,8 @@ fn an_entity_has_only_its_operations() {
         check(&format!(
             "{entity}action f(id: Order.id) -> Order.id {{\n    Order.archive(id)\n    return Order.id(id)\n}}\n"
         )),
-        CLEAN
+        // A transition is an operation; running it comes with chunk 3.4.
+        ["toolchain.not_built_yet"]
     );
 }
 

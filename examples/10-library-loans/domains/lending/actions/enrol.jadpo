@@ -1,0 +1,14 @@
+// `Entity.create { set: { ... } }` adds a record: every field the store
+// doesn't generate is given in `set:`, and the store fills in `id` and
+// the generated times. It joins the action's transaction, which commits
+// when the action ends.
+
+/// Makes someone a member.
+action enrol(email: Member.email, name: Member.name) -> Member {
+    return Member.create {
+        set: {
+            email: email
+            name: name
+        }
+    }
+}

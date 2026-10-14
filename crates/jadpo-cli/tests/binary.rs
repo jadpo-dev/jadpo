@@ -110,6 +110,7 @@ fn bash_completes_commands_and_values() {
             "test",
             "fmt",
             "migrate",
+            "sql",
             "completions",
             "lsp",
             "help",

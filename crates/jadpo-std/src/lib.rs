@@ -12,6 +12,8 @@
 //! - [`Rounding`], [`TextFormat`], [`UuidVersion`] and [`Weekday`], and
 //!   the `Zone` and `Locale` tables ([`ZONES`], [`LOCALES`]): the standard
 //!   library's enums that Rust code interprets, declared once.
+//! - [`read`]: what a read and a create run, SQL and codecs, decided by
+//!   `jadpo-plan` and run by `jadpo-runtime` for both executors (area 6).
 //! - [`OPERATIONS`]: every standard-library operation with its parameters'
 //!   kinds, its result and the Rust function that runs it in
 //!   `jadpo-value`, which the Jadpo stubs in `jadpo-check` are tested
@@ -32,6 +34,7 @@ mod builtin;
 mod enums;
 mod num;
 mod operations;
+pub mod read;
 mod rules;
 mod time;
 mod zones;
@@ -43,6 +46,7 @@ pub use enums::{
 };
 pub use num::{Num, compare_exact};
 pub use operations::{Kind, OPERATIONS, Op, Operation, Param, operation};
+pub use read::SqlType;
 pub use rules::{
     Broken, Pattern, RuleKey, Rules, check_builtin_text, compile_pattern, is_email, is_ip_address,
     is_url, uuid_version,

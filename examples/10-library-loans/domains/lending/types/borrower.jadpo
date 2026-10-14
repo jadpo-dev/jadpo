@@ -1,0 +1,8 @@
+/// A member with their card, the copies on the shelves and the loans the
+/// tests set up.
+type Borrower = Object {
+    member: Member
+    card: Card
+    books: List<Book>
+    loans: List<Loan>
+}

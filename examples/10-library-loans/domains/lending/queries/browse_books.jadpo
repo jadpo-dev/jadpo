@@ -1,0 +1,18 @@
+// `Page<BookView>` is one page and a cursor for the next. The order says
+// how copies sort; the compiler adds `id` as the last field, so copies
+// with the same title never swap places between pages. `page:` gives the
+// size and the cursor to continue after: there is no offset.
+//
+// `where_present:` applies its condition only when the value is there,
+// which is how a request's optional filters are written.
+
+/// The catalogue, by title, a page at a time.
+query browse_books(filter: CatalogueFilter) -> Page<BookView> {
+    from: Book
+    where_present: Book.wear == filter.wear
+    order: [Book.title asc]
+    page: {
+        size: filter.page_size
+        after: filter.after
+    }
+}

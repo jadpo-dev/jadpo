@@ -1,0 +1,9 @@
+test "loans due by a date come with their books" {
+    var ada: Borrower = ada_borrows_two()
+    var due: List<LoanView> = loans_due(
+        collection.map(ada.books, book -> book.id),
+        "2026-10-01",
+        "2026-11-05"
+    )
+    assert collection.map(due, loan -> loan.book.title) == ["Dune"]
+}

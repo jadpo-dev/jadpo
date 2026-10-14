@@ -19,6 +19,10 @@ pub enum FaultKind {
     NotBuiltYet(String),
     /// A defect the checker should have ruled out, in a few words.
     Defect(String),
+    /// A store refused in a way no driver classifies, with its reason
+    /// (docs/compiler-runtime.md §2.6): a database a test couldn't get, or
+    /// an error the server gave.
+    Store(String),
 }
 
 impl FaultKind {
@@ -31,7 +35,7 @@ impl FaultKind {
             FaultKind::DecimalOverflow => "decimal_overflow",
             FaultKind::RecursionLimit => "recursion_limit",
             FaultKind::NotBuiltYet(_) => "not_built_yet",
-            FaultKind::Defect(_) => "internal_fault",
+            FaultKind::Defect(_) | FaultKind::Store(_) => "internal_fault",
         }
     }
 }

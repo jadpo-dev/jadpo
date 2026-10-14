@@ -289,6 +289,11 @@ impl Lower<'_> {
                 callee,
                 Callee::Action(_) | Callee::Fixture(_) | Callee::Query(_) | Callee::Entity { .. }
             ),
+            // `Entity.create { ... }` writes a record.
+            typed::Node::Expr(typed::Expr::Build {
+                callee: Callee::Entity { .. },
+                ..
+            }) => true,
             typed::Node::Expr(typed::Expr::Unchecked) => {
                 self.facts.effects.contains(&node_key(node))
             }
@@ -796,8 +801,25 @@ impl Lower<'_> {
                 host.clone(),
                 vec![variant.clone()],
             ),
+            BuildFact::Create(entity) => (
+                self.type_key(entity)
+                    .map_or(Callee::Unknown, |key| Callee::Entity {
+                        entity: key,
+                        operation: "create".to_string(),
+                    }),
+                entity.clone(),
+                Vec::new(),
+            ),
         };
-        let fields = self.fields_given(record.member_list(), &host, &prefix);
+        // A create's fields are in its `set:` block.
+        let list = match &build {
+            BuildFact::Create(_) => tree::members(record.member_list())
+                .into_iter()
+                .find(|(name, _)| tree::name_text(name).as_deref() == Some("set"))
+                .and_then(|(_, member)| member.block()),
+            _ => record.member_list(),
+        };
+        let fields = self.fields_given(list, &host, &prefix);
         let fallible = match self.facts.constructions.get(&key) {
             Some(verdict) => self.fallible(Some(verdict)),
             None => typed::Fallible::Never,

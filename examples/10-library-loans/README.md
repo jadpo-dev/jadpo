@@ -1,14 +1,20 @@
 # 10 · A library's loans
 
 A lending library that keeps its members, its books and the loans
-between them: the records a project stores, and the migrations that keep
-its database in step with them.
+between them: the records a project stores, the migrations that keep its
+database in step with them, and the queries that read them back.
 
-An entity is a record with a lasting identity, kept in a store; anything
+An entity is a record with a lasting identity, on_shelf in a store; anything
 never stored is a `type`. The entities describe the schema you want, and
 each migration in `database/migrations/` records a step from one version
 of the database to the next. `jadpo check` fails while the two disagree,
 so a change to an entity always comes with its migration.
+
+A query is one declarative read, in its own file in a domain's
+`queries/` folder: which entity, which records, in what order, how many,
+and the related records to bring with them. Its result type says how many
+records come back, and the compiler writes the SQL and the indexes it
+needs.
 
 ## What it teaches
 
@@ -19,6 +25,13 @@ so a change to an entity always comes with its migration.
 5. **The first migration.** The tables, keys and indexes the entities asked for when the project began, with the runtime's system tables. See `database/migrations/20261003T1000_initial/` and [area 5, Migrations](../../docs/language/05-data.md#migrations).
 6. **A migration with decisions.** A required field added and another removed: the copies already stored get a value with `backfill:`, and the removed field's column is retired. See `domains/lending/entities/book.jadpo` and `database/migrations/20261020T1400_add_wear/`.
 7. **Tests and the test database.** An action test runs with its own copy of a database built from the migrations, made the first time the test uses a store. See `domains/lending/actions/loan_period.test.jadpo` and [area 13, The test database](../../docs/language/13-testing.md#the-test-database).
+8. **Creating and reading by id.** `Member.create { set: { ... } }` adds a record, and `Member.get(member_id)` reads one or fails with the domain's `MemberNotFound`. See `domains/lending/actions/enrol.jadpo`, `domains/lending/actions/issue_card.jadpo` and `domains/lending/failures/member_not_found.jadpo`, and [area 6, The operations every entity gets](../../docs/language/06-reads-and-writes.md#the-operations-every-entity-gets).
+9. **Test data through the application's actions.** A fixture builds its records with the same actions the desk uses, so every rule applies. See `domains/lending/fixtures/ada_borrows_two.jadpo` and `domains/lending/actions/lend.test.jadpo`.
+10. **A query for at most one record.** A unique field tested with `==`, returning the entity itself. See `domains/lending/queries/member_by_email.jadpo` and [area 6, Named queries](../../docs/language/06-reads-and-writes.md#named-queries).
+11. **Exactly one record, with what it includes.** `missing:` names the failure when nothing matches; `include:` adds the member's card through a unique reference and their loans through `Loan.member_id`, each loan with its book, one statement per include. See `domains/lending/queries/member_loans.jadpo`, `domains/lending/types/member_page.jadpo` and [area 6, Children and parents](../../docs/language/06-reads-and-writes.md#children-and-parents).
+12. **Pages and optional filters.** `Page<BookView>`, the built-in `PageSize` and `PageCursor`, and `where_present:`. See `domains/lending/queries/browse_books.jadpo`, `domains/lending/types/catalogue_filter.jadpo` and [area 6, Order and pages](../../docs/language/06-reads-and-writes.md#order-and-pages).
+13. **Conditions.** `in` a list, `== none`, `and`, `or` and `not`, and a list bounded by `limit:`. See `domains/lending/queries/loans_due.jadpo` and [area 6, Filters](../../docs/language/06-reads-and-writes.md#filters).
+14. **The indexes queries need.** The third migration adds the card table and the indexes the queries asked for, and drops a reference's own index once a query's index starts with its column. See `database/migrations/20261103T0900_add_cards_and_reads/` and [area 5, Indexes](../../docs/language/05-data.md#indexes).
 
 ## Run it
 
@@ -31,25 +44,34 @@ target/release/jadpo check examples/10-library-loans
 target/release/jadpo test examples/10-library-loans
 target/release/jadpo fmt --check examples/10-library-loans
 cd examples/10-library-loans && ../../target/release/jadpo migrate status
+../../target/release/jadpo sql member_loans
 ```
 
 - `check` ends with `checked: <n> files` and no errors: the entities match
   the latest migration's snapshot.
-- `migrate status` lists the two migrations. Given a PostgreSQL database
+- `migrate status` lists the three migrations. Given a PostgreSQL database
   with `--url`, `jadpo migrate apply` creates the tables there and `status`
   says which migrations it has applied.
-- `test` ends with `tested: 1 passed`. A test that writes records gets its
+- `test` ends with `tested: 8 passed`. A test that writes records gets its
   own database, copied from a template the migrations build, on the server
   `JADPO_TEST_DATABASE_URL` names or one `jadpo test` starts from the
   machine's PostgreSQL.
 - `fmt --check` ends with `formatted: <n> files`.
+- `sql member_loans` prints the four statements the query sends, each
+  with the parameters that fill it: the member, then one for the card,
+  one for the loans and one for their books, however many loans there
+  are.
 
 ## Try next
 
 - In `loan.jadpo`, delete the block after `book_id: Book.id`. `jadpo check` reports `data.on_delete_required`: a reference must say what deleting the book does.
   <!-- try {"file": "domains/lending/entities/loan.jadpo", "replace": "    book_id: Book.id {\n        on_delete: OnDelete.restricted\n    }\n", "with": "    book_id: Book.id\n", "check": ["data.on_delete_required"]} -->
-- In `member.jadpo`, add a field `phone: Text?`. `jadpo check` reports `migration.out_of_date` and names the command that writes the migration, `jadpo migrate new add_phone`.
-  <!-- try {"file": "domains/lending/entities/member.jadpo", "replace": "    name: Nickname\n", "with": "    name: Nickname\n    phone: Text?\n", "check": ["migration.out_of_date"]} -->
-- In the second migration's `changes.jadpo`, change `Wear.pristine` to `Wear.mint`. `jadpo check` reports `migration.decision_invalid`: the backfill must be a value of the field's type.
-  <!-- try {"file": "database/migrations/20261020T1400_add_wear/changes.jadpo", "replace": "backfill: Wear.pristine", "with": "backfill: Wear.mint", "check": ["migration.decision_invalid"]} -->
+- In `member.jadpo`, add `indexes: { by_name: [name] }` after the fields. `jadpo check` reports `migration.out_of_date` and names the command that writes the migration for the new index.
+  <!-- try {"file": "domains/lending/entities/member.jadpo", "replace": "    joined_at: Instant {\n        generated: Generated.on_create\n    }\n", "with": "    joined_at: Instant {\n        generated: Generated.on_create\n    }\n\n    indexes: {\n        by_name: [name]\n    }\n", "check": ["migration.out_of_date"]} -->
+- In `member_loans.jadpo`, change `limit: 50` to `limit: 0`. `jadpo check` reports `query.limit_range`: a list holds at least one record.
+  <!-- try {"file": "domains/lending/queries/member_loans.jadpo", "replace": "limit: 50", "with": "limit: 0", "check": ["query.limit_range"]} -->
+- In `browse_books.jadpo`, sort by `Book.wear` instead of `Book.title`. `jadpo check` reports `query.order_field`: the database keeps an enum as its variant's name, so it can't sort copies in the enum's order.
+  <!-- try {"file": "domains/lending/queries/browse_books.jadpo", "replace": "order: [Book.title asc]", "with": "order: [Book.wear asc]", "check": ["query.order_field"]} -->
+- In `member_by_email.jadpo`, change `==` to `!=`. `jadpo check` reports `query.not_unique`: `Member?` is at most one record, and every other address could match many.
+  <!-- try {"file": "domains/lending/queries/member_by_email.jadpo", "replace": "where: Member.email == email", "with": "where: Member.email != email", "check": ["query.not_unique"]} -->
 - That is the last example. The [language pages](../../docs/language/README.md) hold the full specification.

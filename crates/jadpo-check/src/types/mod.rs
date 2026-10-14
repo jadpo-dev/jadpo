@@ -11,7 +11,7 @@
 
 mod body;
 pub(crate) mod decl;
-mod literal;
+pub(crate) mod literal;
 mod recursion;
 mod rules;
 mod shape;

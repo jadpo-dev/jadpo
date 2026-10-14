@@ -1,0 +1,4 @@
+/// The number printed on a library card.
+type CardNumber = Text {
+    pattern: "[0-9]{8}"
+}

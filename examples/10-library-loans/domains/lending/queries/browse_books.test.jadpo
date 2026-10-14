@@ -1,0 +1,27 @@
+test "the catalogue continues where the last page ended" {
+    assert collection.count(ada_borrows_two().books) == 3
+    var first: Page<BookView> = browse_books(
+        CatalogueFilter {
+            page_size: 2
+        }
+    )
+    assert collection.map(first.items, book -> book.title) == ["Crime and Punishment", "Dune"]
+    var next_page: Page<BookView> = browse_books(
+        CatalogueFilter {
+            page_size: 2
+            after: first.next
+        }
+    )
+    assert collection.map(next_page.items, book -> book.title) == ["Emma"]
+    assert next_page.next == none
+}
+
+test "a filter left out applies to nothing" {
+    assert collection.count(ada_borrows_two().books) == 3
+    var pristine: Page<BookView> = browse_books(
+        CatalogueFilter {
+            wear: Wear.pristine
+        }
+    )
+    assert collection.map(pristine.items, book -> book.title) == ["Emma"]
+}

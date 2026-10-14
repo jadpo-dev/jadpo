@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use jadpo_db::ItemKind;
+use jadpo_db::{ItemKind, Ownership};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
@@ -156,6 +156,9 @@ impl Body<'_> {
                 };
                 let kind = self.callable_kind(&callee);
                 let span = self.span(&name);
+                if kind == Some(ItemKind::Query) {
+                    self.read_in_loop(span.clone(), &callee);
+                }
                 self.may_call(span, &callee, kind.as_ref());
                 self.args(&sig, call, &callee);
                 let reach = match &kind {
@@ -210,15 +213,48 @@ impl Body<'_> {
             if self.callable_kind(&head) == Some(ItemKind::Entity) && rest.len() == 1 {
                 // An entity's operations read and write stored data
                 // (areas 5 and 6).
-                if self.context.is_pure() {
-                    let span = self.span(callee);
-                    self.persistence(span, &written);
-                }
-                self.args_only(call);
+                let span = self.span(callee);
                 let reach = Reach::Entity {
                     entity: head.clone(),
                     operation: rest.join("."),
                 };
+                // Another domain's entity is reported where it is named;
+                // its operations aren't checked as well.
+                let visible = self
+                    .symbols
+                    .declared(&head)
+                    .iter()
+                    .find(|symbol| symbol.kind == ItemKind::Entity)
+                    .is_none_or(|symbol| match (&symbol.ownership, self.ownership) {
+                        (Ownership::Domain(theirs), Ownership::Domain(ours)) => theirs == ours,
+                        _ => true,
+                    });
+                if !visible {
+                    self.args_only(call);
+                    return (Ty::Error, CallKind::Effect(written), reach);
+                }
+                if self.context.is_pure() {
+                    self.persistence(span, &written);
+                    self.args_only(call);
+                    return (Ty::Error, CallKind::Effect(written), reach);
+                }
+                if rest[0] == "get" {
+                    let ty = self.entity_get(&head, call, span);
+                    return (ty, CallKind::Effect(written), reach);
+                }
+                // The writes after `create`, and the lifecycle's
+                // transitions, come with chunks 3.3 and 3.4; a name that
+                // is neither is reported where it is resolved.
+                self.args_only(call);
+                let known = crate::resolve::ENTITY_OPERATIONS.contains(&rest[0].as_str())
+                    || self
+                        .symbols
+                        .declared(&head)
+                        .iter()
+                        .any(|symbol| symbol.transitions.contains(&rest[0]));
+                if known {
+                    self.not_built_yet(span, &written);
+                }
                 return (Ty::Error, CallKind::Effect(written), reach);
             }
             if self.symbols.is_package(&head) {
@@ -313,6 +349,9 @@ impl Body<'_> {
                 .cloned()
             {
                 let span = self.span(callee);
+                if kind == Some(ItemKind::Query) {
+                    self.read_in_loop(span.clone(), &written);
+                }
                 self.may_call(span, &written, kind.as_ref());
                 self.args(&sig, call, &written);
                 let reach = Reach::Callable {

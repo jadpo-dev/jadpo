@@ -52,15 +52,30 @@ pub(crate) enum Stop {
     Assertion(Box<Assertion>),
 }
 
+/// What a site that pauses waits on: a call into the runtime's action
+/// boundary, or a read or write the runtime runs from its plan (area 6).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Target {
+    /// An action, fixture or other callable, by number.
+    Callable(u32),
+    /// A query, by the number of its plan.
+    Query(u32),
+    /// `Entity.get`, by the number of the entity's plan.
+    Get(u32),
+    /// `Entity.create`, by the number of the entity's plan.
+    Create(u32),
+}
+
 /// Where a run of the machine stopped.
 pub(crate) enum Step {
     /// The invocation ended: its value, or the failure, fault or assertion
     /// that ended it.
     Done(Result<Value, Stop>),
     /// It reached a site that pauses: a call into the runtime's action
-    /// boundary, which the caller makes, then resumes the machine with.
+    /// boundary, or a read or write, which the caller makes, then resumes
+    /// the machine with.
     Pause {
-        callee: u32,
+        target: Target,
         args: Vec<Value>,
         at: SiteId,
     },
@@ -71,7 +86,7 @@ enum Flow {
     Next,
     Done(Result<Value, Stop>),
     Pause {
-        callee: u32,
+        target: Target,
         args: Vec<Value>,
         at: SiteId,
     },
@@ -153,9 +168,9 @@ enum Task<'p> {
         op: UnaryOp,
         at: SiteId,
     },
-    /// Calls callable `callee` with the `count` values on top.
+    /// Calls `target` with the `count` values on top.
     Invoke {
-        callee: u32,
+        target: Target,
         count: usize,
         at: SiteId,
         /// For the subject of an outcome `match` or an `assert … fails`:
@@ -304,7 +319,7 @@ impl<'p> Machine<'p> {
             Err(stop) => match self.unwind(ctx, stop) {
                 Flow::Next => {}
                 Flow::Done(result) | Flow::Nested(result) => return Step::Done(result),
-                Flow::Pause { callee, args, at } => return Step::Pause { callee, args, at },
+                Flow::Pause { target, args, at } => return Step::Pause { target, args, at },
             },
         }
         self.run(ctx)
@@ -327,7 +342,7 @@ impl<'p> Machine<'p> {
             match flow {
                 Flow::Next => {}
                 Flow::Done(result) | Flow::Nested(result) => return Step::Done(result),
-                Flow::Pause { callee, args, at } => return Step::Pause { callee, args, at },
+                Flow::Pause { target, args, at } => return Step::Pause { target, args, at },
             }
         }
     }
@@ -663,7 +678,7 @@ impl<'p> Machine<'p> {
                 self.values.push(result);
             }
             Task::Invoke {
-                callee,
+                target,
                 count,
                 at,
                 then,
@@ -676,10 +691,42 @@ impl<'p> Machine<'p> {
                         then,
                     });
                 }
-                if self.site(at).is_some_and(|site| site.pauses) {
-                    return Ok(Flow::Pause { callee, args, at });
+                match target {
+                    Target::Callable(callee) => {
+                        if self.site(at).is_some_and(|site| site.pauses) {
+                            return Ok(Flow::Pause { target, args, at });
+                        }
+                        self.enter(ctx, callee, args, at)?;
+                    }
+                    // A create's fields as written, put in the order its
+                    // plan sets them.
+                    Target::Create(entity) => {
+                        let count = self
+                            .program
+                            .plan()
+                            .entity(entity)
+                            .map_or(0, |plan| plan.settable.len());
+                        let mut given = vec![Value::None; count];
+                        if let Some(Decoded::Create { fields, .. }) = self.decoded(at) {
+                            for (field, value) in fields.iter().zip(args) {
+                                if let Some(place) =
+                                    field.slot.and_then(|slot| given.get_mut(slot as usize))
+                                {
+                                    *place = value;
+                                }
+                            }
+                        }
+                        return Ok(Flow::Pause {
+                            target,
+                            args: given,
+                            at,
+                        });
+                    }
+                    // A read always waits on the store.
+                    Target::Query(_) | Target::Get(_) => {
+                        return Ok(Flow::Pause { target, args, at });
+                    }
                 }
-                self.enter(ctx, callee, args, at)?;
             }
             Task::Std {
                 op,
@@ -736,6 +783,8 @@ impl<'p> Machine<'p> {
                     Some(Decoded::Build {
                         fields, fallible, ..
                     }) => (fields.get(index), *fallible),
+                    // A create's fields are proved, as an object literal's.
+                    Some(Decoded::Create { fields, .. }) => (fields.get(index), false),
                     _ => (None, false),
                 };
                 let Some(given) = given else {
@@ -1153,6 +1202,33 @@ impl<'p> Machine<'p> {
                 self.tasks.push(Task::Expr(*receiver));
             }
             Expr::Call { callee, args, .. } => return self.call(ctx, id, callee, args),
+            Expr::Build {
+                callee: Callee::Entity { .. },
+                fields,
+                ..
+            } => {
+                let Some(Decoded::Create {
+                    entity: Some(entity),
+                    ..
+                }) = self.decoded(id)
+                else {
+                    return Err(self.defect(ctx, "a create the plan has no entity for", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Create(*entity),
+                    count: fields.len(),
+                    at: id,
+                    then: None,
+                });
+                for (index, (_, site)) in fields.iter().enumerate().rev() {
+                    self.tasks.push(Task::BuildField {
+                        at: id,
+                        index,
+                        site: *site,
+                    });
+                    self.tasks.push(Task::Expr(*site));
+                }
+            }
             Expr::Build { callee, fields, .. } => {
                 let (Callee::Object(_) | Callee::Variant(_)) = callee else {
                     return Err(self.defect(
@@ -1319,18 +1395,26 @@ impl<'p> Machine<'p> {
                     return Err(self.defect(ctx, "a call to a callable that has no body", id));
                 };
                 self.tasks.push(Task::Invoke {
-                    callee: *target,
+                    target: Target::Callable(*target),
                     count: args.len(),
                     at: id,
                     then: None,
                 });
                 self.arguments(args, id);
             }
-            // A query is declarative, and an entity's operations are
-            // area 6's.
+            // A read the runtime runs from its plan (area 6).
             Callee::Query(_) | Callee::Entity { .. } => {
-                let written = self.written(id);
-                return Err(self.not_built_yet(ctx, written, id));
+                let Some(target) = self.effect(id) else {
+                    let written = self.written(id);
+                    return Err(self.not_built_yet(ctx, written, id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target,
+                    count: args.len(),
+                    at: id,
+                    then: None,
+                });
+                self.arguments(args, id);
             }
             Callee::Std(op) => self.standard_arguments(*op, args, id),
             Callee::Construct(_) => {
@@ -1345,6 +1429,15 @@ impl<'p> Machine<'p> {
             }
         }
         Ok(Flow::Next)
+    }
+
+    /// The read a call site makes: a query, or an entity's `get`.
+    fn effect(&self, at: SiteId) -> Option<Target> {
+        match self.decoded(at)? {
+            Decoded::Query(Some(query)) => Some(Target::Query(*query)),
+            Decoded::Get(Some(entity)) => Some(Target::Get(*entity)),
+            _ => None,
+        }
     }
 
     /// The subject of an outcome `match` or of `assert ... fails`, split
@@ -1372,7 +1465,21 @@ impl<'p> Machine<'p> {
                     return Err(self.defect(ctx, "a call to a callable that has no body", subject));
                 };
                 self.tasks.push(Task::Invoke {
-                    callee: *target,
+                    target: Target::Callable(*target),
+                    count: args.len(),
+                    at: subject,
+                    then: Some(then),
+                });
+                self.arguments(args, subject);
+            }
+            Some(Node::Expr(Expr::Call {
+                callee: Callee::Query(_) | Callee::Entity { .. },
+                args,
+                ..
+            })) if self.effect(subject).is_some() => {
+                let target = self.effect(subject).unwrap_or(Target::Callable(0));
+                self.tasks.push(Task::Invoke {
+                    target,
                     count: args.len(),
                     at: subject,
                     then: Some(then),

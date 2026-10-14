@@ -271,7 +271,14 @@ Rust 1.88 or later).
 Built so far: every crate above but `jadpo-codegen` and
 `jadpo-host-workers`; `jadpo-plan` began in chunk 2.10 with type plans,
 failure shapes, constants and the frame table (§2.5), and `jadpo-drivers`
-(PostgreSQL only) and `jadpo-host-native` in chunk 3.1 (§2.6).
+(PostgreSQL only) and `jadpo-host-native` in chunk 3.1 (§2.6). Since chunk
+3.2 `jadpo-plan` also holds the SQL each query, `get` and `create` runs
+(`QueryPlan`, `EntityPlan`), as the read and create plans
+`jadpo_std::read` defines: plain data (statement text, where each
+parameter comes from, how each column becomes a value and a row a
+record) that `jadpo-plan` decides and `jadpo-runtime` runs, so both
+executors send the same statements and build the same values, and compiled
+code needs nothing from a compiler crate to run them.
 
 Since chunk 3.1 the physical schema lives where both sides of the compiler
 reach it: `jadpo_graph::schema` holds the model (stores, tables, columns,
@@ -284,8 +291,14 @@ SQL, per store. `jadpo-check` builds the schema the entities ask for, with
 each store's system tables (`data::schema`), and compares it with the
 latest snapshot, so `jadpo check` and `jadpo migrate new` read one answer.
 That is the "migration diffs" and "system-table placement" the table gives
-`jadpo-plan`, moved down because `jadpo check` needs them; the SQL each
-query and write runs joins `jadpo-plan` with chunks 3.2 and 3.3.
+`jadpo-plan`, moved down because `jadpo check` needs them. Since chunk 3.2
+the schema also holds the indexes the queries need (area 5, "Indexes"):
+for each query, and each list it includes, the fields it always tests with
+`==` or `in`, in the order its lines name them, then its order's fields,
+unless an index or unique key the table already has serves them; a
+reference's own index goes once a query's index starts with its column.
+Their columns are ascending, which PostgreSQL also reads backwards. The
+SQL of the writes after `create` joins `jadpo-plan` with chunk 3.3.
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
@@ -495,6 +508,16 @@ edge from the entity to the one it points at. The project's
 its `snapshot.json`, come from no source file and are added when the graph
 is assembled (`graph::records`).
 
+Since chunk 3.2 a query is a built node (area 6): `jadpo_check::data::queries`
+reads each declaration once into a `QueryModel` (its entity, parameters,
+how many records it returns, the record's fields from the entity's fields
+and its includes, its conditions, its order with `id` added as the
+tie-break, its limit or page and its `missing:` failure), which the
+checks, the derived indexes, the graph and `jadpo-plan` all read. The
+graph gives a query a `reads` edge to its entity, an `includes` edge to
+each entity it includes and a `raises` edge to its `missing:` failure; a
+body calling `Entity.get` gets a `reads` edge too.
+
 Since chunk 2.10 each site says whether it can pause (§2.5): an effect (a
 store read or write, `emit`, an integration call, `clock.now`, a new
 identity) or a call to an action, query or fixture, which the runtime
@@ -680,9 +703,9 @@ conditions around them, and a broken one becomes the
 failure its arm names, or `invalid:`'s (a validated built-in type's own
 check, such as `Email`'s, is the `format` rule); an object literal never
 fails. An outcome `match` and `assert … fails` work out their call's
-arguments first, so only the call's own failures reach their arms. Effects later areas build (an entity's
-operations, queries, `emit`, `clock.now`) end in the `not_built_yet`
-fault where they are reached. A call walks the Rust stack a few frames per
+arguments first, so only the call's own failures reach their arms. Effects later areas build (`emit`,
+`clock.now` in a body) end in the `not_built_yet` fault where they are
+reached; since chunk 3.2 queries, `get` and `create` run (below). A call walks the Rust stack a few frames per
 Jadpo frame, so recursion to the depth limit runs inside
 `on_large_stack`; hosts, `async` frames and codecs come with their areas.
 
@@ -711,6 +734,16 @@ type from its parts the way a body does. Sets and maps keep the one
 canonical order area 2 decides ("Set order"), which is `Value`'s `Ord` in
 `jadpo-value`: by value, numbers numerically, text by code point, variants
 in declared order, objects and tagged unions field by field.
+
+Since chunk 3.2 a site that pauses names its target: a callable, a
+query's plan, an entity's `get` or its `create`. The driver runs a read
+or a create through the runtime (`jadpo_runtime::read` and `create`)
+inside the running action's transaction, or, called outside any action
+(by a test, later by a route's display read), in a boundary of its own,
+as a one-statement action. A read for exactly one record that finds none
+comes back `Missing`, and the executor raises the failure its plan names
+(`missing:`, or `<Entity>NotFound` for `get`), its fields from the call's
+arguments.
 
 **Code generation.** `quote!` into a `syn` tree, printed with
 [prettyplease](https://github.com/dtolnay/prettyplease): deterministic,
@@ -820,6 +853,21 @@ failure unavailable; anything else a fault with its SQLSTATE and message.
 Connections are unencrypted until TLS is built. `jadpo-host-native` gives
 `Runtime` (one current-thread tokio runtime with a `LocalSet`),
 `NativeTransport` over tokio's TCP and Unix sockets, and `postgres(url)`.
+
+Built in chunk 3.2: `jadpo_runtime::read` runs a read plan (one statement,
+then one per include, each with the keys of the records it is included in
+as one array parameter, so never a statement per record), decodes each
+column into a value and each row into a record, and for a page fetches one
+more row than its size and writes the next cursor: the query's tag and the
+last record's order values, as URL-safe base64, which a query refuses
+(422 `invalid_input`) unless it made it. `create` inserts a record with a
+new version 7 identity (`Ctx::new_id`, its random bits from the
+invocation's seed) and the clock for generated fields, and builds the
+record from the values it sent. A store's refusal becomes what the
+runtime raises: `unavailable`, a rerun after a concurrent change, the
+`not_built_yet` fault for a broken unique rule or reference until chunk
+3.3 maps them, and otherwise the `Store` fault with the driver's reason.
+The driver also sends `time` values and one-dimensional arrays.
 `Host::database(store)` gives each store by its connection's name, and an
 action's transaction is begun in the store its first store operation
 names; asking for a second store in one action is a fault, since an action
@@ -1012,7 +1060,7 @@ it), may use them.
 |---|---|
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
-| 3 | Live PostgreSQL (`--profile quick` skips it): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1) |
+| 3 | Live PostgreSQL (`--profile quick` skips it): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2). A golden SQL file per query shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |
 

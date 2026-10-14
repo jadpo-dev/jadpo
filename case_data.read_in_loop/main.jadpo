@@ -1,0 +1,29 @@
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+type BookNotFound = Failure {
+    kind: FailureKind.not_found
+}
+
+type Count = Int {
+    min: 0
+}
+
+action available_count(book_ids: List<Book.id>) fails BookNotFound -> Count {
+    var mut count: Count = 0
+    for book_id in book_ids {
+        var book: Book = attempt Book.get(book_id)
+        if (book.available) {
+            count = Count(count + 1)
+        }
+    }
+    return count
+}

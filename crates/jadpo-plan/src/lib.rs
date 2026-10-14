@@ -13,12 +13,18 @@
 //! - [`Constant`]s: every literal and field default decoded once into the
 //!   value the runtime holds.
 //!
-//! Built in chunk 2.10 from the checker's graph and typed bodies; SQL per
-//! engine, policy, codecs for HTTP and rows, and the route, schedule and
-//! subscriber tables join it with their areas. It is plain data, shared
+//! - [`QueryPlan`]s and [`EntityPlan`]s: the SQL each query, `get` and
+//!   `create` runs, with its parameters and row codecs (chunk 3.2,
+//!   `queries`).
+//!
+//! Built in chunk 2.10 from the checker's graph and typed bodies; the SQL
+//! of reads and creates joined in chunk 3.2; policy, the other writes,
+//! codecs for HTTP and the route, schedule and subscriber tables join it
+//! with their areas. It is plain data, shared
 //! by every thread that runs the project.
 
 mod constant;
+mod queries;
 mod sites;
 mod types;
 
@@ -31,6 +37,7 @@ use jadpo_graph::body::Body;
 use jadpo_graph::{Key, Kind};
 
 pub use constant::Constant;
+pub use queries::{EntityPlan, MissingPlan, MissingValue, QueryPlan, quoted};
 pub use sites::{ArmPattern, ConstId, Decoded, Given, Raise, SitePlan};
 pub use types::{
     FailureId, FailurePlan, FieldPlan, ShapeId, ShapePlan, Types, ValidatorId, ValidatorPlan,
@@ -73,6 +80,10 @@ pub struct Plan {
     constants: Vec<Constant>,
     /// Each file's text, by project-relative path, for reports.
     files: BTreeMap<String, String>,
+    /// Every query's plan, in key order.
+    queries: Vec<QueryPlan>,
+    /// Every entity's operations, in key order.
+    entities: Vec<EntityPlan>,
 }
 
 impl Plan {
@@ -105,6 +116,17 @@ impl Plan {
             .map(|(i, (key, ..))| (key.clone(), i as u32))
             .collect();
         let mut types = Types::new(Arc::clone(&graph));
+        let (queries, entities) = queries::plans(db, project, &mut types);
+        let query_ids: HashMap<Key, u32> = queries
+            .iter()
+            .enumerate()
+            .map(|(i, plan)| (plan.key.clone(), i as u32))
+            .collect();
+        let entity_ids: HashMap<Key, u32> = entities
+            .iter()
+            .enumerate()
+            .map(|(i, plan)| (plan.key.clone(), i as u32))
+            .collect();
         let mut constants = Vec::new();
         let mut callables = Vec::with_capacity(found.len());
         for (key, kind, file, body) in found {
@@ -119,10 +141,17 @@ impl Plan {
                 .map_or(1, |place| place.lines.0);
             let text = files.get(&file).map(String::as_str).unwrap_or_default();
             let number = |key: &Key| by_key.get(key).copied();
+            let query = |key: &Key| query_ids.get(key).copied();
+            let entity = |key: &Key| {
+                let id = entity_ids.get(key).copied()?;
+                Some((id, entities[id as usize].settable.as_slice()))
+            };
             let sites = sites::Decoder {
                 types: &mut types,
                 constants: &mut constants,
                 callable: &number,
+                query: &query,
+                entity: &entity,
             }
             .body(&body, text);
             callables.push(CallablePlan {
@@ -141,6 +170,8 @@ impl Plan {
             types,
             constants,
             files,
+            queries,
+            entities,
         }
     }
 
@@ -190,5 +221,28 @@ impl Plan {
 
     pub fn text(&self, path: &str) -> Option<&str> {
         self.files.get(path).map(String::as_str)
+    }
+
+    /// Every query's plan, by number.
+    pub fn queries(&self) -> &[QueryPlan] {
+        &self.queries
+    }
+
+    pub fn query(&self, id: u32) -> Option<&QueryPlan> {
+        self.queries.get(id as usize)
+    }
+
+    /// The plan of the query called `name` now.
+    pub fn query_named(&self, name: &str) -> Option<&QueryPlan> {
+        self.queries.iter().find(|plan| plan.name == name)
+    }
+
+    /// Every entity's operations, by number.
+    pub fn entities(&self) -> &[EntityPlan] {
+        &self.entities
+    }
+
+    pub fn entity(&self, id: u32) -> Option<&EntityPlan> {
+        self.entities.get(id as usize)
     }
 }

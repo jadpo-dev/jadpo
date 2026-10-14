@@ -1,0 +1,31 @@
+// `MemberPage` is exactly one record, so `missing:` names the `not_found`
+// failure a caller gets when nothing matches, with its fields, and the
+// `fails` list says so.
+//
+// `include:` puts related records under the result's fields of the same
+// name, one more database query each, however many records come back:
+// never one per record. A reference another entity holds to this one
+// (`Loan.member_id`) gives a list, ordered and bounded like any list; a
+// unique one (`Card.member_id`) gives at most one record. Includes nest
+// up to two levels: each loan includes the book its own `book_id`
+// points at.
+
+/// A member's page: their card, and their loans soonest due first.
+query member_loans(member_id: Member.id) fails MemberNotFound -> MemberPage {
+    from: Member
+    where: Member.id == member_id
+    missing: MemberNotFound {
+        member_id: member_id
+    }
+    include: {
+        card: Card.member_id
+        loans: {
+            via: Loan.member_id
+            order: [Loan.due_on asc]
+            limit: 50
+            include: {
+                book: Loan.book_id
+            }
+        }
+    }
+}

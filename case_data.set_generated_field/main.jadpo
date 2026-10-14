@@ -1,0 +1,20 @@
+type Title = Text {
+    max_length: 80
+}
+
+entity Note {
+    id: Uuid
+    title: Title
+    written_at: Instant {
+        generated: Generated.on_create
+    }
+}
+
+action write(title: Note.title, at: Note.written_at) -> Note {
+    return Note.create {
+        set: {
+            title: title
+            written_at: at
+        }
+    }
+}

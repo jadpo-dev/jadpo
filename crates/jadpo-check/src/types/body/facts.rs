@@ -75,6 +75,8 @@ pub(crate) enum PatternFact {
 pub(crate) enum BuildFact {
     Object(String),
     Variant(String, String),
+    /// `Entity.create { set: { ... } }` (area 6).
+    Create(String),
 }
 
 #[derive(Debug, Default)]

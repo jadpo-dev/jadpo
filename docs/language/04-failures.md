@@ -1481,7 +1481,7 @@ way, as `failure.mapping_kind` above.
 
 ### `failure.required_query_not_not_found`
 
-> The archived compiler's example: data operations' mappings are checked once data operations are built (area 6).
+> The archived compiler's example: since chunk 3.2 a query's `missing:` naming a failure of another kind is `failure.mapping_kind`, above (area 6).
 
 ```jadpo project=e-query-kind expect=failure.required_query_not_not_found
 entity Customer {

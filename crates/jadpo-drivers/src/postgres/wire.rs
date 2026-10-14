@@ -19,11 +19,24 @@ pub(crate) mod oid {
     pub const BPCHAR: u32 = 1042;
     pub const VARCHAR: u32 = 1043;
     pub const DATE: u32 = 1082;
+    pub const TIME: u32 = 1083;
     pub const TIMESTAMP: u32 = 1114;
     pub const TIMESTAMPTZ: u32 = 1184;
     pub const NUMERIC: u32 = 1700;
     pub const UUID: u32 = 2950;
     pub const JSONB: u32 = 3802;
+    pub const BOOL_ARRAY: u32 = 1000;
+    pub const BYTEA_ARRAY: u32 = 1001;
+    pub const INT2_ARRAY: u32 = 1005;
+    pub const INT4_ARRAY: u32 = 1007;
+    pub const TEXT_ARRAY: u32 = 1009;
+    pub const INT8_ARRAY: u32 = 1016;
+    pub const DATE_ARRAY: u32 = 1182;
+    pub const TIME_ARRAY: u32 = 1183;
+    pub const TIMESTAMPTZ_ARRAY: u32 = 1185;
+    pub const NUMERIC_ARRAY: u32 = 1231;
+    pub const UUID_ARRAY: u32 = 2951;
+    pub const JSONB_ARRAY: u32 = 3807;
 }
 
 /// PostgreSQL counts time from 2000-01-01; the runtime from 1970-01-01.
@@ -52,7 +65,24 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
         SqlType::Uuid => oid::UUID,
         SqlType::Timestamp => oid::TIMESTAMPTZ,
         SqlType::Date => oid::DATE,
+        SqlType::Time => oid::TIME,
         SqlType::Json => oid::JSONB,
+        SqlType::Array(inner) => match inner {
+            SqlType::Bool => oid::BOOL_ARRAY,
+            SqlType::Int2 => oid::INT2_ARRAY,
+            SqlType::Int4 => oid::INT4_ARRAY,
+            SqlType::Int8 => oid::INT8_ARRAY,
+            SqlType::Numeric => oid::NUMERIC_ARRAY,
+            SqlType::Text => oid::TEXT_ARRAY,
+            SqlType::Bytes => oid::BYTEA_ARRAY,
+            SqlType::Uuid => oid::UUID_ARRAY,
+            SqlType::Timestamp => oid::TIMESTAMPTZ_ARRAY,
+            SqlType::Date => oid::DATE_ARRAY,
+            SqlType::Time => oid::TIME_ARRAY,
+            SqlType::Json => oid::JSONB_ARRAY,
+            // Arrays of arrays are never sent.
+            SqlType::Array(_) => oid::TEXT_ARRAY,
+        },
     }
 }
 
@@ -70,6 +100,7 @@ pub(crate) fn column_type(oid: u32) -> Option<SqlType> {
         oid::UUID => SqlType::Uuid,
         oid::TIMESTAMPTZ | oid::TIMESTAMP => SqlType::Timestamp,
         oid::DATE => SqlType::Date,
+        oid::TIME => SqlType::Time,
         oid::JSONB | oid::JSON => SqlType::Json,
         _ => return None,
     })
@@ -100,12 +131,40 @@ pub(crate) fn encode(value: &SqlValue, out: &mut Vec<u8>) -> Result<bool, String
                 .ok_or_else(|| format!("the date {date} is out of PostgreSQL's range"))?;
             out.extend_from_slice(&wire.to_be_bytes());
         }
+        SqlValue::Time(micros) => out.extend_from_slice(&micros.to_be_bytes()),
         SqlValue::Json(text) => {
             out.push(JSONB_VERSION);
             out.extend_from_slice(text.as_bytes());
         }
+        SqlValue::Array(element, items) => array_to_wire(*element, items, out)?,
     }
     Ok(true)
+}
+
+/// A one-dimensional array without `NULL`s in its binary format: the
+/// number of dimensions, a flag for `NULL`s, the element type, the length
+/// and lower bound, then each element's length and bytes.
+fn array_to_wire(element: SqlType, items: &[SqlValue], out: &mut Vec<u8>) -> Result<(), String> {
+    let count = i32::try_from(items.len()).map_err(|_| "an array too long to send".to_string())?;
+    let dimensions: i32 = if items.is_empty() { 0 } else { 1 };
+    out.extend_from_slice(&dimensions.to_be_bytes());
+    out.extend_from_slice(&0i32.to_be_bytes());
+    out.extend_from_slice(&param_oid(element).to_be_bytes());
+    if dimensions == 1 {
+        out.extend_from_slice(&count.to_be_bytes());
+        out.extend_from_slice(&1i32.to_be_bytes());
+    }
+    for item in items {
+        let at = out.len();
+        out.extend_from_slice(&0i32.to_be_bytes());
+        if !encode(item, out)? {
+            return Err("an array element was `NULL`".into());
+        }
+        let length = i32::try_from(out.len() - at - 4)
+            .map_err(|_| "an array element too long to send".to_string())?;
+        out[at..at + 4].copy_from_slice(&length.to_be_bytes());
+    }
+    Ok(())
 }
 
 /// Reads a non-null column of type `oid` from its binary format.
@@ -150,6 +209,7 @@ pub(crate) fn decode(oid: u32, raw: &[u8]) -> Result<SqlValue, String> {
                     .ok_or_else(|| "a date is out of the runtime's range".to_string())?,
             )
         }
+        oid::TIME => SqlValue::Time(i64::from_be_bytes(fixed(raw, "time")?)),
         oid::JSONB => match raw.split_first() {
             Some((&JSONB_VERSION, text)) => SqlValue::Json(
                 String::from_utf8(text.to_vec())
@@ -367,6 +427,7 @@ mod tests {
             SqlValue::Date(-1),
             SqlValue::Date(20_000),
             SqlValue::Json("{\"a\":[1,2]}".into()),
+            SqlValue::Time(45_296_789_000),
         ];
         for value in values {
             let mut out = Vec::new();
@@ -374,6 +435,21 @@ mod tests {
             assert_eq!(decode(param_oid(value.ty()), &out).unwrap(), value);
         }
         assert!(!encode(&SqlValue::Null(SqlType::Text), &mut Vec::new()).unwrap());
+    }
+
+    #[test]
+    fn arrays_are_one_dimension_without_nulls() {
+        let mut out = Vec::new();
+        let array = SqlValue::Array(SqlType::Int8, vec![SqlValue::Int8(7)]);
+        assert!(encode(&array, &mut out).unwrap());
+        // ndim 1, no NULLs, int8, length 1 from 1, then 8 bytes of 7.
+        let mut expected = vec![0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 1, 0, 0, 0, 1];
+        expected.extend_from_slice(&[0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 7]);
+        assert_eq!(out, expected);
+        let mut out = Vec::new();
+        encode(&SqlValue::Array(SqlType::Uuid, Vec::new()), &mut out).unwrap();
+        assert_eq!(out, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 134]);
+        assert_eq!(param_oid(array.ty()), oid::INT8_ARRAY);
     }
 
     #[test]

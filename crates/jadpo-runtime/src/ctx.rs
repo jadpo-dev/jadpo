@@ -54,6 +54,8 @@ pub struct Ctx<'p> {
     pub(crate) boundary: Option<Boundary>,
     /// How many boundaries it has opened.
     pub(crate) actions: u32,
+    /// How many identities it has made.
+    ids: u64,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -80,6 +82,7 @@ impl<'p> Ctx<'p> {
             recording: None,
             boundary: None,
             actions: 0,
+            ids: 0,
         }
     }
 
@@ -280,6 +283,29 @@ impl<'p> Ctx<'p> {
             Some(transaction) => Ok(transaction.as_mut()),
             None => Err(StoreError::Fault("no transaction".into())),
         }
+    }
+
+    /// A new identity: a version 7 UUID (area 5), its first 48 bits the
+    /// clock's milliseconds and the rest from the invocation's seed, so a
+    /// test that makes records reproduces with its seed.
+    pub fn new_id(&mut self) -> [u8; 16] {
+        self.ids += 1;
+        let mut state = self.env.seed ^ self.ids.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let mut next = || {
+            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        };
+        let (a, b) = (next(), next());
+        let millis = u64::try_from(self.env.clock.now()).unwrap_or(0) & 0xFFFF_FFFF_FFFF;
+        let mut bytes = [0u8; 16];
+        bytes[..6].copy_from_slice(&millis.to_be_bytes()[2..]);
+        bytes[6..8].copy_from_slice(&((a & 0x0FFF) as u16 | 0x7000).to_be_bytes());
+        bytes[8..].copy_from_slice(&b.to_be_bytes());
+        bytes[8] = (bytes[8] & 0x3F) | 0x80;
+        bytes
     }
 
     /// Queues `event` in the running action's outbox, delivered once it

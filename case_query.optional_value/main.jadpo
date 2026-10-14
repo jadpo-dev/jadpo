@@ -1,0 +1,23 @@
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+type FindBooks = Input {
+    title: Title {
+        optional: true
+    }
+}
+
+query find_books(filter: FindBooks) -> List<Book> {
+    from: Book
+    where: Book.title == filter.title
+    order: [Book.id asc]
+    limit: 20
+}

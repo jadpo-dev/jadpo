@@ -2,79 +2,7 @@
 title: Reads and writes
 area: 6
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
-rules:
-  - data.atomic_domain_mismatch
-  - data.consistency_invalid
-  - data.consistency_required
-  - data.freshness_invalid
-  - data.mutation_guard_invalid
-  - data.mutation_owner_required
-  - data.query_freshness_required
-  - data.raw_query_outside_named_query
-  - data.value_receiver_guard_required
-  - syntax.expected_delete_action
-  - syntax.expected_order_direction
-  - syntax.expected_patch_input
-  - syntax.expected_supplied
-  - syntax.expected_supplied_field
-  - syntax.expected_update_body
-  - syntax.mutation_conflict_required
-  - syntax.query_page_after_required
-  - syntax.query_page_cursor_required
-  - syntax.query_page_predicate_operator
-  - syntax.query_page_project_required
-  - type.conflict_duplicate_binding
-  - type.conflict_unknown_constraint
-  - type.create_not_entity
-  - type.delete_not_entity
-  - type.include_duplicate_relationship
-  - type.include_mixed_cardinality
-  - type.include_order_not_deterministic
-  - type.include_parent_pagination_required
-  - type.include_required_parent
-  - type.include_result_mismatch
-  - type.include_result_not_output
-  - type.include_result_shape
-  - type.include_unknown_relationship
-  - type.inverse_one_cardinality
-  - type.inverse_one_required_query
-  - type.inverse_one_result_shape
-  - type.inverse_one_single
-  - type.mutation_nullable_field_unsupported
-  - type.mutation_unknown_predicate_field
-  - type.nested_include_cardinality
-  - type.nested_include_first_hop
-  - type.nested_include_nullable_first_hop
-  - type.nested_include_required_query
-  - type.nested_include_result_shape
-  - type.nested_include_second_hop
-  - type.nested_include_single
-  - type.parent_include_nullable_reference
-  - type.parent_include_required_query
-  - type.parent_include_result_shape
-  - type.parent_include_single
-  - type.parent_include_unknown_reference
-  - type.patch_condition_binding
-  - type.patch_condition_unknown_field
-  - type.patch_derived_overlap
-  - type.patch_field_not_optional
-  - type.patch_field_required
-  - type.patch_input_binding
-  - type.patch_not_input
-  - type.patch_unknown_field
-  - type.query_not_entity
-  - type.query_nullable_field_unsupported
-  - type.query_order_not_deterministic
-  - type.query_page_shape
-  - type.query_pagination_constant_required
-  - type.query_pagination_range
-  - type.query_unknown_field
-  - type.query_unknown_order_field
-  - type.update_duplicate_field
-  - type.update_field_required
-  - type.update_not_entity
-  - type.update_unknown_field
+checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
 ---
 
 # Reads and writes
@@ -85,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Code on this page shows the language after the rework, applying the decisions from areas 1 to 6; none of it compiles yet. Today's compiled syntax is collapsed beneath each section. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, `Entity.create` with `set:`, the rule against reads in a loop, and `jadpo sql`; the examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. The other writes (`update`, `delete`, conflicts, counters and the rerun after a concurrent change) come with chunk 3.3 and lifecycles with chunk 3.4, so their examples are proposals. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -113,7 +41,81 @@ and any field a policy condition checks outside the database. A query writes not
 actions (area 3). It is called like an action: bare in its own domain,
 `planning.todos_for_owner(...)` from another domain when it is `public`.
 
-```jadpo fragment
+```jadpo check project=named file=planning.jadpo hidden
+type UserName = Text {
+    max_length: 80
+}
+
+type ProjectName = Text {
+    max_length: 80
+}
+
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type TodoStatus = Enum {
+    open
+    waiting
+    done
+}
+
+entity User {
+    id: Uuid
+    name: UserName
+}
+
+entity Project {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    name: ProjectName
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id? {
+        on_delete: OnDelete.cleared
+    }
+    title: TodoTitle
+    status: TodoStatus
+    due_at: Instant?
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+}
+
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.status]
+}
+
+type UserView = Output {
+    pick: [User.id, User.name]
+}
+```
+
+```jadpo check project=named file=list_todos.jadpo hidden
+type ListTodos = Input {
+    status: TodoStatus {
+        optional: true
+    }
+    due_before: Instant {
+        optional: true
+    }
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
+
+```jadpo check project=named file=todos_for_owner.jadpo
 // domains/planning/queries/todos_for_owner.jadpo
 /// The owner's visible todos, newest first, one page at a time.
 query todos_for_owner(owner_id: User.id, filter: ListTodos) -> Page<TodoView> {
@@ -127,6 +129,15 @@ query todos_for_owner(owner_id: User.id, filter: ListTodos) -> Page<TodoView> {
     }
 }
 ```
+
+`jadpo sql todos_for_owner` prints the statement it sends: one `SELECT` of
+the result's columns and the order's, the conditions, `ORDER BY` and a
+`LIMIT` one more than the page's size, so the runtime knows whether a next
+page exists. Its text is fixed when the project is compiled: a
+`where_present:` condition and the cursor are written `($n IS NULL OR
+...)`, so the same query always sends the same statement. A query called
+inside an action reads in the action's transaction; called from a test, it
+runs in a short transaction of its own.
 
 ::: today
 
@@ -175,15 +186,102 @@ use comparisons, `and`, `or`, `not`, `== none` for an empty field, and `in`
 with a list. `where_present:` applies its condition only when the value on
 the right is present, which is how a request's optional filters are written.
 
-```jadpo fragment
-where: Todo.owner_id == owner_id
-where: Todo.due_at == none or Todo.due_at > clock.now
-where: Todo.status in [TodoStatus.open, TodoStatus.waiting]
-where_present: Todo.due_at <= filter.due_before
+```jadpo check project=filters file=planning.jadpo hidden
+type UserName = Text {
+    max_length: 80
+}
+
+type ProjectName = Text {
+    max_length: 80
+}
+
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type TodoStatus = Enum {
+    open
+    waiting
+    done
+}
+
+entity User {
+    id: Uuid
+    name: UserName
+}
+
+entity Project {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    name: ProjectName
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id? {
+        on_delete: OnDelete.cleared
+    }
+    title: TodoTitle
+    status: TodoStatus
+    due_at: Instant?
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+}
+
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.status]
+}
+
+type UserView = Output {
+    pick: [User.id, User.name]
+}
 ```
 
-A condition must be one the database can use an index for; a function
-applied to a field is refused. The compiler creates the indexes (area 5).
+```jadpo check project=filters file=list_todos.jadpo hidden
+type ListTodos = Input {
+    status: TodoStatus {
+        optional: true
+    }
+    due_before: Instant {
+        optional: true
+    }
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
+
+```jadpo check project=filters file=due_todos.jadpo
+query due_todos(owner_id: User.id, filter: ListTodos) -> List<TodoView> {
+    from: Todo
+    where: Todo.owner_id == owner_id
+    where: Todo.due_at == none or Todo.due_at > clock.now
+    where: Todo.status in [TodoStatus.open, TodoStatus.waiting]
+    where_present: Todo.due_at <= filter.due_before
+    order: [Todo.created_at desc]
+    limit: 50
+}
+```
+
+A condition must be one the database can use an index for: a field,
+named first, compared with a value. A function applied to a field, two
+fields compared, and a value worked out in the query are refused; values
+are parameters and their fields, literals, enum values, lists of those and
+`clock.now`. `<` and the other orderings take numbers, times, dates and
+durations, as they do in a body (area 3). A field that is `none` meets no
+comparison but `!=`, and `not` keeps that meaning, so SQL's `NULL` never
+shows through. A `where:` line can't compare with a value that may be
+absent; that is what `where_present:` is for. The compiler creates the
+indexes the conditions and order need (area 5).
 
 ::: today
 
@@ -207,7 +305,14 @@ different maximum declares its own `Int` type with a `max:`, because a page
 size must have an upper limit. There is no offset, because a large
 offset is slow and skips or repeats records when rows are added.
 
-```jadpo fragment
+```jadpo check project=page-input file=types.jadpo hidden
+type TodoStatus = Enum {
+    open
+    done
+}
+```
+
+```jadpo check project=page-input
 type ListTodos = Input {
     status: TodoStatus {
         optional: true
@@ -225,7 +330,11 @@ type ListTodos = Input {
 ```
 
 A cursor records which query made it, so a cursor from another query is
-rejected as invalid input.
+rejected as invalid input: the runtime's 422 `invalid_input`. A page's
+order fields are required ones, since the next page starts after the last
+record's values. Text sorts by code point, as Jadpo compares it, whatever
+the database's collation; an enum, a `Bool` or a structured field can't be
+sorted by, since the database and Jadpo would disagree on their order.
 
 ::: today
 
@@ -308,12 +417,75 @@ that point here: a list, which needs `order:` and `limit:` in a block, or at
 most one record when that reference is unique. Parents never declare their
 children (area 5).
 
-```jadpo fragment
+```jadpo check project=board file=planning.jadpo hidden
+type UserName = Text {
+    max_length: 80
+}
+
+type ProjectName = Text {
+    max_length: 80
+}
+
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type TodoStatus = Enum {
+    open
+    waiting
+    done
+}
+
+entity User {
+    id: Uuid
+    name: UserName
+}
+
+entity Project {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    name: ProjectName
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id? {
+        on_delete: OnDelete.cleared
+    }
+    title: TodoTitle
+    status: TodoStatus
+    due_at: Instant?
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+}
+
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.status]
+}
+
+type UserView = Output {
+    pick: [User.id, User.name]
+}
+```
+
+```jadpo check project=board file=failures.jadpo hidden
+type BoardNotFound = Failure {
+    kind: FailureKind.not_found
+}
+```
+
+```jadpo check project=board file=project_board.jadpo
 // domains/planning/queries/project_board.jadpo
-query project_board(project_id: Project.id) fails ProjectNotFound -> ProjectBoardView {
+query project_board(project_id: Project.id) fails BoardNotFound -> ProjectBoardView {
     from: Project
     where: Project.id == project_id
-    missing: ProjectNotFound
+    missing: BoardNotFound
     include: {
         owner: Project.owner_id
         todos: {
@@ -333,7 +505,9 @@ type ProjectBoardView = Output {
 ```
 
 Each include costs one more database query however many records the result
-holds, never one per record. Includes nest up to two levels, stay inside the
+holds, never one per record: a parent or a unique child is read by `= ANY`
+of the keys the records hold, and a list through a `LATERAL` subquery that
+orders and limits each record's list on its own. Includes nest up to two levels, stay inside the
 domain, and reach another store only to fetch records by `id`. A parent is
 included even when its lifecycle hides it, because the reference still
 holds (question 10).
@@ -409,6 +583,47 @@ domains call that domain's public actions.
 | `Todo.update(todo) { patch: input }` | changes only the fields a request supplied |
 | `Todo.delete(todo)` | removes the record, or runs the lifecycle's `delete` transition |
 | `User.disable(user)` | runs a lifecycle transition, named after it |
+
+Built so far: `get` and `create` with `set:`. `update`, `delete` and the
+`conflict:` mappings come with chunk 3.3 and transitions with chunk 3.4;
+calling one is `toolchain.not_built_yet`. Until the compiler provides the
+not-found failure, the domain declares it, and `get` gives each of its
+fields typed `<Entity>.id` the id it looked for.
+
+```jadpo check project=operations file=planning.jadpo hidden
+type ProjectName = Text {
+    max_length: 80
+}
+
+entity User {
+    id: Uuid
+}
+
+entity Project {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    name: ProjectName
+}
+
+type UserNotFound = Failure {
+    kind: FailureKind.not_found
+}
+```
+
+```jadpo check project=operations file=start_project.jadpo
+// domains/planning/actions/start_project.jadpo
+action start_project(owner_id: User.id, name: Project.name) fails UserNotFound -> Project {
+    var owner: User = attempt User.get(owner_id)  // the user, or UserNotFound
+    return Project.create {
+        set: {
+            owner_id: owner.id  // every field but `id` and the generated ones
+            name: name
+        }
+    }
+}
+```
 
 Nothing else is an entity operation: `Todo.fetch(todo_id)` is
 `semantic.unknown_callee` (checked since chunk 1.9), while `Todo.title(value)`
@@ -657,7 +872,64 @@ Writes inside a loop are allowed: the list is bounded and every write joins
 the action's transaction. A batch that should keep partial progress is a
 schedule or subscriber handling one item per action (area 3).
 
-```jadpo fragment
+```jadpo check project=by-ids file=planning.jadpo hidden
+type UserName = Text {
+    max_length: 80
+}
+
+type ProjectName = Text {
+    max_length: 80
+}
+
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type TodoStatus = Enum {
+    open
+    waiting
+    done
+}
+
+entity User {
+    id: Uuid
+    name: UserName
+}
+
+entity Project {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    name: ProjectName
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    project_id: Project.id? {
+        on_delete: OnDelete.cleared
+    }
+    title: TodoTitle
+    status: TodoStatus
+    due_at: Instant?
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+}
+
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.status]
+}
+
+type UserView = Output {
+    pick: [User.id, User.name]
+}
+```
+
+```jadpo check project=by-ids file=todos_by_ids.jadpo
 // domains/planning/queries/todos_by_ids.jadpo
 query todos_by_ids(todo_ids: List<Todo.id>) -> List<TodoView> {
     from: Todo
@@ -724,1390 +996,962 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
-
-Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+Every error this area's reads can produce, with an example that triggers
+it and the new compiler's actual output. The errors of the other writes
+(`update`, `delete`, patches and conflicts) further down are still the
+archived compiler's, in its syntax and with its output, until chunk 3.3
+builds them.
 
 ### Queries
 
-### `type.query_not_entity`
+### `query.unknown_section`
 
-```jadpo project=e-query-not-entity expect=type.query_not_entity
-type FilterValue = Text {}
-
-input Filter {
-    value: FilterValue
+```jadpo check project=e-unknown-section expect=query.unknown_section
+type Title = Text {
+    max_length: 80
 }
 
-action find(value: FilterValue) -> Filter? {
-    return attempt query optional Filter {
-        where: value == value
-    }
-}
-```
-
-### `type.query_unknown_field`
-
-```jadpo project=e-query-unknown-field expect=type.query_unknown_field
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action find(name: Item.name) -> Item? {
-    return attempt query optional Item {
-        where: title == name
-    }
+query books_titled(title: Book.title) -> List<Book> {
+    from: Book
+    where: Book.title == title
+    order_by: [Book.id asc]
+    limit: 20
 }
 ```
 
-### `type.query_nullable_field_unsupported`
+```text output
+error: `order_by` isn't something a query holds
+ --> main.jadpo:15:5
+   |
+15 |     order_by: [Book.id asc]
+   |     ^^^^^^^^ not a section
+  reason: A query's block holds `from:`, `where:`, `where_present:`, `order:`, `limit:`, `page:`, `include:` and `missing:`. Did you mean `order:`?
+  next: Use `order:` (agent)
+  rule: query.unknown_section
+  help: docs/language/06-reads-and-writes.html#query-unknown-section
 
-```jadpo project=e-query-nullable-field-unsupported expect=type.query_nullable_field_unsupported
-entity Customer {
-    email: Text?
+check failed: 1 error, 1 file
+```
+
+### `query.repeated_section`
+
+```jadpo check project=e-repeated-section expect=query.repeated_section
+type Title = Text {
+    max_length: 80
 }
 
-action find_customer(email: Customer.email) -> Customer? {
-    return attempt query optional Customer {
-        where: email == email
-    }
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query books_titled(title: Book.title) -> List<Book> {
+    from: Book
+    where: Book.title == title
+    order: [Book.id asc]
+    limit: 20
+    limit: 50
 }
 ```
 
-### `type.query_unknown_order_field`
+```text output
+error: `limit:` is given twice
+ --> main.jadpo:17:5
+   |
+16 |     limit: 20
+   |     ----- first given here
+17 |     limit: 50
+   |     ^^^^^ given again
+  reason: A query has one `limit:`; only `where:` and `where_present:` lines stack, each one more condition.
+  next: Remove one `limit:` (agent)
+  rule: query.repeated_section
+  help: docs/language/06-reads-and-writes.html#query-repeated-section
 
-```jadpo project=e-query-unknown-order-field expect=type.query_unknown_order_field
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+check failed: 1 error, 1 file
+```
+
+### `query.section_required`
+
+```jadpo check project=e-section-required expect=query.section_required
+type Title = Text {
+    max_length: 80
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action list(name: Item.name) -> List<Item> {
-    return attempt query many Item {
-        where: name == name
-        order_by: created_at asc
-    }
+query books_titled(title: Book.title) -> List<Book> {
+    from: Book
+    where: Book.title == title
+    order: [Book.id asc]
 }
 ```
 
-### `type.query_order_not_deterministic`
+```text output
+error: `books_titled` returns `List<Book>` but has no `limit:`
+ --> main.jadpo:12:7
+   |
+12 | query books_titled(title: Book.title) -> List<Book> {
+   |       ^^^^^^^^^^^^ no `limit:`
+  reason: Every list is bounded: `limit:` is a number, or a value whose type has a `max:`.
+  next: Add `limit: <number>`, or return `Page<T>` to read it a page at a time (agent)
+  rule: query.section_required
+  help: docs/language/06-reads-and-writes.html#query-section-required
 
-Goes under question 3, because the compiler would add `id` itself:
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-query-order-not-deterministic expect=type.query_order_not_deterministic
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+### `query.section_unexpected`
+
+```jadpo check project=e-section-unexpected expect=query.section_unexpected
+type Title = Text {
+    max_length: 80
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action list(name: Item.name) -> List<Item> {
-    return attempt query many Item {
-        where: name == name
-        order_by: name asc
-    }
+query book_by_id(book_id: Book.id) -> Book? {
+    from: Book
+    where: Book.id == book_id
+    order: [Book.title asc]
 }
 ```
 
-### `syntax.expected_order_direction`
+```text output
+error: A query returning `Book?` takes no `order:`
+ --> main.jadpo:15:5
+   |
+15 |     order: [Book.title asc]
+   |     ^^^^^ not for this result
+  reason: `Book?` is at most one record, found by a unique field, so there is nothing to order or limit.
+  next: Remove `order:` (agent)
+  rule: query.section_unexpected
+  help: docs/language/06-reads-and-writes.html#query-section-unexpected
 
-```jadpo project=e-expected-order-direction expect=syntax.expected_order_direction
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+check failed: 1 error, 1 file
+```
+
+### `query.from_not_entity`
+
+```jadpo check project=e-from-not-entity expect=query.from_not_entity
+type Title = Text {
+    max_length: 80
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action list(name: Item.name) -> List<Item> {
-    return attempt query many Item {
-        where: name == name
-        order_by: id newest
-    }
+query titles(title: Book.title) -> List<Book> {
+    from: Title
+    order: [Book.id asc]
+    limit: 20
 }
 ```
 
-### `type.query_pagination_constant_required`
+```text output
+error: `from:` names `Title`, which isn't an entity
+ --> main.jadpo:13:11
+   |
+13 |     from: Title
+   |           ^^^^^ not an entity
+  reason: `Title` is a type; a query reads stored records, so `from:` names an entity declared in the domain's `entities/` folder.
+  next: Name the entity the query reads (agent)
+  rule: query.from_not_entity
+  help: docs/language/06-reads-and-writes.html#query-from-not-entity
 
-Goes under question 3, which lets a type with a `max:` bound a list:
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-query-pagination-constant-required expect=type.query_pagination_constant_required
-type PageSize = Int {
+### `query.other_domain`
+
+```jadpo check project=e-other-domain file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-other-domain file=domains/lending/actions/check_out.jadpo hidden
+/// Lends a copy.
+action check_out(book: Book) -> Unit {}
+```
+
+```jadpo check project=e-other-domain file=domains/catalogue/entities/book.jadpo hidden migrate=initial
+/// A copy on the shelves.
+public entity Book {
+    id: Uuid
+}
+```
+
+```jadpo check project=e-other-domain file=domains/lending/queries/shelf.jadpo expect=query.other_domain
+/// Every copy.
+query shelf() -> List<Book> {
+    from: Book
+    order: [Book.id asc]
+    limit: 20
+}
+```
+
+```text output
+error: `shelf` reads `Book`, an entity of domain `catalogue`
+ --> domains/lending/queries/shelf.jadpo:3:11
+  |
+3 |     from: Book
+  |           ^^^^ domain `catalogue`
+  reason: A query reads its own domain's entities only; another domain's data comes from that domain's public queries, so `catalogue` decides what it shares.
+  next: Call a public query of `catalogue`, or move `shelf` into `catalogue` (human)
+  rule: query.other_domain
+  help: docs/language/06-reads-and-writes.html#query-other-domain
+
+check failed: 1 error, 4 files
+```
+
+### `query.result_type`
+
+```jadpo check project=e-result-type expect=query.result_type
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query titles(title: Book.title) -> List<Title> {
+    from: Book
+    where: Book.title == title
+    order: [Book.id asc]
+    limit: 20
+}
+```
+
+```text output
+error: `titles` reads `Book` records but returns `List<Title>`
+ --> main.jadpo:12:36
+   |
+12 | query titles(title: Book.title) -> List<Title> {
+   |                                    ^^^^^^^^^^^ not records of the entity
+  reason: A query's result is `Book` or an object type its fields fill (`type BookView = Output { pick: [...] }`), as `T` for exactly one record, `T?` for at most one, `List<T>` or `Page<T>`.
+  next: Return `Book`, or an `Output` type that picks the fields you need (agent)
+  rule: query.result_type
+  help: docs/language/06-reads-and-writes.html#query-result-type
+
+check failed: 1 error, 1 file
+```
+
+### `query.result_field`
+
+```jadpo check project=e-result-field expect=query.result_field
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+type BookCard = Output {
+    pick: [Book.id, Book.title]
+    author: Title
+}
+
+query cards() -> List<BookCard> {
+    from: Book
+    order: [Book.title asc]
+    limit: 20
+}
+```
+
+```text output
+error: `BookCard.author` isn't a field of `Book`, or an include
+ --> main.jadpo:17:18
+   |
+17 | query cards() -> List<BookCard> {
+   |                  ^^^^^^^^^^^^^^ `author` can't be filled
+  reason: A query fills its result's fields from `Book`'s fields of the same name (`id`, `title`, `subtitle` and `available`) and from its includes; nothing gives `author`.
+  next: Remove `author` from `BookCard`, or include records under it (agent)
+  rule: query.result_field
+  help: docs/language/06-reads-and-writes.html#query-result-field
+
+check failed: 1 error, 1 file
+```
+
+### Conditions
+
+### `query.unknown_field`
+
+```jadpo check project=e-unknown-field expect=query.unknown_field
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query books_titled(title: Book.title) -> List<Book> {
+    from: Book
+    where: Book.titel == title
+    order: [Book.id asc]
+    limit: 20
+}
+```
+
+```text output
+error: `Book` has no field `titel`
+ --> main.jadpo:14:17
+   |
+14 |     where: Book.titel == title
+   |                 ^^^^^ not declared
+  reason: `Book`'s fields are `id`, `title`, `subtitle` and `available`. Did you mean `title`?
+  next: Use `title` instead of `titel` (agent)
+  rule: query.unknown_field
+  help: docs/language/06-reads-and-writes.html#query-unknown-field
+
+check failed: 1 error, 1 file
+```
+
+### `query.condition_unsupported`
+
+```jadpo check project=e-condition-unsupported expect=query.condition_unsupported
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query books_after(title: Book.title) -> List<Book> {
+    from: Book
+    where: Book.title > title
+    order: [Book.title asc]
+    limit: 20
+}
+```
+
+```text output
+error: `Book.title > title` isn't a condition a query can use
+ --> main.jadpo:14:12
+   |
+14 |     where: Book.title > title
+   |            ^^^^^^^^^^^^^^^^^^ not an indexable condition
+  reason: `>` orders numbers, times, dates and durations, as it does in a body, and `Book.title` is `Title`.
+  next: Compare `Book.title` with `==`, `!=` or `in` (agent)
+  rule: query.condition_unsupported
+  help: docs/language/06-reads-and-writes.html#query-condition-unsupported
+
+check failed: 1 error, 1 file
+```
+
+### `query.value_unsupported`
+
+```jadpo check project=e-value-unsupported expect=query.value_unsupported
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+type PageCount = Int {
     min: 1
-    max: 100
+    max: 5000
 }
 
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+entity Manual {
+    id: Uuid
+    page_count: PageCount
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+query longer_manuals(manual_pages: Manual.page_count) -> List<Manual> {
+    from: Manual
+    where: Manual.page_count > manual_pages * 2
+    order: [Manual.page_count asc]
+    limit: 20
+}
+```
+
+```text output
+error: `manual_pages * 2` is worked out, and a query computes nothing
+ --> main.jadpo:24:32
+   |
+24 |     where: Manual.page_count > manual_pages * 2
+   |                                ^^^^^^^^^^^^^^^^ computed
+  reason: A query's values are its parameters and their fields, literals, enum values, lists of those and `clock.now`; anything worked out from them is computed before the call.
+  next: Work the value out in the action, and pass it as a parameter (agent)
+  rule: query.value_unsupported
+  help: docs/language/06-reads-and-writes.html#query-value-unsupported
+
+check failed: 1 error, 1 file
+```
+
+### `query.optional_value`
+
+```jadpo check project=e-optional-value expect=query.optional_value
+type Title = Text {
+    max_length: 80
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
 }
 
-action list(name: Item.name, page_size: PageSize) -> List<Item> {
-    return attempt query many Item {
-        where: name == name
-        order_by: id asc
-        limit: page_size
-        offset: 0
+type FindBooks = Input {
+    title: Title {
+        optional: true
+    }
+}
+
+query find_books(filter: FindBooks) -> List<Book> {
+    from: Book
+    where: Book.title == filter.title
+    order: [Book.id asc]
+    limit: 20
+}
+```
+
+```text output
+error: `filter.title` may be absent, so this `where:` line can't always be met
+ --> main.jadpo:20:26
+   |
+20 |     where: Book.title == filter.title
+   |                          ^^^^^^^^^^^^ may be `none`
+  reason: A `where:` line applies to every call; a condition that should apply only when its value is there, as a request's optional filter, is written with `where_present:`.
+  next: Write `where_present:` for this condition (agent)
+  rule: query.optional_value
+  help: docs/language/06-reads-and-writes.html#query-optional-value
+
+check failed: 1 error, 1 file
+```
+
+### `query.not_unique`
+
+```jadpo check project=e-not-unique expect=query.not_unique
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query book_titled(title: Book.title) -> Book? {
+    from: Book
+    where: Book.title == title
+}
+```
+
+```text output
+error: A query returning `Book?` could match several records
+ --> main.jadpo:14:5
+   |
+14 |     where: Book.title == title
+   |     ^^^^^ not a unique field
+  reason: `Book?` is at most one record, so a `where:` line must test a unique field with `==`: `Book.id`.
+  next: Test a unique field with `==`, or return `List<T>` (agent)
+  rule: query.not_unique
+  help: docs/language/06-reads-and-writes.html#query-not-unique
+
+check failed: 1 error, 1 file
+```
+
+### Order, limits and pages
+
+### `query.order_direction`
+
+```jadpo check project=e-order-direction expect=query.order_direction
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query shelf() -> List<Book> {
+    from: Book
+    order: [Book.title]
+    limit: 20
+}
+```
+
+```text output
+error: `Book.title` says no direction
+ --> main.jadpo:14:13
+   |
+14 |     order: [Book.title]
+   |             ^^^^^^^^^^ `asc` or `desc`?
+  reason: Each field of `order:` says which way it sorts: `asc` from the smallest, `desc` from the largest.
+  next: Write `Book.title asc` or `Book.title desc` (agent)
+  rule: query.order_direction
+  help: docs/language/06-reads-and-writes.html#query-order-direction
+
+check failed: 1 error, 1 file
+```
+
+### `query.order_field`
+
+```jadpo check project=e-order-field expect=query.order_field
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query shelf() -> List<Book> {
+    from: Book
+    order: [Book.available desc]
+    limit: 20
+}
+```
+
+```text output
+error: Records can't be sorted by `Book.available`
+ --> main.jadpo:14:13
+   |
+14 |     order: [Book.available desc]
+   |             ^^^^^^^^^^^^^^^^^^^ `Bool`
+  reason: A query sorts by numbers, times, dates, durations, text and identities, which the database and Jadpo order the same way; `Book.available` is `Bool`.
+  next: Sort by another field (agent)
+  rule: query.order_field
+  help: docs/language/06-reads-and-writes.html#query-order-field
+
+check failed: 1 error, 1 file
+```
+
+### `query.limit_range`
+
+```jadpo check project=e-limit-range expect=query.limit_range
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query shelf() -> List<Book> {
+    from: Book
+    order: [Book.title asc]
+    limit: 0
+}
+```
+
+```text output
+error: `limit: 0` would read nothing
+ --> main.jadpo:15:12
+   |
+15 |     limit: 0
+   |            ^ below 1
+  reason: `limit:` is how many records come back at most, so it is at least 1.
+  next: Give `limit:` a number from 1 (agent)
+  rule: query.limit_range
+  help: docs/language/06-reads-and-writes.html#query-limit-range
+
+check failed: 1 error, 1 file
+```
+
+### `query.limit_unbounded`
+
+```jadpo check project=e-limit-unbounded expect=query.limit_unbounded
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+type Count = Int {
+    min: 1
+}
+
+query shelf(count: Count) -> List<Book> {
+    from: Book
+    order: [Book.title asc]
+    limit: count
+}
+```
+
+```text output
+error: `count` has no maximum, so the limit has no bound
+ --> main.jadpo:19:12
+   |
+19 |     limit: count
+   |            ^^^^^ `Count` has no `max:`
+  reason: Every list is bounded: `limit:` is a number, or a value whose type has a `max:`, such as the built-in `PageSize` (1 to 100).
+  next: Type the value as `PageSize`, or as an `Int` type of your own with a `max:` (agent)
+  rule: query.limit_unbounded
+  help: docs/language/06-reads-and-writes.html#query-limit-unbounded
+
+check failed: 1 error, 1 file
+```
+
+### `query.page_setting`
+
+```jadpo check project=e-page-setting expect=query.page_setting
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query shelf() -> Page<Book> {
+    from: Book
+    order: [Book.title asc]
+    page: {
+        size: 20
     }
 }
 ```
 
-### `type.query_pagination_range`
+```text output
+error: `page:` has no `after:`
+ --> main.jadpo:15:5
+   |
+15 |     page: {
+   |     ^^^^ no `after:`
+  reason: A page continues `after:` the cursor the previous page gave in its `next`; on the first call that cursor is absent.
+  next: Add `after: ...` to the block (agent)
+  rule: query.page_setting
+  help: docs/language/06-reads-and-writes.html#query-page-setting
 
-```jadpo project=e-query-pagination-range expect=type.query_pagination_range
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+check failed: 1 error, 1 file
+```
+
+### Includes
+
+### `query.include_unknown`
+
+```jadpo check project=e-include-unknown expect=query.include_unknown
+type Title = Text {
+    max_length: 80
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
+type ShelfCard = Output {
+    pick: [Book.id]
+    name: Title
 }
 
-action list(name: Item.name) -> List<Item> {
-    return attempt query many Item {
-        where: name == name
-        order_by: id asc
-        limit: 0
-        offset: 0
+query cards() -> List<ShelfCard> {
+    from: Book
+    order: [Book.title asc]
+    limit: 20
+    include: {
+        name: Book.title
     }
 }
 ```
 
-### Pages
+```text output
+error: `Book.title` isn't a reference to or from `Book`
+ --> main.jadpo:22:15
+   |
+22 |         name: Book.title
+   |               ^^^^^^^^^^ not a reference
+  reason: An include follows a reference: one of `Book`'s own gives the record it points at, and another entity's reference to `Book` gives the records that point here. No reference leads to or from `Book`.
+  next: Add a reference field, or read the records with a query of their own (agent)
+  rule: query.include_unknown
+  help: docs/language/06-reads-and-writes.html#query-include-unknown
 
-### `syntax.query_page_after_required`
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-query-page-after-required expect=syntax.query_page_after_required
-entity Todo {
-    id: Uuid identity
+### `query.include_result`
+
+```jadpo check project=e-include-result expect=query.include_result
+type Name = Text {
+    max_length: 80
 }
 
-input ListTodos {
-    id: Uuid optional
-    after: TodoCursor optional
+entity Author {
+    id: Uuid
+    name: Name
 }
 
-value TodoCursor {
-    id: Todo.id
+entity Book {
+    id: Uuid
+    author_id: Author.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Name
 }
 
-output TodoView {
-    id: Todo.id
+type BookCard = Output {
+    pick: [Book.id, Book.title]
+    author: List<Author>
 }
 
-output TodoPage {
-    items: List<TodoView>
-    next: TodoCursor?
-}
-
-action list(input: ListTodos) -> TodoPage {
-    return attempt query page Todo -> TodoPage {
-        where: id == input.id
-        order_by: id desc
-        limit: 10
-        project: TodoView
-        cursor: TodoCursor(id)
+query cards() -> List<BookCard> {
+    from: Book
+    order: [Book.title asc]
+    limit: 20
+    include: {
+        author: Book.author_id
     }
 }
 ```
 
-### `syntax.query_page_project_required`
+```text output
+error: `BookCard.author` is `List<Author>`, which the include `author` can't fill
+ --> main.jadpo:28:9
+   |
+28 |         author: Book.author_id
+   |         ^^^^^^ needs `Author`
+  reason: `author` follows a required reference, so the one record it points at is always there. Its field is `Author`, where `Author` may also be an object type derived from it.
+  next: Declare `author: Author` in `BookCard` (agent)
+  rule: query.include_result
+  help: docs/language/06-reads-and-writes.html#query-include-result
 
-```jadpo project=e-query-page-project-required expect=syntax.query_page_project_required
-entity Todo {
-    id: Uuid identity
+check failed: 1 error, 1 file
+```
+
+### `query.include_depth`
+
+```jadpo check project=e-include-depth expect=query.include_depth
+type Name = Text {
+    max_length: 80
 }
 
-input ListTodos {
-    id: Uuid optional
-    after: TodoCursor optional
+entity Country {
+    id: Uuid
+    name: Name
 }
 
-value TodoCursor {
-    id: Todo.id
+entity Publisher {
+    id: Uuid
+    country_id: Country.id {
+        on_delete: OnDelete.restricted
+    }
 }
 
-output TodoView {
-    id: Todo.id
+entity Author {
+    id: Uuid
+    publisher_id: Publisher.id {
+        on_delete: OnDelete.restricted
+    }
 }
 
-output TodoPage {
-    items: List<TodoView>
-    next: TodoCursor?
+entity Book {
+    id: Uuid
+    author_id: Author.id {
+        on_delete: OnDelete.cascade
+    }
 }
 
-action list(input: ListTodos) -> TodoPage {
-    return attempt query page Todo -> TodoPage {
-        where: id == input.id
-        order_by: id desc
-        after: optional input.after
-        limit: 10
-        cursor: TodoCursor(id)
+type CountryView = Output {
+    pick: [Country.name]
+}
+
+type PublisherView = Output {
+    country: CountryView
+}
+
+type AuthorView = Output {
+    publisher: PublisherView
+}
+
+type BookView = Output {
+    pick: [Book.id]
+    author: AuthorView
+}
+
+query books() -> List<BookView> {
+    from: Book
+    order: [Book.id asc]
+    limit: 20
+    include: {
+        author: {
+            via: Book.author_id
+            include: {
+                publisher: {
+                    via: Author.publisher_id
+                    include: {
+                        country: Publisher.country_id
+                    }
+                }
+            }
+        }
     }
 }
 ```
 
-### `syntax.query_page_cursor_required`
+```text output
+error: Includes nest at most two levels
+ --> main.jadpo:58:21
+   |
+58 |                     include: {
+   |                     ^^^^^^^ a third level
+  reason: Each include is one more database query, and a query's includes nest up to two levels so its cost stays easy to see; a deeper shape is a second query called from the action.
+  next: Read the deeper records with a query of their own (human)
+  rule: query.include_depth
+  help: docs/language/06-reads-and-writes.html#query-include-depth
 
-```jadpo project=e-query-page-cursor-required expect=syntax.query_page_cursor_required
-entity Todo {
-    id: Uuid identity
+check failed: 1 error, 1 file
+```
+
+### Entity operations
+
+### `data.read_in_loop`
+
+```jadpo check project=e-read-in-loop expect=data.read_in_loop
+type Title = Text {
+    max_length: 80
 }
 
-input ListTodos {
-    id: Uuid optional
-    after: TodoCursor optional
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
 }
 
-value TodoCursor {
-    id: Todo.id
+type BookNotFound = Failure {
+    kind: FailureKind.not_found
 }
 
-output TodoView {
-    id: Todo.id
+type Count = Int {
+    min: 0
 }
 
-output TodoPage {
-    items: List<TodoView>
-    next: TodoCursor?
+action available_count(book_ids: List<Book.id>) fails BookNotFound -> Count {
+    var mut count: Count = 0
+    for book_id in book_ids {
+        var book: Book = attempt Book.get(book_id)
+        if (book.available) {
+            count = Count(count + 1)
+        }
+    }
+    return count
+}
+```
+
+```text output
+error: `Book.get` reads once for every item of the loop
+ --> main.jadpo:23:34
+   |
+23 |         var book: Book = attempt Book.get(book_id)
+   |                                  ^^^^^^^^ inside `for`
+  reason: A read inside a loop makes one database query per item. Read the whole set with one query, testing the field with `in` a list of the values, before the loop.
+  next: Read the records with one query using `in` before the loop (agent)
+  rule: data.read_in_loop
+  help: docs/language/06-reads-and-writes.html#data-read-in-loop
+
+check failed: 1 error, 1 file
+```
+
+### `data.set_generated_field`
+
+```jadpo check project=e-set-generated-field expect=data.set_generated_field
+type Title = Text {
+    max_length: 80
 }
 
-action list(input: ListTodos) -> TodoPage {
-    return attempt query page Todo -> TodoPage {
-        where: id == input.id
-        order_by: id desc
-        after: optional input.after
-        limit: 10
-        project: TodoView
+entity Note {
+    id: Uuid
+    title: Title
+    written_at: Instant {
+        generated: Generated.on_create
+    }
+}
+
+action jot_down(title: Note.title, at: Note.written_at) -> Note {
+    return Note.create {
+        set: {
+            title: title
+            written_at: at
+        }
     }
 }
 ```
 
-### `syntax.query_page_predicate_operator`
-
-```jadpo project=e-query-page-predicate-operator expect=syntax.query_page_predicate_operator
-entity Todo {
-    id: Uuid identity
-}
-
-input ListTodos {
-    id: Uuid optional
-    after: TodoCursor optional
-}
-
-value TodoCursor {
-    id: Todo.id
-}
-
-output TodoView {
-    id: Todo.id
-}
-
-output TodoPage {
-    items: List<TodoView>
-    next: TodoCursor?
-}
-
-action list(input: ListTodos) -> TodoPage {
-    return attempt query page Todo -> TodoPage {
-        where: id != input.id
-        order_by: id desc
-        after: optional input.after
-        limit: 10
-        project: TodoView
-        cursor: TodoCursor(id)
-    }
-}
-```
-
-### `type.query_page_shape`
-
-```jadpo project=e-query-page-shape expect=type.query_page_shape
-entity Todo {
-    id: Uuid identity
-}
-
-input ListTodos {
-    id: Uuid optional
-    after: TodoCursor optional
-}
-
-value TodoCursor {
-    id: Todo.id
-}
-
-output TodoView {
-    id: Todo.id
-}
-
-output TodoPage {
-    items: List<Text>
-    next: TodoCursor?
-}
-
-action list(input: ListTodos) -> TodoPage {
-    return attempt query page Todo -> TodoPage {
-        where: id == input.id
-        order_by: id desc
-        after: optional input.after
-        limit: 10
-        project: TodoView
-        cursor: TodoCursor(id)
-    }
-}
-```
-
-### Child lists
-
-### `type.include_unknown_relationship`
-
-```jadpo project=e-include-unknown-relationship expect=type.include_unknown_relationship
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserTodos {
-    parent: User
-    todos: List<Todo>
-}
-
-action load(user_id: User.id) fails UserNotFound -> UserTodos {
-    return attempt query required User {
-        where: id == user_id
-        include: tasks into: UserTodos order_by: id asc limit: 10 offset: 0
-        missing: UserNotFound
-    }
-}
-```
-
-### `type.include_duplicate_relationship`
-
-```jadpo project=e-include-duplicate-relationship expect=type.include_duplicate_relationship
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserTodos {
-    parent: User
-    todos: List<Todo>
-}
-
-action load(user_id: User.id) fails UserNotFound -> UserTodos {
-    return attempt query required User {
-        where: id == user_id
-        include: todos into: UserTodos order_by: id asc limit: 10 offset: 0
-        include: todos into: UserTodos order_by: id desc limit: 10 offset: 0
-        missing: UserNotFound
-    }
-}
-```
-
-### `type.include_mixed_cardinality`
-
-```jadpo project=e-include-mixed-cardinality expect=type.include_mixed_cardinality
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserTodos {
-    parent: User
-    todos: List<Todo>
-}
-
-action load(user_id: User.id) fails UserNotFound -> UserTodos {
-    return attempt query required User {
-        where: id == user_id
-        include: todos into: UserTodos order_by: id asc limit: 10 offset: 0
-        include: profile optional into: UserTodos
-        missing: UserNotFound
-    }
-}
-```
-
-### `type.include_order_not_deterministic`
-
-Goes under question 3, like the rule above:
-
-```jadpo project=e-include-order-not-deterministic expect=type.include_order_not_deterministic
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserTodos {
-    parent: User
-    todos: List<Todo>
-}
-
-action load(user_id: User.id) fails UserNotFound -> UserTodos {
-    return attempt query required User {
-        where: id == user_id
-        include: todos into: UserTodos order_by: title asc limit: 10 offset: 0
-        missing: UserNotFound
-    }
-}
-```
-
-### `type.include_parent_pagination_required`
-
-```jadpo project=e-include-parent-pagination-required expect=type.include_parent_pagination_required
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserTodos {
-    parent: User
-    todos: List<Todo>
-}
-
-action load(user_id: User.id) -> List<UserTodos> {
-    return attempt query many User {
-        where: id == user_id
-        order_by: id asc
-        include: todos into: UserTodos order_by: id asc limit: 10 offset: 0
-    }
-}
-```
-
-### `type.include_required_parent`
-
-```jadpo project=e-include-required-parent expect=type.include_required_parent
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserTodos {
-    parent: User
-    todos: List<Todo>
-}
-
-action load(user_id: User.id) -> UserTodos {
-    return attempt query optional User {
-        where: id == user_id
-        include: todos into: UserTodos order_by: id asc limit: 10 offset: 0
-    }
-}
-```
-
-### `type.include_result_mismatch`
-
-```jadpo project=e-include-result-mismatch expect=type.include_result_mismatch
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserTodos {
-    parent: User
-    todos: List<Todo>
-}
-
-output OtherUserTodos {
-    parent: User
-    todos: List<Todo>
-}
-
-action load(user_id: User.id) fails UserNotFound -> UserTodos {
-    return attempt query required User {
-        where: id == user_id
-        include: todos into: UserTodos order_by: id asc limit: 10 offset: 0
-        include: todos into: OtherUserTodos order_by: id asc limit: 10 offset: 0
-        missing: UserNotFound
-    }
-}
-```
-
-### `type.include_result_not_output`
-
-```jadpo project=e-include-result-not-output expect=type.include_result_not_output
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-action load(user_id: User.id) fails UserNotFound -> Text {
-    return attempt query required User {
-        where: id == user_id
-        include: todos into: Text order_by: id asc limit: 10 offset: 0
-        missing: UserNotFound
-    }
-}
-```
-
-### `type.include_result_shape`
-
-```jadpo project=e-include-result-shape expect=type.include_result_shape
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserTodos {
-    parent: User
-    items: List<Todo>
-}
-
-action load(user_id: User.id) fails UserNotFound -> UserTodos {
-    return attempt query required User {
-        where: id == user_id
-        include: todos into: UserTodos order_by: id asc limit: 10 offset: 0
-        missing: UserNotFound
-    }
-}
-```
-
-### One child
-
-### `type.inverse_one_cardinality`
-
-```jadpo project=e-inverse-one-cardinality expect=type.inverse_one_cardinality
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserProfile {
-    parent: User
-    profile: Profile?
-}
-
-action load(user_id: User.id) fails UserNotFound -> UserProfile {
-    return attempt query required User {
-        where: id == user_id
-        include: profile into: UserProfile order_by: id asc limit: 1 offset: 0
-        missing: UserNotFound
-    }
-}
-```
-
-### `type.inverse_one_required_query`
-
-```jadpo project=e-inverse-one-required-query expect=type.inverse_one_required_query
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserProfile {
-    parent: User
-    profile: Profile?
-}
-
-action load(user_id: User.id) -> UserProfile {
-    return attempt query optional User {
-        where: id == user_id
-        include: profile optional into: UserProfile
-    }
-}
-```
-
-### `type.inverse_one_result_shape`
-
-```jadpo project=e-inverse-one-result-shape expect=type.inverse_one_result_shape
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserProfile {
-    parent: User
-    profile: Profile
-}
-
-action load(user_id: User.id) fails UserNotFound -> UserProfile {
-    return attempt query required User {
-        where: id == user_id
-        include: profile optional into: UserProfile
-        missing: UserNotFound
-    }
-}
-```
-
-### `type.inverse_one_single`
-
-```jadpo project=e-inverse-one-single expect=type.inverse_one_single
-entity User {
-    id: Uuid identity
-    inverse todos: many Todo via Todo.owner_id
-    inverse profile: optional Profile via Profile.user_id
-}
-
-entity Todo {
-    id: Uuid identity
-    title: Text
-    owner_id: User.id references User.id on_delete cascade
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-output UserProfile {
-    parent: User
-    profile: Profile?
-}
-
-action load(user_id: User.id) fails UserNotFound -> UserProfile {
-    return attempt query required User {
-        where: id == user_id
-        include: profile optional into: UserProfile
-        include: profile optional into: UserProfile
-        missing: UserNotFound
-    }
-}
-```
-
-### Parents
-
-### `type.parent_include_unknown_reference`
-
-```jadpo project=e-parent-include-unknown-reference expect=type.parent_include_unknown_reference
-entity User {
-    id: Uuid identity
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-}
-
-output TodoOwner {
-    parent: Todo
-    owner: User
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) fails TodoNotFound -> TodoOwner {
-    return attempt query required Todo {
-        where: id == todo_id
-        include: author required into: TodoOwner
-        missing: TodoNotFound
-    }
-}
-```
-
-### `type.parent_include_nullable_reference`
-
-```jadpo project=e-parent-include-nullable-reference expect=type.parent_include_nullable_reference
-entity User {
-    id: Uuid identity
-}
-
-entity PatchItem {
-    id: Uuid identity
-    reviewer_id: User.id? references User.id on_delete set_null
-}
-
-input FindPatchItem {
-    id: PatchItem.id
-}
-
-output PatchItemReviewer {
-    parent: PatchItem
-    reviewer_id: User
-}
-
-failure PatchItemNotFound {
-    kind: NotFound code: "patch_item_not_found" }
-
-action get_patch_item_reviewer(input: FindPatchItem) -> PatchItemReviewer
-    fails PatchItemNotFound
-{
-    return attempt query required PatchItem {
-        where: id == input.id
-        include: reviewer_id required into: PatchItemReviewer
-        missing: PatchItemNotFound
-    }
-}
-```
-
-### `type.parent_include_required_query`
-
-```jadpo project=e-parent-include-required-query expect=type.parent_include_required_query
-entity User {
-    id: Uuid identity
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-}
-
-output TodoOwner {
-    parent: Todo
-    owner: User
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) -> TodoOwner {
-    return attempt query optional Todo {
-        where: id == todo_id
-        include: owner required into: TodoOwner
-    }
-}
-```
-
-### `type.parent_include_result_shape`
-
-```jadpo project=e-parent-include-result-shape expect=type.parent_include_result_shape
-entity User {
-    id: Uuid identity
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-}
-
-output TodoOwner {
-    parent: Todo
-    owner: User?
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) fails TodoNotFound -> TodoOwner {
-    return attempt query required Todo {
-        where: id == todo_id
-        include: owner required into: TodoOwner
-        missing: TodoNotFound
-    }
-}
-```
-
-### `type.parent_include_single`
-
-```jadpo project=e-parent-include-single expect=type.parent_include_single
-entity User {
-    id: Uuid identity
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-}
-
-output TodoOwner {
-    parent: Todo
-    owner: User
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) fails TodoNotFound -> TodoOwner {
-    return attempt query required Todo {
-        where: id == todo_id
-        include: owner required into: TodoOwner
-        include: owner required into: TodoOwner
-        missing: TodoNotFound
-    }
-}
-```
-
-### Two-level includes
-
-### `type.nested_include_first_hop`
-
-```jadpo project=e-nested-include-first-hop expect=type.nested_include_first_hop
-entity User {
-    id: Uuid identity
-    inverse profile: optional Profile via Profile.user_id
-    inverse todos: many Todo via Todo.owner_id
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-    reviewer_id: User.id? references User.id as reviewer on_delete set_null
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-output OwnerProfile {
-    parent: User
-    profile: Profile?
-}
-
-output TodoOwnerProfile {
-    parent: Todo
-    owner: OwnerProfile
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) fails TodoNotFound -> TodoOwnerProfile {
-    return attempt query required Todo {
-        where: id == todo_id
-        include: unknown.profile optional into: TodoOwnerProfile
-        missing: TodoNotFound
-    }
-}
-```
-
-### `type.nested_include_nullable_first_hop`
-
-```jadpo project=e-nested-include-nullable-first-hop expect=type.nested_include_nullable_first_hop
-entity User {
-    id: Uuid identity
-    inverse profile: optional Profile via Profile.user_id
-    inverse todos: many Todo via Todo.owner_id
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-    reviewer_id: User.id? references User.id as reviewer on_delete set_null
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-output OwnerProfile {
-    parent: User
-    profile: Profile?
-}
-
-output TodoOwnerProfile {
-    parent: Todo
-    owner: OwnerProfile
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) fails TodoNotFound -> TodoOwnerProfile {
-    return attempt query required Todo {
-        where: id == todo_id
-        include: reviewer.profile optional into: TodoOwnerProfile
-        missing: TodoNotFound
-    }
-}
-```
-
-### `type.nested_include_second_hop`
-
-```jadpo project=e-nested-include-second-hop expect=type.nested_include_second_hop
-entity User {
-    id: Uuid identity
-    inverse profile: optional Profile via Profile.user_id
-    inverse todos: many Todo via Todo.owner_id
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-    reviewer_id: User.id? references User.id as reviewer on_delete set_null
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-output OwnerProfile {
-    parent: User
-    profile: Profile?
-}
-
-output TodoOwnerProfile {
-    parent: Todo
-    owner: OwnerProfile
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) fails TodoNotFound -> TodoOwnerProfile {
-    return attempt query required Todo {
-        where: id == todo_id
-        include: owner.todos optional into: TodoOwnerProfile
-        missing: TodoNotFound
-    }
-}
-```
-
-### `type.nested_include_cardinality`
-
-```jadpo project=e-nested-include-cardinality expect=type.nested_include_cardinality
-entity User {
-    id: Uuid identity
-    inverse profile: optional Profile via Profile.user_id
-    inverse todos: many Todo via Todo.owner_id
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-    reviewer_id: User.id? references User.id as reviewer on_delete set_null
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-output OwnerProfile {
-    parent: User
-    profile: Profile?
-}
-
-output TodoOwnerProfile {
-    parent: Todo
-    owner: OwnerProfile
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) fails TodoNotFound -> TodoOwnerProfile {
-    return attempt query required Todo {
-        where: id == todo_id
-        include: owner.profile required into: TodoOwnerProfile
-        missing: TodoNotFound
-    }
-}
-```
-
-### `type.nested_include_required_query`
-
-```jadpo project=e-nested-include-required-query expect=type.nested_include_required_query
-entity User {
-    id: Uuid identity
-    inverse profile: optional Profile via Profile.user_id
-    inverse todos: many Todo via Todo.owner_id
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-    reviewer_id: User.id? references User.id as reviewer on_delete set_null
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-output OwnerProfile {
-    parent: User
-    profile: Profile?
-}
-
-output TodoOwnerProfile {
-    parent: Todo
-    owner: OwnerProfile
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) -> TodoOwnerProfile {
-    return attempt query optional Todo {
-        where: id == todo_id
-        include: owner.profile optional into: TodoOwnerProfile
-    }
-}
-```
-
-### `type.nested_include_result_shape`
-
-```jadpo project=e-nested-include-result-shape expect=type.nested_include_result_shape
-entity User {
-    id: Uuid identity
-    inverse profile: optional Profile via Profile.user_id
-    inverse todos: many Todo via Todo.owner_id
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-    reviewer_id: User.id? references User.id as reviewer on_delete set_null
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-output OwnerProfile {
-    parent: User
-    profile: Profile?
-}
-
-output TodoOwnerProfile {
-    parent: Todo
-    owner: User
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) fails TodoNotFound -> TodoOwnerProfile {
-    return attempt query required Todo {
-        where: id == todo_id
-        include: owner.profile optional into: TodoOwnerProfile
-        missing: TodoNotFound
-    }
-}
-```
-
-### `type.nested_include_single`
-
-```jadpo project=e-nested-include-single expect=type.nested_include_single
-entity User {
-    id: Uuid identity
-    inverse profile: optional Profile via Profile.user_id
-    inverse todos: many Todo via Todo.owner_id
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete cascade
-    reviewer_id: User.id? references User.id as reviewer on_delete set_null
-}
-
-entity Profile {
-    id: Uuid identity
-    user_id: User.id unique references User.id on_delete cascade
-}
-
-output OwnerProfile {
-    parent: User
-    profile: Profile?
-}
-
-output TodoOwnerProfile {
-    parent: Todo
-    owner: OwnerProfile
-}
-
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-action load(todo_id: Todo.id) fails TodoNotFound -> TodoOwnerProfile {
-    return attempt query required Todo {
-        where: id == todo_id
-        include: owner.profile optional into: TodoOwnerProfile
-        include: owner.profile optional into: TodoOwnerProfile
-        missing: TodoNotFound
-    }
-}
+```text output
+error: `Note.create` sets `written_at`, which the store generates
+ --> main.jadpo:17:13
+   |
+17 |             written_at: at
+   |             ^^^^^^^^^^ generated
+  reason: `Note.written_at` is generated from the operation's clock; code never assigns it.
+  next: Remove `written_at` from `set:` (agent)
+  rule: data.set_generated_field
+  help: docs/language/06-reads-and-writes.html#data-set-generated-field
+
+check failed: 1 error, 1 file
 ```
 
 ### Writes
 
 ### `type.create_not_entity`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-create-not-entity expect=type.create_not_entity
 type DraftName = Text {}
@@ -2124,6 +1968,8 @@ action create_draft(name: DraftName) -> Draft {
 ```
 
 ### `type.update_not_entity`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-update-not-entity expect=type.update_not_entity
 type DraftId = Uuid {}
@@ -2156,6 +2002,8 @@ action change(id: DraftId) fails ItemNotFound, ItemConflict -> Draft {
 
 ### `type.delete_not_entity`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-delete-not-entity expect=type.delete_not_entity
 type DraftId = Uuid {}
 
@@ -2183,6 +2031,8 @@ action delete_draft(id: DraftId) fails ItemNotFound, ItemConflict -> Draft {
 ```
 
 ### `syntax.expected_update_body`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-expected-update-body expect=syntax.expected_update_body
 entity Item {
@@ -2212,6 +2062,8 @@ action change(id: Item.id) fails ItemNotFound, ItemConflict -> Item {
 
 ### `type.update_field_required`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-update-field-required expect=type.update_field_required
 entity Item {
     id: Uuid identity
@@ -2240,6 +2092,8 @@ action change(id: Item.id) fails ItemNotFound, ItemConflict -> Item {
 ```
 
 ### `type.update_unknown_field`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-update-unknown-field expect=type.update_unknown_field
 entity Item {
@@ -2272,6 +2126,8 @@ action change(id: Item.id, name: Item.name) fails ItemNotFound, ItemConflict -> 
 
 ### `type.update_duplicate_field`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-update-duplicate-field expect=type.update_duplicate_field
 entity Customer {
     id: Uuid
@@ -2299,6 +2155,8 @@ action update_customer(id: Customer.id, email: Customer.email) -> Customer
 ```
 
 ### `type.mutation_unknown_predicate_field`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-mutation-unknown-predicate-field expect=type.mutation_unknown_predicate_field
 entity Item {
@@ -2330,6 +2188,8 @@ action change(id: Item.id, name: Item.name) fails ItemNotFound, ItemConflict -> 
 ```
 
 ### `type.mutation_nullable_field_unsupported`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-mutation-nullable-field-unsupported expect=type.mutation_nullable_field_unsupported
 type Nickname = Text {}
@@ -2364,6 +2224,8 @@ action change(nickname: Nickname, name: Item.name) fails ItemNotFound, ItemConfl
 
 ### `syntax.mutation_conflict_required`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 Goes under question 6: only rules a write can break are mapped.
 
 ```jadpo project=e-mutation-conflict-required expect=syntax.mutation_conflict_required
@@ -2393,6 +2255,8 @@ action remove(id: Item.id) fails ItemNotFound -> Item {
 
 ### `type.conflict_duplicate_binding`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-conflict-duplicate-binding expect=type.conflict_duplicate_binding
 entity Item {
     id: Uuid identity
@@ -2419,6 +2283,8 @@ action create_item(id: Item.id) fails FirstConflict, SecondConflict -> Item {
 
 ### `type.conflict_unknown_constraint`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-conflict-unknown-constraint expect=type.conflict_unknown_constraint
 entity Membership {
     id: Uuid identity
@@ -2444,6 +2310,8 @@ action create_membership(id: Membership.id, tenant: Membership.tenant, email: Me
 
 ### `syntax.expected_delete_action`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 Raised by a reference's `on_delete` value, which area 5 keeps:
 
 ```jadpo project=e-expected-delete-action expect=syntax.expected_delete_action
@@ -2460,6 +2328,8 @@ entity Todo {
 ### Patches
 
 ### `syntax.expected_patch_input`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-expected-patch-input expect=syntax.expected_patch_input
 entity Item {
@@ -2500,6 +2370,8 @@ action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound,
 
 ### `type.patch_input_binding`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-patch-input-binding expect=type.patch_input_binding
 entity Item {
     id: Uuid identity
@@ -2539,6 +2411,8 @@ action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound,
 
 ### `type.patch_not_input`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-patch-not-input expect=type.patch_not_input
 entity Item {
     id: Uuid identity
@@ -2573,6 +2447,8 @@ action patch_item(id: Item.id, item: Item) fails EmptyPatch, ItemNotFound, ItemC
 ```
 
 ### `type.patch_field_required`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-patch-field-required expect=type.patch_field_required
 entity Item {
@@ -2611,6 +2487,8 @@ action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound,
 
 ### `type.patch_field_not_optional`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-patch-field-not-optional expect=type.patch_field_not_optional
 entity Customer {
     id: Uuid identity
@@ -2643,6 +2521,8 @@ action patch_customer(id: Customer.id, input: PatchCustomer) -> Customer
 
 ### `type.patch_unknown_field`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-patch-unknown-field expect=type.patch_unknown_field
 entity Customer {
     id: Uuid identity
@@ -2674,6 +2554,8 @@ action patch_customer(id: Customer.id, input: PatchCustomer) -> Customer
 ```
 
 ### `type.patch_derived_overlap`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-patch-derived-overlap expect=type.patch_derived_overlap
 entity Customer {
@@ -2709,6 +2591,8 @@ action patch_customer(id: Customer.id, input: PatchCustomer) -> Customer
 ```
 
 ### `syntax.expected_supplied_field`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-expected-supplied-field expect=syntax.expected_supplied_field
 entity Item {
@@ -2752,6 +2636,8 @@ action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound,
 
 ### `syntax.expected_supplied`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-expected-supplied expect=syntax.expected_supplied
 entity Item {
     id: Uuid identity
@@ -2794,6 +2680,8 @@ action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound,
 
 ### `type.patch_condition_binding`
 
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+
 ```jadpo project=e-patch-condition-binding expect=type.patch_condition_binding
 entity Item {
     id: Uuid identity
@@ -2835,6 +2723,8 @@ action patch_item(id: Item.id, input: PatchItem, other: PatchItem) fails EmptyPa
 ```
 
 ### `type.patch_condition_unknown_field`
+
+> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
 
 ```jadpo project=e-patch-condition-unknown-field expect=type.patch_condition_unknown_field
 entity Item {
@@ -2880,6 +2770,8 @@ action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound,
 
 ### `data.raw_query_outside_named_query`
 
+> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
+
 Goes under question 1: an action has no read expression to write.
 
 ```jadpo project=e-raw-query-outside-named-query expect=data.raw_query_outside_named_query
@@ -2900,6 +2792,8 @@ action load_customer(id: Customer.id) -> Customer? {
 ```
 
 ### `data.mutation_owner_required`
+
+> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
 
 Changes meaning under question 5: the owning domain's actions may write.
 
@@ -2923,6 +2817,8 @@ action save_session(id: Session.id) -> Session {
 
 ### `data.query_freshness_required`
 
+> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
+
 Goes: area 3 removed callable settings.
 
 ```jadpo project=e-query-freshness-required expect=data.query_freshness_required
@@ -2944,6 +2840,8 @@ entity Customer {
 ```
 
 ### `data.freshness_invalid`
+
+> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
 
 Goes with `freshness:`.
 
@@ -2969,6 +2867,8 @@ entity Customer {
 ```
 
 ### `data.consistency_required`
+
+> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
 
 Goes: every action is all-or-nothing (area 3).
 
@@ -3005,6 +2905,8 @@ action register_both(customer_id: Customer.id, account_id: Account.id) -> Accoun
 
 ### `data.consistency_invalid`
 
+> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
+
 Goes with `consistency:`.
 
 ```jadpo project=e-consistency-invalid expect=data.consistency_invalid
@@ -3019,6 +2921,8 @@ consistency: eventual
 ```
 
 ### `data.atomic_domain_mismatch`
+
+> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
 
 Becomes "an action writes two stores" (area 5).
 
@@ -3058,6 +2962,8 @@ action register_and_record(customer_id: Customer.id, entry_id: LedgerEntry.id)
 
 ### `data.value_receiver_guard_required`
 
+> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
+
 Goes: area 5 removed `self` and `guard:`, and every write checks for concurrent change.
 
 ```jadpo project=e-value-receiver-guard-required expect=data.value_receiver_guard_required
@@ -3095,6 +3001,8 @@ entity Customer {
 ```
 
 ### `data.mutation_guard_invalid`
+
+> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
 
 Goes with `guard:`.
 
