@@ -141,16 +141,18 @@ fn every_value() -> Vec<SqlValue> {
         SqlValue::Date(20_740),
         // In jsonb's own output form, so it reads back as written.
         SqlValue::Json(r#"{"a": [1, 2.5, "x"], "b": null}"#.into()),
+        // 12:34:56.789
+        SqlValue::Time(45_296_789_000),
     ]
 }
 
 const EVERY_COLUMN: &str = "CREATE TABLE every (
     b bool, i2 int2, i4 int4, i8 int8, n numeric, t text, by bytea,
-    u uuid, ts timestamptz, d date, j jsonb
+    u uuid, ts timestamptz, d date, j jsonb, tm time
 )";
 
 const EVERY_INSERT: &str =
-    "INSERT INTO every VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)";
+    "INSERT INTO every VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)";
 
 #[test]
 fn every_value_round_trips_through_a_table_and_as_parameters() {
@@ -195,6 +197,78 @@ fn every_value_round_trips_through_a_table_and_as_parameters() {
         )
         .await;
         assert_eq!(found, vec![vec![values[5].clone()]]);
+    });
+}
+
+#[test]
+fn arrays_go_as_parameters_for_in_and_includes() {
+    // Area 6: `in` a list and an include's keys are one array parameter,
+    // `= ANY($1)`, and `unnest($1)` for a list per record.
+    let Some((runtime, store)) = fresh("arrays") else {
+        return;
+    };
+    runtime.block_on(async {
+        run(
+            &store,
+            "CREATE TABLE items (id uuid PRIMARY KEY, n int2 NOT NULL, label text NOT NULL)",
+        )
+        .await;
+        let ids: Vec<[u8; 16]> = (1..=3u8).map(|n| [n; 16]).collect();
+        let mut transaction = store.begin().await.unwrap();
+        for (i, id) in ids.iter().enumerate() {
+            transaction
+                .execute(
+                    "INSERT INTO items VALUES ($1, $2, $3)",
+                    &[
+                        SqlValue::Uuid(*id),
+                        SqlValue::Int8(i as i64),
+                        SqlValue::Text(format!("item {i}")),
+                    ],
+                )
+                .await
+                .unwrap();
+        }
+        transaction.commit().await.unwrap();
+        let some = SqlValue::Array(
+            SqlType::Uuid,
+            vec![SqlValue::Uuid(ids[0]), SqlValue::Uuid(ids[2])],
+        );
+        let found = rows(
+            &store,
+            "SELECT label FROM items WHERE id = ANY($1) ORDER BY label",
+            &[some.clone()],
+        )
+        .await;
+        assert_eq!(
+            found,
+            vec![
+                vec![SqlValue::Text("item 0".into())],
+                vec![SqlValue::Text("item 2".into())]
+            ]
+        );
+        // A smallint column against bigint values, as the plans send them.
+        let found = rows(
+            &store,
+            "SELECT count(*) FROM items WHERE n = ANY($1)",
+            &[SqlValue::Array(SqlType::Int8, vec![SqlValue::Int8(1), SqlValue::Int8(2)])],
+        )
+        .await;
+        assert_eq!(found, vec![vec![SqlValue::Int8(2)]]);
+        let empty = rows(
+            &store,
+            "SELECT count(*) FROM items WHERE id = ANY($1)",
+            &[SqlValue::Array(SqlType::Uuid, Vec::new())],
+        )
+        .await;
+        assert_eq!(empty, vec![vec![SqlValue::Int8(0)]]);
+        let keyed = rows(
+            &store,
+            "SELECT \"key\".\"id\", \"row\".label FROM unnest($1) AS \"key\"(\"id\") CROSS JOIN LATERAL (SELECT label FROM items WHERE id = \"key\".\"id\") AS \"row\" ORDER BY 2",
+            &[some],
+        )
+        .await;
+        assert_eq!(keyed.len(), 2);
+        assert_eq!(keyed[0][0], SqlValue::Uuid(ids[0]));
     });
 }
 

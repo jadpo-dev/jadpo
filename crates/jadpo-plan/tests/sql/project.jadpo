@@ -146,6 +146,7 @@ query todos_by_ids(todo_ids: List<Todo.id>) -> List<TodoView> {
     where: Todo.due_at == none or Todo.due_at > clock.now
     where: Todo.status in [TodoStatus.open, TodoStatus.waiting]
     where: not (Todo.score < 10)
+    where: Todo.project_id != none and not (Todo.due_at < clock.now)
     order: [Todo.created_at asc]
     limit: 100
 }

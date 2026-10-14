@@ -1314,6 +1314,7 @@ impl<'a> Reader<'a> {
             let mut current = Some(ty.clone());
             for _ in 0..64 {
                 let Some(next) = current else { break };
+                let next = next.strip_nullable().clone();
                 if !matches!(next, Ty::Prim(Prim::Uuid)) {
                     found.push(next.clone());
                 }

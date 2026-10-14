@@ -5,6 +5,7 @@ WHERE "id" = ANY($1)
   AND ("due_at" IS NULL OR "due_at" > $2)
   AND "status" IN ('open', 'waiting')
   AND "score" >= 10
+  AND ("project_id" IS NOT NULL AND ("due_at" >= $2 OR "due_at" IS NULL))
 ORDER BY "created_at" ASC, "id" ASC
 LIMIT 100
 -- $1: argument 0 as Array(Uuid)

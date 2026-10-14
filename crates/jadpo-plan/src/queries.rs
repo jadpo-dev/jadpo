@@ -457,10 +457,11 @@ impl Planner<'_> {
                 let column = quoted(&field.born);
                 let ty = column_type(field)?.param();
                 let rendered = self.value(statement, value, ty)?;
-                let op = if negated { op.negated() } else { *op };
                 // Jadpo's meaning when the field is `none`: it meets no
-                // comparison but `!=`.
-                let none_meets = op == Compare::NotEqual;
+                // comparison but `!=`, and so meets the negation of every
+                // other.
+                let none_meets = (*op == Compare::NotEqual) != negated;
+                let op = if negated { op.negated() } else { *op };
                 let text = format!("{column} {} {rendered}", op.sql());
                 if field.nullable && none_meets {
                     format!("({text} OR {column} IS NULL)")
