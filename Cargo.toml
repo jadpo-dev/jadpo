@@ -42,6 +42,8 @@ jadpo-fmt = { path = "crates/jadpo-fmt" }
 jadpo-db = { path = "crates/jadpo-db" }
 jadpo-check = { path = "crates/jadpo-check" }
 jadpo-value = { path = "crates/jadpo-value" }
+jadpo-runtime = { path = "crates/jadpo-runtime" }
+jadpo-interp = { path = "crates/jadpo-interp" }
 jadpo-std = { path = "crates/jadpo-std" }
 jadpo-graph = { path = "crates/jadpo-graph" }
 jadpo-lsp = { path = "crates/jadpo-lsp" }

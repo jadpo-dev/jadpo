@@ -1,0 +1,376 @@
+//! Area 2, values and types: the page's examples, run.
+
+mod support;
+
+use jadpo_interp::Value;
+use support::{decimal, failure, int, main, program, text, value};
+
+const NAMES: &str = "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype Pence = Int {\n    min: 0\n}\n";
+
+#[test]
+fn a_narrower_type_stands_in_for_its_parent() {
+    let program = main(
+        "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype ShortProductName = ProductName {\n    max_length: 40\n}\n\nfunction catalogue_name(name: ShortProductName) -> ProductName {\n    return name\n}\n",
+    );
+    assert_eq!(
+        value(&program, "catalogue_name", vec![text("Lamp")]),
+        text("Lamp")
+    );
+}
+
+#[test]
+fn literals_take_the_type_they_go_into() {
+    let program = main(
+        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\nfunction starting_quantity() -> Quantity {\n    return 1\n}\n\nfunction free() -> Price {\n    return 0.00\n}\n",
+    );
+    assert_eq!(value(&program, "starting_quantity", vec![]), int(1));
+    let free = value(&program, "free", vec![]);
+    assert_eq!(free, decimal("0"));
+    assert_eq!(free.to_string(), "0.00", "kept at the type's scale");
+}
+
+#[test]
+fn constructing_converts_between_named_types() {
+    let program = main(
+        "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\nfunction line_total(price: Pence, quantity: Quantity) -> Pence {\n    return Pence(price * quantity)\n}\n",
+    );
+    assert_eq!(
+        value(&program, "line_total", vec![int(250), int(3)]),
+        int(750)
+    );
+}
+
+#[test]
+fn signatures_use_named_types() {
+    let program = main(
+        "type CustomerNote = Text {\n    max_length: 500\n}\n\ntype NoteWasEdited = Bool {}\n\nfunction edited(before: CustomerNote, after: CustomerNote) -> NoteWasEdited {\n    return NoteWasEdited(before != after)\n}\n",
+    );
+    assert_eq!(
+        value(&program, "edited", vec![text("a"), text("b")]),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        value(&program, "edited", vec![text("a"), text("a")]),
+        Value::Bool(false)
+    );
+}
+
+#[test]
+fn an_object_is_built_with_every_field() {
+    let program = program(&[
+        ("names.jadpo", NAMES),
+        (
+            "main.jadpo",
+            "type Money = Object {\n    amount: Pence\n}\n\ntype CreateProduct = Input {\n    name: ProductName\n    price: Pence\n}\n\ntype ProductView = Output {\n    name: ProductName\n    price: Money\n}\n",
+        ),
+        (
+            "view.jadpo",
+            "function view(name: ProductName, price: Pence) -> ProductView {\n    return ProductView {\n        name: name\n        price: Money {\n            amount: price\n        }\n    }\n}\n",
+        ),
+    ]);
+    let view = value(&program, "view", vec![text("Lamp"), int(1299)]);
+    assert_eq!(
+        view.to_string(),
+        "ProductView { name: \"Lamp\", price: Money { amount: 1299 } }"
+    );
+    let money = program
+        .object("Money", vec![("amount", int(1299))])
+        .expect("Money");
+    let expected = program
+        .object(
+            "ProductView",
+            vec![("price", money), ("name", text("Lamp"))],
+        )
+        .expect("ProductView");
+    assert_eq!(
+        view, expected,
+        "fields in declared order, whatever order they are given"
+    );
+}
+
+#[test]
+fn field_types_read_through_an_entity() {
+    let program = main(
+        "entity Customer {\n    id: Uuid\n    email: Email\n}\n\nentity Supplier {\n    id: Uuid\n    email: Email\n}\n\nfunction contact_address(email: Email) -> Email {\n    return email\n}\n\nfunction customer_contact(customer: Customer) -> Email {\n    return contact_address(customer.email)\n}\n\nfunction supplier_contact(supplier: Supplier) -> Email {\n    return contact_address(supplier.email)\n}\n",
+    );
+    let customer = program
+        .object(
+            "Customer",
+            vec![
+                ("id", Value::uuid("0192F0C4-3B5E-7C1A-9D2E-4F6A8B0C1D2E")),
+                ("email", text("ada@example.test")),
+            ],
+        )
+        .expect("Customer");
+    assert_eq!(
+        value(&program, "customer_contact", vec![customer]),
+        text("ada@example.test")
+    );
+}
+
+#[test]
+fn an_absent_value_is_matched() {
+    let program = program(&[
+        ("names.jadpo", NAMES),
+        (
+            "main.jadpo",
+            "type Listing = Object {\n    name: ProductName\n    subtitle: ProductName?\n}\n\nfunction headline(listing: Listing) -> ProductName {\n    return match listing.subtitle {\n        some(subtitle) -> subtitle\n        none -> listing.name\n    }\n}\n",
+        ),
+    ]);
+    let listing = |subtitle: Value| {
+        program
+            .object(
+                "Listing",
+                vec![("name", text("Lamp")), ("subtitle", subtitle)],
+            )
+            .expect("Listing")
+    };
+    assert_eq!(
+        value(&program, "headline", vec![listing(Value::None)]),
+        text("Lamp")
+    );
+    assert_eq!(
+        value(&program, "headline", vec![listing(text("Brass desk lamp"))]),
+        text("Brass desk lamp")
+    );
+}
+
+#[test]
+fn an_optional_input_field_left_out_reads_as_none() {
+    let program = program(&[
+        (
+            "names.jadpo",
+            "type Nickname = Text {\n    max_length: 30\n}\n",
+        ),
+        (
+            "update_profile.jadpo",
+            "type UpdateProfile = Input {\n    nickname: Nickname {\n        optional: true\n    }\n}\n\naction update_profile(request: UpdateProfile) -> Nickname? {\n    var nickname: Nickname? = request.nickname  // left out reads as none\n    return nickname\n}\n",
+        ),
+    ]);
+    let request = program
+        .object("UpdateProfile", vec![("nickname", Value::None)])
+        .expect("UpdateProfile");
+    assert_eq!(
+        value(&program, "update_profile", vec![request]),
+        Value::None
+    );
+}
+
+#[test]
+fn enums_and_tagged_unions() {
+    let program = program(&[
+        (
+            "names.jadpo",
+            "type ReceiptId = Uuid {}\n\ntype DeclineReason = Text {\n    min_length: 1\n    max_length: 200\n}\n\ntype OutcomeLabel = Text {\n    max_length: 20\n}\n\ntype TicketStatus = Enum {\n    open\n    waiting\n    closed\n}\n\nfunction reopen() -> TicketStatus {\n    return TicketStatus.open\n}\n",
+        ),
+        (
+            "main.jadpo",
+            "type PaymentOutcome = Enum {\n    pending\n    paid: {\n        receipt_id: ReceiptId\n        paid_at: Instant\n    }\n    declined: {\n        reason: DeclineReason\n    }\n}\n\nfunction decline(reason: DeclineReason) -> PaymentOutcome {\n    return PaymentOutcome.declined {\n        reason: reason\n    }\n}\n\nfunction label(outcome: PaymentOutcome) -> OutcomeLabel {\n    return match outcome {\n        PaymentOutcome.pending -> \"pending\"\n        PaymentOutcome.paid -> \"paid\"\n        PaymentOutcome.declined -> \"declined\"\n    }\n}\n",
+        ),
+    ]);
+    assert_eq!(
+        value(&program, "reopen", vec![]).to_string(),
+        "TicketStatus.open"
+    );
+    let declined = value(&program, "decline", vec![text("card expired")]);
+    assert_eq!(
+        declined.to_string(),
+        "PaymentOutcome.declined { reason: \"card expired\" }"
+    );
+    assert_eq!(value(&program, "label", vec![declined]), text("declined"));
+    let paid = program
+        .variant(
+            "PaymentOutcome",
+            "paid",
+            vec![
+                (
+                    "receipt_id",
+                    Value::uuid("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"),
+                ),
+                ("paid_at", Value::Instant(0)),
+            ],
+        )
+        .expect("paid");
+    assert_eq!(value(&program, "label", vec![paid]), text("paid"));
+    let pending = program
+        .variant("PaymentOutcome", "pending", vec![])
+        .expect("pending");
+    assert_eq!(value(&program, "label", vec![pending]), text("pending"));
+}
+
+#[test]
+fn values_never_change_so_a_new_one_is_built() {
+    let program = program(&[
+        ("names.jadpo", NAMES),
+        (
+            "main.jadpo",
+            "type Product = Object {\n    name: ProductName\n    price: Pence\n}\n\nfunction reprice(product: Product, price: Pence) -> Product {\n    return Product {\n        name: product.name\n        price: price\n    }\n}\n",
+        ),
+    ]);
+    let lamp = program
+        .object(
+            "Product",
+            vec![("name", text("Lamp")), ("price", int(1299))],
+        )
+        .expect("Product");
+    let repriced = value(&program, "reprice", vec![lamp.clone(), int(999)]);
+    assert_eq!(
+        repriced.to_string(),
+        "Product { name: \"Lamp\", price: 999 }"
+    );
+    assert_eq!(lamp.to_string(), "Product { name: \"Lamp\", price: 1299 }");
+}
+
+#[test]
+fn a_runtime_construction_that_breaks_a_rule_fails_with_its_invalid_failure() {
+    // Question 1.
+    let program = main(
+        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityOutOfRange = Failure {\n    kind: FailureKind.invalid_value\n}\n\naction double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity {\n    var doubled: Quantity = attempt Quantity(quantity * 2) invalid: QuantityOutOfRange\n    return doubled\n}\n",
+    );
+    assert_eq!(value(&program, "double_quantity", vec![int(300)]), int(600));
+    let failed = failure(&program, "double_quantity", vec![int(600)]);
+    assert_eq!(failed.name, "QuantityOutOfRange");
+    assert_eq!(failed.code, "quantity_out_of_range");
+    assert_eq!(failed.kind.as_deref(), Some("invalid_value"));
+    assert_eq!(failed.broken.as_deref(), Some("`max: 1000`"));
+}
+
+#[test]
+fn building_an_object_runs_its_fields_rules() {
+    // Question 2.
+    let program = program(&[
+        (
+            "users.jadpo",
+            "entity User {\n    id: Uuid\n    display_name: Text {\n        max_length: 80\n    }\n}\n\ntype BadgeNameTooLong = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+        ),
+        (
+            "main.jadpo",
+            "type Badge = Object {\n    name: Text {\n        max_length: 12\n    }\n}\n\naction make_badge(user: User) fails BadgeNameTooLong -> Badge {\n    // user.display_name allows 80 characters; the field allows 12,\n    // so this check can fail and must say how.\n    var badge: Badge = attempt Badge {\n        name: user.display_name\n    } invalid: BadgeNameTooLong\n    return badge\n}\n",
+        ),
+    ]);
+    let user = |name: &str| {
+        program
+            .object(
+                "User",
+                vec![
+                    ("id", Value::uuid("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e")),
+                    ("display_name", text(name)),
+                ],
+            )
+            .expect("User")
+    };
+    assert_eq!(
+        value(&program, "make_badge", vec![user("Ada")]).to_string(),
+        "Badge { name: \"Ada\" }"
+    );
+    let failed = failure(&program, "make_badge", vec![user("Ada Lovelace-Byron")]);
+    assert_eq!(failed.name, "BadgeNameTooLong");
+    assert_eq!(failed.broken.as_deref(), Some("`max_length: 12` on `name`"));
+}
+
+#[test]
+fn lists_are_built_counted_searched_and_looped_over() {
+    // Question 4.
+    let program = main(
+        "type TagName = Text {\n    min_length: 1\n    max_length: 30\n}\n\ntype TagCount = Int {\n    min: 0\n}\n\ntype HasUrgent = Bool {}\n\nfunction tag_count() -> TagCount {\n    var tags: List<TagName> = [\"urgent\", \"home\"]\n    var count: TagCount = TagCount(collection.count(tags))\n    return count\n}\n\nfunction has_urgent(tags: List<TagName>) -> HasUrgent {\n    return HasUrgent(collection.contains(tags, \"urgent\"))\n}\n\nfunction letters(tags: List<TagName>) -> TagCount {\n    var mut total: TagCount = 0\n    for tag in tags {\n        if (tag != \"\") {\n            total = TagCount(total + 1)\n        }\n    }\n    return total\n}\n",
+    );
+    assert_eq!(value(&program, "tag_count", vec![]), int(2));
+    let tags = support::list(vec![text("home"), text("urgent")]);
+    assert_eq!(
+        value(&program, "has_urgent", vec![tags.clone()]),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        value(
+            &program,
+            "has_urgent",
+            vec![support::list(vec![text("home")])]
+        ),
+        Value::Bool(false)
+    );
+    assert_eq!(value(&program, "letters", vec![tags]), int(2));
+}
+
+#[test]
+fn a_share_is_divided_with_a_named_rounding() {
+    // Question 8.
+    let program = main(
+        "type Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\ntype ShareBelowZero = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction share(total: Price, people: People) fails ShareBelowZero -> Price {\n    var share: Price = attempt Price(decimal.divide(total, people, rounding: Rounding.half_even)) invalid: ShareBelowZero\n    return share\n}\n",
+    );
+    assert_eq!(
+        value(&program, "share", vec![decimal("10.00"), int(3)]).to_string(),
+        "3.33"
+    );
+    assert_eq!(
+        value(&program, "share", vec![decimal("0.05"), int(2)]).to_string(),
+        "0.02",
+        "0.025 rounds half to even"
+    );
+}
+
+#[test]
+fn a_pattern_matches_the_whole_text() {
+    // Question 9.
+    let program = main(
+        "type Sku = Text {\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Written = Text {\n    max_length: 40\n}\n\nfunction first_sku() -> Sku {\n    var sku: Sku = \"ABC-1234\"  // checked while compiling\n    return sku\n}\n\nfunction parse_sku(written: Written) fails SkuRejected -> Sku {\n    var sku: Sku = attempt Sku(written) invalid: SkuRejected\n    return sku\n}\n",
+    );
+    assert_eq!(value(&program, "first_sku", vec![]), text("ABC-1234"));
+    assert_eq!(
+        value(&program, "parse_sku", vec![text("XYZ-0001")]),
+        text("XYZ-0001")
+    );
+    let failed = failure(&program, "parse_sku", vec![text("ABC-1234x")]);
+    assert_eq!(
+        failed.broken.as_deref(),
+        Some("`pattern: \"[A-Z]{3}-[0-9]{4}\"`")
+    );
+}
+
+#[test]
+fn equality_compares_contents() {
+    // Question 12.
+    let program = main(
+        "type Amount = Decimal {\n    scale: 2\n}\n\ntype Currency = Enum {\n    gbp\n    eur\n}\n\ntype Money = Object {\n    amount: Amount\n    currency: Currency\n}\n\ntype Same = Bool {}\n\nfunction same() -> Same {\n    var a: Money = Money {\n        amount: 5.00\n        currency: Currency.gbp\n    }\n    var b: Money = Money {\n        currency: Currency.gbp\n        amount: 5.00\n    }\n    return Same(a == b)\n}\n\nfunction differ(a: Money, b: Money) -> Same {\n    return Same(a != b)\n}\n",
+    );
+    assert_eq!(value(&program, "same", vec![]), Value::Bool(true));
+    let money = |amount: &str, currency: &str| {
+        let currency = program
+            .variant("Currency", currency, vec![])
+            .expect("Currency");
+        program
+            .object(
+                "Money",
+                vec![("amount", decimal(amount)), ("currency", currency)],
+            )
+            .expect("Money")
+    };
+    assert_eq!(
+        value(
+            &program,
+            "differ",
+            vec![money("5.00", "gbp"), money("5.0", "gbp")]
+        ),
+        Value::Bool(false),
+        "5.00 and 5.0 are the same amount"
+    );
+    assert_eq!(
+        value(
+            &program,
+            "differ",
+            vec![money("5.00", "gbp"), money("5.00", "eur")]
+        ),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn uuids_are_normalised_to_lowercase() {
+    // Question 13.
+    let program = main(
+        "type PartnerRef = Uuid {\n    version: UuidVersion.v4\n}\n\nfunction partner() -> PartnerRef {\n    return \"0192F0C4-3B5E-4C1A-9D2E-4F6A8B0C1D2E\"\n}\n",
+    );
+    assert_eq!(
+        value(&program, "partner", vec![]),
+        Value::uuid("0192f0c4-3b5e-4c1a-9d2e-4f6a8b0c1d2e")
+    );
+}

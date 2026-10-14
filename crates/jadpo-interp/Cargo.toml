@@ -1,0 +1,21 @@
+[package]
+name = "jadpo-interp"
+description = "The interpreter: runs a checked project's typed bodies on the shared runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# A compiler crate that links the runtime it shares with compiled code
+# (docs/compiler-runtime.md §2.1 and §2.5): the one compiler crate that may.
+[dependencies]
+jadpo-check.workspace = true
+jadpo-db.workspace = true
+jadpo-diag.workspace = true
+jadpo-graph.workspace = true
+jadpo-runtime.workspace = true
+jadpo-std.workspace = true
+jadpo-value.workspace = true
+
+[lints]
+workspace = true

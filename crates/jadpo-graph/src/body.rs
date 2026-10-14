@@ -241,10 +241,12 @@ pub enum Expr {
         arms: Vec<Arm>,
     },
     /// `attempt call(...)`, passing its failures on, or a construction
-    /// with the failure `invalid:` maps a broken rule to.
+    /// with the failure `invalid:` maps a broken rule to, and that
+    /// failure's fields when it has any: `invalid: TooMany { limit: max }`.
     Attempt {
         inner: Option<SiteId>,
         invalid: Option<Key>,
+        fields: Vec<(Key, SiteId)>,
     },
     Reject {
         failure: Option<Key>,

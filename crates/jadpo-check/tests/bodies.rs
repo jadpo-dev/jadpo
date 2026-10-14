@@ -230,6 +230,7 @@ fn constructions_say_which_failure_they_map_to() {
     let Expr::Attempt {
         inner: Some(inner),
         invalid: Some(invalid),
+        ..
     } = expr(body, *attempt)
     else {
         panic!();
