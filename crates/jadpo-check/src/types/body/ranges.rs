@@ -542,9 +542,7 @@ impl Body<'_> {
             let collapses = matches!(self.table.structure(target), Ty::Set(_))
                 && matches!(self.table.structure(actual), Ty::List(_));
             if let Some(n) = needs.min_length {
-                if collapses && n > 1 {
-                    out.push("min_length".to_string());
-                } else if !at_least_length(n, low, counted.as_ref()) {
+                if (collapses && n > 1) || !at_least_length(n, low, counted.as_ref()) {
                     out.push("min_length".to_string());
                 } else if !at_least_length(n, low, None) {
                     let by = counted.as_ref().map(|c| c.by.clone()).unwrap_or_default();
