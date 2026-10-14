@@ -12,6 +12,7 @@ use crate::help::{self, VERSION};
 use crate::run::{Call, Reply, Session, both, either, quoted, unknown_command};
 use crate::suggest::nearest;
 use crate::table::{self, SHELLS};
+pub use crate::test::test;
 
 pub fn help(call: &Call) -> Reply {
     match call.arguments.first() {

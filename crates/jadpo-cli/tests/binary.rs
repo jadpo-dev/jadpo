@@ -105,9 +105,22 @@ fn bash_completes_commands_and_values() {
     };
     assert_eq!(
         complete("jadpo ''", 1),
-        ["check", "fmt", "completions", "lsp", "help", "version"]
+        [
+            "check",
+            "test",
+            "fmt",
+            "completions",
+            "lsp",
+            "help",
+            "version"
+        ]
     );
     assert_eq!(complete("jadpo ver", 1), ["version"]);
+    assert_eq!(
+        complete("jadpo test --kind ''", 3),
+        ["pure", "action", "route", "schedule"]
+    );
+    assert_eq!(complete("jadpo test --f", 2), ["--failed"]);
     assert_eq!(complete("jadpo completions ''", 2), ["zsh", "bash", "fish"]);
     assert_eq!(complete("jadpo help --j", 2), ["--json"]);
 }

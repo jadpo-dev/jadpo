@@ -11,7 +11,7 @@ use jadpo_term::{Block, ColorChoice, Environment, Json, Screen, Stream, Style, e
 use crate::completion;
 use crate::help;
 use crate::suggest::nearest;
-use crate::table::{self, COLORS, Command, GLOBAL_FLAGS};
+use crate::table::{self, COLORS, Command, Flag, GLOBAL_FLAGS};
 
 /// What one run of `jadpo` writes and how it exits.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +38,9 @@ pub struct Call {
     pub arguments: Vec<String>,
     /// The command's own flags that were given (`--check`).
     pub flags: Vec<&'static str>,
+    /// The command's own flags that take a value, with the value given
+    /// (`--seed 48213`); the last one given wins.
+    pub values: Vec<(&'static str, String)>,
     /// The folder the command runs in.
     pub cwd: Option<PathBuf>,
 }
@@ -45,6 +48,15 @@ pub struct Call {
 impl Call {
     pub fn flag(&self, name: &str) -> bool {
         self.flags.contains(&name)
+    }
+
+    /// The value a flag that takes one was given.
+    pub fn value(&self, name: &str) -> Option<&str> {
+        self.values
+            .iter()
+            .rev()
+            .find(|(flag, _)| *flag == name)
+            .map(|(_, value)| value.as_str())
     }
 }
 
@@ -263,8 +275,17 @@ struct Parsed {
     command: Option<&'static Command>,
     arguments: Vec<String>,
     flags: Vec<&'static str>,
+    values: Vec<(&'static str, String)>,
     help: bool,
     version: bool,
+}
+
+/// The flag of `command` called `name` that takes a value.
+fn value_flag(command: Option<&'static Command>, name: &str) -> Option<&'static Flag> {
+    command?
+        .flags
+        .iter()
+        .find(|flag| flag.name == name && flag.value.is_some())
 }
 
 fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
@@ -289,10 +310,17 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
             } else {
                 name
             };
+            let current = words.first().and_then(|word| table::find(word));
             let value = match value {
                 None if name == "--color"
                     && args.get(i).is_some_and(|next| !next.starts_with('-')) =>
                 {
+                    i += 1;
+                    Some(args[i - 1].clone())
+                }
+                // A command's own flag that takes a value takes the next
+                // word whatever it is, so `--name "-1 is rejected"` works.
+                None if value_flag(current, &name).is_some() && i < args.len() => {
                     i += 1;
                     Some(args[i - 1].clone())
                 }
@@ -309,6 +337,7 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
         command,
         arguments: words.into_iter().skip(1).collect(),
         flags: Vec::new(),
+        values: Vec::new(),
         help: false,
         version: false,
     };
@@ -333,6 +362,14 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
             {
                 parsed.flags.push(flag.name);
             }
+            (name, Some(value)) if let Some(flag) = value_flag(command, name) => {
+                parsed.values.push((flag.name, value));
+            }
+            (name, None)
+                if let (Some(command), Some(flag)) = (command, value_flag(command, name)) =>
+            {
+                return Err(Box::new(missing_value(command, flag)));
+            }
             (_, value) => {
                 let written = value.map_or_else(|| name.clone(), |value| format!("{name}={value}"));
                 return Err(Box::new(unknown_flag(&written, &name, command)));
@@ -351,6 +388,7 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
                 (version.run)(&Call {
                     arguments: Vec::new(),
                     flags: Vec::new(),
+                    values: Vec::new(),
                     cwd: env.cwd.clone(),
                 }),
             );
@@ -379,6 +417,7 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
         (command.run)(&Call {
             arguments: parsed.arguments,
             flags: parsed.flags,
+            values: parsed.values,
             cwd: env.cwd.clone(),
         }),
     )
@@ -454,6 +493,29 @@ fn unknown_flag(written: &str, name: &str, command: Option<&Command>) -> Diagnos
             .reason(format!("{subject} has no flag with this name."))
             .next(help),
     }
+}
+
+fn missing_value(command: &Command, flag: &Flag) -> Diagnostic {
+    let placeholder = flag.value.unwrap_or("value");
+    let values: Vec<String> = flag
+        .values
+        .iter()
+        .map(|value| value.name.to_string())
+        .collect();
+    let reason = if values.is_empty() {
+        format!("`{}` takes a {placeholder}.", flag.name)
+    } else {
+        format!("`{}` takes {}.", flag.name, either(&quoted(&values)))
+    };
+    Diagnostic::new(
+        command.arguments_rule,
+        format!("`{}` needs a {placeholder}", flag.name),
+    )
+    .reason(reason)
+    .next(format!(
+        "Give it after the flag: `jadpo {} {} <{placeholder}>`",
+        command.name, flag.name
+    ))
 }
 
 fn color_values() -> (String, String) {

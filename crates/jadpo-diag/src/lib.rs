@@ -111,6 +111,8 @@ rules! {
         "14-tooling.html#command-errors", "Language-server command has invalid arguments";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Terminal presentation option is invalid";
+    CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Test command has invalid arguments";
     CLI_UNKNOWN_COMMAND: "cli.unknown_command", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Unknown Jadpo command";
     CLI_UNKNOWN_FLAG: "cli.unknown_flag", area 14, Error, Agent,
@@ -275,6 +277,18 @@ rules! {
         "01-project-layout-and-modules.html#syntax-unterminated-string", "String is not closed";
     SYNTAX_VARIABLE_TYPE_REQUIRED: "syntax.variable_type_required", area 2, Error, Agent,
         "02-values-and-types.html#syntax-variable-type-required", "Variable has no type";
+    TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
+        "13-testing.html#test-assertion-failed", "Test assertion does not hold";
+    TEST_FAILED: "test.failed", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Test run failed";
+    TEST_FAULT: "test.fault", area 13, Error, Agent,
+        "13-testing.html#test-fault", "Test stopped on a fault";
+    TEST_NO_TESTS: "test.no_tests", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "No tests to run";
+    TEST_RUNTIME_START_FAILED: "test.runtime_start_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Test runtime could not start";
+    TEST_UNEXPECTED_FAILURE: "test.unexpected_failure", area 13, Error, Agent,
+        "13-testing.html#test-unexpected-failure", "Test ended in a failure it did not expect";
     TOOLCHAIN_ARTIFACT_WRITE_FAILED: "toolchain.artifact_write_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Generated file could not be written";
     TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,

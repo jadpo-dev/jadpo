@@ -19,6 +19,7 @@ jadpo-graph.workspace = true
 jadpo-lsp.workspace = true
 jadpo-syntax.workspace = true
 jadpo-term.workspace = true
+jadpo-test.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

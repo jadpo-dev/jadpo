@@ -19,7 +19,7 @@ use jadpo_std::{Builtin, Dur, Kind as ParamKind};
 use jadpo_value::{Decimal, Value, ops};
 
 use crate::program::Program;
-use crate::{Assertion, Outcome};
+use crate::{Assertion, Outcome, Part};
 
 /// What ends a body before its last statement.
 pub(crate) enum Stop {
@@ -48,6 +48,16 @@ struct Running<'p> {
 pub(crate) struct Interp<'p> {
     program: &'p Program,
     ctx: Ctx<'p>,
+    /// While an `assert` works out its condition: every value its frame's
+    /// expressions give, for the report if it fails.
+    record: Option<Recording>,
+}
+
+/// The values an `assert`'s condition gave, site by site.
+struct Recording {
+    /// The depth of the asserting frame: callees run deeper.
+    depth: usize,
+    values: Vec<(SiteId, Value)>,
 }
 
 /// A value from text, as a literal of a type built on `builtin` is.
@@ -92,6 +102,7 @@ impl<'p> Interp<'p> {
         let mut interp = Interp {
             program,
             ctx: Ctx::new(&program.places, id),
+            record: None,
         };
         match interp.body(id, args) {
             Ok(value) | Err(Stop::Return(value)) => Outcome::Value(value),
@@ -285,6 +296,32 @@ impl<'p> Interp<'p> {
         let Some(value) = value else {
             return Err(self.defect("an `assert` without a condition", id));
         };
+        self.record = Some(Recording {
+            depth: self.ctx.depth(),
+            values: Vec::new(),
+        });
+        let result = self.assertion(f, id, value, fails);
+        let recorded = self.record.take();
+        match result {
+            Err(Stop::Assertion(mut assertion)) => {
+                if let Some(recorded) = recorded {
+                    assertion.parts = self.parts(f, recorded);
+                }
+                Err(Stop::Assertion(assertion))
+            }
+            other => other,
+        }
+    }
+
+    /// What an `assert`'s condition gives: nothing when it holds, the
+    /// failed assertion otherwise.
+    fn assertion(
+        &mut self,
+        f: &mut Running<'p>,
+        id: SiteId,
+        value: SiteId,
+        fails: Option<&TypeRef>,
+    ) -> Eval<()> {
         let body = f.body;
         if let Some(expected) = fails {
             let TypeRef::Node(expected) = expected else {
@@ -303,6 +340,7 @@ impl<'p> Interp<'p> {
                     expected: self.program.types.name(expected).to_string(),
                     got,
                 },
+                parts: Vec::new(),
             })));
         }
         let comparison = match body.sites.get(value.0 as usize).map(|site| &site.node) {
@@ -327,12 +365,77 @@ impl<'p> Interp<'p> {
         Err(Stop::Assertion(Box::new(Assertion {
             frames: self.ctx.frames(),
             detail: crate::AssertionDetail::False { comparison },
+            parts: Vec::new(),
         })))
+    }
+
+    /// The recorded values of an assertion's condition as parts, in the
+    /// order their anchors are written; literals left out.
+    fn parts(&self, f: &Running<'p>, recorded: Recording) -> Vec<Part> {
+        let text = self
+            .program
+            .callable(f.id)
+            .and_then(|callable| self.program.text(&callable.file))
+            .unwrap_or_default();
+        let mut seen = std::collections::HashSet::new();
+        let mut parts: Vec<Part> = Vec::new();
+        for (id, value) in recorded.values {
+            let Some(site) = f.body.sites.get(id.0 as usize) else {
+                continue;
+            };
+            if matches!(site.node, Node::Expr(Expr::Literal(_))) || !seen.insert(id) {
+                continue;
+            }
+            parts.push(Part {
+                start: site.start,
+                end: site.end,
+                anchor: self.anchor(f, site, text),
+                value,
+            });
+        }
+        parts.sort_by_key(|part| (part.anchor, std::cmp::Reverse(part.end)));
+        parts
+    }
+
+    /// Where a part's value points: an operator, a field's name, or the
+    /// part's start.
+    fn anchor(&self, f: &Running<'p>, site: &jadpo_graph::body::Site, text: &str) -> u32 {
+        let sites = &f.body.sites;
+        match &site.node {
+            Node::Expr(Expr::Binary { lhs, rhs, .. }) => {
+                let (Some(lhs), Some(rhs)) = (sites.get(lhs.0 as usize), sites.get(rhs.0 as usize))
+                else {
+                    return site.start;
+                };
+                text.get(lhs.end as usize..rhs.start as usize)
+                    .and_then(|between| between.find(|c: char| !c.is_whitespace()))
+                    .map_or(site.start, |offset| lhs.end + offset as u32)
+            }
+            Node::Expr(Expr::Field { field, .. }) => {
+                let name = self.program.types.field_name(field);
+                let written = text.get(site.start as usize..site.end as usize);
+                match written {
+                    Some(written) if written.ends_with(name) => site.end - name.len() as u32,
+                    _ => site.start,
+                }
+            }
+            _ => site.start,
+        }
     }
 
     // --- expressions ------------------------------------------------------
 
     fn eval(&mut self, f: &mut Running<'p>, id: SiteId) -> Eval<Value> {
+        let value = self.evaluate(f, id)?;
+        if let Some(record) = &mut self.record
+            && record.depth == self.ctx.depth()
+        {
+            record.values.push((id, value.clone()));
+        }
+        Ok(value)
+    }
+
+    fn evaluate(&mut self, f: &mut Running<'p>, id: SiteId) -> Eval<Value> {
         let body = f.body;
         let Some(site) = body.sites.get(id.0 as usize) else {
             return Err(self.defect("a site the body doesn't have", id));
@@ -594,6 +697,13 @@ impl<'p> Interp<'p> {
             }
         }
         let mut stopped: Option<Stop> = None;
+        // An inline function's expressions give a value per item, not one
+        // an assertion's report could show.
+        let paused = if inline.is_some() {
+            self.record.take()
+        } else {
+            None
+        };
         let result = {
             let mut each = |item: &Value| -> Option<Value> {
                 let (param, body) = inline?;
@@ -610,6 +720,9 @@ impl<'p> Interp<'p> {
             };
             jadpo_value::run(op, &values, &mut each)
         };
+        if paused.is_some() {
+            self.record = paused;
+        }
         match (result, stopped) {
             (Ok(value), _) => Ok(value),
             (Err(_), Some(stop)) => Err(stop),

@@ -10,6 +10,7 @@ use jadpo_diag::{Decider, Diagnostic, Severity};
 use crate::detect::{Mode, Style, Symbols};
 use crate::diagnostic::DiagnosticView;
 use crate::palette::{Symbol, Token};
+use crate::report::Report;
 use crate::sources::Sources;
 
 /// Where label values start.
@@ -25,6 +26,16 @@ pub(crate) struct Piece {
     text: String,
     token: Option<Token>,
     bold: bool,
+}
+
+impl Piece {
+    pub(crate) fn new(text: impl Into<String>, token: Option<Token>, bold: bool) -> Piece {
+        Piece {
+            text: text.into(),
+            token,
+            bold,
+        }
+    }
 }
 
 pub(crate) fn raw(text: impl Into<String>) -> Piece {
@@ -283,12 +294,17 @@ pub enum Block {
     /// A description, then the command whole on its own line.
     Examples(Vec<(String, String)>),
     Diagnostic(Box<DiagnosticView>),
+    /// A failed test (area 13's report).
+    Report(Box<Report>),
     /// The last line: the outcome in its colour, then facts joined by `·`
-    /// (`✗ check failed  1 error · 11 files`).
+    /// (`✗ check failed  1 error · 11 files`). Plain output reads
+    /// `headline: facts`, or `plain: headline, facts` when the headline is
+    /// a count that needs a word before it (`test failed: 1 failed, …`).
     Summary {
         outcome: Outcome,
         headline: String,
         facts: Vec<Fact>,
+        plain: Option<String>,
     },
     /// The one next command: `→ command  reason`.
     Hint {
@@ -364,7 +380,21 @@ impl Block {
             outcome,
             headline: headline.into(),
             facts: facts.into_iter().collect(),
+            plain: None,
         }
+    }
+
+    /// The words plain output puts before a summary's headline. Other
+    /// blocks are returned unchanged.
+    pub fn with_plain_headline(mut self, words: impl Into<String>) -> Block {
+        if let Block::Summary { plain, .. } = &mut self {
+            *plain = Some(words.into());
+        }
+        self
+    }
+
+    pub fn report(report: Report) -> Block {
+        Block::Report(Box::new(report))
     }
 
     pub fn hint(command: impl Into<String>, reason: impl Into<String>) -> Block {
@@ -518,11 +548,19 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             lines
         }
         Block::Diagnostic(view) => view.lines(style),
+        Block::Report(report) => report.lines(style),
         Block::Summary {
             outcome,
             headline,
             facts,
-        } => vec![summary_line(*outcome, headline, facts, style)],
+            plain,
+        } => vec![summary_line(
+            *outcome,
+            headline,
+            facts,
+            plain.as_deref(),
+            style,
+        )],
         Block::Hint { command, reason } => {
             if rich(style) {
                 let arrow = Symbol::Next.text(style.symbols);
@@ -538,9 +576,22 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
     }
 }
 
-fn summary_line(outcome: Outcome, headline: &str, facts: &[Fact], style: &Style) -> Line {
+fn summary_line(
+    outcome: Outcome,
+    headline: &str,
+    facts: &[Fact],
+    plain: Option<&str>,
+    style: &Style,
+) -> Line {
     if !rich(style) {
-        let facts: Vec<&str> = facts.iter().map(|fact| fact.text.as_str()).collect();
+        let mut facts: Vec<&str> = facts.iter().map(|fact| fact.text.as_str()).collect();
+        let headline = match plain {
+            Some(words) => {
+                facts.insert(0, headline);
+                words
+            }
+            None => headline,
+        };
         return if facts.is_empty() {
             vec![raw(headline)]
         } else {

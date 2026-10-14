@@ -40,6 +40,9 @@ pub struct Command {
     pub examples: &'static [Example],
     /// The rule for this command's own argument errors.
     pub arguments_rule: &'static Rule,
+    /// Other rules a run of this command can end in, for `jadpo help
+    /// --json`.
+    pub raises: &'static [&'static Rule],
     pub run: fn(&Call) -> Reply,
 }
 
@@ -149,6 +152,27 @@ pub const SHELLS: &[Value] = &[
     },
 ];
 
+/// The kinds of test (area 13, "Kinds of test"); route and schedule tests
+/// come with their areas.
+pub const KINDS: &[Value] = &[
+    Value {
+        name: "pure",
+        description: "Tests that call functions only",
+    },
+    Value {
+        name: "action",
+        description: "Tests that call actions directly",
+    },
+    Value {
+        name: "route",
+        description: "Tests that send a request (not built yet)",
+    },
+    Value {
+        name: "schedule",
+        description: "Tests that run a schedule (not built yet)",
+    },
+];
+
 pub static COMMANDS: &[Command] = &[
     Command {
         name: "check",
@@ -182,7 +206,82 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_CHECK_ARGUMENTS,
+        raises: &[],
         run: commands::check,
+    },
+    Command {
+        name: "test",
+        synonyms: &[],
+        group: "Build and check",
+        summary: "Run tests",
+        description: "Run the project's tests in the interpreter, in an order a seed decides, and report \
+                      each failure with the values in its assertion, what happened instead and the \
+                      command that reruns it. Without a path, the project is found by walking up to \
+                      app.jadpo and every test runs; a file runs its tests, a folder the tests under it, \
+                      and <file>:<line> the test at that line. The project must check without errors \
+                      first. Pure and action tests run so far.",
+        arguments: &[Argument {
+            name: "path",
+            description: "A test file, <file>:<line>, or a folder",
+            required: false,
+            values: Values::Path,
+        }],
+        flags: &[
+            Flag {
+                name: "--name",
+                value: Some("text"),
+                description: "Run tests whose names contain this text",
+                values: &[],
+            },
+            Flag {
+                name: "--kind",
+                value: Some("kind"),
+                description: "Run one kind: pure, action, route, schedule",
+                values: KINDS,
+            },
+            Flag {
+                name: "--failed",
+                value: None,
+                description: "Rerun the tests that failed last time",
+                values: &[],
+            },
+            Flag {
+                name: "--seed",
+                value: Some("n"),
+                description: "Run in the order this seed gives",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "Run every test in the project you are in",
+                command: "jadpo test",
+            },
+            Example {
+                description: "Run the test at line 12 of a file, in the order seed 48213 gives",
+                command: "jadpo test domains/planning/libraries/dates.test.jadpo:12 --seed 48213",
+            },
+            Example {
+                description: "Rerun the tests that failed last time",
+                command: "jadpo test --failed",
+            },
+            Example {
+                description: "Print the results as data for tools",
+                command: "jadpo test --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_TEST_ARGUMENTS,
+        raises: &[
+            &rule::TEST_ASSERTION_FAILED,
+            &rule::TEST_UNEXPECTED_FAILURE,
+            &rule::TEST_FAULT,
+            &rule::TEST_FAILED,
+            &rule::TEST_NO_TESTS,
+            &rule::TEST_RUNTIME_START_FAILED,
+            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::test,
     },
     Command {
         name: "fmt",
@@ -220,6 +319,7 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_FMT_ARGUMENTS,
+        raises: &[],
         run: commands::fmt,
     },
     Command {
@@ -251,6 +351,7 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_COMPLETIONS_ARGUMENTS,
+        raises: &[],
         run: commands::completions,
     },
     Command {
@@ -275,6 +376,7 @@ pub static COMMANDS: &[Command] = &[
             command: "jadpo lsp",
         }],
         arguments_rule: &rule::CLI_LSP_ARGUMENTS,
+        raises: &[],
         run: commands::lsp,
     },
     Command {
@@ -306,6 +408,7 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_HELP_ARGUMENTS,
+        raises: &[],
         run: commands::help,
     },
     Command {
@@ -327,6 +430,7 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_VERSION_ARGUMENTS,
+        raises: &[],
         run: commands::version,
     },
 ];

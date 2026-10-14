@@ -47,6 +47,7 @@ jadpo-interp = { path = "crates/jadpo-interp" }
 jadpo-std = { path = "crates/jadpo-std" }
 jadpo-graph = { path = "crates/jadpo-graph" }
 jadpo-lsp = { path = "crates/jadpo-lsp" }
+jadpo-test = { path = "crates/jadpo-test" }
 rowan = "=0.16.1"
 ungrammar = "=1.16.1"
 serde_json = "1"

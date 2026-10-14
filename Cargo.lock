@@ -224,6 +224,7 @@ dependencies = [
  "jadpo-lsp",
  "jadpo-syntax",
  "jadpo-term",
+ "jadpo-test",
  "serde_json",
 ]
 
@@ -312,6 +313,19 @@ name = "jadpo-term"
 version = "0.1.0"
 dependencies = [
  "jadpo-diag",
+ "serde_json",
+]
+
+[[package]]
+name = "jadpo-test"
+version = "0.1.0"
+dependencies = [
+ "jadpo-check",
+ "jadpo-db",
+ "jadpo-diag",
+ "jadpo-graph",
+ "jadpo-interp",
+ "jadpo-term",
  "serde_json",
 ]
 

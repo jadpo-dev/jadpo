@@ -611,6 +611,26 @@ errors have: the headline (`fault` or `failed`), the `.jadpo` site with
 its code frame, then `reason`, `next` and the frames, or a failure's
 code, kind, fields, cause and path.
 
+**The test runner.** Built in chunk 2.2 (`jadpo-test`, `jadpo test`): it
+finds the tests through the graph, takes a test's kind from its `calls`
+edges (an action, query or fixture makes it an action test), picks them by
+file, `<file>:<line>`, `--name`, `--kind` and `--failed`, and runs them
+through `Program::call` in a Fisher–Yates order from a SplitMix64 order
+seed, so `--seed` reproduces a run. A failed `assert` keeps the value of
+each sub-expression its frame worked out (the interpreter records them while
+the condition runs, leaving out literals, callees and inline functions),
+each anchored at its operator, field name or start, so the report hangs
+them under the source power-assert style; `==` on records, lists, sets and
+maps adds a diff by field, index or key. A failure or fault that ends a
+test is reported with its `.jadpo` site, frames and path. Each outcome has
+a stable code (`test.assertion_failed`, `test.unexpected_failure`,
+`test.fault`) and a rerun command with the seed; the run is `test.failed`,
+and nothing to run is `test.no_tests`. A project keeps its last run's
+failures in `build/test/last-run.json` for `--failed`. Tests run one at a
+time on the interpreter's large-stack thread; the trace, fakes, the test
+database and clock control come with their phases, and route and schedule
+tests (`--kind route`, `--kind schedule`) are `toolchain.not_built_yet`.
+
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
 [language test project](https://raw.githubusercontent.com/gleam-lang/gleam/main/test/language/Makefile)
@@ -710,7 +730,11 @@ compiler's real output (Phase 1's "done when"). A page of a built area owns
 exactly the rules whose catalogue entry names its area, and each needs a
 `check` block; a frozen v0 result never counts for it (chunk 1.9). Projects with
 `test` declarations also run under `jadpo test --json` and are exported to
-`build/spec-corpus/` for the differential run.
+`build/spec-corpus/` for the differential run (since chunk 2.2: a `check`
+project with tests must pass them, one marked `expect=test.<code>` must
+fail exactly one test with that code and show `jadpo test`'s plain output,
+both with `--seed 1`; `language_docs.py --export-corpus` writes each
+project and its `test.json`, and `build/` is not committed).
 
 **PostgreSQL harness.** `JADPO_TEST_DATABASE_URL`, or a disposable server
 from the local tools (`initdb`, `pg_ctl`) on a Unix socket with `fsync`

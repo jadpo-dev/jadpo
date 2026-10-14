@@ -33,12 +33,12 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo new <name>` | Creates a project that passes `check`, `fmt --check` and `test` | Exists; scaffold changes (question 9) |
 | `jadpo check` | Checks everything and writes the derived files in `build/` | Exists; writing files is question 3 |
 | `jadpo fmt` | Formats; `--check` only reports; `--layout` also applies promotion moves | Exists; `--layout` decided in area 1 |
-| `jadpo test` | Runs every test | Exists |
-| `jadpo test <file>` / `<file>:<line>` | Runs one test file, or the test at that line | Decided in area 13, not built |
-| `jadpo test --name <text>` / `--kind route` / `--failed` / `--affected` | Runs tests whose names match, one kind, last run's failures, or the tests a change reaches | `--kind` exists; the rest decided in area 13 and question 7 |
+| `jadpo test` | Runs every test | Built (chunk 2.2): pure and action tests, in the interpreter |
+| `jadpo test <file>` / `<file>:<line>` | Runs one test file, or the test at that line | Built (chunk 2.2); a folder runs the tests under it |
+| `jadpo test --name <text>` / `--kind route` / `--failed` / `--affected` | Runs tests whose names match, one kind, last run's failures, or the tests a change reaches | `--name`, `--kind pure` and `--kind action`, and `--failed` built (chunk 2.2); route and schedule kinds come with areas 7 and 12; `--affected` decided in question 7 |
 | `jadpo test --watch` | Reruns the affected tests on every save | Decided in area 13, not built |
 | `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built |
-| `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | Decided in area 13, not built |
+| `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | `--seed` built (chunk 2.2); `--keep-failed` comes with the test database |
 | `jadpo build` | Writes the runnable app into `build/target/` | Exists |
 | `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Exists; `--no-run` replaces `watch` (question 3) |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Exists |
@@ -385,6 +385,7 @@ source example. Generated from the compiler's catalogue.
 | `cli.schema_snapshot_arguments` | `schema` | Schema snapshot command requires an output path |
 | `cli.schema_sql_arguments` | `schema` | Schema SQL command has invalid arguments |
 | `cli.signal_handler_failed` | any command | Shutdown handler could not be installed |
+| `cli.test_arguments` | `test` | Test command has invalid arguments |
 | `cli.unknown_command` | any command | Unknown Jadpo command |
 | `cli.unknown_schema_command` | `schema` | Unknown schema subcommand |
 | `cli.watch_arguments` | `watch` | Watch command has invalid arguments |
@@ -472,7 +473,7 @@ source example. Generated from the compiler's catalogue.
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
 | `test.failed` | `test` | Test run failed |
-| `test.no_tests` | `test` | Project has no executable tests |
+| `test.no_tests` | `test` | No tests to run |
 | `test.runtime_start_failed` | `test` | Test runtime could not start |
 | `toolchain.artifact_cleanup_failed` | `artifacts`, `build` | Previous build backup could not be removed |
 | `toolchain.artifact_promote_failed` | `artifacts`, `build` | Staged build artifacts could not be promoted |
