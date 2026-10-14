@@ -268,9 +268,10 @@ Rust 1.88 or later).
 | `jadpo-lsp` | Language server | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
-Built so far: every crate above but `jadpo-codegen`, `jadpo-drivers` and
-the two hosts; `jadpo-plan` began in chunk 2.10 with type plans, failure
-shapes, constants and the frame table (§2.5).
+Built so far: every crate above but `jadpo-codegen` and
+`jadpo-host-workers`; `jadpo-plan` began in chunk 2.10 with type plans,
+failure shapes, constants and the frame table (§2.5), and `jadpo-drivers`
+(PostgreSQL only) and `jadpo-host-native` in chunk 3.1 (§2.6).
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
@@ -312,7 +313,9 @@ any other member is `toolchain.not_built_yet`.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from
-the layer table; `rust-toolchain.toml` pins the target with the toolchain. Compiler crates do no I/O below `jadpo-db`, which
+the layer table, less the crates `[workspace.metadata.targets]` lists as
+native only (`jadpo-host-native`); `jadpo-drivers` builds with every driver
+feature on. `rust-toolchain.toml` pins the target with the toolchain. Compiler crates do no I/O below `jadpo-db`, which
 keeps a browser playground possible later without gating on it now.
 
 ### 2.2 Source to graph
@@ -772,6 +775,24 @@ non-`Send` future on its own thread until the native host's current-thread
 runtime takes over with the store. The components below come with their
 areas.
 
+Built in chunk 3.1: a store's transaction runs SQL (`query`, `execute`,
+`batch`) with `SqlValue` parameters and rows. `jadpo-drivers` reaches a
+server through a `Transport` the host supplies (open a stream to an
+`Endpoint`, TCP or a Unix socket; spawn a connection's task on the same
+thread), so one driver serves both targets. Its `postgres` feature gives
+`Postgres`, a `Database` over tokio-postgres: a few idle connections kept
+between transactions, each transaction at repeatable read, every statement
+unnamed (`query_typed`, each parameter's type taken from its value), and
+its own binary codecs for the runtime's types. One function classifies
+errors by SQLSTATE: unique, foreign-key and exclusion violations are a
+conflict with the server's constraint name; serialisation failures and
+deadlocks a concurrent change; connection exceptions (class 08), shutdowns
+(57P01–57P03), too many connections, a closed connection and any I/O
+failure unavailable; anything else a fault with its SQLSTATE and message.
+Connections are unencrypted until TLS is built. `jadpo-host-native` gives
+`Runtime` (one current-thread tokio runtime with a `LocalSet`),
+`NativeTransport` over tokio's TCP and Unix sockets, and `postgres(url)`.
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own
@@ -897,7 +918,20 @@ its own step.
 
 **PostgreSQL harness.** `JADPO_TEST_DATABASE_URL`, or a disposable server
 from the local tools (`initdb`, `pg_ctl`) on a Unix socket with `fsync`
-off. Migrations build one template per migration digest; per-test copies
+off. Since chunk 3.1, `jadpo_test::postgres::Server` finds the tools on
+`PATH`, then where `pg_config --bindir` says, then in the newest of the
+usual installs (Postgres.app, `/usr/lib/postgresql/*` on Debian and
+Ubuntu, Homebrew's `postgresql@*`, `/usr/local/pgsql`), and fails saying
+how to get a server when there is none. It makes a cluster in a new
+temporary folder (user `jadpo`, trust authentication, UTF-8, C locale),
+listening only on a socket in that folder with durability off and 300
+connections, and stops it and removes the folder when dropped or, failing
+that, once the process that started it ends. The driver's live tests
+(`crates/jadpo-test/tests/postgres.rs`) share one server per test binary
+and create a database each; `JADPO_SKIP_POSTGRES=1` skips them, as the
+gate's `compiler tests` step does, and the `live PostgreSQL` step runs
+them. CI runs them against a `postgres:16` service named by
+`JADPO_TEST_DATABASE_URL`. Migrations build one template per migration digest; per-test copies
 (`CREATE DATABASE … TEMPLATE`) are prepared in the background (area 13).
 
 **Example-name ban.** `tools/example_names.py` extracts every declared name
