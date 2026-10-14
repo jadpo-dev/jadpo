@@ -82,34 +82,53 @@ fn site_text(program: &Program, frame: Frame, label: &str) -> SiteText {
     let callable = program.callable(frame.callable);
     let site = callable.and_then(|callable| callable.body.sites.get(frame.site as usize));
     let text = callable.and_then(|callable| program.text(&callable.file));
-    let (Some(callable), Some(site), Some(text)) = (callable, site, text) else {
-        let location = program.places().place(frame).map(|place| Location {
-            path: place.file.to_string(),
-            line: place.line,
-            column: 1,
-            source: String::new(),
-            length: 0,
-            label: String::new(),
-        });
-        return SiteText {
-            location,
-            written: String::new(),
-        };
+    let framed = match (callable, site, text) {
+        (Some(callable), Some(site), Some(text)) => framed(callable, site, text, label),
+        _ => None,
     };
-    let start = (site.start as usize).min(text.len());
-    let end = (site.end as usize).clamp(start, text.len());
-    let line_start = text[..start].rfind('\n').map_or(0, |i| i + 1);
-    let line_end = text[start..].find('\n').map_or(text.len(), |i| start + i);
-    let source = text[line_start..line_end].trim_end_matches('\r');
-    let before = visible(&text[line_start..start]);
-    let covered = visible(&text[start..end.min(line_end)]);
-    let written = text[start..end]
+    if let Some(framed) = framed {
+        return framed;
+    }
+    let location = program.places().place(frame).map(|place| Location {
+        path: place.file.to_string(),
+        line: place.line,
+        column: 1,
+        source: String::new(),
+        length: 0,
+        label: String::new(),
+    });
+    SiteText {
+        location,
+        written: String::new(),
+    }
+}
+
+/// A site's place with its line of source; `None` when its range doesn't
+/// fall on the text's characters.
+fn framed(
+    callable: &crate::program::Callable,
+    site: &jadpo_graph::body::Site,
+    text: &str,
+    label: &str,
+) -> Option<SiteText> {
+    let start = site.start as usize;
+    let end = (site.end as usize).max(start);
+    let line_start = text.get(..start)?.rfind('\n').map_or(0, |i| i + 1);
+    let line_end = text
+        .get(start..)?
+        .find('\n')
+        .map_or(text.len(), |i| start + i);
+    let source = text.get(line_start..line_end)?.trim_end_matches('\r');
+    let before = visible(text.get(line_start..start)?);
+    let covered = visible(text.get(start..end.min(line_end))?);
+    let written = text
+        .get(start..end)?
         .lines()
         .next()
         .unwrap_or_default()
         .trim()
         .to_string();
-    SiteText {
+    Some(SiteText {
         location: Some(Location {
             path: callable.file.clone(),
             line: site.line,
@@ -119,7 +138,7 @@ fn site_text(program: &Program, frame: Frame, label: &str) -> SiteText {
             label: label.to_string(),
         }),
         written,
-    }
+    })
 }
 
 /// Frames as area 17 prints them, innermost first, a run of the same
