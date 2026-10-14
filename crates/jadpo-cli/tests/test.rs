@@ -50,7 +50,31 @@ fn loose(name: &str, tests: &[&str]) -> PathBuf {
 
 fn jadpo_in(env: Environment, cwd: &Path, args: &[&str]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
-    run(&args, &env.with_cwd(cwd))
+    let mut output = run(&args, &env.with_cwd(cwd));
+    output.stdout = without_run_time(&output.stdout);
+    output
+}
+
+/// A slow machine adds the run's duration to the footer (` in 0.1 s`);
+/// snapshots compare the output without it.
+fn without_run_time(text: &str) -> String {
+    text.split_inclusive('\n')
+        .map(|line| {
+            let (body, end) = line
+                .strip_suffix('\n')
+                .map_or((line, ""), |body| (body, "\n"));
+            match body.rsplit_once(" in ") {
+                Some((before, time))
+                    if time
+                        .strip_suffix(" s")
+                        .is_some_and(|secs| secs.parse::<f64>().is_ok()) =>
+                {
+                    format!("{before}{end}")
+                }
+                _ => line.to_string(),
+            }
+        })
+        .collect()
 }
 
 fn jadpo(cwd: &Path, args: &[&str]) -> Output {
