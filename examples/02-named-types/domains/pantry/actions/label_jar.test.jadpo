@@ -1,0 +1,10 @@
+test "a label shows the name and the batch" {
+    assert label_jar("Rye", "RY-042") == "Rye / RY-042"
+}
+
+test "text literals can hold quotes and other escapes" {
+    // Strings take `\"`, `\\`, `\n`, `\r` and `\t` escapes. Each counts
+    // as one character towards `max_length`.
+    var name: ShelfName = "\"Dark\" rye"
+    assert label_jar(name, "DR-001") == "\"Dark\" rye / DR-001"
+}

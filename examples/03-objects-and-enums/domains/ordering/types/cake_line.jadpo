@@ -1,0 +1,16 @@
+// `type Name = Object { ... }` declares an object used inside the
+// application. Each line is a field: its name and its type. Every type in
+// Jadpo is written this way, `type Name = Base { ... }`, where the base
+// says what it is built from: a representation such as `Int`, or
+// `Object`, `Enum`, `Input`, `Output` or `Failure` for shapes.
+
+/// One line of an order: which cake, how many, and the price of each.
+type CakeLine = Object {
+    cake: CakeName
+    count: CakeCount
+    // A field can add rules of its own in a block after its type. These
+    // tighten `Pence` for this field only: no single cake costs over £60.
+    each: Pence {
+        max: 6000
+    }
+}

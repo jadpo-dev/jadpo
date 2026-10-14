@@ -1,0 +1,9 @@
+test "flour is charged by the whole kilogram" {
+    // `1.20` is a `PricePerKilo` and the result a `DeliveryCost`, so both
+    // are exact: 2 kilograms at 1.20 is exactly 2.40.
+    assert price_flour(2500, 1.20) == 2.40
+}
+
+test "less than a kilogram costs nothing" {
+    assert price_flour(999, 1.20) == 0.00
+}

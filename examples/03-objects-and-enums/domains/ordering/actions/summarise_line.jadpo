@@ -1,0 +1,71 @@
+// Building a type from other types. Most objects in an application are
+// slices of another: a view that shows some fields, a change where every
+// field may be left out. Instead of writing each field out again, a
+// type's body can copy fields, read from top to bottom:
+//
+//   include: [T]      adds every field of T (never on an `Input`)
+//   pick: [T.a, T.b]  adds just those fields, keeping their names
+//   omit: [T.a]       removes a field that is there at that point
+//   a: SomeType       a written field: adds one, or replaces one above
+//   optional: all     on an `Input`, makes every field optional
+//
+// Copied fields follow their source: their types and rules come with
+// them, and renaming `CakeLine.cake` renames it everywhere it is copied.
+
+/// What the menu board shows for a line.
+type MenuEntry = Output {
+    pick: [CakeLine.cake, CakeLine.each]
+}
+
+/// A line as the receipt prints it.
+type LineReceipt = Output {
+    include: [CakeLine]
+    omit: [CakeLine.count]
+    // A written field replaces a copied field of the same name, visibly:
+    // the receipt's `each` is plain `Pence`, without the line's £60 limit.
+    each: Pence
+    total: Pence
+}
+
+/// A change to a line, where the sender sends only what changes.
+type ChangeLine = Input {
+    pick: [CakeLine.cake, CakeLine.count]
+    optional: all
+}
+
+/// What the menu board shows for `line`.
+function menu_entry(line: CakeLine) -> MenuEntry {
+    return MenuEntry {
+        cake: line.cake
+        each: line.each
+    }
+}
+
+/// `line` with `change` applied: a field left out of the change keeps the
+/// line's value.
+function apply_change(line: CakeLine, change: ChangeLine) -> CakeLine {
+    // An optional field reads as `T?`: `some(value)` when it was sent and
+    // `none` when it was left out. `match` must handle both.
+    var cake: CakeName = match change.cake {
+        some(sent) -> sent
+        none -> line.cake
+    }
+    var count: CakeCount = match change.count {
+        some(sent) -> sent
+        none -> line.count
+    }
+    return CakeLine {
+        cake: cake
+        count: count
+        each: line.each
+    }
+}
+
+/// The receipt line for `line`.
+action summarise_line(line: CakeLine) -> LineReceipt {
+    return LineReceipt {
+        cake: line.cake
+        each: line.each
+        total: Pence(line.each * line.count)
+    }
+}

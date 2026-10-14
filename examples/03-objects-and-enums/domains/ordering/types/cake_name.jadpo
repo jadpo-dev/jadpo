@@ -1,0 +1,5 @@
+/// A cake's name as the menu prints it.
+type CakeName = Text {
+    min_length: 1
+    max_length: 40
+}

@@ -1,0 +1,48 @@
+// Text (`Text`) and the rules text can follow.
+
+/// What a jar on the shelf is called. Lengths count characters, not
+/// bytes, so "Crème" is five long.
+type JarName = Text {
+    min_length: 1
+    max_length: 40
+}
+
+// A refinement: a named type built on another named type, adding rules.
+// A `ShelfName` can be used wherever a `JarName` is expected, because
+// every valid `ShelfName` is a valid `JarName`; never the other way round.
+
+/// A name short enough for the shelf edge. It may only tighten the rules
+/// it inherits: a `max_length` above 40 would be an error.
+type ShelfName = JarName {
+    max_length: 12
+}
+
+/// A batch code such as `RY-042`. A pattern must match the whole text,
+/// and the compiler checks literals against it while compiling.
+type BatchCode = Text {
+    pattern: "[A-Z]{2}-[0-9]{3}"
+}
+
+/// The text printed on a jar. A type with no rules still has a meaning
+/// of its own: a `JarLabel` is not a `JarName`, though both are text.
+type JarLabel = Text {}
+
+/// The text printed on a jar: its shelf name, then its batch code.
+action label_jar(name: ShelfName, batch: BatchCode) -> JarLabel {
+    // `+` joins two texts, and a text literal joins with anything built
+    // on `Text`. Like every operator, it works on the representation, so
+    // the result is a plain `Text`; `JarLabel(...)` gives it its meaning.
+    // `JarLabel` has no rules, so this can never fail. Had it a
+    // `max_length`, the compiler couldn't prove the joined text fits, and
+    // it would ask for `attempt` (example 06).
+    return JarLabel(catalogue_name(name) + " / " + batch)
+}
+
+/// The name the catalogue lists a jar under.
+function catalogue_name(name: ShelfName) -> JarName {
+    // Widening: a `ShelfName` is returned where a `JarName` is expected,
+    // with no conversion, because it is built on `JarName`. Going the
+    // other way, from `JarName` to `ShelfName`, always needs a
+    // constructor, which checks the tighter rules.
+    return name
+}

@@ -1,0 +1,30 @@
+test "repricing builds a new line and leaves the old one alone" {
+    var before: CakeLine = CakeLine {
+        cake: "Carrot"
+        count: 2
+        each: 2400
+    }
+    var after: CakeLine = reprice_line(
+        Reprice {
+            line: before
+            each: 2200
+        }
+    )
+    assert after.each == 2200
+    assert before.each == 2400
+    // Same cake and count, different price: not equal.
+    assert after != before
+}
+
+test "two objects built separately with the same fields are equal" {
+    var line: CakeLine = CakeLine {
+        cake: "Carrot"
+        count: 2
+        each: 2400
+    }
+    assert with_count(line, 3) == CakeLine {
+        cake: "Carrot"
+        count: 3
+        each: 2400
+    }
+}

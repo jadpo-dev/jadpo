@@ -1,0 +1,122 @@
+// Values that arrive from outside, values sent back, and values that may
+// be absent.
+
+// An enum is a closed list of named alternatives, its variants. A variant
+// is always written with its enum's name: `CakeSize.large`.
+
+/// How big a cake is.
+type CakeSize = Enum {
+    small
+    medium
+    large
+}
+
+/// Words iced on top of a cake.
+type Icing = Text {
+    max_length: 30
+}
+
+/// How many candles go on top.
+type CandleCount = Int {
+    min: 0
+    max: 100
+}
+
+// Some values only ever arrive from outside, because no literal or
+// operation makes one inside the application yet: a photo is `Bytes`, a
+// time of day is `Time`. They can still be declared and received.
+
+/// A photo of the cake a customer wants copied.
+type CakePhoto = Bytes {
+    max_length: 2000000
+}
+
+/// The time of day a customer will collect.
+type CollectAt = Time {}
+
+/// An allergy a customer tells the bakery about.
+type Allergen = Text {
+    max_length: 30
+}
+
+/// How strongly a customer reacts to an allergen.
+type Severity = Enum {
+    mild
+    severe
+}
+
+// An `Input` is an object that arrives from outside, such as a request
+// body. It is the only kind of object whose fields may be left out:
+// `optional: true` lets the sender leave a field out, and reading it gives
+// `T?`, which is `none` when it was left out; `default:` fills in a value
+// instead, checked against the field's rules while compiling.
+
+/// What a customer asks for when ordering a cake.
+type CakeRequest = Input {
+    cake: CakeName
+    size: CakeSize {
+        default: CakeSize.medium
+    }
+    candles: CandleCount {
+        default: 0
+    }
+    icing: Icing {
+        optional: true
+    }
+    photo: CakePhoto {
+        optional: true
+    }
+    collect_at: CollectAt {
+        optional: true
+    }
+    // A `Map` holds values by key. Maps arrive from outside as JSON
+    // objects, so a map in an `Input` or `Output` is keyed by text.
+    allergies: Map<Allergen, Severity> {
+        optional: true
+    }
+}
+
+// An `Output` is an object sent back, such as a response. It may hold
+// other objects: here a whole `CakeLine`.
+
+/// What the bakery quotes for a cake.
+type CakeQuote = Output {
+    line: CakeLine
+    // `T?` is a type that may hold `none`. A nullable field is still
+    // required: building a `CakeQuote` must say `icing: none` out loud.
+    icing: Icing?
+    candles: CandleCount
+}
+
+// Every field is a type of its own, written `Owner.field`: here
+// `CakeLine.each` is `Pence` with the field's `max: 6000` added. Returning
+// it, rather than `Pence`, lets `quote_cake` build a `CakeLine` that the
+// compiler knows is valid; a plain `Pence` might be over £60.
+
+/// The price of one cake of `size`.
+function size_price(size: CakeSize) -> CakeLine.each {
+    // `match` chooses between the cases of a value and must cover every
+    // one; here it gives a value, one for each variant. Example 05 shows
+    // every form of `match`.
+    return match size {
+        CakeSize.small -> 1800
+        CakeSize.medium -> 2600
+        CakeSize.large -> 3800
+    }
+}
+
+/// The quote for one cake as `request` describes it.
+action quote_cake(request: CakeRequest) -> CakeQuote {
+    // An object value is written with its type's name and every field.
+    // Unknown fields and missing fields are errors.
+    var line: CakeLine = CakeLine {
+        cake: request.cake
+        count: 1
+        each: size_price(request.size)
+    }
+    return CakeQuote {
+        line: line
+        icing: request.icing
+        candles: request.candles
+    }
+}

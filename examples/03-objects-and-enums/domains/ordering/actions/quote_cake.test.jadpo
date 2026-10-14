@@ -1,0 +1,35 @@
+// A test can build an `Input` as a sender would, leaving out the fields
+// that may be left out. `==` compares objects by their contents, field by
+// field, so a whole expected value can be written out and compared.
+
+test "a plain request quotes a medium cake with no candles" {
+    var request: CakeRequest = CakeRequest {
+        cake: "Lemon drizzle"
+    }
+    assert request.size == CakeSize.medium
+    assert request.icing == none
+    assert quote_cake(request) == CakeQuote {
+        line: CakeLine {
+            cake: "Lemon drizzle"
+            count: 1
+            each: 2600
+        }
+        icing: none
+        candles: 0
+    }
+}
+
+test "a request's own choices replace the defaults" {
+    var request: CakeRequest = CakeRequest {
+        cake: "Chocolate"
+        size: CakeSize.large
+        candles: 7
+        icing: "Happy birthday"
+    }
+    var quote: CakeQuote = quote_cake(request)
+    // Reading through nested objects: `quote.line.each` has the field type
+    // `CakeLine.each`.
+    assert quote.line.each == 3800
+    assert quote.icing == "Happy birthday"
+    assert quote.candles == 7
+}
