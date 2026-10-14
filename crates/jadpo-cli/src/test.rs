@@ -7,11 +7,12 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use jadpo_diag::{Diagnostic, Severity, nearest, rule};
-use jadpo_term::{Block, Fact, Json, Outcome, Screen};
+use jadpo_term::{Block, ColorChoice, Fact, Json, Outcome, Screen};
 use jadpo_test::{Options, Ran, TestKind};
 
 use crate::fmt::project_not_found;
-use crate::run::{Call, Reply, either, quoted};
+use crate::run::{Call, Reply, Session, either, quoted};
+use crate::watch::WatchArgs;
 
 pub fn test(call: &Call) -> Reply {
     let kind = match call.value("--kind") {
@@ -55,23 +56,58 @@ pub fn test(call: &Call) -> Reply {
         failed: call.flag("--failed"),
         seed,
     };
-    match jadpo_test::run(options) {
+    if call.flag("--watch") {
+        // Mistakes in what to run end the command before it starts
+        // watching; everything after (errors in the code, no tests yet)
+        // is shown and waited out.
+        return match jadpo_test::watch::validate(&options) {
+            Some(ran) => reply(ran),
+            None => Reply::Session(Session::Watch(Box::new(WatchArgs {
+                options,
+                json: false,
+                choice: ColorChoice::Auto,
+            }))),
+        };
+    }
+    reply(jadpo_test::run(options))
+}
+
+/// What a request to run tests ended in, as a reply.
+pub(crate) fn reply(ran: Ran) -> Reply {
+    match ran {
         Ran::NoProject => project_not_found("test"),
+        Ran::Stopped(diagnostic) if diagnostic.rule.id.starts_with("cli.") => {
+            Reply::Failed(diagnostic)
+        }
+        ran => {
+            let (screen, data, diagnostics, sources) = view(ran);
+            Reply::Report {
+                screen,
+                data,
+                diagnostics,
+                sources,
+            }
+        }
+    }
+}
+
+/// A run, or why nothing ran, as a screen, the data for `--json`, and the
+/// diagnostics with their sources.
+pub(crate) fn view(ran: Ran) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String, String>) {
+    match ran {
+        Ran::NoProject => (Screen::new(), Json::Null, Vec::new(), BTreeMap::new()),
         Ran::Refused {
             diagnostics,
             sources,
             files,
         } => refused(diagnostics, sources, files),
-        Ran::Stopped(diagnostic) if diagnostic.rule.id.starts_with("cli.") => {
-            Reply::Failed(diagnostic)
-        }
-        Ran::Stopped(diagnostic) => Reply::Report {
-            screen: Screen::new().with(Block::diagnostic(&diagnostic, &())),
-            data: Json::Null,
-            diagnostics: vec![*diagnostic],
-            sources: BTreeMap::new(),
-        },
-        Ran::NothingToRerun => Reply::screen(
+        Ran::Stopped(diagnostic) => (
+            Screen::new().with(Block::diagnostic(&diagnostic, &())),
+            Json::Null,
+            vec![*diagnostic],
+            BTreeMap::new(),
+        ),
+        Ran::NothingToRerun => (
             Screen::new().with(Block::summary(
                 Outcome::Success,
                 "nothing to rerun",
@@ -81,6 +117,8 @@ pub fn test(call: &Call) -> Reply {
                 ("selection", Json::object([("failed", true.into())])),
                 ("tests", Json::Array(Vec::new())),
             ]),
+            Vec::new(),
+            BTreeMap::new(),
         ),
         Ran::Done(run) => {
             let failed = run.failed();
@@ -100,12 +138,12 @@ pub fn test(call: &Call) -> Reply {
             } else {
                 Vec::new()
             };
-            Reply::Report {
-                screen: jadpo_test::screen(&run),
-                data: jadpo_test::json(&run),
+            (
+                jadpo_test::screen(&run),
+                jadpo_test::json(&run),
                 diagnostics,
-                sources: BTreeMap::new(),
-            }
+                BTreeMap::new(),
+            )
         }
     }
 }
@@ -132,7 +170,11 @@ fn count(n: usize, one: &str, many: &str) -> String {
 }
 
 /// The project's errors, then why nothing ran.
-fn refused(diagnostics: Vec<Diagnostic>, sources: BTreeMap<String, String>, files: usize) -> Reply {
+fn refused(
+    diagnostics: Vec<Diagnostic>,
+    sources: BTreeMap<String, String>,
+    files: usize,
+) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String, String>) {
     let errors = diagnostics
         .iter()
         .filter(|d| d.severity() == Severity::Error)
@@ -154,10 +196,5 @@ fn refused(diagnostics: Vec<Diagnostic>, sources: BTreeMap<String, String>, file
         ("errors", errors.into()),
         ("warnings", warnings.into()),
     ]);
-    Reply::Report {
-        screen,
-        data,
-        diagnostics,
-        sources,
-    }
+    (screen, data, diagnostics, sources)
 }

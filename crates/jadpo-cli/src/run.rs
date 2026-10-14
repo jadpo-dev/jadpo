@@ -12,6 +12,7 @@ use crate::completion;
 use crate::help;
 use crate::suggest::nearest;
 use crate::table::{self, COLORS, Command, Flag, GLOBAL_FLAGS};
+use crate::watch::WatchArgs;
 
 /// What one run of `jadpo` writes and how it exits.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +30,8 @@ pub struct Output {
 pub enum Session {
     /// `jadpo lsp`, started in this folder.
     Lsp(PathBuf),
+    /// `jadpo test --watch`, until it is stopped.
+    Watch(Box<WatchArgs>),
 }
 
 /// Everything a command's `run` function receives.
@@ -169,7 +172,7 @@ fn finish_report(
     }
 }
 
-fn finish(
+pub(crate) fn finish(
     name: Option<&str>,
     reply: Reply,
     env: &Environment,
@@ -177,6 +180,17 @@ fn finish(
     choice: ColorChoice,
 ) -> Output {
     let (data, diagnostic, text) = match reply {
+        // The session writes everything itself, in the form asked for.
+        Reply::Session(Session::Watch(mut args)) => {
+            args.json = json;
+            args.choice = choice;
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(Session::Watch(args)),
+            };
+        }
         Reply::Session(session) => {
             // A person who starts it by hand learns what it is waiting for;
             // an editor, which pipes standard input, sees nothing.

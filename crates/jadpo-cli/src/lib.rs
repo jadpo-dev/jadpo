@@ -12,5 +12,6 @@ mod run;
 mod suggest;
 mod table;
 mod test;
+pub mod watch;
 
 pub use run::{Output, Session, run};

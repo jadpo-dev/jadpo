@@ -43,6 +43,43 @@ impl Json {
         out
     }
 
+    /// The document on one line, newline-terminated: one object per line
+    /// for streaming commands (CLI design language, "Plain and `--json`").
+    pub fn to_line(&self) -> String {
+        let mut out = String::new();
+        self.write_line(&mut out);
+        out.push('\n');
+        out
+    }
+
+    fn write_line(&self, out: &mut String) {
+        match self {
+            Json::Array(items) => {
+                out.push('[');
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    item.write_line(out);
+                }
+                out.push(']');
+            }
+            Json::Object(entries) => {
+                out.push('{');
+                for (i, (key, value)) in entries.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    write_string(out, key);
+                    out.push(':');
+                    value.write_line(out);
+                }
+                out.push('}');
+            }
+            scalar => scalar.write(out, 0),
+        }
+    }
+
     fn write(&self, out: &mut String, indent: usize) {
         match self {
             Json::Null => out.push_str("null"),

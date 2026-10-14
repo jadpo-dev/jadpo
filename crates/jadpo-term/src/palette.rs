@@ -85,6 +85,8 @@ pub enum Symbol {
     Separator,
     Gutter,
     Cut,
+    /// The ends of a watch rule.
+    Rule,
 }
 
 impl Symbol {
@@ -104,6 +106,7 @@ impl Symbol {
             Symbol::Separator => ("·", ","),
             Symbol::Gutter => ("│", "|"),
             Symbol::Cut => ("…", "..."),
+            Symbol::Rule => ("──", "--"),
         };
         match symbols {
             Symbols::Unicode => unicode,
@@ -125,7 +128,8 @@ impl Symbol {
             | Symbol::Skipped
             | Symbol::Separator
             | Symbol::Gutter
-            | Symbol::Cut => Some(Token::Muted),
+            | Symbol::Cut
+            | Symbol::Rule => Some(Token::Muted),
         }
     }
 }
