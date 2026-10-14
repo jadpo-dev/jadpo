@@ -198,25 +198,16 @@ impl Types {
         validator
     }
 
-    /// The fields whose parent is `parent`, in the order they are written.
+    /// The fields whose parent is `parent`, in the order they are declared,
+    /// copied fields where the line that copied them stands.
     fn fields(&self, parent: &Key) -> Vec<Field> {
         let Some(id) = self.graph.find(parent) else {
             return Vec::new();
         };
-        let mut found: Vec<&Node> = self
-            .graph
-            .children(id)
-            .map(|child| self.graph.node(child))
-            .filter(|node| node.kind == Kind::Field)
-            .collect();
-        found.sort_by_key(|node| {
-            (
-                node.place.as_ref().map_or(u32::MAX, |p| p.start),
-                node.key.clone(),
-            )
-        });
-        found
+        self.graph
+            .fields(id)
             .into_iter()
+            .map(|child| self.graph.node(child))
             .filter_map(|node| match &node.detail {
                 Detail::Field {
                     section,

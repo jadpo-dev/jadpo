@@ -2562,6 +2562,11 @@ Rules:
 
 - **Top to bottom.** The same kind of line may appear more than once, and the
   formatter keeps the order written, because order matters here.
+- **Fields keep their declared order.** Copied fields stand where their
+  `include` or `pick` line is, an `include`'s in the order its type
+  declares them and a `pick`'s in the order listed; a written field that
+  replaces a copied one takes its place. Values, hover and the manifest
+  (each field's `order`) follow it (built in chunk 2.7).
 - **Lists are always in brackets**, even with one entry: `include: [Todo]`.
 - **`omit` removes only what is there.** Omitting a field that is not present
   at that point is an error, which catches typos and fields since removed.
