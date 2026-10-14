@@ -155,7 +155,7 @@ renaming a domain or an entity is one line.
   refer to events, subscribers and schedules. Renaming a subscriber must
   not orphan its pending deliveries, any more than renaming a field may
   lose its column.
-- **Physical names never change.** The table stays `todos` and the column
+- **Physical names never change.** The table stays `todo` and the column
   `priority`. Migration snapshots hold the whole schema with physical names,
   so a rename made by hand shows as a removal and an addition, and
   `jadpo migrate new` refuses it with a pointer to `jadpo rename` (area 14).
