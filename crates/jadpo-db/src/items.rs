@@ -274,7 +274,12 @@ fn lower(decl: &Decl, index: u32) -> Option<Item> {
         },
         Decl::FixtureDecl(decl) => Item {
             signature: signature(decl.param_list(), None, decl.ret_type()),
-            ..item(ItemKind::Fixture, name_of(decl.name())?, false, index)
+            ..item(
+                ItemKind::Fixture,
+                name_of(decl.name())?,
+                decl.visibility().is_some(),
+                index,
+            )
         },
         Decl::EntityDecl(decl) => Item {
             transitions: members(decl.member_list())

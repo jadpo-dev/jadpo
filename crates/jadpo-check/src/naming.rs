@@ -48,7 +48,8 @@ fn callable_and_its_type(path: &str, item: &Item, in_library: bool, other: &Symb
 
 /// `public` on a declaration that isn't part of a domain's interface: only
 /// types (failures and events among them), entities, queries, libraries and
-/// actions are offered to other domains (area 1).
+/// actions are offered to other domains, and fixtures to their tests,
+/// fixtures and seeds (areas 1 and 13, decided 2026-10-14).
 fn public_not_allowed(path: &str, decl: &jadpo_syntax::ast::Decl) -> Option<Diagnostic> {
     use jadpo_syntax::ast::{AstNode, Decl};
     let word = match decl {
@@ -56,9 +57,9 @@ fn public_not_allowed(path: &str, decl: &jadpo_syntax::ast::Decl) -> Option<Diag
         | Decl::EntityDecl(_)
         | Decl::QueryDecl(_)
         | Decl::LibraryDecl(_)
-        | Decl::ActionDecl(_) => return None,
+        | Decl::ActionDecl(_)
+        | Decl::FixtureDecl(_) => return None,
         Decl::FunctionDecl(_) => "function",
-        Decl::FixtureDecl(_) => "fixture",
         Decl::RoutesDecl(_) => "route group",
         Decl::ScheduleDecl(_) => "schedule",
         Decl::SubscriberDecl(_) => "subscriber",
@@ -78,7 +79,7 @@ fn public_not_allowed(path: &str, decl: &jadpo_syntax::ast::Decl) -> Option<Diag
             "A {word} is a trigger: nothing calls it, so there is nothing to offer another domain; who reaches a route is decided by the route and its policy."
         ),
         _ => format!(
-            "A domain offers other domains its types, entities, queries, libraries and actions; a {word} is never called from another domain."
+            "A domain offers other domains its types, entities, queries, libraries and actions, and their tests its fixtures; a {word} is never called from another domain."
         ),
     };
     Some(
