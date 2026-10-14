@@ -182,6 +182,11 @@ reference only).
   graph and classifies every edge kind, so later edges can't be missed.
   Bodies and the graph shared behind `Arc`; the duplicated report code
   merged. Sets use the canonical order area 2 decides ("Set order"), from one shared comparator.
+- [ ] **2.11 Named collection construction** `opus · high`: `Names(found)`
+  builds a named list, set or map type from a collection of its item type,
+  checking only the collection's own rules, with arms, `invalid:` and proof
+  as for any construction (area 2, "Named collection construction"); page
+  examples, a teaching example and its errors.
 
 ## Phase 3 — Data (areas 5, 6)
 
