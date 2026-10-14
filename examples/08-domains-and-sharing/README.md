@@ -25,11 +25,11 @@ this project:
 
 ```sh
 cargo build --release -p jadpo-cli
-target/release/jadpo check examples/07-domains-and-sharing
-target/release/jadpo test examples/07-domains-and-sharing
-target/release/jadpo test examples/07-domains-and-sharing/tests/flour_runs_out.test.jadpo:6
-target/release/jadpo test examples/07-domains-and-sharing --watch
-target/release/jadpo fmt --check examples/07-domains-and-sharing
+target/release/jadpo check examples/08-domains-and-sharing
+target/release/jadpo test examples/08-domains-and-sharing
+target/release/jadpo test examples/08-domains-and-sharing/tests/flour_runs_out.test.jadpo:6
+target/release/jadpo test examples/08-domains-and-sharing --watch
+target/release/jadpo fmt --check examples/08-domains-and-sharing
 ```
 
 - `check` ends with `checked: <n> files` and no errors. It also writes
@@ -52,4 +52,4 @@ target/release/jadpo fmt --check examples/07-domains-and-sharing
   <!-- try {"file": "domains/pantry/fixtures/a_days_flour.jadpo", "replace": "public fixture a_days_flour", "with": "fixture a_days_flour", "check": ["visibility.private_cross_domain"]} -->
 - In `tests/flour_runs_out.test.jadpo`, add `assert sacks.grams_in(1) == 16000`. `jadpo check` reports `visibility.private_cross_domain`: a scenario can't use `pantry`'s private library, though the pantry's own tests can.
   <!-- try {"file": "tests/flour_runs_out.test.jadpo", "replace": "    assert pantry.take_flour(16001, 1) fails FlourShort\n", "with": "    assert pantry.take_flour(16001, 1) fails FlourShort\n    assert sacks.grams_in(1) == 16000\n", "check": ["visibility.private_cross_domain"]} -->
-- Then read [08-testing](../08-testing/README.md).
+- Then read [09-bakery-orders](../09-bakery-orders/README.md).

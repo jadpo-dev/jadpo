@@ -57,4 +57,4 @@ target/release/jadpo fmt --check examples/06-failures
   <!-- try {"file": "domains/sales/actions/double_checked.jadpo", "replace": "if (count * 2 > 24)", "with": "if (count * 2 > 30)", "check": ["failure.attempt_required"]} -->
 - In `order_shelf.jadpo`, delete the `invalid: ShelfEmpty` line. `jadpo check` reports `failure.rule_unmapped`: an empty shelf breaks `min: 1`, and nothing maps it.
   <!-- try {"file": "domains/sales/actions/order_shelf.jadpo", "replace": "        invalid: ShelfEmpty\n", "with": "", "check": ["failure.rule_unmapped"]} -->
-- Then read [07-domains-and-sharing](../07-domains-and-sharing/README.md).
+- Then read [07-testing](../07-testing/README.md).

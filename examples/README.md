@@ -25,10 +25,11 @@ README saying what it teaches, how to run it and what to try next.
 6. [06-failures/](06-failures/README.md): declaring failures, `fails`,
    `reject`, `attempt`, checks that can fail, a condition that proves one
    can't, and handling failures with `match`.
-7. [07-domains-and-sharing/](07-domains-and-sharing/README.md): several
-   domains, `public`, `shared/`, libraries, and a scenario in `tests/`.
-8. [08-testing/](08-testing/README.md): test kinds, fixtures, and
+7. [07-testing/](07-testing/README.md): test kinds, fixtures, and
    asserting failures.
+8. [08-domains-and-sharing/](08-domains-and-sharing/README.md): several
+   domains, `public`, `shared/`, libraries, a public fixture, and a
+   scenario in `tests/`.
 9. [09-bakery-orders/](09-bakery-orders/README.md): a fuller project
    that puts all of it together.
 

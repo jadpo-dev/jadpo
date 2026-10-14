@@ -4,7 +4,7 @@
 //
 // Types and helpers that only this file uses live here too. When a second
 // file needs one, the compiler asks you to move it to a shared place
-// (example 07 shows where).
+// (example 08 shows where).
 
 // A named type: a built-in representation (`Int`), a name that says what
 // the value means, and the rules every valid value follows. `Pence` and
