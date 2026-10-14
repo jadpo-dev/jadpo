@@ -23,8 +23,8 @@ README saying what it teaches, how to run it and what to try next.
 5. [05-logic/](05-logic/README.md): operators, `if` chains, every form
    of `match`, division with rounding, and recursion.
 6. [06-failures/](06-failures/README.md): declaring failures, `fails`,
-   `reject`, `attempt`, checks that can fail, and handling failures with
-   `match`.
+   `reject`, `attempt`, checks that can fail, a condition that proves one
+   can't, and handling failures with `match`.
 7. [07-domains-and-sharing/](07-domains-and-sharing/README.md): several
    domains, `public`, `shared/`, libraries, and a scenario in `tests/`.
 8. [08-testing/](08-testing/README.md): test kinds, fixtures, and

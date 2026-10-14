@@ -285,7 +285,7 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
     return CakeCount(n)  // neither condition held, so 1 to 12
 }
 
-function within(n: Count) fails OrderTooLarge -> CakeCount {
+function inside_range(n: Count) fails OrderTooLarge -> CakeCount {
     if (n >= 1 and n <= 12) {
         return CakeCount(n)  // both hold here
     }
