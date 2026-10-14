@@ -197,9 +197,7 @@ impl Program {
     /// name.
     pub fn variant(&self, ty: &str, variant: &str, fields: Vec<(&str, Value)>) -> Option<Value> {
         let key = Key::new(Kind::Variant, &format!("{ty}.{variant}"));
-        if self.types.graph().get(&key).is_none() {
-            return None;
-        }
+        self.types.graph().get(&key)?;
         self.fields_by_name(&key, fields)
     }
 

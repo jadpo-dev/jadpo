@@ -492,34 +492,20 @@ impl Lower<'_> {
             }
             Expr::MatchExpr(subject) => self.match_expr(subject),
             Expr::AttemptExpr(attempt) => {
-                let mapped = self.facts.mapped.get(&key).cloned();
-                let invalid = mapped.as_deref().and_then(|failure| self.type_key(failure));
+                let invalid = self
+                    .facts
+                    .mapped
+                    .get(&key)
+                    .and_then(|failure| self.type_key(failure));
+                for mapping in attempt.mappings() {
+                    if let Some(value) = mapping.expr() {
+                        self.scan(value.syntax());
+                    }
+                }
                 let outer = std::mem::replace(&mut self.invalid, invalid.clone());
                 let inner = attempt.expr().map(|inner| self.expr(&inner));
                 self.invalid = outer;
-                // The mapped failure's fields are values the runtime gives
-                // it; anything else written in a mapping is only named.
-                let mut fields = Vec::new();
-                for mapping in attempt.mappings() {
-                    let condition = mapping.name().as_ref().and_then(tree::name_text);
-                    match (mapping.expr(), &mapped) {
-                        (Some(Expr::RecordExpr(record)), Some(failure))
-                            if fields.is_empty() && condition.as_deref() == Some("invalid") =>
-                        {
-                            if let Some(Expr::NameRef(name)) = record.expr() {
-                                self.path_names(&[name]);
-                            }
-                            fields = self.fields_given(record.member_list(), failure, &[]);
-                        }
-                        (Some(value), _) => self.scan(value.syntax()),
-                        (None, _) => {}
-                    }
-                }
-                typed::Expr::Attempt {
-                    inner,
-                    invalid,
-                    fields,
-                }
+                typed::Expr::Attempt { inner, invalid }
             }
             Expr::RejectExpr(reject) => self.reject(reject),
             Expr::PropagateExpr(_) => typed::Expr::Propagate {

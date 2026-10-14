@@ -232,6 +232,8 @@ impl Report {
         };
         fields.push(("reason", vec![reason]));
         fields.push(("next", vec![format!("{next} ({decider})")]));
+        fields.push(("stack", stack(program, &fault.frames)));
+        // The one runtime problem the catalogue has a rule for.
         if let FaultKind::NotBuiltYet(_) = fault.kind {
             fields.push(("rule", vec!["toolchain.not_built_yet".to_string()]));
             fields.push((
@@ -239,7 +241,6 @@ impl Report {
                 vec!["docs/language/03-logic.html#toolchain-not-built-yet".to_string()],
             ));
         }
-        fields.push(("stack", stack(program, &fault.frames)));
         Report {
             word: "fault",
             subject: format!("{} in {label}", fault.kind.classification()),
@@ -293,7 +294,19 @@ impl Report {
                     });
                 format!(" from {}{place}", program.places().label(frame.callable))
             });
-            causes.push(format!("`{}`{from}", found.name));
+            // Its internal fields by name, as area 4's log example shows
+            // a cause: never the values.
+            let internal: Vec<&str> = found
+                .internal
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect();
+            let internal = if internal.is_empty() {
+                String::new()
+            } else {
+                format!(" (internal: {})", internal.join(", "))
+            };
+            causes.push(format!("`{}`{from}{internal}", found.name));
             cause = found.cause.as_deref();
         }
         if !causes.is_empty() {

@@ -42,7 +42,7 @@ struct Running<'p> {
     /// The failures the `match` arms being run handle, innermost last:
     /// what `propagate` passes on and what a `reject` there keeps as its
     /// cause.
-    handling: Vec<Box<Failure>>,
+    handling: Vec<Failure>,
 }
 
 pub(crate) struct Interp<'p> {
@@ -395,14 +395,10 @@ impl<'p> Interp<'p> {
                 outcome,
                 arms,
             } => self.matching(f, id, *subject, *outcome, arms),
-            Expr::Attempt {
-                inner,
-                invalid,
-                fields,
-            } => self.attempt(f, id, *inner, invalid.as_ref(), fields),
+            Expr::Attempt { inner, invalid } => self.attempt(id, *inner, invalid.as_ref(), f),
             Expr::Reject { failure, fields } => self.reject(f, id, failure.as_ref(), fields),
             Expr::Propagate { .. } => match f.handling.last() {
-                Some(failure) => Err(Stop::Failed(failure.clone())),
+                Some(failure) => Err(Stop::Failed(Box::new(failure.clone()))),
                 None => Err(self.defect("`propagate` outside a failure arm", id)),
             },
             Expr::Inline { .. } => {
@@ -703,7 +699,7 @@ impl<'p> Interp<'p> {
         let Some(mut failure) = self.program.types.failure(key, given) else {
             return Err(self.defect("a `reject` of something that isn't a failure", id));
         };
-        failure.cause = f.handling.last().cloned();
+        failure.cause = f.handling.last().cloned().map(Box::new);
         Err(Stop::Failed(self.ctx.fail(failure, id.0)))
     }
 
@@ -711,24 +707,20 @@ impl<'p> Interp<'p> {
     /// construction's broken rule becomes the failure `invalid:` names.
     fn attempt(
         &mut self,
-        f: &mut Running<'p>,
         id: SiteId,
         inner: Option<SiteId>,
         invalid: Option<&Key>,
-        fields: &'p [(Key, SiteId)],
+        f: &mut Running<'p>,
     ) -> Eval<Value> {
         let Some(inner) = inner else {
             return Err(self.defect("an `attempt` without a call", id));
         };
         match self.eval(f, inner) {
             Err(Stop::Invalid(broken)) => {
-                let Some(key) = invalid else {
-                    return Err(self.defect("a construction that can fail, with no `invalid:`", id));
-                };
-                let given = self.given(f, fields)?;
-                let Some(mut failure) = self.program.types.failure(key, given) else {
+                let failure = invalid.and_then(|key| self.program.types.failure(key, Vec::new()));
+                let Some(mut failure) = failure else {
                     return Err(
-                        self.defect("an `invalid:` naming something that isn't a failure", id)
+                        self.defect("a construction that can fail, with no failure for it", id)
                     );
                 };
                 failure.broken = Some(broken);
@@ -805,7 +797,7 @@ impl<'p> Interp<'p> {
                         .collect();
                     self.set(f, Some(binding), Value::record(&failure.name, fields), id)?;
                 }
-                f.handling.push(failure);
+                f.handling.push(*failure);
                 let result = self.arm(f, arm);
                 f.handling.pop();
                 result
