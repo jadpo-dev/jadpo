@@ -19,7 +19,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code outside the collapsed boxes applies the decisions from areas 1 to 12. Today the compiler checks `job` declarations but cannot run them, and events and subscribers do not parse at all.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Nothing here is built yet: events and subscribers come in chunk 6.1, schedules in chunk 6.2.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -60,28 +60,6 @@ schedule overdue_reminders {
   retry. Schedules have no retry settings.
 - Entities with `purge:` in their lifecycle (area 5) get a built-in hourly
   purge schedule from the compiler; nothing is written for it.
-
-::: today
-
-Today's form puts the interval in the header and requires two settings that
-each accept only one value. The action must take exactly one parameter of a
-named `Instant` type, built from `clock.now` in the call. This checks, but
-`jadpo build` refuses it with `toolchain.target_job_not_implemented`, so no
-job ever runs.
-
-```jadpo project=today-job
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: scan(JobRunAt(clock.now))
-    retry: next_schedule
-}
-```
-
-:::
 
 ## Batch work keeps its progress
 
@@ -149,26 +127,6 @@ public type TodoCompleted = Event {
 - An event nothing subscribes to is reported like any unused declaration
   (area 1).
 
-::: today
-
-No event can be declared: `event` is not a declaration keyword
-(`syntax.expected_declaration`, compiled). The unbuilt candidate design
-groups events into families with per-variant policy:
-
-```jadpo fragment
-event TodoEvent {
-    completed {
-        todo_id: Todo.id
-        completed_at: Instant
-    }
-    reopened {
-        todo_id: Todo.id
-    }
-}
-```
-
-:::
-
 ## Emitting an event
 
 `emit` is a statement, written like `reject` (question 4).
@@ -197,14 +155,6 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
   storage problem is a fault that fails the whole action (areas 3 and 4).
 - `emit` returns nothing. The caller cannot wait for or read what
   subscribers do.
-
-::: today
-
-Nothing parses. The candidate design writes
-`attempt emit_event(TodoEvent.completed { todo_id: input.id })`, a lowercase
-intrinsic with no owner and an `attempt` on something that cannot fail.
-
-:::
 
 ## Subscribers
 
@@ -411,49 +361,20 @@ Numbers are recommendations to confirm with measured runs (question 12).
 
 ## The delivery descriptor
 
-Today's grammar has a 45-line closed sub-language inside a job,
-`delivery: reminder_v1 { selection: ... hooks: ... service: ... authority: ... completion: ... }`,
-written for exactly one feature: overdue-todo reminders. It restates a query
-(`order_by: Todo.due_at asc, Todo.id asc`, `limit: 500`), accepts only
-literal values such as `limit: 500` and `"reminder.v1"`, and can never pass
-checking: every descriptor fails with
-`type.job_delivery_binding_not_implemented`. The batch pattern above does the
-same job with an ordinary query, an ordinary action and an ordinary
-subscriber. Recommendation: delete it, with its 14 syntax rules and 6 type
-rules (question 2).
-
-::: today
-
-The full descriptor and its errors are under
-[`type.job_delivery_binding_not_implemented`](#type-job-delivery-binding-not-implemented).
-An excerpt:
-
-```jadpo fragment
-delivery: reminder_v1 {
-    selection: {
-        name: reminder_candidates
-        entity: Todo
-        before: operation_time
-        order_by: Todo.due_at asc, Todo.id asc
-        limit: 500
-        ...
-    }
-    authority: {
-        validator: api_bearer.service_key
-        permit: reminder_only
-        ...
-    }
-}
-```
-
-:::
+There is none. An earlier design put a 45-line closed sub-language inside a
+job, `delivery: reminder_v1 { selection: ... hooks: ... service: ... authority: ... completion: ... }`,
+written for exactly one feature: overdue-todo reminders. It restated a query
+(`order_by: Todo.due_at asc, Todo.id asc`, `limit: 500`) and accepted only
+literal values such as `limit: 500` and `"reminder.v1"`. The batch pattern
+above does the same job with an ordinary query, an ordinary action and an
+ordinary subscriber, so the descriptor is deleted, with its 14 syntax rules
+and 6 type rules (question 2).
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten or removed as the rework lands.
+> These examples predate the decisions above and are rewritten or removed when the area is built (roadmap Phase 6).
 
-Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+Every error this area can produce, with an example that triggers it.
 
 ### `syntax.job_every_required`
 
@@ -484,8 +405,6 @@ job overdue_reminders every 15 {
 ```
 
 ### `type.job_interval_invalid`
-
-`1d` is rejected today, as is zero:
 
 ```jadpo project=e-interval expect=type.job_interval_invalid
 type JobRunAt = Instant {}
@@ -586,9 +505,6 @@ public job overdue_reminders every 15m {
 
 ### `type.job_run_signature_invalid`
 
-An action with no parameters, the form question 1 proposes, is rejected
-today:
-
 ```jadpo project=e-run-signature expect=type.job_run_signature_invalid
 action scan() -> Unit {}
 
@@ -615,7 +531,7 @@ job overdue_reminders every 15m {
 
 ### `type.job_delivery_binding_not_implemented`
 
-Every complete descriptor fails, whatever it says:
+A complete descriptor:
 
 ```jadpo project=e-delivery-binding expect=type.job_delivery_binding_not_implemented
 type ReminderRunAt = Instant {}
@@ -679,9 +595,9 @@ job overdue_reminders every 15m {
 ### `type.job_delivery_hook_invalid`
 
 The same descriptor on its own, without the entities and actions it names,
-also fails with "Delivery hooks or competing writes cannot be proved" on its
-`create:` and `patch:` lines. The example is the one above, compiled
-separately and not repeated, since question 2 removes the rule.
+reports "Delivery hooks or competing writes cannot be proved" on its
+`create:` and `patch:` lines. The example is the one above, hidden rather
+than repeated, since question 2 removes the rule.
 
 ```jadpo project=e-delivery-hook expect=type.job_delivery_hook_invalid hidden
 type ReminderRunAt = Instant {}
@@ -744,9 +660,9 @@ job overdue_reminders every 15m {
 
 ### `type.job_delivery_authority_invalid`
 
-The same descriptor also fails with "Delivery authority does not compose to
-its selected service identity" on its `authority:` section (compiled
-separately, not repeated).
+The same descriptor also reports "Delivery authority does not compose to
+its selected service identity" on its `authority:` section (hidden, not
+repeated).
 
 ```jadpo project=e-delivery-authority expect=type.job_delivery_authority_invalid hidden
 type ReminderRunAt = Instant {}
@@ -888,7 +804,7 @@ job overdue_reminders every 15m {
 
 ### `syntax.job_delivery_term_invalid`
 
-A few slots accept only a fixed compiler word:
+A slot given something other than its fixed word:
 
 ```jadpo project=e-delivery-term expect=syntax.job_delivery_term_invalid
 type ReminderRunAt = Instant {}
@@ -932,7 +848,7 @@ job overdue_reminders every 15m {
 
 ### `syntax.job_delivery_limit_invalid`
 
-The limit can only be 500:
+A limit other than 500:
 
 ```jadpo project=e-delivery-limit expect=syntax.job_delivery_limit_invalid
 type ReminderRunAt = Instant {}
@@ -972,7 +888,7 @@ job overdue_reminders every 15m {
 
 ### `syntax.job_delivery_syntax_invalid`
 
-The ordering must name exactly two fields:
+An ordering that names one field:
 
 ```jadpo project=e-delivery-syntax expect=syntax.job_delivery_syntax_invalid
 type ReminderRunAt = Instant {}
@@ -993,7 +909,7 @@ job overdue_reminders every 15m {
 
 ### `syntax.job_delivery_version_invalid`
 
-The payload version can only be `"reminder.v1"`:
+A payload version other than `"reminder.v1"`:
 
 ```jadpo project=e-delivery-version expect=syntax.job_delivery_version_invalid
 type ReminderRunAt = Instant {}
@@ -1016,17 +932,10 @@ job overdue_reminders every 15m {
 
 ### Status
 
-Each row says how it was checked: compiled with `jadpo check` or `jadpo
-build`, or read from source and the design documents.
-
-| Feature | Status |
-|---|---|
-| `job` declarations | Check works: the interval, all three clauses, their single allowed values and the action's signature are enforced (compiled). **Gap:** `jadpo build` refuses every job with `toolchain.target_job_not_implemented`; there is no scheduler, worker, outbox or retry at runtime (compiled). |
-| Scheduled action shape | The action must take exactly one parameter of a named `Instant` type and return `Unit`; a parameterless action and `scan(clock.now)` are rejected (compiled). `1d` is rejected; intervals stop at hours (compiled). |
-| Events and subscribers | **Not built.** `event` and `subscriber` are not declaration keywords (`syntax.expected_declaration`, compiled); `type X = Event { }` reports `Event` as unknown (compiled). The design is a candidate in the event model. |
-| Delivery descriptor | Parses with every key checked, then always fails with `type.job_delivery_binding_not_implemented` (compiled). `type.job_delivery_selector_invalid`, `type.job_delivery_service_invalid` and `type.job_delivery_sealed_use` are raised only inside the compiler's own tests: `jadpo check` on the golden migration plus the reminder fixture shows only the binding error (compiled). |
-| Golden todo reminders | **Design problem (read from source):** `send_due_reminders` in `examples/golden-todo/app.jadpo` calls the mail provider for up to 500 todos inside one all-or-nothing action, so a failure part-way cannot undo the emails already sent. The batch pattern on this page replaces it. The golden migration has no job at all. |
-| Durable semantics | ASYNC-001 (frozen 2026-10-04) defines states, leases, fencing, budgets and dead letters; none is implemented (read from the plan and build refusal). |
+Nothing in this area is built yet. Events, subscribers and retries come in
+chunk 6.1, and schedules, their leases and monitoring basics in chunk 6.2;
+on Cloudflare Workers, the cron tick and outbox delivery after commit come in
+chunk 8.2.
 
 ### Consistency with the rest of the language
 

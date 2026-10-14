@@ -12,7 +12,7 @@ Which common backend features Jadpo should provide itself, rather than
 leaving each application to install a library or write its own: feature
 flags, rate limits, files, audit trails, tracing, email and search.
 
-> Decided on 2026-10-13. Nothing on this page is built yet; examples apply the decisions from areas 1 to 16.
+> Decided on 2026-10-13. Nothing on this page is built yet; the [status table](#status) says when each part comes. Examples apply the decisions from areas 1 to 16.
 
 **The test for "native".** A feature is built in only when the compiler
 gains something by knowing about it: a mistake becomes a compile error, a
@@ -315,8 +315,7 @@ Two failures at the same line reached from different routes keep different
 paths, and a path shows the branches that ran and finished before the
 failure, which a stack no longer holds.
 
-Path IDs need control flow inside each callable in the compiler's graph,
-which today records only declarations and calls.
+Path IDs need control flow inside each callable in the compiler's graph.
 
 ## Monitoring thresholds
 
@@ -480,7 +479,7 @@ that is an integration, as Laravel Scout's other engines are.
 
 | Feature | Why not, or not yet |
 |---|---|
-| Realtime subscriptions | Policy on a live stream of changes is a large design; later, after the golden todo. Polling with the revision header (area 7) works today |
+| Realtime subscriptions | Policy on a live stream of changes is a large design; later, after the golden todo. Until then, clients poll with the revision header (area 7) |
 | Generated admin screens | Jadpo makes backends, not interfaces. Operators use `jadpo` commands (area 14); a screen can come later on the same operations |
 | Payments | Money moves at the provider; an integration plus webhooks (areas 7 and 11) is the right shape, and the compiler gains nothing more |
 | Content management | Content is application data |
@@ -492,16 +491,9 @@ that is an integration, as Laravel Scout's other engines are.
 
 ### Status
 
-| Feature | Status |
-|---|---|
-| Feature flags | **Not built (run):** `flag new_checkout { }` fails with `syntax.expected_declaration`. |
-| Rate limits | **Not built (read):** `rate_limited` exists as a declarable failure kind (area 4) and integrations map a provider's 429 to it; nothing limits incoming requests. |
-| Files | **Not built (run):** `type Avatar = File {}` fails with `semantic.unknown_name`. |
-| Audit trail | **Not built (run):** `audit {}` in an entity fails with `syntax.unexpected_token`. Today's `build/audit/` folder is compiler output about the source, not a history of data. |
-| Tracing and metrics | **Partly (read, generated `app.ts`):** the runtime writes JSON log events; `operationalEventToOpenTelemetry` is generated but never called, and `traceId` is always `null`. |
-| Path IDs, monitoring thresholds | **Not built (read):** proposals from 2026-10-13. The semantic graph (`jadpo/crates/semantic/src/lib.rs`) holds declarations and call edges, no control flow. |
-| Email, search | **Not built (read):** the only mail is the golden app's `ReminderMail` integration (area 11). |
-| Error message | **Bug (run):** the `syntax.expected_declaration` reason lists `persist`, `module` and `import` and leaves out `entity`, `query` and `job`, which compile. Carried to area 14. |
+Nothing on this page is built yet. Email comes with chunk 7.3, and default
+rate limits with routes (chunk 4.1); flags, files, audit, search and
+monitoring thresholds come after the first build (roadmap).
 
 ### Consistency with the rest of the language
 

@@ -24,7 +24,7 @@ How a Jadpo program is tested: where tests live, the four kinds of test,
 controlling the clock, configuration and fakes in tests, shared test data,
 assertions, the test database, and how tests meet caches and events.
 
-> Decided on 2026-10-13. Code outside the collapsed boxes applies the decisions from areas 1 to 13. The archived compiler's syntax and behaviour (tag `archive/compiler-v0`) are collapsed beneath each section that changed; the [status table](#status) says what the new compiler builds.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 13. The new compiler runs pure and action tests in its interpreter (chunk 2.2) and gives each test its own PostgreSQL database (chunk 3.1); the [status table](#status) says what else is built and when the rest comes.
 
 Examples use the golden todo app's `planning` domain: `User` and `Todo`
 entities, a `create_todo` action, a `TodoNotFound` failure, an
@@ -52,13 +52,6 @@ tests/         sign_up_to_first_reminder.test.jadpo
 A test file holds only `test` declarations. A test beside its subject can
 call anything in its own domain, private or not. A scenario in `tests/` sees
 what another domain would see: public declarations and routes (question 1).
-
-::: today
-
-Tests can be written in any file, next to the code, and the compiler does not
-check where they are.
-
-:::
 
 ## Writing a test
 
@@ -102,25 +95,6 @@ test "a todo due yesterday is overdue" {
 }
 ```
 
-::: today
-
-Variables may leave out their type, and literals need constructors:
-
-```jadpo project=today-pure
-type Number = Int {}
-
-function add(left: Number, right: Number) -> Number {
-    return Number(left + right)
-}
-
-test "adds two values" {
-    var result = add(Number(2), Number(3))
-    assert result == Number(5)
-}
-```
-
-:::
-
 ## Kinds of test
 
 Decided in area 1: the kind of a test is known from what it calls, and
@@ -136,7 +110,7 @@ not prove that the route decodes input or checks who is signed in.
 | schedule | a schedule, through `.run()` | what one run of the schedule does |
 
 A test that calls actions to set up data and then makes a request is a route
-test. Calling an action is an ordinary call; today's `call` word goes. Area 1
+test. Calling an action is an ordinary call, with no `call` word. Area 1
 named the second kind "integration"; this page calls it "action", because
 `integration` is the keyword for third-party APIs (area 11).
 
@@ -179,16 +153,6 @@ test "an overdue todo gets one reminder" {
 }
 ```
 
-::: today
-
-Only pure and action tests exist. An action test marks each call with `call`,
-and the report labels a test "callable" only when `call` is used: a test that
-calls an action without it is reported as pure
-(`var next = call next_count(Count(1))`). There is no way to send a request
-or run a schedule from a test.
-
-:::
-
 ## Test settings
 
 A test's environment is set at the top of its body, before the first
@@ -204,14 +168,6 @@ are optional:
 Settings are written once per test, so a reader sees everything that shapes
 the result in the test itself. Shared data is not a setting; it comes from
 fixtures, below.
-
-::: today
-
-The environment is a named `fixture` declaration, attached in the test's
-header with `using` (`test "…" using london_noon { }`); see the clock example
-below.
-
-:::
 
 ## Acting as a user
 
@@ -233,13 +189,6 @@ test "bob cannot complete alice's todo" {
 
 Policy reports a hidden record as the same `not_found` failure (area 4), so
 the test checks exactly what Bob would see.
-
-::: today
-
-Actions read an implicit `principal`, and a test cannot set one: every
-direct call runs with no caller (read from generated code).
-
-:::
 
 ## Controlling time
 
@@ -267,39 +216,6 @@ test "a todo due in an hour becomes overdue" {
 
 Advancing the clock does not run schedules by itself; a schedule test runs
 one with `.run()` (question 5).
-
-::: today
-
-The clock is moved with the sentence `advance clock by`, and both the fixture
-and the statement wrap their values in constructors (`fixed Instant("…")`,
-`Duration("PT5M")`). Without a fixture clock, the clock is fixed at
-2000-01-01T00:00:00Z.
-
-```jadpo project=today-advance
-fixture london_noon {
-    clock: fixed Instant("2026-01-15T12:00:00Z")
-}
-
-value ClockReading {
-    value: Instant
-}
-
-action read_clock() -> ClockReading {
-    return ClockReading {
-        value: clock.now
-    }
-}
-
-test "advancing moves only the next call" using london_noon {
-    var first = call read_clock()
-    advance clock by Duration("PT5M")
-    var second = call read_clock()
-    assert first.value == Instant("2026-01-15T12:00:00Z")
-    assert second.value == Instant("2026-01-15T12:05:00Z")
-}
-```
-
-:::
 
 ## Configuration in tests
 
@@ -333,32 +249,6 @@ test "reminders come from the configured sender" {
 A field that tested code reads with no `test:`, `default:` or `config:` value
 is a compile error, and so is a secret in a test's `config:`.
 
-::: today
-
-Every fixture lists every configuration field without a default, and each
-secret is wrapped in `secret("…")`, repeating that the field is secret:
-
-```jadpo project=today-config
-type ApiKey = Text {
-    min_length: 8
-}
-
-config ApplicationConfiguration {
-    api_key: ApiKey {
-        binding: "API_KEY"
-        secret: true
-    }
-}
-
-fixture configured_application {
-    config {
-        api_key: secret("test-only-api-key")
-    }
-}
-```
-
-:::
-
 ## Fakes for integrations
 
 A test never reaches a real provider. Every integration operation the test
@@ -384,32 +274,6 @@ test "a rate-limited reminder is retried" {
 with secrets left out. A fake cannot run code of its own, and nothing else in
 the application can be faked. If the code calls an operation more times than
 the fake has responses, or fewer, the test fails and says so (question 7).
-
-::: today
-
-Fakes sit in the named fixture, one line per response with `=>`, and a
-successful response needs the `accept` keyword. Running out of responses
-counts as `outcome_unknown` instead of failing the test. Checked with
-`jadpo test` against `tests/compile/pass/170_checked_service_operation.jadpo`:
-
-```jadpo fragment
-fixture mail_rate_limited_then_accepted {
-    clock: fixed Instant("2026-01-15T12:00:00Z")
-
-    config {
-        mail_api_key: secret("fixture-only-provider-key")
-    }
-
-    service ReminderMail: fake {
-        send_overdue_reminder => provider.rate_limited
-        send_overdue_reminder => accept ReminderReceipt {
-            accepted_at: Instant("2026-01-15T12:00:00Z")
-        }
-    }
-}
-```
-
-:::
 
 ## Shared test data: fixtures
 
@@ -498,14 +362,6 @@ test "a plan starts with two open todos" {
 
 A seed may call fixtures, so demo data and test data share their builders.
 A test never loads a seed: seeds change whenever the demo changes.
-
-::: today
-
-There are no data fixtures and no seeds. `fixture` names a test environment
-(clock, configuration and fakes). The approved test plan describes typed rows
-in a fixture (`database primary { }`), which was never built.
-
-:::
 
 ## Assertions
 
@@ -642,41 +498,6 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
 - There is no `test.only` in source: focusing is a command-line choice, so a
   focused test is never committed by accident.
 
-::: today
-
-A failed assertion reports only `assertion failed at source bytes 529..542`.
-Checking that a call fails needs a `match` whose arms all return the success
-type:
-
-```jadpo project=today-fails
-type Count = Int {
-    min: 0
-}
-
-failure TooBig {
-    kind: Rejected
-    code: "too_big"
-    message: "Too big."
-}
-
-action check_size(n: Count) fails TooBig -> Count {
-    if (n > Count(10)) {
-        reject TooBig
-    }
-    return n
-}
-
-test "a large size is rejected" {
-    var outcome = match check_size(Count(11)) {
-        success (value) => Count(0)
-        failure TooBig => Count(1)
-    }
-    assert outcome == Count(1)
-}
-```
-
-:::
-
 ## The test database
 
 Decided in area 5: every environment runs the same engine, PostgreSQL unless
@@ -698,15 +519,6 @@ The options compared (template copies, PGlite, a transaction rolled back per
 test, Testcontainers) are in
 [the testing proposals](research/13-testing-proposals.md).
 
-::: today
-
-Each test that touches data gets a fresh in-memory SQLite database whose
-tables are created from the entities, not from migrations. With
-`DATABASE_URL` set, such a test fails with "isolated tests require the
-SQLite test adapter". Tests run one at a time.
-
-:::
-
 ## Caches and events
 
 Area 5 decided that caches are copies used only by display reads from
@@ -723,21 +535,14 @@ In a test (question 8 for the database, question 9 for these):
   Tests cannot read, fill or clear a cache directly. Actions never read
   caches, so only route tests meet them.
 
-::: today
-
-Neither exists yet: there are no events or subscribers, and caches build
-nothing.
-
-:::
-
 ## Errors
 
-> The three `test.*` codes run on the new compiler, with `jadpo test`'s real report. The `check` errors after them (fakes, the test clock and configuration fixtures) are the archived compiler's, in its syntax and with its output, until areas 10 and 11 are built.
+> The three `test.*` codes run on the new compiler, with `jadpo test`'s real report. The `check` errors after them (fakes, the test clock and configuration fixtures) predate the decisions above and are rewritten when areas 10 and 11 are built (roadmap Phases 5 and 7).
 
-Every error this area can produce, with an example that triggers it and
-the real output: first the three codes a failed test gets from `jadpo
-test`, each with its report (run with `--seed 1`), then the archived
-compiler's `jadpo check` errors for what the new compiler hasn't built.
+Every error this area can produce, with an example that triggers it:
+first the three codes a failed test gets from `jadpo test`, each with its
+report (run with `--seed 1`), then the `jadpo check` errors for what the
+new compiler hasn't built yet.
 
 ### `test.assertion_failed`
 
@@ -1126,7 +931,7 @@ test "a reminder is delivered" {
 
 ### `type.test_call_context`
 
-`call` belongs to tests only:
+Application code uses a call form that belongs to tests:
 
 ```jadpo project=e-call-context expect=type.test_call_context
 value ClockReading {
@@ -1163,8 +968,7 @@ action move_production_clock() -> ClockReading {
 
 ### `configuration.field_unknown`
 
-From source, only a fixture can name a configuration field that does not
-exist:
+A test's configuration names a field that does not exist:
 
 ```jadpo project=e-field-unknown expect=configuration.field_unknown
 type Label = Text {
@@ -1287,9 +1091,8 @@ fixture local {
 ### Status
 
 Each row says what the new compiler does: built (with the chunk, checked
-by `jadpo check` or run by `jadpo test`), or decided and not built yet;
-what the archived compiler did (tag `archive/compiler-v0`) is kept where it
-explains a decision.
+by `jadpo check` or run by `jadpo test`), or decided and not built yet,
+with when it comes.
 
 | Feature | Status |
 |---|---|
@@ -1297,12 +1100,12 @@ explains a decision.
 | Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test), and the footer and `--json` count each kind. Route and schedule tests come with areas 7 and 12; `--kind route` and `--kind schedule` say so (`toolchain.not_built_yet`). |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
-| Clock | Decided, not built: the test clock comes with time (area 10, roadmap 5.2). The archived compiler fixed a fixture's clock and moved it with `advance clock by`, which moved only the next call; without a fixture it was fixed at 2000-01-01T00:00:00Z. |
-| Configuration | Decided, not built: configuration in tests comes with configuration (area 10, roadmap 5.1). The archived compiler type-checked fixture values, required exactly the secret fields to be marked secret and every field without a default to be listed, and swapped a global configuration object, so tests couldn't run in parallel. |
-| Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2). In the archived compiler an unfaked operation reachable from a test was an error, responses went through the real adapter with retries and mapping, each test had its own response queue, running out gave `outcome_unknown`, and requests sent couldn't be asserted. |
-| Database | Works (run, chunk 3.1): `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Since chunks 3.2 and 3.3 tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. The archived compiler gave each test an in-memory SQLite database built from the entities, not migrations, which conflicted with area 5, and ran tests one at a time. |
-| Caller | Decided, not built: acting as a user comes with identity (area 8, roadmap 4.3). Tests run with no caller, in the new compiler as in the archived one. |
-| Placement | Built (chunk 1.3, checked): a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. The archived compiler let tests sit in any file. |
+| Clock | Decided, not built: the test clock comes with time (area 10, roadmap 5.2). |
+| Configuration | Decided, not built: configuration in tests comes with configuration (area 10, roadmap 5.1). |
+| Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2). |
+| Database | Works (run, chunk 3.1): `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Since chunks 3.2 and 3.3 tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
+| Caller | Decided, not built: acting as a user comes with identity (area 8, roadmap 4.3). Until then tests run with no caller. |
+| Placement | Built (chunk 1.3, checked): a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |
 | Watch mode | Works (run, chunk 2.3): `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the decided screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
 | Fixtures | Work (run): a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked but `jadpo seed` is not built. |
 | `test.no_tests` | Raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none (run, chunk 2.2). |

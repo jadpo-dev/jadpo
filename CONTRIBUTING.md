@@ -6,10 +6,17 @@ rules for people and agents alike.
 
 ## Setup and checks
 
-Clone [richardwillars/jadpo](https://github.com/richardwillars/jadpo). Today
-the repository holds the language specification and the plan; the new
-compiler arrives with roadmap Phase 1. The gate needs Python 3, and Rust once
-the compiler workspace exists:
+Clone [richardwillars/jadpo](https://github.com/richardwillars/jadpo). The
+repository holds the language specification, the plan, the compiler (a Rust
+workspace under `crates/`) and the teaching examples. `rustup` installs the
+pinned toolchain from `rust-toolchain.toml`. To build `jadpo`:
+
+```sh
+cargo build --release -p jadpo-cli
+```
+
+The gate needs Python 3 and Rust, and PostgreSQL for its live database
+tests (`--profile quick` leaves them out):
 
 ```sh
 python3 tools/verify.py
@@ -25,4 +32,4 @@ python3 tools/language_docs.py
 ## Changes
 
 Branch from `main`, keep one roadmap chunk per pull request, and merge when CI
-passes. The previous compiler is at the tag `archive/compiler-v0`.
+passes.

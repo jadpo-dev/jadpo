@@ -12,7 +12,7 @@ How a Jadpo application says which data is about a person, so the compiler
 can export it, erase it, expire it and report where it lives. The aim is
 that GDPR, UK GDPR and CCPA/CPRA requests work out of the box.
 
-> Decided on 2026-10-13. Nothing on this page exists in the compiler yet; examples apply the decisions from areas 1 to 15. The legal research and the options considered are in [the proposals](research/15-personal-data-proposals.md).
+> Decided on 2026-10-13. Nothing on this page is built yet; it comes after the first build (roadmap). Examples apply the decisions from areas 1 to 15. The legal research and the options considered are in [the proposals](research/15-personal-data-proposals.md).
 
 **What the law asks of an application.** Keep only the personal data you
 need, for as long as you need it (GDPR Article 5). Give a person a copy of
@@ -85,24 +85,6 @@ extra ones CCPA/CPRA lists, government IDs and precise location.
   the user's data because the todo belongs to them (next section), so it is
   exported and erased with them. Marking is for the fields whose value points
   at, or describes, a person.
-
-::: today
-
-There is no marking. `personal: true` in a field's block fails with
-`syntax.unexpected_token`. The nearest tool is a server-only field, which
-hides a value from clients but not from logs or exports:
-
-```jadpo project=today-server-only
-entity User {
-    id: Uuid identity
-    email: Email {
-        policy {}
-    }
-    display_name: Text
-}
-```
-
-:::
 
 ## The person
 
@@ -312,13 +294,8 @@ new provider is seen by a person before it ships.
 
 ### Status
 
-| Feature | Status |
-|---|---|
-| Marking | **Not built (run):** `personal: true` in a field block fails with `syntax.unexpected_token`. |
-| Person, erasure, export, retention, report | **Not built (read):** no syntax, no generated operation and no report in `build/`. |
-| Logs | **Not built (read, area 4):** the failure model promises hashed text in logs; the generated runtime has no redaction yet. |
-| Server-only fields | Work today as `policy {}` (compiled above), hiding a value from clients only. |
-| Parse errors | **Bug (run):** the probe's error printed its template unfilled: `Expected {expected}` and ``Found `{found}` while parsing``. Carried to area 14. |
+Nothing on this page is built yet. It is first on the roadmap's list of
+work after the first build.
 
 ### Consistency with the rest of the language
 

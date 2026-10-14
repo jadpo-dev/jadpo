@@ -11,7 +11,7 @@ How behaviour is written: functions and actions, variables, statements,
 operators, `match`, `attempt`, loops, and what the language says about passing
 functions, recursion and generic code.
 
-> Decided on 2026-10-12. Code on this page shows the language after the rework, applying the decisions from areas 1 to 3. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 3. Built in the new compiler in roadmap chunk 1.5, with the failure side of `attempt` and `match` in chunk 1.6 and the runtime recursion limit in chunk 2.1.
 
 ## Functions and actions
 
@@ -62,48 +62,6 @@ A function may still fail: it can declare `fails` and `reject` (area 4).
 There is no `async`, `await` or promise: every call completes before the
 caller continues.
 
-::: today
-
-```jadpo project=callables
-type Pence = Int {
-    min: 0
-}
-
-type Quantity = Int {
-    min: 1
-    max: 1000
-}
-
-failure QuantityTooLarge {
-    kind: InvalidValue
-    code: "quantity_too_large"
-}
-
-function line_total(price: Pence, quantity: Quantity) -> Pence {
-    return Pence(price * quantity)
-}
-
-function bulk_quantity(quantity: Quantity)
-    fails QuantityTooLarge
-    -> Quantity
-{
-    if quantity > 100 {
-        reject QuantityTooLarge
-    }
-    return quantity
-}
-
-action price_line(price: Pence, quantity: Quantity)
-    fails QuantityTooLarge
-    -> Pence
-{
-    var checked = attempt bulk_quantity(quantity)
-    return line_total(price, checked)
-}
-```
-
-:::
-
 ### Signatures and settings
 
 Parameters are positional and every one has a type; the result type follows
@@ -127,33 +85,6 @@ action reschedule(todo_id: Todo.id, due_at: DueAt) fails TodoNotFound, DueDateIn
 When a header is too long the formatter puts one parameter per line and keeps
 `fails` and `->` after the closing parenthesis.
 
-::: today
-
-Settings sit between the parameters and `fails`, and the formatter moves
-`consistency:` to the first column:
-
-```jadpo project=callable-settings
-type Count = Int {}
-
-failure TooBig {
-    kind: InvalidValue
-    code: "too_big"
-}
-
-action bump(n: Count)
-consistency: atomic
-    fails TooBig
-    -> Count
-{
-    if n > 10 {
-        reject TooBig
-    }
-    return Count(n + 1)
-}
-```
-
-:::
-
 ### Calling
 
 Decided in area 1: the dot names the owner of what you call. Your own
@@ -174,8 +105,7 @@ var todo: Todo = attempt Todo.get(todo_id)                         // an entity
 var local: Time = temporal.in_zone(at, zone)                       // the standard library
 ```
 
-A library holds only functions. Today there is no `library` keyword and every
-authored callable is called bare.
+A library holds only functions.
 
 ## Variables
 
@@ -194,24 +124,6 @@ total = Pence(total + delivery)
 - A variable is visible from its declaration to the end of its block.
 - A name already in scope, including a parameter, cannot be declared again
    (decided, question 3), and an unused variable is an error (question 4).
-
-::: today
-
-```jadpo project=variables
-type Choice = Text {}
-
-function choose(initial: Choice, replacement: Choice) -> Choice {
-    var mut selected: Choice = initial
-    selected = replacement
-    var unchanged = initial
-    return selected
-}
-```
-
-Today `var` is immutable, the type may be left out, and a local can reuse the
-name of a parameter or an outer local.
-
-:::
 
 ## Statements
 
@@ -265,26 +177,6 @@ action archive_todo(todo_id: Todo.id) fails TodoNotFound -> Unit {
 }
 ```
 
-::: today
-
-A call cannot stand on its own, so the golden app binds results it never
-reads (`var existing = attempt Todo.by_id(todo_id)`), and a `Unit` action has
-no way to return early.
-
-```jadpo project=unit-calls
-type Note = Text {}
-
-action record(note: Note) -> Unit {
-}
-
-action record_twice(note: Note) -> Unit {
-    var first = record(note)
-    var second = record(note)
-}
-```
-
-:::
-
 ### Conditions
 
 ```jadpo check project=due-dates file=types.jadpo hidden
@@ -313,31 +205,6 @@ The condition must be a `Bool` (or a type built on `Bool`), and there is no
 truthiness. `if` is a statement; a choice between two values is a `match`.
 Decided (question 5): conditions are always in brackets, and `else if` chains are allowed.
 
-::: today
-
-There is no `else if`. A condition that ends in a name is read as the start
-of an object (`b {`), so `if a == b {` fails with a misleading error; the
-golden app wraps such conditions in parentheses, and the formatter keeps them.
-
-```jadpo project=conditions
-type Count = Int {}
-
-type Size = Text {}
-
-function size(count: Count, maximum: Count) -> Size {
-    if (count > maximum) {
-        return Size("large")
-    } else {
-        if count > 10 {
-            return Size("medium")
-        }
-    }
-    return Size("small")
-}
-```
-
-:::
-
 ## Expressions and operators
 
 | Precedence | Operators | Operands | Result |
@@ -362,41 +229,7 @@ constructor (area 2). Parentheses group. `and` and `or` stop as soon as the
 answer is known. `a < b < c` is an error, because `a < b` is a `Bool`.
 Logical operators are words; `!`, `&&` and `||` are not Jadpo.
 
-::: today
-
-```jadpo project=operators
-type Score = Int {}
-
-type Ratio = Decimal {}
-
-type Phrase = Text {}
-
-type Flag = Bool {}
-
-type Calculation = Object {
-    total: Score
-    ratio: Ratio
-    label: Phrase
-    allowed: Flag
-}
-
-function calculate(left: Score, right: Score, prefix: Phrase, suffix: Phrase, disabled: Flag) -> Calculation {
-    var total = left + right * 2 - left % right
-    var ratio = left / right
-    var label = prefix + " " + suffix
-    var allowed = not disabled and (left < right or left == right)
-    return Calculation {
-        total: Score(total)
-        ratio: Ratio(ratio)
-        label: Phrase(label)
-        allowed: Flag(allowed)
-    }
-}
-```
-
-:::
-
-Questions 6 and 7 change operator typing and division:
+Questions 6 and 7 decided operator typing and division:
 
 ```jadpo fragment
 var wrong: Pence = Pence(price + quantity)       // error: adds a Quantity to Pence
@@ -528,124 +361,6 @@ or `pattern -> { statements }`. A failure arm can recover with a value, map to
 another failure with `reject`, or pass the failure on with `propagate`; every
 failure the call can produce needs an arm (area 4 covers the failure side).
 
-::: today
-
-Two different constructs share the keyword. A **value match** is a statement
-only, every arm is a block, and payload fields are bound as a comma list:
-
-```jadpo project=value-match
-type ReceiptId = Uuid {}
-
-type OutcomeLabel = Text {}
-
-type ProductName = Text {}
-
-enum PaymentOutcome {
-    pending
-    paid {
-        receipt_id: ReceiptId
-    }
-    declined
-}
-
-type Listing = Object {
-    name: ProductName
-    subtitle: ProductName?
-}
-
-function label(outcome: PaymentOutcome) -> OutcomeLabel {
-    match outcome {
-        PaymentOutcome.pending => {
-            return OutcomeLabel("pending")
-        }
-        PaymentOutcome.paid { receipt_id } => {
-            return OutcomeLabel("paid")
-        }
-        PaymentOutcome.declined => {
-            return OutcomeLabel("declined")
-        }
-    }
-}
-
-function headline(listing: Listing) -> ProductName {
-    match listing.subtitle {
-        some(subtitle) => {
-            return subtitle
-        }
-        none => {
-            return listing.name
-        }
-    }
-}
-
-function shout(name: ProductName) -> ProductName {
-    match name {
-        "" => {
-            return ProductName("unnamed")
-        }
-        _ => {
-            return name
-        }
-    }
-}
-```
-
-An **outcome match** is an expression only, its subject must be a direct call
-that can fail, and each arm is one expression, `reject` or `propagate`. The
-space in `success (value)` is how the formatter writes it today (a bug):
-
-```jadpo project=outcome-match
-type LookupCode = Text {}
-
-type LookupResult = Text {}
-
-failure LookupMissing {
-    kind: NotFound
-    code: "lookup_missing"
-}
-
-failure LookupRefused {
-    kind: Rejected
-    code: "lookup_refused"
-}
-
-failure LookupRejected {
-    kind: Rejected
-    code: "lookup_rejected"
-}
-
-function lookup(key: LookupCode)
-    fails LookupMissing, LookupRefused
-    -> LookupResult
-{
-    if key == LookupCode("missing") {
-        reject LookupMissing
-    }
-    if key == LookupCode("refused") {
-        reject LookupRefused
-    }
-    return LookupResult("found")
-}
-
-function lookup_or_default(key: LookupCode)
-    fails LookupRejected
-    -> LookupResult
-{
-    return match lookup(key) {
-        success (value) => value
-        failure LookupMissing => LookupResult("not found")
-        failure LookupRefused => reject LookupRejected
-    }
-}
-```
-
-`return match status { ... }` on an enum fails with an outcome-match error,
-and an outcome match written as a statement fails with "invalid match
-pattern" (both under Errors). A payload variant pattern must list at least one
-field, may leave others out, and `_` is accepted on enums.
-
-:::
-
 ## Attempt
 
 A call that can fail must say so at the call site. `attempt` passes the
@@ -665,44 +380,6 @@ a call that cannot fail is an error. `reject` and `propagate` follow the same
 rule: each starts a statement or is the result of a `match` arm, never part
 of a value (`failure.reject_placement`, `failure.propagate_placement`; chunk
 1.9).
-
-::: today
-
-`attempt` is a prefix allowed anywhere in an expression, and on a call that
-cannot fail it is accepted silently:
-
-```jadpo project=attempt
-type Count = Int {}
-
-failure TooBig {
-    kind: InvalidValue
-    code: "too_big"
-}
-
-function checked(n: Count)
-    fails TooBig
-    -> Count
-{
-    if n > 10 {
-        reject TooBig
-    }
-    return n
-}
-
-function plain(n: Count) -> Count {
-    return n
-}
-
-function doubled(n: Count)
-    fails TooBig
-    -> Count
-{
-    var total = attempt checked(n) + attempt checked(n)
-    return attempt plain(Count(total))
-}
-```
-
-:::
 
 ## Loops
 
@@ -730,9 +407,7 @@ function order_total(lines: List<OrderLine>) -> Pence {
 ```
 
 Decided (question 12): `for` over a list is the only loop: no `while`,
-`break` or `continue`, with `return` allowed inside the body. Today there are
-no loops at all; `for` and `while` are syntax errors (see
-`syntax.expected_statement`).
+`break` or `continue`, with `return` allowed inside the body.
 
 ## Passing functions
 
@@ -749,8 +424,7 @@ var titles: List<TodoTitle> = collection.map(todos, todo -> todo.title)
 The inline function is one expression, takes its parameter's type from the
 list, may read the variables around it (safe because values never change),
 and cannot call actions or use `attempt`. Functions are not values: they
-cannot be stored in variables or passed to your own callables. Today a
-function's name used as a value is an unknown name.
+cannot be stored in variables or passed to your own callables.
 
 ## Recursion
 
@@ -784,25 +458,7 @@ function reply_count(comment: Comment) -> ReplyTotal {
 ```
 
 Decided (question 14): recursion is allowed in functions only, with a runtime
-depth limit that ends in a defined fault. Today recursion is accepted
-everywhere, including actions, with no limit:
-
-::: today
-
-```jadpo project=recursion
-type Count = Int {
-    min: 0
-}
-
-function countdown(n: Count) -> Count {
-    if n == 0 {
-        return n
-    }
-    return countdown(Count(n - 1))
-}
-```
-
-:::
+depth limit that ends in a defined fault.
 
 ## Generic code
 
@@ -851,14 +507,12 @@ function party_label(party: PartyId) -> PartyTitle {
 ```
 
 `function first<T>(items: List<T>) -> T` and `Customer.id | Supplier.id` are
-syntax errors today; question 16 decided to keep it that way.
+not Jadpo: question 16 decided against generics and unions in your own code.
 
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's actual output. Six entries keep the archived compiler's
-example because the decided language has no such mistake any more, or the
-new compiler reports it under another rule, named in each note.
+new compiler's actual output.
 
 ### `effect.function_calls_action`
 
@@ -944,88 +598,6 @@ error: Action `pong` is in a call cycle: `ping` → `pong` → `ping`
   help: docs/language/03-logic.html#effect-recursive-action
 
 check failed: 1 error, 1 file
-```
-
-### `effect.query_calls_action`
-
-> The archived compiler's error: a query's body is declarative (`from:`, `where:`), so it has no statements that could call an action (area 6).
-
-```jadpo project=e-query-action expect=effect.query_calls_action
-entity Customer {
-    id: Uuid
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    action register(id: Customer.id) -> Customer {
-        return attempt create Customer {
-            id: id
-        }
-    }
-
-    query illegal(id: Customer.id)
-    freshness: authoritative
-        -> Customer
-    {
-        return Customer.register(id)
-    }
-}
-```
-
-### `effect.query_mutation`
-
-> The archived compiler's error: a query's body is declarative (`from:`, `where:`), so it has no statements that could write (area 6).
-
-```jadpo project=e-query-write expect=effect.query_mutation
-entity Customer {
-    id: Uuid
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    query illegal_write(id: Customer.id)
-    freshness: authoritative
-        -> Customer
-    {
-        return attempt create Customer {
-            id: id
-        }
-    }
-}
-```
-
-### `effect.authored_async`
-
-> The archived compiler's error: the new parser reports `async` before a declaration as `syntax.expected_declaration`.
-
-```jadpo project=e-async expect=effect.authored_async
-type Note = Text {}
-
-async action save(note: Note) -> Note {
-    return note
-}
-```
-
-### `effect.authored_await`
-
-> The archived compiler's error: the new parser reports `await save(note)` as `syntax.unexpected_token`, a second statement on the line.
-
-```jadpo project=e-await expect=effect.authored_await
-type Note = Text {}
-
-action save(note: Note) -> Note {
-    return note
-}
-
-action save_again(note: Note) -> Note {
-    return await save(note)
-}
 ```
 
 ### `failure.attempt_required`
@@ -2159,78 +1731,6 @@ error: This arm gives no value
 check failed: 1 error, 2 files
 ```
 
-### `type.match_variant_bindings_required`
-
-> The archived compiler's error: an arm may match a variant without naming its data when it doesn't read it, `PaymentOutcome.paid -> ...` (question 9), so this mistake no longer exists.
-
-```jadpo project=e-match-bindings file=shapes.jadpo hidden
-enum DeliveryState {
-    pending
-    sent
-    failed
-}
-
-type ReceiptId = Uuid {}
-
-enum PaymentOutcome {
-    pending
-    paid {
-        receipt_id: ReceiptId
-    }
-}
-
-type Label = Text {}
-```
-
-```jadpo project=e-match-bindings expect=type.match_variant_bindings_required
-function describe(outcome: PaymentOutcome) -> Label {
-    match outcome {
-        PaymentOutcome.pending => {
-            return Label("Pending")
-        }
-        PaymentOutcome.paid => {
-            return Label("Paid")
-        }
-    }
-}
-```
-
-### `type.match_duplicate_binding`
-
-> The archived compiler's error: an arm names a variant's data with one name in brackets, so a field can't be named twice; `PaymentOutcome.paid { receipt_id }` is `syntax.match_pattern`.
-
-```jadpo project=e-match-binding-twice file=shapes.jadpo hidden
-enum DeliveryState {
-    pending
-    sent
-    failed
-}
-
-type ReceiptId = Uuid {}
-
-enum PaymentOutcome {
-    pending
-    paid {
-        receipt_id: ReceiptId
-    }
-}
-
-type Label = Text {}
-```
-
-```jadpo project=e-match-binding-twice expect=type.match_duplicate_binding
-function describe(outcome: PaymentOutcome) -> Label {
-    match outcome {
-        PaymentOutcome.pending => {
-            return Label("Pending")
-        }
-        PaymentOutcome.paid { receipt_id, receipt_id } => {
-            return Label("Paid")
-        }
-    }
-}
-```
-
 ### `type.arithmetic_operand`
 
 `+` and `-` need the same named type on both sides; multiplying a price by a quantity is meaningful, adding them is not:
@@ -2993,22 +2493,10 @@ check failed: 1 error, 1 file
 
 ### Status
 
-| Feature | Status |
-|---|---|
-| Functions, actions and who may call whom | Works in general: function to action, function to persistence, query to action, query writes, `async` and `await` are all rejected. A function calling a query is reported as "can't call action `Customer.find`", naming the wrong kind. |
-| Signatures | Works in general. Two gaps: duplicate parameter names (`f(n: Count, n: Count)`) are accepted; `-> R fails F` is still accepted and kept by the formatter, although the decision register puts `fails` first. The formatter moves `consistency:` to column 1. |
-| Return paths | **Bug.** A function whose declared result is not `Unit` compiles without returning on every path (`if n > 0 { return n }` and nothing after it); the generated TypeScript returns `undefined` (read from generated code, not run). Code after `return` is accepted. |
-| Variables and assignment | Works: immutable `var`, `var mut` rebinding with type checks, block scope. A local may reuse a parameter's or an outer local's name. Types may be left out (area 2 decided to require them). Query words such as `limit` and `missing` cannot be names and fail with unrelated errors ("Expected an expression"); area 1's reserved-word decision covers them. |
-| Statements | No call or `attempt` on its own and no bare `return`, so results are bound and never read (`var existing`, `var todo` in the golden app's `patch_todo` and `delete_todo`). `return g(n)` from a `Unit` action works. |
-| Conditions | **Bug.** `if` parses its condition allowing object construction, so a condition ending in a name (`if a == b {`) is read as `b { ... }` and fails with four unrelated syntax errors; `match` already parses its subject without construction. Parentheses are the workaround. No `else if`. |
-| Operators | Work as the grammar says. `Int / Int` gives a `Decimal` (JavaScript division); `%` works on decimals; `Pence + Quantity` is accepted while `Pence == Quantity` is rejected; text is ordered by JavaScript string comparison (read from generated code). Division by zero is not checked (generated `/`, not run). `and` and `or` short-circuit (read from generated code). |
-| `match` | Works for plain and payload variants, nullable values, `Bool`, text and number literals, with exhaustiveness and unreachable-arm checks. Value match is statement-only and outcome match expression-only, each with a misleading error for the other form. No nested (`some(S.a)`), alternative or guarded patterns. `_` is accepted on enums. **Formatter bug:** `success(value)` is rewritten as `success (value)`, so `examples/outcome-sequencing` and pass fixture 113 are not formatter-clean. |
-| `attempt` | Works, propagating the exact failure set. Allowed anywhere inside an expression; accepted silently on a call that cannot fail. |
-| Loops | None. `for` and `while` are syntax errors. |
-| Passing functions | None. A function name used as a value is `type.unknown_value`. |
-| Recursion | Accepted for functions and actions, directly and mutually, although grammar §16 lists it as unsupported. Compiles to plain JavaScript recursion with no depth limit, so deep recursion would crash the process (inferred). |
-| Generic code | None for authored code: `<T>` and union types are syntax errors. |
-| Named arguments | Standard library only, with duplicate and order checks. |
+The new compiler builds this area: roadmap chunk 1.5, with the failure side
+of `attempt` and `match` in chunk 1.6 and the runtime recursion limit in
+chunk 2.1. Every example and error above is checked against it on each gate
+run.
 
 ### Consistency with the rest of the language
 
@@ -3025,8 +2513,8 @@ check failed: 1 error, 1 file
    compiles and `Pence == Quantity` does not, although area 2's rule is that
    named types never mix silently.
 - **Division contradicts area 2.** Area 2 decided `Decimal` is exact with a
-   scale and that division names a rounding mode; today `/` is JavaScript
-   division producing a float.
+   scale and that division names a rounding mode; the archived compiler's `/` was
+   JavaScript division producing a float.
 - **Area 2's examples omit `attempt`.** `Pence(price * quantity)` is a runtime
    construction, which area 2 question 1 made fallible; whether the compiler
    may skip `attempt` when the declared ranges prove it safe is carried to

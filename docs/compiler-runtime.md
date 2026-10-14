@@ -1,8 +1,8 @@
 # Jadpo compiler and runtime architecture
 
 **Status:** the build approach is decided (§1.1–1.2, 2026-10-13); the
-architecture (§2) was written in roadmap chunk 0.4 and waits for Richard's
-read before Phase 1.
+architecture (§2) was written in roadmap chunk 0.4 and records what each
+chunk has built since.
 
 ## 1. Architecture follows the semantic model
 
@@ -26,19 +26,19 @@ target are replaceable implementation choices.
 
 ### 1.1 Graph-centred compiler (decided, 2026-10-13)
 
-**Today (read):** the compiler builds a semantic graph
-(`build_semantic_graph` in `jadpo/crates/semantic/src/lib.rs`) of
+**The v0 compiler (read 2026-10-13, now archived):** it built a semantic
+graph (`build_semantic_graph` in `jadpo/crates/semantic/src/lib.rs`) of
 declarations, call edges, refinements and external effects, keyed by name,
-with no control flow inside callables. It feeds diagnostics, the language
-service and approval reachability, which is why the approval report calls
+with no control flow inside callables. It fed diagnostics, the language
+service and approval reachability, which is why the approval report called
 its paths "may-call, not feasible". Code generation (`core/src/target.rs`,
-about 14,000 lines) reads the syntax tree directly and consults the graph in
-about ten places. So the graph and the generated program are two separate
+about 14,000 lines) read the syntax tree directly and consulted the graph in
+about ten places. So the graph and the generated program were two separate
 readings of the source.
 
 **Options:**
 
-1. **Graph as a by-product (today).** No rewrite, and golden-todo progress
+1. **Graph as a by-product (v0).** No rewrite, and golden-todo progress
    continues. But the graph can disagree with what runs, and every
    graph feature (source maps, spans named by node, path IDs, thresholds,
    `why`, path coverage) is added once to the graph and again to the
@@ -54,30 +54,28 @@ readings of the source.
 3. **The graph as the source** (Unison's content-addressed code). Rejected:
    models, git and reviewers work in text.
 
-**Proposed:** option 2, built as a new compiler core rather than by moving
-the existing generator over. Not yet decided: the owner will decide once
-the language review (roadmap item 2) is finished, before any build work
-starts.
+**Decided (2026-10-13, §1.2):** option 2, built as a new compiler core
+rather than by moving the existing generator over.
 
 Why a rebuild rather than a migration (read, 2026-10-13):
 
 - The language review's decisions for areas 1–4 alone change nearly every
   syntax form, so the parser and type checker would be largely rewritten
   in rework anyway.
-- The generator reads the syntax tree, the opposite of option 2; writing a
-  generator for the graph is less work than moving 14,000 lines onto it.
-- The compiler is tuned to the golden app: the formatter hard-codes the
+- The v0 generator read the syntax tree, the opposite of option 2; writing
+  a generator for the graph is less work than moving 14,000 lines onto it.
+- The v0 compiler was tuned to the golden app: the formatter hard-coded the
   reminder payload fields (`core/src/formatter.rs`, `todo_title`,
-  `due_at`), and only the golden service is accepted, matched line by line.
-  The passing golden cases overstate what works.
+  `due_at`), and only the golden service was accepted, matched line by
+  line. Its passing golden cases overstated what worked.
 
 What the rebuild keeps: the language specifications, whose compiled
 examples and error coverage (`tools/language_docs.py`) become the feature
 tests; the golden contract and `tools/verify.py`; the diagnostics
-catalogue; and the existing runtime (outbox and delivery, JWT
+catalogue; and the v0 runtime (outbox and delivery, JWT
 authentication, migration identity) as reference design. The old compiler
-stays in the repository as reference until the new one passes the golden
-todo, then is archived.
+was archived before the rebuild began (roadmap chunk 0.2, tag
+`archive/compiler-v0`).
 
 How it is built, so it does not repeat the failure:
 

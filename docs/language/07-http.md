@@ -23,71 +23,11 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 7. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. The new compiler does not build HTTP yet: roadmap chunks 4.1 (routes) and 4.2 (request guarantees) build it.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
 and queries; statuses come from failure kinds (area 4).
-
-```jadpo hidden project=today file=shared.jadpo
-type TodoId = Uuid {}
-
-type TodoTitle = Text {
-    min_length: 1
-    max_length: 200
-}
-
-type PageSize = Int {
-    min: 1
-    max: 100
-}
-
-type RequestId = Text {
-    max_length: 64
-}
-
-type Status = Enum {
-    live
-}
-
-input RenameTodo {
-    title: TodoTitle
-}
-
-input CreateTodo {
-    title: TodoTitle
-}
-
-input ListTodos {
-    limit: PageSize default 25
-}
-
-output TodoView {
-    title: TodoTitle
-}
-
-output TodoCount {
-    limit: PageSize
-}
-
-output Health {
-    status: Status
-}
-
-action rename_todo(todo_id: TodoId, input: RenameTodo) -> TodoView {
-    return TodoView { title: input.title }
-}
-
-action count_todos(input: ListTodos) -> TodoCount {
-    return TodoCount { limit: input.limit }
-}
-
-action create_todo(input: CreateTodo) -> TodoView {
-    return TodoView { title: input.title }
-}
-
-action delete_todo(todo_id: TodoId) -> Unit {}
-```
 
 ## Route groups
 
@@ -118,14 +58,6 @@ routes Todos {
 - Routes are never `public` (area 1); who may call one is authentication's
   and policy's job (areas 8 and 9).
 
-::: today
-
-No groups: each route is a top-level `route GET /todos/{todo_id} { ... }`
-with its full path, and nothing ties a file to its URLs. The golden app keeps
-a todo route in its health file (area 1).
-
-:::
-
 ## Paths and placeholders
 
 A placeholder is typed where it appears and reaches the action by its name
@@ -146,27 +78,6 @@ PATCH /{todo_id: Todo.id} {
 - Two routes that could match one request (`/{todo_id: Todo.id}` and
   `/{slug: Slug}`) are an error. A fixed segment beats a placeholder, so
   `GET /archived` can sit beside `GET /{todo_id: Todo.id}`.
-
-::: today
-
-Placeholders are typed in a separate `path: { }` block and read as
-`path.todo_id`. `/a/{id}` and `/a/{other}` both compile and the first wins;
-`/todos/:todo_id`, the design source's spelling, compiles as a literal
-segment.
-
-```jadpo project=today file=paths.jadpo
-route PATCH /todos/{todo_id} {
-    auth: none
-    path: {
-        todo_id: TodoId
-    }
-    input: RenameTodo
-    output: TodoView
-    run: rename_todo(path.todo_id, input)
-}
-```
-
-:::
 
 ## One input
 
@@ -203,28 +114,6 @@ GET / {
 - Unknown keys and fields are refused. A `GET` or `DELETE` never reads a
   body, and a body is limited to 1 MB (question 5).
 
-::: today
-
-Three channels: `query:` (read as `query.x`), an anonymous `headers:` block
-with `from "..."` and a trailing `optional` (read as `headers.x`), and
-`input:` (the body). A `GET` with a body `input:` compiles. Lists are refused
-in a query but a nested object is accepted as one JSON value. Nothing limits
-the body size.
-
-```jadpo project=today file=inputs.jadpo
-route GET /todos {
-    auth: none
-    query: ListTodos
-    headers: {
-        request_id: RequestId from "X-Request-Id"
-    }
-    output: TodoCount
-    run: count_todos(query)
-}
-```
-
-:::
-
 ## Output and status
 
 `output:` names an `Output` type and must be exactly the action's result,
@@ -251,35 +140,6 @@ Only the output's declared fields are sent. Failure statuses are never
 written on a route: they come from the kinds of the failures the action can
 produce (area 4).
 
-::: today
-
-The item is `success:`, which is also the `match` arm `success(value)`.
-**Bugs (compiled):** `output:` is not checked against the action's result,
-and a mismatch answers 500 at runtime; a route without `output:` whose action
-returns a value answers 200 with `null` (read from generated code); `output:`
-accepts `input` and `value` types.
-
-```jadpo project=today file=status.jadpo
-route POST /todos {
-    auth: none
-    input: CreateTodo
-    output: TodoView
-    success: created
-    run: create_todo(input)
-}
-
-route DELETE /todos/{todo_id} {
-    auth: none
-    path: {
-        todo_id: TodoId
-    }
-    success: no_content
-    run: delete_todo(path.todo_id)
-}
-```
-
-:::
-
 ## What a route runs
 
 `run:` calls one named action, passing placeholders, `input` and the caller
@@ -301,13 +161,6 @@ POST /{todo_id: Todo.id}/complete {
 Own-domain actions and queries are called bare, another domain's public ones
 through its name (area 1). There is no inline action in a route.
 
-::: today
-
-A route may hold an inline `action: { ... }` instead (see Health), and
-`run:` also accepts a plain function, which area 3 rules out (compiled).
-
-:::
-
 ## Time limits
 
 Every route has a deadline: 10 seconds unless `deadline:` says otherwise,
@@ -325,38 +178,12 @@ POST /import {
 }
 ```
 
-::: today
-
-`deadline:` exists (`0s` and `1d` are errors) but has no default, so a route
-without one never times out, and `deadline: 10h` compiles.
-
-:::
-
 ## Health
 
 The runtime always serves `GET /health/live` (the process runs) and
 `GET /health/ready` (every store declared in `app.jadpo` answers within two
 seconds; integrations are reported as unchecked). There is nothing to write,
 and neither path is part of an API's OpenAPI or record (question 6).
-
-::: today
-
-Both are generated. An application may also write `GET /health/live` as an
-inline action returning literals; anything else fails at build time with
-`toolchain.target_liveness_not_local`. The design source's
-`readiness database { ... }` never parsed.
-
-```jadpo project=today file=health.jadpo
-route GET /health/live {
-    auth: none
-    output: Health
-    action: {
-        return Health { status: Status.live }
-    }
-}
-```
-
-:::
 
 ## APIs and versions
 
@@ -396,8 +223,6 @@ routes AdminOrders {
   when a break must live beside the old version. Deleting `v1` makes the
   compiler report every group and type left unused.
 
-Today there is one flat list of routes and one OpenAPI document.
-
 ## Webhooks
 
 An inbound webhook is an ordinary route in the `webhooks` API (question 8):
@@ -419,8 +244,7 @@ routes WebhooksStripe {
 
 The action stores the event under a unique rule on the provider's event id,
 so a redelivery changes nothing, and the real work runs in a subscriber
-(area 12). Today nothing supports webhooks: there is no signature check, and
-the body is parsed before code could see its raw bytes.
+(area 12).
 
 ## How failures reach the client
 
@@ -455,27 +279,12 @@ numbers (question 9):
 | The body is over the limit | 413 `request_too_large` |
 | The deadline passed | 504 `deadline_exceeded` |
 
-::: today
-
-Bad body input answers 422 `invalid_input` with no details, a bad
-placeholder 422 `invalid_value`, and a wrong method 404.
-
-:::
-
 ## OpenAPI
 
 The compiler writes one OpenAPI 3.1 document per API into `build/openapi/`:
 every route with its input, output, success status and reachable failures,
 the 400 and 422 input responses, and the `///` descriptions (area 1). The
 title is the application's name and the version the API record's version.
-
-::: today
-
-One `openapi.json` titled "Application API" at version `0.0.0`. It lists
-`/health/live` but not `/health/ready`, and omits the 400 and 422 input
-responses (read from generated output).
-
-:::
 
 ## The public API record
 
@@ -504,20 +313,11 @@ Each acceptance is used once: the record notes which one allowed each
 change. `acceptances/` is owned in CODEOWNERS, so the host's review shows who
 approved it.
 
-::: today
-
-`build/compatibility/public-failure-codes.json` holds failure codes only, is
-regenerated every build and says `baseline_not_configured`: nothing is
-compared. Routes and fields are not recorded.
-
-:::
-
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
+> These examples predate the decisions above and are rewritten when the area is built (roadmap Phase 4).
 
-Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+Every error this area can produce, with an example that triggers it.
 
 ### `syntax.expected_http_method`
 
@@ -537,7 +337,7 @@ route FETCH /trace {
 
 ### `syntax.expected_route_item`
 
-`status:` does not exist yet:
+A status written as a number:
 
 ```jadpo project=e-route-item expect=syntax.expected_route_item
 output Trace {
@@ -948,23 +748,9 @@ route GET /trace {
 
 ### Status
 
-Each row says how it was checked: compiled with `jadpo check`, read from
-generated code or output (`jadpo build` / `jadpo artifacts` on a copy of
-`examples/golden-todo-migration`), or read from the docs.
-
-| Feature | Status |
-|---|---|
-| Methods and paths | Works: five methods, placeholders checked against the `path:` block, duplicate `GET /a` is `semantic.duplicate_declaration` (compiled). **Gaps (compiled):** `/a/{id}` and `/a/{other}` both compile, and the generated handler tries routes in order, so the first wins (read from generated code); `/a/:id` compiles as a literal segment. |
-| Input channels | Works: `query:`, `headers:` and `input:` are checked as grammar §13 says, including header names and duplicates (compiled). **Gaps (compiled):** a `GET` with a JSON-body `input:` compiles and reads the body (read from generated code); lists are refused in a query but nested objects are accepted. |
-| Output | **Bug (compiled, then read from generated code):** `output:` is not checked against the action's result; a mismatch answers 500 at runtime. A route with no `output:` whose action returns a value answers 200 with `null`. `output:` accepts `input` and `value` types. |
-| Behaviour | `run:` and inline `action:` both work; `run:` also accepts a plain function (compiled). |
-| Deadlines | `deadline:` works and maps to 504 `deadline_exceeded` (read from generated code). **Gap:** no default and no maximum (`deadline: 10h` compiles). |
-| Body size | **Gap (read from generated code):** no limit; `Bun.serve` is started with its own default. |
-| Health | `GET /health/live` and `GET /health/ready` are generated; readiness checks the database and reports integrations as `unprobed` (configuration plan, CONFIG-P5). An authored liveness route is allowed with special rules. |
-| OpenAPI | Generated as one document (read from generated output). **Gaps:** title "Application API", version `0.0.0`; `/health/live` listed and `/health/ready` not; 400 and 422 input responses missing (area 4). |
-| Failures to clients | Envelope, statuses and request id work (area 4, run under Bun 1.2.20). A wrong method answers 404, not 405 (read from generated code). |
-| API record | **Gap:** `public-failure-codes.json` holds failure codes only, in `build/`, with `baseline_not_configured`; nothing records routes or fields. |
-| Webhooks, separate APIs, versions | None. |
+The new compiler builds none of this area yet. Roadmap chunk 4.1 builds
+route groups, inputs, outputs, statuses, OpenAPI and the API record; chunk
+4.2 builds deadlines, body limits and health.
 
 ### Consistency with the rest of the language
 

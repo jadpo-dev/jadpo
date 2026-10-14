@@ -16,7 +16,7 @@ what it does to the application (who can now do what to which data) before
 reading it line by line. This page covers both: where errors point, how to
 see what a request did and why, and how a change is reviewed.
 
-> Decided on 2026-10-13. Nothing here exists except `jadpo incident` and the approval report. What other frameworks do, and the options considered, are in [the proposals](research/17-debugging-and-review-proposals.md). Commands, `--json` and the build folder are area 14's; logging is area 4's; tracing is area 16's.
+> Decided on 2026-10-13. Nothing here is built yet: debugging and review come after the first build (roadmap), and the developer console, MCP and review web view after that, as product work (E11, E06). What other frameworks do, and the options considered, are in [the proposals](research/17-debugging-and-review-proposals.md). Commands, `--json` and the build folder are area 14's; logging is area 4's; tracing is area 16's.
 
 **One rule behind all of it.** The command line, the developer console and
 the agent's MCP server are three views of one set of evidence, produced by
@@ -24,22 +24,22 @@ the compiler and the runtime and versioned like any other generated file. No
 view works anything out for itself: if the console shows why a caller was
 refused, it is because the compiler and the runtime recorded it (question 10).
 
-| Capability | Today | Proposed | Where |
-|---|---|---|---|
-| Errors point at `.jadpo` | Generated code lines (today's TypeScript target), and only with `JADPO_DEBUG_TARGET_STACKS=1` | Always `.jadpo` file and line, in development and production | Runtime; question 1 |
-| Production incidents | `jadpo incident` names the declaration, only for the exact build | Names the line in that build, then where it is now | `jadpo incident`; question 2 |
-| Breakpoints | None | Not now | Question 3 |
-| Why the language decided something | None | `jadpo why` | Question 4 |
-| What a request did | Nothing logged per request | Request timeline in `jadpo dev`; `jadpo trace <request id>` | Question 5 |
-| Failing request to test | None | `jadpo test new --from <request id>` | Question 6 |
-| Run a query or action | None | `jadpo call <name> --as <user>` | Question 7 |
-| Developer console and MCP | None | Local web page and read-only MCP over the same evidence | Roadmap E11; question 8 |
-| Reviewing a change | `jadpo approval --before <ref>`, one 6 MB JSON line | Report ordered by behaviour first; static web view of it | Roadmap E06; question 9 |
-| JSON for agents | Some commands | Every command and view | Area 14 question 2; question 10 |
-| Coverage by path | None | Tests and production compared path by path | Question 11 |
-| Production in review | None | The approval report shows traffic and failures on affected paths | Question 12 |
-| Replaying a production request | None | Opt-in recording at effect boundaries, replayed locally | Question 13 |
-| Query cost of a change | Query report per query | Queries added or removed per path, in the approval report | Question 14 |
+| Capability | Decided | Where |
+|---|---|---|
+| Errors point at `.jadpo` | Always `.jadpo` file and line, in development and production | Runtime; question 1 |
+| Production incidents | Names the line in that build, then where it is now | `jadpo incident`; question 2 |
+| Breakpoints | Not now | Question 3 |
+| Why the language decided something | `jadpo why` | Question 4 |
+| What a request did | Request timeline in `jadpo dev`; `jadpo trace <request id>` | Question 5 |
+| Failing request to test | `jadpo test new --from <request id>` | Question 6 |
+| Run a query or action | `jadpo call <name> --as <user>` | Question 7 |
+| Developer console and MCP | Local web page and read-only MCP over the same evidence | Roadmap E11; question 8 |
+| Reviewing a change | Report ordered by behaviour first; static web view of it | Roadmap E06; question 9 |
+| JSON for agents | Every command and view | Area 14 question 2; question 10 |
+| Coverage by path | Tests and production compared path by path | Question 11 |
+| Production in review | The approval report shows traffic and failures on affected paths | Question 12 |
+| Replaying a production request | Opt-in recording at effect boundaries, replayed locally | Question 13 |
+| Query cost of a change | Queries added or removed per path, in the approval report | Question 14 |
 
 ## Errors point at the `.jadpo` line
 
@@ -64,18 +64,9 @@ than a generated-code path, so a reader knows the fault is the compiler's, not
 the application's. Domain failures still log no stack, only their `site` and
 path (decided in area 4). Frames carry places and names, never values.
 
-The runtime maps frames itself rather than relying on the host: today's Bun
-target ignored a source map attached to the file it ran (see Status), and
+The runtime maps frames itself rather than relying on the host, because
 WebAssembly hosts differ in how much debug information they keep. Mapping in
 the runtime works the same under any host.
-
-::: today
-
-The generated `app.ts` contains no `.jadpo` references. A fault logs one
-`operation.failed` event naming the operation (`route:GET:/todos`) and the
-build; the TypeScript stack is printed only when `JADPO_DEBUG_TARGET_STACKS=1`.
-
-:::
 
 ## Production incidents after the code has changed
 
@@ -99,16 +90,6 @@ int_overflow in action price_line
   path   POST /orders → place_order → price_line
   next   capture it as a test: jadpo test new --from-event event.json
 ```
-
-::: today
-
-`jadpo incident <event-file>` accepts only the three runtime fault
-classifications, names the declaration's file and byte range (not the line),
-and refuses with `cli.incident_revision_mismatch` unless the local source is
-byte-for-byte the build that produced the event. After any change to the
-code, a production event can no longer be explained.
-
-:::
 
 ## Breakpoints and stepping
 
@@ -191,13 +172,6 @@ POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms   as user 0192
   (area 16), viewed in whatever tool the team uses.
 - A request that runs several queries for one call, or a query without an
   index, is flagged on its line, matching area 6's query report.
-
-::: today
-
-The generated runtime writes JSON only for faults, startup and purge
-batches; a successful or refused request writes nothing.
-
-:::
 
 ## Capturing a failing request as a test
 
@@ -325,14 +299,6 @@ or published by CI beside the pull request; it holds no accounts and
 records no approvals. Acceptances stay files reviewed on the git host
 (area 7).
 
-::: today
-
-`jadpo approval --before <ref>` writes `build/approval/subject.json` and a
-text copy. For the golden todo, each is about 6 MB, and the text copy is two
-header lines followed by one line of JSON. Nothing is ordered for a reader.
-
-:::
-
 ## What the graph and production evidence add
 
 Proposed 2026-10-13. Each of these joins the compiler's graph to path IDs
@@ -372,20 +338,10 @@ MCP read those same files, so an agent never scrapes text meant for people
 
 ### Status
 
-Each row says how it was checked against today's TypeScript/Bun target, which is being replaced by native Rust and WebAssembly (decision register, 2026-10-13): run with `jadpo` 3ce094d0 and Bun 1.2.20,
-or read from source or generated code (the golden todo, built with
-`jadpo build`).
-
-| Feature | Status |
-|---|---|
-| Source locations | **Not built (read):** the generated `app.ts` has no `.jadpo` references and no source map. `build/app.meta.json` maps each operation to a file and byte range. |
-| Stacks | **Gap (read):** a fault logs no stack; the TypeScript stack prints only with `JADPO_DEBUG_TARGET_STACKS=1`. |
-| Bun and source maps | **Limit (run):** Bun 1.2.20 ignored a `sourceMappingURL` on the `.ts` and `.js` file it ran, and `bun build --sourcemap` did not chain it, so the runtime must map frames itself. |
-| `jadpo incident` | **Exists (read, `cli/src/main.rs`):** three fault classifications only; declaration and byte range, not line; refuses any event from a different source revision. |
-| Request evidence | **Not built (read):** no per-request log; `traceId` is always `null` (also area 16). |
-| Breakpoints | **Not built (read):** the VS Code extension contributes no debugger; its commands are check, open generated files and diagnostic details. |
-| `why`, `trace`, `call`, `mcp`, `test new` | **Not built (run):** each is `cli.unknown_command`. |
-| Approval report | **Gap (run):** about 6 MB of JSON for the golden todo, the text copy one long line; unusable by a person. |
+Nothing on this page is built yet. Mapped `.jadpo` stacks, `jadpo incident`,
+`why`, timelines, `test new --from`, `call` and the approval report come
+after the first build (roadmap, areas 17 and 18); the developer console, MCP
+and the review web view come after that, as product work (E11 and E06).
 
 ### Consistency with the rest of the language
 
@@ -427,8 +383,9 @@ or read from source or generated code (the golden todo, built with
 
 ### Open questions
 
-1. **Do errors and stacks always point at `.jadpo` lines?** Today only
-   TypeScript stacks, behind `JADPO_DEBUG_TARGET_STACKS`. *Recommendation:*
+1. **Do errors and stacks always point at `.jadpo` lines?** The archived
+   compiler printed only TypeScript stacks, behind
+   `JADPO_DEBUG_TARGET_STACKS`. *Recommendation:*
    yes, always: the compiler writes a source map, the runtime maps its own
    frames before logging (on every target), runtime-internal frames show as
    `runtime: <component>`, and the flag goes. Rust prints a panic's file and

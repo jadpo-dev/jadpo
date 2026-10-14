@@ -12,114 +12,36 @@ another, and the naming rules every name follows.
 
 ## Project layout
 
-> **Archived.** This section describes the archived compiler (tag `archive/compiler-v0`). The new compiler builds the fixed root and domain folders decided on 2026-10-12 (chunk 1.3); see [Decided layout](#decided-layout).
+A project is the folder holding `app.jadpo`. The root holds a fixed set of
+files and folders, and all application code lives in business areas
+(domains) under `domains/`, one level deep. Every domain holds the same
+fixed folders, named after the declarations they hold (`entities/`,
+`actions/`, `queries/` and so on), with one primary declaration per file,
+named after it. A file's path follows from its domain and what it declares.
+[Decided layout](#decided-layout) gives the full rules, which the compiler
+builds (chunks 1.3 and 1.9).
 
-A project is every `.jadpo` file under the folder you give the compiler. A few
-folder names have a recognised role. The golden todo app is laid out like this:
-
-```text
-application.jadpo        application and authentication
-config.jadpo             configuration
-entities/todo.jadpo      one entity, with its own queries, actions and failures
-entities/user.jadpo
-values/domain.jadpo      types without identity
-values/contracts.jadpo   request and response shapes
-routes/todos.jadpo       HTTP routes
-```
-
-Here is the smallest project that uses the role folders:
-
-::: today
-
-```jadpo project=layout file=entities/customer.jadpo
-entity Customer {
-    id: Uuid
-    identity: id
-}
-```
-
-```jadpo project=layout file=values/labels.jadpo
-type CustomerName = Text {
-    min_length: 1
-    max_length: 120
-}
-```
-
-:::
-
-What the compiler checks today:
-
-| Folder | Meant for | Checked today |
-|---|---|---|
-| `entities/` | One entity per file, with its own queries, actions and failures | Exactly one entity per file, and no actions unrelated to it. The file name does not have to match the entity. Plain types are also accepted here. |
-| `values/` | Types without identity: domain values, request and response shapes | Entities are rejected. Failures and actions are accepted. |
-| `queries/` | Reads across several entities | Entities are rejected. |
-| `workflows/` | Actions that change several entities | Entities are rejected. |
-| `routes/` | HTTP routes | Entities are rejected. Types and actions are accepted. |
-| Root, `jobs/` and any other folder | Not defined | Nothing is checked. An entity at the root or in a made-up folder is accepted. |
-
-Folders are organisation only: moving a file never changes what a declaration
-means or its database identity.
+A single file, or a folder with no `app.jadpo` above it, is checked as loose
+files: one implicit domain with the layout rules off.
 
 ## Source files
 
-> **Archived.** This section describes the archived compiler. In the new compiler all code lives in domain folders and names stay unique project-wide (chunk 1.3); see [Decided layout](#decided-layout).
+File order and declaration order never matter: a declaration can refer to
+one defined later or in another file. Names are unique across the whole
+project, so a second `Count` in another file is an error (see
+`semantic.duplicate_declaration` below).
 
-File order and declaration order never matter: a declaration can refer to one
-defined later or in another file. Without module headers the whole project
-shares one namespace, and every declaration is visible everywhere. The golden
-todo app works this way.
+## Domains instead of modules
 
-Each name can be declared once per project. A second `Count` in another file is
-an error (see `semantic.duplicate_declaration` below).
-
-## Modules
-
-> **Being removed.** The archived compiler's `module`, `import` and module-level `public`, replaced by decision on 2026-10-12 with domain folders, owner-qualified calls and public declarations per domain, which the new compiler builds (chunk 1.3); see [Decided layout](#decided-layout).
-
-A file opts into modules by starting with a `module` header. Declarations are
-private to their module unless marked `public`, and another module uses them
-only through a selective `import` that names each declaration.
-
-```jadpo project=modules file=pricing.jadpo
-module shop.pricing
-
-// Prices are whole pence; decimals arrive with the money type.
-public type Pence = Int {
-    min: 0
-}
-
-public function add_delivery(subtotal: Pence) -> Pence {
-    return subtotal
-}
-```
-
-```jadpo project=modules file=checkout.jadpo
-module shop.checkout
-import shop.pricing { Pence, add_delivery }
-
-function order_total(subtotal: Pence) -> Pence {
-    return add_delivery(subtotal)
-}
-```
-
-The rules:
-
-- One module per file, declared on the first line. Module names are explicit;
-  folder names never become module names.
-- Once any file declares a module, every file must.
-- Imports name each declaration. There are no wildcards, aliases, re-exports
-  or relative imports.
-- An imported function is called by its bare name. `shop.pricing.add_delivery(...)`
-  is not a second way to call it.
-- Modules cannot import each other in a cycle.
-- Routes cannot be marked `public`; who can reach a route is decided by the
-  route and its policy.
-- Names stay unique across the whole project, even in different modules.
+There are no modules. A domain owns everything in it and is the visibility
+boundary: a declaration is private to its domain unless marked `public`,
+and a call into another domain names it (`inventory.reserve_stock(...)`).
+Each file will name where its other names come from on `use` lines
+(decided 2026-10-14, built in roadmap chunk 3.5). See
+[Ownership and calls replace modules](#ownership-and-calls-replace-modules)
+and [Imports](#imports).
 
 ## Naming
-
-> **Archived.** This section describes the archived compiler's naming. In the new compiler module names are gone, a name must survive the round trip between its forms, so consecutive capitals are rejected (`VatRate`, not `VATRate`), and calls name their owner (chunk 1.3); see [Decided layout](#decided-layout).
 
 Every name has one spelling, decided by what kind of thing it names.
 
@@ -127,12 +49,13 @@ Every name has one spelling, decided by what kind of thing it names.
 |---|---|---|
 | Types and declared contracts (entities, failures, services, config, events) | `UpperCamelCase` | `Todo`, `TodoNotFound`, `ReminderMail` |
 | Values, fields, parameters, functions, actions, queries, jobs, variants | `lower_snake_case` | `due_at`, `order_total`, `overdue_reminders` |
-| Module names | dotted `lower_snake_case` | `shop.order_pricing` |
 | Standard library | lowercase namespace, always qualified | `temporal.in_zone(...)` |
 | Keywords | lowercase | `function`, `return`, `match` |
 
 Identifiers are ASCII letters, digits and underscores, and cannot start with a
-digit. The compiler checks the case and suggests the right spelling.
+digit. The compiler checks the case and suggests the right spelling. A name
+must convert to its file name and back unchanged, so consecutive capitals
+are not allowed: `VatRate`, not `VATRate`.
 
 Control-flow and declaration words are reserved (question 7): none of them
 names a declaration, field, parameter, variable or variant, and using one is
@@ -156,10 +79,9 @@ or library.
 
 ## Comments
 
-> **Archived.** This section describes the archived compiler. The new compiler reads `///` documentation comments, decided on 2026-10-12; see [Decided layout](#decided-layout).
-
 Line comments start with `//`. They carry no meaning and are kept for tooling.
-There are no block comments and no documentation comments yet.
+A `///` comment attaches to the next declaration and documents it: editors,
+generated documentation and the library catalogue show it.
 
 ## Every error has the same shape
 
@@ -174,9 +96,7 @@ new compiler's real output from `jadpo check`. An example without `app.jadpo`
 is checked as loose files, one implicit domain with the layout rules off; the
 layout examples are small projects. One decided error is not built yet:
 `layout.asset_unreferenced` waits for the reference forms of areas 11 and
-16. The `module.*` errors, `syntax.import_requires_module`,
-`syntax.empty_import`, `syntax.route_export_invalid` and
-`data.project_role_invalid` went with modules and role folders.
+16.
 
 ### `toolchain.empty_project`
 
@@ -1127,19 +1047,20 @@ check failed: 1 error, 1 file
 
 ### Status
 
-Each row is the archived compiler's (tag `archive/compiler-v0`); the new
-compiler builds the decided layout instead (chunks 1.3 and 1.9), with each
+The compiler builds the decided layout (chunks 1.3 and 1.9), with each
 rule's real output under [Errors](#errors).
 
 | Feature | Status |
 |---|---|
-| Role folders | Archived: partly checked. Only "entities live in `entities/`, one per file" is enforced, and an entity at the root or in a made-up folder is still accepted. The documented rule that failures cannot go in `values/` is not enforced. |
-| Files, single namespace, order independence | Archived: worked in general. The new compiler keeps order independence; names are unique project-wide. |
-| Modules, `public`, selective imports, cycle check | Archived: worked in general, within the limits listed above. The new compiler has domains and per-declaration `public` instead, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused` (chunk 2.8). |
-| Naming case rules | Archived: worked in general. The new compiler adds the round trip and the folded-collision rules (chunk 1.3). |
-| Reserved words | Archived: inconsistent: `var return = x` is accepted, but `return` cannot then be read back. A fix policy was chosen on 2026-10-01 and not built. |
-| Comments | Archived: `//` only. The new compiler reads `///` documentation comments. |
-| Golden app layout | Archived: a todo route (`GET /todos/{todo_id}`) sits in the health route file and is accepted. The reminder job, mail service and readiness check were dropped in the migration, so the layout has never held them. |
+| Root, domains and their folders | Built (chunk 1.3): a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. |
+| Files and names | Built (chunks 1.3 and 1.9): one primary declaration per file, named after it; names unique project-wide; the round-trip and folded-collision rules, with the exception for a type folding to its callable's name (chunk 1.9). |
+| Order independence | Built: declaration and file order never matter. |
+| Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused` (chunk 2.8). |
+| Reserved words | Built: a reserved word can't name anything. |
+| Comments | Built: `//` and `///` documentation comments. |
+| Similar helpers | Built (chunk 1.7): the `library.similar_exists` warning. |
+| Imports | Decided 2026-10-14, not built: roadmap chunk 3.5. |
+| Referenced assets | Decided, not built: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
 
 ### Consistency with the rest of the language
 
@@ -1177,7 +1098,8 @@ pieces of research in `docs/language/research/` (what developers like and
 dislike in other frameworks' layouts, six realistic applications from this
 todo app up to a 72-entity platform, and candidate layouts tested against
 them) and an independent review of this proposal against that research and
-fresh evidence. Decided on 2026-10-12; nothing here is built yet.
+fresh evidence. Decided on 2026-10-12, and built in chunks 1.3 and 1.9
+except where a part says otherwise.
 
 **The shape.** Every project has the same shape at every size. The root holds
 a fixed set of files and folders. All application code lives in business
@@ -1260,8 +1182,7 @@ build/
 - Only these entries: `app.jadpo`, `config.jadpo`, `authentication.jadpo`,
   `policy.jadpo`, `domains/`, `shared/`, `database/`, `translations/`,
   `tests/` and `build/`.
-- `app.jadpo` also records the project's Jadpo language version, replacing
-  today's hidden `.app/project.json`.
+- `app.jadpo` also records the project's Jadpo language version.
 - A `.jadpo` file anywhere else is an error. Folders with no `.jadpo` files
   (`docs/`, `.github/`) are ignored.
 - There is no `env.jadpo`. `config.jadpo` declares every setting; values come
@@ -1366,7 +1287,7 @@ build/
   The catalogue, the caller list and the domains that use it are computed
   and shown in the editor, never written into source files.
 - Before shared or public code changes, its reach is visible in three ways:
-  find-references in the editor (available today), a `jadpo impact <name>`
+  find-references in the editor, a `jadpo impact <name>`
   command listing calling domains, entry points and covering tests, and
   `jadpo check` itself reporting which domains a change affects and running
   their tests.
@@ -1388,8 +1309,7 @@ build/
   as `planning.snooze_todo()` from inside `planning` is
   `semantic.own_domain_qualification`. A public action is the domain's write interface: checkout in
   `ordering` can call `inventory.reserve_stock(...)` and both changes commit
-  or roll back together in one database transaction, using the transaction
-  machinery that exists today. Another domain never touches the entities
+  or roll back together in one database transaction. Another domain never touches the entities
   directly. If a domain ever moves to its own database, the compiler rejects
   the shared transaction rather than losing the all-or-nothing guarantee.
 - Events are for reactions that do not need to be all-or-nothing, such as
@@ -1408,10 +1328,6 @@ build/
   chunk 2.7).
 - There are no `module` headers. Imports came back on 2026-10-14 in a
   different form: see [Imports](#imports).
-- This reverses parts of two accepted contracts, which must be updated if it
-  is adopted: the naming contract (NAME-D03 module names, NAME-D04 bare calls
-  within a module, NAME-D09 imports) and the event design's rule that
-  ownership follows module names.
 
 #### Imports
 
@@ -1476,9 +1392,9 @@ the names have to appear exactly as the code writes them.
 
 - `database/identities.json` is the registry that gives every table, column
   and index a stable identity, so renaming a field renames its column instead
-  of dropping it. Compiler-maintained, committed and reviewed (today it is
-  `schema.identities.json` at the root). One sorted entry per line, so two
-  branches that change the schema produce a readable merge.
+  of dropping it. Compiler-maintained, committed and reviewed. One sorted
+  entry per line, so two branches that change the schema produce a readable
+  merge.
 - Each schema change is a folder under `database/migrations/`, named by date,
   time and purpose, holding your decisions on destructive changes, the
   generated SQL for each database and any data backfill written in Jadpo. The
@@ -1574,12 +1490,6 @@ without an `app.jadpo` above it is treated as loose files, one implicit
 domain with the layout rules off, as a single file is. Resolution covers
 names in signatures, type blocks and calls; lower-case names used as values
 are checked with the logic of bodies (area 3).
-
-#### Cost of building it
-
-The `jadpo new` scaffold, about 200 single-file compile tests (covered by
-the single-file rule above), the golden todo migration and the existing
-examples all move to the new layout.
 
 #### Decided in later areas
 

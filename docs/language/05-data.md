@@ -11,7 +11,7 @@ How a Jadpo program declares the records it keeps and how their schema
 changes. Reading and writing records is area 6; who may read or change one
 is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.1: entities, their fields, references, unique rules, indexes and stores, migrations and the test database; the examples marked `check` compile with this checkout's `jadpo`. Lifecycles (chunk 3.4), caches (with the Redis driver) and seeds come later, and their examples are proposals. The archived compiler's syntax is collapsed beneath each section that changed. The reasoning behind the store and cache rules is in [the stores and caching mapping](research/data-stores-and-caching-mapping.md); where it differs, this page wins.
+> Decided on 2026-10-12. Built in chunk 3.1: entities, their fields, references, unique rules, indexes and stores, migrations and the test database; the examples marked `check` compile with this checkout's `jadpo`. Lifecycles (chunk 3.4), caches (with the Redis driver) and seeds come later, and their examples are proposals. The reasoning behind the store and cache rules is in [the stores and caching mapping](research/data-stores-and-caching-mapping.md); where it differs, this page wins.
 
 Examples use the golden todo app's `planning` domain, plus a shop where Redis
 is needed.
@@ -67,35 +67,6 @@ Each connection's settings, such as its URL from configuration, come with
 areas 10 and 11; until then `jadpo migrate apply` takes the database's URL
 with `--url`.
 
-::: today
-
-A `persistence` block repeats the only values that run, `cache` builds
-nothing, and the engine depends on whether `DATABASE_URL` is set.
-
-```jadpo project=stores
-entity Customer {
-    id: Uuid
-    email: Email
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        unique: email
-    }
-
-    cache hot {
-        store: redis
-        from: primary
-        strategy: invalidate
-        delivery: durable
-    }
-}
-```
-
-:::
-
 ## Entities and the `id`
 
 An entity is a stored record with a lasting identity, in its own file under
@@ -128,14 +99,6 @@ entity Project {
 }
 ```
 
-::: today
-
-The identity is declared four ways (`identity: id`, `{ generated: identity }`,
-a trailing `identity`, `persist X { identity: id }`); generation is opt-in and
-makes version 4 ids.
-
-:::
-
 ## Fields and their settings
 
 A field's settings (`generated:`, `unique:`, `on_delete:`) go in a block
@@ -157,29 +120,6 @@ entity Todo {
     }
 }
 ```
-
-::: today
-
-`generated` is written after the type with its own `on:` setting, and
-`created_at: Instant { generated: create }` is a syntax error:
-
-```jadpo project=generated
-entity Note {
-    id: Uuid { generated: identity }
-    body: Text
-    created_at: Instant generated { on: create }
-    updated_at: Instant generated { on: create_or_change }
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-```
-
-:::
 
 ## Unique rules
 
@@ -214,31 +154,6 @@ entity Project {
 }
 ```
 
-::: today
-
-A field can say `unique` after its type, the `persistence` block can say
-`unique: name`, and compound rules use a call shape:
-
-```jadpo project=unique
-entity Account {
-    id: Uuid
-    handle: Text unique
-    tenant: Text
-    owner_email: Email
-    region: Text index
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        constraint tenant_owner: unique (tenant, owner_email)
-    }
-}
-```
-
-:::
-
 ## References and `on_delete`
 
 Any field typed `X.id` is a reference, with a foreign key and index. Its
@@ -271,41 +186,6 @@ entity Todo {
     }
 }
 ```
-
-::: today
-
-A field typed `User.id` has no foreign key unless the `persistence` block
-repeats it with `references`, and the parent declares each child with
-`inverse`:
-
-```jadpo project=relationships
-entity User {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        inverse todos: many Todo via: Todo.owner_id
-    }
-}
-
-entity Todo {
-    id: Uuid
-    owner_id: User.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references owner_id: User.id as: owner on_delete: restrict
-    }
-}
-```
-
-:::
 
 ## Children
 
@@ -375,14 +255,6 @@ lifecycle: {
 They cannot mention other records or who is asking: that is policy (area 9),
 which keeps lifecycle conditions simple enough to become database indexes.
 
-::: today
-
-`visible when`, `transition x { from: }` and `purge after ... from ...` are
-three different grammars, and enum values in `initial:` and `set:` need the
-field constructor, `User.status(UserStatus.active)`.
-
-:::
-
 ## Indexes
 
 The compiler sees every read, so it creates every index its queries need,
@@ -404,21 +276,13 @@ entity Todo {
 }
 ```
 
-Today an index is a list of fields and a `kind:` option is not built yet.
-Since chunk 3.2 the queries' indexes are derived: for each query, and each
-list it includes, the fields it always tests with `==` or `in`, then its
-order's fields, unless an index or unique key the table already has serves
-them; a reference's own index goes once a query's index starts with its
-column. The partial indexes for `visible:` come with lifecycles (chunk
+Built in chunk 3.1: an index is a list of fields; a `kind:` option is not
+built yet. Since chunk 3.2 the queries' indexes are derived: for each
+query, and each list it includes, the fields it always tests with `==` or
+`in`, then its order's fields, unless an index or unique key the table
+already has serves them; a reference's own index goes once a query's index
+starts with its column. The partial indexes for `visible:` come with lifecycles (chunk
 3.4).
-
-::: today
-
-The compiler already derives indexes from query shapes, warns
-`index.recommendation_available` for others, and `jadpo schema index-accept`
-edits the source to add `index` to a field.
-
-:::
 
 ## Caches
 
@@ -491,14 +355,6 @@ changes stored values, so it needs a migration.
 | `Instant`, `CalendarDate` | `timestamptz(3)`, `date` |
 | `Enum` without data | `text` holding the variant name |
 | `Enum` with data, `Object`, `List`, `Set`, `Map` | `jsonb` |
-
-::: today
-
-UUIDs are `TEXT`, every `Int` is `BIGINT`, `Decimal` is `REAL` on SQLite, and
-structured and `Bytes` fields are `BLOB` columns, a type PostgreSQL does not
-have.
-
-:::
 
 ## Migrations
 
@@ -609,14 +465,6 @@ Schedule state, sessions and the stores system features name explicitly
 holds a `system_table` node for each, and `jadpo_migrations`, which
 `jadpo migrate apply` keeps, is the runtime's own and in no snapshot.
 
-::: today
-
-Nothing is applied: the runtime runs `CREATE TABLE IF NOT EXISTS` at startup.
-The `jadpo schema` commands produce review artifacts marked
-`executable: false`, and the registry is `schema.identities.json`.
-
-:::
-
 ## Seeds
 
 A seed in `database/seeds/` creates development data by calling the
@@ -634,7 +482,7 @@ seed {
 }
 ```
 
-There are no seeds today.
+Seeds are not built yet.
 
 ## Where things live
 
@@ -660,13 +508,6 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
     ...
 }
 ```
-
-::: today
-
-Operations sit inside the entity with a `self: ref` or `self: value`
-receiver, and a value receiver that writes needs `guard:`.
-
-:::
 
 ## Errors
 
@@ -1169,7 +1010,7 @@ check failed: 1 error, 2 files
 
 ### `data.unknown_section`
 
-The archived compiler's `identity:` item:
+An entity has no `identity:` item:
 
 ```jadpo check project=e-unknown-section expect=data.unknown_section
 entity Note {
