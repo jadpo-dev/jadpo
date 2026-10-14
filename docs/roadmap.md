@@ -118,7 +118,7 @@ reference only).
   unused-variable errors come from one walk.
 - [x] **2.2 Test runner:** `opus · high` file, line, name, seed, failure reports as decided,
   `--json`.
-- [ ] **2.3 Watch mode** `opus · high` under the 1-second target on a fixture project.
+- [x] **2.3 Watch mode** `opus · high` under the 1-second target on a fixture project.
 
 ## Phase 3 — Data (areas 5, 6)
 
