@@ -693,11 +693,12 @@ impl<'p> Machine<'p> {
             }
             Task::Construct(at) => {
                 let value = self.pop();
-                let (validator, fallible) = match self.decoded(at) {
+                let (validator, fallible, set) = match self.decoded(at) {
                     Some(Decoded::Construct {
                         validator,
                         fallible,
-                    }) => (self.program.validator(*validator), *fallible),
+                        set,
+                    }) => (self.program.validator(*validator), *fallible, *set),
                     _ => {
                         return Err(self.defect(
                             ctx,
@@ -705,6 +706,12 @@ impl<'p> Machine<'p> {
                             at,
                         ));
                     }
+                };
+                // A set built from a list drops its repeats, in the
+                // canonical order, before its lengths are counted.
+                let value = match value {
+                    Value::List(items) if set => Value::set(items.to_vec()),
+                    value => value,
                 };
                 let Some(value) = validator.store(value) else {
                     return Err(self.fault(ctx, FaultKind::DecimalOverflow, at));

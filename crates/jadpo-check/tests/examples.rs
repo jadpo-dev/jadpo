@@ -350,6 +350,8 @@ const BODY: &[&str] = &[
     "call std with a named argument",
     "call construct",
     "call construct field type",
+    "call construct named collection",
+    "call construct named set from a list",
     "call entity operation",
     "build object",
     "build variant with fields",
@@ -541,8 +543,15 @@ fn fallible(fallible: &Fallible) -> Option<&'static str> {
     }
 }
 
-/// What one typed body uses, by the names in [`BODY`].
-fn body_features(body: &Body, out: &mut BTreeSet<&'static str>, std: &mut BTreeSet<String>) {
+/// What one typed body uses, by the names in [`BODY`]. `constructed`
+/// gathers each construction's type and its value's type, which only the
+/// graph can say are collections.
+fn body_features(
+    body: &Body,
+    out: &mut BTreeSet<&'static str>,
+    std: &mut BTreeSet<String>,
+    constructed: &mut Vec<(TypeRef, Option<TypeRef>)>,
+) {
     if !body.proofs.is_empty() {
         out.insert("construction proven by a condition");
     }
@@ -611,11 +620,20 @@ fn body_features(body: &Body, out: &mut BTreeSet<&'static str>, std: &mut BTreeS
                 }
                 Expr::Call {
                     callee,
+                    args,
                     fallible: can_fail,
-                    ..
                 } => {
                     if let Some(name) = fallible(can_fail) {
                         out.insert(name);
+                    }
+                    if let Callee::Construct(ty) = callee {
+                        let value = args
+                            .first()
+                            .copied()
+                            .flatten()
+                            .and_then(|id| body.sites.get(id.0 as usize))
+                            .map(|site| site.ty.clone());
+                        constructed.push((ty.clone(), value));
                     }
                     let name = match callee {
                         Callee::Function(_) => "call function",
@@ -767,6 +785,28 @@ fn written_settings(source: &ast::SourceFile, used: &mut BTreeSet<String>) {
     }
 }
 
+/// The list, set or map `ty` is, or the named type or field type `ty` is
+/// built on.
+fn collection<'g>(graph: &'g jadpo_graph::Graph, ty: &'g TypeRef) -> Option<&'g TypeRef> {
+    let mut current = ty;
+    for _ in 0..64 {
+        current = match current {
+            TypeRef::List(_) | TypeRef::Set(_) | TypeRef::Map(..) => return Some(current),
+            TypeRef::Nullable(inner) => inner,
+            TypeRef::Node(key) | TypeRef::Field(key) => match &graph.get(key)?.detail {
+                Detail::Type {
+                    base: Base::Refines(parent),
+                    ..
+                } => parent,
+                Detail::Field { ty, .. } => ty,
+                _ => return None,
+            },
+            _ => return None,
+        };
+    }
+    None
+}
+
 /// Every feature one example project uses.
 fn used_by(project_dir: &Path) -> BTreeSet<String> {
     let loaded = jadpo_db::load(project_dir);
@@ -783,6 +823,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
     );
     let mut used = BTreeSet::new();
     let mut body = BTreeSet::new();
+    let mut constructed = Vec::new();
     for &file in project.files(db) {
         let path = file.path(db);
         let tree = parse(db, file);
@@ -815,12 +856,22 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
         }
         for callable in callables_of(db, file) {
             let checked = typed_body(db, project, callable);
-            body_features(&checked.body, &mut body, &mut used);
+            body_features(&checked.body, &mut body, &mut used, &mut constructed);
             named_arguments(&checked.body, file.text(db), &mut body);
         }
     }
-    used.extend(body.into_iter().map(|feature| format!("body {feature}")));
     let graph = graph(db, project);
+    for (ty, value) in &constructed {
+        let into = collection(graph, ty);
+        if into.is_some() {
+            body.insert("call construct named collection");
+        }
+        let from = value.as_ref().and_then(|value| collection(graph, value));
+        if matches!(into, Some(TypeRef::Set(_))) && matches!(from, Some(TypeRef::List(_))) {
+            body.insert("call construct named set from a list");
+        }
+    }
+    used.extend(body.into_iter().map(|feature| format!("body {feature}")));
     for node in graph.nodes() {
         used.insert(format!("graph node {}", node.kind.word()));
         match &node.detail {

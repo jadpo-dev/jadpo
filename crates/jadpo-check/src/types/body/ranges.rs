@@ -535,8 +535,14 @@ impl Body<'_> {
                     || counted
                         .is_some_and(|c| c.interval.high.cmp(End::At(Num::whole(n.into()))).is_le())
             };
+            // A set built from a list (area 2, "Named collection
+            // construction") drops the list's repeats, so it holds at most
+            // as many items as the list and, when the list has any, at
+            // least one: nothing proves two items differ.
+            let collapses = matches!(self.table.structure(target), Ty::Set(_))
+                && matches!(self.table.structure(actual), Ty::List(_));
             if let Some(n) = needs.min_length {
-                if !at_least_length(n, low, counted.as_ref()) {
+                if (collapses && n > 1) || !at_least_length(n, low, counted.as_ref()) {
                     out.push("min_length".to_string());
                 } else if !at_least_length(n, low, None) {
                     let by = counted.as_ref().map(|c| c.by.clone()).unwrap_or_default();

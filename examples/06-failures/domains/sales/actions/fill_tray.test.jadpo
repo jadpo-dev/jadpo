@@ -1,0 +1,9 @@
+test "waiting orders fill a tray in the order they came" {
+    var tray: Tray = attempt fill_tray([2, 12, 24])
+    assert tray == [2, 12, 24]
+}
+
+test "a tray takes one to four orders" {
+    assert fill_tray([]) fails NothingToBake
+    assert fill_tray([1, 1, 1, 1, 1]) fails TrayFull
+}

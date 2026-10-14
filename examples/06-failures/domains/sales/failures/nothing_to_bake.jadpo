@@ -1,0 +1,4 @@
+/// No orders are waiting, so there is no tray to bake.
+type NothingToBake = Failure {
+    kind: FailureKind.invalid_value
+}

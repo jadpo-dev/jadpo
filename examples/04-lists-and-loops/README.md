@@ -16,6 +16,7 @@ filter it. So far `for` and those operations take only lists.
 3. **List literals.** Square brackets, items taking the list's element type. See `actions/weigh_recipe.test.jadpo`.
 4. **Inline functions.** `collection.map` and `collection.filter` with `item -> expression`. See `actions/scale_recipe.jadpo` and [area 3, Passing functions](../../docs/language/03-logic.md#passing-functions).
 5. **Searching and sets.** `collection.contains`, an `else if` chain, and a `Set` returned and compared without order, with what sets can't do yet. See `actions/check_allergens.jadpo` and [area 2, Collections](../../docs/language/02-values-and-types.md#collections).
+6. **Named collections.** `ShoppingList(every_name)` builds a named set type from a list whose items already are its item type, keeping each value once. See `actions/shopping_list.jadpo` and [area 2, Named collection construction](../../docs/language/02-values-and-types.md#named-collection-construction).
 
 The other types in `domains/baking/types/` are short; read them as `recipe.jadpo` mentions them. Each action's tests sit beside it, in `<file>.test.jadpo`.
 
@@ -51,4 +52,6 @@ target/release/jadpo fmt --check examples/04-lists-and-loops
   <!-- try {"file": "domains/baking/actions/weigh_recipe.jadpo", "replace": "var mut total", "with": "var total", "check": ["type.assign_immutable"]} -->
 - In `weigh_recipe.test.jadpo`, change `== 860` to `== 861`. `jadpo test` fails with `test.assertion_failed`, showing each side's value and the command that reruns just that test.
   <!-- try {"file": "domains/baking/actions/weigh_recipe.test.jadpo", "replace": "== 860", "with": "== 861", "test": ["test.assertion_failed"]} -->
+- In `shopping_list.jadpo`, give `ShoppingList` a rule: change `Set<IngredientName> {}` to `Set<IngredientName> { min_length: 1 }`, on three lines. `jadpo check` reports `failure.attempt_required`: a recipe with no ingredients would break it, so building one can now fail; [06-failures](../06-failures/README.md) shows how a construction that can fail is handled.
+  <!-- try {"file": "domains/baking/actions/shopping_list.jadpo", "replace": "Set<IngredientName> {}", "with": "Set<IngredientName> {\n    min_length: 1\n}", "check": ["failure.attempt_required"]} -->
 - Then read [05-logic](../05-logic/README.md).

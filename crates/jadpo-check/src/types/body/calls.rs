@@ -998,14 +998,46 @@ impl Body<'_> {
             self.literal(value, &target, true);
             return (target, Fallible::Never);
         }
+        if matches!(value, Expr::ListExpr(_)) && is_collection(&self.table.structure(&target)) {
+            // A list written here takes the collection's type, and its
+            // length is checked while compiling, as a literal's is.
+            self.check(value, &target);
+            return (target, Fallible::Never);
+        }
         let before = self.out.len();
         let actual = self.infer(value);
         // A value already reported as wrong proves nothing either way.
         if actual.has_error() || target.has_error() || self.out.len() > before {
             return (target, Fallible::Unknown);
         }
+        if self.table.is_nullable(&actual) && !self.table.is_nullable(&target) {
+            // `none` follows no type's rules, so the absent case is handled
+            // before anything is built from the value.
+            let span = self.span(value);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_CONSTRUCTOR_INPUT,
+                    format!("`{target}` can't be built from `{actual}`"),
+                )
+                .at(span, format!("this is `{actual}`"))
+                .reason(format!(
+                    "`{actual}` may be `none`, and a `{target}` can't be."
+                ))
+                .next(format!(
+                    "Use `match` to handle `none` before building a `{target}`"
+                )),
+            );
+            return (target, Fallible::Unknown);
+        }
         if self.table.assignable(&actual, &target) {
             return (target, Fallible::Never);
+        }
+        if is_collection(&self.table.structure(&target)) {
+            if !self.collection_input(value, &actual, &target) {
+                return (target, Fallible::Unknown);
+            }
+            let fallible = self.proved(value, &actual, &target, call);
+            return (target, fallible);
         }
         if let Ty::Prim(prim) = &target
             && prim.is_representation()
@@ -1050,18 +1082,118 @@ impl Body<'_> {
             );
             return (target, Fallible::Unknown);
         }
-        let verdict = self.verdict(value, &actual, &target);
+        let fallible = self.proved(value, &actual, &target, call);
+        (target, fallible)
+    }
+
+    /// Whether `Type(value)` can fail: the rules of `target` neither the
+    /// declared ranges nor the conditions around it prove `value`, of type
+    /// `actual`, follows, with the rules the conditions prove recorded.
+    fn proved(&mut self, value: &Expr, actual: &Ty, target: &Ty, call: &ast::CallExpr) -> Fallible {
+        let verdict = self.verdict(value, actual, target);
         if !verdict.proved.is_empty() {
             self.facts
                 .proofs
                 .insert(node_key(call.syntax()), verdict.proved);
         }
-        let fallible = if verdict.breakable.is_empty() {
+        if verdict.breakable.is_empty() {
             Fallible::Never
         } else {
             Fallible::Construction(verdict.breakable)
+        }
+    }
+
+    /// `Names(found)` (area 2, "Named collection construction"): a named
+    /// list, set or map type, or a field type with collection rules, is
+    /// built from a collection whose items are already its item type,
+    /// checking only the collection's own rules. A list is built from a
+    /// list, a set from a set or a list (its repeats collapse), a map from
+    /// a map; the items are never converted in the same step, and
+    /// collections stay invariant. Reports the value and gives `false`
+    /// when it isn't such a collection; one that may be `none` is reported
+    /// before, as for every construction.
+    fn collection_input(&mut self, value: &Expr, actual: &Ty, target: &Ty) -> bool {
+        let into = self.table.structure(target);
+        let from = self.table.structure(actual);
+        let same_kind = matches!(
+            (&into, &from),
+            (Ty::List(_), Ty::List(_))
+                | (Ty::Set(_), Ty::Set(_) | Ty::List(_))
+                | (Ty::Map(..), Ty::Map(..))
+        );
+        let items_fit = match (&into, &from) {
+            (Ty::List(a) | Ty::Set(a), Ty::List(b) | Ty::Set(b)) => a == b,
+            (Ty::Map(ka, va), Ty::Map(kb, vb)) => ka == kb && va == vb,
+            _ => false,
         };
-        (target, fallible)
+        if same_kind && items_fit {
+            return true;
+        }
+        let kind = collection_kind(&into);
+        let built_from = match &into {
+            Ty::Set(item) => format!("a `Set<{item}>` or a `List<{item}>`"),
+            other => format!("a `{other}`"),
+        };
+        let (reason, next) = if same_kind && !items_fit {
+            let converts = if matches!(into, Ty::Map(..)) {
+                "the keys or values"
+            } else {
+                "the items"
+            };
+            let build = match &into {
+                Ty::Map(key, value) => {
+                    format!("Build each key as a `{key}` and each value as a `{value}`")
+                }
+                Ty::List(item) | Ty::Set(item) => format!("Build each item as a `{item}`"),
+                _ => String::new(),
+            };
+            let from_kind = collection_kind(&from);
+            let wanted = match (&into, &from) {
+                (Ty::List(item) | Ty::Set(item), Ty::List(_)) => format!("List<{item}>"),
+                (Ty::List(item) | Ty::Set(item), _) => format!("Set<{item}>"),
+                (other, _) => other.to_string(),
+            };
+            (
+                format!(
+                    "`{target}` is {}, and this is {}. Building a `{target}` checks only the {kind}'s own rules; it never converts {converts}.",
+                    collection_words(&into),
+                    collection_words(&from)
+                ),
+                format!("{build} where it is made, so the {from_kind} is a `{wanted}`"),
+            )
+        } else if let (Ty::List(item), Ty::Set(_)) = (&into, &from) {
+            (
+                format!(
+                    "`{target}` is {}, and this is a set. A set has no order a list could keep, so a list is built only from a list.",
+                    collection_words(&into)
+                ),
+                format!("Keep the items in a `List<{item}>` where they are collected"),
+            )
+        } else {
+            let made_of = if is_collection(&from) {
+                collection_words(&from)
+            } else {
+                super::super::literal::what(self.table, actual)
+            };
+            (
+                format!(
+                    "`{target}` is {}, so it is built from {built_from}; `{actual}` is {made_of}.",
+                    collection_words(&into)
+                ),
+                format!("Pass {built_from}"),
+            )
+        };
+        let span = self.span(value);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_CONSTRUCTOR_INPUT,
+                format!("`{target}` can't be built from `{actual}`"),
+            )
+            .at(span, format!("this is `{actual}`"))
+            .reason(reason)
+            .next(next),
+        );
+        false
     }
 
     /// `Enum(value)`: an enum is never built from a value.
@@ -1102,6 +1234,30 @@ impl Body<'_> {
                 variants.first().map_or("", |v| v.name.as_str())
             )),
         });
+    }
+}
+
+fn is_collection(ty: &Ty) -> bool {
+    matches!(ty, Ty::List(_) | Ty::Set(_) | Ty::Map(..))
+}
+
+/// `list`, `set` or `map`.
+fn collection_kind(ty: &Ty) -> &'static str {
+    match ty {
+        Ty::Set(_) => "set",
+        Ty::Map(..) => "map",
+        _ => "list",
+    }
+}
+
+/// A collection in the reader's words: "a list of `Name`", "a map from
+/// `Name` to `Count`".
+fn collection_words(ty: &Ty) -> String {
+    match ty {
+        Ty::List(item) => format!("a list of `{item}`"),
+        Ty::Set(item) => format!("a set of `{item}`"),
+        Ty::Map(key, value) => format!("a map from `{key}` to `{value}`"),
+        other => format!("`{other}`"),
     }
 }
 

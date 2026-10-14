@@ -1,0 +1,5 @@
+/// More orders are waiting than one tray takes.
+type TrayFull = Failure {
+    kind: FailureKind.invalid_value
+    message: "A tray takes at most 4 orders."
+}

@@ -104,7 +104,10 @@ pub(crate) fn values(types: &Types, ty: &TypeRef) -> Option<Vec<Value>> {
 }
 
 /// Lists or sets of the item values to probe with, of lengths at and near
-/// the edges of `ty`'s `min_length` and `max_length`, repeats included.
+/// the edges of `ty`'s `min_length` and `max_length`, repeats included,
+/// and lists of one item over and over: a set built from a list (area 2,
+/// "Named collection construction") holds as few as one item however
+/// long the list is.
 fn collections(types: &Types, ty: &TypeRef, collection: &TypeRef) -> Option<Vec<Value>> {
     let (TypeRef::List(item) | TypeRef::Set(item)) = collection else {
         return None;
@@ -127,13 +130,17 @@ fn collections(types: &Types, ty: &TypeRef, collection: &TypeRef) -> Option<Vec<
         let picked: Vec<Value> = (0..length as usize)
             .map(|i| items[i % items.len()].clone())
             .collect();
+        let same =
+            (!set && length > 1).then(|| Value::list(vec![items[0].clone(); length as usize]));
         let value = if set {
             Value::set(picked)
         } else {
             Value::list(picked)
         };
-        if validator.check(&value).is_ok() && !out.contains(&value) {
-            out.push(value);
+        for value in std::iter::once(value).chain(same) {
+            if validator.check(&value).is_ok() && !out.contains(&value) {
+                out.push(value);
+            }
         }
     }
     if types.is_nullable(ty) {

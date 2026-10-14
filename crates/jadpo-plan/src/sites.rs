@@ -39,10 +39,13 @@ pub enum Decoded {
     Callable(Option<u32>),
     /// `Type(value)`: the type's rules, and whether a broken rule is a
     /// failure its `attempt` maps rather than something the checker proved
-    /// can't happen.
+    /// can't happen. `set` for a named set type, which a list becomes by
+    /// dropping its repeats, in the canonical order (area 2, "Named
+    /// collection construction").
     Construct {
         validator: ValidatorId,
         fallible: bool,
+        set: bool,
     },
     /// `Type { ... }` or `Enum.variant { ... }`.
     Build {
@@ -158,6 +161,7 @@ impl Decoder<'_> {
                 Callee::Construct(ty) => Decoded::Construct {
                     validator: self.types.validator_id(ty),
                     fallible: matches!(fallible, Fallible::Construction { .. }),
+                    set: self.types.is_set(ty),
                 },
                 Callee::Query(key) => Decoded::Written(format!("query {}", self.types.name(key))),
                 Callee::Entity { entity, operation } => {
