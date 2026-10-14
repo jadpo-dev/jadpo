@@ -18,6 +18,10 @@
 //! will take), on one thread per core; results come back in the seed's
 //! order.
 //!
+//! [`postgres`] gives tests a PostgreSQL server: the one
+//! `JADPO_TEST_DATABASE_URL` names, or a disposable one from the machine's
+//! own PostgreSQL tools.
+//!
 //! What later phases add is left out rather than imitated: the trace of
 //! what ran, fakes, the kept database and clock overrides. Route and
 //! schedule tests come with their areas.
@@ -26,6 +30,7 @@ mod diff;
 mod env;
 mod json;
 mod outcome;
+pub mod postgres;
 mod record;
 mod run;
 mod screen;

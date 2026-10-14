@@ -28,6 +28,11 @@ runtime = [
 ]
 tooling = ["jadpo-term", "jadpo-test", "jadpo-lsp", "jadpo-cli"]
 
+# Runtime crates that never build for wasm32: tools/verify.py leaves them
+# out of its wasm32 build. A crate listed before it exists is skipped.
+[workspace.metadata.targets]
+native_only = ["jadpo-host-native", "jadpo-host-workers"]
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
@@ -49,6 +54,8 @@ jadpo-std = { path = "crates/jadpo-std" }
 jadpo-graph = { path = "crates/jadpo-graph" }
 jadpo-lsp = { path = "crates/jadpo-lsp" }
 jadpo-test = { path = "crates/jadpo-test" }
+jadpo-drivers = { path = "crates/jadpo-drivers" }
+jadpo-host-native = { path = "crates/jadpo-host-native" }
 rowan = "=0.16.1"
 ungrammar = "=1.16.1"
 serde_json = "1"
@@ -64,6 +71,14 @@ blake3 = { version = "=1.8.7", default-features = false, features = ["std", "pur
 # transport and the protocol's types.
 lsp-server = "=0.10.0"
 lsp-types = "=0.97.0"
+# The PostgreSQL driver (jadpo-drivers, feature `postgres`) and the native
+# host (docs/compiler-runtime.md §2.6). tokio-postgres runs over a stream the
+# host supplies, so it needs none of its own runtime; the codecs are
+# jadpo-drivers' own, so none of its `with-*` features either. tokio brings
+# only its I/O traits here; jadpo-host-native turns on what it runs.
+tokio = { version = "=1.53.3", default-features = false }
+tokio-postgres = { version = "=0.7.18", default-features = false }
+bytes = "=1.12.1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
