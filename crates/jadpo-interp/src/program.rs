@@ -234,7 +234,7 @@ impl Program {
     }
 
     /// A file's text, by its project-relative path.
-    pub(crate) fn text(&self, path: &str) -> Option<&str> {
+    pub fn text(&self, path: &str) -> Option<&str> {
         self.texts.get(path).map(String::as_str)
     }
 }

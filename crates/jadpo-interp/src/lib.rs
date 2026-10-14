@@ -24,6 +24,7 @@ mod types;
 pub use jadpo_runtime::{Failure, Fault, FaultKind, Frame, MAX_DEPTH, Places};
 pub use jadpo_value::Value;
 pub use program::{CallError, Program};
+
 pub use report::Report;
 
 /// How a call ended.
@@ -45,6 +46,25 @@ pub struct Assertion {
     /// The frames at the `assert`, innermost first.
     pub frames: Vec<Frame>,
     pub detail: AssertionDetail,
+    /// The value of each sub-expression of the condition the assertion
+    /// worked out, in the order their anchors are written (area 13: "every
+    /// sub-expression's value, as pytest and power-assert show").
+    /// Literals are left out, and so is anything inside a callee or an
+    /// inline function, which has no single value here.
+    pub parts: Vec<Part>,
+}
+
+/// One sub-expression of a failed assertion and its value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Part {
+    /// Its bytes in the test's file.
+    pub start: u32,
+    pub end: u32,
+    /// Where its value points: an operator's first byte for arithmetic,
+    /// comparisons and `and`/`or`, a field's name for a field read,
+    /// otherwise its start.
+    pub anchor: u32,
+    pub value: Value,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
