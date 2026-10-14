@@ -432,9 +432,61 @@ fixture alice_with_todos() -> Principal.user {
 }
 ```
 
-Only tests, other fixtures and seeds can call a fixture. A scenario in root
-`tests/` calls another domain's fixture when it is `public`
-(`planning.alice_with_todos()`).
+Only tests, other fixtures and seeds can call a fixture; an action that
+calls one is `semantic.not_callable`. A fixture is private to its domain
+unless it is marked `public`. Another domain's tests, fixtures and seeds,
+and a scenario in root `tests/`, call a public fixture through its domain,
+like an action (`planning.alice_with_todos()`); calling a private one from
+outside its domain is `visibility.private_cross_domain`. `public` offers a
+fixture to tests, fixtures and seeds only: application code still never
+calls it.
+
+```jadpo check project=public-fixture file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=public-fixture file=domains/planning/types/todo_count.jadpo hidden
+/// How many todos are open.
+type TodoCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=public-fixture file=domains/planning/actions/add_todo.jadpo hidden
+/// The open todos once one more is added.
+action add_todo(open: TodoCount) -> TodoCount {
+    return TodoCount(open + 1)
+}
+```
+
+```jadpo check project=public-fixture file=domains/planning/fixtures/two_open_todos.jadpo
+// domains/planning/fixtures/two_open_todos.jadpo
+/// Two open todos, added the way a user adds them.
+public fixture two_open_todos() -> TodoCount {
+    var one: TodoCount = add_todo(0)
+    return add_todo(one)
+}
+```
+
+```jadpo check project=public-fixture file=domains/reminders/actions/send_reminders.jadpo hidden
+/// Sends a reminder for each open todo.
+action send_reminders() -> Unit {}
+```
+
+```jadpo check project=public-fixture file=domains/reminders/actions/send_reminders.test.jadpo
+// domains/reminders/actions/send_reminders.test.jadpo
+test "reminders start from planning's open todos" {
+    send_reminders()
+    assert planning.two_open_todos() == 2
+}
+```
+
+```jadpo check project=public-fixture file=tests/a_plan_starts_with_two_todos.test.jadpo
+// tests/a_plan_starts_with_two_todos.test.jadpo
+test "a plan starts with two open todos" {
+    assert planning.two_open_todos() == 2
+}
+```
 
 | | Seed | Fixture |
 |---|---|---|
@@ -1200,6 +1252,7 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 | Caller | Direct calls in tests run with no caller, and a test cannot set one (read from generated code). |
 | Placement | Tests can sit in any file; `<name>.test.jadpo` is not checked (compiled). |
 | Watch mode | Works (run, chunk 2.3): `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run. A save shows its results in about 0.1 s on a 230-file project. The keys in the decided screen (`enter`, `a`, `f`) wait for `--interactive`; ctrl-c quits. |
+| Fixtures | Work (run): a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked but `jadpo seed` is not built. |
 | `test.no_tests` | Raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none (run, chunk 2.2). |
 
 ### Consistency with the rest of the language
@@ -1347,6 +1400,7 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 | Test environment | Optional `clock:`, `config:`, `fakes:` settings at the top of the test; the clock defaults to a fixed time | 2026-10-13 |
 | Configuration in tests | Area 10: `test:` values, generated secrets, per-test override | 2026-10-13 |
 | Fixtures | Test-only actions in `fixtures/` calling the real actions; return a named object of what they made | 2026-10-13 |
+| Public fixtures | A fixture may be `public`: another domain's tests, fixtures and seeds, and scenarios in root `tests/`, call it through its domain (`planning.alice_with_todos()`); a private fixture stays its own domain's; only tests, fixtures and seeds ever call a fixture. This page wins over area 1, which had made `public` on a fixture an error (Richard) | 2026-10-14 |
 | Route and schedule tests | `request { }` returning `Response`; `schedule.run()` under the test clock | 2026-10-13 |
 | Assertions | `assert condition` with sub-expression values; `assert call(...) fails FailureName` | 2026-10-13 |
 | Fakes | Generated per package with valid defaults; scripted answers; `.requests`; running out or leftovers fail the test | 2026-10-13 |

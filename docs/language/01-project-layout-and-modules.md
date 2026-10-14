@@ -458,6 +458,45 @@ error: `OutOfStock` is a failure and can't be called
 check failed: 1 error, 1 file
 ```
 
+A fixture builds test data, so only tests, other fixtures and seeds call it
+(area 13); an action can't, even when the fixture is `public`:
+
+```jadpo check project=e-fixture-from-action file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-fixture-from-action file=domains/planning/types/todo_count.jadpo hidden
+type TodoCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-fixture-from-action file=domains/planning/fixtures/two_open_todos.jadpo hidden
+public fixture two_open_todos() -> TodoCount {
+    return 2
+}
+```
+
+```jadpo check project=e-fixture-from-action file=domains/planning/actions/count_todos.jadpo expect=semantic.not_callable
+action count_todos() -> TodoCount {
+    return two_open_todos()
+}
+```
+
+```text output
+error: An action can't call fixture `two_open_todos`
+ --> domains/planning/actions/count_todos.jadpo:2:12
+  |
+2 |     return two_open_todos()
+  |            ^^^^^^^^^^^^^^ test data
+  reason: A fixture builds test data: only tests, other fixtures and seeds call it, and it is never compiled into a deployable.
+  next: Call the actions `two_open_todos` calls, or move this call into a test, fixture or seed (agent)
+  rule: semantic.not_callable
+  help: docs/language/01-project-layout-and-modules.html#semantic-not-callable
+
+check failed: 1 error, 4 files
+```
+
 ### `semantic.wrong_name_kind`
 
 ```jadpo check project=e-wrong-kind expect=semantic.wrong_name_kind
@@ -524,10 +563,55 @@ error: `reserve_stock` is private to domain `inventory`
 check failed: 1 error, 4 files
 ```
 
+A fixture is private to its domain too: another domain's tests call it only
+when it is `public` (area 13):
+
+```jadpo check project=e-private-fixture file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-private-fixture file=domains/planning/types/todo_count.jadpo hidden
+type TodoCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-private-fixture file=domains/planning/fixtures/two_open_todos.jadpo hidden
+fixture two_open_todos() -> TodoCount {
+    return 2
+}
+```
+
+```jadpo check project=e-private-fixture file=domains/reminders/actions/send_reminders.jadpo hidden
+action send_reminders() -> Unit {}
+```
+
+```jadpo check project=e-private-fixture file=domains/reminders/actions/send_reminders.test.jadpo expect=visibility.private_cross_domain
+test "reminders start from planning's open todos" {
+    send_reminders()
+    assert planning.two_open_todos() == 2
+}
+```
+
+```text output
+error: `two_open_todos` is private to domain `planning`
+ --> domains/reminders/actions/send_reminders.test.jadpo:3:21
+  |
+3 |     assert planning.two_open_todos() == 2
+  |                     ^^^^^^^^^^^^^^ private
+  reason: Another domain may use only what a domain marks `public`; `two_open_todos` is a fixture in `domains/planning/fixtures/two_open_todos.jadpo`.
+  next: Mark `two_open_todos` `public` if `planning` should offer it to other domains' tests (human)
+  rule: visibility.private_cross_domain
+  help: docs/language/01-project-layout-and-modules.html#visibility-private-cross-domain
+
+check failed: 1 error, 5 files
+```
+
 ### `visibility.public_not_allowed`
 
 A domain offers other domains its types, entities, queries, libraries and
-actions; nothing else is `public`:
+actions, and their tests, fixtures and seeds its fixtures; nothing else is
+`public`:
 
 ```jadpo check project=e-public file=app.jadpo hidden
 application {}
@@ -1232,9 +1316,11 @@ build/
 - A domain owns everything in it and is the visibility boundary.
   Declarations are private to their domain unless marked `public`.
 - Entity identities, types, failures, events, queries, libraries and actions
-  can be public; `public` on anything else (a function, a route group, a
-  schedule, a subscriber, a test, a seed or a fixture) is
-  `visibility.public_not_allowed`, and an own-domain action or query called
+  can be public, and so can a fixture, which is still callable only from
+  tests, fixtures and seeds: another domain's tests call a public fixture
+  through its domain, `planning.alice_with_todos()` (area 13). `public` on
+  anything else (a function, a route group, a schedule, a subscriber, a
+  test or a seed) is `visibility.public_not_allowed`, and an own-domain action or query called
   as `planning.snooze_todo()` from inside `planning` is
   `semantic.own_domain_qualification`. A public action is the domain's write interface: checkout in
   `ordering` can call `inventory.reserve_stock(...)` and both changes commit
@@ -1446,3 +1532,4 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Root `api/` and `acceptances/` folders | Added to the fixed root, with `providers/` and `jadpo.lock` (areas 11 and 18) | 2026-10-13 |
 | Emails folder | Each domain may have `emails/`, holding email types and their templates (from area 16) | 2026-10-13 |
 | Flags and monitoring files | `flags.jadpo` joins the fixed root; each domain may hold one `monitoring.jadpo` directly in its folder (Richard, from the architecture plan) | 2026-10-13 |
+| Public fixtures | A fixture may be `public`, offered to other domains' tests, fixtures and seeds and to scenarios in root `tests/`, which call it through its domain (`planning.alice_with_todos()`); only tests, fixtures and seeds ever call a fixture, and a private one stays its own domain's. Area 13 wins over the earlier rule here that `public` on a fixture was `visibility.public_not_allowed` (Richard) | 2026-10-14 |
