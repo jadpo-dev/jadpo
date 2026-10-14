@@ -294,7 +294,10 @@ impl Body<'_> {
     fn against(&mut self, list: &Expr, other: &Operand) -> Operand {
         match other {
             Operand::Value(ty)
-                if matches!(ty.strip_nullable(), Ty::List(_) | Ty::Set(_) | Ty::Map(..)) =>
+                if matches!(
+                    self.table.structure(ty),
+                    Ty::List(_) | Ty::Set(_) | Ty::Map(..)
+                ) =>
             {
                 let ty = ty.strip_nullable().clone();
                 self.check(list, &ty);
