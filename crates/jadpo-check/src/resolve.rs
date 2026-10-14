@@ -560,7 +560,7 @@ impl Names<'_> {
         }
     }
 
-    /// A mapping's failure, `invalid: QuantityOutOfRange`. Whether it is a
+    /// A mapping's failure, `max: QuantityTooLarge`. Whether it is a
     /// call to a type, which the caller resolves.
     pub fn mapped(&self, expr: &Expr, out: &mut Vec<Diagnostic>) -> bool {
         match expr {

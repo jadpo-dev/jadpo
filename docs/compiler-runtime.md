@@ -430,8 +430,8 @@ and type; a literal's type is the type it goes into. A call names what it
 reaches: a function, action, query, fixture or library function by key, a
 standard-library operation by the operation table's `Op`, a constructor by
 its type, an object or variant by key, or an entity operation (area 6). A
-construction says whether it can fail and which failure `invalid:` maps
-that to, and the body lists the failures that can leave it. Locals are
+construction lists the rules it can break, its `attempt` the failure each
+rule maps to (an arm per rule, `invalid:` for the rest), and the body lists the failures that can leave it. Locals are
 numbered with parameters first, and a table records what every name in the
 body refers to. Every reader goes through it: the graph's `calls`, `uses`
 and `raises` edges, usage and promotion (area 1), action cycles (area 3)
@@ -585,7 +585,7 @@ drops the remainder; a `Decimal` `/` is exact to 18 places past its
 operands and, like any computed decimal, is rounded half to even where a
 type with a fixed `scale` stores it; constructions run their rules only
 where the checker couldn't prove them, and a broken one becomes the
-failure `invalid:` names. Effects later areas build (an entity's
+failure its arm names, or `invalid:`'s; an object literal never fails. Effects later areas build (an entity's
 operations, queries, `emit`, `clock.now`) end in the `not_built_yet`
 fault where they are reached. A call walks the Rust stack a few frames per
 Jadpo frame, so recursion to the depth limit runs inside

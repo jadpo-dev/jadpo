@@ -827,7 +827,9 @@ impl Body<'_> {
                     .get(&node_key(value.syntax()))
                     .cloned()
                     .unwrap_or(Ty::Error);
-                if field.rules != Rules::default() && self.out.len() == before && !actual.has_error()
+                if field.rules != Rules::default()
+                    && self.out.len() == before
+                    && !actual.has_error()
                 {
                     let breakable = self.breakable(&value, &actual, &field_ty);
                     if !breakable.is_empty() {
@@ -904,7 +906,7 @@ impl Body<'_> {
                 crate::and_list(&written_rules)
             ))
             .next(format!(
-                "Build it first on its own line, `var {local}: {field} = attempt {field}({shown}) {{ {first}: SomeFailure }}`, then give `{local}`"
+                "Build it first on its own line, `var {local}: {field} = attempt {field}({shown}) {{ {first}: SomeFailure }}`, then write `{local}: {local}` in the object"
             )),
         );
     }

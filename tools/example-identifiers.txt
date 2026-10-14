@@ -96,6 +96,7 @@ check_allergens
 check_delivery
 check_due
 check_kitchen
+check_note
 check_shelf
 check_size
 check_title
@@ -225,6 +226,7 @@ flour_short
 follow_up
 formatted_price
 fresh
+from_count
 gbp
 get_patch_item_reviewer
 gluten
@@ -339,7 +341,9 @@ nickname
 not_a_call
 not_your_order
 note_conflict
+note_invalid
 note_not_found
+note_refused
 note_role
 note_was_edited
 notify
@@ -354,6 +358,7 @@ only_handle
 open_project_with_board
 open_todos
 opening_hours
+order_empty
 order_for
 order_id
 order_line
@@ -362,6 +367,7 @@ order_line_view
 order_locked
 order_not_found
 order_note
+order_shelf
 order_state
 order_status
 order_too_large
@@ -443,6 +449,7 @@ quantity
 quantity_out_of_range
 quantity_refused
 quantity_too_large
+quantity_too_small
 quantity_unavailable
 queue_overdue_reminders
 quote
@@ -506,6 +513,7 @@ safe_to_eat
 sales
 same_price
 save_again
+save_note
 save_session
 saved_at
 scale_address
@@ -530,6 +538,7 @@ session_signing_key
 set_oven
 severe
 shelf
+shelf_empty
 shelf_for
 shelf_name
 shelvable

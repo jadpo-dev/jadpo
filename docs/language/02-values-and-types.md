@@ -182,12 +182,69 @@ Arithmetic works on the representation, so `price * quantity` is a plain `Int`
 and has to be turned back into `Pence`. A plain `Int` can never be returned
 where `Pence` is expected.
 
-> **Changing.** Decided on 2026-10-14: the failure moves into a block keyed by the rule that can break, `attempt CakeCount(n) { max: OrderTooLarge }`, with `invalid:` covering any rule without its own arm; `if` conditions count as proof; object literals never fail. See the Decisions table ("Construction failures by rule"). The examples on this page show the current form until chunk 2.5 builds the new one.
+Here `price` and `quantity` are never below zero and `Pence` has no
+maximum, so the declared ranges prove `Pence(price * quantity)` always
+follows its rules, and it cannot fail.
+
+### Construction failures by rule
 
 When the declared ranges don't prove a computed value follows the target's
-rules, building it can fail and is written `attempt Type(value) invalid:
-SomeFailure` (question 1; area 4). Here `price` and `quantity` are never
-below zero and `Pence` has no maximum, so it cannot fail.
+rules, building it can fail. The statement starts with `attempt`, and a
+block after the call maps each rule that can break to the failure the
+caller gets, one arm per line: the same block form writes and integration
+calls use (area 4).
+
+```jadpo check project=by-rule file=types.jadpo hidden
+type Count = Int {}
+
+type CakeCount = Int {
+    min: 1
+    max: 12
+}
+
+type OrderEmpty = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type OrderTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=by-rule
+function doubled(count: CakeCount) fails OrderTooLarge -> CakeCount {
+    var result: CakeCount = attempt CakeCount(count * 2) {  // at least 2, so only `max` can break
+        max: OrderTooLarge
+    }
+    return result
+}
+
+function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
+    var result: CakeCount = attempt CakeCount(n) {  // anything, so both can break
+        max: OrderTooLarge
+        invalid: OrderEmpty
+    }
+    return result
+}
+```
+
+- **The keys are rules.** Each key names a rule of the type, or of a type it
+  builds on, that the declared ranges can't prove holds: `min`, `max`,
+  `min_length`, `max_length`, `pattern`, `format` or `version`. Each such
+  rule needs exactly one arm.
+- **`invalid:` is the catch-all.** It covers every rule that can break and
+  has no arm of its own, so `{ invalid: OrderTooLarge }` alone covers them
+  all. It covers only a construction's rules: a write's conditions
+  (`missing:`, `conflict:`, area 6) and an integration call's (area 11)
+  each still need their own arm, and `invalid:` on them is an error.
+- **Every arm can run.** An arm for a rule that can't break, an `invalid:`
+  left covering nothing, a key that isn't one of the type's rules and a
+  key given twice are errors (area 4).
+- **What the compiler can't reason about can always break.** A `pattern`
+  other than the value's own always counts as able to break. `scale` never
+  does: it rounds the value as it is kept.
+- **Every failure is `invalid_value`.** At runtime the failure records the
+  rule that broke, such as `max: 12`, for the log, never the value.
 
 ## Signatures use named types
 
@@ -263,6 +320,41 @@ function view(name: ProductName, price: Pence) -> ProductView {
 
 Every declared field must be given, and unknown fields are errors. Fields can
 hold other objects and lists, nested as deeply as needed.
+
+An object literal never fails. A field accepts its declared type or anything
+that widens to it, and when the field adds rules of its own, the declared
+ranges must prove the value follows them (`type.field_unproved`). A value
+that might break them is built first, on its own line, as the field's type
+(below), where its failure is mapped:
+
+```jadpo check project=field-first file=profiles.jadpo hidden
+type Profile = Object {
+    display_name: Text {
+        max_length: 80
+    }
+}
+
+type BadgeNameTooLong = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=field-first
+type Badge = Object {
+    name: Text {
+        max_length: 12
+    }
+}
+
+function make_badge(profile: Profile) fails BadgeNameTooLong -> Badge {
+    var name: Badge.name = attempt Badge.name(profile.display_name) {
+        max_length: BadgeNameTooLong
+    }
+    return Badge {
+        name: name
+    }
+}
+```
 
 ::: today
 
@@ -1025,6 +1117,45 @@ error: `Receipt` is missing `email`
   next: Add `email: ...` to the block (agent)
   rule: type.missing_field
   help: docs/language/02-values-and-types.html#type-missing-field
+
+check failed: 1 error, 1 file
+```
+
+### `type.field_unproved`
+
+An object literal never fails, so a field value the declared ranges don't
+prove follows the field's own rules is built first:
+
+```jadpo check project=e-field-unproved expect=type.field_unproved
+type Profile = Object {
+    display_name: Text {
+        max_length: 80
+    }
+}
+
+type Badge = Object {
+    name: Text {
+        max_length: 12
+    }
+}
+
+function make_badge(profile: Profile) -> Badge {
+    return Badge {
+        name: profile.display_name
+    }
+}
+```
+
+```text output
+error: `profile.display_name` might not fit `Badge.name`
+ --> main.jadpo:15:15
+   |
+15 |         name: profile.display_name
+   |               ^^^^^^^^^^^^^^^^^^^^ can break `max_length: 12`
+  reason: An object literal never fails, so each field gets a value already known to fit; the declared ranges don't prove this one follows `max_length: 12`, which `Badge.name` adds.
+  next: Build it first on its own line, `var name: Badge.name = attempt Badge.name(profile.display_name) { max_length: SomeFailure }`, then write `name: name` in the object (agent)
+  rule: type.field_unproved
+  help: docs/language/02-values-and-types.html#type-field-unproved
 
 check failed: 1 error, 1 file
 ```
@@ -2250,7 +2381,9 @@ type QuantityOutOfRange = Failure {
 }
 
 action double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity {
-    var doubled: Quantity = attempt Quantity(quantity * 2) invalid: QuantityOutOfRange
+    var doubled: Quantity = attempt Quantity(quantity * 2) {
+        max: QuantityOutOfRange
+    }
     return doubled
 }
 ```
@@ -2258,7 +2391,7 @@ action double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity 
 A literal needs no `attempt`: `var quantity: Quantity = 0` is rejected while
 compiling.
 
-#### Q2: building an object runs its fields' rules
+#### Q2: an object's fields follow their own rules
 
 ```jadpo check project=q2-badge file=users.jadpo hidden
 entity User {
@@ -2281,12 +2414,15 @@ type Badge = Object {
 }
 
 action make_badge(user: User) fails BadgeNameTooLong -> Badge {
-    // user.display_name allows 80 characters; the field allows 12,
-    // so this check can fail and must say how.
-    var badge: Badge = attempt Badge {
-        name: user.display_name
-    } invalid: BadgeNameTooLong
-    return badge
+    // user.display_name allows 80 characters and the field 12, so the
+    // name is built first, where its failure is mapped; the object
+    // literal never fails.
+    var name: Badge.name = attempt Badge.name(user.display_name) {
+        max_length: BadgeNameTooLong
+    }
+    return Badge {
+        name: name
+    }
 }
 ```
 
@@ -2547,14 +2683,19 @@ to when that page is written.
    `attempt Quantity(count) invalid: QuantityOutOfRange`. Literal construction
    stays infallible because it is checked while compiling. This mirrors Rust's
    `TryFrom` (failure is in the signature) rather than Kotlin's `require`
-   (an exception), and closes TYPE-001.
+   (an exception), and closes TYPE-001. *Revised 2026-10-14:* the failure
+   is mapped by rule in a block after the call,
+   `attempt Quantity(count) { max: QuantityTooLarge }`, with `invalid:`
+   covering every rule without an arm of its own ("Construction failures
+   by rule").
 2. **Should building an object check fields against their declared type or
    their field type?** Object construction uses the declared type and skips
    field rules; `create` demands the exact field type, which is why the golden
    app writes `Todo.status(TodoStatus.open)`. *Decided 2026-10-12:* one rule for
    both: accept the declared type or anything that widens to it, and run the
    field's own rules at that point (fallible under question 1 only when the
-   field adds rules). Identifier safety is unaffected, because a reference
+   field adds rules). *Revised 2026-10-14:* an object literal never fails; a
+   field whose value might break its rules is built first, on its own line. Identifier safety is unaffected, because a reference
    field's declared type is itself a field type (`customer_id: Customer.id`
    still rejects `supplier.id`), and the noise disappears from the golden app.
 3. **Where may `optional` be used, and what type does reading it give?**
@@ -2713,8 +2854,8 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Topic | Decision | Date |
 |---|---|---|
 | Runtime construction failure | A runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literal construction is checked while compiling and never fails at runtime. The mapping's form was revised on 2026-10-14 (below) | 2026-10-12 |
-| Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point. Since 2026-10-14 an object literal never fails: a field whose value might break its rules is built first | 2026-10-12 |
-| Construction failures by rule | A runtime construction maps its failures in a block, the form writes and integration calls use: `attempt CakeCount(n) { max: OrderTooLarge }`. Keys are the rules of the type and the types it builds on that the declared ranges can't prove hold; each needs an arm, or `invalid:` covers every rule without its own; an arm for a rule that can't break, or an `invalid:` covering nothing, is an error; every failure is `invalid_value`; a rule the compiler can't reason about (`pattern`) can always break. An `if` condition counts as proof, so after `if (n > 12) { reject OrderTooLarge }` `CakeCount(n)` is plain. Object literals never fail: a field that might break its rules is built first, on its own line. Replaces the trailing `invalid:` clause (Richard) | 2026-10-14 |
+| Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point. Since 2026-10-14 an object literal never fails: a field whose value might break its rules is built first (built in chunk 2.5) | 2026-10-12 |
+| Construction failures by rule | A runtime construction maps its failures in a block, the form writes and integration calls use: `attempt CakeCount(n) { max: OrderTooLarge }`. Keys are the rules of the type and the types it builds on that the declared ranges can't prove hold; each needs an arm, or `invalid:` covers every rule without its own; an arm for a rule that can't break, or an `invalid:` covering nothing, is an error; every failure is `invalid_value`; a rule the compiler can't reason about (`pattern`) can always break. An `if` condition counts as proof, so after `if (n > 12) { reject OrderTooLarge }` `CakeCount(n)` is plain. Object literals never fail: a field that might break its rules is built first, on its own line. Replaces the trailing `invalid:` clause (Richard). `invalid:` covers only a construction's rules, never a write's or an integration call's conditions (Richard). Built in chunk 2.5, except conditions as proof (chunk 2.6) | 2026-10-14 |
 | `optional` and `default` | Only on `Input` fields; reading an optional field gives `T?`; only the update `patch:` form keeps omitted and `none` apart | 2026-10-12 |
 | Collection operations | List literals, `for item in items`, `collection.count` and `collection.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
 | `Set` and `Map` encoding | A `Set` is a JSON array rejected if it has duplicates; a `Map` is a JSON object with text- or UUID-based keys only | 2026-10-12 |

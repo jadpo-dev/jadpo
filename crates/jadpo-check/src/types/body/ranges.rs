@@ -272,7 +272,11 @@ impl Combined {
         if let Some(version) = self.version {
             out.push((
                 "version",
-                format!("version: {}.{}", jadpo_std::UuidVersion::NAME, version.name()),
+                format!(
+                    "version: {}.{}",
+                    jadpo_std::UuidVersion::NAME,
+                    version.name()
+                ),
             ));
         }
         out

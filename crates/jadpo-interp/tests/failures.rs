@@ -100,7 +100,10 @@ fn each_broken_rule_raises_its_arms_failure() {
         "CodeTooLong"
     );
     // `min_length` and `pattern` have no arm of their own.
-    assert_eq!(failure(&program, "code", vec![text("AB")]).name, "CodeRejected");
+    assert_eq!(
+        failure(&program, "code", vec![text("AB")]).name,
+        "CodeRejected"
+    );
     let rejected = failure(&program, "code", vec![text("abcd")]);
     assert_eq!(rejected.name, "CodeRejected");
     assert_eq!(rejected.broken.as_deref(), Some("`pattern: \"[A-Z]+\"`"));
