@@ -10,8 +10,10 @@
 //! anything.
 
 use jadpo_graph::body::SiteId;
-use jadpo_plan::{MissingPlan, MissingValue};
-use jadpo_runtime::{ActionBody, Ctx, Fault, FaultKind, Found, Interrupt, LocalFuture, Outcome};
+use jadpo_plan::{MissingPlan, MissingValue, Refusal};
+use jadpo_runtime::{
+    ActionBody, Ctx, Fault, FaultKind, Found, Interrupt, LocalFuture, Outcome, Written,
+};
 use jadpo_value::Value;
 
 use crate::machine::{Machine, Step, Stop, Target};
@@ -130,14 +132,43 @@ async fn effect(
             Some(entity) => (&entity.get, entity.not_found.as_ref()),
             None => return Err(defect(ctx, "an entity with no plan")),
         },
-        Target::Create(id) => {
-            let Some(entity) = plan.entity(id) else {
-                return Err(defect(ctx, "an entity with no plan"));
+        Target::Write(id) => {
+            let Some(write) = plan.write(id) else {
+                return Err(defect(ctx, "a write with no plan"));
             };
-            // The machine gives the fields in the order the plan sets them.
-            return jadpo_runtime::create(ctx, &entity.create, args, at)
-                .await
-                .map_err(interrupt);
+            return match jadpo_runtime::write(ctx, &write.plan, args, at).await {
+                Ok(Written::Value(value)) => Ok(value),
+                // By `id`, no record has it: the entity's not-found failure.
+                Ok(Written::Missing) => {
+                    match write
+                        .missing
+                        .as_ref()
+                        .and_then(|missing| failure(program, missing, args, ctx))
+                    {
+                        Some(failure) => Err(Stop::Failed(ctx.fail(failure, at))),
+                        None => Err(defect(ctx, "a write by id with no failure for none")),
+                    }
+                }
+                Ok(Written::Refused { at: refusal, cause }) => {
+                    match write.refusals.get(refusal as usize) {
+                        Some(Refusal::Arm(arm)) => Err(Stop::Refused { arm: *arm, cause }),
+                        Some(Refusal::NotFound(missing)) => {
+                            match failure(program, missing, args, ctx) {
+                                Some(mut failure) => {
+                                    failure.cause = Some(cause);
+                                    Err(Stop::Failed(ctx.fail(failure, at)))
+                                }
+                                None => Err(defect(ctx, "a reference with no failure for none")),
+                            }
+                        }
+                        Some(Refusal::Gone(what)) => {
+                            Err(Stop::Fault(ctx.fault(FaultKind::Store(what.clone()), at)))
+                        }
+                        None => Err(defect(ctx, "a refusal the plan doesn't list")),
+                    }
+                }
+                Err(stop) => Err(interrupt(stop)),
+            };
         }
         Target::Callable(_) => return Err(defect(ctx, "a call run as a read")),
     };
@@ -179,7 +210,7 @@ fn failure(
                 value
             }
             MissingValue::Constant(constant) => crate::values::value(constant),
-            MissingValue::Now => Value::Instant(ctx.env().clock.now()),
+            MissingValue::Now => Value::Instant(ctx.now()),
         })
         .collect();
     program.failure(missing.failure, &slots, values)
@@ -220,6 +251,10 @@ pub(crate) fn outcome(result: Result<Value, Stop>) -> Outcome {
         Err(Stop::Assertion(assertion)) => Outcome::Assertion(assertion),
         Err(Stop::Invalid { .. }) => Outcome::Fault(Box::new(Fault {
             kind: FaultKind::Defect("a construction failed outside an `attempt`".into()),
+            frames: Vec::new(),
+        })),
+        Err(Stop::Refused { .. }) => Outcome::Fault(Box::new(Fault {
+            kind: FaultKind::Defect("a refused write outside its own site".into()),
             frames: Vec::new(),
         })),
     }

@@ -13,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, `Entity.create` with `set:`, the rule against reads in a loop, and `jadpo sql`; the examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. The other writes (`update`, `delete`, conflicts, counters and the rerun after a concurrent change) come with chunk 3.3 and lifecycles with chunk 3.4, so their examples are proposals. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Lifecycles come with chunk 3.4, so their examples are proposals. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -581,14 +581,24 @@ domains call that domain's public actions.
 | `Todo.create { set: { ... } }` | adds a record |
 | `Todo.update(todo) { set: { ... } }` | changes fields of a record loaded earlier in the action |
 | `Todo.update(todo) { patch: input }` | changes only the fields a request supplied |
+| `Todo.update(todo_id) { set: { ... } }` | changes the record with that `id` in one step (counters, below) |
 | `Todo.delete(todo)` | removes the record, or runs the lifecycle's `delete` transition |
 | `User.disable(user)` | runs a lifecycle transition, named after it |
 
-Built so far: `get` and `create` with `set:`. `update`, `delete` and the
-`conflict:` mappings come with chunk 3.3 and transitions with chunk 3.4;
-calling one is `toolchain.not_built_yet`. Until the compiler provides the
-not-found failure, the domain declares it, and `get` gives each of its
-fields typed `<Entity>.id` the id it looked for.
+Built since chunk 3.3: every operation but the lifecycle's transitions,
+which come with chunk 3.4; calling one is `toolchain.not_built_yet`. An
+`update` or `delete` takes the record loaded earlier in the action, or its
+`id`: by `id` it fails with the entity's not-found failure when no record
+has it (chosen in chunk 3.3, since area 5's lifecycle writes
+`Todo.delete(todo_id)` and this table `Todo.delete(todo)`). An update gives
+its fields in `set:` or the request's changes with `patch:`, never both, and
+`when_supplied:` goes with `patch:` (chosen in chunk 3.3). A create and an
+update give back the record as stored; a delete gives nothing. Each fills
+the store's own fields: a new version 7 `id` (`Ctx::new_id`, from the
+invocation's seed) on create, and the operation's clock in each generated
+field, `on_create` once and `on_change` on every update. Every write joins
+the action's transaction, and the graph has a `writes` edge from the
+callable to the entity.
 
 ```jadpo check project=operations file=planning.jadpo hidden
 type ProjectName = Text {
@@ -630,23 +640,44 @@ Nothing else is an entity operation: `Todo.fetch(todo_id)` is
 still builds a value of the field's type (area 2).
 
 `TodoNotFound` is the domain's failure of that name in `failures/`, or one
-the compiler provides with kind `not_found` when the domain declares none.
-A write that cannot fail needs no `attempt` (area 3).
+the compiler provides with kind `not_found` when the domain declares none:
+public, with no fields, placed at the entity in the graph (chosen in chunk
+3.3). A read or write gives each field typed `<Entity>.id` of a declared one
+the `id` it looked for. A write that cannot fail needs no `attempt` (area
+3).
 
-```jadpo fragment
+```jadpo check project=reschedule file=planning.jadpo hidden
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type DueAt = Instant {}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    due_at: DueAt?
+    reminder_sent_at: Instant?
+}
+
+type DueDateInPast = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=reschedule file=reschedule_todo.jadpo
 // domains/planning/actions/reschedule_todo.jadpo
-action reschedule_todo(todo_id: Todo.id, due_at: DueAt) fails TodoNotFound, DueDateInPast -> TodoView {
-    var todo: Todo = attempt Todo.get(todo_id)
+action reschedule_todo(todo_id: Todo.id, due_at: DueAt) fails TodoNotFound, DueDateInPast -> Todo {
+    var todo: Todo = attempt Todo.get(todo_id)  // TodoNotFound: provided
     if (due_at <= clock.now) {
         reject DueDateInPast
     }
-    var changed: Todo = Todo.update(todo) {
+    return Todo.update(todo) {
         set: {
             due_at: due_at
             reminder_sent_at: none
         }
     }
-    return TodoView(changed)
 }
 ```
 
@@ -656,16 +687,42 @@ cleared (area 2). `when_supplied:` sets further fields when a given field
 was supplied. A patch with no fields changes nothing and succeeds, as JSON
 Merge Patch does, so there is no `empty:` failure.
 
-```jadpo fragment
-var changed: Todo = Todo.update(todo) {
-    patch: changes
-    when_supplied: {
-        due_at: {
-            reminder_sent_at: none
+```jadpo check project=patch file=planning.jadpo hidden
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    due_at: Instant?
+    reminder_sent_at: Instant?
+}
+```
+
+```jadpo check project=patch file=edit_todo.jadpo
+type TodoChanges = Input {
+    pick: [Todo.title, Todo.due_at]
+    optional: all
+}
+
+action edit_todo(todo: Todo, amendment: TodoChanges) -> Todo {
+    return Todo.update(todo) {
+        patch: amendment
+        when_supplied: {
+            due_at: {
+                reminder_sent_at: none
+            }
         }
     }
 }
 ```
+
+The statement's text is fixed: each field of the input is written `CASE
+WHEN <supplied> THEN <value> ELSE <column> END`, and an `on_change` field
+changes only when one was supplied. A value built without one of its
+optional `Input` fields remembers it was left out, which only a patch
+reads; it still equals one given `none`.
 
 ::: today
 
@@ -752,23 +809,81 @@ that blocks deleting a project). The compiler knows which rules every write
 can break, so a missing mapping is a compile error and there is no
 catch-all. The database's own error is kept as the internal cause (area 4).
 
-```jadpo fragment
-var project: Project = attempt Project.create {
-    set: {
-        owner_id: owner.id
-        name: name
+```jadpo check project=refused file=planning.jadpo hidden
+type ProjectName = Text {
+    max_length: 80
+}
+
+entity User {
+    id: Uuid
+}
+
+entity Project {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
     }
-    conflict: {
-        Project.name_per_owner: ProjectNameTaken
+    name: ProjectName
+
+    unique: {
+        name_per_owner: [owner_id, name]
     }
 }
 
-attempt Project.delete(project) {
-    conflict: {
-        Todo.project_id: ProjectHasTodos
+entity Todo {
+    id: Uuid
+    project_id: Project.id {
+        on_delete: OnDelete.restricted
+    }
+}
+
+type ProjectNameTaken = Failure {
+    kind: FailureKind.conflict
+}
+
+type ProjectHasTodos = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=refused file=start_project.jadpo
+action start_project(owner: User, name: Project.name) fails ProjectNameTaken -> Project {
+    return attempt Project.create {
+        set: {
+            owner_id: owner.id  // a loaded record's id: the owner is there
+            name: name
+        }
+        conflict: {
+            Project.name_per_owner: ProjectNameTaken
+        }
     }
 }
 ```
+
+```jadpo check project=refused file=close_project.jadpo
+action close_project(project: Project) fails ProjectHasTodos -> Unit {
+    attempt Project.delete(project) {
+        conflict: {
+            Todo.project_id: ProjectHasTodos
+        }
+    }
+}
+```
+
+What a write can break is worked out from what it writes: a create, every
+unique rule of its entity; an update, the unique rules over the fields it
+sets; a delete, each `restricted` reference to the record, or to a record
+its delete cascades to. A reference's value names a record that is surely
+there when it is read from a record loaded earlier in the action
+(`owner.id`, or a loaded record's own reference to that entity) or is
+`none`; any other value may name one that isn't, so the write can fail with
+that entity's not-found failure, which `attempt` passes on (chosen in chunk
+3.3: the transaction's snapshot holds a record loaded in it, and a
+concurrent delete of it is a concurrent change). The runtime maps the
+store's constraint name back to the rule (area 5 names every constraint).
+A write that can be refused, run by an action another action called, runs
+inside a savepoint, so a caller that handles the failure with `match`
+carries on in a transaction the refusal didn't end.
 
 ## All-or-nothing actions and concurrent changes
 
@@ -792,6 +907,18 @@ request A: updates todo 7, commits
 On PostgreSQL this is the repeatable-read isolation level, whose "could not
 serialize" error the runtime already retries. Catching a client that edits
 a stale copy across two requests is HTTP's `If-Match` (area 7).
+
+Built in chunk 3.3. Every action's transaction runs at repeatable read, so
+its snapshot is taken at its first statement and a record it loaded is the
+record as of then; an `update` or `delete` of a row another transaction
+changed since is PostgreSQL's serialisation failure, which the driver
+reports as a concurrent change. The runtime then rolls the transaction
+back, throws away the attempt's events, and runs the whole action again
+from its first line: its reads see the other transaction's change, and its
+new records get new identities. The budget is three attempts; the second
+bound waits for a host clock, which comes with time (chunk 5.2). A record
+handed to an action from outside its transaction (a test passing one an
+earlier action returned) is checked only as far as its row is still there.
 
 ::: today
 
@@ -846,23 +973,45 @@ consistency: atomic
 
 When a new value depends only on the stored one, the database works it out
 in one step and nothing needs checking. On the right of `set:`,
-`Post.view_count` means the value stored at the moment of the write, while
-`post.view_count` would be the copy loaded earlier. Such an update takes the
+`Video.view_count` means the value stored at the moment of the write, while
+`video.view_count` would be the copy loaded earlier. Such an update takes the
 record's `id` instead of a loaded record, and its values may use only
 parameters, constants, `clock.now` and the record's stored fields, so it
 never reruns the action.
 
-```jadpo fragment
-attempt Post.update(post_id) {
-    set: {
-        view_count: Post.view_count + 1
-        last_viewed_at: clock.now
+```jadpo check project=counter file=video.jadpo hidden
+type ViewCount = Int {
+    min: 0
+}
+
+entity Video {
+    id: Uuid
+    view_count: ViewCount
+    last_viewed_at: Instant?
+}
+```
+
+```jadpo check project=counter file=view_video.jadpo
+action view_video(video_id: Video.id) fails VideoNotFound -> Video {
+    return attempt Video.update(video_id) {
+        set: {
+            view_count: ViewCount(Video.view_count + 1)
+            last_viewed_at: clock.now
+        }
     }
 }
 ```
 
-Today `set:` cannot read the stored value: `Post.view_count` there is an
-unknown name.
+Built in chunk 3.3: the statement is `UPDATE "video" SET "view_count" =
+("view_count" + $1), ...`, and no row is `VideoNotFound`. The database works
+a stored field out with `+` and `-`, which give the same result in SQL as
+in Jadpo, under constructions the declared ranges prove (`ViewCount(...)`
+here, since a count of at least 0 plus 1 is at least 0); anything else needs
+the record loaded first. One correction to the paragraph above: at
+repeatable read, PostgreSQL refuses to write a row another transaction
+changed after this action's first statement, so a counter inside an action
+that read first does rerun when two requests race; no increment is lost
+either way, and one that is the action's first statement never reruns.
 
 ## Reading in a loop
 
@@ -948,16 +1097,13 @@ invariant check) must come from the store being written. Across stores
 there are no joins, filters or ordering; an include reaches another store
 only to fetch records by `id`. Moving an entity to another store can break
 an action that never names it, so the error names the cause:
+`store.action_spans_stores`, below, points at the write or the call that
+brings in the second store.
 
-```text
-error[store.action_spans_stores]: checkout writes two stores
-  --> domains/ordering/actions/checkout.jadpo:12
-   | writes Order (store main) and Cart (store carts)
-   = fix: clear the cart in a subscriber to OrderEvent.placed, or keep Cart in main
-```
-
-Today only the main store runs, and `consistency: atomic` across two stores
-is rejected (`data.atomic_domain_mismatch`).
+Built in chunk 3.3: the check, counting every action an action calls. At
+run time an action's transaction is begun in the store its first store
+operation names, and any operation on another store in the same action is
+a fault; reading another store outside the transaction is not built yet.
 
 ## Where a read comes from
 
@@ -996,11 +1142,9 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 
 ## Errors
 
-Every error this area's reads can produce, with an example that triggers
-it and the new compiler's actual output. The errors of the other writes
-(`update`, `delete`, patches and conflicts) further down are still the
-archived compiler's, in its syntax and with its output, until chunk 3.3
-builds them.
+Every error this area's reads and writes can produce, with an example
+that triggers it and the new compiler's actual output. The last section
+keeps the archived compiler's errors for settings the rework dropped.
 
 ### Queries
 
@@ -1949,821 +2093,592 @@ check failed: 1 error, 1 file
 
 ### Writes
 
-### `type.create_not_entity`
+Since chunk 3.3. The archived compiler's write errors are gone with its
+syntax: a write that isn't an entity's is `data.write_not_entity`; a
+section a write doesn't take (`missing:`, `where:`, `empty:`) is
+`data.write_section_unexpected`; an update with nothing to change is
+`data.write_section_required`; a field given twice or unknown in `set:` is
+area 2's `type.duplicate_field` or `type.unknown_field`; and the conflict
+mappings are below.
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+### `data.write_not_entity`
 
-```jadpo project=e-create-not-entity expect=type.create_not_entity
-type DraftName = Text {}
+Only an entity is stored, so only an entity has `create`, `update` and
+`delete`:
 
-input Draft {
+```jadpo check project=e-write-not-entity expect=data.write_not_entity
+type DraftName = Text {
+    max_length: 80
+}
+
+type Draft = Input {
     name: DraftName
 }
 
-action create_draft(name: DraftName) -> Draft {
-    return attempt create Draft {
-        name: name
-    }
-}
-```
-
-### `type.update_not_entity`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-update-not-entity expect=type.update_not_entity
-type DraftId = Uuid {}
-
-input Draft {
-    id: DraftId
-}
-
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action change(id: DraftId) fails ItemNotFound, ItemConflict -> Draft {
-    return attempt update required Draft {
-        where: id == id
+action save_draft(name: DraftName) -> Draft {
+    return Draft.create {
         set: {
-            id: id
+            name: name
         }
-        missing: ItemNotFound
-        conflict: ItemConflict
     }
 }
 ```
 
-### `type.delete_not_entity`
+```text output
+error: `Draft` isn't an entity, so it has no `create`
+ --> main.jadpo:10:12
+   |
+10 |     return Draft.create {
+   |            ^^^^^^^^^^^^ an input
+  reason: Only an entity is stored, so only an entity has `create`, `update` and `delete`; `Draft` is an input, a value built with `Draft { ... }`.
+  next: Write the entity this value is stored as, or build the value with `Draft { ... }` (agent)
+  rule: data.write_not_entity
+  help: docs/language/06-reads-and-writes.html#data-write-not-entity
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-delete-not-entity expect=type.delete_not_entity
-type DraftId = Uuid {}
-
-input Draft {
-    id: DraftId
-}
-
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action delete_draft(id: DraftId) fails ItemNotFound, ItemConflict -> Draft {
-    return attempt delete required Draft {
-        where: id == id
-        missing: ItemNotFound
-        conflict: ItemConflict
-    }
-}
+check failed: 1 error, 1 file
 ```
 
-### `syntax.expected_update_body`
+### `data.write_section_unexpected`
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+A create takes `set:` and `conflict:`, an update `set:` or `patch:` (with
+`when_supplied:`) and `conflict:`, a delete `conflict:`, each once. A
+record that isn't there reports the entity's not-found failure itself:
 
-```jadpo project=e-expected-update-body expect=syntax.expected_update_body
+```jadpo check project=e-write-section-unexpected expect=data.write_section_unexpected
+type ItemName = Text {
+    max_length: 80
+}
+
 entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+    id: Uuid
+    name: ItemName
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+type ItemMissing = Failure {
+    kind: FailureKind.not_found
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action change(id: Item.id) fails ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        missing: ItemNotFound
-        conflict: ItemConflict
-    }
-}
-```
-
-### `type.update_field_required`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-update-field-required expect=type.update_field_required
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
-}
-
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action change(id: Item.id) fails ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        set: {}
-        missing: ItemNotFound
-        conflict: ItemConflict
-    }
-}
-```
-
-### `type.update_unknown_field`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-update-unknown-field expect=type.update_unknown_field
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
-}
-
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action change(id: Item.id, name: Item.name) fails ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
+action rename(item_id: Item.id, name: Item.name) fails ItemNotFound -> Item {
+    return attempt Item.update(item_id) {
         set: {
-            title: name
+            name: name
         }
-        missing: ItemNotFound
-        conflict: ItemConflict
+        missing: ItemMissing
     }
 }
 ```
 
-### `type.update_duplicate_field`
+```text output
+error: `Item.update` takes no `missing:`
+ --> main.jadpo:19:9
+   |
+19 |         missing: ItemMissing
+   |         ^^^^^^^ not a section here
+  reason: A record that isn't there reports `ItemNotFound` itself; `missing:` maps a query's "nothing matched".
+  next: Remove `missing: ...` (agent)
+  rule: data.write_section_unexpected
+  help: docs/language/06-reads-and-writes.html#data-write-section-unexpected
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-update-duplicate-field expect=type.update_duplicate_field
+### `data.write_section_required`
+
+```jadpo check project=e-write-section-required expect=data.write_section_required
+type ItemName = Text {
+    max_length: 80
+}
+
+entity Item {
+    id: Uuid
+    name: ItemName
+}
+
+action touch(item: Item) -> Item {
+    return Item.update(item)
+}
+```
+
+```text output
+error: `Item.update` doesn't say what it changes
+ --> main.jadpo:11:12
+   |
+11 |     return Item.update(item)
+   |            ^^^^^^^^^^^ nothing to change
+  reason: An update gives the fields it changes in `set:`, or the request's changes with `patch:`.
+  next: Add `set: { ... }` with the fields it changes (agent)
+  rule: data.write_section_required
+  help: docs/language/06-reads-and-writes.html#data-write-section-required
+
+check failed: 1 error, 1 file
+```
+
+### `data.update_by_id_value`
+
+An update by `id` is worked out by the database in one step, so its values
+use only parameters, constants, `clock.now` and the record's stored fields,
+and a stored field only with `+` and `-`:
+
+```jadpo check project=e-update-by-id-value expect=data.update_by_id_value
+type Count = Int {
+    min: 0
+}
+
+entity Counter {
+    id: Uuid
+    hits: Count
+}
+
+action hit(counter_id: Counter.id) fails CounterNotFound -> Counter {
+    var counter: Counter = attempt Counter.get(counter_id)
+    return attempt Counter.update(counter_id) {
+        set: {
+            hits: Count(counter.hits + 1)
+        }
+    }
+}
+```
+
+```text output
+error: `Counter.update` by `id` sets a value from `counter`, a variable
+ --> main.jadpo:14:25
+   |
+14 |             hits: Count(counter.hits + 1)
+   |                         ^^^^^^^ a variable
+  reason: An update by `id` is worked out by the database in one step, so its values use only the action's parameters, constants, `clock.now` and `Counter`'s stored fields; a value read earlier could have changed by the time it writes.
+  next: Load the record and update it, `Counter.update(counter) { set: { ... } }`, or pass the value in as a parameter (agent)
+  rule: data.update_by_id_value
+  help: docs/language/06-reads-and-writes.html#data-update-by-id-value
+
+check failed: 1 error, 1 file
+```
+
+### `data.stored_value_outside_update`
+
+`Counter.hits` is the value stored when an update by `id` runs, so only
+that update reads it:
+
+```jadpo check project=e-stored-value-outside-update expect=data.stored_value_outside_update
+type Count = Int {
+    min: 0
+}
+
+entity Counter {
+    id: Uuid
+    hits: Count
+}
+
+action hit(counter: Counter) -> Counter {
+    return Counter.update(counter) {
+        set: {
+            hits: Count(Counter.hits + 1)
+        }
+    }
+}
+```
+
+```text output
+error: `Counter.hits` is a stored value, read only by an update by `id`
+ --> main.jadpo:13:25
+   |
+13 |             hits: Count(Counter.hits + 1)
+   |                         ^^^^^^^^^^^^ stored value
+  reason: `Counter.hits` is the value stored in the database when an update by `id` runs, which only that update's `set:` reads; elsewhere a record's field is read from the record loaded earlier.
+  next: Read it from a loaded record, `counter.hits`, or use it in `Counter.update(counter_id) { set: { ... } }` (agent)
+  rule: data.stored_value_outside_update
+  help: docs/language/06-reads-and-writes.html#data-stored-value-outside-update
+
+check failed: 1 error, 1 file
+```
+
+### `data.stored_value_unproven`
+
+Nothing checks a value the database works out before it is stored, so the
+declared ranges must prove it:
+
+```jadpo check project=e-stored-value-unproven expect=data.stored_value_unproven
+type Stock = Int {
+    min: 0
+    max: 1000
+}
+
+entity Product {
+    id: Uuid
+    stock: Stock
+}
+
+action restock(product_id: Product.id) fails ProductNotFound -> Product {
+    return attempt Product.update(product_id) {
+        set: {
+            stock: Stock(Product.stock + 1)
+        }
+    }
+}
+```
+
+```text output
+error: `Product.update` by `id` could store a value that breaks `max: 1000`
+ --> main.jadpo:14:20
+   |
+14 |             stock: Stock(Product.stock + 1)
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^ worked out by the database
+  reason: The database works out a value from `Product`'s stored fields when it writes, so nothing checks it before it is stored: the declared ranges must prove it follows its type's rules.
+  next: Load the record and build the value with `attempt` before `Product.update`, or loosen the type's rules (human)
+  rule: data.stored_value_unproven
+  help: docs/language/06-reads-and-writes.html#data-stored-value-unproven
+
+check failed: 1 error, 1 file
+```
+
+### Conflicts
+
+### `data.conflict_unmapped`
+
+Each unique rule and restricting reference a write can break needs an arm
+in `conflict:`; there is no catch-all:
+
+```jadpo check project=e-conflict-unmapped expect=data.conflict_unmapped
 entity Customer {
     id: Uuid
-    email: Text
+    email: Email {
+        unique: true
+    }
 }
 
-failure CustomerNotFound {
-    kind: NotFound code: "customer_not_found" }
-failure CustomerConflict {
-    kind: Conflict code: "customer_conflict" }
-
-action update_customer(id: Customer.id, email: Customer.email) -> Customer
-    fails CustomerNotFound, CustomerConflict
-{
-    return attempt update required Customer {
-        where: id == id
+action register(email: Customer.email) -> Customer {
+    return Customer.create {
         set: {
             email: email
-            email: (email)
         }
-        missing: CustomerNotFound
-        conflict: CustomerConflict
     }
 }
 ```
 
-### `type.mutation_unknown_predicate_field`
+```text output
+error: `Customer.create` can break `Customer.email`, and nothing maps it
+ --> main.jadpo:9:12
+  |
+9 |     return Customer.create {
+  |            ^^^^^^^^^^^^^^^ can be refused
+  reason: A write is refused when it would give two records the same values a unique rule covers; it needs an arm in `conflict:` naming the `conflict` failure the caller gets, since there is no catch-all.
+  next: Add `conflict: { Customer.email: SomeFailure }` to the block (agent)
+  rule: data.conflict_unmapped
+  help: docs/language/06-reads-and-writes.html#data-conflict-unmapped
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-mutation-unknown-predicate-field expect=type.mutation_unknown_predicate_field
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+### `data.conflict_unknown`
+
+```jadpo check project=e-conflict-unknown expect=data.conflict_unknown
+entity Customer {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
+action register(email: Customer.email) fails EmailTaken -> Customer {
+    return attempt Customer.create {
+        set: {
+            email: email
+        }
+        conflict: {
+            Customer.mail: EmailTaken
+        }
+    }
+}
+```
+
+```text output
+error: `Customer.mail` names no unique rule or reference
+ --> main.jadpo:18:13
+   |
+18 |             Customer.mail: EmailTaken
+   |             ^^^^^^^^^^^^^ not a rule
+  reason: A `conflict:` arm is keyed by the rule the store refuses, written `Entity.name`: a field with `unique: true`, a rule named in `unique:`, or a `restricted` reference that refuses a delete. `Customer.create` can break `Customer.email`. Did you mean `Customer.email`?
+  next: Use `Customer.email` instead of `Customer.mail` (agent)
+  rule: data.conflict_unknown
+  help: docs/language/06-reads-and-writes.html#data-conflict-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `data.conflict_cannot_break`
+
+An update can break only the unique rules over the fields it sets:
+
+```jadpo check project=e-conflict-cannot-break expect=data.conflict_cannot_break
+type CustomerName = Text {
+    max_length: 80
 }
 
-action change(id: Item.id, name: Item.name) fails ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: code == id
+entity Customer {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+    name: CustomerName
+}
+
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+}
+
+action rename(customer: Customer, name: Customer.name) fails EmailTaken -> Customer {
+    return attempt Customer.update(customer) {
         set: {
             name: name
         }
-        missing: ItemNotFound
-        conflict: ItemConflict
-    }
-}
-```
-
-### `type.mutation_nullable_field_unsupported`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-mutation-nullable-field-unsupported expect=type.mutation_nullable_field_unsupported
-type Nickname = Text {}
-
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Nickname?
-}
-
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action change(nickname: Nickname, name: Item.name) fails ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: nickname == nickname
-        set: {
-            name: name
+        conflict: {
+            Customer.email: EmailTaken
         }
-        missing: ItemNotFound
-        conflict: ItemConflict
     }
 }
 ```
 
-### `syntax.mutation_conflict_required`
+```text output
+error: `Customer.update` can't break `Customer.email`, so it takes no arm
+ --> main.jadpo:23:13
+   |
+23 |             Customer.email: EmailTaken
+   |             ^^^^^^^^^^^^^^ never runs
+  reason: `Customer.update` sets none of the fields `Customer.email` covers, so it can't break it.
+  next: Remove `Customer.email: ...` (agent)
+  rule: data.conflict_cannot_break
+  help: docs/language/06-reads-and-writes.html#data-conflict-cannot-break
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-Goes under question 6: only rules a write can break are mapped.
-
-```jadpo project=e-mutation-conflict-required expect=syntax.mutation_conflict_required
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
-}
-
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-action remove(id: Item.id) fails ItemNotFound -> Item {
-    return attempt delete required Item {
-        where: id == id
-        missing: ItemNotFound
-    }
-}
+check failed: 1 error, 1 file
 ```
 
-### `type.conflict_duplicate_binding`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-conflict-duplicate-binding expect=type.conflict_duplicate_binding
-entity Item {
-    id: Uuid identity
-}
-
-failure FirstConflict {
-    kind: Conflict
-    code: "first_conflict"
-}
-
-failure SecondConflict {
-    kind: Conflict
-    code: "second_conflict"
-}
-
-action create_item(id: Item.id) fails FirstConflict, SecondConflict -> Item {
-    return attempt create Item {
-        id: id
-    }
-    conflict: FirstConflict
-    conflict: SecondConflict
-}
-```
-
-### `type.conflict_unknown_constraint`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-conflict-unknown-constraint expect=type.conflict_unknown_constraint
-entity Membership {
-    id: Uuid identity
-    tenant: Text
-    email: Text
-    constraint tenant_email: unique(tenant, email)
-}
-
-failure MembershipConflict {
-    kind: Conflict code: "membership_conflict" }
-
-action create_membership(id: Membership.id, tenant: Membership.tenant, email: Membership.email) -> Membership
-    fails MembershipConflict
-{
-    return attempt create Membership {
-        id: id
-        tenant: tenant
-        email: email
-    }
-    conflict Membership.no_such_constraint: MembershipConflict
-}
-```
-
-### `syntax.expected_delete_action`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-Raised by a reference's `on_delete` value, which area 5 keeps:
-
-```jadpo project=e-expected-delete-action expect=syntax.expected_delete_action
-entity User {
-    id: Uuid identity
-}
-
-entity Todo {
-    id: Uuid identity
-    owner_id: User.id references User.id on_delete archive
-}
-```
+A conflict arm naming a failure of another kind is area 4's
+`failure.mapping_kind`, an arm given twice `failure.duplicate_mapping`, and
+`invalid:` in a write's block `failure.invalid_outside_construction`.
 
 ### Patches
 
-### `syntax.expected_patch_input`
+### `data.patch_not_input`
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+```jadpo check project=e-patch-not-input expect=data.patch_not_input
+type ItemName = Text {
+    max_length: 80
+}
 
-```jadpo project=e-expected-patch-input expect=syntax.expected_patch_input
 entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+    id: Uuid
+    name: ItemName
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-failure EmptyPatch {
-    kind: InvalidValue
-    code: "empty_patch"
-}
-
-input PatchItem {
-    name: Item.name optional
-}
-
-action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        patch: 123
-        empty: EmptyPatch
-        missing: ItemNotFound
-        conflict: ItemConflict
+action copy_name(item: Item, from: Item) -> Item {
+    return Item.update(item) {
+        patch: from
     }
 }
 ```
 
-### `type.patch_input_binding`
+```text output
+error: `patch:` takes an `Input`, and this is `Item`
+ --> main.jadpo:12:16
+   |
+12 |         patch: from
+   |                ^^^^ this is `Item`
+  reason: A patch changes only the fields a request supplied, so it takes an `Input` whose fields are optional and named after `Item`'s: one left out keeps its value, and one sent as `none` is cleared.
+  next: Pass an `Input` such as `type PatchItem = Input { pick: [...]  optional: all }` (agent)
+  rule: data.patch_not_input
+  help: docs/language/06-reads-and-writes.html#data-patch-not-input
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-patch-input-binding expect=type.patch_input_binding
+### `data.patch_field_unknown`
+
+Each field of a patch's input is one of the entity's, and `when_supplied:`
+names the input's fields:
+
+```jadpo check project=e-patch-field-unknown expect=data.patch_field_unknown
+type ItemName = Text {
+    max_length: 80
+}
+
 entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+    id: Uuid
+    name: ItemName
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+type ItemChanges = Input {
+    title: ItemName {
+        optional: true
+    }
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-failure EmptyPatch {
-    kind: InvalidValue
-    code: "empty_patch"
-}
-
-input PatchItem {
-    name: Item.name optional
-}
-
-action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        patch: input.name
-        empty: EmptyPatch
-        missing: ItemNotFound
-        conflict: ItemConflict
+action edit(item: Item, amendment: ItemChanges) -> Item {
+    return Item.update(item) {
+        patch: amendment
     }
 }
 ```
 
-### `type.patch_not_input`
+```text output
+error: `ItemChanges` has `title`, which `Item` doesn't
+ --> main.jadpo:18:16
+   |
+18 |         patch: amendment
+   |                ^^^^^^^^^ `ItemChanges`
+  reason: A patch sets each field its input supplies on the field of `Item` with the same name, so every field of `ItemChanges` is one of `Item`'s.
+  next: Remove `title` from `ItemChanges` (agent)
+  rule: data.patch_field_unknown
+  help: docs/language/06-reads-and-writes.html#data-patch-field-unknown
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-patch-not-input expect=type.patch_not_input
+### `data.patch_field_required`
+
+```jadpo check project=e-patch-field-required expect=data.patch_field_required
+type ItemName = Text {
+    max_length: 80
+}
+
 entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+    id: Uuid
+    name: ItemName
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+type ItemChanges = Input {
+    pick: [Item.name]
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-failure EmptyPatch {
-    kind: InvalidValue
-    code: "empty_patch"
-}
-
-action patch_item(id: Item.id, item: Item) fails EmptyPatch, ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        patch: item
-        empty: EmptyPatch
-        missing: ItemNotFound
-        conflict: ItemConflict
+action edit(item: Item, amendment: ItemChanges) -> Item {
+    return Item.update(item) {
+        patch: amendment
     }
 }
 ```
 
-### `type.patch_field_required`
+```text output
+error: `ItemChanges.name` isn't optional, so a patch can't leave it out
+ --> main.jadpo:16:16
+   |
+16 |         patch: amendment
+   |                ^^^^^^^^^ `ItemChanges`
+  reason: A patch changes only the fields a request supplied, so each field of its input is optional: one left out keeps its value. A required `name` would have to be sent every time.
+  next: Make `name` optional in `ItemChanges` (`optional: true`, or `optional: all`), or set it with `set:` (agent)
+  rule: data.patch_field_required
+  help: docs/language/06-reads-and-writes.html#data-patch-field-required
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-patch-field-required expect=type.patch_field_required
+### `data.patch_overlap`
+
+```jadpo check project=e-patch-overlap expect=data.patch_overlap
+type ItemName = Text {
+    max_length: 80
+}
+
 entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+    id: Uuid
+    name: ItemName
+    nickname: ItemName?
 }
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
+type ItemChanges = Input {
+    pick: [Item.name, Item.nickname]
+    optional: all
 }
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-failure EmptyPatch {
-    kind: InvalidValue
-    code: "empty_patch"
-}
-
-input PatchItem {}
-
-action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        patch: input
-        empty: EmptyPatch
-        missing: ItemNotFound
-        conflict: ItemConflict
-    }
-}
-```
-
-### `type.patch_field_not_optional`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-patch-field-not-optional expect=type.patch_field_not_optional
-entity Customer {
-    id: Uuid identity
-    email: Text
-}
-
-input PatchCustomer {
-    email: Customer.email
-}
-
-failure EmptyCustomerPatch {
-    kind: InvalidValue code: "empty_customer_patch" }
-failure CustomerNotFound {
-    kind: NotFound code: "customer_not_found" }
-failure CustomerConflict {
-    kind: Conflict code: "customer_conflict" }
-
-action patch_customer(id: Customer.id, input: PatchCustomer) -> Customer
-    fails EmptyCustomerPatch, CustomerNotFound, CustomerConflict
-{
-    return attempt update required Customer {
-        where: id == id
-        patch: input
-        empty: EmptyCustomerPatch
-        missing: CustomerNotFound
-        conflict: CustomerConflict
-    }
-}
-```
-
-### `type.patch_unknown_field`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-patch-unknown-field expect=type.patch_unknown_field
-entity Customer {
-    id: Uuid identity
-    email: Text
-}
-
-input PatchCustomer {
-    display_name: Text optional
-}
-
-failure EmptyCustomerPatch {
-    kind: InvalidValue code: "empty_customer_patch" }
-failure CustomerNotFound {
-    kind: NotFound code: "customer_not_found" }
-failure CustomerConflict {
-    kind: Conflict code: "customer_conflict" }
-
-action patch_customer(id: Customer.id, input: PatchCustomer) -> Customer
-    fails EmptyCustomerPatch, CustomerNotFound, CustomerConflict
-{
-    return attempt update required Customer {
-        where: id == id
-        patch: input
-        empty: EmptyCustomerPatch
-        missing: CustomerNotFound
-        conflict: CustomerConflict
-    }
-}
-```
-
-### `type.patch_derived_overlap`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-patch-derived-overlap expect=type.patch_derived_overlap
-entity Customer {
-    id: Uuid identity
-    email: Text
-}
-
-input PatchCustomer {
-    email: Customer.email optional
-}
-
-failure EmptyCustomerPatch {
-    kind: InvalidValue code: "empty_customer_patch" }
-failure CustomerNotFound {
-    kind: NotFound code: "customer_not_found" }
-failure CustomerConflict {
-    kind: Conflict code: "customer_conflict" }
-
-action patch_customer(id: Customer.id, input: PatchCustomer) -> Customer
-    fails EmptyCustomerPatch, CustomerNotFound, CustomerConflict
-{
-    return attempt update required Customer {
-        where: id == id
-        patch: input
-        empty: EmptyCustomerPatch
-        set: {
-            email: input.email when input.email supplied
+action edit(item: Item, amendment: ItemChanges) -> Item {
+    return Item.update(item) {
+        patch: amendment
+        when_supplied: {
+            name: {
+                nickname: none
+            }
         }
-        missing: CustomerNotFound
-        conflict: CustomerConflict
     }
 }
 ```
 
-### `syntax.expected_supplied_field`
+```text output
+error: `nickname` is set by the patch and by `when_supplied:`
+ --> main.jadpo:21:17
+   |
+21 |                 nickname: none
+   |                 ^^^^^^^^ set twice
+  reason: `ItemChanges` supplies `nickname` already, so a value here would compete with the request's.
+  next: Remove `nickname` from `when_supplied:`, or from `ItemChanges` (agent)
+  rule: data.patch_overlap
+  help: docs/language/06-reads-and-writes.html#data-patch-overlap
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-expected-supplied-field expect=syntax.expected_supplied_field
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
-}
+### Stores
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
+### `store.action_spans_stores`
 
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
+An action writes one store, counting the actions it calls, so moving an
+entity can break an action that never names it:
 
-failure EmptyPatch {
-    kind: InvalidValue
-    code: "empty_patch"
-}
-
-input PatchItem {
-    name: Item.name optional
-}
-
-action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        patch: input
-        empty: EmptyPatch
-        set: {
-            nickname: none when 123
+```jadpo check project=e-action-spans-stores file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
         }
-        missing: ItemNotFound
-        conflict: ItemConflict
+        carts: {
+            driver: Driver.postgres
+        }
     }
 }
 ```
 
-### `syntax.expected_supplied`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-expected-supplied expect=syntax.expected_supplied
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
-}
-
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-failure EmptyPatch {
-    kind: InvalidValue
-    code: "empty_patch"
-}
-
-input PatchItem {
-    name: Item.name optional
-}
-
-action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        patch: input
-        empty: EmptyPatch
-        set: {
-            nickname: none when input.name changed
-        }
-        missing: ItemNotFound
-        conflict: ItemConflict
-    }
+```jadpo check project=e-action-spans-stores file=domains/ordering/entities/order.jadpo hidden
+entity Order {
+    id: Uuid
 }
 ```
 
-### `type.patch_condition_binding`
+```jadpo check project=e-action-spans-stores file=domains/ordering/entities/cart.jadpo hidden migrate=initial
+entity Cart {
+    id: Uuid
 
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-patch-condition-binding expect=type.patch_condition_binding
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
-}
-
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-failure EmptyPatch {
-    kind: InvalidValue
-    code: "empty_patch"
-}
-
-input PatchItem {
-    name: Item.name optional
-}
-
-action patch_item(id: Item.id, input: PatchItem, other: PatchItem) fails EmptyPatch, ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        patch: input
-        empty: EmptyPatch
-        set: {
-            nickname: none when other.name supplied
-        }
-        missing: ItemNotFound
-        conflict: ItemConflict
-    }
+    store: carts
 }
 ```
 
-### `type.patch_condition_unknown_field`
-
-> The archived compiler's example: the new compiler's writes beyond `create` come with chunk 3.3, which replaces this with its error.
-
-```jadpo project=e-patch-condition-unknown-field expect=type.patch_condition_unknown_field
-entity Item {
-    id: Uuid identity
-    name: Text
-    nickname: Text?
+```jadpo check project=e-action-spans-stores file=domains/ordering/actions/clear_cart.jadpo hidden
+action clear_cart(cart: Cart) -> Unit {
+    Cart.delete(cart)
 }
+```
 
-failure ItemNotFound {
-    kind: NotFound
-    code: "item_not_found"
-}
-
-failure ItemConflict {
-    kind: Conflict
-    code: "item_conflict"
-}
-
-failure EmptyPatch {
-    kind: InvalidValue
-    code: "empty_patch"
-}
-
-input PatchItem {
-    name: Item.name optional
-}
-
-action patch_item(id: Item.id, input: PatchItem) fails EmptyPatch, ItemNotFound, ItemConflict -> Item {
-    return attempt update required Item {
-        where: id == id
-        patch: input
-        empty: EmptyPatch
-        set: {
-            nickname: none when input.title supplied
-        }
-        missing: ItemNotFound
-        conflict: ItemConflict
+```jadpo check project=e-action-spans-stores file=domains/ordering/actions/checkout.jadpo expect=store.action_spans_stores
+action checkout(cart: Cart) -> Order {
+    var order: Order = Order.create {
+        set: {}
     }
+    clear_cart(cart)
+    return order
 }
+```
+
+```text output
+error: `checkout` writes two stores
+ --> domains/ordering/actions/checkout.jadpo:5:5
+  |
+5 |     clear_cart(cart)
+  |     ^^^^^^^^^^^^^^^^ store `carts`
+  reason: An action's writes, and those of the actions it calls, commit as one, in one store's transaction; `checkout` writes `Order` (store `main`), and here it calls `clear_cart`, which writes `Cart` (store `carts`).
+  next: Write `Cart` in a subscriber to an event `checkout` emits, or keep `Cart` in store `main` (human)
+  rule: store.action_spans_stores
+  help: docs/language/06-reads-and-writes.html#store-action-spans-stores
+
+check failed: 1 error, 5 files
 ```
 
 ### Ownership, transactions and freshness
@@ -3227,3 +3142,9 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Cache reads | Only a query a route runs directly may be served from a cache; reads in actions, policy and authentication go to the store; a client that just wrote skips caches | 2026-10-12 |
 | Policy in query plans | Policy compiled into each query's `WHERE`; fields a policy condition filters on get indexes; row-level security later, opt-in | 2026-10-12 |
 | Caches in tests | `jadpo test` supplies an in-memory cache that behaves like Redis, emptied between tests | 2026-10-12 |
+| Write targets | Chosen in chunk 3.3: `update` and `delete` take the record loaded earlier or its `id`; by `id` no record is the entity's not-found failure; a delete gives nothing | 2026-10-14 |
+| Update sections | Chosen in chunk 3.3: `set:` or `patch:`, never both; `when_supplied:` only with `patch:`, never setting a field the patch has or one another entry sets | 2026-10-14 |
+| Provided not-found failure | Chosen in chunk 3.3: kind `not_found`, public, no fields, placed at its entity | 2026-10-14 |
+| References that hold | Chosen in chunk 3.3: a reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure | 2026-10-14 |
+| Stored values | Chosen in chunk 3.3: an update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove | 2026-10-14 |
+| Refusals in a called action | Chosen in chunk 3.3: a write that can be refused, run by an action another action called, runs inside a savepoint, so a caller handling the failure carries on | 2026-10-14 |

@@ -19,6 +19,7 @@ use jadpo_db::{Db, ItemKind, Project, Symbol, Symbols, symbols};
 use jadpo_graph::Registry;
 
 use crate::case::to_snake;
+use crate::data::WriteRules;
 use crate::failures::{FailureInfo, failure_table};
 use crate::types::{Def, Sig, TypeView, callables, type_table};
 
@@ -118,7 +119,11 @@ pub fn tests_called<'db>(
 #[salsa::tracked(returns(ref))]
 pub fn folded_names(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for name in symbols(db, project).declarations.keys() {
+    for (name, found) in &symbols(db, project).declarations {
+        // A provided failure has no file of its own to clash with.
+        if found.iter().all(|symbol| symbol.provided.is_some()) {
+            continue;
+        }
         out.entry(to_snake(name)).or_default().push(name.clone());
     }
     out
@@ -177,6 +182,12 @@ pub trait NameView {
 pub trait SigView {
     fn signature(&self, name: &str) -> Option<&Sig>;
     fn library_signature(&self, library: &str, function: &str) -> Option<&Sig>;
+}
+
+/// Reading what writes can break (area 6).
+pub trait WriteView {
+    /// What a write to the entity called `entity` can break.
+    fn write_rules(&self, entity: &str) -> Option<&WriteRules>;
 }
 
 /// Reading declared failures.
@@ -281,6 +292,12 @@ impl SigView for Lookup<'_> {
             self.name(function),
         )
         .as_ref()
+    }
+}
+
+impl WriteView for Lookup<'_> {
+    fn write_rules(&self, entity: &str) -> Option<&WriteRules> {
+        crate::data::write_rules(self.db, self.project, self.name(entity)).as_ref()
     }
 }
 

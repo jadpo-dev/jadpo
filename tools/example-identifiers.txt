@@ -15,6 +15,7 @@ allergen
 allergens
 allergies
 already_archived
+amendment
 amount_off
 animal_free
 api_bearer
@@ -61,12 +62,14 @@ board
 board_not_found
 bob
 book
+book_already_lent
 book_by_id
 book_card
 book_collection
 book_id
 book_ids
 book_not_found
+book_on_loan
 book_title
 book_titled
 book_view
@@ -106,12 +109,14 @@ candles
 cap_total
 capped
 card
+card_already_issued
 card_full
 card_name
 card_not_full
 card_number
 card_view
 cards
+cart
 cart_id
 catalogue_filter
 catalogue_name
@@ -137,8 +142,10 @@ check_title
 checkout
 checkout_unavailable
 choose_handover
+clear_cart
 clock_reading
 close_enough
+close_project
 code_unknown
 coffee
 collect_at
@@ -153,19 +160,19 @@ configured_application
 contact_address
 contact_email
 contact_text
+copy_name
 count_ingredients
 count_out_of_range
 count_refused
 count_tiers
 count_todos
 countdown
+counter
+counter_id
 country
 country_id
 country_view
 create_booking
-create_draft
-create_item
-create_membership
 create_order
 create_private_note
 create_product
@@ -195,7 +202,6 @@ days_left
 days_overdue
 decline_reason
 delete_customer
-delete_draft
 delete_todo
 deleted_at
 deliver_to
@@ -217,7 +223,6 @@ double_if_room
 double_order
 double_quantity
 doubled_checked
-draft_id
 draft_name
 due_at
 due_before
@@ -238,9 +243,9 @@ effort
 egg
 email_on_completion
 email_on_done
+email_taken
 emma
 emptied
-empty_customer_patch
 empty_patch
 enrol
 entered
@@ -261,7 +266,6 @@ fill_trays
 find_books
 find_customer
 finish_magic_link
-first_conflict
 first_loan
 first_quantity
 flapjack
@@ -291,6 +295,8 @@ health_report
 heavy
 heavy_ingredients
 higher
+hit
+hits
 home_zone
 hourly_load
 http_status
@@ -318,9 +324,11 @@ isbn
 issue_card
 issued_at
 issued_label
-item_conflict
+item_changes
 item_count
-item_not_found
+item_id
+item_missing
+item_name
 jadpo_audit
 jar_label
 jar_name
@@ -339,7 +347,9 @@ kitchen_busy
 kitchen_count
 label_jar
 larger
+last_lent_at
 last_seen_at
+last_viewed_at
 late
 latest_due_at
 lead_id
@@ -349,6 +359,7 @@ ledger_entry
 left_over
 legacy_flag
 lend
+lend_count
 lending
 line_count
 line_receipt
@@ -364,7 +375,9 @@ loaf
 loaf_count
 loaf_price
 loan
+loan_changes
 loan_days
+loan_id
 loan_period
 loan_view
 loans
@@ -399,7 +412,6 @@ member_id
 member_loans
 member_not_found
 member_page
-membership_conflict
 menu
 menu_entry
 menu_item
@@ -483,7 +495,6 @@ party_title
 passed_on
 pastry
 patch_customer
-patch_item
 patch_todo
 payment
 payment_intent
@@ -525,8 +536,10 @@ product_name
 product_view
 project_board
 project_board_view
+project_has_todos
 project_id
 project_name
+project_name_taken
 proving_time
 public_health
 published_at
@@ -574,6 +587,8 @@ reminder_tick
 reminder_time
 rename_product
 rename_todo
+renew
+renewed
 replies
 reply_count
 reply_to
@@ -582,6 +597,7 @@ reprice
 reprice_line
 request_tag
 request_timeout
+reread
 reschedule_todo
 reservation
 reserve_cakes
@@ -592,6 +608,7 @@ reserve_stock
 rested
 restock
 retag_todo
+return_book
 revoked_at
 rye
 sack_count
@@ -600,6 +617,7 @@ safe_to_eat
 sales
 same_price
 save_again
+save_draft
 save_note
 save_session
 scale_address
@@ -608,7 +626,6 @@ scaled
 scone
 search_todos
 seated
-second_conflict
 second_loan
 second_session
 secret_to_public
@@ -685,7 +702,6 @@ team
 team_id
 temperature
 temperature_for
-tenant_email
 tenant_owner
 tenth
 test_configuration
@@ -699,6 +715,7 @@ tier_name
 tiers_above
 till_share
 till_total
+times_lent
 title
 title_blank
 title_taken
@@ -706,6 +723,7 @@ titles
 todo
 todo_application
 todo_by_id
+todo_changes
 todo_completed
 todo_configuration
 todo_conflict
@@ -732,13 +750,13 @@ too_heavy
 too_many_guests
 top_tier
 total_weight
+touch
 tray
 tray_capacity
 tray_count
 tray_full
 two_open_todos
 unknown_failure
-update_customer
 update_profile
 update_statistics
 updated_at
@@ -754,7 +772,14 @@ user_view
 usual_contacts
 vegan
 vegetarian
+video
+video_id
+view_count
+view_video
+vouch
+vouched
 vouched_by
+voucher
 water
 water_difference
 wear
@@ -770,6 +795,7 @@ wholemeal
 wildcard_failure
 with_delivery
 with_todos
+withdraw_copy
 work_address
 work_email
 worn

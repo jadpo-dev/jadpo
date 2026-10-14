@@ -13,9 +13,10 @@
 //! - [`Constant`]s: every literal and field default decoded once into the
 //!   value the runtime holds.
 //!
-//! - [`QueryPlan`]s and [`EntityPlan`]s: the SQL each query, `get` and
-//!   `create` runs, with its parameters and row codecs (chunk 3.2,
-//!   `queries`).
+//! - [`QueryPlan`]s and [`EntityPlan`]s: the SQL each query and `get`
+//!   runs, with its parameters and row codecs (chunk 3.2, `queries`), and
+//!   [`WriteSitePlan`]s: what each `create`, `update` and `delete` runs and
+//!   what its refusals raise (chunk 3.3, `writes`).
 //!
 //! Built in chunk 2.10 from the checker's graph and typed bodies; the SQL
 //! of reads and creates joined in chunk 3.2; policy, the other writes,
@@ -27,6 +28,7 @@ mod constant;
 mod queries;
 mod sites;
 mod types;
+mod writes;
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -43,6 +45,7 @@ pub use types::{
     FailureId, FailurePlan, FieldPlan, ShapeId, ShapePlan, Types, ValidatorId, ValidatorPlan,
     VariantPlan, last,
 };
+pub use writes::{Refusal, WriteSitePlan};
 
 /// One callable with a body: a function, action, fixture, library
 /// function, test or seed.
@@ -84,6 +87,8 @@ pub struct Plan {
     queries: Vec<QueryPlan>,
     /// Every entity's operations, in key order.
     entities: Vec<EntityPlan>,
+    /// Every write site's plan, in the order the callables are numbered.
+    writes: Vec<WriteSitePlan>,
 }
 
 impl Plan {
@@ -127,6 +132,11 @@ impl Plan {
             .enumerate()
             .map(|(i, plan)| (plan.key.clone(), i as u32))
             .collect();
+        let bodies: Vec<(Key, &Body)> = found
+            .iter()
+            .map(|(key, _, _, body)| (key.clone(), body.as_ref()))
+            .collect();
+        let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies);
         let mut constants = Vec::new();
         let mut callables = Vec::with_capacity(found.len());
         for (key, kind, file, body) in found {
@@ -142,16 +152,15 @@ impl Plan {
             let text = files.get(&file).map(String::as_str).unwrap_or_default();
             let number = |key: &Key| by_key.get(key).copied();
             let query = |key: &Key| query_ids.get(key).copied();
-            let entity = |key: &Key| {
-                let id = entity_ids.get(key).copied()?;
-                Some((id, entities[id as usize].settable.as_slice()))
-            };
+            let entity = |key: &Key| entity_ids.get(key).copied();
+            let write = |site: u32| write_ids.get(&(key.clone(), site)).copied();
             let sites = sites::Decoder {
                 types: &mut types,
                 constants: &mut constants,
                 callable: &number,
                 query: &query,
                 entity: &entity,
+                write: &write,
             }
             .body(&body, text);
             callables.push(CallablePlan {
@@ -172,6 +181,7 @@ impl Plan {
             files,
             queries,
             entities,
+            writes,
         }
     }
 
@@ -244,5 +254,14 @@ impl Plan {
 
     pub fn entity(&self, id: u32) -> Option<&EntityPlan> {
         self.entities.get(id as usize)
+    }
+
+    /// Every write site's plan, by number.
+    pub fn writes(&self) -> &[WriteSitePlan] {
+        &self.writes
+    }
+
+    pub fn write(&self, id: u32) -> Option<&WriteSitePlan> {
+        self.writes.get(id as usize)
     }
 }

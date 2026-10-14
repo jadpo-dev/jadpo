@@ -1,0 +1,19 @@
+// `patch:` changes only the fields the request supplied: one left out
+// keeps its value, and one sent as `none` is cleared. `when_supplied:`
+// sets more fields when a given one was supplied: a new due date ends the
+// old voucher's promise.
+
+/// Changes a loan as its member asks.
+action renew(loan: Loan, amendment: LoanChanges) fails BookAlreadyLent -> Loan {
+    return attempt Loan.update(loan) {
+        patch: amendment
+        when_supplied: {
+            due_on: {
+                vouched_by: none
+            }
+        }
+        conflict: {
+            Loan.one_loan_per_due_date: BookAlreadyLent
+        }
+    }
+}

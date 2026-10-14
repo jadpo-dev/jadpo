@@ -22,8 +22,9 @@
 //!   drives one invocation on its thread.
 //! - [`Failure`], [`Fault`] and [`MAX_DEPTH`]: declared failures, what
 //!   the runtime raises itself, and its limits.
-//! - [`read`] and [`create`]: a query's or an entity's read, and a new
-//!   record, run from their plans in the action's transaction (chunk 3.2).
+//! - [`read`] and [`write`]: a query's or an entity's read (chunk 3.2),
+//!   and a `create`, `update` or `delete` (chunk 3.3), run from their
+//!   plans in the action's transaction.
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
@@ -49,6 +50,7 @@ mod outcome;
 mod places;
 mod read;
 mod report;
+mod write;
 
 pub use boundary::{ActionBody, RERUN_ATTEMPTS, action, unavailable};
 pub use ctx::Ctx;
@@ -57,14 +59,13 @@ pub use executor::{Executor, Stalled, block_on};
 pub use failure::Failure;
 pub use fault::{Fault, FaultKind};
 pub use host::{
-    Database, Event, Host, LocalFuture, MemoryHost, NoStore, Row, SqlType, SqlValue, StoreError,
-    Transaction,
+    Database, Event, Host, LocalFuture, MemoryHost, NoStore, RELEASE_SAVEPOINT,
+    ROLLBACK_TO_SAVEPOINT, Row, SAVEPOINT, SqlType, SqlValue, StoreError, Transaction,
 };
 pub use limits::MAX_DEPTH;
 pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, standing};
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
-pub use read::{
-    Found, Interrupt, PAGE, create, cursor, from_sql, invalid_cursor, read, to_sql, uuid_text,
-};
+pub use read::{Found, Interrupt, PAGE, cursor, from_sql, invalid_cursor, read, to_sql, uuid_text};
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};
+pub use write::{Written, write};

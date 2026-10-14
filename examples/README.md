@@ -34,7 +34,9 @@ README saying what it teaches, how to run it and what to try next.
    that puts all of it together.
 10. [10-library-loans/](10-library-loans/README.md): stored records:
     entities, references, unique rules and indexes, the migrations that
-    keep the database in step with them, and the queries that read them.
+    keep the database in step with them, the queries that read them, and
+    the writes that change them: updates, patches, deletes, conflicts and
+    a counter.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

@@ -1,0 +1,14 @@
+// `Loan.update(loan) { set: { ... } }` changes fields of a record loaded
+// earlier in the action, and gives back the record as stored. If another
+// request changed the loan in between, the runtime throws this attempt
+// away and runs the whole action again, with fresh reads.
+
+/// Records that a member vouches for a loan.
+action vouch(loan_id: Loan.id, voucher: Member) fails LoanNotFound -> Loan {
+    var loan: Loan = attempt Loan.get(loan_id)
+    return Loan.update(loan) {
+        set: {
+            vouched_by: voucher.id
+        }
+    }
+}

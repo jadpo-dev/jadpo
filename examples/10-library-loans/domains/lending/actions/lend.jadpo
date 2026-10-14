@@ -1,12 +1,35 @@
+// A copy is lent once on any day (`Loan.one_loan_per_due_date`), so the
+// create maps that rule.
+//
+// An update by `id` whose values read the stored ones, `Book.times_lent`
+// rather than `book.times_lent`, is worked out by the database in one
+// step: two desks lending the same copy at once both count, and nothing
+// is lost. Its values may use only parameters, constants, `clock.now` and
+// the stored fields.
+
 /// Lends a copy to a member until a date.
-action lend(book_id: Book.id, member: Member, due_on: Loan.due_on) fails BookNotFound -> Loan {
+action lend(
+    book_id: Book.id,
+    member: Member,
+    due_on: Loan.due_on
+) fails BookNotFound, BookAlreadyLent -> Loan {
     var book: Book = attempt Book.get(book_id)
-    return Loan.create {
+    var loan: Loan = attempt Loan.create {
         set: {
             book_id: book.id
             member_id: member.id
             vouched_by: none
             due_on: due_on
         }
+        conflict: {
+            Loan.one_loan_per_due_date: BookAlreadyLent
+        }
     }
+    attempt Book.update(book.id) {
+        set: {
+            times_lent: LendCount(Book.times_lent + 1)
+            last_lent_at: clock.now
+        }
+    }
+    return loan
 }

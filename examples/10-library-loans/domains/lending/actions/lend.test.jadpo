@@ -1,4 +1,24 @@
 test "a copy that isn't there can't be lent" {
-    var ada: Member = enrol("ada@example.test", "Ada")
+    var ada: Member = attempt enrol("ada@example.test", "Ada")
     assert lend("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e", ada, "2026-11-01") fails BookNotFound
+}
+
+test "a copy is lent once on any day" {
+    var ada: Member = attempt enrol("ada@example.test", "Ada")
+    var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)
+    var first: Loan = attempt lend(dune.id, ada, "2026-11-01")
+    assert first.due_on == "2026-11-01"
+    assert lend(dune.id, ada, "2026-11-01") fails BookAlreadyLent
+}
+
+test "each loan counts, in the database" {
+    var ada: Member = attempt enrol("ada@example.test", "Ada")
+    var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)
+    var first: Loan = attempt lend(dune.id, ada, "2026-11-01")
+    var second: Loan = attempt lend(dune.id, ada, "2026-12-01")
+    assert first.book_id == second.book_id
+    var reread: Book = attempt Book.get(dune.id)
+    assert reread.times_lent == 2
+    // A test's clock stands still at 2000-01-01 unless the test moves it.
+    assert reread.last_lent_at == "2000-01-01T00:00:00Z"
 }

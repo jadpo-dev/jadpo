@@ -1,0 +1,4 @@
+/// How many times a copy has been lent.
+type LendCount = Int {
+    min: 0
+}

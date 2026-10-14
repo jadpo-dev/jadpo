@@ -22,6 +22,7 @@
 //! pause (area 3), so an executor runs them synchronously and suspends only
 //! at these sites; a body pauses when one of its sites does.
 
+use jadpo_std::write::WriteOp;
 use jadpo_std::{Num, Op, RuleKey};
 
 use crate::{Key, TypeRef};
@@ -79,6 +80,18 @@ impl Body {
         self.names
             .iter()
             .find(|name| name.start <= offset && offset <= name.end)
+    }
+
+    /// Every entity write, in source order: its site, the entity and the
+    /// operation (area 6).
+    pub fn writes(&self) -> impl Iterator<Item = (SiteId, &Key, WriteOp)> + '_ {
+        self.sites
+            .iter()
+            .enumerate()
+            .filter_map(|(i, site)| match &site.node {
+                Node::Expr(Expr::Write { entity, op, .. }) => Some((SiteId(i as u32), entity, *op)),
+                _ => None,
+            })
     }
 
     /// Every callee, in source order, with the site that calls it.
@@ -157,7 +170,7 @@ impl Site {
             Node::Expr(Expr::Build { fallible, .. }) => {
                 matches!(fallible, Fallible::Construction { .. })
             }
-            Node::Expr(Expr::Reject { .. } | Expr::Propagate { .. }) => true,
+            Node::Expr(Expr::Reject { .. } | Expr::Propagate { .. } | Expr::Write { .. }) => true,
             Node::Expr(Expr::Binary { op, .. }) => op.can_fault(),
             Node::Expr(Expr::Unary { op, .. }) => *op == UnaryOp::Negate,
             _ => false,
@@ -266,6 +279,38 @@ pub enum Expr {
     Reject {
         failure: Option<Key>,
         fields: Vec<(Key, SiteId)>,
+    },
+    /// An entity's write (area 6, "The operations every entity gets"):
+    /// `create`, `update` or `delete`, with what its block says.
+    Write {
+        entity: Key,
+        op: WriteOp,
+        /// `update` and `delete`: the record loaded earlier, or its `id`.
+        target: Option<SiteId>,
+        /// Whether `target` is the record's `id`: an update by `id` may read
+        /// the stored values (`Post.view_count + 1`), and the write fails
+        /// with `not_found` when no record has it.
+        by_id: bool,
+        /// `set:`: each field with its value, as written.
+        set: Vec<(Key, SiteId)>,
+        /// `patch:`: the `Input` whose supplied fields it changes.
+        patch: Option<SiteId>,
+        /// `when_supplied:`: each field of the patch's input with the
+        /// fields set when the request supplied it.
+        when_supplied: Vec<(Key, Vec<(Key, SiteId)>)>,
+        /// `conflict:`: the failure each rule the write can break maps to.
+        conflicts: Vec<ConflictArm>,
+        /// The references whose value may name a record that isn't there,
+        /// each with that entity's not-found failure.
+        missing: Vec<(Key, Key)>,
+        /// An `update` or `delete` by `id`: the entity's not-found failure.
+        not_found: Option<Key>,
+        fallible: Fallible,
+    },
+    /// `Post.view_count` in an update by `id`: the value stored when the
+    /// write runs, which the database works out (area 6, "Counters").
+    Stored {
+        field: Key,
     },
     /// Passes the failure its arm handles on.
     Propagate {
@@ -457,6 +502,17 @@ impl RuleArm {
             .find(|arm| arm.rule == Some(rule))
             .or_else(|| arms.iter().find(|arm| arm.rule.is_none()))
     }
+}
+
+/// One arm of a write's `conflict:` (area 6, "When a write is refused"):
+/// the rule (a unique rule, a unique field, or a reference that refuses a
+/// delete) and the failure the caller gets when the store refuses it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ConflictArm {
+    pub rule: Key,
+    pub failure: Key,
+    /// The fields given to the failure, as `reject` gives them.
+    pub fields: Vec<(Key, SiteId)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

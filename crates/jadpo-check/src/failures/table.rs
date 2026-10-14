@@ -107,11 +107,37 @@ impl FailureTable {
     }
 }
 
+/// The not-found failures the compiler provides, one for each entity
+/// whose project declares no `<Entity>NotFound` (area 6, question 6): of
+/// kind `not_found`, with no fields, as if declared beside the entity.
+pub fn provided_failures(db: &dyn Db, project: Project) -> Vec<FailureInfo> {
+    jadpo_db::symbols(db, project)
+        .declarations
+        .values()
+        .flatten()
+        .filter(|symbol| symbol.provided.is_some())
+        .map(|symbol| FailureInfo {
+            name: symbol.name.clone(),
+            kind: Some("not_found".to_string()),
+            code: to_snake(&symbol.name),
+            explicit_code: false,
+            path: symbol.path.clone(),
+            index: symbol.index,
+        })
+        .collect()
+}
+
 #[salsa::tracked(returns(ref))]
 pub fn failure_table(db: &dyn Db, project: Project) -> FailureTable {
     let mut table = FailureTable::default();
-    for &file in project.files(db) {
-        for info in failure_decls(db, file) {
+    let provided = provided_failures(db, project);
+    for found in project
+        .files(db)
+        .iter()
+        .map(|file| failure_decls(db, *file).as_slice())
+        .chain(std::iter::once(provided.as_slice()))
+    {
+        for info in found {
             table
                 .by_name
                 .entry(info.name.clone())

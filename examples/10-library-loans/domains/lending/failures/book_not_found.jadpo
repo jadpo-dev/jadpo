@@ -1,6 +1,7 @@
 // `Book.get(book_id)` fails with the domain's failure called
-// `BookNotFound`, of kind `not_found`; until the compiler provides one, a
-// domain that reads books by id declares it here.
+// `BookNotFound`, of kind `not_found`. A domain that declares none gets
+// one from the compiler: `vouch` reads a loan by id and fails with
+// `LoanNotFound`, which no file here declares.
 
 /// No book has that id.
 type BookNotFound = Failure {

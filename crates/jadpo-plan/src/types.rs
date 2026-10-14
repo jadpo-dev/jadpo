@@ -69,6 +69,10 @@ pub struct FieldPlan {
     /// What a value built without it holds: `none` for an optional
     /// `Input` field, its `default:` for one with a default (area 2).
     pub absent: Option<Constant>,
+    /// An optional `Input` field without a `default:`: a value built
+    /// without it remembers it was left out, which an update's `patch:`
+    /// reads (area 6).
+    pub omittable: bool,
     /// A failure field's section.
     pub section: Option<Section>,
 }
@@ -465,11 +469,13 @@ impl Types {
                         None if *optional => Some(Constant::None),
                         None => None,
                     };
+                    let omittable = *optional && default.is_none();
                     Some(FieldPlan {
                         key: node.key.clone(),
                         name: last(&node.name).to_string(),
                         validator: ValidatorId(u32::MAX),
                         absent,
+                        omittable,
                         section: *section,
                     })
                 }

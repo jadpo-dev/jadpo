@@ -75,8 +75,6 @@ pub(crate) enum PatternFact {
 pub(crate) enum BuildFact {
     Object(String),
     Variant(String, String),
-    /// `Entity.create { set: { ... } }` (area 6).
-    Create(String),
 }
 
 #[derive(Debug, Default)]
@@ -120,4 +118,9 @@ pub(crate) struct Facts {
     /// The effects with no typed form of their own yet (`clock.now`), which
     /// can pause.
     pub effects: BTreeSet<NodeKey>,
+    /// Each entity write (area 6): keyed by the record for a `create`, the
+    /// call for an `update` or `delete`.
+    pub writes: BTreeMap<NodeKey, super::writes::WriteFact>,
+    /// Each stored field an update by `id` reads (`Post.view_count`).
+    pub stored: BTreeSet<NodeKey>,
 }

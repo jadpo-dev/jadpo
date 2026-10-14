@@ -16,6 +16,7 @@ mod recursion;
 mod rules;
 mod shape;
 mod signatures;
+mod stores;
 mod table;
 mod ty;
 
@@ -28,5 +29,6 @@ pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules};
 pub use shape::{COPY_LINES, FieldsBase, Shape, looks_like_type, type_shapes};
 pub use signatures::{Callables, Sig, callables};
+pub use stores::{Reach as StoreReach, store_problems, store_reaches, written_stores};
 pub use table::{Def, FieldDef, TypeTable, TypeView, VariantDef, type_table};
 pub use ty::{BASES, Prim, Ty, TypeRef, container_arity};

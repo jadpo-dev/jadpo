@@ -1,0 +1,9 @@
+// A patch takes an `Input` whose fields are optional and named after the
+// entity's: `optional: all` makes every picked field one a request may
+// leave out.
+
+/// What a member may change about a loan.
+type LoanChanges = Input {
+    pick: [Loan.due_on]
+    optional: all
+}

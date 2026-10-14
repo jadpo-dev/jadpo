@@ -1325,6 +1325,28 @@ impl<'a> Walk<'a> {
         }
     }
 
+    /// A write's block (area 6): its sections' values, and each
+    /// `conflict:` arm's failure.
+    pub fn write_block(&mut self, list: Option<ast::MemberList>) {
+        for (name, member) in crate::tree::members(list) {
+            if crate::tree::name_text(&name).as_deref() != Some("conflict")
+                || member.block().is_none()
+            {
+                self.member(&member);
+                continue;
+            }
+            for (_, arm) in crate::tree::members(member.block()) {
+                if let Some(value) = arm.value() {
+                    if self.names.mapped(&value, &mut self.out) {
+                        self.expr(&value);
+                    } else if let Expr::RecordExpr(record) = &value {
+                        self.member_values(record.member_list());
+                    }
+                }
+            }
+        }
+    }
+
     /// Every expression directly inside `expr`.
     pub fn children(&mut self, expr: &Expr) {
         for child in expr.syntax().children().filter_map(Expr::cast) {
@@ -1376,6 +1398,10 @@ impl<'a> Walk<'a> {
                 if let Some(inner) = attempt.expr() {
                     self.expr(&inner);
                 }
+                if matches!(attempt.expr(), Some(Expr::CallExpr(call)) if is_write(&call)) {
+                    self.write_block(attempt.member_list());
+                    return;
+                }
                 for (_, mapping) in crate::tree::members(attempt.member_list()) {
                     if let Some(value) = mapping.value() {
                         if self.names.mapped(&value, &mut self.out) {
@@ -1388,7 +1414,18 @@ impl<'a> Walk<'a> {
             }
             Expr::RecordExpr(record) => {
                 self.record_head(record);
-                self.member_values(record.member_list());
+                let write = match record.expr() {
+                    Some(Expr::CallExpr(call)) => is_write(&call),
+                    Some(head) => dotted(&head).is_some_and(|(first, rest)| {
+                        starts_upper(&text(&first)) && rest.len() == 1 && text(&rest[0]) == "create"
+                    }),
+                    None => false,
+                };
+                if write {
+                    self.write_block(record.member_list());
+                } else {
+                    self.member_values(record.member_list());
+                }
             }
             Expr::FieldExpr(_) | Expr::NameRef(_) => {
                 if dotted(expr).is_some() {
@@ -1440,6 +1477,19 @@ impl<'a> Walk<'a> {
             None => {}
         }
     }
+}
+
+/// Whether a call is an entity's `update` or `delete`, as written:
+/// `Todo.update(...)`, whose block is the write's (area 6).
+fn is_write(call: &ast::CallExpr) -> bool {
+    call.expr()
+        .as_ref()
+        .and_then(dotted)
+        .is_some_and(|(first, rest)| {
+            starts_upper(&text(&first))
+                && rest.len() == 1
+                && matches!(text(&rest[0]).as_str(), "update" | "delete")
+        })
 }
 
 /// A `match` arm's case pattern: `Enum.variant` names a type, `some(...)`

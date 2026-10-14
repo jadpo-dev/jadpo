@@ -1,6 +1,6 @@
-//! Reads and creates (area 6; docs/compiler-runtime.md §2.5: `Ctx` `read`
-//! and `write` with a plan and parameters), run the same way for both
-//! executors from the plans `jadpo-plan` decides ([`jadpo_std::read`]).
+//! Reads (area 6; docs/compiler-runtime.md §2.5: `Ctx` `read` with a plan
+//! and parameters), run the same way for both executors from the plans
+//! `jadpo-plan` decides ([`jadpo_std::read`]).
 //!
 //! A read runs inside the action's transaction, begun at the first store
 //! operation, so it is current (area 6, "Where a read comes from"); its
@@ -12,9 +12,7 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use jadpo_std::read::{
-    Cardinality, Column, CreatePlan, Field, Given, IncludeShape, ReadPlan, Select, Size, Source,
-};
+use jadpo_std::read::{Cardinality, Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
 use jadpo_value::Value;
 
 use crate::{
@@ -30,7 +28,7 @@ pub enum Found {
     Missing,
 }
 
-/// What stops a read or a create before it gives a value.
+/// What stops a read or a write before it gives a value.
 #[derive(Debug)]
 pub enum Interrupt {
     Failed(Box<Failure>),
@@ -48,7 +46,7 @@ pub async fn read(
     args: &[Value],
     site: u32,
 ) -> Result<Found, Interrupt> {
-    let now = ctx.env().clock.now();
+    let now = ctx.now();
     let mut env = Env {
         args,
         now,
@@ -131,57 +129,6 @@ pub async fn read(
     })
 }
 
-/// Creates a record with `plan`, given the values of the fields it sets in
-/// the plan's order, called from site `site`.
-pub async fn create(
-    ctx: &mut Ctx<'_>,
-    plan: &CreatePlan,
-    given: &[Value],
-    site: u32,
-) -> Result<Value, Interrupt> {
-    let now = ctx.env().clock.now();
-    let mut values = Vec::with_capacity(plan.params.len());
-    let mut params = Vec::with_capacity(plan.params.len());
-    for (source, ty) in &plan.params {
-        let value = match source {
-            Given::Set(at) => match given.get(*at as usize) {
-                Some(value) => value.clone(),
-                None => return Err(defect(ctx, "a create without one of its fields", site)),
-            },
-            Given::NewId => Value::uuid(&uuid_text(&ctx.new_id())),
-            Given::Now => Value::Instant(now),
-        };
-        match to_sql(&value, *ty) {
-            Ok(sql) => params.push(sql),
-            Err(what) => return Err(defect(ctx, &what, site)),
-        }
-        values.push(value);
-    }
-    let result = {
-        let transaction = match ctx.transaction(&plan.store).await {
-            Ok(transaction) => transaction,
-            Err(error) => return Err(refused(ctx, error, site)),
-        };
-        transaction.execute(&plan.sql, &params).await
-    };
-    if let Err(error) = result {
-        return Err(refused(ctx, error, site));
-    }
-    let fields = plan
-        .record
-        .fields
-        .iter()
-        .map(|(name, field)| {
-            let value = match field {
-                Field::Column(at) => values.get(*at as usize).cloned().unwrap_or(Value::None),
-                Field::Include(_) => Value::None,
-            };
-            (Rc::from(name.as_str()), value)
-        })
-        .collect();
-    Ok(Value::record(&plan.record.ty, fields))
-}
-
 /// What the runtime raises when a page's cursor was made by another query,
 /// or isn't a cursor at all (area 6: "rejected as invalid input"; area 7:
 /// 422 `invalid_input`).
@@ -197,7 +144,7 @@ pub fn invalid_cursor() -> Failure {
 }
 
 /// A store's refusal as what the runtime raises.
-fn refused(ctx: &mut Ctx<'_>, error: StoreError, site: u32) -> Interrupt {
+pub(crate) fn refused(ctx: &mut Ctx<'_>, error: StoreError, site: u32) -> Interrupt {
     match error {
         StoreError::Unavailable => Interrupt::Failed(ctx.fail(crate::unavailable(), site)),
         StoreError::ConcurrentChange => {
@@ -206,15 +153,19 @@ fn refused(ctx: &mut Ctx<'_>, error: StoreError, site: u32) -> Interrupt {
             ctx.concurrent_change();
             Interrupt::Fault(ctx.fault(FaultKind::Defect("a concurrent change".into()), site))
         }
-        // Mapping the rule a write broke to a failure comes with chunk 3.3.
-        StoreError::Conflict { .. } => {
-            Interrupt::Fault(ctx.fault(FaultKind::NotBuiltYet("conflict:".to_string()), site))
-        }
+        // A rule nothing maps: the write's plan maps every rule the
+        // checker knows it can break.
+        StoreError::Conflict { constraint } => Interrupt::Fault(ctx.fault(
+            FaultKind::Store(format!(
+                "the store refused a write that broke `{constraint}`, which nothing maps"
+            )),
+            site,
+        )),
         StoreError::Fault(what) => Interrupt::Fault(ctx.fault(FaultKind::Store(what), site)),
     }
 }
 
-fn defect(ctx: &mut Ctx<'_>, what: &str, site: u32) -> Interrupt {
+pub(crate) fn defect(ctx: &mut Ctx<'_>, what: &str, site: u32) -> Interrupt {
     Interrupt::Fault(ctx.fault(FaultKind::Defect(what.to_string()), site))
 }
 

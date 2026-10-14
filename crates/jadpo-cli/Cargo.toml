@@ -26,6 +26,8 @@ jadpo-term.workspace = true
 jadpo-test.workspace = true
 
 [dev-dependencies]
+jadpo-interp.workspace = true
+jadpo-value.workspace = true
 serde_json.workspace = true
 
 [lints]

@@ -26,8 +26,8 @@ use std::rc::Rc;
 
 use jadpo_graph::TypeRef;
 use jadpo_graph::body::{
-    Arm, ArmBody, BinaryOp, Body, Callee, Expr, IfArm, LocalId, Node, Pattern, RuleArm, Site,
-    SiteId, Stmt, UnaryOp,
+    Arm, ArmBody, BinaryOp, Body, Callee, ConflictArm, Expr, IfArm, LocalId, Node, Pattern,
+    RuleArm, Site, SiteId, Stmt, UnaryOp,
 };
 use jadpo_plan::{ArmPattern, CallablePlan, Decoded};
 use jadpo_runtime::{Assertion, AssertionDetail, Ctx, Failure, Fault, FaultKind, Frame, Got};
@@ -50,6 +50,13 @@ pub(crate) enum Stop {
     Failed(Box<Failure>),
     Fault(Box<Fault>),
     Assertion(Box<Assertion>),
+    /// The store refused a write with the rule its `conflict:` arm at
+    /// `arm` maps, for the write's handler to raise that arm's failure
+    /// with the refusal as its cause (area 6).
+    Refused {
+        arm: u32,
+        cause: Box<Failure>,
+    },
 }
 
 /// What a site that pauses waits on: a call into the runtime's action
@@ -62,8 +69,8 @@ pub(crate) enum Target {
     Query(u32),
     /// `Entity.get`, by the number of the entity's plan.
     Get(u32),
-    /// `Entity.create`, by the number of the entity's plan.
-    Create(u32),
+    /// `create`, `update` or `delete`, by the number of the write's plan.
+    Write(u32),
 }
 
 /// Where a run of the machine stopped.
@@ -189,6 +196,13 @@ enum Task<'p> {
         index: usize,
         site: SiteId,
     },
+    /// Keeps the value on top as the write's input at `index` keeps it: a
+    /// value a field stores, the way the field's type stores it.
+    WriteInput {
+        plan: u32,
+        index: usize,
+        site: SiteId,
+    },
     Build {
         at: SiteId,
         count: usize,
@@ -214,6 +228,14 @@ enum Task<'p> {
         written: String,
         count: usize,
     },
+    /// Raises the failure a write's `conflict:` arm maps the store's
+    /// refusal to, with its `count` fields on top.
+    RaiseConflict {
+        at: SiteId,
+        arm: usize,
+        cause: Box<Failure>,
+        count: usize,
+    },
     AssertTruth(SiteId),
     AssertCompare {
         at: SiteId,
@@ -224,6 +246,13 @@ enum Task<'p> {
     /// The end of a callable's activation; `base` is the value stack's
     /// height when it was entered.
     FrameEnd {
+        base: usize,
+    },
+    /// A write, catching a refusal its `conflict:` maps to raise the arm's
+    /// failure.
+    Write {
+        at: SiteId,
+        arms: &'p [ConflictArm],
         base: usize,
     },
     /// An `attempt`, catching a broken rule its inner construction gives.
@@ -698,32 +727,8 @@ impl<'p> Machine<'p> {
                         }
                         self.enter(ctx, callee, args, at)?;
                     }
-                    // A create's fields as written, put in the order its
-                    // plan sets them.
-                    Target::Create(entity) => {
-                        let count = self
-                            .program
-                            .plan()
-                            .entity(entity)
-                            .map_or(0, |plan| plan.settable.len());
-                        let mut given = vec![Value::None; count];
-                        if let Some(Decoded::Create { fields, .. }) = self.decoded(at) {
-                            for (field, value) in fields.iter().zip(args) {
-                                if let Some(place) =
-                                    field.slot.and_then(|slot| given.get_mut(slot as usize))
-                                {
-                                    *place = value;
-                                }
-                            }
-                        }
-                        return Ok(Flow::Pause {
-                            target,
-                            args: given,
-                            at,
-                        });
-                    }
-                    // A read always waits on the store.
-                    Target::Query(_) | Target::Get(_) => {
+                    // A read or a write always waits on the store.
+                    Target::Query(_) | Target::Get(_) | Target::Write(_) => {
                         return Ok(Flow::Pause { target, args, at });
                     }
                 }
@@ -777,14 +782,37 @@ impl<'p> Machine<'p> {
                 }
                 self.values.push(value);
             }
+            Task::WriteInput { plan, index, site } => {
+                let value = self.pop();
+                let validator = self
+                    .program
+                    .plan()
+                    .write(plan)
+                    .and_then(|write| write.inputs.get(index))
+                    .and_then(|(_, validator)| *validator);
+                let Some(validator) = validator else {
+                    self.values.push(value);
+                    return Ok(Flow::Next);
+                };
+                // A value a field stores is kept as the field's type keeps
+                // it, and is already proved, as an object literal's is.
+                let validator = self.program.validator(validator);
+                let Some(value) = validator.store(value) else {
+                    return Err(self.fault(ctx, FaultKind::DecimalOverflow, site));
+                };
+                if self.program.proof_checks()
+                    && let Err(invalid) = validator.check(&value)
+                {
+                    return Err(self.proof_broken(ctx, &invalid, site));
+                }
+                self.values.push(value);
+            }
             Task::BuildField { at, index, site } => {
                 let value = self.pop();
                 let (given, fallible) = match self.decoded(at) {
                     Some(Decoded::Build {
                         fields, fallible, ..
                     }) => (fields.get(index), *fallible),
-                    // A create's fields are proved, as an object literal's.
-                    Some(Decoded::Create { fields, .. }) => (fields.get(index), false),
                     _ => (None, false),
                 };
                 let Some(given) = given else {
@@ -913,6 +941,31 @@ impl<'p> Machine<'p> {
                 failure.broken = Some(written);
                 return Err(Stop::Failed(ctx.fail(failure, inner.0)));
             }
+            Task::RaiseConflict {
+                at,
+                arm,
+                cause,
+                count,
+            } => {
+                let values = self.take(count);
+                let failure = match self.decoded(at) {
+                    Some(Decoded::Write { arms, .. }) => {
+                        arms.get(arm).and_then(Option::as_ref).and_then(|raise| {
+                            self.program.failure(raise.failure, &raise.slots, values)
+                        })
+                    }
+                    _ => None,
+                };
+                let Some(mut failure) = failure else {
+                    return Err(self.defect(
+                        ctx,
+                        "a conflict arm naming something that isn't a failure",
+                        at,
+                    ));
+                };
+                failure.cause = Some(cause);
+                return Err(Stop::Failed(ctx.fail(failure, at.0)));
+            }
             Task::AssertTruth(at) => {
                 if self.pop() != Value::Bool(true) {
                     return Err(Stop::Assertion(ctx.assertion_failed(
@@ -942,8 +995,9 @@ impl<'p> Machine<'p> {
                 }
                 self.values.push(Value::Unit);
             }
-            // A construction that didn't break a rule: its value passes.
-            Task::Attempt { .. } => {}
+            // A construction that didn't break a rule, or a write the store
+            // didn't refuse: its value passes.
+            Task::Attempt { .. } | Task::Write { .. } => {}
             Task::Catch { remember, then, .. } => {
                 let value = self.pop();
                 if let Some(site) = remember {
@@ -1018,6 +1072,27 @@ impl<'p> Machine<'p> {
                             count: fields.len(),
                         });
                         for (_, site) in fields.iter().rev() {
+                            self.tasks.push(Task::Expr(*site));
+                        }
+                        return Flow::Next;
+                    }
+                }
+                Task::Write { at, arms, base } => {
+                    if let Stop::Refused { arm, cause } = stop {
+                        self.values.truncate(base);
+                        let Some(found) = arms.get(arm as usize) else {
+                            stop = self.defect(ctx, "a refusal with no arm for it", at);
+                            continue;
+                        };
+                        // The failure's fields are worked out only when it
+                        // is raised, as a `reject`'s are.
+                        self.tasks.push(Task::RaiseConflict {
+                            at,
+                            arm: arm as usize,
+                            cause,
+                            count: found.fields.len(),
+                        });
+                        for (_, site) in found.fields.iter().rev() {
                             self.tasks.push(Task::Expr(*site));
                         }
                         return Flow::Next;
@@ -1202,32 +1277,40 @@ impl<'p> Machine<'p> {
                 self.tasks.push(Task::Expr(*receiver));
             }
             Expr::Call { callee, args, .. } => return self.call(ctx, id, callee, args),
-            Expr::Build {
-                callee: Callee::Entity { .. },
-                fields,
-                ..
-            } => {
-                let Some(Decoded::Create {
-                    entity: Some(entity),
-                    ..
+            Expr::Write { conflicts, .. } => {
+                let Some(Decoded::Write {
+                    plan: Some(plan), ..
                 }) = self.decoded(id)
                 else {
-                    return Err(self.defect(ctx, "a create the plan has no entity for", id));
+                    return Err(self.defect(ctx, "a write with no plan", id));
                 };
+                let Some(write) = self.program.plan().write(*plan) else {
+                    return Err(self.defect(ctx, "a write with no plan", id));
+                };
+                self.tasks.push(Task::Write {
+                    at: id,
+                    arms: conflicts,
+                    base: self.values.len(),
+                });
                 self.tasks.push(Task::Invoke {
-                    target: Target::Create(*entity),
-                    count: fields.len(),
+                    target: Target::Write(*plan),
+                    count: write.inputs.len(),
                     at: id,
                     then: None,
                 });
-                for (index, (_, site)) in fields.iter().enumerate().rev() {
-                    self.tasks.push(Task::BuildField {
-                        at: id,
+                for (index, (site, _)) in write.inputs.iter().enumerate().rev() {
+                    self.tasks.push(Task::WriteInput {
+                        plan: *plan,
                         index,
                         site: *site,
                     });
                     self.tasks.push(Task::Expr(*site));
                 }
+            }
+            // The database works a stored value out in the write's own
+            // statement; nothing reads it here.
+            Expr::Stored { .. } => {
+                return Err(self.defect(ctx, "a stored value outside its write", id));
             }
             Expr::Build { callee, fields, .. } => {
                 let (Callee::Object(_) | Callee::Variant(_)) = callee else {
@@ -1335,6 +1418,12 @@ impl<'p> Machine<'p> {
             }
             Expr::Unchecked => {
                 let written = self.written(id);
+                // `clock.now` reads the invocation's clock, the one a
+                // query's `clock.now` and generated fields read.
+                if written == "clock.now" {
+                    self.values.push(Value::Instant(ctx.now()));
+                    return Ok(Flow::Next);
+                }
                 return Err(self.not_built_yet(ctx, written, id));
             }
         }

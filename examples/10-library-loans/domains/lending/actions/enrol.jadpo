@@ -2,13 +2,23 @@
 // doesn't generate is given in `set:`, and the store fills in `id` and
 // the generated times. It joins the action's transaction, which commits
 // when the action ends.
+//
+// `email` is unique, so the create can be refused, and `conflict:` maps
+// the rule, keyed `Member.email`, to the failure the caller gets, with its
+// fields. Every rule a write can break needs an arm; there is no
+// catch-all.
 
 /// Makes someone a member.
-action enrol(email: Member.email, name: Member.name) -> Member {
-    return Member.create {
+action enrol(email: Member.email, name: Member.name) fails EmailTaken -> Member {
+    return attempt Member.create {
         set: {
             email: email
             name: name
+        }
+        conflict: {
+            Member.email: EmailTaken {
+                email: email
+            }
         }
     }
 }

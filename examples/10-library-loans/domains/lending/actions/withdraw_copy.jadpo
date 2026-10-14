@@ -1,0 +1,12 @@
+// A delete by `id` fails with the entity's not-found failure when no
+// record has it. A loan's `book_id` is `restricted`, so deleting a copy
+// on loan is refused, and `conflict:` maps that reference.
+
+/// Takes a copy out of the catalogue.
+action withdraw_copy(book_id: Book.id) fails BookNotFound, BookOnLoan -> Unit {
+    attempt Book.delete(book_id) {
+        conflict: {
+            Loan.book_id: BookOnLoan
+        }
+    }
+}

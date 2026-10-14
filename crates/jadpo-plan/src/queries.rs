@@ -1,4 +1,4 @@
-//! The SQL each query, `get` and `create` runs on PostgreSQL (area 6;
+//! The SQL each query and `get` runs on PostgreSQL (area 6;
 //! docs/compiler-runtime.md §2.1: "SQL per engine with policy compiled
 //! in"), as [`jadpo_std::read`] plans both executors run.
 //!
@@ -30,8 +30,8 @@ use jadpo_check::lookups::Lookup;
 use jadpo_check::types::{Const, Def, Prim, Ty, TypeView};
 use jadpo_graph::{Key, Kind};
 use jadpo_std::read::{
-    Cardinality, Column, CreatePlan, Field, Given, IncludeRead, IncludeShape, PageRead, Param,
-    ReadPlan, Record, Select, Size, Source, SqlType,
+    Cardinality, Column, Field, IncludeRead, IncludeShape, PageRead, Param, ReadPlan, Record,
+    Select, Size, Source, SqlType,
 };
 
 use crate::constant::Constant;
@@ -76,15 +76,8 @@ pub struct EntityPlan {
     /// `Entity.get(id)`.
     pub get: ReadPlan,
     /// The not-found failure `get` raises, each of its fields given the
-    /// `id` it looked for; `None` when the domain declares none, which the
-    /// checker reports.
+    /// `id` it looked for: the domain's, or the one the compiler provides.
     pub not_found: Option<MissingPlan>,
-    /// `Entity.create`, given its settable fields in [`EntityPlan::settable`]'s
-    /// order.
-    pub create: CreatePlan,
-    /// The fields a create gives, in declared order: all but `id` and the
-    /// generated ones.
-    pub settable: Vec<Key>,
 }
 
 /// Builds the plans of a project's queries and entities.
@@ -97,13 +90,13 @@ pub(crate) struct Planner<'a> {
 /// One statement being written: its parameters, deduplicated, so a value
 /// used twice is sent once.
 #[derive(Default)]
-struct Statement {
+pub(crate) struct Statement {
     params: Vec<Param>,
 }
 
 impl Statement {
     /// `$n` for `source` sent as `ty`.
-    fn param(&mut self, source: Source, ty: SqlType) -> String {
+    pub(crate) fn param(&mut self, source: Source, ty: SqlType) -> String {
         let param = Param { source, ty };
         let at = match self.params.iter().position(|p| *p == param) {
             Some(at) => at,
@@ -418,7 +411,7 @@ impl Planner<'_> {
     /// statement that reads it. Lifecycles (`visible:`) come with chunk
     /// 3.4 and policy grants with chunk 4.4, which compile them here, so
     /// every query, include and `get` gets them at once.
-    fn access(&self, _entity: &EntityModel) -> Vec<String> {
+    pub(crate) fn access(&self, _entity: &EntityModel) -> Vec<String> {
         Vec::new()
     }
 
@@ -649,7 +642,7 @@ impl Planner<'_> {
     }
 
     /// What a field's column becomes.
-    fn column(&self, entity: &EntityModel, field: &FieldModel) -> Option<Column> {
+    pub(crate) fn column(&self, entity: &EntityModel, field: &FieldModel) -> Option<Column> {
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         if let Some(prim) = self.lookup.representation(&ty) {
             return Some(match prim {
@@ -776,62 +769,28 @@ impl Planner<'_> {
             },
             page: None,
         };
-        let not_found = self.not_found(entity);
-        // `create`: every column, from the fields given, a new identity and
-        // the clock.
-        let mut params = Vec::new();
-        let mut names = Vec::new();
-        let mut settable = Vec::new();
-        for field in &entity.fields {
-            let ty = column_type(field)?.param();
-            let given = if field.name == "id" {
-                Given::NewId
-            } else if field.generated.is_some() {
-                Given::Now
-            } else {
-                let at = settable.len() as u32;
-                let field_key = self
-                    .types
-                    .graph()
-                    .named(Kind::Field, &format!("{}.{}", entity.name, field.name))
-                    .map(|id| self.types.graph().node(id).key.clone())?;
-                settable.push(field_key);
-                Given::Set(at)
-            };
-            params.push((given, ty));
-            names.push(quoted(&field.born));
-        }
-        let placeholders: Vec<String> = (1..=names.len()).map(|n| format!("${n}")).collect();
-        let create = CreatePlan {
-            store,
-            sql: format!(
-                "INSERT INTO {} ({})\nVALUES ({})",
-                quoted(&entity.table),
-                names.join(", "),
-                placeholders.join(", ")
-            ),
-            params,
-            record: Record {
-                ty: entity.name.clone(),
-                fields: (0..entity.fields.len() as u32)
-                    .zip(&entity.fields)
-                    .map(|(at, field)| (field.name.clone(), Field::Column(at)))
-                    .collect(),
+        let not_found = self.not_found(
+            entity,
+            MissingValue::Arg {
+                index: 0,
+                path: Vec::new(),
             },
-        };
+        );
         Some(EntityPlan {
             key,
             name: entity.name.clone(),
             get,
             not_found,
-            create,
-            settable,
         })
     }
 
-    /// `<Entity>NotFound`, each field typed `<Entity>.id` given the `id`
-    /// looked for.
-    fn not_found(&mut self, entity: &EntityModel) -> Option<MissingPlan> {
+    /// `<Entity>NotFound`, each field (typed `<Entity>.id`, which the
+    /// checker holds it to) given `value`, the `id` looked for.
+    pub(crate) fn not_found(
+        &mut self,
+        entity: &EntityModel,
+        value: MissingValue,
+    ) -> Option<MissingPlan> {
         let name = format!("{}NotFound", entity.name);
         let key = self.types.named(&name)?;
         let failure = self.types.failure_id(&key)?;
@@ -840,15 +799,7 @@ impl Planner<'_> {
             .fields
             .iter()
             .enumerate()
-            .map(|(at, _)| {
-                (
-                    Some(at as u32),
-                    MissingValue::Arg {
-                        index: 0,
-                        path: Vec::new(),
-                    },
-                )
-            })
+            .map(|(at, _)| (Some(at as u32), value.clone()))
             .collect();
         Some(MissingPlan { failure, fields })
     }
@@ -856,7 +807,7 @@ impl Planner<'_> {
 
 // --- text -----------------------------------------------------------------------
 
-fn field<'e>(entity: &'e EntityModel, name: &str) -> Option<&'e FieldModel> {
+pub(crate) fn field<'e>(entity: &'e EntityModel, name: &str) -> Option<&'e FieldModel> {
     entity.fields.iter().find(|f| f.name == name)
 }
 
@@ -865,7 +816,7 @@ fn born(entity: &EntityModel, name: &str) -> String {
     field(entity, name).map_or_else(|| name.to_string(), |f| f.born.clone())
 }
 
-fn column_type(field: &FieldModel) -> Option<SqlType> {
+pub(crate) fn column_type(field: &FieldModel) -> Option<SqlType> {
     SqlType::of_column(field.sql_type.as_deref()?)
 }
 
@@ -893,7 +844,7 @@ fn literal(constant: &Const, ty: SqlType) -> Option<String> {
     })
 }
 
-fn where_clause(sql: &mut String, conditions: &[String], indent: &str) {
+pub(crate) fn where_clause(sql: &mut String, conditions: &[String], indent: &str) {
     for (i, condition) in conditions.iter().enumerate() {
         let word = if i == 0 { "WHERE" } else { "  AND" };
         sql.push_str(&format!("\n{indent}{word} {condition}"));

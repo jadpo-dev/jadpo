@@ -1,14 +1,22 @@
 // `Member.get(member_id)` reads one record by its `id`, or fails with
 // `MemberNotFound`; its fields typed `Member.id` hold the id it looked
-// for.
+// for. The card's `member_id` comes from the member just read, so it names
+// a member that is there: the create can't fail with `MemberNotFound`,
+// only break the unique reference.
 
 /// Gives a member their library card.
-action issue_card(member_id: Member.id, number: Card.number) fails MemberNotFound -> Card {
+action issue_card(
+    member_id: Member.id,
+    number: Card.number
+) fails MemberNotFound, CardAlreadyIssued -> Card {
     var member: Member = attempt Member.get(member_id)
-    return Card.create {
+    return attempt Card.create {
         set: {
             member_id: member.id
             number: number
+        }
+        conflict: {
+            Card.member_id: CardAlreadyIssued
         }
     }
 }

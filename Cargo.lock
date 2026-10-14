@@ -398,6 +398,7 @@ dependencies = [
  "jadpo-fmt",
  "jadpo-graph",
  "jadpo-host-native",
+ "jadpo-interp",
  "jadpo-lsp",
  "jadpo-plan",
  "jadpo-runtime",
@@ -405,6 +406,7 @@ dependencies = [
  "jadpo-syntax",
  "jadpo-term",
  "jadpo-test",
+ "jadpo-value",
  "serde_json",
 ]
 

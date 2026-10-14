@@ -87,6 +87,13 @@ pub fn type_table(db: &dyn Db, project: Project) -> TypeTable {
                 .or_insert_with(|| shape.kind.clone());
         }
     }
+    // The not-found failures the compiler provides carry no fields.
+    for info in crate::failures::provided_failures(db, project) {
+        shapes.entry(info.name).or_insert(ShapeKind::Fields {
+            base: FieldsBase::Failure,
+            lines: Vec::new(),
+        });
+    }
     TypeTable::build(&shapes, std)
 }
 

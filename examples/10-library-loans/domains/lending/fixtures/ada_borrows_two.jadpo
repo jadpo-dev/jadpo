@@ -4,7 +4,7 @@
 
 /// Ada, with her card, borrowing two of three copies.
 fixture ada_borrows_two() -> Borrower {
-    var ada: Member = enrol("ada@example.test", "Ada")
+    var ada: Member = attempt enrol("ada@example.test", "Ada")
     var card: Card = attempt issue_card(ada.id, "00012345")
     var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)
     var emma: Book = add_copy("9780141439587", "Emma", Wear.pristine)

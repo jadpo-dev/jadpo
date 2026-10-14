@@ -177,17 +177,42 @@ impl fmt::Display for Decimal {
 /// An object's value: its type's name and its fields in the order the type
 /// declares them, so two objects built with their fields written in
 /// different orders are equal.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct Record {
     pub ty: Rc<str>,
     pub fields: Vec<(Rc<str>, Value)>,
+    /// The optional `Input` fields it was built without, by their place
+    /// among its fields. Each reads as `none`, and only an update's
+    /// `patch:` tells one left out from one sent as `none` (areas 2 and 6),
+    /// so equality ignores it.
+    pub omitted: Option<Rc<[u32]>>,
 }
 
 impl Record {
     pub fn get(&self, name: &str) -> Option<&Value> {
         field(&self.fields, name)
     }
+
+    /// Whether the field called `name` was given, rather than left out of
+    /// an `Input` that let it be (area 6, "patch").
+    pub fn supplied(&self, name: &str) -> bool {
+        let Some(at) = self.fields.iter().position(|(field, _)| &**field == name) else {
+            return false;
+        };
+        !self
+            .omitted
+            .as_deref()
+            .is_some_and(|omitted| omitted.iter().any(|place| *place as usize == at))
+    }
 }
+
+impl PartialEq for Record {
+    fn eq(&self, other: &Record) -> bool {
+        self.ty == other.ty && self.fields == other.fields
+    }
+}
+
+impl Eq for Record {}
 
 /// An enum's value: the enum's name, the variant's and its place among the
 /// enum's variants, and the fields a payload variant carries, in the order
@@ -291,6 +316,7 @@ impl Value {
         Value::Record(Rc::new(Record {
             ty: Rc::from(ty),
             fields,
+            omitted: None,
         }))
     }
 

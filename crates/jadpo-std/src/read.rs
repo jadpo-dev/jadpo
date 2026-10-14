@@ -1,4 +1,4 @@
-//! What a read and a create run (area 6; docs/compiler-runtime.md §2.1 and
+//! What a read runs (area 6; docs/compiler-runtime.md §2.1 and
 //! §2.5): the SQL text, where each parameter comes from, how each column
 //! becomes a value and how a row becomes a record, decided once by
 //! `jadpo-plan` and run by `jadpo-runtime` for both executors, so the
@@ -230,28 +230,4 @@ pub struct ReadPlan {
     pub cardinality: Cardinality,
     pub select: Select,
     pub page: Option<PageRead>,
-}
-
-/// Where a created record's column value comes from.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Given {
-    /// The value given for the field at this position of the create's
-    /// fields.
-    Set(u32),
-    /// A new identity: a version 7 UUID (area 5).
-    NewId,
-    /// The operation's clock, for a generated field (area 5).
-    Now,
-}
-
-/// `Entity.create`: one `INSERT`, and the record it made.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CreatePlan {
-    pub store: String,
-    pub sql: String,
-    /// One per column inserted, in the statement's order.
-    pub params: Vec<(Given, SqlType)>,
-    /// The record: the entity's fields in declared order, each taken from
-    /// the parameter at that position.
-    pub record: Record,
 }

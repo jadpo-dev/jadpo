@@ -125,6 +125,12 @@ rules! {
         "14-tooling.html#command-errors", "Version command has invalid arguments";
     DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
         "05-data.html#data-cleared-required-reference", "A reference that can never be `none` is cleared on delete";
+    DATA_CONFLICT_CANNOT_BREAK: "data.conflict_cannot_break", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-conflict-cannot-break", "Conflict mapping for a rule the write can't break";
+    DATA_CONFLICT_UNKNOWN: "data.conflict_unknown", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-conflict-unknown", "Conflict mapping names no unique rule or reference";
+    DATA_CONFLICT_UNMAPPED: "data.conflict_unmapped", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-conflict-unmapped", "Write can break a rule its `conflict:` doesn't map";
     DATA_DUPLICATE_RULE: "data.duplicate_rule", area 5, Error, Agent,
         "05-data.html#data-duplicate-rule", "Unique rule or index repeats another";
     DATA_ENTITY_IN_FIELD: "data.entity_in_field", area 5, Error, Agent,
@@ -143,6 +149,14 @@ rules! {
         "05-data.html#data-on-delete-not-reference", "Field that is not a reference sets `on_delete`";
     DATA_ON_DELETE_REQUIRED: "data.on_delete_required", area 5, Error, Human,
         "05-data.html#data-on-delete-required", "Reference does not say what deleting its record does";
+    DATA_PATCH_FIELD_REQUIRED: "data.patch_field_required", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-patch-field-required", "Patch input has a field that isn't optional";
+    DATA_PATCH_FIELD_UNKNOWN: "data.patch_field_unknown", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-patch-field-unknown", "Patch names a field the entity or its input doesn't have";
+    DATA_PATCH_NOT_INPUT: "data.patch_not_input", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-patch-not-input", "Patch given something other than an `Input`";
+    DATA_PATCH_OVERLAP: "data.patch_overlap", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-patch-overlap", "Supplied-field block sets a field the patch already sets";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
         "06-reads-and-writes.html#data-read-in-loop", "Query or `get` inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
@@ -159,6 +173,10 @@ rules! {
         "05-data.html#data-store-required", "Entity names no store and there is no `main`";
     DATA_STORE_UNKNOWN: "data.store_unknown", area 5, Error, Agent,
         "05-data.html#data-store-unknown", "Entity's store is not a database connection";
+    DATA_STORED_VALUE_OUTSIDE_UPDATE: "data.stored_value_outside_update", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-stored-value-outside-update", "Stored field read outside an update by `id`";
+    DATA_STORED_VALUE_UNPROVEN: "data.stored_value_unproven", area 6, Error, Human,
+        "06-reads-and-writes.html#data-stored-value-unproven", "Update by `id` builds a value from a stored field that could break its type's rules";
     DATA_UNIQUE_NULLABLE_FIELD: "data.unique_nullable_field", area 5, Error, Agent,
         "05-data.html#data-unique-nullable-field", "Unique rule includes a field that can be `none`";
     DATA_UNIQUE_SINGLE_FIELD: "data.unique_single_field", area 5, Error, Agent,
@@ -167,6 +185,14 @@ rules! {
         "05-data.html#data-unknown-field", "Unique rule or index names a field the entity does not have";
     DATA_UNKNOWN_SECTION: "data.unknown_section", area 5, Error, Agent,
         "05-data.html#data-unknown-section", "Entity has a section Jadpo does not know";
+    DATA_UPDATE_BY_ID_VALUE: "data.update_by_id_value", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-update-by-id-value", "Update by `id` sets a value from something it can't use";
+    DATA_WRITE_NOT_ENTITY: "data.write_not_entity", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-write-not-entity", "Write names a type that isn't an entity";
+    DATA_WRITE_SECTION_REQUIRED: "data.write_section_required", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-write-section-required", "Write doesn't say what it changes";
+    DATA_WRITE_SECTION_UNEXPECTED: "data.write_section_unexpected", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-write-section-unexpected", "Write has a section it doesn't take";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
         "03-logic.html#effect-function-calls-action", "Function calls an action or query";
     EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
@@ -351,6 +377,8 @@ rules! {
         "03-logic.html#semantic-unused-variable", "Variable is never used";
     SEMANTIC_WRONG_NAME_KIND: "semantic.wrong_name_kind", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-wrong-name-kind", "Name is the wrong kind of declaration here";
+    STORE_ACTION_SPANS_STORES: "store.action_spans_stores", area 6, Error, Human,
+        "06-reads-and-writes.html#store-action-spans-stores", "Action writes more than one store";
     SYNTAX_ATTEMPT_PLACEMENT: "syntax.attempt_placement", area 3, Error, Agent,
         "03-logic.html#syntax-attempt-placement", "Attempt is used inside an expression";
     SYNTAX_COLON_REQUIRED: "syntax.colon_required", area 3, Error, Agent,

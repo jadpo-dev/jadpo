@@ -7,4 +7,7 @@ entity Book {
     // asked what the copies already stored get (see the migration's
     // `changes.jadpo`).
     wear: Wear
+    // Counted by `lend`, which the database works out in one step.
+    times_lent: LendCount
+    last_lent_at: Instant?
 }

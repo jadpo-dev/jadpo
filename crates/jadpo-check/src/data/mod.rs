@@ -1406,3 +1406,115 @@ pub fn index_name(entity: &EntityModel, index: &str) -> String {
 pub fn foreign_key(entity: &EntityModel, field: &FieldModel) -> String {
     physical::object_name(&[&entity.table, &field.born], "fkey")
 }
+
+/// One unique rule of an entity (area 5, "Unique rules"): a field's own
+/// `unique: true`, named after the field, or a named rule over several.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct UniqueRule {
+    /// The field's name, or the rule's.
+    pub name: String,
+    /// Whether it is a field's own rule.
+    pub field: bool,
+    pub fields: Vec<String>,
+}
+
+/// What a write to one entity can break (area 6, "When a write is
+/// refused"): its unique rules, its references, and the references that
+/// can refuse deleting it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct WriteRules {
+    pub unique: Vec<UniqueRule>,
+    /// Each reference: the field and the entity it points at.
+    pub references: Vec<(String, String)>,
+    /// What can refuse deleting a record: each `restricted` reference to
+    /// it, or to a record its delete cascades to, as the entity holding
+    /// the reference and the field, in name order.
+    pub restricting: Vec<(String, String)>,
+}
+
+impl WriteRules {
+    /// The unique rule called `name`: a field's own or a named one.
+    pub fn unique(&self, name: &str) -> Option<&UniqueRule> {
+        self.unique.iter().find(|rule| rule.name == name)
+    }
+
+    /// The entity the reference field `field` points at.
+    pub fn reference(&self, field: &str) -> Option<&str> {
+        self.references
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, target)| target.as_str())
+    }
+}
+
+/// What a write to `entity` can break, read from the data model once.
+pub fn write_rules_of(model: &DataModel, entity: &str) -> Option<WriteRules> {
+    let found = model.entity(entity)?;
+    let mut rules = WriteRules::default();
+    for field in &found.fields {
+        if field.unique && field.name != "id" {
+            rules.unique.push(UniqueRule {
+                name: field.name.clone(),
+                field: true,
+                fields: vec![field.name.clone()],
+            });
+        }
+        if let Some(reference) = &field.reference {
+            rules
+                .references
+                .push((field.name.clone(), reference.target.clone()));
+        }
+    }
+    for rule in &found.unique {
+        rules.unique.push(UniqueRule {
+            name: rule.name.clone(),
+            field: false,
+            fields: rule.fields.clone(),
+        });
+    }
+    // A delete cascades through every `cascade` reference to what it
+    // deletes, and any `restricted` reference on the way refuses it.
+    let mut seen: BTreeSet<&str> = BTreeSet::from([entity]);
+    let mut queue: Vec<&str> = vec![entity];
+    let mut restricting = BTreeSet::new();
+    while let Some(current) = queue.pop() {
+        for child in &model.entities {
+            for field in &child.fields {
+                let Some(reference) = &field.reference else {
+                    continue;
+                };
+                if reference.target != current {
+                    continue;
+                }
+                match reference.on_delete {
+                    // A reference that doesn't say is reported where it is
+                    // declared; taken as refusing, nothing here reports a
+                    // knock-on of it.
+                    Some(OnDelete::Restricted) | None => {
+                        restricting.insert((child.name.clone(), field.name.clone()));
+                    }
+                    Some(OnDelete::Cascade) => {
+                        if seen.insert(child.name.as_str()) {
+                            queue.push(child.name.as_str());
+                        }
+                    }
+                    Some(OnDelete::Cleared) => {}
+                }
+            }
+        }
+    }
+    rules.restricting = restricting.into_iter().collect();
+    Some(rules)
+}
+
+/// What a write to the entity called `entity` can break: a query of its
+/// own, so a body that writes one entity is checked again only when that
+/// entity's rules, or the references to it, change.
+#[salsa::tracked(returns(ref))]
+pub fn write_rules<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    entity: crate::lookups::Name<'db>,
+) -> Option<WriteRules> {
+    write_rules_of(data_model(db, project), entity.text(db))
+}

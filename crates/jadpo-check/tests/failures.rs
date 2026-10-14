@@ -234,13 +234,71 @@ fn entity_operations_fail_as_area_6_decides() {
         )),
         ["failure.undeclared_propagation"]
     );
-    // Without one, the compiler provides it (area 6), which isn't built
-    // yet: the domain declares it for now.
+    // Without one, the compiler provides it (area 6, question 6).
     assert_eq!(
         one(
             "entity Note {\n    id: Uuid\n}\n\naction load(note_id: Note.id) -> Note {\n    return attempt Note.get(note_id)\n}\n"
         ),
-        ["toolchain.not_built_yet"]
+        ["failure.undeclared_propagation"]
+    );
+    assert!(
+        one(
+            "entity Note {\n    id: Uuid\n}\n\naction load(note_id: Note.id) fails NoteNotFound -> Note {\n    return attempt Note.get(note_id)\n}\n"
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn writes_fail_with_what_they_can_break_or_miss() {
+    let model = "type Name = Text {\n    max_length: 80\n}\n\nentity User {\n    id: Uuid\n    email: Email {\n        unique: true\n    }\n}\n\nentity Project {\n    id: Uuid\n    owner_id: User.id {\n        on_delete: OnDelete.cascade\n    }\n    name: Name\n}\n\nentity Todo {\n    id: Uuid\n    project_id: Project.id {\n        on_delete: OnDelete.restricted\n    }\n}\n\ntype TodosLeft = Failure {\n    kind: FailureKind.conflict\n}\n\n";
+    // A reference read from a record loaded earlier names one that is
+    // there, so the create can't fail; one given as a parameter may not.
+    assert!(
+        one(&format!(
+            "{model}action start(owner: User, name: Project.name) -> Project {{\n    return Project.create {{\n        set: {{\n            owner_id: owner.id\n            name: name\n        }}\n    }}\n}}\n"
+        ))
+        .is_empty()
+    );
+    assert_eq!(
+        one(&format!(
+            "{model}action start(owner_id: User.id, name: Project.name) -> Project {{\n    return Project.create {{\n        set: {{\n            owner_id: owner_id\n            name: name\n        }}\n    }}\n}}\n"
+        )),
+        ["failure.attempt_required"]
+    );
+    assert!(
+        one(&format!(
+            "{model}action start(owner_id: User.id, name: Project.name) fails UserNotFound -> Project {{\n    return attempt Project.create {{\n        set: {{\n            owner_id: owner_id\n            name: name\n        }}\n    }}\n}}\n"
+        ))
+        .is_empty()
+    );
+    // Deleting a user cascades to its projects, which a todo's
+    // `restricted` reference refuses: the delete maps it.
+    assert_eq!(
+        one(&format!(
+            "{model}action leave(user: User) -> Unit {{\n    User.delete(user)\n}}\n"
+        )),
+        ["data.conflict_unmapped"]
+    );
+    assert!(
+        one(&format!(
+            "{model}action leave(user: User) fails TodosLeft -> Unit {{\n    attempt User.delete(user) {{\n        conflict: {{\n            Todo.project_id: TodosLeft\n        }}\n    }}\n}}\n"
+        ))
+        .is_empty()
+    );
+    // By `id`, no record is the not-found failure.
+    assert!(
+        one(&format!(
+            "{model}action rename(project_id: Project.id, name: Project.name) fails ProjectNotFound -> Project {{\n    return attempt Project.update(project_id) {{\n        set: {{\n            name: name\n        }}\n    }}\n}}\n"
+        ))
+        .is_empty()
+    );
+    // An update of a loaded record that sets no unique field can't fail.
+    assert_eq!(
+        one(&format!(
+            "{model}action rename(project: Project, name: Project.name) -> Project {{\n    return attempt Project.update(project) {{\n        set: {{\n            name: name\n        }}\n    }}\n}}\n"
+        )),
+        ["failure.attempt_infallible"]
     );
 }
 

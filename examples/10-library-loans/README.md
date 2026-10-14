@@ -2,7 +2,8 @@
 
 A lending library that keeps its members, its books and the loans
 between them: the records a project stores, the migrations that keep its
-database in step with them, and the queries that read them back.
+database in step with them, the queries that read them back, and the
+writes that change them.
 
 An entity is a record with a lasting identity, on_shelf in a store; anything
 never stored is a `type`. The entities describe the schema you want, and
@@ -15,6 +16,12 @@ A query is one declarative read, in its own file in a domain's
 and the related records to bring with them. Its result type says how many
 records come back, and the compiler writes the SQL and the indexes it
 needs.
+
+Every entity has `create`, `update` and `delete`, called from its
+domain's actions. The compiler knows each rule a write can break, a
+unique rule or a reference that refuses a delete, and asks for the
+failure each one becomes; an action that finds what it read changed by
+another request is run again from the start.
 
 ## What it teaches
 
@@ -32,6 +39,11 @@ needs.
 12. **Pages and optional filters.** `Page<BookView>`, the built-in `PageSize` and `PageCursor`, and `where_present:`. See `domains/lending/queries/browse_books.jadpo`, `domains/lending/types/catalogue_filter.jadpo` and [area 6, Order and pages](../../docs/language/06-reads-and-writes.md#order-and-pages).
 13. **Conditions.** `in` a list, `== none`, `and`, `or` and `not`, and a list bounded by `limit:`. See `domains/lending/queries/loans_due.jadpo` and [area 6, Filters](../../docs/language/06-reads-and-writes.md#filters).
 14. **The indexes queries need.** The third migration adds the card table and the indexes the queries asked for, and drops a reference's own index once a query's index starts with its column. See `database/migrations/20261103T0900_add_cards_and_reads/` and [area 5, Indexes](../../docs/language/05-data.md#indexes).
+15. **A unique rule a write can break.** `Member.email` is unique, so `enrol`'s create maps it in `conflict:` to `EmailTaken`, with its fields; `issue_card` maps a card's unique reference, and `lend` the loan's named rule. Every rule a write can break needs an arm. See `domains/lending/actions/enrol.jadpo`, `domains/lending/failures/email_taken.jadpo` and [area 6, When a write is refused](../../docs/language/06-reads-and-writes.md#when-a-write-is-refused).
+16. **Updating a record read earlier.** `Loan.update(loan) { set: { ... } }` changes a loan `vouch` just read, which fails with `LoanNotFound`: no file declares it, so the compiler provides it. See `domains/lending/actions/vouch.jadpo` and [area 6, The operations every entity gets](../../docs/language/06-reads-and-writes.md#the-operations-every-entity-gets).
+17. **A patch.** `patch:` changes only the fields a request supplied, telling one left out from one sent as `none`, and `when_supplied:` clears the voucher when the due date moves. See `domains/lending/actions/renew.jadpo`, `domains/lending/types/loan_changes.jadpo` and `domains/lending/actions/renew.test.jadpo`.
+18. **Deleting.** `Loan.delete(loan)` takes a copy back; `Book.delete(book_id)` takes a copy out of the catalogue by its id, fails with `BookNotFound` when none has it, and is refused while a `restricted` loan refers to it. See `domains/lending/actions/return_book.jadpo`, `domains/lending/actions/withdraw_copy.jadpo` and its test.
+19. **A counter.** `lend` counts each loan with an update by `id` whose value reads the stored one, `Book.times_lent + 1`: the database works it out in one step, so two desks lending at once both count. The fourth migration adds the count, starting existing copies at 0. See `domains/lending/actions/lend.jadpo`, `database/migrations/20261110T0900_count_lending/` and [area 6, Counters and other one-step updates](../../docs/language/06-reads-and-writes.md#counters-and-other-one-step-updates).
 
 ## Run it
 
@@ -49,10 +61,10 @@ cd examples/10-library-loans && ../../target/release/jadpo migrate status
 
 - `check` ends with `checked: <n> files` and no errors: the entities match
   the latest migration's snapshot.
-- `migrate status` lists the three migrations. Given a PostgreSQL database
+- `migrate status` lists the four migrations. Given a PostgreSQL database
   with `--url`, `jadpo migrate apply` creates the tables there and `status`
   says which migrations it has applied.
-- `test` ends with `tested: 8 passed`. A test that writes records gets its
+- `test` ends with `tested: 14 passed`. A test that writes records gets its
   own database, copied from a template the migrations build, on the server
   `JADPO_TEST_DATABASE_URL` names or one `jadpo test` starts from the
   machine's PostgreSQL.
@@ -74,4 +86,10 @@ cd examples/10-library-loans && ../../target/release/jadpo migrate status
   <!-- try {"file": "domains/lending/queries/browse_books.jadpo", "replace": "order: [Book.title asc]", "with": "order: [Book.wear asc]", "check": ["query.order_field"]} -->
 - In `member_by_email.jadpo`, change `==` to `!=`. `jadpo check` reports `query.not_unique`: `Member?` is at most one record, and every other address could match many.
   <!-- try {"file": "domains/lending/queries/member_by_email.jadpo", "replace": "where: Member.email == email", "with": "where: Member.email != email", "check": ["query.not_unique"]} -->
+- In `lend.jadpo`, delete the `conflict:` block after the loan's `set:`. `jadpo check` reports `data.conflict_unmapped`: lending a copy twice on one day breaks `Loan.one_loan_per_due_date`, and something must say what the caller gets.
+  <!-- try {"file": "domains/lending/actions/lend.jadpo", "replace": "        conflict: {\n            Loan.one_loan_per_due_date: BookAlreadyLent\n        }\n", "with": "", "check": ["data.conflict_unmapped"]} -->
+- In `lend.jadpo`, change `Book.times_lent + 1` to `book.times_lent + 1`. `jadpo check` reports `data.update_by_id_value`: an update by `id` adds to the stored count, never to a copy read earlier, which another desk may have changed since.
+  <!-- try {"file": "domains/lending/actions/lend.jadpo", "replace": "Book.times_lent + 1", "with": "book.times_lent + 1", "check": ["data.update_by_id_value"]} -->
+- In `withdraw_copy.jadpo`, change `Loan.book_id: BookOnLoan` to `Loan.member_id: BookOnLoan`. `jadpo check` reports `data.conflict_cannot_break`: a loan's member doesn't stop a book leaving, and the error names `Loan.book_id`, the reference that does.
+  <!-- try {"file": "domains/lending/actions/withdraw_copy.jadpo", "replace": "Loan.book_id: BookOnLoan", "with": "Loan.member_id: BookOnLoan", "check": ["data.conflict_cannot_break"]} -->
 - That is the last example. The [language pages](../../docs/language/README.md) hold the full specification.
