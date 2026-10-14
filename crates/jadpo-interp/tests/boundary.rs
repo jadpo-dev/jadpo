@@ -96,3 +96,30 @@ fn recursion_through_inline_functions_reaches_the_depth_limit_without_overflowin
     assert_eq!(shallow, "19");
     assert_eq!(deep, (FaultKind::RecursionLimit, MAX_DEPTH));
 }
+
+#[test]
+fn the_prepared_project_is_shared_across_threads_and_each_runs_its_own_program() {
+    fn shared<T: Send + Sync>() {}
+    shared::<jadpo_interp::Prepared>();
+    let program = program(&[("main.jadpo", SOURCE), ("main.test.jadpo", TESTS)]);
+    let prepared = std::sync::Arc::clone(program.prepared());
+    let ran: Vec<String> = std::thread::scope(|scope| {
+        let threads: Vec<_> = (0..3)
+            .map(|n| {
+                let prepared = std::sync::Arc::clone(&prepared);
+                scope.spawn(move || {
+                    let program = Program::new(prepared);
+                    match program.call("twice", vec![int(n)]) {
+                        Ok(Outcome::Value(value)) => value.to_string(),
+                        other => format!("{other:?}"),
+                    }
+                })
+            })
+            .collect();
+        threads
+            .into_iter()
+            .map(|thread| thread.join().expect("a thread"))
+            .collect()
+    });
+    assert_eq!(ran, ["2", "3", "4"]);
+}

@@ -1,6 +1,6 @@
 [package]
 name = "jadpo-runtime"
-description = "What a running Jadpo program needs from its context: frames at .jadpo places, failures, faults and the runtime's limits"
+description = "What a running Jadpo program needs from its context: frames at .jadpo places, failures, faults, outcomes, the action boundary and the capabilities a host gives"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
