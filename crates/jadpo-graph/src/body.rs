@@ -14,8 +14,15 @@
 //! arm of a `match`) are numbered in source order for path numbers and
 //! coverage (area 16). A construction an `if` condition proves records the
 //! comparisons that prove it.
+//!
+//! Each site also says whether it can pause (docs/compiler-runtime.md
+//! §2.5): an effect (a store read or write, `emit`, an integration call,
+//! `clock.now`, a new identity) or a call to an action, query or fixture,
+//! which the runtime enters through its action boundary. Functions never
+//! pause (area 3), so an executor runs them synchronously and suspends only
+//! at these sites; a body pauses when one of its sites does.
 
-use jadpo_std::{Num, Op};
+use jadpo_std::{Num, Op, RuleKey};
 
 use crate::{Key, TypeRef};
 
@@ -54,6 +61,8 @@ pub struct Body {
     /// Each construction whose rules an `if` condition proves, in source
     /// order (area 2, "Conditions as proof").
     pub proofs: Vec<Proof>,
+    /// Whether any of its sites can pause.
+    pub pauses: bool,
 }
 
 impl Body {
@@ -132,6 +141,9 @@ pub struct Site {
     /// An expression's type; `Unit` for a statement.
     pub ty: TypeRef,
     pub node: Node,
+    /// Whether running it can pause: an effect, or a call to an action,
+    /// query or fixture. Its own, not its children's.
+    pub pauses: bool,
 }
 
 impl Site {
@@ -420,7 +432,7 @@ pub enum Fallible {
     /// the value breaks one of these rules, by key (`max`), with the
     /// failure its `attempt` maps that rule to.
     Construction {
-        rules: Vec<String>,
+        rules: Vec<RuleKey>,
     },
     /// Not known yet (an entity's operations, area 6), or already reported.
     Unknown,
@@ -432,7 +444,7 @@ pub enum Fallible {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RuleArm {
     /// The rule's key, such as `max`; `None` for `invalid:`.
-    pub rule: Option<String>,
+    pub rule: Option<RuleKey>,
     pub failure: Key,
     /// The fields given to the failure, as `reject` gives them.
     pub fields: Vec<(Key, SiteId)>,
@@ -440,9 +452,9 @@ pub struct RuleArm {
 
 impl RuleArm {
     /// The arm that maps the rule with key `rule`: its own, or `invalid:`.
-    pub fn for_rule<'a>(arms: &'a [RuleArm], rule: &str) -> Option<&'a RuleArm> {
+    pub fn for_rule(arms: &[RuleArm], rule: RuleKey) -> Option<&RuleArm> {
         arms.iter()
-            .find(|arm| arm.rule.as_deref() == Some(rule))
+            .find(|arm| arm.rule == Some(rule))
             .or_else(|| arms.iter().find(|arm| arm.rule.is_none()))
     }
 }

@@ -100,9 +100,9 @@ pub struct Checked {
     /// Its key in the graph.
     pub key: Option<Key>,
     /// Its typed body (docs/compiler-runtime.md §2.3), which the graph's
-    /// edges, sites and branches, usage, recursion and the language server
-    /// all read.
-    pub body: jadpo_graph::body::Body,
+    /// edges, sites and branches, usage, recursion, the language server and
+    /// both executors read; shared behind `Arc`, so nothing copies it.
+    pub body: std::sync::Arc<jadpo_graph::body::Body>,
 }
 
 /// The callables of `file` that have bodies, in source order.
@@ -189,7 +189,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         undeclared: checker.undeclared,
         set: checker.set,
         key,
-        body,
+        body: std::sync::Arc::new(body),
     }
 }
 

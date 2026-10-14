@@ -130,7 +130,10 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("replaces", replaces.as_ref().map(|key| key.as_str()));
             out.set_some("rules", rules_json(rules));
         }
-        Detail::Variant { payload } => out.set_some("payload", *payload),
+        Detail::Variant { order, payload } => {
+            out.set("order", i64::from(*order));
+            out.set_some("payload", *payload);
+        }
         Detail::Callable(signature) => {
             let mut entry = Value::object();
             entry.set(
@@ -186,7 +189,7 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ("failure", "A failure's code, kind, status and message"),
     (
         "order",
-        "A field's place among the fields beside it, from 0, as declared; copied fields sit at the line that copied them",
+        "A field's or variant's place among those beside it, from 0, as declared; copied fields sit at the line that copied them",
     ),
     ("type", "A field's declared type"),
     ("optional", "An input field the sender may leave out"),

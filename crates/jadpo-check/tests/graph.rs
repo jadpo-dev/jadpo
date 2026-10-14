@@ -82,7 +82,7 @@ fn build(files: &[(&'static str, String)]) -> (Graph, usize) {
     let borrowed: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
     let project = support::project_in_path_order(&db, Layout::Project, &borrowed);
     let problems = jadpo_check::check(&db, project);
-    (graph(&db, project).clone(), problems.len())
+    (Graph::clone(graph(&db, project)), problems.len())
 }
 
 fn document(graph: &Graph, errors: usize) -> String {

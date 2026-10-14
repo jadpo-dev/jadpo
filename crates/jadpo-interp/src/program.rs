@@ -24,7 +24,7 @@ pub(crate) struct Callable {
     pub key: Key,
     pub kind: Kind,
     pub file: String,
-    pub body: Body,
+    pub body: std::sync::Arc<Body>,
 }
 
 /// A project that checked without errors, ready to run.

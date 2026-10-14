@@ -38,7 +38,7 @@ pub(crate) struct Shape {
 
 #[derive(Debug)]
 pub(crate) struct Types {
-    graph: Graph,
+    graph: std::sync::Arc<Graph>,
     validators: RefCell<HashMap<TypeRef, Rc<Validator>>>,
     shapes: RefCell<HashMap<Key, Rc<Shape>>>,
 }
@@ -56,7 +56,7 @@ fn split(name: &str) -> (&str, &str) {
 }
 
 impl Types {
-    pub fn new(graph: Graph) -> Types {
+    pub fn new(graph: std::sync::Arc<Graph>) -> Types {
         Types {
             graph,
             validators: RefCell::new(HashMap::new()),

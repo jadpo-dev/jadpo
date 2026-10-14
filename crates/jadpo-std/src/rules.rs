@@ -27,17 +27,67 @@ pub struct Rules {
     pub max_duration: Option<Dur>,
 }
 
+/// Which rule a value breaks, by the key an `attempt`'s arm names it with
+/// (area 2, "Construction failures by rule"): `max` for `max: 1000`.
+/// `min:` and `max:` on a duration are `min` and `max` too, and a
+/// validated built-in type's own check (`Email`'s) is `format`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RuleKey {
+    Min,
+    Max,
+    MinLength,
+    MaxLength,
+    Pattern,
+    Format,
+    Scale,
+    Version,
+}
+
+impl RuleKey {
+    /// Every key, in the order a type's block lists its rules.
+    pub const ALL: [RuleKey; 8] = [
+        RuleKey::Min,
+        RuleKey::Max,
+        RuleKey::MinLength,
+        RuleKey::MaxLength,
+        RuleKey::Pattern,
+        RuleKey::Format,
+        RuleKey::Scale,
+        RuleKey::Version,
+    ];
+
+    /// The key as written: `max`, `min_length`.
+    pub fn word(self) -> &'static str {
+        match self {
+            RuleKey::Min => "min",
+            RuleKey::Max => "max",
+            RuleKey::MinLength => "min_length",
+            RuleKey::MaxLength => "max_length",
+            RuleKey::Pattern => "pattern",
+            RuleKey::Format => "format",
+            RuleKey::Scale => "scale",
+            RuleKey::Version => "version",
+        }
+    }
+
+    pub fn from_word(word: &str) -> Option<RuleKey> {
+        RuleKey::ALL.into_iter().find(|key| key.word() == word)
+    }
+}
+
 /// Why a value breaks a rule.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Broken {
+    /// The rule's key, so nothing reads it back out of the text.
+    pub key: RuleKey,
     /// The rule as written, such as `min: 1`.
     pub rule: String,
     /// What is wrong with the value, completing "The value ...".
     pub why: String,
 }
 
-fn broken(rule: String, why: String) -> Result<(), Broken> {
-    Err(Broken { rule, why })
+fn broken(key: RuleKey, rule: String, why: String) -> Result<(), Broken> {
+    Err(Broken { key, rule, why })
 }
 
 impl Rules {
@@ -50,17 +100,26 @@ impl Rules {
         if let Some(min) = self.min
             && value.compare(min) == Ordering::Less
         {
-            return broken(format!("min: {min}"), format!("is below {min}"));
+            return broken(
+                RuleKey::Min,
+                format!("min: {min}"),
+                format!("is below {min}"),
+            );
         }
         if let Some(max) = self.max
             && value.compare(max) == Ordering::Greater
         {
-            return broken(format!("max: {max}"), format!("is above {max}"));
+            return broken(
+                RuleKey::Max,
+                format!("max: {max}"),
+                format!("is above {max}"),
+            );
         }
         if let Some(scale) = self.scale
             && value.significant_places() > scale
         {
             return broken(
+                RuleKey::Scale,
                 format!("scale: {scale}"),
                 format!("has {} decimal places", value.significant_places()),
             );
@@ -73,12 +132,20 @@ impl Rules {
         if let Some(min) = self.min_duration
             && value < min
         {
-            return broken(format!("min: {min}"), format!("is shorter than {min}"));
+            return broken(
+                RuleKey::Min,
+                format!("min: {min}"),
+                format!("is shorter than {min}"),
+            );
         }
         if let Some(max) = self.max_duration
             && value > max
         {
-            return broken(format!("max: {max}"), format!("is longer than {max}"));
+            return broken(
+                RuleKey::Max,
+                format!("max: {max}"),
+                format!("is longer than {max}"),
+            );
         }
         Ok(())
     }
@@ -89,12 +156,20 @@ impl Rules {
         if let Some(min) = self.min_length
             && length < min
         {
-            return broken(format!("min_length: {min}"), format!("has {length} {unit}"));
+            return broken(
+                RuleKey::MinLength,
+                format!("min_length: {min}"),
+                format!("has {length} {unit}"),
+            );
         }
         if let Some(max) = self.max_length
             && length > max
         {
-            return broken(format!("max_length: {max}"), format!("has {length} {unit}"));
+            return broken(
+                RuleKey::MaxLength,
+                format!("max_length: {max}"),
+                format!("has {length} {unit}"),
+            );
         }
         Ok(())
     }
@@ -119,6 +194,7 @@ impl Rules {
             && !compiled.is_match(text)
         {
             return broken(
+                RuleKey::Pattern,
                 format!("pattern: \"{pattern}\""),
                 "doesn't match the whole pattern".into(),
             );
@@ -129,6 +205,7 @@ impl Rules {
             };
             if !fits {
                 return broken(
+                    RuleKey::Format,
                     format!("format: {}.{}", TextFormat::NAME, format.name()),
                     "isn't an email address".into(),
                 );
@@ -138,6 +215,7 @@ impl Rules {
             && uuid_version(text) != Some(version.digit())
         {
             return broken(
+                RuleKey::Version,
                 format!("version: {}.{}", UuidVersion::NAME, version.name()),
                 format!("isn't a version {} UUID", version.digit()),
             );
@@ -276,6 +354,7 @@ mod tests {
         };
         let broken = rules.check_number(num("0")).expect_err("below min");
         assert_eq!(broken.rule, "min: 1");
+        assert_eq!(broken.key, RuleKey::Min);
         let scaled = Rules {
             scale: Some(2),
             ..Rules::default()
@@ -313,6 +392,22 @@ mod tests {
                 .expect_err("v4")
                 .rule,
             "version: UuidVersion.v7"
+        );
+    }
+
+    #[test]
+    fn rule_keys_read_back_by_word() {
+        for key in RuleKey::ALL {
+            assert_eq!(RuleKey::from_word(key.word()), Some(key));
+        }
+        assert_eq!(RuleKey::from_word("invalid"), None);
+        let rules = Rules {
+            min_length: Some(2),
+            ..Rules::default()
+        };
+        assert_eq!(
+            rules.check_text("a").expect_err("short").key,
+            RuleKey::MinLength
         );
     }
 

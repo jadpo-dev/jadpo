@@ -39,7 +39,7 @@ fn checked(files: &[(String, String)]) -> (String, Graph) {
         .collect();
     let project = support::project_in_path_order(&db, layout(files), &borrowed);
     let errors = jadpo_check::check(&db, project).len();
-    let graph = graph(&db, project).clone();
+    let graph = Graph::clone(graph(&db, project));
     let stamp = Stamp {
         compiler: "test".into(),
         errors,

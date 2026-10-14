@@ -115,4 +115,7 @@ pub(crate) struct Facts {
     pub patterns: BTreeMap<NodeKey, PatternFact>,
     /// The `match`es on a call's outcome.
     pub outcomes: BTreeSet<NodeKey>,
+    /// The effects with no typed form of their own yet (`clock.now`), which
+    /// can pause.
+    pub effects: BTreeSet<NodeKey>,
 }

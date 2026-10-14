@@ -31,7 +31,7 @@ pub(crate) enum Stop {
     /// such as `Email` refused the text), and the rule as written for the
     /// report.
     Invalid {
-        rule: String,
+        rule: jadpo_std::RuleKey,
         written: String,
     },
     Assertion(Box<Assertion>),
@@ -771,7 +771,7 @@ impl<'p> Interp<'p> {
         if matches!(fallible, Fallible::Construction { .. }) {
             if let Err(invalid) = validator.check(&value) {
                 return Err(Stop::Invalid {
-                    rule: invalid.key().to_string(),
+                    rule: invalid.key(),
                     written: format!("`{}`", invalid.rule()),
                 });
             }
@@ -820,7 +820,7 @@ impl<'p> Interp<'p> {
                 if let Err(invalid) = validator.check(&value) {
                     let name = self.program.types.field_name(field).to_string();
                     return Err(Stop::Invalid {
-                        rule: invalid.key().to_string(),
+                        rule: invalid.key(),
                         written: format!("`{}` on `{name}`", invalid.rule()),
                     });
                 }
@@ -886,7 +886,7 @@ impl<'p> Interp<'p> {
         };
         match self.eval(f, inner) {
             Err(Stop::Invalid { rule, written }) => {
-                let arm = RuleArm::for_rule(arms, &rule);
+                let arm = RuleArm::for_rule(arms, rule);
                 let Some(arm) = arm else {
                     return Err(
                         self.defect("a construction that can fail, with no failure for it", id)

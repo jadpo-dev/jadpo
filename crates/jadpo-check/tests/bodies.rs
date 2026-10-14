@@ -29,7 +29,7 @@ fn bodies(source: &str) -> Vec<(Option<Key>, Body)> {
         .into_iter()
         .map(|callable| {
             let checked = typed_body(&db, project, callable);
-            (checked.key.clone(), checked.body.clone())
+            (checked.key.clone(), Body::clone(&checked.body))
         })
         .collect()
 }
@@ -252,7 +252,7 @@ fn constructions_say_which_rules_break_and_their_failures() {
             callee: Callee::Construct(TypeRef::Node(key(Kind::Type, "Quantity"))),
             args: vec![Some(SiteId(inner.0 + 1))],
             fallible: Fallible::Construction {
-                rules: vec!["min".to_string()]
+                rules: vec![jadpo_std::RuleKey::Min]
             },
         }
     );
@@ -334,4 +334,39 @@ fn a_bodys_names_are_resolved_in_its_own_walk() {
         ["semantic.unknown_name"],
         "only `other`'s signature, a declaration"
     );
+}
+
+#[test]
+fn sites_that_can_pause_are_effects_and_calls_into_actions() {
+    let found = bodies(
+        "type At = Instant {}\n\naction stamp() -> At {\n    return At(clock.now)\n}\n\naction bump(n: Pence) -> Pence {\n    return Pence(n + 1)\n}\n\naction twice(n: Pence) -> Pence {\n    var once: Pence = bump(n)\n    return bump(once)\n}\n\nfunction plain(n: Pence) -> Pence {\n    return Pence(n + 1)\n}\n",
+    );
+    let pausing = |name: &str| -> (bool, Vec<String>) {
+        let (_, body) = found
+            .iter()
+            .find(|(key, _)| key.as_ref().is_some_and(|key| key.name() == name))
+            .unwrap_or_else(|| panic!("{name}"));
+        let sites = body
+            .sites
+            .iter()
+            .filter(|site| site.pauses)
+            .map(|site| match &site.node {
+                Node::Expr(Expr::Call { callee, .. }) => format!("call {callee:?}"),
+                Node::Expr(Expr::Unchecked) => "effect".to_string(),
+                other => format!("{other:?}"),
+            })
+            .collect();
+        (body.pauses, sites)
+    };
+    assert_eq!(pausing("stamp"), (true, vec!["effect".to_string()]));
+    let (pauses, sites) = pausing("twice");
+    assert!(pauses);
+    assert_eq!(sites.len(), 2, "both calls to `bump`: {sites:?}");
+    assert!(sites.iter().all(|site| site.starts_with("call Action")));
+    assert_eq!(
+        pausing("bump"),
+        (false, Vec::new()),
+        "computing never pauses"
+    );
+    assert_eq!(pausing("plain"), (false, Vec::new()));
 }

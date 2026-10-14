@@ -9,7 +9,7 @@
 //! 7), so `scale:` decides how a value is kept rather than refusing it.
 
 use jadpo_std::{
-    Broken, Builtin, Num, Pattern, Rounding, Rules, check_builtin_text, compile_pattern,
+    Broken, Builtin, Num, Pattern, Rounding, RuleKey, Rules, check_builtin_text, compile_pattern,
 };
 
 use crate::{Decimal, Value};
@@ -37,14 +37,10 @@ impl Invalid {
     /// The key an `attempt`'s arm names it by: `max` for `max: 1000`, and
     /// `format` for a built-in type's own check (area 2, "Construction
     /// failures by rule").
-    pub fn key(&self) -> &str {
+    pub fn key(&self) -> RuleKey {
         match self {
-            Invalid::Builtin { .. } => "format",
-            Invalid::Broken(broken) => broken
-                .rule
-                .split(':')
-                .next()
-                .map_or(broken.rule.as_str(), str::trim),
+            Invalid::Builtin { .. } => RuleKey::Format,
+            Invalid::Broken(broken) => broken.key,
         }
     }
 
@@ -188,7 +184,10 @@ mod tests {
             })
         ));
         let refused = check(&Value::text("junk"), Builtin::Url, []).expect_err("not a URL");
-        assert_eq!((refused.key(), refused.rule().as_str()), ("format", "Url"));
+        assert_eq!(
+            (refused.key(), refused.rule().as_str()),
+            (RuleKey::Format, "Url")
+        );
         let sku = Validator::new(
             Some(Builtin::Text),
             vec![Rules {

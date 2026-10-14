@@ -125,9 +125,38 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
     ]
 }
 
+/// Where variant `variant` stands among enum `name`'s variants, from 0, in
+/// the order they are declared: what a set orders them by (area 2, "Set
+/// order").
+pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
+    let position = |names: &[&str]| names.iter().position(|v| *v == variant);
+    let found = match name {
+        Rounding::NAME => position(Rounding::NAMES),
+        TextFormat::NAME => position(TextFormat::NAMES),
+        UuidVersion::NAME => position(UuidVersion::NAMES),
+        Weekday::NAME => position(Weekday::NAMES),
+        ZONE => crate::zones::ZONES.iter().position(|(v, _)| *v == variant),
+        LOCALE => crate::zones::LOCALES
+            .iter()
+            .position(|(v, _)| *v == variant),
+        _ => None,
+    };
+    found.and_then(|at| u32::try_from(at).ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn variants_stand_in_declared_order() {
+        assert_eq!(variant_ordinal(Weekday::NAME, "monday"), Some(0));
+        assert_eq!(variant_ordinal(Weekday::NAME, "sunday"), Some(6));
+        assert_eq!(variant_ordinal(Rounding::NAME, "up"), Some(2));
+        assert!(variant_ordinal(ZONE, "utc").is_some());
+        assert_eq!(variant_ordinal(Weekday::NAME, "someday"), None);
+        assert_eq!(variant_ordinal("Shade", "plain"), None);
+    }
 
     #[test]
     fn variants_read_back_by_name() {

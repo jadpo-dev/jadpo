@@ -468,6 +468,7 @@
         2
       ],
       "name": "Shade.plain",
+      "order": 0,
       "parent": "type Shade"
     },
     {
@@ -481,6 +482,7 @@
         5
       ],
       "name": "Shade.tinted",
+      "order": 1,
       "parent": "type Shade",
       "payload": true
     }
