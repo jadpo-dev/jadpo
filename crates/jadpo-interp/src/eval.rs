@@ -332,7 +332,7 @@ impl<'p> Interp<'p> {
             let TypeRef::Node(expected) = expected else {
                 return Err(self.defect("an `assert … fails` naming no failure", id));
             };
-            let got = match self.eval(f, value) {
+            let got = match self.subject(f, value)? {
                 Err(Stop::Failed(failure)) if failure.key == expected.as_str() => return Ok(()),
                 Err(Stop::Failed(failure)) => crate::Got::Failure(failure),
                 Ok(value) => crate::Got::Value(value),
@@ -432,12 +432,50 @@ impl<'p> Interp<'p> {
 
     fn eval(&mut self, f: &mut Running<'p>, id: SiteId) -> Eval<Value> {
         let value = self.evaluate(f, id)?;
+        self.remember(id, &value);
+        Ok(value)
+    }
+
+    /// Keeps a value an `assert`'s condition gave, for its report.
+    fn remember(&mut self, id: SiteId, value: &Value) {
         if let Some(record) = &mut self.record
             && record.depth == self.ctx.depth()
         {
             record.values.push((id, value.clone()));
         }
-        Ok(value)
+    }
+
+    /// The subject of an outcome `match` or of `assert ... fails`, split
+    /// in two: the outer result is its arguments, worked out first, whose
+    /// failures leave the enclosing callable as they would anywhere else;
+    /// the inner one is the call itself, the only outcome the `match` or
+    /// the `assert` handles (areas 3 and 13).
+    fn subject(&mut self, f: &mut Running<'p>, id: SiteId) -> Eval<Eval<Value>> {
+        let body = f.body;
+        let called = match body.sites.get(id.0 as usize).map(|site| &site.node) {
+            Some(Node::Expr(Expr::Call { callee, args, .. })) => match callee {
+                Callee::Function(key)
+                | Callee::Action(key)
+                | Callee::Fixture(key)
+                | Callee::LibraryFunction(key) => Some((key, args)),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some((key, args)) = called else {
+            // Nothing else an outcome is matched on has arguments that can
+            // fail: the checker refuses the rest as subjects.
+            return Ok(self.eval(f, id));
+        };
+        let Some(callee) = self.program.id(key) else {
+            return Err(self.defect("a call to a callable that has no body", id));
+        };
+        let values = self.args(f, args, id)?;
+        let outcome = self.invoke(callee, values, id);
+        if let Ok(value) = &outcome {
+            self.remember(id, value);
+        }
+        Ok(outcome)
     }
 
     fn evaluate(&mut self, f: &mut Running<'p>, id: SiteId) -> Eval<Value> {
@@ -877,7 +915,7 @@ impl<'p> Interp<'p> {
         subject: SiteId,
         arms: &'p [Arm],
     ) -> Eval<Value> {
-        match self.eval(f, subject) {
+        match self.subject(f, subject)? {
             Ok(value) => {
                 let Some(arm) = arms.iter().find(|arm| arm.pattern == Pattern::Success) else {
                     return Err(self.defect("an outcome `match` without `success`", id));

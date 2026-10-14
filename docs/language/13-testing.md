@@ -524,7 +524,9 @@ test "completing a missing todo fails" {
 
 A call that can fail still needs `attempt`, `match` or `assert … fails`, as
 everywhere else (area 3). A call with `attempt` that fails ends the test
-as failed and names the failure. A route test checks `response.status`,
+as failed and names the failure. `assert … fails` checks the call itself:
+a failure that leaves while its arguments are worked out ends the test,
+like any other unhandled failure. A route test checks `response.status`,
 `response.code` and the typed output (area 7). There are no snapshot
 assertions and no mocks of your own code.
 
