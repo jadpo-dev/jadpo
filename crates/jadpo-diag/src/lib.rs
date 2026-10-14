@@ -141,6 +141,8 @@ rules! {
         "05-data.html#data-on-delete-not-reference", "Field that is not a reference sets `on_delete`";
     DATA_ON_DELETE_REQUIRED: "data.on_delete_required", area 5, Error, Human,
         "05-data.html#data-on-delete-required", "Reference does not say what deleting its record does";
+    DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-read-in-loop", "Query or `get` inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
         "05-data.html#data-reference-across-stores", "Reference points at an entity in another store";
     DATA_REFERENCE_CYCLE: "data.reference_cycle", area 5, Error, Human,
@@ -149,6 +151,8 @@ rules! {
         "05-data.html#data-repeated-field", "Unique rule or index lists a field twice";
     DATA_RESERVED_TABLE_NAME: "data.reserved_table_name", area 5, Error, Agent,
         "05-data.html#data-reserved-table-name", "Entity's table name starts with `jadpo_`";
+    DATA_SET_GENERATED_FIELD: "data.set_generated_field", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-set-generated-field", "Write sets a field the store generates";
     DATA_STORE_REQUIRED: "data.store_required", area 5, Error, Human,
         "05-data.html#data-store-required", "Entity names no store and there is no `main`";
     DATA_STORE_UNKNOWN: "data.store_unknown", area 5, Error, Agent,
@@ -277,6 +281,48 @@ rules! {
         "01-project-layout-and-modules.html#naming-generic-name", "Domain or library has a generic name";
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
         "01-project-layout-and-modules.html#naming-round-trip", "Name does not survive conversion to its file name";
+    QUERY_CONDITION_UNSUPPORTED: "query.condition_unsupported", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-condition-unsupported", "Query condition is not one an index can serve";
+    QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-from-not-entity", "Query reads something that is not an entity";
+    QUERY_INCLUDE_DEPTH: "query.include_depth", area 6, Error, Human,
+        "06-reads-and-writes.html#query-include-depth", "Includes nest more than two levels";
+    QUERY_INCLUDE_RESULT: "query.include_result", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-include-result", "Result type has no field of the right shape for an include";
+    QUERY_INCLUDE_UNKNOWN: "query.include_unknown", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-include-unknown", "Include names no reference to or from the entity";
+    QUERY_LIMIT_RANGE: "query.limit_range", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-limit-range", "Query limit or page size is below 1";
+    QUERY_LIMIT_UNBOUNDED: "query.limit_unbounded", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-limit-unbounded", "Query limit or page size comes from a value with no maximum";
+    QUERY_NOT_UNIQUE: "query.not_unique", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-not-unique", "Query for one record can match several";
+    QUERY_OPTIONAL_VALUE: "query.optional_value", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-optional-value", "Condition compares with a value that may be absent, or `where_present:` with one that is always there";
+    QUERY_ORDER_DIRECTION: "query.order_direction", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-order-direction", "Order field has no `asc` or `desc`";
+    QUERY_ORDER_FIELD: "query.order_field", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-order-field", "Field cannot be in a query's order";
+    QUERY_OTHER_DOMAIN: "query.other_domain", area 6, Error, Human,
+        "06-reads-and-writes.html#query-other-domain", "Query reads another domain's entity";
+    QUERY_PAGE_SETTING: "query.page_setting", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-page-setting", "Page block is missing a setting or has a wrong one";
+    QUERY_REPEATED_SECTION: "query.repeated_section", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-repeated-section", "Query section is given twice";
+    QUERY_RESULT_FIELD: "query.result_field", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-result-field", "Result type has a field the entity cannot fill";
+    QUERY_RESULT_TYPE: "query.result_type", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-result-type", "Query result is not the entity or a type derived from it";
+    QUERY_SECTION_REQUIRED: "query.section_required", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-section-required", "Query is missing a section its result needs";
+    QUERY_SECTION_UNEXPECTED: "query.section_unexpected", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-section-unexpected", "Query has a section its result does not take";
+    QUERY_UNKNOWN_FIELD: "query.unknown_field", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-unknown-field", "Query names a field its entity does not have";
+    QUERY_UNKNOWN_SECTION: "query.unknown_section", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-unknown-section", "Query has a section Jadpo does not know";
+    QUERY_VALUE_UNSUPPORTED: "query.value_unsupported", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-value-unsupported", "Query value is computed rather than a parameter, literal or enum value";
     SEMANTIC_DUPLICATE_DECLARATION: "semantic.duplicate_declaration", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-duplicate-declaration", "Name is declared more than once";
     SEMANTIC_MISSING_RETURN: "semantic.missing_return", area 3, Error, Agent,

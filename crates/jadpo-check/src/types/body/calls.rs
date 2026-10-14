@@ -156,6 +156,9 @@ impl Body<'_> {
                 };
                 let kind = self.callable_kind(&callee);
                 let span = self.span(&name);
+                if kind == Some(ItemKind::Query) {
+                    self.read_in_loop(span.clone(), &callee);
+                }
                 self.may_call(span, &callee, kind.as_ref());
                 self.args(&sig, call, &callee);
                 let reach = match &kind {
@@ -210,15 +213,22 @@ impl Body<'_> {
             if self.callable_kind(&head) == Some(ItemKind::Entity) && rest.len() == 1 {
                 // An entity's operations read and write stored data
                 // (areas 5 and 6).
+                let span = self.span(callee);
                 if self.context.is_pure() {
-                    let span = self.span(callee);
-                    self.persistence(span, &written);
+                    self.persistence(span.clone(), &written);
                 }
-                self.args_only(call);
                 let reach = Reach::Entity {
                     entity: head.clone(),
                     operation: rest.join("."),
                 };
+                if rest[0] == "get" {
+                    let ty = self.entity_get(&head, call, span);
+                    return (ty, CallKind::Effect(written), reach);
+                }
+                // The writes after `create`, and the lifecycle's
+                // transitions, come with chunks 3.3 and 3.4.
+                self.args_only(call);
+                self.not_built_yet(span, &written);
                 return (Ty::Error, CallKind::Effect(written), reach);
             }
             if self.symbols.is_package(&head) {
@@ -313,6 +323,9 @@ impl Body<'_> {
                 .cloned()
             {
                 let span = self.span(callee);
+                if kind == Some(ItemKind::Query) {
+                    self.read_in_loop(span.clone(), &written);
+                }
                 self.may_call(span, &written, kind.as_ref());
                 self.args(&sig, call, &written);
                 let reach = Reach::Callable {

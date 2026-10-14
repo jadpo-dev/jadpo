@@ -29,7 +29,14 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             Builtin::Duration => "bigint".into(),
             Builtin::Int => integer(table, ty),
             Builtin::Decimal => decimal(table, ty),
-            Builtin::Unit | Builtin::Email | Builtin::Url | Builtin::IpAddress => {
+            // The validated text types and the page types are made of
+            // text and numbers, which `representation` has already given.
+            Builtin::Unit
+            | Builtin::Email
+            | Builtin::Url
+            | Builtin::IpAddress
+            | Builtin::PageCursor
+            | Builtin::PageSize => {
                 return Err(prim.name().to_string());
             }
         },

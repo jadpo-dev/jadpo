@@ -287,7 +287,11 @@ impl Types {
         let mut current = ty.clone();
         for _ in 0..CHAIN {
             match current {
-                TypeRef::Builtin(builtin) => return Some((builtin, rules)),
+                TypeRef::Builtin(builtin) => {
+                    // A built-in type's own rules, such as `PageSize`'s range.
+                    rules.extend(builtin.rules().cloned());
+                    return Some((builtin, rules));
+                }
                 TypeRef::Nullable(inner) => current = *inner,
                 TypeRef::Node(key) => match &self.node(&key)?.detail {
                     Detail::Type {

@@ -550,13 +550,31 @@ impl Body<'_> {
         name: &ast::NameRef,
         node: &ast::FieldExpr,
     ) -> Ty {
+        let field = text(name);
+        let span = self.span(name);
+        // A page of a query's results (area 6, "Order and pages").
+        if let Ty::Opaque(page, args) = receiver
+            && page == PAGE
+            && let [item] = args.as_slice()
+        {
+            let ty = match field.as_str() {
+                "items" => Ty::List(Box::new(item.clone())),
+                "next" => Ty::Prim(Prim::PageCursor).nullable(),
+                _ => {
+                    self.unknown_field(PAGE, &field, &page_fields(item), span, false);
+                    return Ty::Error;
+                }
+            };
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (PAGE.to_string(), vec![field]));
+            return ty;
+        }
         // A type a later area defines has fields this check doesn't know yet.
         if receiver.has_error() || matches!(receiver.strip_nullable(), Ty::Opaque(..) | Ty::Var(_))
         {
             return Ty::Error;
         }
-        let field = text(name);
-        let span = self.span(name);
         if let Ty::Variant(host, variant) = receiver {
             let ty = self.variant_field(host, variant, &field, span);
             if !ty.has_error() {
@@ -684,7 +702,15 @@ impl Body<'_> {
                     super::facts::BuildFact::Object(name.clone()),
                 );
                 let input = *base == FieldsBase::Input;
-                self.fields_given(record, &name, &[], &fields, input, head_span);
+                self.fields_given(
+                    record.member_list(),
+                    &name,
+                    &[],
+                    &fields,
+                    input,
+                    head_span,
+                    &[],
+                );
                 self.object_built(record);
                 Ty::Named(name)
             }
@@ -698,6 +724,18 @@ impl Body<'_> {
             ([], Some(Def::Enum { .. })) => {
                 self.not_record(record, &name, "enum");
                 self.walk(|walk| walk.member_values(record.member_list()));
+                Ty::Named(name)
+            }
+            (
+                [operation],
+                Some(Def::Fields {
+                    base: FieldsBase::Entity,
+                    fields,
+                    ..
+                }),
+            ) if text(operation) == "create" => {
+                let fields = fields.clone();
+                self.create(record, &name, &fields, head_span);
                 Ty::Named(name)
             }
             ([variant], Some(Def::Enum { variants })) => {
@@ -715,12 +753,13 @@ impl Body<'_> {
                     Some(fields) => {
                         let fields = fields.clone();
                         self.fields_given(
-                            record,
+                            record.member_list(),
                             &name,
                             &[variant_name],
                             &fields,
                             false,
                             head_span,
+                            &[],
                         );
                         self.object_built(record);
                     }
@@ -788,12 +827,13 @@ impl Body<'_> {
     /// failures by rule").
     pub(super) fn fields_given(
         &mut self,
-        record: &ast::RecordExpr,
+        list: Option<ast::MemberList>,
         host: &str,
         variant: &[String],
         fields: &[FieldDef],
         input: bool,
         head_span: Span,
+        skip: &[&str],
     ) {
         let is_variant = !variant.is_empty();
         let shown = if is_variant {
@@ -802,11 +842,7 @@ impl Body<'_> {
             host.to_string()
         };
         let mut given: BTreeMap<String, Span> = BTreeMap::new();
-        for item in record
-            .member_list()
-            .iter()
-            .flat_map(|list| list.member_items())
-        {
+        for item in list.iter().flat_map(|list| list.member_items()) {
             let MemberItem::Member(member) = item else {
                 continue;
             };
@@ -829,6 +865,13 @@ impl Body<'_> {
             };
             let span = self.span(&first);
             let value = member.value();
+            // Already reported by the caller; its value is still walked.
+            if skip.contains(&name.as_str()) {
+                if let Some(value) = value {
+                    self.infer(&value);
+                }
+                continue;
+            }
             if let Some(earlier) = given.get(&name) {
                 let rule = if is_variant {
                     &rule::TYPE_DUPLICATE_VARIANT_FIELD
@@ -1075,4 +1118,27 @@ impl Body<'_> {
 /// A field type as written: `Badge.name`.
 fn name_of(ty: &Ty) -> String {
     ty.to_string()
+}
+
+/// The standard type a page query returns (area 6): `Page<T>`.
+pub(crate) const PAGE: &str = "Page";
+
+/// `Page<T>`'s fields, as the unknown-field error lists them.
+fn page_fields(item: &Ty) -> Vec<FieldDef> {
+    [
+        ("items", Ty::List(Box::new(item.clone()))),
+        ("next", Ty::Prim(Prim::PageCursor).nullable()),
+    ]
+    .into_iter()
+    .map(|(name, declared)| FieldDef {
+        name: name.to_string(),
+        declared,
+        rules: Rules::default(),
+        optional: false,
+        default: None,
+        copied: false,
+        replaces: None,
+        generated: false,
+    })
+    .collect()
 }

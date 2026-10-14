@@ -34,6 +34,9 @@ pub struct FieldDef {
     /// For a written field that replaces one an `include` or `pick` above
     /// brought in: the type that field came from.
     pub replaces: Option<String>,
+    /// An entity's field the store sets itself (`generated:`, area 5),
+    /// which no write gives.
+    pub generated: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -392,6 +395,10 @@ impl TypeTable {
         let derived = deriver.done;
         let cyclic = deriver.cyclic;
         let placeholder = |raw: &RawField| FieldDef {
+            generated: matches!(
+                &raw.source,
+                Source::Written { settings, .. } if settings.iter().any(|(key, _)| key == "generated")
+            ),
             name: raw.name.clone(),
             declared: Ty::Error,
             rules: Rules::default(),
@@ -856,6 +863,13 @@ pub trait TypeView {
                     }
                     _ => break,
                 },
+                // A built-in type's own rules, such as `PageSize`'s range.
+                Ty::Prim(prim) => {
+                    if let Some(rules) = prim.rules() {
+                        chain.push((prim.name().to_string(), rules));
+                    }
+                    break;
+                }
                 _ => break,
             }
         }
