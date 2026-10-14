@@ -1,12 +1,13 @@
 //! Effects later areas build stop where they are reached, with the
 //! `not_built_yet` fault naming them at their `.jadpo` line, never a panic;
+//! `clock.now` reads the invocation's clock;
 //! a read or write on a host with no store stops with the store's fault at
 //! its line; the pure parts of actions and tests run.
 
 mod support;
 
 use jadpo_interp::{AssertionDetail, FaultKind, Got, Outcome, Value};
-use support::{fault, int, main, program, run, value, where_fault};
+use support::{failure, fault, int, main, program, run, value, where_fault};
 
 #[test]
 fn a_read_without_a_store_faults_at_its_line() {
@@ -40,7 +41,7 @@ fn a_read_without_a_store_faults_at_its_line() {
 }
 
 #[test]
-fn reading_the_clock_is_not_built_yet() {
+fn clock_now_reads_the_invocations_clock() {
     let program = program(&[
         (
             "types.jadpo",
@@ -51,17 +52,23 @@ fn reading_the_clock_is_not_built_yet() {
             "action check_due(due_at: DueAt, latest_due_at: DueAt) fails DueDateInPast, DueDateTooFar -> Unit {\n    if (due_at <= clock.now) {\n        reject DueDateInPast\n    } else if (due_at > latest_due_at) {\n        reject DueDateTooFar\n    }\n}\n",
         ),
     ]);
+    // The default environment's clock stands at 2000-01-01T00:00:00Z, as a
+    // test's does until it moves it (area 13).
     let due = program
         .codec()
         .text("DueAt", "2026-10-25T08:30:00Z")
         .expect("an instant");
-    let stopped = fault(&program, "check_due", vec![due.clone(), due]);
     assert_eq!(
-        where_fault(&program, &stopped),
-        (
-            FaultKind::NotBuiltYet("clock.now".to_string()),
-            vec!["main.jadpo:2".to_string()]
-        )
+        value(&program, "check_due", vec![due.clone(), due]),
+        Value::Unit
+    );
+    let past = program
+        .codec()
+        .text("DueAt", "1999-12-31T23:59:59Z")
+        .expect("an instant");
+    assert_eq!(
+        failure(&program, "check_due", vec![past.clone(), past]).name,
+        "DueDateInPast"
     );
 }
 

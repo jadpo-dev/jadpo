@@ -231,7 +231,9 @@ impl Body<'_> {
                     });
                 if !visible {
                     self.args_only(call);
-                    return (Ty::Error, CallKind::Effect(written), reach);
+                    let block = self.pending_block.take();
+                    self.walk(|walk| walk.member_values(block));
+                    return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
                 }
                 let block = self.pending_block.take();
                 if self.context.is_pure() {
