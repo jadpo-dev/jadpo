@@ -160,7 +160,7 @@ reference only).
   snapshots stripped of the run time, the watch latency ceiling near the
   1-second target, README "try next" outcomes checked. Docs: areas 1, 13
   and 14 stop calling archived-compiler behaviour current.
-- [ ] **2.9 Phase 2 review: teaching examples** `opus · high`. Types that
+- [x] **2.9 Phase 2 review: teaching examples** `opus · high`. Types that
   carry meaning, not just the right representation; business rules raised
   with `reject` (a stock problem is a `conflict`, not an `invalid_value`),
   with `if` checks as proof beside rule arms; a genuine `invalid:`
