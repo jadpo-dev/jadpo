@@ -1,0 +1,5 @@
+/// How many of the kitchen's three ovens are lit.
+type OvensLit = Int {
+    min: 0
+    max: 3
+}

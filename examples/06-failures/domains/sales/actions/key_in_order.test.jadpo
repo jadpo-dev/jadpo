@@ -1,0 +1,9 @@
+test "a keyed count from 1 to 24 is an order" {
+    var count: CakeCount = attempt key_in_order(24)
+    assert count == 24
+}
+
+test "a keyed count outside 1 to 24 gets one failure either way" {
+    assert key_in_order(0) fails CountOutOfRange
+    assert key_in_order(25) fails CountOutOfRange
+}

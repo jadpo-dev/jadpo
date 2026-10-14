@@ -13,7 +13,7 @@ action place_order(
     left: Stock,
     asked: CakeCount,
     load: HourlyLoad,
-    ovens: OvensOn
+    ovens: OvensLit
 ) fails CakeSoldOut, KitchenBusy, OvenDown -> CakeCount {
     attempt check_kitchen(load, ovens)
     return attempt reserve_cakes(left, asked)

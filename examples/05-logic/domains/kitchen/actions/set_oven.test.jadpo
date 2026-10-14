@@ -1,4 +1,4 @@
-test "bread on the top_tier shelf is turned down" {
+test "bread on the top shelf is turned down" {
     assert set_oven(Bake.bread, 2) == 210
     assert set_oven(Bake.bread, 1) == 220
     assert set_oven(Bake.bread, 0) == 230
@@ -11,11 +11,14 @@ test "pastry is turned down above the middle, meringue never" {
 }
 
 test "the lowest and highest shelves change the crust" {
-    assert crust_on(-2) == "pale"
-    assert crust_on(2) == "dark"
-    assert crust_on(0) == "golden"
-    assert shelf_for("dark") == 2
-    assert shelf_for("golden") == 0
+    assert crust_on(-2) == Crust.pale
+    assert crust_on(2) == Crust.dark
+    assert crust_on(0) == Crust.golden
+}
+
+test "the keypad calls up the bakes it knows" {
+    assert bake_for("BREAD") == Bake.bread
+    assert bake_for("TOAST") == none
 }
 
 test "steam is shown as a word" {

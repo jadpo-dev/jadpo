@@ -36,19 +36,16 @@ type Minutes = Int {
 /// Whether dough is ready to shape.
 type Ready = Bool {}
 
+/// Whether dough has been left to rest, which does some of the
+/// kneading's work.
+type Rested = Bool {}
+
 /// How far the water is from the 26 degrees a dough wants: positive when
 /// too warm, negative when too cold.
 function water_difference(water: Celsius) -> Difference {
     // Subtracting two values gives a plain `Int`; the range of `Celsius`
     // proves the result fits `Difference`, so no check can fail.
     return Difference(water - 26)
-}
-
-/// The same difference the other way round.
-function flipped(difference: Difference) -> Difference {
-    // Unary minus flips a number's sign. `Difference` is symmetric, so the
-    // flipped value always fits.
-    return Difference(-difference)
 }
 
 /// Whether a dough of `flour` and `water` grams, mixed with water at
@@ -59,7 +56,7 @@ action mix_dough(
     water: Grams,
     temperature: Celsius,
     minutes: Minutes,
-    rested: Ready
+    rested: Rested
 ) -> Ready {
     // `*` binds tighter than `>=`, which binds tighter than `and`, which
     // binds tighter than `or`. Hydration is water as a share of flour,
@@ -67,13 +64,9 @@ action mix_dough(
     // least 65%.
     var wet_enough: Bool = 100 * water >= 65 * flour
     var difference: Difference = water_difference(temperature)
-    var close_enough: Bool = difference <= 4 and flipped(difference) <= 4
+    // Within 4 degrees either way: no more than 4 too warm, and, with
+    // unary minus turning the sign round, no more than 4 too cold.
+    var close_enough: Bool = difference <= 4 and -difference <= 4
     // The brackets make the `or` happen before the `and`.
     return Ready(wet_enough and close_enough and (minutes >= 10 or rested))
-}
-
-/// Whether `grams` is an odd weight, which the scale rounds.
-function odd_weight(grams: Grams) -> Ready {
-    // `%` gives the remainder after dividing whole numbers.
-    return Ready(grams % 2 != 0)
 }

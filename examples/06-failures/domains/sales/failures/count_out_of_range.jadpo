@@ -1,0 +1,5 @@
+/// A number keyed in at the till isn't from 1 to 24.
+type CountOutOfRange = Failure {
+    kind: FailureKind.invalid_value
+    message: "Enter a number of cakes from 1 to 24."
+}

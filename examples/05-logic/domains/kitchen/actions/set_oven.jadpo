@@ -15,9 +15,11 @@ type OvenTemperature = Int {
     max: 300
 }
 
-/// How a bake's top should come out.
-type Crust = Text {
-    max_length: 20
+/// How a bake's top comes out.
+type Crust = Enum {
+    pale
+    golden
+    dark
 }
 
 /// A shelf in the oven, counted from the middle: below it is negative.
@@ -41,21 +43,31 @@ function temperature_for(bake: Bake) -> OvenTemperature {
 /// What a shelf does to a bake's top.
 function crust_on(shelf: Shelf) -> Crust {
     // Literal patterns match exact values; a negative number is written
-    // with its sign. Numbers and text can't all be listed, so a `_` arm
-    // catches the rest, and is only allowed where cases can't be listed.
+    // with its sign. Numbers can't all be listed, so a `_` arm catches the
+    // rest, and is only allowed where cases can't be listed.
     return match shelf {
-        -2 -> "pale"
-        2 -> "dark"
-        _ -> "golden"
+        -2 -> Crust.pale
+        2 -> Crust.dark
+        _ -> Crust.golden
     }
 }
 
-/// The shelf that gives `crust`; text patterns match exact text.
-function shelf_for(crust: Crust) -> Shelf {
-    return match crust {
-        "pale" -> -2
-        "dark" -> 2
-        _ -> 0
+/// What a baker types on the oven's keypad to call up a bake, such as
+/// `BREAD`. Anyone can type anything, so it is open text, not an enum.
+type KeypadEntry = Text {
+    max_length: 12
+}
+
+/// The bake a keypad entry calls up, or `none` when the oven doesn't
+/// know it.
+function bake_for(entry: KeypadEntry) -> Bake? {
+    // Text patterns match exact text. Text can't all be listed either, so
+    // `_` catches every entry the oven doesn't know.
+    return match entry {
+        "BREAD" -> Bake.bread
+        "PASTRY" -> Bake.pastry
+        "MERINGUE" -> Bake.meringue
+        _ -> none
     }
 }
 

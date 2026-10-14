@@ -1,4 +1,8 @@
+// A stock problem is a `conflict`: the request is well formed, but the
+// shelf's current state can't meet it, and it may work later, once the
+// shelf is refilled.
+
 /// The shelf has no cakes left to order.
 type ShelfEmpty = Failure {
-    kind: FailureKind.invalid_value
+    kind: FailureKind.conflict
 }

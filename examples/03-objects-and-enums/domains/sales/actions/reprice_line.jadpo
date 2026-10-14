@@ -17,14 +17,18 @@ action reprice_line(change: Reprice) -> CakeLine {
     }
 }
 
-/// `line` with `count` cakes instead, at the same price.
-function with_count(line: CakeLine, count: CakeCount) -> CakeLine {
-    // `CakeLine.count(...)` uses the field as a constructor: it checks a
-    // value against the field's rules to move it into the field's type on
-    // purpose. `count` is already a `CakeCount`, so this one can't fail.
+/// `line` at half price, as cakes left at closing time are sold: half
+/// of each cake's price, rounded down to the penny.
+function half_price(line: CakeLine) -> CakeLine {
+    // `line.each / 2` is a plain `Int`, and a field needs a value of its
+    // own type, so `CakeLine.each(...)` uses the field as a constructor:
+    // it checks the value against the field's rules (`Pence`'s `min: 0`
+    // and the field's `max: 6000`) and gives it the field's type. Half of
+    // a price that fits is from 0 to 3000, so the compiler proves this
+    // check can't fail.
     return CakeLine {
         cake: line.cake
-        count: CakeLine.count(count)
-        each: line.each
+        count: line.count
+        each: CakeLine.each(line.each / 2)
     }
 }

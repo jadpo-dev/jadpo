@@ -1,11 +1,11 @@
 // A check that can fail at runtime. `Type(value)` checks a value against
 // a type's rules. When the value is a literal, the compiler checks it
 // while compiling. When it is computed and neither the declared ranges
-// nor a check before it prove it follows every rule (`double_checked.jadpo`
-// shows such a check), building it can fail, and the code says what each
-// failure is in a block after the call, keyed by the rule that can break:
+// nor a condition around it (`double_if_room.jadpo`) prove it follows
+// every rule, building it can fail, and the code says what each failure
+// is in a block after the call, keyed by the rule that can break:
 // `attempt CakeCount(n) { max: OrderTooLarge }`. Every failure named there
-// has the kind `invalid_value`.
+// has the kind `invalid_value`: a value broke a type's rule.
 
 /// A number of cakes counted for the kitchen, never negative.
 type KitchenCount = Int {

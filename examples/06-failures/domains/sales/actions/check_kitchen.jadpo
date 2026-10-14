@@ -3,13 +3,18 @@
 // action early.
 
 /// Whether the kitchen can take another order now.
-action check_kitchen(load: HourlyLoad, ovens: OvensOn) fails KitchenBusy, OvenDown -> Unit {
-    if (not ovens) {
+action check_kitchen(load: HourlyLoad, ovens: OvensLit) fails KitchenBusy, OvenDown -> Unit {
+    if (ovens == 0) {
         reject OvenDown
     }
     if (load < 20) {
-        // A quiet hour needs no more checks.
+        // One oven copes with a quiet hour, so it needs no more checks.
         return
     }
-    reject KitchenBusy
+    // A busy hour takes ten orders for each lit oven. `ovens * 10` is from
+    // 0 to 30, so it always fits `HourlyLoad`, and the two loads compare.
+    var capacity: HourlyLoad = HourlyLoad(ovens * 10)
+    if (load >= capacity) {
+        reject KitchenBusy
+    }
 }
