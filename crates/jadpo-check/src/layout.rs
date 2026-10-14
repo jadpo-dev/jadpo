@@ -333,6 +333,11 @@ fn misplaced(
             format!("belongs in `{}/`", target.name()),
             format!("every {kind} has its own file in `{}/`", target.name()),
         ),
+        None if item.kind == ItemKind::Test => (
+            "belongs in a test file".to_string(),
+            "a test sits beside what it tests, in a file whose name ends in `.test.jadpo`"
+                .to_string(),
+        ),
         None => (
             "belongs elsewhere".to_string(),
             format!("{} doesn't belong in a domain's folders", item.kind.with_a()),
@@ -341,6 +346,13 @@ fn misplaced(
     let what = Folder::from_name(folder).map_or("seeds", holding);
     let next = match destination(&location.ownership, item) {
         Some(place) => format!("Move `{}` to {place}", item.name),
+        None if item.kind == ItemKind::Test => match path.strip_suffix(".jadpo") {
+            Some(stem) => format!(
+                "Move `{}` to `{stem}.test.jadpo`, beside the file it tests",
+                item.name
+            ),
+            None => format!("Move `{}` out of `{folder}/`", item.name),
+        },
         None => format!("Move `{}` out of `{folder}/`", item.name),
     };
     Diagnostic::new(

@@ -78,6 +78,8 @@ pub enum Values {
     Commands,
     /// A file or folder, completed from the folder the command runs in.
     Path,
+    /// A test file or a folder: `.test.jadpo` files, and folders.
+    TestPath,
 }
 
 #[derive(Debug)]
@@ -267,7 +269,7 @@ pub static COMMANDS: &[Command] = &[
             name: "path",
             description: "A test file, <file>:<line>, or a folder",
             required: false,
-            values: Values::Path,
+            values: Values::TestPath,
         }],
         flags: &[
             Flag {

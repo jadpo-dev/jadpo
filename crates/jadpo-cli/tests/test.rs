@@ -1056,6 +1056,24 @@ fn help_lists_the_flags_with_examples() {
 }
 
 #[test]
+fn tab_completes_test_files_and_folders_only() {
+    let root = project(
+        "complete",
+        "test \"tallies one\" {\n    assert tally(1) == 1\n}\n",
+    );
+    let output = jadpo(
+        &root,
+        &["__complete", "--", "test", "domains/stock/actions/"],
+    );
+    assert_eq!(
+        output.stdout,
+        "domains/stock/actions/tally.test.jadpo\tTest file\n"
+    );
+    let output = jadpo(&root, &["__complete", "--", "test", ""]);
+    assert_eq!(output.stdout, "domains/\tFolder\n");
+}
+
+#[test]
 fn a_public_fixture_runs_from_another_domains_test_and_a_scenario() {
     // Area 13, decided 2026-10-14: a public fixture is called through its
     // domain from another domain's tests and from root `tests/`.

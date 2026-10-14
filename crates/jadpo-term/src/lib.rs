@@ -12,6 +12,7 @@ mod palette;
 mod report;
 mod screen;
 mod sources;
+mod spinner;
 
 pub use detect::{ColorChoice, Depth, Environment, MAX_WIDTH, Mode, Stream, Style, Symbols, Theme};
 pub use diagnostic::DiagnosticView;
@@ -20,3 +21,4 @@ pub use palette::{Symbol, Token};
 pub use report::{Diagram, DiagramLine, Field, Frame, Item, Mark, Report, Text};
 pub use screen::{Block, Change, ChangeMark, Fact, Outcome, Row, Screen};
 pub use sources::{Position, Sources, line_text, shown_path};
+pub use spinner::{SPINNER_DELAY, Spinner};

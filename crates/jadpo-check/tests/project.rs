@@ -142,6 +142,35 @@ fn folders_hold_their_own_kind() {
 }
 
 #[test]
+fn a_test_in_a_code_file_is_sent_beside_it() {
+    let db = jadpo_db::Database::default();
+    let mut files = SHOP.to_vec();
+    files.push((
+        "domains/ordering/actions/cancel.jadpo",
+        "action cancel() -> Unit {}\n\ntest \"cancelling\" {\n    cancel()\n}\n",
+    ));
+    let project = support::project(&db, Layout::Project, &files);
+    let found = jadpo_check::check(&db, project);
+    let wrong: Vec<_> = found
+        .iter()
+        .filter(|d| d.rule.id == "layout.wrong_folder")
+        .collect();
+    assert_eq!(wrong.len(), 1, "{found:?}");
+    assert_eq!(
+        wrong[0].next.as_ref().map(|next| next.text.as_str()),
+        Some(
+            "Move `cancelling` to `domains/ordering/actions/cancel.test.jadpo`, beside the file it tests"
+        )
+    );
+    assert_eq!(
+        wrong[0].reason.as_deref(),
+        Some(
+            "`actions/` holds one action per file; a test sits beside what it tests, in a file whose name ends in `.test.jadpo`."
+        )
+    );
+}
+
+#[test]
 fn calls_name_their_owner() {
     assert_eq!(
         with(&[(

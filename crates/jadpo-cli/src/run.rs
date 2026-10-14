@@ -264,6 +264,38 @@ pub(crate) fn finish(
     output
 }
 
+/// The live line a slow command shows on stderr while it works: `check`
+/// and `test` (not `--watch`, which draws its own, nor `--help` or
+/// `--json`), and only where stderr animates.
+pub fn spinner(args: &[String], env: &Environment) -> jadpo_term::Spinner {
+    let (json, choice) = presentation(args);
+    let style = Style::detect(env, json, choice, Stream::Stderr);
+    let mut words = args.iter().take_while(|arg| *arg != "--").peekable();
+    let mut command = None;
+    let mut quiet = json;
+    while let Some(arg) = words.next() {
+        match arg.as_str() {
+            "--color" => {
+                words.next_if(|value| ColorChoice::parse(value).is_some());
+            }
+            "--watch" | "--help" | "-h" => quiet = true,
+            word if !word.starts_with('-') && command.is_none() => {
+                command = table::find(word).map(|command| command.name);
+            }
+            _ => {}
+        }
+    }
+    let doing = match command {
+        Some("test") => "Running tests",
+        Some("check") => "Checking",
+        _ => "",
+    };
+    if quiet || doing.is_empty() {
+        return jadpo_term::Spinner::start(&Style::new(jadpo_term::Mode::Plain), "");
+    }
+    jadpo_term::Spinner::start(&style, doing)
+}
+
 /// `--json` and `--color` read before anything else, so even a mistake on
 /// the command line is reported in the form that was asked for.
 fn presentation(args: &[String]) -> (bool, ColorChoice) {
