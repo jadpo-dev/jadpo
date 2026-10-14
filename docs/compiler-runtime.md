@@ -806,8 +806,9 @@ proven construction again as it runs (`Type(value)`, an object literal's
 fields, a list written into a type with lengths) and turns a broken rule
 into a defect; `crates/jadpo-interp/tests/proofs.rs` runs every project of
 the specification corpus that checks clean that way, its tests as written
-and every callable whose parameters are numbers, text, UUIDs or flags with
-values its types allow at and near the edges of their rules
+and every callable whose parameters are numbers, text, UUIDs or flags, or
+lists and sets of them, with values its types allow at and near the edges
+of their rules
 (`Program::probe_arguments`), and fails on any defect. The gate runs it as
 its own step.
 

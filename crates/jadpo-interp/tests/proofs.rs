@@ -4,8 +4,9 @@
 //! project of the specification corpus (the language pages' `check`
 //! projects and the teaching examples) runs with proofs checked again
 //! (`Program::with_proof_checks`): its tests as written, and every
-//! callable whose parameters are numbers, text or flags with values its
-//! types allow at and near the edges of their rules. A proven value that
+//! callable whose parameters are numbers, text, UUIDs or flags, or lists
+//! and sets of them, with values its types allow at and near the edges of
+//! their rules. A proven value that
 //! breaks a rule is a defect, and so is anything else the checker should
 //! have ruled out, so any defect fails the gate.
 
@@ -133,6 +134,31 @@ fn a_proof_hole_would_be_found() {
         let (none, calls) = defects("cakes", &program);
         assert!(none.is_empty(), "{none:?}");
         assert!(calls > 3, "probed with values `Count` allows: {calls}");
+    })
+    .expect("a thread");
+}
+
+#[test]
+fn lists_and_sets_are_probed_at_the_edges_of_their_lengths() {
+    on_large_stack(|| {
+        let files = vec![(
+            "main.jadpo".to_string(),
+            "type Tag = Text {\n    max_length: 3\n}\n\ntype Tags = List<Tag> {\n    min_length: 1\n    max_length: 3\n}\n\ntype Labels = Set<Tag> {}\n\ntype Count = Int {}\n\nfunction few(items: Tags, labels: Labels) -> Count {\n    return Count(collection.count(items))\n}\n"
+                .to_string(),
+        )];
+        let program = load(&files).expect("it checks");
+        let probes = program.probe_arguments("few", PROBES).expect("probed");
+        let lengths: std::collections::BTreeSet<usize> = probes
+            .iter()
+            .filter_map(|args| args.first()?.items().map(<[Value]>::len))
+            .collect();
+        assert_eq!(lengths, [1, 2, 3].into(), "{probes:?}");
+        assert!(
+            probes
+                .iter()
+                .all(|args| matches!(args.get(1), Some(Value::Set(_)))),
+            "{probes:?}"
+        );
     })
     .expect("a thread");
 }

@@ -117,6 +117,38 @@ impl Types {
         None
     }
 
+    /// The rules along `ty`'s chain down to a collection, most specific
+    /// first: the lengths a list or set type adds.
+    pub fn length_rules(&self, ty: &TypeRef) -> Vec<Rules> {
+        let mut rules = Vec::new();
+        let mut current = ty.clone();
+        for _ in 0..256 {
+            match current {
+                TypeRef::Nullable(inner) => current = *inner,
+                TypeRef::Node(key) => match self.node(&key).map(|node| &node.detail) {
+                    Some(Detail::Type {
+                        base: Base::Refines(parent),
+                        rules: own,
+                        ..
+                    }) => {
+                        rules.push(own.clone());
+                        current = parent.clone();
+                    }
+                    _ => break,
+                },
+                TypeRef::Field(key) => match self.node(&key).map(|node| &node.detail) {
+                    Some(Detail::Field { ty, rules: own, .. }) => {
+                        rules.push(own.clone());
+                        current = ty.clone();
+                    }
+                    _ => break,
+                },
+                _ => break,
+            }
+        }
+        rules
+    }
+
     /// What `ty` is built on and its rules along the way, most specific
     /// first; `None` for an object, an enum or a container.
     pub fn rules(&self, ty: &TypeRef) -> Option<(Builtin, Vec<Rules>)> {
@@ -150,28 +182,34 @@ impl Types {
     /// Whether `ty` is a set: written `Set<T>`, or a named type or a field
     /// type built on one.
     pub fn is_set(&self, ty: &TypeRef) -> bool {
+        matches!(self.collection(ty), Some(TypeRef::Set(_)))
+    }
+
+    /// The `List<T>` or `Set<T>` that `ty` is, or that the named type or
+    /// field type `ty` is built on.
+    pub fn collection<'t>(&'t self, ty: &'t TypeRef) -> Option<&'t TypeRef> {
         let mut current = ty;
         // A chain is acyclic once checked; the bound only keeps a defect
         // from looping.
         for _ in 0..256 {
             match current {
-                TypeRef::Set(_) => return true,
+                TypeRef::List(_) | TypeRef::Set(_) => return Some(current),
                 TypeRef::Nullable(inner) => current = inner,
                 TypeRef::Field(key) => match self.node(key).map(|node| &node.detail) {
                     Some(Detail::Field { ty, .. }) => current = ty,
-                    _ => return false,
+                    _ => return None,
                 },
                 TypeRef::Node(key) => match self.node(key).map(|node| &node.detail) {
                     Some(Detail::Type {
                         base: Base::Refines(parent),
                         ..
                     }) => current = parent,
-                    _ => return false,
+                    _ => return None,
                 },
-                _ => return false,
+                _ => return None,
             }
         }
-        false
+        None
     }
 
     /// A literal as a value of `ty`, the type it goes into (area 2,

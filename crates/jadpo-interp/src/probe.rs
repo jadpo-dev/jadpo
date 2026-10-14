@@ -25,8 +25,12 @@ const TEXTS: [&str; 9] = [
 ];
 
 /// The values of `ty` to probe with, each one `ty` allows; `None` for a
-/// type that isn't a number, text, a UUID or a flag, nullable or not.
+/// type that isn't a number, text, a UUID or a flag, or a list or set of
+/// them, nullable or not.
 pub(crate) fn values(types: &Types, ty: &TypeRef) -> Option<Vec<Value>> {
+    if let Some(collection) = types.collection(ty) {
+        return collections(types, ty, collection);
+    }
     let (builtin, chain) = types.rules(ty)?;
     let mut nums: Vec<Num> = Vec::new();
     let mut lengths: Vec<u64> = vec![0, 1, 3];
@@ -89,6 +93,45 @@ pub(crate) fn values(types: &Types, ty: &TypeRef) -> Option<Vec<Value>> {
     for candidate in candidates {
         let Some(value) = validator.store(candidate) else {
             continue;
+        };
+        if validator.check(&value).is_ok() && !out.contains(&value) {
+            out.push(value);
+        }
+    }
+    if types.is_nullable(ty) {
+        out.push(Value::None);
+    }
+    Some(out)
+}
+
+/// Lists or sets of the item values to probe with, of lengths at and near
+/// the edges of `ty`'s `min_length` and `max_length`, repeats included.
+fn collections(types: &Types, ty: &TypeRef, collection: &TypeRef) -> Option<Vec<Value>> {
+    let (TypeRef::List(item) | TypeRef::Set(item)) = collection else {
+        return None;
+    };
+    let items = values(types, item)?;
+    if items.is_empty() {
+        return Some(Vec::new());
+    }
+    let mut lengths: Vec<u64> = vec![0, 1, 2, 3, 13];
+    let validator = types.validator(ty);
+    for rules in types.length_rules(ty) {
+        for length in [rules.min_length, rules.max_length].into_iter().flatten() {
+            lengths.extend([length.saturating_sub(1), length, length + 1]);
+        }
+    }
+    let set = matches!(collection, TypeRef::Set(_));
+    let mut out: Vec<Value> = Vec::new();
+    for length in lengths.into_iter().filter(|&n| n <= 64) {
+        // Distinct items where there are enough, then the first again.
+        let picked: Vec<Value> = (0..length as usize)
+            .map(|i| items[i % items.len()].clone())
+            .collect();
+        let value = if set {
+            Value::set(picked)
+        } else {
+            Value::list(picked)
         };
         if validator.check(&value).is_ok() && !out.contains(&value) {
             out.push(value);

@@ -221,6 +221,11 @@ impl Body<'_> {
                 };
                 return (Ty::Error, CallKind::Effect(written), reach);
             }
+            if self.symbols.is_package(&head) {
+                // A package's operations come with area 11.
+                let span = self.span(callee);
+                self.not_built_yet(span, &written);
+            }
             self.args_only(call);
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         }

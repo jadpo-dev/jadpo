@@ -162,7 +162,8 @@ impl Program {
     /// Arguments to probe callable `name` with: for each parameter, values
     /// its type allows at and near the edges of its rules, combined, at
     /// most `limit` sets in all. `None` when a parameter's type isn't a
-    /// number, text or a flag, which this doesn't sample.
+    /// number, text, a UUID or a flag, or a list or set of them, which
+    /// this doesn't sample.
     pub fn probe_arguments(&self, name: &str, limit: usize) -> Option<Vec<Vec<Value>>> {
         let key = self.find(name)?;
         let callable = self.callable(self.id(key)?)?;
