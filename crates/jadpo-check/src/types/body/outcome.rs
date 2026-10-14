@@ -123,6 +123,9 @@ impl Body<'_> {
         let mut deferred: Vec<Expr> = Vec::new();
         for arm in arms {
             self.scopes.push(Vec::new());
+            if let Some(Pat::CasePat(case)) = arm.pat() {
+                self.resolved_by(|names, out| crate::resolve::pattern(names, &case, out));
+            }
             let pattern = arm
                 .pat()
                 .map_or(Pattern::Unknown, |pat| self.outcome_pattern(&pat));
@@ -174,6 +177,7 @@ impl Body<'_> {
                             success.clone(),
                             LocalKind::Binding,
                             Some(brackets),
+                            "variable",
                         );
                         if propagates {
                             self.silence_last();
@@ -222,7 +226,13 @@ impl Body<'_> {
                     }
                     if let (Some(name), Some(brackets)) = (name, brackets) {
                         let ty = Ty::Named(failure.clone());
-                        self.declare(Some(name), ty, LocalKind::Binding, Some(brackets));
+                        self.declare(
+                            Some(name),
+                            ty,
+                            LocalKind::Binding,
+                            Some(brackets),
+                            "variable",
+                        );
                     }
                     self.arm = Arm::Failure(armed);
                 }
@@ -351,13 +361,25 @@ impl Body<'_> {
                             && self.symbols.get(only).is_none() =>
                     {
                         if let Some(name) = name {
-                            self.declare(Some(name), Ty::Error, LocalKind::Inline, None);
+                            self.declare(
+                                Some(name),
+                                Ty::Error,
+                                LocalKind::Inline,
+                                None,
+                                "variable",
+                            );
                         }
                         Pattern::Unknown
                     }
                     _ => {
                         if let Some(name) = name {
-                            self.declare(Some(name), Ty::Error, LocalKind::Inline, None);
+                            self.declare(
+                                Some(name),
+                                Ty::Error,
+                                LocalKind::Inline,
+                                None,
+                                "variable",
+                            );
                         }
                         Pattern::Other
                     }

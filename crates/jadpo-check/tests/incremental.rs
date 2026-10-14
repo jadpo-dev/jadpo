@@ -99,7 +99,12 @@ fn editing_a_signature_recomputes_the_files_that_read_it() {
         "b now calls a function that is gone"
     );
     let log = Log::take(&db);
-    assert_eq!(log.count("resolve_file"), 2, "a and b: {:?}", log.0);
+    assert_eq!(
+        log.count("resolve_file"),
+        1,
+        "a's declarations; b's call is resolved in its body's walk: {:?}",
+        log.0
+    );
     assert_eq!(
         log.count("typed_body"),
         2,

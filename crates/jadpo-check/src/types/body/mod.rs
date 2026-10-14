@@ -29,7 +29,7 @@ mod ranges;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use jadpo_db::{Db, File, ItemKind, Project, item_tree};
+use jadpo_db::{Db, File, ItemKind, Ownership, Project, item_tree, location};
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::Key;
 use jadpo_syntax::SyntaxKind;
@@ -38,8 +38,8 @@ use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, Stmt};
 use super::decl::Decls;
 use super::table::TypeView;
 use super::ty::{Prim, Ty, TypeNode, TypeRef};
-use crate::case::is_lower_snake;
 use crate::lookups::{FailureView, Lookup, NameView, SigView};
+use crate::resolve::{Names, Walk, Want};
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 
@@ -134,6 +134,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
     let lookup = Lookup::new(db, project);
     let mut checker = Body {
         path: file.path(db),
+        ownership: &location(db, project, file).ownership,
         table: &lookup,
         calls: &lookup,
         symbols: &lookup,
@@ -152,6 +153,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         facts: Facts::default(),
         set: None,
         out: Vec::new(),
+        resolved: Vec::new(),
     };
     let Some(target) = checker.target(&decl, callable.function(db)) else {
         return Checked::default();
@@ -160,8 +162,10 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
     let syntax = target.syntax.clone();
     checker.callable(target);
     let body = lower::lower(&checker, &lookup, file.text(db), &syntax);
+    let mut problems = checker.out;
+    problems.append(&mut checker.resolved);
     Checked {
-        problems: checker.out,
+        problems,
         set: checker.set,
         key,
         body,
@@ -295,6 +299,8 @@ enum CallKind {
 
 struct Body<'a> {
     path: &'a str,
+    /// Who owns the file: what it may use (area 1).
+    ownership: &'a Ownership,
     table: &'a dyn TypeView,
     calls: &'a dyn SigView,
     symbols: &'a dyn NameView,
@@ -324,6 +330,10 @@ struct Body<'a> {
     /// The callable's name and failure set, once checked.
     set: Option<(String, FailureSet)>,
     out: Vec<Diagnostic>,
+    /// What resolving the body's names finds (area 1), kept apart from
+    /// `out`, whose length tells the checks what is already reported, so
+    /// a name error never changes what the type checks decide.
+    resolved: Vec<Diagnostic>,
 }
 
 /// One callable to check.
@@ -372,6 +382,12 @@ fn capital(text: &str) -> String {
         Some(first) => first.to_uppercase().chain(chars).collect(),
         None => String::new(),
     }
+}
+
+/// Whether an expression is a name starting with a capital: a type, an
+/// enum or an entity, resolved rather than read as a local.
+fn is_type_name(expr: &Expr) -> bool {
+    matches!(expr, Expr::NameRef(name) if crate::case::starts_upper(&text(name)))
 }
 
 /// Whether an expression is a literal, which takes the type it goes into.
@@ -532,7 +548,7 @@ impl Body<'_> {
             {
                 ty = Ty::Error;
             }
-            self.declare(param.name(), ty, LocalKind::Param, None);
+            self.declare(param.name(), ty, LocalKind::Param, None, "parameter");
         }
         self.result = match result {
             Some(ret) => self.resolve(ret.ty()),
@@ -572,23 +588,31 @@ impl Body<'_> {
 
     // --- locals -------------------------------------------------------------
 
-    /// Brings a name into the innermost scope. Resolution reports a name
-    /// declared twice (area 1); here the latest one wins.
-    fn declare(&mut self, name: Option<ast::Name>, ty: Ty, kind: LocalKind, binding: Option<Span>) {
+    /// Brings a name into the innermost scope, resolving it as it comes
+    /// in (area 1): its case, a reserved word, a name already in scope or
+    /// one a domain or library has. The latest declaration wins; `word`
+    /// names it in those errors: `parameter` or `variable`.
+    fn declare(
+        &mut self,
+        name: Option<ast::Name>,
+        ty: Ty,
+        kind: LocalKind,
+        binding: Option<Span>,
+        word: &str,
+    ) {
         let Some(name) = name else { return };
         let Some(text) = tree::name_text(&name) else {
             return;
         };
         let span = self.span(&name);
-        // A name resolution reports (area 1, and shadowing from area 3) is
-        // the mistake on this line, as is code that never runs; whether the
-        // name is read is not another one.
-        let reported = self.dead
-            || self.is_local(&text)
-            || !is_lower_snake(&text)
-            || StdNames::get().reserved(&text)
-            || self.symbols.is_domain(&text)
-            || self.symbols.library(&text).is_some();
+        let earlier = self.declared_at(&text);
+        let mut found = Vec::new();
+        let misnamed = self.names().declare(&name, word, earlier, &mut found);
+        self.resolved.append(&mut found);
+        // A name reported as it comes in is the mistake on this line, as
+        // is code that never runs; whether the name is read is not another
+        // one.
+        let reported = self.dead || misnamed;
         let id = self.facts.locals.len();
         self.facts.locals.push(LocalFact {
             name: text.clone(),
@@ -608,6 +632,45 @@ impl Body<'_> {
                 used: reported,
             });
         }
+    }
+
+    /// Resolving names, for this file and the library being checked.
+    fn names(&self) -> Names<'_> {
+        Names {
+            path: self.path,
+            ownership: self.ownership,
+            table: self.symbols,
+            types: self.table,
+            std: StdNames::get(),
+            library: self.library.as_deref(),
+        }
+    }
+
+    /// Where the local `name` in scope is first declared, outermost first.
+    fn declared_at(&self, name: &str) -> Option<Span> {
+        self.scopes
+            .iter()
+            .flatten()
+            .find(|local| local.name == name)
+            .map(|local| local.span.clone())
+    }
+
+    /// Resolves a subtree this walk doesn't check, with the locals in
+    /// scope here.
+    fn walk(&mut self, resolve: impl FnOnce(&mut Walk<'_>)) {
+        let names = self.names();
+        let outer = |name: &str| self.declared_at(name);
+        let mut walk = Walk::new(&names, &outer);
+        resolve(&mut walk);
+        let mut found = walk.out;
+        self.resolved.append(&mut found);
+    }
+
+    /// Resolves names with `resolve`, keeping what it reports.
+    fn resolved_by(&mut self, resolve: impl FnOnce(&Names<'_>, &mut Vec<Diagnostic>)) {
+        let mut found = Vec::new();
+        resolve(&self.names(), &mut found);
+        self.resolved.append(&mut found);
     }
 
     fn find(&self, name: &str) -> Option<&Local> {
@@ -703,8 +766,15 @@ impl Body<'_> {
         let mut leaving: Option<Span> = None;
         let mut reported = false;
         for item in block.block_items() {
-            let BlockItem::Stmt(stmt) = item else {
-                continue;
+            let stmt = match item {
+                BlockItem::Stmt(stmt) => stmt,
+                // A member is a later area's setting (an entity write's
+                // block, a test's settings): its names are resolved.
+                BlockItem::Member(member) => {
+                    self.walk(|walk| walk.member(&member));
+                    continue;
+                }
+                BlockItem::Elision(_) => continue,
             };
             if !completes && !reported {
                 reported = true;
@@ -764,6 +834,7 @@ impl Body<'_> {
     fn stmt(&mut self, stmt: &Stmt) -> bool {
         match stmt {
             Stmt::VarStmt(var) => {
+                self.resolved_by(|names, out| names.ty(var.ty(), Want::Type, out));
                 let declared = var.ty().map(|ty| {
                     let mut decls = Decls {
                         path: self.path,
@@ -792,7 +863,7 @@ impl Body<'_> {
                 } else {
                     LocalKind::Var
                 };
-                self.declare(var.name(), ty, kind, None);
+                self.declare(var.name(), ty, kind, None, "variable");
                 true
             }
             Stmt::AssignStmt(assign) => {
@@ -810,7 +881,7 @@ impl Body<'_> {
                     None => Ty::Error,
                 };
                 self.scopes.push(Vec::new());
-                self.declare(each.name(), item, LocalKind::Item, None);
+                self.declare(each.name(), item, LocalKind::Item, None, "variable");
                 self.block(each.block());
                 self.pop_scope();
                 true
@@ -822,6 +893,13 @@ impl Body<'_> {
                 true
             }
             Stmt::AssertStmt(assert) => {
+                self.resolved_by(|names, out| {
+                    names.ty(
+                        assert.assert_fails().and_then(|fails| fails.ty()),
+                        Want::Failure,
+                        out,
+                    );
+                });
                 // `assert complete(id) fails TodoNotFound` expects the call
                 // to fail (area 13): it is handled there.
                 let handled = match (assert.expr(), assert.assert_fails()) {
@@ -956,6 +1034,9 @@ impl Body<'_> {
 
     fn assign(&mut self, assign: &ast::AssignStmt) {
         let value = assign.value();
+        if let Some(target) = assign.target().filter(is_type_name) {
+            self.resolved_by(|names, out| names.value_name(&target, out));
+        }
         match assign.target() {
             Some(Expr::NameRef(name)) => {
                 let written = text(&name);

@@ -3,12 +3,22 @@
 //! table, the standard library or the scope of locals, and checked for
 //! kind, visibility and direction.
 //!
+//! [`resolve_file`] resolves a file's declarations: types and their fields,
+//! callable signatures, and the parameters of queries, which have no body.
+//! Names inside bodies are resolved by each body's own walk in
+//! `typed_body` (chunk 2.1), which calls [`Names`] at every node it checks,
+//! so a body's name errors, its types and its unused variables come from
+//! one walk over one set of scopes. Where that walk doesn't go into a
+//! subtree (a block of settings, the fields of a value already reported as
+//! built wrongly), it resolves the subtree with a [`Walk`] over the same
+//! scopes.
+//!
 //! A file's resolution reads its own tree and the symbol table, never
 //! another file's tree, so editing a body elsewhere does not recompute it.
 //! Lower-case names used as values (`total`, `todo.title`) are area 3's to
 //! check, with types.
 
-use jadpo_db::{Base, Db, File, ItemKind, Ownership, Project, Symbol, location};
+use jadpo_db::{Base, Db, File, ItemKind, Ownership, Project, Symbol, item_tree, location};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, MemberItem, Pat, Stmt, Type};
 
@@ -23,12 +33,12 @@ const ENTITY_OPERATIONS: [&str; 4] = ["get", "create", "update", "delete"];
 
 /// What a type position accepts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Want {
+pub(crate) enum Want {
     Type,
     Failure,
 }
 
-/// Resolution problems of one file.
+/// Resolution problems of one file's declarations.
 #[salsa::tracked(returns(ref))]
 pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let Some(source) = tree::source(db, file) else {
@@ -36,37 +46,123 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
     };
     let location = location(db, project, file);
     let lookup = Lookup::new(db, project);
-    let mut resolver = Resolver {
+    let names = Names {
         path: file.path(db),
         ownership: &location.ownership,
         table: &lookup,
         types: &lookup,
-        names: StdNames::get(),
-        scopes: Vec::new(),
+        std: StdNames::get(),
         library: None,
-        out: Vec::new(),
     };
-    for decl in source.decls() {
-        resolver.decl(&decl);
+    let items = &item_tree(db, file).items;
+    let mut out = Vec::new();
+    for (index, decl) in source.decls().enumerate() {
+        let item = items.iter().find(|item| item.index as usize == index);
+        unchecked_bodies(&names, &decl, item, &mut out);
+        match &decl {
+            Decl::TypeDecl(d) => names.type_decl(d, &mut out),
+            Decl::FunctionDecl(d) => names.signature(
+                d.param_list(),
+                d.fails_clause(),
+                d.ret_type(),
+                false,
+                &mut out,
+            ),
+            Decl::ActionDecl(d) => names.signature(
+                d.param_list(),
+                d.fails_clause(),
+                d.ret_type(),
+                false,
+                &mut out,
+            ),
+            // A query has no body, so its parameters come into scope here.
+            Decl::QueryDecl(d) => names.signature(
+                d.param_list(),
+                d.fails_clause(),
+                d.ret_type(),
+                true,
+                &mut out,
+            ),
+            Decl::FixtureDecl(d) => {
+                names.signature(d.param_list(), None, d.ret_type(), false, &mut out)
+            }
+            Decl::LibraryDecl(d) => {
+                for function in tree::library_functions(d) {
+                    names.signature(
+                        function.param_list(),
+                        function.fails_clause(),
+                        function.ret_type(),
+                        false,
+                        &mut out,
+                    );
+                }
+            }
+            _ => {}
+        }
     }
-    resolver.out
+    out
 }
 
-struct Resolver<'a> {
-    path: &'a str,
-    ownership: &'a Ownership,
-    /// The symbol table, read name by name (docs/compiler-runtime.md
-    /// §2.4); suggestions on a mistake read it whole.
-    table: &'a dyn NameView,
-    /// The type table, read name by name: an entity's fields.
-    types: &'a dyn crate::types::TypeView,
-    names: &'static StdNames,
-    /// Locals in scope, with where each is declared.
-    scopes: Vec<Vec<(String, Span)>>,
+/// The bodies no typed body is built for, because the item tree has no
+/// name for them (`seed { ... }` without one, which is reported): their
+/// names are resolved here, as every body's are.
+fn unchecked_bodies(
+    names: &Names<'_>,
+    decl: &Decl,
+    item: Option<&jadpo_db::Item>,
+    out: &mut Vec<Diagnostic>,
+) {
+    let outer = |_: &str| None;
+    let body =
+        |params: Option<ast::ParamList>, block: Option<ast::Block>, out: &mut Vec<Diagnostic>| {
+            let mut walk = Walk::new(names, &outer);
+            walk.scopes.push(Vec::new());
+            for param in params.iter().flat_map(|list| list.params()) {
+                walk.declare(param.name(), "parameter");
+            }
+            walk.block(block);
+            out.append(&mut walk.out);
+        };
+    let checked = item.is_some_and(|item| {
+        matches!(
+            item.kind,
+            ItemKind::Function
+                | ItemKind::Action
+                | ItemKind::Fixture
+                | ItemKind::Test
+                | ItemKind::Seed
+        )
+    });
+    match decl {
+        Decl::FunctionDecl(d) if !checked => body(d.param_list(), d.block(), out),
+        Decl::ActionDecl(d) if !checked => body(d.param_list(), d.block(), out),
+        Decl::FixtureDecl(d) if !checked => body(d.param_list(), d.block(), out),
+        Decl::TestDecl(d) if !checked => body(None, d.block(), out),
+        Decl::SeedDecl(d) if !checked => body(None, d.block(), out),
+        // `typed_body` checks a library's first `functions.len()` functions.
+        Decl::LibraryDecl(d) => {
+            let typed = item.map_or(0, |item| item.functions.len());
+            for function in tree::library_functions(d).into_iter().skip(typed) {
+                body(function.param_list(), function.block(), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// What resolving a name needs: the file, the symbol and type tables read
+/// name by name (docs/compiler-runtime.md §2.4), and the standard
+/// library. Suggestions on a mistake read the tables whole.
+pub(crate) struct Names<'a> {
+    pub path: &'a str,
+    pub ownership: &'a Ownership,
+    pub table: &'a dyn NameView,
+    /// The type table: an entity's fields.
+    pub types: &'a dyn crate::types::TypeView,
+    pub std: &'static StdNames,
     /// The library whose functions are being resolved: they call each
     /// other bare, as helpers in their own file.
-    library: Option<String>,
-    out: Vec<Diagnostic>,
+    pub library: Option<&'a str>,
 }
 
 fn text(name: &ast::NameRef) -> String {
@@ -77,68 +173,51 @@ fn did_you_mean(near: Option<&str>) -> String {
     near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
 }
 
-impl Resolver<'_> {
+impl Names<'_> {
     fn span(&self, node: &impl AstNode) -> Span {
         node_span(self.path, node.syntax())
     }
 
-    fn decl(&mut self, decl: &Decl) {
-        match decl {
-            Decl::TypeDecl(d) => self.type_decl(d),
-            Decl::FunctionDecl(d) => {
-                self.callable(d.param_list(), d.fails_clause(), d.ret_type(), d.block())
-            }
-            Decl::ActionDecl(d) => {
-                self.callable(d.param_list(), d.fails_clause(), d.ret_type(), d.block())
-            }
-            Decl::QueryDecl(d) => {
-                self.callable(d.param_list(), d.fails_clause(), d.ret_type(), None)
-            }
-            Decl::FixtureDecl(d) => self.callable(d.param_list(), None, d.ret_type(), d.block()),
-            Decl::LibraryDecl(d) => {
-                self.library = d.name().as_ref().and_then(tree::name_text);
-                for function in tree::library_functions(d) {
-                    self.callable(
-                        function.param_list(),
-                        function.fails_clause(),
-                        function.ret_type(),
-                        function.block(),
-                    );
-                }
-                self.library = None;
-            }
-            Decl::TestDecl(d) => self.block(d.block()),
-            Decl::SeedDecl(d) => self.block(d.block()),
-            _ => {}
-        }
-    }
+    // --- declarations ------------------------------------------------------
 
-    fn callable(
-        &mut self,
+    /// A callable's parameter types, `fails` list and result; `params`
+    /// says whether its parameters come into scope here, for a query.
+    fn signature(
+        &self,
         params: Option<ast::ParamList>,
         fails: Option<ast::FailsClause>,
         result: Option<ast::RetType>,
-        body: Option<ast::Block>,
+        declare_params: bool,
+        out: &mut Vec<Diagnostic>,
     ) {
-        self.scopes.push(Vec::new());
+        let mut scope: Vec<(String, Span)> = Vec::new();
         for param in params.iter().flat_map(|list| list.params()) {
-            self.ty(param.ty(), Want::Type);
-            self.declare(param.name(), "parameter");
+            self.ty(param.ty(), Want::Type, out);
+            if declare_params && let Some(name) = param.name() {
+                let earlier = tree::name_text(&name).and_then(|text| {
+                    scope
+                        .iter()
+                        .find(|(local, _)| *local == text)
+                        .map(|(_, span)| span.clone())
+                });
+                self.declare(&name, "parameter", earlier, out);
+                if let Some(text) = tree::name_text(&name) {
+                    scope.push((text, self.span(&name)));
+                }
+            }
         }
         for ty in fails.iter().flat_map(|clause| clause.types()) {
-            self.ty(Some(ty), Want::Failure);
+            self.ty(Some(ty), Want::Failure, out);
         }
-        self.ty(result.and_then(|ret| ret.ty()), Want::Type);
-        self.block(body);
-        self.scopes.pop();
+        self.ty(result.and_then(|ret| ret.ty()), Want::Type, out);
     }
 
-    fn type_decl(&mut self, decl: &ast::TypeDecl) {
+    fn type_decl(&self, decl: &ast::TypeDecl, out: &mut Vec<Diagnostic>) {
         let base_text = decl
             .base()
             .map(|base| tree::written(base.syntax()))
             .unwrap_or_default();
-        self.ty(decl.base(), Want::Type);
+        self.ty(decl.base(), Want::Type, out);
         let base = Base::from_written(&base_text);
         let list = decl.member_list();
         match base {
@@ -148,7 +227,7 @@ impl Resolver<'_> {
                         tree::name_text(&name).as_deref(),
                         Some("client" | "internal")
                     ) {
-                        self.fields(member.block());
+                        self.fields(member.block(), out);
                     }
                 }
             }
@@ -156,22 +235,22 @@ impl Resolver<'_> {
                 for item in list.iter().flat_map(|list| list.member_items()) {
                     match item {
                         MemberItem::BareMember(variant) => {
-                            self.member_name(variant.name(), "variant")
+                            self.member_name(variant.name(), "variant", out)
                         }
                         MemberItem::Member(variant) => {
                             if let Some(key) = variant.member_key() {
-                                self.member_name(key.names().next(), "variant");
+                                self.member_name(key.names().next(), "variant", out);
                             }
                             if let Some(value) = variant.value() {
-                                self.type_expr(&value, Want::Type);
+                                self.type_expr(&value, Want::Type, out);
                             }
-                            self.fields(variant.block());
+                            self.fields(variant.block(), out);
                         }
                         _ => {}
                     }
                 }
             }
-            base if base.has_fields() => self.fields(list),
+            base if base.has_fields() => self.fields(list, out),
             _ => {}
         }
     }
@@ -179,7 +258,7 @@ impl Resolver<'_> {
     /// A block of fields: `name: Type`, and the lines that copy fields
     /// from other types (area 2): `include: [Todo]`, `pick: [Todo.title]`,
     /// `omit: [...]` and `optional: [...]` or `all`.
-    fn fields(&mut self, list: Option<ast::MemberList>) {
+    fn fields(&self, list: Option<ast::MemberList>, out: &mut Vec<Diagnostic>) {
         for item in list.iter().flat_map(|list| list.member_items()) {
             let MemberItem::Member(field) = item else {
                 continue;
@@ -192,7 +271,7 @@ impl Resolver<'_> {
                 Some("include" | "pick" | "omit") => {
                     if let Some(Expr::ListExpr(list)) = field.value() {
                         for entry in list.exprs() {
-                            self.type_expr(&entry, Want::Type);
+                            self.type_expr(&entry, Want::Type, out);
                         }
                     }
                     continue;
@@ -201,22 +280,22 @@ impl Resolver<'_> {
                 _ => {}
             }
             if let Some(key) = field.member_key() {
-                self.member_name(key.names().next(), "field");
+                self.member_name(key.names().next(), "field", out);
             }
             if let Some(value) = field.value() {
-                self.type_expr(&value, Want::Type);
+                self.type_expr(&value, Want::Type, out);
             }
         }
     }
 
-    fn member_name(&mut self, name: Option<ast::Name>, word: &str) {
+    fn member_name(&self, name: Option<ast::Name>, word: &str, out: &mut Vec<Diagnostic>) {
         let Some(name) = name else { return };
         let Some(text) = tree::name_text(&name) else {
             return;
         };
         if !is_lower_snake(&text) {
             let span = self.span(&name);
-            self.out.push(name_case(
+            out.push(name_case(
                 &text,
                 &to_snake(&text),
                 word,
@@ -226,30 +305,37 @@ impl Resolver<'_> {
         }
     }
 
-    /// A parameter, variable or binding coming into scope.
-    fn declare(&mut self, name: Option<ast::Name>, word: &str) {
-        let Some(name) = name else { return };
-        let Some(text) = tree::name_text(&name) else {
-            return;
+    /// A parameter, variable or binding coming into scope, `earlier` being
+    /// where a local of the same name in scope is declared. Whether it is
+    /// reported, so an unused-variable error never repeats the mistake.
+    pub fn declare(
+        &self,
+        name: &ast::Name,
+        word: &str,
+        earlier: Option<Span>,
+        out: &mut Vec<Diagnostic>,
+    ) -> bool {
+        let Some(text) = tree::name_text(name) else {
+            return false;
         };
-        let span = self.span(&name);
+        let span = self.span(name);
         if !is_lower_snake(&text) {
-            self.out.push(name_case(
+            out.push(name_case(
                 &text,
                 &to_snake(&text),
                 word,
                 "lower_snake_case",
-                span.clone(),
+                span,
             ));
-        } else if self.names.reserved(&text) {
-            self.out.push(reserved(&text, span.clone()));
-        } else if let Some(earlier) = self.declared_at(&text) {
-            self.out.push(
+        } else if self.std.reserved(&text) {
+            out.push(reserved(&text, span));
+        } else if let Some(earlier) = earlier {
+            out.push(
                 Diagnostic::new(
                     &rule::SEMANTIC_DUPLICATE_DECLARATION,
                     format!("`{text}` is already declared"),
                 )
-                .at(span.clone(), "declared again")
+                .at(span, "declared again")
                 .also(earlier, "first declared here")
                 .reason("A name in scope can't be declared again, parameters included, so one name means one value wherever it is read.")
                 .next(format!("Give this {word} a name of its own")),
@@ -260,37 +346,24 @@ impl Resolver<'_> {
             } else {
                 "library"
             };
-            self.out.push(
+            out.push(
                 Diagnostic::new(
                     &rule::SEMANTIC_DUPLICATE_DECLARATION,
                     format!("`{text}` is already a {what}"),
                 )
-                .at(span.clone(), format!("named like a {what}"))
+                .at(span, format!("named like a {what}"))
                 .reason("A variable can't reuse a domain's or library's name, so `name.call(...)` has one meaning.")
                 .next(format!("Rename this {word}")),
             );
+        } else {
+            return false;
         }
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.push((text, span));
-        }
-    }
-
-    /// Where a local called `name` in scope is declared.
-    fn declared_at(&self, name: &str) -> Option<Span> {
-        self.scopes
-            .iter()
-            .flatten()
-            .find(|(local, _)| local == name)
-            .map(|(_, span)| span.clone())
-    }
-
-    fn is_local(&self, name: &str) -> bool {
-        self.declared_at(name).is_some()
+        true
     }
 
     // --- types -----------------------------------------------------------
 
-    fn ty(&mut self, ty: Option<Type>, want: Want) {
+    pub fn ty(&self, ty: Option<Type>, want: Want, out: &mut Vec<Diagnostic>) {
         match ty {
             Some(Type::PathType(path_type)) => {
                 let names: Vec<ast::NameRef> = path_type
@@ -301,7 +374,7 @@ impl Resolver<'_> {
                 if let Some(first) = names.first() {
                     let packaged = names.len() > 1 && self.table.is_package(&text(first));
                     if !packaged {
-                        self.type_name(first, want);
+                        self.type_name(first, want, out);
                     }
                 }
                 for arg in path_type
@@ -309,58 +382,58 @@ impl Resolver<'_> {
                     .into_iter()
                     .flat_map(|list| list.types())
                 {
-                    self.ty(Some(arg), Want::Type);
+                    self.ty(Some(arg), Want::Type, out);
                 }
             }
-            Some(Type::NullableType(nullable)) => self.ty(nullable.ty(), want),
+            Some(Type::NullableType(nullable)) => self.ty(nullable.ty(), want, out),
             None => {}
         }
     }
 
     /// A type written as a member's value: `Count`, `Todo.id`, `List<Tag>`,
     /// `Name?`, `ProductName { optional: true }`.
-    fn type_expr(&mut self, expr: &Expr, want: Want) {
+    fn type_expr(&self, expr: &Expr, want: Want, out: &mut Vec<Diagnostic>) {
         match expr {
-            Expr::NameRef(name) => self.type_name(name, want),
+            Expr::NameRef(name) => self.type_name(name, want, out),
             Expr::FieldExpr(_) => {
                 if let Some((first, _)) = dotted(expr)
                     && !self.table.is_package(&text(&first))
                 {
-                    self.type_name(&first, want);
+                    self.type_name(&first, want, out);
                 }
             }
             Expr::GenericExpr(generic) => {
                 if let Some(inner) = generic.expr() {
-                    self.type_expr(&inner, Want::Type);
+                    self.type_expr(&inner, Want::Type, out);
                 }
                 for arg in generic
                     .generic_arg_list()
                     .into_iter()
                     .flat_map(|list| list.types())
                 {
-                    self.ty(Some(arg), Want::Type);
+                    self.ty(Some(arg), Want::Type, out);
                 }
             }
             Expr::NullableExpr(nullable) => {
                 if let Some(inner) = nullable.expr() {
-                    self.type_expr(&inner, want);
+                    self.type_expr(&inner, want, out);
                 }
             }
             Expr::RecordExpr(record) => {
                 if let Some(inner) = record.expr() {
-                    self.type_expr(&inner, want);
+                    self.type_expr(&inner, want, out);
                 }
             }
             _ => {}
         }
     }
 
-    fn type_name(&mut self, name: &ast::NameRef, want: Want) {
+    pub fn type_name(&self, name: &ast::NameRef, want: Want, out: &mut Vec<Diagnostic>) {
         let text = text(name);
         let span = self.span(name);
-        if self.names.is_type(&text) {
+        if self.std.is_type(&text) {
             if want == Want::Failure {
-                self.out.push(not_a_failure(&text, "a built-in type", span));
+                out.push(not_a_failure(&text, "a built-in type", span));
             }
             return;
         }
@@ -370,27 +443,27 @@ impl Resolver<'_> {
                 (ItemKind::Type(_) | ItemKind::Entity, Want::Type) => true,
                 (ItemKind::Type(_) | ItemKind::Entity, Want::Failure) => {
                     let what = symbol.kind.with_a();
-                    self.out.push(not_a_failure(&text, &what, span));
+                    out.push(not_a_failure(&text, &what, span));
                     return;
                 }
                 _ => false,
             };
             if fits {
                 let symbol = symbol.clone();
-                self.access(&symbol, span);
+                self.access(&symbol, span, out);
             } else {
                 let what = symbol.kind.with_a();
-                self.out.push(not_a_type(&text, &what, span));
+                out.push(not_a_type(&text, &what, span));
             }
             return;
         }
         if let Some(what) = self.qualifier_kind(&text) {
-            self.out.push(not_a_type(&text, &format!("a {what}"), span));
+            out.push(not_a_type(&text, &format!("a {what}"), span));
             return;
         }
         let candidates = self.type_names(want);
         let near = nearest(&text, candidates.iter().map(String::as_str)).map(str::to_string);
-        self.out.push(unknown_name(&text, near.as_deref(), span));
+        out.push(unknown_name(&text, near.as_deref(), span));
     }
 
     /// Every type name a position could have meant.
@@ -409,7 +482,7 @@ impl Resolver<'_> {
             .map(|(name, _)| name.clone())
             .collect();
         if want == Want::Type {
-            names.extend(self.names.types().map(str::to_string));
+            names.extend(self.std.types().map(str::to_string));
         }
         names
     }
@@ -420,7 +493,7 @@ impl Resolver<'_> {
             Some("domain")
         } else if self.table.library(name).is_some() {
             Some("library")
-        } else if self.names.reserved(name) {
+        } else if self.std.reserved(name) {
             Some("standard-library namespace")
         } else if self.table.is_connection(name) {
             Some("connection")
@@ -431,253 +504,106 @@ impl Resolver<'_> {
 
     /// Checks that this file may use `symbol`: visible from its domain, and
     /// not domain code used from `shared/`.
-    fn access(&mut self, symbol: &Symbol, span: Span) {
+    fn access(&self, symbol: &Symbol, span: Span, out: &mut Vec<Diagnostic>) {
         if *self.ownership == Ownership::Shared {
             if let Ownership::Domain(domain) = &symbol.ownership {
-                self.out.push(call_direction(symbol, domain, span));
+                out.push(call_direction(symbol, domain, span));
             }
             return;
         }
         if !symbol.visible_from(self.ownership)
             && let Ownership::Domain(domain) = &symbol.ownership
         {
-            self.out.push(private(symbol, domain, span));
+            out.push(private(symbol, domain, span));
         }
     }
 
-    // --- bodies ----------------------------------------------------------
-
-    fn block(&mut self, block: Option<ast::Block>) {
-        let Some(block) = block else { return };
-        self.scopes.push(Vec::new());
-        for item in block.block_items() {
-            match item {
-                BlockItem::Stmt(stmt) => self.stmt(&stmt),
-                BlockItem::Member(member) => {
-                    if let Some(value) = member.value() {
-                        self.expr(&value);
-                    }
-                    self.member_values(member.block());
-                }
-                BlockItem::Elision(_) => {}
-            }
-        }
-        self.scopes.pop();
-    }
-
-    fn stmt(&mut self, stmt: &Stmt) {
-        match stmt {
-            Stmt::VarStmt(var) => {
-                self.ty(var.ty(), Want::Type);
-                if let Some(value) = var.expr() {
-                    self.expr(&value);
-                }
-                self.declare(var.name(), "variable");
-            }
-            Stmt::AssignStmt(assign) => {
-                for expr in [assign.target(), assign.value()].into_iter().flatten() {
-                    self.expr(&expr);
-                }
-            }
-            Stmt::ReturnStmt(ret) => {
-                if let Some(expr) = ret.expr() {
-                    self.expr(&expr);
-                }
-            }
-            Stmt::IfStmt(branch) => self.if_stmt(branch),
-            Stmt::ForStmt(each) => {
-                if let Some(expr) = each.expr() {
-                    self.expr(&expr);
-                }
-                self.scopes.push(Vec::new());
-                self.declare(each.name(), "variable");
-                self.block(each.block());
-                self.scopes.pop();
-            }
-            Stmt::EmitStmt(emit) => {
-                if let Some(expr) = emit.expr() {
-                    self.expr(&expr);
-                }
-            }
-            Stmt::AssertStmt(assert) => {
-                if let Some(expr) = assert.expr() {
-                    self.expr(&expr);
-                }
-                self.ty(
-                    assert.assert_fails().and_then(|fails| fails.ty()),
-                    Want::Failure,
-                );
-            }
-            Stmt::ExprStmt(expr) => {
-                if let Some(expr) = expr.expr() {
-                    self.expr(&expr);
-                }
-            }
-        }
-    }
-
-    fn if_stmt(&mut self, branch: &ast::IfStmt) {
-        if let Some(condition) = branch.condition().and_then(|c| c.expr()) {
-            self.expr(&condition);
-        }
-        self.block(branch.block());
-        for next in branch.else_ifs() {
-            if let Some(condition) = next.condition().and_then(|c| c.expr()) {
-                self.expr(&condition);
-            }
-            self.block(next.block());
-        }
-        if let Some(otherwise) = branch.else_branch() {
-            self.block(otherwise.block());
-        }
-    }
-
-    fn member_values(&mut self, list: Option<ast::MemberList>) {
-        for item in list.iter().flat_map(|list| list.member_items()) {
-            if let MemberItem::Member(member) = item {
-                if let Some(value) = member.value() {
-                    self.expr(&value);
-                }
-                self.member_values(member.block());
-            }
-        }
-    }
-
-    fn expr(&mut self, expr: &Expr) {
-        match expr {
-            Expr::CallExpr(call) => self.call(call),
-            Expr::RejectExpr(reject) => match reject.expr() {
-                Some(Expr::NameRef(name)) => self.type_name(&name, Want::Failure),
-                Some(Expr::RecordExpr(record)) => {
-                    match record.expr() {
-                        Some(Expr::NameRef(name)) => self.type_name(&name, Want::Failure),
-                        Some(other) => self.not_a_failure_value(&other),
-                        None => {}
-                    }
-                    self.member_values(record.member_list());
-                }
-                Some(other) => self.not_a_failure_value(&other),
-                None => {}
-            },
-            Expr::AttemptExpr(attempt) => {
-                if let Some(inner) = attempt.expr() {
-                    self.expr(&inner);
-                }
-                for mapping in attempt.mappings() {
-                    match mapping.expr() {
-                        Some(Expr::NameRef(name)) => self.type_name(&name, Want::Failure),
-                        Some(other) => self.not_a_failure_value(&other),
-                        None => {}
-                    }
-                }
-            }
-            Expr::RecordExpr(record) => {
-                match record.expr() {
-                    Some(Expr::NameRef(name)) if starts_upper(&text(&name)) => {
-                        self.type_name(&name, Want::Type)
-                    }
-                    Some(other) => self.expr(&other),
-                    None => {}
-                }
-                self.member_values(record.member_list());
-            }
-            Expr::FieldExpr(_) | Expr::NameRef(_) => {
-                if let Some((first, _)) = dotted(expr) {
-                    if starts_upper(&text(&first)) {
-                        self.type_qualifier(&first, false);
-                    }
-                } else {
-                    self.children(expr);
-                }
-            }
-            Expr::MatchExpr(subject) => {
-                if let Some(inner) = subject.expr() {
-                    self.expr(&inner);
-                }
-                for arm in subject
-                    .match_arm_list()
-                    .into_iter()
-                    .flat_map(|list| list.match_arms())
-                {
-                    self.scopes.push(Vec::new());
-                    if let Some(Pat::CasePat(case)) = arm.pat() {
-                        if let Some(first) = case.path().and_then(|path| path.name_refs().next())
-                            && starts_upper(&text(&first))
-                        {
-                            self.type_qualifier(&first, false);
-                        }
-                        self.declare(case.pat_binding().and_then(|b| b.name()), "variable");
-                    }
-                    if let Some(value) = arm.expr() {
-                        self.expr(&value);
-                    }
-                    self.block(arm.block());
-                    self.scopes.pop();
-                }
-            }
-            Expr::LambdaExpr(lambda) => {
-                self.scopes.push(Vec::new());
-                self.declare(lambda.name(), "parameter");
-                if let Some(body) = lambda.expr() {
-                    self.expr(&body);
-                }
-                self.scopes.pop();
-            }
-            _ => self.children(expr),
-        }
-    }
+    // --- failures ----------------------------------------------------------
 
     /// Where a failure is named (`reject`, a mapping), anything but a
     /// failure's name: an enum's variant such as `FailureKind.rejected`, a
-    /// field or any other value (area 4).
-    fn not_a_failure_value(&mut self, expr: &Expr) {
-        // `reject OutOfStock()`: the call is the mistake.
+    /// field or any other value (area 4). `reject OutOfStock()` is a call
+    /// to a type, reported where the call is resolved: whether it is one.
+    pub fn not_a_failure_value(&self, expr: &Expr, out: &mut Vec<Diagnostic>) -> bool {
         if let Expr::CallExpr(call) = expr
             && let Some(Expr::NameRef(name)) = call.expr()
             && starts_upper(&text(&name))
         {
-            self.expr(expr);
-            return;
+            return true;
         }
         let written = tree::written(expr.syntax());
         let span = self.span(expr);
-        self.out.push(not_a_failure(&written, "a value", span));
+        out.push(not_a_failure(&written, "a value", span));
+        false
     }
 
-    fn children(&mut self, expr: &Expr) {
-        for child in expr.syntax().children().filter_map(Expr::cast) {
-            self.expr(&child);
-        }
-    }
-
-    fn call(&mut self, call: &ast::CallExpr) {
-        match call.expr() {
-            Some(Expr::NameRef(name)) => self.bare_call(&name, call),
-            Some(callee @ Expr::FieldExpr(_)) => match dotted(&callee) {
-                Some((first, rest)) => self.dotted_call(&first, &rest),
-                None => self.children(&callee),
-            },
-            Some(other) => self.expr(&other),
-            None => {}
-        }
-        for arg in call.arg_list().iter().flat_map(|list| list.args()) {
-            if let Some(value) = arg.expr() {
-                self.expr(&value);
+    /// The failure a `reject` names, or the head of its block, as written.
+    /// Whether the head is a call to a type, which the caller resolves.
+    pub fn rejected(&self, expr: &Expr, out: &mut Vec<Diagnostic>) -> bool {
+        match expr {
+            Expr::NameRef(name) => {
+                self.type_name(name, Want::Failure, out);
+                false
             }
+            Expr::RecordExpr(record) => match record.expr() {
+                Some(Expr::NameRef(name)) => {
+                    self.type_name(&name, Want::Failure, out);
+                    false
+                }
+                Some(other) => self.not_a_failure_value(&other, out),
+                None => false,
+            },
+            other => self.not_a_failure_value(other, out),
+        }
+    }
+
+    /// A mapping's failure, `invalid: QuantityOutOfRange`. Whether it is a
+    /// call to a type, which the caller resolves.
+    pub fn mapped(&self, expr: &Expr, out: &mut Vec<Diagnostic>) -> bool {
+        match expr {
+            Expr::NameRef(name) => {
+                self.type_name(name, Want::Failure, out);
+                false
+            }
+            other => self.not_a_failure_value(other, out),
+        }
+    }
+
+    // --- calls -------------------------------------------------------------
+
+    /// What a call reaches, by its callee: a callable, a constructor, an
+    /// entity's operation or the standard library. `is_local` says whether
+    /// the callee's first name is a local in scope. The arguments are the
+    /// caller's to resolve.
+    pub fn callee(&self, call: &ast::CallExpr, is_local: bool, out: &mut Vec<Diagnostic>) {
+        match call.expr() {
+            Some(Expr::NameRef(name)) => self.bare_call(&name, call, is_local, out),
+            Some(callee @ Expr::FieldExpr(_)) => {
+                if let Some((first, rest)) = dotted(&callee) {
+                    self.dotted_call(&first, &rest, is_local, out);
+                }
+            }
+            _ => {}
         }
     }
 
     /// `name(...)`: a function, action or query of this domain, or a type
     /// being constructed.
-    fn bare_call(&mut self, name: &ast::NameRef, call: &ast::CallExpr) {
+    fn bare_call(
+        &self,
+        name: &ast::NameRef,
+        call: &ast::CallExpr,
+        is_local: bool,
+        out: &mut Vec<Diagnostic>,
+    ) {
         let text = text(name);
         let span = self.span(name);
         if starts_upper(&text) {
-            self.constructor(name, call);
+            self.constructor(name, call, out);
             return;
         }
-        if self.is_local(&text) {
-            self.out.push(not_callable(
+        if is_local {
+            out.push(not_callable(
                 &text,
                 "a variable",
                 "Jadpo has no function values: only functions, actions, queries and types are called.",
@@ -699,7 +625,7 @@ impl Resolver<'_> {
                 .or(found.first())
                 .cloned();
             if let Some(symbol) = symbol {
-                self.bare_symbol(&text, &symbol, span);
+                self.bare_symbol(&text, &symbol, span, out);
             }
             return;
         }
@@ -724,7 +650,7 @@ impl Resolver<'_> {
                     format!("Call one of `{text}`'s operations"),
                 ),
             };
-            self.out.push(not_callable(
+            out.push(not_callable(
                 &text,
                 &format!("a {what}"),
                 &reason,
@@ -733,8 +659,8 @@ impl Resolver<'_> {
             ));
             return;
         }
-        if let Some(namespace) = self.names.namespace_of(&text) {
-            self.out.push(
+        if let Some(namespace) = self.std.namespace_of(&text) {
+            out.push(
                 Diagnostic::new(
                     &rule::SEMANTIC_STANDARD_OPERATION_QUALIFICATION,
                     format!("`{text}` is a standard-library operation"),
@@ -778,10 +704,10 @@ impl Resolver<'_> {
                 .edit(span, near),
             None => problem.next(format!("Declare `{text}`, or call an existing function")),
         };
-        self.out.push(problem);
+        out.push(problem);
     }
 
-    fn bare_symbol(&mut self, text: &str, symbol: &Symbol, span: Span) {
+    fn bare_symbol(&self, text: &str, symbol: &Symbol, span: Span, out: &mut Vec<Diagnostic>) {
         let other_domain = match (&symbol.ownership, self.ownership) {
             (Ownership::Domain(theirs), Ownership::Domain(ours)) if theirs != ours => {
                 Some(theirs.clone())
@@ -791,8 +717,8 @@ impl Resolver<'_> {
         };
         match &symbol.kind {
             ItemKind::Function => match (&symbol.library, other_domain) {
-                (Some((library, _)), _) if self.library.as_ref() != Some(library) => {
-                    self.out.push(
+                (Some((library, _)), _) if self.library != Some(library.as_str()) => {
+                    out.push(
                         Diagnostic::new(
                             &rule::SEMANTIC_UNKNOWN_CALLEE,
                             format!("`{text}` is in library `{library}`"),
@@ -805,7 +731,7 @@ impl Resolver<'_> {
                 }
                 // A sibling in the same library.
                 (Some(_), _) => {}
-                (None, Some(domain)) => self.out.push(
+                (None, Some(domain)) => out.push(
                     Diagnostic::new(
                         &rule::SEMANTIC_UNKNOWN_CALLEE,
                         format!("`{text}` is a helper in domain `{domain}`"),
@@ -816,10 +742,10 @@ impl Resolver<'_> {
                         "Move `{text}` into a public library in `{domain}` and call it through the library"
                     )),
                 ),
-                (None, None) => self.access(symbol, span),
+                (None, None) => self.access(symbol, span, out),
             },
             ItemKind::Action | ItemKind::Query => match other_domain {
-                Some(domain) => self.out.push(
+                Some(domain) => out.push(
                     Diagnostic::new(
                         &rule::SEMANTIC_UNKNOWN_CALLEE,
                         format!("`{text}` belongs to domain `{domain}`"),
@@ -829,7 +755,7 @@ impl Resolver<'_> {
                     .next(format!("Call `{domain}.{text}(...)`"))
                     .edit(Span::new(self.path, span.start, span.start), format!("{domain}.")),
                 ),
-                None => self.access(symbol, span),
+                None => self.access(symbol, span, out),
             },
             ItemKind::Fixture => {}
             kind => {
@@ -847,7 +773,7 @@ impl Resolver<'_> {
                         "Call a function, action or query instead",
                     ),
                 };
-                self.out.push(not_callable(
+                out.push(not_callable(
                     text,
                     &kind.with_a(),
                     reason,
@@ -859,10 +785,10 @@ impl Resolver<'_> {
     }
 
     /// `Type(value)`: constructing a value of a named type.
-    fn constructor(&mut self, name: &ast::NameRef, call: &ast::CallExpr) {
+    fn constructor(&self, name: &ast::NameRef, call: &ast::CallExpr, out: &mut Vec<Diagnostic>) {
         let text = text(name);
         let span = self.span(name);
-        if self.names.is_type(&text) {
+        if self.std.is_type(&text) {
             return;
         }
         let Some(symbol) = self.table.get(&text).cloned() else {
@@ -870,7 +796,7 @@ impl Resolver<'_> {
                 let candidates = self.type_names(Want::Type);
                 let near =
                     nearest(&text, candidates.iter().map(String::as_str)).map(str::to_string);
-                self.out.push(unknown_name(&text, near.as_deref(), span));
+                out.push(unknown_name(&text, near.as_deref(), span));
             }
             return;
         };
@@ -896,30 +822,30 @@ impl Resolver<'_> {
                 if empty && let Some(list) = arguments {
                     problem = problem.edit(self.span(&list), "");
                 }
-                self.out.push(problem);
+                out.push(problem);
             }
-            ItemKind::Entity => self.out.push(not_callable(
+            ItemKind::Entity => out.push(not_callable(
                 &text,
                 "an entity",
                 &format!("An entity is read and written through its operations, such as `{text}.get(...)`."),
                 format!("Use one of `{text}`'s operations"),
                 span,
             )),
-            ItemKind::Routes => self.out.push(not_callable(
+            ItemKind::Routes => out.push(not_callable(
                 &text,
                 "a route group",
                 "Routes answer requests; code calls the action a route runs.",
                 "Call the action instead".to_string(),
                 span,
             )),
-            _ => self.access(&symbol, span),
+            _ => self.access(&symbol, span, out),
         }
     }
 
     /// `Entity.operation(...)`: an entity's operations are `get`,
     /// `create`, `update`, `delete` and one per transition its lifecycle
     /// names (area 6).
-    fn entity_operation(&mut self, entity: &str, operation: &ast::NameRef) {
+    fn entity_operation(&self, entity: &str, operation: &ast::NameRef, out: &mut Vec<Diagnostic>) {
         let Some(symbol) = self
             .table
             .declared(entity)
@@ -957,7 +883,7 @@ impl Resolver<'_> {
             crate::and_list(&listed),
             did_you_mean(near.as_deref())
         ));
-        self.out.push(match near {
+        out.push(match near {
             Some(near) => problem
                 .next(format!("Use `{entity}.{near}`"))
                 .edit(span, near),
@@ -967,16 +893,16 @@ impl Resolver<'_> {
 
     /// `Name.member` or `Name.member(...)` with an upper-case qualifier: a
     /// type, an entity or a package.
-    fn type_qualifier(&mut self, name: &ast::NameRef, calls: bool) {
+    pub fn type_qualifier(&self, name: &ast::NameRef, calls: bool, out: &mut Vec<Diagnostic>) {
         let text = text(name);
         let span = self.span(name);
-        if self.names.is_type(&text) || self.table.is_package(&text) {
+        if self.std.is_type(&text) || self.table.is_package(&text) {
             return;
         }
         let Some(symbol) = self.table.get(&text).cloned() else {
             let candidates = self.type_names(Want::Type);
             let near = nearest(&text, candidates.iter().map(String::as_str)).map(str::to_string);
-            self.out.push(unknown_name(&text, near.as_deref(), span));
+            out.push(unknown_name(&text, near.as_deref(), span));
             return;
         };
         if calls
@@ -985,7 +911,7 @@ impl Resolver<'_> {
                 (&symbol.ownership, self.ownership)
             && theirs != ours
         {
-            self.out.push(
+            out.push(
                 Diagnostic::new(
                     &rule::VISIBILITY_PRIVATE_CROSS_DOMAIN,
                     format!("`{text}` belongs to domain `{theirs}`"),
@@ -996,20 +922,38 @@ impl Resolver<'_> {
             );
             return;
         }
-        self.access(&symbol, span);
+        self.access(&symbol, span, out);
+    }
+
+    /// A value, a pattern or an assignment's target written as a name or a
+    /// dotted name: an upper-case first name is a type, an enum or an
+    /// entity, resolved as a qualifier; a lower-case one is a local, area
+    /// 3's to check.
+    pub fn value_name(&self, expr: &Expr, out: &mut Vec<Diagnostic>) {
+        if let Some((first, _)) = dotted(expr)
+            && starts_upper(&text(&first))
+        {
+            self.type_qualifier(&first, false, out);
+        }
     }
 
     /// `qualifier.member(...)` with a lower-case qualifier.
-    fn dotted_call(&mut self, first: &ast::NameRef, rest: &[ast::NameRef]) {
+    fn dotted_call(
+        &self,
+        first: &ast::NameRef,
+        rest: &[ast::NameRef],
+        is_local: bool,
+        out: &mut Vec<Diagnostic>,
+    ) {
         let qualifier = text(first);
         if starts_upper(&qualifier) {
-            self.type_qualifier(first, true);
+            self.type_qualifier(first, true, out);
             if let [operation] = rest {
-                self.entity_operation(&qualifier, operation);
+                self.entity_operation(&qualifier, operation, out);
             }
             return;
         }
-        if self.is_local(&qualifier) {
+        if is_local {
             return;
         }
         let qualifier_span = self.span(first);
@@ -1017,14 +961,14 @@ impl Resolver<'_> {
             [only] => Some((text(only), self.span(only))),
             _ => None,
         };
-        match self.names.namespace(&qualifier) {
+        match self.std.namespace(&qualifier) {
             Some(Namespace::Standard) => {
                 if let Some((member, span)) = member
-                    && !self.names.has_operation(&qualifier, &member)
+                    && !self.std.has_operation(&qualifier, &member)
                 {
-                    let operations = self.names.operations(&qualifier);
+                    let operations = self.std.operations(&qualifier);
                     let near = nearest(&member, operations.iter().copied());
-                    self.out.push(no_member(
+                    out.push(no_member(
                         &format!("`{qualifier}` has no operation `{member}`"),
                         &member,
                         near,
@@ -1037,7 +981,7 @@ impl Resolver<'_> {
             None => {}
         }
         if let Some(library) = self.table.library(&qualifier).cloned() {
-            self.access(&library, qualifier_span);
+            self.access(&library, qualifier_span, out);
             if let Some((member, span)) = member
                 && self.table.library_function(&qualifier, &member).is_none()
             {
@@ -1056,7 +1000,7 @@ impl Resolver<'_> {
                     .map(|symbol| symbol.name.clone())
                     .collect();
                 let near = nearest(&member, functions.iter().map(String::as_str));
-                self.out.push(no_member(
+                out.push(no_member(
                     &format!("Library `{qualifier}` has no function `{member}`"),
                     &member,
                     near,
@@ -1071,7 +1015,7 @@ impl Resolver<'_> {
             };
             if *self.ownership == Ownership::Domain(qualifier.clone()) {
                 let end = span.start;
-                self.out.push(
+                out.push(
                     Diagnostic::new(
                         &rule::SEMANTIC_OWN_DOMAIN_QUALIFICATION,
                         format!("`{member}` is in this file's own domain"),
@@ -1095,7 +1039,7 @@ impl Resolver<'_> {
                 .find(|symbol| matches!(symbol.kind, ItemKind::Action | ItemKind::Query))
                 .cloned();
             match found {
-                Some(symbol) => self.access(&symbol, span),
+                Some(symbol) => self.access(&symbol, span, out),
                 None => {
                     let operations: Vec<String> = self
                         .table
@@ -1108,7 +1052,7 @@ impl Resolver<'_> {
                         .map(|symbol| symbol.name.clone())
                         .collect();
                     let near = nearest(&member, operations.iter().map(String::as_str));
-                    self.out.push(no_member(
+                    out.push(no_member(
                         &format!("Domain `{qualifier}` has no action or query `{member}`"),
                         &member,
                         near,
@@ -1157,7 +1101,293 @@ impl Resolver<'_> {
                 "Declare `{qualifier}`, or call through an existing domain or library"
             )),
         };
-        self.out.push(problem);
+        out.push(problem);
+    }
+}
+
+/// Resolution of a subtree the body's walk doesn't go into: every name in
+/// it, with the locals in scope around it and the ones it declares itself.
+pub(crate) struct Walk<'a> {
+    names: &'a Names<'a>,
+    /// Where a local in scope around the subtree is declared, outermost
+    /// first.
+    outer: &'a dyn Fn(&str) -> Option<Span>,
+    /// Locals the subtree declares: a `match` arm's binding, an inline
+    /// function's parameter, a variable in a nested block.
+    scopes: Vec<Vec<(String, Span)>>,
+    pub out: Vec<Diagnostic>,
+}
+
+impl<'a> Walk<'a> {
+    pub fn new(names: &'a Names<'a>, outer: &'a dyn Fn(&str) -> Option<Span>) -> Walk<'a> {
+        Walk {
+            names,
+            outer,
+            scopes: Vec::new(),
+            out: Vec::new(),
+        }
+    }
+
+    fn declared_at(&self, name: &str) -> Option<Span> {
+        (self.outer)(name).or_else(|| {
+            self.scopes
+                .iter()
+                .flatten()
+                .find(|(local, _)| local == name)
+                .map(|(_, span)| span.clone())
+        })
+    }
+
+    fn is_local(&self, name: &str) -> bool {
+        self.declared_at(name).is_some()
+    }
+
+    fn declare(&mut self, name: Option<ast::Name>, word: &str) {
+        let Some(name) = name else { return };
+        let Some(text) = tree::name_text(&name) else {
+            return;
+        };
+        let earlier = self.declared_at(&text);
+        self.names.declare(&name, word, earlier, &mut self.out);
+        let span = self.names.span(&name);
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.push((text, span));
+        } else {
+            self.scopes.push(vec![(text, span)]);
+        }
+    }
+
+    pub fn block(&mut self, block: Option<ast::Block>) {
+        let Some(block) = block else { return };
+        self.scopes.push(Vec::new());
+        for item in block.block_items() {
+            match item {
+                BlockItem::Stmt(stmt) => self.stmt(&stmt),
+                BlockItem::Member(member) => self.member(&member),
+                BlockItem::Elision(_) => {}
+            }
+        }
+        self.scopes.pop();
+    }
+
+    /// A member of a block: its value and any block of its own.
+    pub fn member(&mut self, member: &ast::Member) {
+        if let Some(value) = member.value() {
+            self.expr(&value);
+        }
+        self.member_values(member.block());
+    }
+
+    fn stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::VarStmt(var) => {
+                self.names.ty(var.ty(), Want::Type, &mut self.out);
+                if let Some(value) = var.expr() {
+                    self.expr(&value);
+                }
+                self.declare(var.name(), "variable");
+            }
+            Stmt::AssignStmt(assign) => {
+                for expr in [assign.target(), assign.value()].into_iter().flatten() {
+                    self.expr(&expr);
+                }
+            }
+            Stmt::ReturnStmt(ret) => {
+                if let Some(expr) = ret.expr() {
+                    self.expr(&expr);
+                }
+            }
+            Stmt::IfStmt(branch) => {
+                if let Some(condition) = branch.condition().and_then(|c| c.expr()) {
+                    self.expr(&condition);
+                }
+                self.block(branch.block());
+                for next in branch.else_ifs() {
+                    if let Some(condition) = next.condition().and_then(|c| c.expr()) {
+                        self.expr(&condition);
+                    }
+                    self.block(next.block());
+                }
+                if let Some(otherwise) = branch.else_branch() {
+                    self.block(otherwise.block());
+                }
+            }
+            Stmt::ForStmt(each) => {
+                if let Some(expr) = each.expr() {
+                    self.expr(&expr);
+                }
+                self.scopes.push(Vec::new());
+                self.declare(each.name(), "variable");
+                self.block(each.block());
+                self.scopes.pop();
+            }
+            Stmt::EmitStmt(emit) => {
+                if let Some(expr) = emit.expr() {
+                    self.expr(&expr);
+                }
+            }
+            Stmt::AssertStmt(assert) => {
+                if let Some(expr) = assert.expr() {
+                    self.expr(&expr);
+                }
+                self.names.ty(
+                    assert.assert_fails().and_then(|fails| fails.ty()),
+                    Want::Failure,
+                    &mut self.out,
+                );
+            }
+            Stmt::ExprStmt(expr) => {
+                if let Some(expr) = expr.expr() {
+                    self.expr(&expr);
+                }
+            }
+        }
+    }
+
+    /// The values of a block's members, and of the blocks inside them.
+    pub fn member_values(&mut self, list: Option<ast::MemberList>) {
+        for item in list.iter().flat_map(|list| list.member_items()) {
+            if let MemberItem::Member(member) = item {
+                self.member(&member);
+            }
+        }
+    }
+
+    /// Every expression directly inside `expr`.
+    pub fn children(&mut self, expr: &Expr) {
+        for child in expr.syntax().children().filter_map(Expr::cast) {
+            self.expr(&child);
+        }
+    }
+
+    pub fn expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::CallExpr(call) => {
+                let first = match call.expr() {
+                    Some(Expr::NameRef(name)) => Some(text(&name)),
+                    Some(callee @ Expr::FieldExpr(_)) => {
+                        dotted(&callee).map(|(first, _)| text(&first))
+                    }
+                    _ => None,
+                };
+                let local = first.is_some_and(|first| self.is_local(&first));
+                self.names.callee(call, local, &mut self.out);
+                match call.expr() {
+                    Some(callee @ Expr::FieldExpr(_)) if dotted(&callee).is_none() => {
+                        self.children(&callee)
+                    }
+                    Some(Expr::NameRef(_) | Expr::FieldExpr(_)) | None => {}
+                    Some(other) => self.expr(&other),
+                }
+                for arg in call.arg_list().iter().flat_map(|list| list.args()) {
+                    if let Some(value) = arg.expr() {
+                        self.expr(&value);
+                    }
+                }
+            }
+            Expr::RejectExpr(reject) => {
+                if let Some(inner) = reject.expr() {
+                    let call = self.names.rejected(&inner, &mut self.out);
+                    let head = match &inner {
+                        Expr::RecordExpr(record) => record.expr(),
+                        other => Some(other.clone()),
+                    };
+                    if call && let Some(head) = head {
+                        self.expr(&head);
+                    }
+                    if let Expr::RecordExpr(record) = &inner {
+                        self.member_values(record.member_list());
+                    }
+                }
+            }
+            Expr::AttemptExpr(attempt) => {
+                if let Some(inner) = attempt.expr() {
+                    self.expr(&inner);
+                }
+                for mapping in attempt.mappings() {
+                    if let Some(value) = mapping.expr()
+                        && self.names.mapped(&value, &mut self.out)
+                    {
+                        self.expr(&value);
+                    }
+                }
+            }
+            Expr::RecordExpr(record) => {
+                self.record_head(record);
+                self.member_values(record.member_list());
+            }
+            Expr::FieldExpr(_) | Expr::NameRef(_) => {
+                if dotted(expr).is_some() {
+                    self.names.value_name(expr, &mut self.out);
+                } else {
+                    self.children(expr);
+                }
+            }
+            Expr::MatchExpr(subject) => {
+                if let Some(inner) = subject.expr() {
+                    self.expr(&inner);
+                }
+                for arm in subject
+                    .match_arm_list()
+                    .into_iter()
+                    .flat_map(|list| list.match_arms())
+                {
+                    self.scopes.push(Vec::new());
+                    if let Some(Pat::CasePat(case)) = arm.pat() {
+                        pattern(self.names, &case, &mut self.out);
+                        self.declare(case.pat_binding().and_then(|b| b.name()), "variable");
+                    }
+                    if let Some(value) = arm.expr() {
+                        self.expr(&value);
+                    }
+                    self.block(arm.block());
+                    self.scopes.pop();
+                }
+            }
+            Expr::LambdaExpr(lambda) => {
+                self.scopes.push(Vec::new());
+                self.declare(lambda.name(), "parameter");
+                if let Some(body) = lambda.expr() {
+                    self.expr(&body);
+                }
+                self.scopes.pop();
+            }
+            _ => self.children(expr),
+        }
+    }
+
+    /// The type or expression a block is built from.
+    fn record_head(&mut self, record: &ast::RecordExpr) {
+        match record.expr() {
+            Some(Expr::NameRef(name)) if starts_upper(&text(&name)) => {
+                self.names.type_name(&name, Want::Type, &mut self.out)
+            }
+            Some(other) => self.expr(&other),
+            None => {}
+        }
+    }
+}
+
+/// A `match` arm's case pattern: `Enum.variant` names a type, `some(...)`
+/// and `success(...)` don't.
+pub(crate) fn pattern(names: &Names<'_>, case: &ast::CasePat, out: &mut Vec<Diagnostic>) {
+    if let Some(first) = case.path().and_then(|path| path.name_refs().next())
+        && starts_upper(&text(&first))
+    {
+        names.type_qualifier(&first, false, out);
+    }
+}
+
+/// The head of a block-built value: its type, an enum's variant, or an
+/// expression such as an entity write's call. `None` when the body's walk
+/// resolves it as an expression of its own.
+pub(crate) fn record_head(names: &Names<'_>, record: &ast::RecordExpr, out: &mut Vec<Diagnostic>) {
+    match record.expr() {
+        Some(Expr::NameRef(name)) if starts_upper(&text(&name)) => {
+            names.type_name(&name, Want::Type, out)
+        }
+        Some(head @ (Expr::NameRef(_) | Expr::FieldExpr(_))) => names.value_name(&head, out),
+        _ => {}
     }
 }
 
