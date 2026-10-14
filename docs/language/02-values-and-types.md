@@ -188,8 +188,8 @@ follows its rules, and it cannot fail.
 
 ### Construction failures by rule
 
-When the declared ranges don't prove a computed value follows the target's
-rules, building it can fail. The statement starts with `attempt`, and a
+When neither the declared ranges nor the conditions around it (below)
+prove a computed value follows the target's rules, building it can fail. The statement starts with `attempt`, and a
 block after the call maps each rule that can break to the failure the
 caller gets, one arm per line: the same block form writes and integration
 calls use (area 4).
@@ -229,7 +229,7 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
 ```
 
 - **The keys are rules.** Each key names a rule of the type, or of a type it
-  builds on, that the declared ranges can't prove holds: `min`, `max`,
+  builds on, that neither the declared ranges nor a condition proves holds: `min`, `max`,
   `min_length`, `max_length`, `pattern`, `format` or `version`. Each such
   rule needs exactly one arm.
 - **`invalid:` is the catch-all.** It covers every rule that can break and
@@ -245,6 +245,192 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
   does: it rounds the value as it is kept.
 - **Every failure is `invalid_value`.** At runtime the failure records the
   rule that broke, such as `max: 12`, for the log, never the value.
+
+### Conditions as proof
+
+An `if` condition counts as proof. After a check that leaves when the value
+is out of range, the construction it guards is plain:
+
+```jadpo check project=conditions file=types.jadpo hidden
+type Count = Int {}
+
+type CakeCount = Int {
+    min: 1
+    max: 12
+}
+
+type OrderEmpty = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type OrderTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=conditions
+function doubled_checked(count: CakeCount) fails OrderTooLarge -> CakeCount {
+    if (count * 2 > 12) {
+        reject OrderTooLarge
+    }
+    return CakeCount(count * 2)  // at most 12 here, and at least 2
+}
+
+function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
+    if (n < 1) {
+        reject OrderEmpty
+    } else if (n > 12) {
+        reject OrderTooLarge
+    }
+    return CakeCount(n)  // neither condition held, so 1 to 12
+}
+
+function within(n: Count) fails OrderTooLarge -> CakeCount {
+    if (n >= 1 and n <= 12) {
+        return CakeCount(n)  // both hold here
+    }
+    reject OrderTooLarge
+}
+```
+
+What counts as proof, exactly (built in chunk 2.6):
+
+- **A comparison bounds a number.** `<`, `<=`, `>`, `>=`, `==` and `!=`
+  between two numbers bound each side by the other side's range: a
+  literal's value, or the range another value has at that point. A side is
+  bounded when it is made of locals (parameters, `var` and `var mut`
+  variables, loop items, names a `match` arm binds), number literals, their
+  fields (`line.quantity`), standard-library calls on them
+  (`collection.count(items)`) and arithmetic. A bound on `collection.count`
+  of a list bounds that list's `min_length` and `max_length` too.
+- **The same number is written the same way.** A bound on `count * 2`
+  proves `CakeCount(count * 2)`, brackets aside, and a bound on `count`
+  carries through arithmetic: after `count > 6` leaves, `count * 2` is at
+  most 12. A bound on `2 * count` says nothing about `count * 2`, and one
+  on `count * 2` says nothing about `count` alone.
+- **Whole numbers step.** Between two `Int`-based values, `n > 12` leaves
+  `n` at least 13 where it holds and at most 12 where it doesn't, and after
+  `n == 0` leaves, a range starting at 0 starts at 1. A `Decimal` can come
+  as close to a value as it likes, so `!=` bounds no decimal.
+- **`and`, `or` and `not` combine.** Inside `if (a and b)` both hold, and
+  after `if (a or b) { reject ... }` neither does; `not` turns a condition
+  round. Where only one of two may hold, as inside `if (a or b)`, a bound
+  survives only when both give one, widened to cover both. The right side
+  of `and` is read knowing its left side holds, and of `or` knowing its
+  left side doesn't, so `n >= 1 and is_small(CakeCount(n))` is plain too.
+- **Where it holds.** Inside the branch where the condition holds. An
+  `else if` and the `else` know every earlier condition is false. After the
+  `if`, what holds at the end of every branch that can reach the next
+  line: a branch ending in `return`, `reject`, or a `match` whose every arm
+  leaves, never does, and with no `else`, the way past the chain knows
+  every condition is false.
+- **What ends a bound.** Assigning a `var mut` ends every bound that
+  mentions it. A `for` loop ends the bounds of every `var mut` it assigns,
+  before it and after it, since a later pass sees what an earlier one
+  assigned. What a block finds out ends with the block, so a check inside a
+  `match` arm, a loop or a branch that goes on proves nothing after it.
+- **Nothing else is proof.** A variable's starting value is not:
+  `var doubled: Int = count * 2` is an `Int` with no range, until a
+  condition bounds `doubled` itself. Nor is an assignment, a `match`
+  pattern, an `assert`, or a call to your own function.
+- **It proves every construction.** `Type(value)`, `Owner.field(value)`
+  and an object literal's field (`type.field_unproved`) all read it. A
+  divisor still needs a type that excludes zero (area 3, question 7),
+  which a condition can prove by building that type first.
+- **A fixed `scale` rounds first.** A type with a fixed `scale` keeps a
+  value rounded half to even, so its bounds are compared after rounding: a
+  value of at most 10.004 fits `max: 10.00` with `scale: 2`, and one of at
+  most 10.07 doesn't fit `max: 10.07` with `scale: 1`, since 10.07 is kept
+  as 10.1.
+
+Changing a range or a condition flips call sites, and each one says so
+where it is written (area 4, question 6): a construction that can now fail
+needs `attempt` and an arm for each rule that can break
+(`failure.attempt_required`, `failure.rule_unmapped`), and one that no
+longer can takes none (`failure.attempt_infallible`,
+`failure.rule_cannot_break`, `failure.invalid_covers_nothing`). When a
+condition is what proves it, the error points at the comparison:
+
+```jadpo check project=e-condition-proves expect=failure.attempt_infallible
+type CakeCount = Int {
+    min: 1
+    max: 12
+}
+
+type OrderTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function doubled_checked(count: CakeCount) fails OrderTooLarge -> CakeCount {
+    if (count * 2 > 12) {
+        reject OrderTooLarge
+    }
+    var doubled: CakeCount = attempt CakeCount(count * 2) {
+        max: OrderTooLarge
+    }
+    return doubled
+}
+```
+
+```text output
+error: `CakeCount(...)` can't fail, so it takes no `attempt`
+ --> main.jadpo:14:30
+   |
+11 |     if (count * 2 > 12) {
+   |         -------------- checked here
+14 |     var doubled: CakeCount = attempt CakeCount(count * 2) {
+   |                              ^^^^^^^ nothing to pass on
+  reason: The declared ranges and the condition `count * 2 > 12` prove `CakeCount(...)` always follows its type's rules, so building it never fails; `attempt` marks only what can.
+  next: Remove `attempt` (agent)
+  rule: failure.attempt_infallible
+  help: docs/language/03-logic.html#failure-attempt-infallible
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-condition-proves-rule expect=failure.rule_cannot_break
+type Count = Int {}
+
+type CakeCount = Int {
+    min: 1
+    max: 12
+}
+
+type OrderEmpty = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type OrderTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
+    if (n > 12) {
+        reject OrderTooLarge
+    }
+    var count: CakeCount = attempt CakeCount(n) {
+        min: OrderEmpty
+        max: OrderTooLarge
+    }
+    return count
+}
+```
+
+```text output
+error: `CakeCount(...)` can't break `max`, so it takes no arm
+ --> main.jadpo:22:9
+   |
+17 |     if (n > 12) {
+   |         ------ checked here
+22 |         max: OrderTooLarge
+   |         ^^^ never runs
+  reason: The declared ranges and the condition `n > 12` prove the value always follows `max: 12`, so this arm could never run.
+  next: Remove `max: ...` (agent)
+  rule: failure.rule_cannot_break
+  help: docs/language/04-failures.html#failure-rule-cannot-break
+
+check failed: 1 error, 1 file
+```
 
 ## Signatures use named types
 
@@ -1152,7 +1338,7 @@ error: `profile.display_name` might not fit `Badge.name`
    |
 15 |         name: profile.display_name
    |               ^^^^^^^^^^^^^^^^^^^^ can break `max_length: 12`
-  reason: An object literal never fails, so each field gets a value already known to fit; the declared ranges don't prove this one follows `max_length: 12`, which `Badge.name` adds.
+  reason: An object literal never fails, so each field gets a value already known to fit; neither the declared ranges nor a condition before it prove this one follows `max_length: 12`, which `Badge.name` adds.
   next: Build it first on its own line, `var name: Badge.name = attempt Badge.name(profile.display_name) { max_length: SomeFailure }`, then write `name: name` in the object (agent)
   rule: type.field_unproved
   help: docs/language/02-values-and-types.html#type-field-unproved
@@ -2855,7 +3041,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 |---|---|---|
 | Runtime construction failure | A runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literal construction is checked while compiling and never fails at runtime. The mapping's form was revised on 2026-10-14 (below) | 2026-10-12 |
 | Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point. Since 2026-10-14 an object literal never fails: a field whose value might break its rules is built first (built in chunk 2.5) | 2026-10-12 |
-| Construction failures by rule | A runtime construction maps its failures in a block, the form writes and integration calls use: `attempt CakeCount(n) { max: OrderTooLarge }`. Keys are the rules of the type and the types it builds on that the declared ranges can't prove hold; each needs an arm, or `invalid:` covers every rule without its own; an arm for a rule that can't break, or an `invalid:` covering nothing, is an error; every failure is `invalid_value`; a rule the compiler can't reason about (`pattern`) can always break. An `if` condition counts as proof, so after `if (n > 12) { reject OrderTooLarge }` `CakeCount(n)` is plain. Object literals never fail: a field that might break its rules is built first, on its own line. Replaces the trailing `invalid:` clause (Richard). `invalid:` covers only a construction's rules, never a write's or an integration call's conditions (Richard). Built in chunk 2.5, except conditions as proof (chunk 2.6) | 2026-10-14 |
+| Construction failures by rule | A runtime construction maps its failures in a block, the form writes and integration calls use: `attempt CakeCount(n) { max: OrderTooLarge }`. Keys are the rules of the type and the types it builds on that the declared ranges can't prove hold; each needs an arm, or `invalid:` covers every rule without its own; an arm for a rule that can't break, or an `invalid:` covering nothing, is an error; every failure is `invalid_value`; a rule the compiler can't reason about (`pattern`) can always break. An `if` condition counts as proof, so after `if (n > 12) { reject OrderTooLarge }` `CakeCount(n)` is plain. Object literals never fail: a field that might break its rules is built first, on its own line. Replaces the trailing `invalid:` clause (Richard). `invalid:` covers only a construction's rules, never a write's or an integration call's conditions (Richard). Built in chunk 2.5, and conditions as proof in chunk 2.6, as "Conditions as proof" describes | 2026-10-14 |
 | `optional` and `default` | Only on `Input` fields; reading an optional field gives `T?`; only the update `patch:` form keeps omitted and `none` apart | 2026-10-12 |
 | Collection operations | List literals, `for item in items`, `collection.count` and `collection.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
 | `Set` and `Map` encoding | A `Set` is a JSON array rejected if it has duplicates; a `Map` is a JSON object with text- or UUID-based keys only | 2026-10-12 |

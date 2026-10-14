@@ -900,7 +900,9 @@ def main():
         for rule in page.claimed_rules():
             owners.setdefault(rule, []).append(page.path.name)
         examples = len([b for b in page.blocks if not b['attrs'].get('fragment')])
-        print(f'{page.path.name}: {examples} examples, {len(page.covered_rules())}/{len(page.claimed_rules())} errors covered')
+        claimed = page.claimed_rules()
+        covered = page.covered_rules() & set(claimed)
+        print(f'{page.path.name}: {examples} examples, {len(covered)}/{len(claimed)} errors covered')
         for problem in page.problems:
             failed = True
             print(f'  FAIL {problem}')
