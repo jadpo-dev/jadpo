@@ -268,6 +268,10 @@ Rust 1.88 or later).
 | `jadpo-lsp` | Language server | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
+Built so far: every crate above but `jadpo-codegen`, `jadpo-drivers` and
+the two hosts; `jadpo-plan` began in chunk 2.10 with type plans, failure
+shapes, constants and the frame table (§2.5).
+
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
 code. Runtime crates never depend on compiler crates, and a generated
@@ -462,6 +466,17 @@ written or not) and each arm of a `match`. Both are keyed
 so a diff leaves them to the callable's own change (area 18). Effect kinds,
 the control-flow graph and path numbers come with their areas.
 
+Since chunk 2.10 each site says whether it can pause (§2.5): an effect (a
+store read or write, `emit`, an integration call, `clock.now`, a new
+identity) or a call to an action, query or fixture, which the runtime
+enters through its action boundary; the body says whether any site does.
+Functions never pause (area 3). A construction's rules and its `attempt`'s
+arms name rules by `jadpo_std::RuleKey`, which a broken rule carries too,
+so nothing reads a rule back out of its text. Each variant records its
+place among its enum's variants (`order`, printed in the manifest), which
+sets order variants by. `typed_body` returns its body behind `Arc`, and the
+graph query its graph, so a reader keeps a reference, never a copy.
+
 **Identity.** A node's key is its kind and born name through the registry
 (`action complete_todo`, `field Todo.title`), not qualified by domain, so
 promotion to `shared/` keeps it (built in chunk 1.7; area 18, question 8).
@@ -558,6 +573,18 @@ the 1-second target. The gate asserts the counts and a 1.25-second
 ceiling: the target plus 250 ms for a loaded CI machine, whose slowest save
 took 138 ms in a debug build (chunk 2.8).
 
+Since chunk 2.10 the session keeps the last run's graph, shared rather than
+copied, and `watch::follow` classifies every edge kind: followed backwards
+where the source depends on the target (`calls`, `reads`, `writes`,
+`emits`, `runs`, `raises`, `references`, `includes`, `uses`, `covers`), so
+a change climbs to whatever reaches the source; attached forwards where the
+source changes how the target behaves (`subscribes`, `maps`, `grants`,
+`scopes`, `invalidates`, `provides`), so a changed or removed source counts
+as a change to its target; and irrelevant (`reaches`). A changed subscriber
+is thereby a change to its event, which reaches the actions that emit it
+and their tests. The match names every kind, and a test runs each through
+a small graph, so a kind added later can't be left out.
+
 ### 2.5 Executors
 
 **One contract.** Both executors consume the graph's typed bodies plus
@@ -572,6 +599,7 @@ one per-invocation context in `jadpo-runtime`:
 | `now`, `new_id`, `flag`, `config` | Effects with one source each, recorded for replay |
 | `enter(callable, site)`, `leave`, `branch(increment)` | Frames and path numbers |
 | `fail(failure)`, `fault(kind, site)` | Failures and defects with their `.jadpo` place |
+| `assertion_begin`, `record(site, value)`, `assertion_end` | A failed `assert`'s parts, recorded the same way by either executor (chunk 2.10) |
 
 The runtime, not the executor, owns the action boundary: it opens the
 transaction at the first store operation, runs the body (a closure either
@@ -580,6 +608,17 @@ executor supplies), reruns it on a concurrent change within the budget
 (recursion depth, events per action, event size, chain depth) are runtime
 constants. Only control flow and value representation differ between the
 executors, so divergence can only come from those.
+
+Built in chunk 2.10: `jadpo_runtime::action` runs an `ActionBody` either
+executor supplies, inside the running action's boundary when there is one
+(an action another action calls joins its transaction, area 1), otherwise
+in a boundary of its own, one per action or fixture a test calls (a fixture
+is a test-only action, area 13). The transaction begins at the body's first
+store operation (`Ctx::transaction`); a concurrent change runs the whole
+body again, up to `RERUN_ATTEMPTS` (3) times, then fails `unavailable`; a
+body that fails rolls back; and what it emitted is delivered only after it
+commits. The second of area 6's budget waits for the host's clock, and
+caches come with area 5.
 
 **Interpreter.** Functions are pure (area 3) and run synchronously. Only
 actions, queries and tests are `async`, and the checker knows which
@@ -618,6 +657,32 @@ fault where they are reached. A call walks the Rust stack a few frames per
 Jadpo frame, so recursion to the depth limit runs inside
 `on_large_stack`; hosts, `async` frames and codecs come with their areas.
 
+Reshaped in chunk 2.10 for Phase 3. One walker runs every body
+(`jadpo_interp`'s machine): it keeps its own stacks of tasks, values and
+activations instead of recursing on Rust's, so it can stop at any site the
+typed body says pauses and carry on from exactly there. Functions run on it
+synchronously; a call to an action or fixture hands back to a small async
+driver, which enters the runtime's action boundary with the callee's body,
+run on a fresh machine, and resumes the caller with the result. Only that
+nested call's future is boxed, so a body that never pauses allocates none,
+and a recursion reaches the depth limit without growing the thread's stack
+(only an inline function inside a collection operation recurses on it, so
+`on_large_stack` now gives 64 MiB). The context is handed to each step and
+never kept. Everything the walk needs besides control flow comes from
+`jadpo-plan`: callables numbered with their labels, files and lines; every
+site decoded once (a literal's constant, a call's callee, the shape and
+slots a build fills, the failure a `reject` or an arm raises, where a
+report hangs the site's value); type plans with declared field order,
+validator chains, field defaults, set and list kinds and each variant's
+place; and failure shapes with their sections. `Prepared` (the plan, its
+validators compiled and the frame table) is shared by every thread behind
+`Arc`; a `Program` is one thread's view, with the plan's constants and
+shapes decoded into `Rc` values, and `Program::codec` builds a value of a
+type from its parts the way a body does. Sets and maps keep the one
+canonical order area 2 decides ("Set order"), which is `Value`'s `Ord` in
+`jadpo-value`: by value, numbers numerically, text by code point, variants
+in declared order, objects and tagged unions field by field.
+
 **Code generation.** `quote!` into a `syn` tree, printed with
 [prettyplease](https://github.com/dtolnay/prettyplease): deterministic,
 never fails to format, about twenty times faster than rustfmt, and
@@ -648,11 +713,14 @@ in both. Built in chunk 2.1: `jadpo-runtime`'s `Ctx` keeps the stack
 `Places` turns a frame into `file:line  label`; past `MAX_DEPTH` (1,000)
 frames a call is the `recursion_limit` fault at its site. A failure keeps
 the stack where it was raised, so the path it travelled, and the failure
-it was mapped from as its cause (area 4). `jadpo-interp`'s `Report`
-renders a fault, a failure or a failed assertion in the shape compiler
-errors have: the headline (`fault` or `failed`), the `.jadpo` site with
-its code frame, then `reason`, `next` and the frames, or a failure's
-code, kind, fields, cause and path.
+it was mapped from as its cause (area 4). A `Report` renders a fault, a
+failure or a failed assertion in the shape compiler errors have: the
+headline (`fault` or `failed`), the `.jadpo` site with its code frame, then
+`reason`, `next` and the frames, or a failure's code, kind, fields, cause
+and path. Since chunk 2.10 outcomes and reports live in `jadpo-runtime`,
+and a report is read from `Places` (each site's line, bytes and anchor)
+and the sources alone, so it is the same whichever executor ran the call;
+`Places::collapse` counts a recursion once for every stack a person reads.
 
 **The test runner.** Built in chunk 2.2 (`jadpo-test`, `jadpo test`): it
 finds the tests through the graph, takes a test's kind from its `calls`
@@ -669,10 +737,16 @@ test is reported with its `.jadpo` site, frames and path. Each outcome has
 a stable code (`test.assertion_failed`, `test.unexpected_failure`,
 `test.fault`) and a rerun command with the seed; the run is `test.failed`,
 and nothing to run is `test.no_tests`. A project keeps its last run's
-failures in `build/test/last-run.json` for `--failed`. Tests run one at a
-time on the interpreter's large-stack thread; the trace, fakes, the test
-database and clock control come with their phases, and route and schedule
-tests (`--kind route`, `--kind schedule`) are `toolchain.not_built_yet`.
+failures in `build/test/last-run.json` for `--failed`. Since chunk 2.10 the
+runner calls the runtime's `Executor` trait (the interpreter now, compiled
+code in Phase 8) and gives each test its own environment (`TestEnv`: a
+seed from the order seed and the test's key, the test clock, and the
+places of the test database and fakes, empty until chunks 3.1 and 7.2) in
+a context it makes; tests run on a thread per core, each with its own view
+of the one prepared program, and their results come back in the seed's
+order. The trace, fakes, the test database and clock control come with
+their phases, and route and schedule tests (`--kind route`, `--kind
+schedule`) are `toolchain.not_built_yet`.
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
@@ -688,8 +762,15 @@ interpreter.
 
 Built so far (chunk 2.1): what pure execution needs from the context,
 in `jadpo-runtime` (frames, failures, faults, limits); `jadpo-value`'s
-values are `Rc`-shared, with time values held as numbers. The components
-below come with their areas.
+values are `Rc`-shared, with time values held as numbers. Chunk 2.10 adds
+the shape Phase 3 plugs into: the context carries its host and its
+environment (`Env`: seed and clock); `Host` gives each capability as a
+trait, so far a `Database` and its `Transaction`, and the delivery of a
+committed action's events, with `MemoryHost`, which holds no store; the
+action boundary (§2.5); and `block_on`, which drives one invocation's
+non-`Send` future on its own thread until the native host's current-thread
+runtime takes over with the store. The components below come with their
+areas.
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`

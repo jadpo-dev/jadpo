@@ -11,7 +11,7 @@
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Wake, Waker};
 
 use jadpo_value::Value;
 
@@ -63,7 +63,12 @@ pub fn block_on<F: Future>(future: F) -> Result<F::Output, Stalled> {
     let mut context = Context::from_waker(&waker);
     let mut future = std::pin::pin!(future);
     loop {
-        if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
+        let mut output = None;
+        let _ = future
+            .as_mut()
+            .poll(&mut context)
+            .map(|value| output = Some(value));
+        if let Some(output) = output {
             return Ok(output);
         }
         if !flag.0.swap(false, Ordering::SeqCst) {
@@ -74,6 +79,8 @@ pub fn block_on<F: Future>(future: F) -> Result<F::Output, Stalled> {
 
 #[cfg(test)]
 mod tests {
+    use std::task::Poll;
+
     use super::*;
 
     /// Pending once, after waking itself.
