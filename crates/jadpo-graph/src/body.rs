@@ -277,6 +277,19 @@ pub enum Literal {
     None,
 }
 
+impl Literal {
+    /// As Jadpo writes it: `25`, `1.50`, `"text"`, `15m`, `none`.
+    pub fn written(&self) -> String {
+        match self {
+            Literal::Number { value, .. } => value.to_string(),
+            Literal::Duration(written) => written.clone(),
+            Literal::Text(text) => format!("{text:?}"),
+            Literal::Bool(value) => value.to_string(),
+            Literal::None => "none".to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Or,

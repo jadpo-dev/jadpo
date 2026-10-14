@@ -516,7 +516,7 @@ impl Part<'_> {
                     type_ref(self.lookup, &def.declared)
                 }),
             optional: def.is_some_and(|def| def.optional),
-            default: def.is_some_and(|def| def.default),
+            default: def.and_then(|def| def.default.as_ref()?.literal()),
             section,
             copied_from: None,
             replaces: def.and_then(|def| def.replaces.as_ref()).map(|source| {
@@ -568,7 +568,7 @@ impl Part<'_> {
         node.detail = Detail::Field {
             ty: type_ref(self.lookup, &field.declared),
             optional: field.optional,
-            default: field.default,
+            default: field.default.as_ref().and_then(Const::literal),
             section: None,
             copied_from: from.clone(),
             replaces: None,

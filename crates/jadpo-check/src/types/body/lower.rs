@@ -145,17 +145,7 @@ fn local_kind(kind: LocalKind) -> typed::LocalKind {
 }
 
 fn literal(value: &Const) -> Option<Literal> {
-    Some(match value {
-        Const::Number { value, decimal } => Literal::Number {
-            value: *value,
-            decimal: *decimal,
-        },
-        Const::Duration(written) => Literal::Duration(written.clone()),
-        Const::Str(text) => Literal::Text(text.clone()),
-        Const::Bool(value) => Literal::Bool(*value),
-        Const::None => Literal::None,
-        Const::Path(_) | Const::List(_) | Const::TooLong | Const::Other => return None,
-    })
+    value.literal()
 }
 
 /// A literal's own type, when no position gave it one.

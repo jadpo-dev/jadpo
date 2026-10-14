@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use jadpo_graph::body::Literal;
 use jadpo_graph::{Base, Detail, Graph, Key, Kind, Node, Rules, Section, TypeRef};
 use jadpo_runtime::Failure;
 use jadpo_std::Builtin;
@@ -20,6 +21,9 @@ pub(crate) struct Field {
     pub key: Key,
     pub name: Rc<str>,
     pub section: Option<Section>,
+    /// What an `Input` left without this field holds: `none` for an
+    /// optional field, its `default:` for one with a default (area 2).
+    pub absent: Option<Literal>,
 }
 
 /// What an object or a variant is made of.
@@ -134,6 +138,41 @@ impl Types {
         }
     }
 
+    /// A literal as a value of `ty`, the type it goes into (area 2,
+    /// question 15): text as a UUID, an instant or a date when `ty` is
+    /// built on one, a number at a decimal type's scale. `None` for a
+    /// literal `ty` can't hold, which the checker rules out.
+    pub fn literal(&self, literal: &Literal, ty: &TypeRef) -> Option<Value> {
+        match literal {
+            Literal::Bool(value) => Some(Value::Bool(*value)),
+            Literal::None => Some(Value::None),
+            Literal::Text(text) => match self.representation(ty) {
+                Some(builtin) => crate::eval::text_literal(builtin, text),
+                None => Some(Value::text(text)),
+            },
+            Literal::Duration(written) => jadpo_std::Dur::parse(written)
+                .and_then(|dur| i64::try_from(dur.millis).ok())
+                .map(Value::Duration),
+            Literal::Number { value, decimal } => {
+                let decimal = match self.representation(ty) {
+                    Some(builtin) => builtin == Builtin::Decimal,
+                    None => *decimal,
+                };
+                if decimal {
+                    self.validator(ty)
+                        .store(Value::Decimal(jadpo_value::Decimal::new(
+                            value.mantissa,
+                            value.scale,
+                        )))
+                } else if value.scale == 0 {
+                    i64::try_from(value.mantissa).ok().map(Value::Int)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     /// `ty`'s rules ready to run.
     pub fn validator(&self, ty: &TypeRef) -> Rc<Validator> {
         if let Some(found) = self.validators.borrow().get(ty) {
@@ -168,10 +207,18 @@ impl Types {
         found
             .into_iter()
             .filter_map(|node| match &node.detail {
-                Detail::Field { section, .. } => Some(Field {
+                Detail::Field {
+                    section,
+                    optional,
+                    default,
+                    ..
+                } => Some(Field {
                     key: node.key.clone(),
                     name: Rc::from(last(&node.name)),
                     section: *section,
+                    absent: default
+                        .clone()
+                        .or_else(|| optional.then_some(Literal::None)),
                 }),
                 _ => None,
             })
@@ -211,8 +258,13 @@ impl Types {
         let shape = self.shape(key);
         let mut fields = Vec::with_capacity(shape.fields.len());
         for field in &shape.fields {
-            let at = given.iter().position(|(key, _)| *key == field.key)?;
-            let (_, value) = given.swap_remove(at);
+            let value = match given.iter().position(|(key, _)| *key == field.key) {
+                Some(at) => given.swap_remove(at).1,
+                None => {
+                    let absent = field.absent.as_ref()?;
+                    self.literal(absent, &TypeRef::Field(field.key.clone()))?
+                }
+            };
             fields.push((Rc::clone(&field.name), value));
         }
         Some(match &shape.variant {

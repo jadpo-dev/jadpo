@@ -841,7 +841,7 @@ impl Body<'_> {
         let missing: Vec<String> = fields
             .iter()
             .filter(|f| !given.contains_key(&f.name))
-            .filter(|f| !(input && (f.optional || f.default)))
+            .filter(|f| !(input && (f.optional || f.default.is_some())))
             .map(|f| format!("`{}`", f.name))
             .collect();
         if missing.is_empty() {

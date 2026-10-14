@@ -15,8 +15,8 @@ use jadpo_graph::body::{
 };
 use jadpo_graph::{Key, TypeRef};
 use jadpo_runtime::{Ctx, Failure, Fault, FaultKind, Frame};
-use jadpo_std::{Builtin, Dur, Kind as ParamKind};
-use jadpo_value::{Decimal, Value, ops};
+use jadpo_std::{Builtin, Kind as ParamKind};
+use jadpo_value::{Value, ops};
 
 use crate::program::Program;
 use crate::{Assertion, Outcome, Part};
@@ -519,35 +519,7 @@ impl<'p> Interp<'p> {
 
     /// A literal as the type it goes into holds it (area 2, question 15).
     fn literal(&mut self, literal: &Literal, ty: &TypeRef, id: SiteId) -> Eval<Value> {
-        let program = self.program;
-        let types = &program.types;
-        let value = match literal {
-            Literal::Bool(value) => Some(Value::Bool(*value)),
-            Literal::None => Some(Value::None),
-            Literal::Text(text) => match types.representation(ty) {
-                Some(builtin) => text_literal(builtin, text),
-                None => Some(Value::text(text)),
-            },
-            Literal::Duration(written) => Dur::parse(written)
-                .and_then(|dur| i64::try_from(dur.millis).ok())
-                .map(Value::Duration),
-            Literal::Number { value, decimal } => {
-                let decimal = match types.representation(ty) {
-                    Some(builtin) => builtin == Builtin::Decimal,
-                    None => *decimal,
-                };
-                if decimal {
-                    types
-                        .validator(ty)
-                        .store(Value::Decimal(Decimal::new(value.mantissa, value.scale)))
-                } else if value.scale == 0 {
-                    i64::try_from(value.mantissa).ok().map(Value::Int)
-                } else {
-                    None
-                }
-            }
-        };
-        match value {
+        match self.program.types.literal(literal, ty) {
             Some(value) => Ok(value),
             None => Err(self.defect("a literal the checker would have refused", id)),
         }

@@ -4,6 +4,7 @@ use std::fmt;
 
 use jadpo_std::{Builtin, Rules};
 
+use crate::body::Literal;
 use crate::{Key, Kind, TypeRef};
 
 /// Where a node is written: its project-relative file, byte range without
@@ -172,7 +173,8 @@ pub enum Detail {
         /// The declared type: `List<Tag>`, `Note.id?`.
         ty: TypeRef,
         optional: bool,
-        default: bool,
+        /// An input field's `default:`, filled in when it is left out.
+        default: Option<Literal>,
         section: Option<Section>,
         /// For a field brought in by `include` or `pick`: where it comes from.
         copied_from: Option<Key>,
