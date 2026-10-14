@@ -82,7 +82,7 @@ function catalogue_name(name: ShortProductName) -> ProductName {
 | Constraint | For | Value | Meaning |
 |---|---|---|---|
 | `min`, `max` | `Int`, `Decimal` | number | Inclusive bounds |
-| `min_length`, `max_length` | `Text`, `Bytes`, `List<T>` | whole number | Inclusive bounds; text counts Unicode characters, lists count elements |
+| `min_length`, `max_length` | `Text`, `Bytes`, `List<T>`, `Set<T>`, `Map<K, V>` | whole number | Inclusive bounds; text counts Unicode characters, collections count items |
 | `pattern` | `Text` | string | A regular expression the text must match |
 | `format` | `Text` | `email` | The text must be an email address |
 
@@ -1067,7 +1067,8 @@ output Basket {
 A collection keeps its element type: a `List<Customer.email>` is not a
 `List<Email>`, and nothing converts one collection into another:
 `List<Tag>(names)` is `type.constructor_input`, since only a named type is
-built from a value (built in chunk 2.7).
+built from a value (built in chunk 2.7). A named collection type is one,
+so it is built from a collection of its items, as the next section shows.
 
 Lists can be built and walked: a list literal is written in square
 brackets, its items taking the list's element type (`["urgent", "home"]`),
@@ -1078,6 +1079,166 @@ set (question 5). So far `for` and the `collection` operations take only
 lists: a set can be built, passed, returned and compared, and a map,
 which has no literal yet, can be received, passed, compared and sent
 back, but neither can be walked or searched.
+
+### Named collection construction
+
+A named list, set or map type is built from a collection whose items are
+already its item type. It is an ordinary construction, `Type(value)`, that
+checks only the collection's own rules: the `min_length` and `max_length`
+of the type and of the types it builds on. When one can break, the
+construction takes `attempt` and an arm for each, or `invalid:` for all
+of them, and the declared lengths and the conditions around it prove it
+as they prove any construction, so a proven one is plain (built in chunk
+2.11).
+
+```jadpo check project=named-collections file=types.jadpo hidden
+type GuestName = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type NoGuests = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type TooManyGuests = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=named-collections
+type Guests = List<GuestName> {
+    min_length: 1
+    max_length: 12
+}
+
+type GuestBook = Set<GuestName> {
+    min_length: 1
+}
+
+function guest_list(found: List<GuestName>) fails NoGuests, TooManyGuests -> Guests {
+    var guests: Guests = attempt Guests(found) {  // any list, so both can break
+        min_length: NoGuests
+        max_length: TooManyGuests
+    }
+    return guests
+}
+
+function seated(found: List<GuestName>) fails NoGuests, TooManyGuests -> Guests {
+    if (collection.count(found) == 0) {
+        reject NoGuests
+    } else if (collection.count(found) > 12) {
+        reject TooManyGuests
+    }
+    return Guests(found)  // 1 to 12 names here
+}
+
+function signed_in(guests: Guests) -> GuestBook {
+    return GuestBook(guests)  // at least one name, each kept once
+}
+```
+
+- **The items already are the item type.** Building the collection never
+  converts its items: a `Text` becomes a `GuestName` where it is built,
+  each with its own arms. Collections stay invariant, so a list of a
+  narrower name type doesn't fit either.
+- **A list from a list, a map from a map.** A map's keys and values must
+  both already be its own. A list is never built from a set, since a set
+  has no order a list could keep.
+- **A set from a set or a list.** A list's repeats collapse, and the set
+  keeps the canonical order ("Set order"). It holds at most as many items
+  as the list, so the list's length proves the set's `max_length`, and at
+  least one when the list has any, so the list proves a `min_length` of 1
+  and no more: two of its items might be equal.
+- **From another named collection.** A narrower named collection widens
+  to the one it builds on with no construction at all. One of the same
+  item type that doesn't build on it is built like any value, its own
+  declared lengths proving what they can.
+- **Field types too.** A field type with collection rules is built the
+  same way: `Party.guests(found)`.
+- **A list written in the construction** takes the collection's type and
+  its length is checked while compiling, as a literal's is:
+  `Guests([])` is `type.invalid_literal`.
+- **Only a named type.** `List<GuestName>(found)` stays
+  `type.constructor_input`: a collection type that isn't named is never
+  built from a value.
+
+Passing a collection whose items aren't the item type yet is
+`type.constructor_input`, and its `next` says where to build them:
+
+```jadpo check project=e-named-collection-items expect=type.constructor_input
+type GuestName = Text {
+    min_length: 1
+}
+
+type Guests = List<GuestName> {
+    min_length: 1
+}
+
+type RawName = Text {}
+
+type NoGuests = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function guest_list(found: List<RawName>) fails NoGuests -> Guests {
+    var guests: Guests = attempt Guests(found) {
+        min_length: NoGuests
+    }
+    return guests
+}
+```
+
+```text output
+error: `Guests` can't be built from `List<RawName>`
+ --> main.jadpo:16:41
+   |
+16 |     var guests: Guests = attempt Guests(found) {
+   |                                         ^^^^^ this is `List<RawName>`
+  reason: `Guests` is a list of `GuestName`, and this is a list of `RawName`. Building a `Guests` checks only the list's own rules; it never converts the items.
+  next: Build each item as a `GuestName` where it is made, so the list is a `List<GuestName>` (agent)
+  rule: type.constructor_input
+  help: docs/language/02-values-and-types.html#type-constructor-input
+
+check failed: 1 error, 1 file
+```
+
+A set where a named list is needed is the same error:
+
+```jadpo check project=e-named-collection-set expect=type.constructor_input
+type GuestName = Text {
+    min_length: 1
+}
+
+type Guests = List<GuestName> {
+    min_length: 1
+}
+
+type NoGuests = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function guest_list(found: Set<GuestName>) fails NoGuests -> Guests {
+    var guests: Guests = attempt Guests(found) {
+        min_length: NoGuests
+    }
+    return guests
+}
+```
+
+```text output
+error: `Guests` can't be built from `Set<GuestName>`
+ --> main.jadpo:14:41
+   |
+14 |     var guests: Guests = attempt Guests(found) {
+   |                                         ^^^^^ this is `Set<GuestName>`
+  reason: `Guests` is a list of `GuestName`, and this is a set. A set has no order a list could keep, so a list is built only from a list.
+  next: Keep the items in a `List<GuestName>` where they are collected (agent)
+  rule: type.constructor_input
+  help: docs/language/02-values-and-types.html#type-constructor-input
+
+check failed: 1 error, 1 file
+```
 
 ## When one type can stand in for another
 
@@ -3137,7 +3298,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | `optional` and `default` | Only on `Input` fields; reading an optional field gives `T?`; only the update `patch:` form keeps omitted and `none` apart | 2026-10-12 |
 | Collection operations | List literals, `for item in items`, `collection.count` and `collection.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
 | Set order | A set has no order code can use: no index and no first item; where order matters, sort explicitly or use a `List`. Everything that shows a set (JSON, reports, iteration once `for` takes sets) uses one guaranteed canonical order, the same in interpreted and compiled code: by value, numbers numerically, text by Unicode code point, enum variants in declaration order, objects and tagged unions field by field in declared order (Richard) | 2026-10-14 |
-| Named collection construction | A named collection type is built from a collection whose items are already its item type, as an ordinary construction that checks only the collection's own rules: `attempt Names(found) { min_length: NoNames }`, with the usual arms, `invalid:` and proof. Items are never converted in the same step: a `Text` becomes a `Name` where it is built, each with its own arms. `List<T>(xs)` stays an error (Richard) | 2026-10-14 |
+| Named collection construction | A named collection type is built from a collection whose items are already its item type, as an ordinary construction that checks only the collection's own rules: `attempt Names(found) { min_length: NoNames }`, with the usual arms, `invalid:` and proof. Items are never converted in the same step: a `Text` becomes a `Name` where it is built, each with its own arms. `List<T>(xs)` stays an error (Richard). Built in chunk 2.11, which also settled: a list is built only from a list, never a set, which has no order to keep; a set from a set or a list, dropping repeats in the canonical order, with the list proving its `max_length` and a `min_length` of at most 1; a map from a map of the same keys and values; another named collection of the same item type is built like any value, its declared lengths counting as proof; field types with collection rules are built the same way | 2026-10-14 |
 | `Set` and `Map` encoding | A `Set` is a JSON array rejected if it has duplicates; a `Map` is a JSON object with text- or UUID-based keys only | 2026-10-12 |
 | Transparent aliases | None; every `type` is a new type; `type X = Uuid` without a block is rejected | 2026-10-12 |
 | Representation access | No cast and no unwrap; constructing is the only conversion | 2026-10-12 |
