@@ -155,7 +155,8 @@ reference only).
   clear, including after a file is removed; location paths never cut; one
   location shape in `--json` and the `jadpo test --json` schema documented;
   `--failed` when the failed tests are gone; decided but unbuilt flags say
-  `not_built_yet`; the smaller wording and completion findings. Gate: rich
+  `not_built_yet`; the smaller wording and completion findings; and
+  `visibility.public_unused` (area 1, "Unused `public`"). Gate: rich
   snapshots stripped of the run time, the watch latency ceiling near the
   1-second target, README "try next" outcomes checked. Docs: areas 1, 13
   and 14 stop calling archived-compiler behaviour current.
@@ -180,7 +181,7 @@ reference only).
   splits into shared data and per-thread caches. Watch keeps the previous
   graph and classifies every edge kind, so later edges can't be missed.
   Bodies and the graph shared behind `Arc`; the duplicated report code
-  merged. A set's canonical order is **needs Richard**.
+  merged. Sets use the canonical order area 2 decides ("Set order"), from one shared comparator.
 
 ## Phase 3 — Data (areas 5, 6)
 
