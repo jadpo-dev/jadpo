@@ -343,7 +343,7 @@ pub fn schema() -> Json {
                 ("location", "The call's site (a location)"),
                 (
                     "callable",
-                    "The callable it is in, such as `function line_total`",
+                    "The callable it is in: its kind and name, such as `function <name>`",
                 ),
                 (
                     "repeats",

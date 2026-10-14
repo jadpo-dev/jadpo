@@ -132,7 +132,7 @@ fn no_tests(message: String, reason: String, next: String) -> Box<Diagnostic> {
 }
 
 /// `a pure`, `an action`.
-fn article(word: &str) -> String {
+fn with_a(word: &str) -> String {
     if word.starts_with(['a', 'e', 'i', 'o', 'u']) {
         format!("an {word}")
     } else {
@@ -247,7 +247,7 @@ pub(crate) fn choose(
                 format!(
                     "Of the {} asked for, none is {} test: a test's kind comes from what it calls.",
                     count(before, "test", "tests"),
-                    article(kind.word())
+                    with_a(kind.word())
                 ),
                 "Leave out `--kind` to run every kind".to_string(),
             ));

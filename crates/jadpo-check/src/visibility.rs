@@ -86,10 +86,10 @@ fn used_publics(db: &dyn Db, project: Project) -> BTreeSet<String> {
     }
     let mut used: BTreeSet<String> = BTreeSet::new();
     for &file in project.files(db) {
-        let owner = location(db, project, file).ownership.domain();
+        let home = location(db, project, file).ownership.domain();
         for name in named_in(db, project, file) {
             if let Some(public) = publics.get(name)
-                && owner != Some(public.domain.as_str())
+                && home != Some(public.domain.as_str())
             {
                 used.insert(name.clone());
             }
