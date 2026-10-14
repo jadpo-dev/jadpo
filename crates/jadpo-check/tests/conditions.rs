@@ -91,6 +91,9 @@ fn a_condition_that_leaves_proves_the_construction_after_it() {
         "function priced(amount: Amount) fails OrderTooLarge -> Price {\n    if (amount < 0.00 or amount > 10.004) {\n        reject OrderTooLarge\n    }\n    return Price(amount)\n}\n",
         // A `var mut` keeps its bound until it is assigned.
         "function kept(start: Count) fails OrderTooLarge -> CakeCount {\n    var mut n: Count = start\n    if (n < 1 or n > 12) {\n        reject OrderTooLarge\n    }\n    return CakeCount(n)\n}\n",
+        // Two branches that each bound a value leave the range covering
+        // both.
+        "function either_half(n: Count, flag: Flag) fails OrderTooLarge -> CakeCount {\n    if (flag) {\n        if (n < 1 or n > 6) {\n            reject OrderTooLarge\n        }\n    } else {\n        if (n < 7 or n > 12) {\n            reject OrderTooLarge\n        }\n    }\n    return CakeCount(n)\n}\n",
         // A loop that doesn't assign a value keeps its bound.
         "function each(n: Count, lines: List<Line>) fails OrderTooLarge -> Count {\n    if (n < 1 or n > 12) {\n        reject OrderTooLarge\n    }\n    var mut total: Count = 0\n    for line in lines {\n        var size: CakeCount = CakeCount(n)\n        total = Count(total * size + line.quantity)\n    }\n    return total\n}\n",
     ];
@@ -134,6 +137,8 @@ fn nothing_else_counts_as_proof() {
         "function looped(start: Count, lines: List<Line>) fails OrderTooLarge -> CakeCount {\n    var mut n: Count = start\n    if (n < 1 or n > 12) {\n        reject OrderTooLarge\n    }\n    for line in lines {\n        n = Count(n + line.quantity)\n    }\n    return CakeCount(n)\n}\n",
         // A check inside a branch that goes on stays in that branch.
         "function nested(n: Count, flag: Flag) fails OrderTooLarge -> CakeCount {\n    if (flag) {\n        if (n < 1 or n > 12) {\n            reject OrderTooLarge\n        }\n    }\n    return CakeCount(n)\n}\n",
+        // ...and inside a loop, which may not run at all.
+        "function each_line(n: Count, lines: List<Line>) fails OrderTooLarge -> CakeCount {\n    for line in lines {\n        if (n < 1 or n > line.quantity) {\n            reject OrderTooLarge\n        }\n    }\n    return CakeCount(n)\n}\n",
         // ...and inside a `match` arm.
         "function matched(n: Count, flag: Flag) fails OrderTooLarge -> CakeCount {\n    match flag {\n        true -> {\n            if (n < 1 or n > 12) {\n                reject OrderTooLarge\n            }\n        }\n        false -> {}\n    }\n    return CakeCount(n)\n}\n",
         // The `else` of `a and b` knows only that one of them is false.
