@@ -155,7 +155,8 @@ reference only).
   clear, including after a file is removed; location paths never cut; one
   location shape in `--json` and the `jadpo test --json` schema documented;
   `--failed` when the failed tests are gone; decided but unbuilt flags say
-  `not_built_yet`; the smaller wording and completion findings. Gate: rich
+  `not_built_yet`; the smaller wording and completion findings; and
+  `visibility.public_unused` (area 1, "Unused `public`"). Gate: rich
   snapshots stripped of the run time, the watch latency ceiling near the
   1-second target, README "try next" outcomes checked. Docs: areas 1, 13
   and 14 stop calling archived-compiler behaviour current.
