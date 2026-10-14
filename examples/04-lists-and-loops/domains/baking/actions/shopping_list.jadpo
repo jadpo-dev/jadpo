@@ -1,0 +1,21 @@
+// Building a named collection type from a list.
+
+/// What to buy for a recipe: each ingredient named once.
+type ShoppingList = Set<IngredientName> {}
+
+/// The ingredients to buy for `recipe`, each once however often it goes
+/// in.
+action shopping_list(recipe: Recipe) -> ShoppingList {
+    var every_name: List<IngredientName> = collection.map(
+        recipe.ingredients,
+        ingredient -> ingredient.name
+    )
+    // A named collection type is built from a collection whose items
+    // already are its item type, and checks only the collection's own
+    // rules: `ShoppingList` has none, so this can't fail. Building it
+    // never converts the items, so a `List<Text>` wouldn't do; each name
+    // becomes an `IngredientName` where it is made. A set built from a
+    // list keeps each value once, so the butter that goes in twice is
+    // bought once.
+    return ShoppingList(every_name)
+}

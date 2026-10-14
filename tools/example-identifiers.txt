@@ -217,6 +217,7 @@ entered
 entry_count
 entry_id
 eur
+every_name
 expected_delivery
 expires_at
 export_my_data
@@ -225,6 +226,7 @@ exposed_secret
 fail_loudly
 family_basket
 fee
+fill_tray
 fill_trays
 filter_value
 find_customer
@@ -248,6 +250,10 @@ grain
 grams
 grams_in
 group_name
+guest_book
+guest_list
+guest_name
+guests
 half_price
 handle_tenant
 handover
@@ -276,6 +282,7 @@ ingredients
 inside_range
 invalid_configuration
 invalid_success
+invited
 invoice
 invoice_address
 invoice_transfer
@@ -361,6 +368,7 @@ needs_cooling
 new_card
 new_todo
 nickname
+no_guests
 not_a_call
 not_an_address
 not_work
@@ -371,6 +379,7 @@ note_not_found
 note_refused
 note_role
 note_was_edited
+nothing_to_bake
 notify
 notify_owner
 nut_free
@@ -481,6 +490,7 @@ queue_overdue_reminders
 quote
 quote_cake
 raise_priority
+raw_name
 reaction
 read_clock
 ready
@@ -548,6 +558,7 @@ scale_recipe
 scaled
 scone
 search_todos
+seated
 second_conflict
 second_session
 secret_to_public
@@ -572,10 +583,13 @@ shelvable
 shipment
 shipped
 shop_time
+shopping_list
 short_date
 short_product_name
+shortbread
 shout
 sign_in_link
+signed_in
 signup_ip
 size_of
 size_price
@@ -665,10 +679,13 @@ todos_for_owner
 together
 too_big
 too_heavy
+too_many_guests
 top_tier
 total_weight
+tray
 tray_capacity
 tray_count
+tray_full
 two_open_todos
 unknown_failure
 update_customer

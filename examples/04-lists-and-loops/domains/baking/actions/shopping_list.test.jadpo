@@ -1,0 +1,20 @@
+test "an ingredient that goes in twice is bought once" {
+    var shortbread: Recipe = Recipe {
+        ingredients: [
+            Ingredient {
+                name: "Butter"
+                weight: 100
+            },
+            Ingredient {
+                name: "Flour"
+                weight: 150
+            },
+            Ingredient {
+                name: "Butter"
+                weight: 10
+            }
+        ]
+        allergens: [Allergen.gluten, Allergen.milk]
+    }
+    assert shopping_list(shortbread) == ["Flour", "Butter"]
+}

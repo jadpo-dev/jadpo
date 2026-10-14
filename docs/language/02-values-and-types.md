@@ -1116,21 +1116,21 @@ type GuestBook = Set<GuestName> {
     min_length: 1
 }
 
-function guest_list(found: List<GuestName>) fails NoGuests, TooManyGuests -> Guests {
-    var guests: Guests = attempt Guests(found) {  // any list, so both can break
+function guest_list(invited: List<GuestName>) fails NoGuests, TooManyGuests -> Guests {
+    var guests: Guests = attempt Guests(invited) {  // any list, so both can break
         min_length: NoGuests
         max_length: TooManyGuests
     }
     return guests
 }
 
-function seated(found: List<GuestName>) fails NoGuests, TooManyGuests -> Guests {
-    if (collection.count(found) == 0) {
+function seated(invited: List<GuestName>) fails NoGuests, TooManyGuests -> Guests {
+    if (collection.count(invited) == 0) {
         reject NoGuests
-    } else if (collection.count(found) > 12) {
+    } else if (collection.count(invited) > 12) {
         reject TooManyGuests
     }
-    return Guests(found)  // 1 to 12 names here
+    return Guests(invited)  // 1 to 12 names here
 }
 
 function signed_in(guests: Guests) -> GuestBook {
@@ -1155,11 +1155,11 @@ function signed_in(guests: Guests) -> GuestBook {
   item type that doesn't build on it is built like any value, its own
   declared lengths proving what they can.
 - **Field types too.** A field type with collection rules is built the
-  same way: `Party.guests(found)`.
+  same way: `Party.guests(invited)`.
 - **A list written in the construction** takes the collection's type and
   its length is checked while compiling, as a literal's is:
   `Guests([])` is `type.invalid_literal`.
-- **Only a named type.** `List<GuestName>(found)` stays
+- **Only a named type.** `List<GuestName>(invited)` stays
   `type.constructor_input`: a collection type that isn't named is never
   built from a value.
 
@@ -1181,8 +1181,8 @@ type NoGuests = Failure {
     kind: FailureKind.invalid_value
 }
 
-function guest_list(found: List<RawName>) fails NoGuests -> Guests {
-    var guests: Guests = attempt Guests(found) {
+function guest_list(invited: List<RawName>) fails NoGuests -> Guests {
+    var guests: Guests = attempt Guests(invited) {
         min_length: NoGuests
     }
     return guests
@@ -1193,8 +1193,8 @@ function guest_list(found: List<RawName>) fails NoGuests -> Guests {
 error: `Guests` can't be built from `List<RawName>`
  --> main.jadpo:16:41
    |
-16 |     var guests: Guests = attempt Guests(found) {
-   |                                         ^^^^^ this is `List<RawName>`
+16 |     var guests: Guests = attempt Guests(invited) {
+   |                                         ^^^^^^^ this is `List<RawName>`
   reason: `Guests` is a list of `GuestName`, and this is a list of `RawName`. Building a `Guests` checks only the list's own rules; it never converts the items.
   next: Build each item as a `GuestName` where it is made, so the list is a `List<GuestName>` (agent)
   rule: type.constructor_input
@@ -1218,8 +1218,8 @@ type NoGuests = Failure {
     kind: FailureKind.invalid_value
 }
 
-function guest_list(found: Set<GuestName>) fails NoGuests -> Guests {
-    var guests: Guests = attempt Guests(found) {
+function guest_list(invited: Set<GuestName>) fails NoGuests -> Guests {
+    var guests: Guests = attempt Guests(invited) {
         min_length: NoGuests
     }
     return guests
@@ -1230,8 +1230,8 @@ function guest_list(found: Set<GuestName>) fails NoGuests -> Guests {
 error: `Guests` can't be built from `Set<GuestName>`
  --> main.jadpo:14:41
    |
-14 |     var guests: Guests = attempt Guests(found) {
-   |                                         ^^^^^ this is `Set<GuestName>`
+14 |     var guests: Guests = attempt Guests(invited) {
+   |                                         ^^^^^^^ this is `Set<GuestName>`
   reason: `Guests` is a list of `GuestName`, and this is a set. A set has no order a list could keep, so a list is built only from a list.
   next: Keep the items in a `List<GuestName>` where they are collected (agent)
   rule: type.constructor_input
