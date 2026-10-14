@@ -1,0 +1,8 @@
+/// `card` with one more stamp.
+action stamp_card(card: Card) fails CardFull -> Card {
+    var stamps: Stamps = attempt Stamps(card.stamps + 1) invalid: CardFull
+    return Card {
+        holder: card.holder
+        stamps: stamps
+    }
+}

@@ -1,0 +1,24 @@
+// Test sentences name a test once in the whole project. When one fails,
+// `jadpo test` prints the file and line, the condition with the value of
+// each part under it, and the exact command that reruns just that test
+// in the same order: `jadpo test <file>:<line> --seed <seed>`.
+
+test "a full card is emptied when redeemed" {
+    var emptied: Card = attempt redeem_card(new_card(10))
+    assert emptied == Card {
+        holder: "Ada"
+        stamps: 0
+    }
+}
+
+test "a card short of ten stamps can't be redeemed" {
+    assert redeem_card(new_card(9)) fails CardNotFull
+}
+
+test "the stamps still to go count down to zero" {
+    var nearly: Card = Card {
+        holder: "Grace"
+        stamps: 7
+    }
+    assert stamps_to_go(nearly) == 3
+}

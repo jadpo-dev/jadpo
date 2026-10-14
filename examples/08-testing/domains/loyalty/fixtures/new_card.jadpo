@@ -1,0 +1,16 @@
+// A fixture builds test data shared by several test files; it lives in
+// the domain's `fixtures/` folder, one fixture per file. It is a test-only
+// action, called by name from tests, other fixtures and, later, seeds;
+// application code can't call it, and it is never compiled into a
+// deployable. When data arrives (area 5), a fixture creates its records
+// by calling the application's own actions, so every rule applies exactly
+// as it does for a customer. A failure inside a fixture fails the test
+// that called it, so a fixture has no `fails` list.
+
+/// A card for Ada with `stamps` stamps on it.
+fixture new_card(stamps: Stamps) -> Card {
+    return Card {
+        holder: "Ada"
+        stamps: stamps
+    }
+}
