@@ -18,7 +18,7 @@ fn with_counts(source: &str) -> Vec<String> {
     check(&format!("{COUNTS}{source}"))
 }
 
-// --- finding 2: `reject` and `invalid:` name failures ----------------------
+// --- finding 2: `reject` and mappings name failures ----------------------
 
 #[test]
 fn reject_names_only_a_failure() {
@@ -38,7 +38,7 @@ fn reject_names_only_a_failure() {
 fn a_mapping_names_only_a_failure() {
     assert_eq!(
         with_counts(
-            "function f(n: Count) -> Quantity {\n    var q: Quantity = attempt Quantity(n * 2) invalid: DeliveryState.pending\n    return q\n}\n"
+            "function f(n: Count) -> Quantity {\n    var q: Quantity = attempt Quantity(n * 2) {\n        invalid: DeliveryState.pending\n    }\n    return q\n}\n"
         ),
         ["semantic.wrong_name_kind"]
     );

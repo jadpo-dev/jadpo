@@ -16,7 +16,7 @@ use super::super::shape::FieldsBase;
 use super::super::table::{Def, FieldDef};
 use super::super::ty::Ty;
 use super::facts::Reach;
-use super::{Arm, Body, did_you_mean, is_literal, line_span, node_key, text};
+use super::{Arm as MatchArm, Body, did_you_mean, is_literal, line_span, node_key, text};
 use crate::tree::{self, dotted};
 
 /// What a call can do besides give its result.
@@ -32,8 +32,24 @@ pub enum Fallible {
     Fails(Vec<String>),
     /// A construction whose value is only known at runtime and which the
     /// declared ranges don't prove safe: it fails when the value breaks
-    /// the type's rules, with the failure `invalid:` names.
-    Construction,
+    /// one of these rules, by their keys (`max`), with the failure its
+    /// `attempt` maps that rule to.
+    Construction(Vec<String>),
+}
+
+/// One arm of an `attempt`'s block: its key, where it is written, and the
+/// failure it names.
+struct Arm {
+    key: String,
+    key_span: Span,
+    member: ast::Member,
+    value: Option<Expr>,
+}
+
+/// "`max`", or "`min` and `max`".
+fn keys_list(keys: &[String]) -> String {
+    let listed: Vec<String> = keys.iter().map(|k| format!("`{k}`")).collect();
+    crate::and_list(&listed)
 }
 
 impl Body<'_> {
@@ -114,17 +130,21 @@ impl Body<'_> {
                     crate::and_list(&listed)
                 ))
             }
-            Fallible::Construction => Diagnostic::new(
-                &rule::FAILURE_ATTEMPT_REQUIRED,
-                format!("`{written}(...)` can fail at runtime, and nothing handles it"),
-            )
-            .at(span, "checked when it runs")
-            .reason(format!(
-                "The value is only known when the program runs, and the declared ranges don't prove it follows `{written}`'s rules, so building it can fail."
-            ))
-            .next(format!(
-                "Write `attempt {written}(...) invalid: SomeFailure` naming an `invalid_value` failure"
-            )),
+            Fallible::Construction(breakable) => {
+                let rules = self.written_rules(call, breakable);
+                let first = breakable.first().cloned().unwrap_or_default();
+                Diagnostic::new(
+                    &rule::FAILURE_ATTEMPT_REQUIRED,
+                    format!("`{written}(...)` can fail at runtime, and nothing handles it"),
+                )
+                .at(span, "checked when it runs")
+                .reason(format!(
+                    "The value is only known when the program runs, and the declared ranges don't prove it follows {rules}, so building it can fail."
+                ))
+                .next(format!(
+                    "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each rule that can break to an `invalid_value` failure, or `invalid:` for all of them"
+                ))
+            }
             Fallible::Never | Fallible::Unknown => return,
         };
         self.flow.open = true;
@@ -172,17 +192,17 @@ impl Body<'_> {
     pub(super) fn propagate(&mut self, propagate: &ast::PropagateExpr) {
         let span = self.span(propagate);
         match self.arm.clone() {
-            Arm::Failure(Some(name)) => {
+            MatchArm::Failure(Some(name)) => {
                 self.facts
                     .propagates
                     .insert(node_key(propagate.syntax()), name.clone());
                 self.leave(&name, span, "passed on here");
             }
-            Arm::Failure(None) => {}
-            Arm::Success => {
+            MatchArm::Failure(None) => {}
+            MatchArm::Success => {
                 // The outcome check reports it, at the arm.
             }
-            Arm::None => {
+            MatchArm::None => {
                 self.flow.open = true;
                 self.out.push(
                     Diagnostic::new(
@@ -352,17 +372,43 @@ impl Body<'_> {
 
     // --- attempt ----------------------------------------------------------
 
-    /// `attempt call(...)`, with any mappings after it; the call's result.
-    pub(super) fn attempt(&mut self, attempt: &ast::AttemptExpr, expected: Option<&Ty>) -> Ty {
-        for mapping in attempt.mappings() {
-            if let Some(value) = mapping.expr() {
+    /// The arms of an `attempt`'s block, with their failures' names
+    /// resolved.
+    fn arms(&mut self, attempt: &ast::AttemptExpr) -> Vec<Arm> {
+        let mut arms = Vec::new();
+        for item in attempt
+            .member_list()
+            .iter()
+            .flat_map(ast::MemberList::member_items)
+        {
+            let MemberItem::Member(member) = item else {
+                continue;
+            };
+            let value = member.value();
+            if let Some(value) = &value {
                 // A call written as the failure is resolved where the
                 // mapping's value is checked, below.
                 self.resolved_by(|names, out| {
-                    names.mapped(&value, out);
+                    names.mapped(value, out);
                 });
             }
+            let Some(key) = member.member_key() else {
+                continue;
+            };
+            arms.push(Arm {
+                key: tree::written(key.syntax()),
+                key_span: self.span(&key),
+                member,
+                value,
+            });
         }
+        arms
+    }
+
+    /// `attempt call(...)`, with any block of mappings after it; the call's
+    /// result.
+    pub(super) fn attempt(&mut self, attempt: &ast::AttemptExpr, expected: Option<&Ty>) -> Ty {
+        let arms = self.arms(attempt);
         let span = line_span(self.path, attempt.syntax());
         let Some(inner) = attempt.expr() else {
             return Ty::Error;
@@ -388,7 +434,6 @@ impl Body<'_> {
             }
             other => (self.infer(other), Fallible::Never),
         };
-        let mappings: Vec<ast::Mapping> = attempt.mappings().collect();
         let written = match &inner {
             Expr::CallExpr(call) => call
                 .expr()
@@ -402,19 +447,20 @@ impl Body<'_> {
         };
         match &fallible {
             Fallible::Never => {
-                for mapping in &mappings {
-                    if let Some(value) = mapping.expr() {
-                        self.failure_given(&value);
+                for arm in &arms {
+                    if let Some(value) = &arm.value {
+                        self.failure_given(value);
                     }
                 }
                 self.attempt_infallible(attempt, &inner, &written);
             }
             Fallible::Unknown => {
                 self.flow.open = true;
-                for mapping in &mappings {
-                    if let Some(value) = mapping.expr()
-                        && let Some(name) = self.failure_given(&value)
-                    {
+                for arm in &arms {
+                    let failure = arm.value.as_ref().and_then(|v| self.failure_given(v));
+                    if arm.key == "invalid" {
+                        self.invalid_outside_construction(arm, &inner, &written);
+                    } else if let Some(name) = failure {
                         self.leave(&name, span.clone(), "mapped here");
                     }
                 }
@@ -423,22 +469,54 @@ impl Body<'_> {
                 for name in names {
                     self.leave(name, span.clone(), "passed on here");
                 }
-                for mapping in &mappings {
-                    if let Some(value) = mapping.expr() {
-                        self.failure_given(&value);
+                for arm in &arms {
+                    if let Some(value) = &arm.value {
+                        self.failure_given(value);
                     }
-                    self.unknown_mapping(mapping, &written, false);
+                    if arm.key == "invalid" {
+                        self.invalid_outside_construction(arm, &inner, &written);
+                    } else {
+                        self.unknown_mapping(arm, &written, None);
+                    }
                 }
             }
-            Fallible::Construction => {
-                if let Some(failure) = self.construction_mappings(&mappings, &written, span) {
-                    self.facts
-                        .mapped
-                        .insert(node_key(attempt.syntax()), failure);
+            Fallible::Construction(breakable) => {
+                let rules = match &inner {
+                    Expr::CallExpr(call) => self.construction_rules(call),
+                    _ => Vec::new(),
+                };
+                let mapped =
+                    self.construction_arms(attempt, &arms, breakable, &rules, &written, span);
+                if !mapped.is_empty() {
+                    self.facts.mapped.insert(node_key(attempt.syntax()), mapped);
                 }
             }
         }
         ty
+    }
+
+    /// The rules of the type a construction builds, by key and as written.
+    fn construction_rules(&self, call: &ast::CallExpr) -> Vec<(&'static str, String)> {
+        match self.facts.reaches.get(&node_key(call.syntax())) {
+            Some(Reach::Construct(target)) => self.rules_of(target),
+            _ => Vec::new(),
+        }
+    }
+
+    /// "`max: 1000`", or "`min: 1` and `max: 1000`": the rules a
+    /// construction can break, as its type writes them.
+    fn written_rules(&self, call: &ast::CallExpr, breakable: &[String]) -> String {
+        let rules = self.construction_rules(call);
+        let listed: Vec<String> = breakable
+            .iter()
+            .map(|key| {
+                rules
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .map_or_else(|| format!("`{key}`"), |(_, written)| format!("`{written}`"))
+            })
+            .collect();
+        crate::and_list(&listed)
     }
 
     /// An entity write with a block (area 6), or an object being built.
@@ -522,61 +600,248 @@ impl Body<'_> {
         )
     }
 
-    /// The mappings after a construction that can fail: `invalid:` names
-    /// an `invalid_value` failure, and nothing else is mapped. The failure
-    /// `invalid:` names, when it names one.
-    fn construction_mappings(
+    /// The arms of a construction that can fail (area 2, "Construction
+    /// failures by rule"): each rule that can break has one, or `invalid:`
+    /// covers every rule without its own; an arm for a rule that can't
+    /// break, or an `invalid:` left covering nothing, is a mistake. Each
+    /// failure is `invalid_value`. The failure each rule maps to, by key,
+    /// `None` for `invalid:`.
+    fn construction_arms(
         &mut self,
-        mappings: &[ast::Mapping],
+        attempt: &ast::AttemptExpr,
+        arms: &[Arm],
+        breakable: &[String],
+        rules: &[(&'static str, String)],
         written: &str,
         span: Span,
-    ) -> Option<String> {
-        let mut invalid = None;
-        let mut named = false;
-        let mut unknown = false;
-        for mapping in mappings {
-            let condition = mapping
-                .name()
-                .as_ref()
-                .and_then(tree::name_text)
-                .unwrap_or_default();
-            let failure = mapping.expr().and_then(|value| self.failure_given(&value));
-            if condition != "invalid" || named {
-                unknown = true;
-                self.unknown_mapping(mapping, written, true);
-                if let Some(failure) = failure {
-                    self.leave(&failure, span.clone(), "mapped here");
-                }
+    ) -> Vec<(Option<String>, String)> {
+        let mut seen: BTreeMap<String, Span> = BTreeMap::new();
+        let mut mapped = Vec::new();
+        let mut invalid: Option<&Arm> = None;
+        // A misspelt or repeated key is reported on its own: what it was
+        // meant to cover is unclear, so coverage isn't judged.
+        let mut unsure = false;
+        for arm in arms {
+            let failure = arm.value.as_ref().and_then(|v| self.failure_given(v));
+            if let Some(failure) = &failure {
+                self.leave(failure, span.clone(), "mapped here");
+                self.mapping_kind(arm, failure, "invalid_value");
+            } else {
+                self.flow.open = true;
+            }
+            if let Some(first) = seen.get(&arm.key) {
+                unsure = true;
+                self.duplicate_mapping(arm, first.clone());
                 continue;
             }
-            named = true;
-            let Some(failure) = failure else {
-                self.flow.open = true;
+            seen.insert(arm.key.clone(), arm.key_span.clone());
+            if arm.key == "invalid" {
+                invalid = Some(arm);
+            } else if let Some((_, rule)) = rules.iter().find(|(k, _)| *k == arm.key) {
+                if !breakable.contains(&arm.key) {
+                    self.rule_cannot_break(arm, rule, written);
+                    continue;
+                }
+            } else {
+                unsure = true;
+                self.unknown_mapping(arm, written, Some(rules));
                 continue;
-            };
-            self.leave(&failure, span.clone(), "mapped here");
-            self.mapping_kind(mapping, &failure, "invalid", "invalid_value");
-            invalid = Some(failure);
+            }
+            if let Some(failure) = failure {
+                let key = (arm.key != "invalid").then(|| arm.key.clone());
+                mapped.push((key, failure));
+            }
         }
-        if named || unknown {
-            return invalid;
+        if unsure {
+            self.flow.open = true;
+            return mapped;
         }
+        let uncovered: Vec<String> = breakable
+            .iter()
+            .filter(|key| !seen.contains_key(*key))
+            .cloned()
+            .collect();
+        match invalid {
+            Some(arm) if uncovered.is_empty() => {
+                self.invalid_covers_nothing(arm, breakable, written);
+            }
+            Some(_) => {}
+            None if uncovered.is_empty() => {}
+            None => {
+                self.rule_unmapped(attempt, &uncovered, rules, written, span);
+            }
+        }
+        mapped
+    }
+
+    /// The edit that removes an arm's line from its block.
+    fn arm_removal(&self, arm: &Arm) -> Span {
+        let node = arm.member.syntax();
+        let end = u32::from(node.text_range().end());
+        let start = node
+            .first_token()
+            .and_then(|token| {
+                std::iter::successors(token.prev_token(), |t| t.prev_token())
+                    .find(|t| !t.kind().is_trivia())
+            })
+            .map_or_else(
+                || u32::from(node.text_range().start()),
+                |token| u32::from(token.text_range().end()),
+            );
+        Span::new(self.path, start, end)
+    }
+
+    fn rule_unmapped(
+        &mut self,
+        attempt: &ast::AttemptExpr,
+        uncovered: &[String],
+        rules: &[(&'static str, String)],
+        written: &str,
+        span: Span,
+    ) {
+        self.flow.open = true;
+        let as_written: Vec<String> = uncovered
+            .iter()
+            .map(|key| {
+                rules
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .map_or_else(|| format!("`{key}`"), |(_, rule)| format!("`{rule}`"))
+            })
+            .collect();
+        let first = &uncovered[0];
+        let (them, it) = if uncovered.len() == 1 {
+            ("it", "it")
+        } else {
+            ("them", "each")
+        };
+        let next = if attempt.member_list().is_some() {
+            format!(
+                "Add `{first}: SomeFailure` to the block, naming an `invalid_value` failure, or `invalid: SomeFailure` to cover every rule without an arm"
+            )
+        } else {
+            format!(
+                "Add a block after `{written}`: `{{ {first}: SomeFailure }}`, naming an `invalid_value` failure, or `{{ invalid: SomeFailure }}` to cover every rule"
+            )
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::FAILURE_RULE_UNMAPPED,
+                format!(
+                    "`{written}` can break {}, and nothing maps {them}",
+                    keys_list(uncovered)
+                ),
+            )
+            .at(span, "can fail at runtime")
+            .reason(format!(
+                "The value is only known when the program runs, and the declared ranges don't prove it follows {}; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.",
+                crate::and_list(&as_written)
+            ))
+            .next(next),
+        );
+    }
+
+    fn rule_cannot_break(&mut self, arm: &Arm, rule: &str, written: &str) {
+        let key = &arm.key;
+        let reason = if key == "scale" {
+            format!(
+                "`{rule}` decides how a value is kept, rounding it half to even, so it never breaks and this arm could never run."
+            )
+        } else {
+            format!(
+                "The declared ranges prove the value always follows `{rule}`, so this arm could never run."
+            )
+        };
+        let removal = self.arm_removal(arm);
+        self.out.push(
+            Diagnostic::new(
+                &rule::FAILURE_RULE_CANNOT_BREAK,
+                format!("`{written}` can't break `{key}`, so it takes no arm"),
+            )
+            .at(arm.key_span.clone(), "never runs")
+            .reason(reason)
+            .next(format!("Remove `{key}: ...`"))
+            .edit(removal, ""),
+        );
+    }
+
+    fn invalid_covers_nothing(&mut self, arm: &Arm, breakable: &[String], written: &str) {
+        let removal = self.arm_removal(arm);
+        self.out.push(
+            Diagnostic::new(
+                &rule::FAILURE_INVALID_COVERS_NOTHING,
+                "`invalid:` covers nothing here",
+            )
+            .at(arm.key_span.clone(), "no rule left to cover")
+            .reason(format!(
+                "Every rule `{written}` can break has its own arm ({}), so `invalid:` could never run.",
+                keys_list(breakable)
+            ))
+            .next("Remove `invalid: ...`")
+            .edit(removal, ""),
+        );
+    }
+
+    fn duplicate_mapping(&mut self, arm: &Arm, first: Span) {
+        let key = &arm.key;
+        let removal = self.arm_removal(arm);
         self.flow.open = true;
         self.out.push(
             Diagnostic::new(
-                &rule::FAILURE_INVALID_MAPPING_REQUIRED,
-                format!("`{written}` can fail, but no failure is named for it"),
+                &rule::FAILURE_DUPLICATE_MAPPING,
+                format!("`{key}:` is mapped twice"),
             )
-            .at(span, "can fail at runtime")
-            .reason("The value is only known when the program runs, and the declared ranges don't prove it follows the type's rules; `invalid:` names the `invalid_value` failure the caller gets when it doesn't.")
-            .next(format!("Add `invalid: SomeFailure` after `{written}`")),
+            .at(arm.key_span.clone(), "mapped again")
+            .also(first, "first mapped here")
+            .reason("Each condition is mapped once, so there is never a question of which failure the caller gets.")
+            .next(format!("Remove one `{key}:`"))
+            .edit(removal, ""),
         );
-        None
+    }
+
+    /// `invalid:` on something that isn't a construction: it covers only a
+    /// construction's rules, never another operation's conditions.
+    fn invalid_outside_construction(&mut self, arm: &Arm, inner: &Expr, written: &str) {
+        let entity = matches!(inner, Expr::CallExpr(call) if matches!(
+            self.facts.reaches.get(&node_key(call.syntax())),
+            Some(Reach::Entity { .. })
+        ));
+        let (reason, next) = if entity {
+            (
+                format!(
+                    "`{written}` is an entity's operation, which maps each of its own conditions, such as `missing:` or `conflict:`, with an arm; `invalid:` is the catch-all only for the rules a construction's value can break."
+                ),
+                "Remove `invalid: ...`, and map each condition the operation has with its own arm"
+                    .to_string(),
+            )
+        } else {
+            (
+                format!(
+                    "`{written}` fails with the failures its `fails` list names; `invalid:` is the catch-all only for the rules a construction's value can break, never for another call's failures."
+                ),
+                format!(
+                    "Remove `invalid: ...`; `attempt` passes `{written}`'s failures on, and `match` turns one into another"
+                ),
+            )
+        };
+        let removal = self.arm_removal(arm);
+        self.flow.open = true;
+        self.out.push(
+            Diagnostic::new(
+                &rule::FAILURE_INVALID_OUTSIDE_CONSTRUCTION,
+                format!("`{written}` isn't a construction, so `invalid:` covers nothing"),
+            )
+            .at(arm.key_span.clone(), "not a construction")
+            .reason(reason)
+            .next(next)
+            .edit(removal, ""),
+        );
     }
 
     /// The failure a mapping names must have the kind its condition needs
     /// (area 4, question 7).
-    fn mapping_kind(&mut self, mapping: &ast::Mapping, failure: &str, condition: &str, kind: &str) {
+    fn mapping_kind(&mut self, arm: &Arm, failure: &str, kind: &str) {
+        let condition = arm.key.as_str();
         let Some(info) = self.failures.failure_info(failure) else {
             return;
         };
@@ -586,9 +851,10 @@ impl Body<'_> {
         if actual == kind {
             return;
         }
-        let span = mapping
-            .expr()
-            .map_or_else(|| self.span(mapping), |value| self.span(&value));
+        let span = arm
+            .value
+            .as_ref()
+            .map_or_else(|| arm.key_span.clone(), |value| self.span(value));
         self.out.push(
             Diagnostic::new(
                 &rule::FAILURE_MAPPING_KIND,
@@ -604,40 +870,50 @@ impl Body<'_> {
         );
     }
 
-    fn unknown_mapping(&mut self, mapping: &ast::Mapping, written: &str, construction: bool) {
-        let condition = mapping
-            .name()
-            .as_ref()
-            .and_then(tree::name_text)
-            .unwrap_or_default();
-        let span = mapping
-            .name()
-            .map_or_else(|| self.span(mapping), |name| self.span(&name));
+    /// An arm whose key isn't a condition the operation has: for a
+    /// construction, `rules` are its type's rules.
+    fn unknown_mapping(
+        &mut self,
+        arm: &Arm,
+        written: &str,
+        rules: Option<&[(&'static str, String)]>,
+    ) {
+        let condition = &arm.key;
+        let span = arm.key_span.clone();
         self.flow.open = true;
-        let (reason, next) = if construction {
-            (
-                format!(
-                    "A construction has one condition to map, `invalid:`, when its value breaks the type's rules; `{condition}:` isn't one `{written}` has, or is given twice."
-                ),
-                "Use `invalid:` once".to_string(),
-            )
-        } else {
-            (
-                format!(
+        let problem = Diagnostic::new(
+            &rule::FAILURE_UNKNOWN_MAPPING,
+            format!("`{written}` has no `{condition}:` condition to map"),
+        )
+        .at(span.clone(), "not a condition here");
+        let problem = match rules {
+            Some(rules) => {
+                let keys: Vec<String> = rules.iter().map(|(k, _)| (*k).to_string()).collect();
+                let near = nearest(condition, keys.iter().map(String::as_str));
+                let problem = problem.reason(format!(
+                    "A construction's arms are the rules of its type and the types it builds on; `{written}`'s are {}, and `invalid:` covers any without an arm of its own.{}",
+                    keys_list(&keys),
+                    did_you_mean(near)
+                ));
+                match near {
+                    Some(near) => problem
+                        .next(format!("Use `{near}:` instead of `{condition}:`"))
+                        .edit(span, near),
+                    None => problem.next(format!(
+                        "Remove `{condition}: ...`, or map one of {} instead",
+                        keys_list(&keys)
+                    )),
+                }
+            }
+            None => problem
+                .reason(format!(
                     "`{written}` fails with the failures its `fails` list names; `attempt` passes them on as they are, and `match` turns one into another."
-                ),
-                format!("Remove `{condition}: ...`, and `match` on the call to map its failures"),
-            )
+                ))
+                .next(format!(
+                    "Remove `{condition}: ...`, and `match` on the call to map its failures"
+                )),
         };
-        self.out.push(
-            Diagnostic::new(
-                &rule::FAILURE_UNKNOWN_MAPPING,
-                format!("`{written}` has no `{condition}:` condition to map"),
-            )
-            .at(span, "not a condition here")
-            .reason(reason)
-            .next(next),
-        );
+        self.out.push(problem);
     }
 
     // --- the `fails` list ---------------------------------------------------

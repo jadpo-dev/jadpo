@@ -10,13 +10,13 @@
 use std::rc::Rc;
 
 use jadpo_graph::body::{
-    Arm, ArmBody, BinaryOp, Body, Callee, Expr, Fallible, Literal, LocalId, Node, Pattern, SiteId,
-    Stmt, UnaryOp,
+    Arm, ArmBody, BinaryOp, Body, Callee, Expr, Fallible, Literal, LocalId, Node, Pattern, RuleArm,
+    SiteId, Stmt, UnaryOp,
 };
 use jadpo_graph::{Key, TypeRef};
 use jadpo_runtime::{Ctx, Failure, Fault, FaultKind, Frame};
 use jadpo_std::{Builtin, Kind as ParamKind};
-use jadpo_value::{Value, ops};
+use jadpo_value::{Invalid, Value, ops};
 
 use crate::program::Program;
 use crate::{Assertion, Outcome, Part};
@@ -26,9 +26,13 @@ pub(crate) enum Stop {
     Return(Value),
     Failed(Box<Failure>),
     Fault(Box<Fault>),
-    /// A construction's value broke a rule, as written, for the `attempt`
-    /// whose `invalid:` maps it.
-    Invalid(String),
+    /// A construction's value broke a rule, for the `attempt` whose block
+    /// maps it: the rule's key (`max`), `None` when the built-in type
+    /// itself refused the value, and the rule as written for the report.
+    Invalid {
+        rule: Option<String>,
+        written: String,
+    },
     Assertion(Box<Assertion>),
 }
 
@@ -109,7 +113,7 @@ impl<'p> Interp<'p> {
             Err(Stop::Failed(failure)) => Outcome::Failed(failure),
             Err(Stop::Fault(fault)) => Outcome::Fault(fault),
             Err(Stop::Assertion(assertion)) => Outcome::Assertion(assertion),
-            Err(Stop::Invalid(_)) => Outcome::Fault(interp.ctx.fault(
+            Err(Stop::Invalid { .. }) => Outcome::Fault(interp.ctx.fault(
                 FaultKind::Defect("a construction failed outside an `attempt`".into()),
                 Frame::ENTRY,
             )),
@@ -190,7 +194,7 @@ impl<'p> Interp<'p> {
         match self.block(&mut frame, &body.block) {
             Ok(()) => Ok(Value::Unit),
             Err(Stop::Return(value)) => Ok(value),
-            Err(Stop::Invalid(_)) => Err(self.defect(
+            Err(Stop::Invalid { .. }) => Err(self.defect(
                 "a construction failed outside an `attempt`",
                 SiteId(Frame::ENTRY),
             )),
@@ -501,11 +505,7 @@ impl<'p> Interp<'p> {
                 outcome,
                 arms,
             } => self.matching(f, id, *subject, *outcome, arms),
-            Expr::Attempt {
-                inner,
-                invalid,
-                fields,
-            } => self.attempt(id, *inner, invalid.as_ref(), fields, f),
+            Expr::Attempt { inner, arms } => self.attempt(id, *inner, arms, f),
             Expr::Reject { failure, fields } => self.reject(f, id, failure.as_ref(), fields),
             Expr::Propagate { .. } => match f.handling.last() {
                 Some(failure) => Err(Stop::Failed(Box::new(failure.clone()))),
@@ -722,7 +722,10 @@ impl<'p> Interp<'p> {
         if matches!(fallible, Fallible::Construction { .. })
             && let Err(invalid) = validator.check(&value)
         {
-            return Err(Stop::Invalid(format!("`{}`", invalid.rule())));
+            return Err(Stop::Invalid {
+                rule: rule_key(&invalid),
+                written: format!("`{}`", invalid.rule()),
+            });
         }
         Ok(value)
     }
@@ -751,7 +754,10 @@ impl<'p> Interp<'p> {
                 && let Err(invalid) = validator.check(&value)
             {
                 let name = self.program.types.field_name(field).to_string();
-                return Err(Stop::Invalid(format!("`{}` on `{name}`", invalid.rule())));
+                return Err(Stop::Invalid {
+                    rule: rule_key(&invalid),
+                    written: format!("`{}` on `{name}`", invalid.rule()),
+                });
             }
             given.push((field.clone(), value));
         }
@@ -796,30 +802,36 @@ impl<'p> Interp<'p> {
     }
 
     /// `attempt`: the inner call's failures pass straight through; a
-    /// construction's broken rule becomes the failure `invalid:` names.
+    /// construction's broken rule becomes the failure its arm names, or
+    /// `invalid:`'s for a rule without an arm of its own.
     fn attempt(
         &mut self,
         id: SiteId,
         inner: Option<SiteId>,
-        invalid: Option<&Key>,
-        fields: &'p [(Key, SiteId)],
+        arms: &'p [RuleArm],
         f: &mut Running<'p>,
     ) -> Eval<Value> {
         let Some(inner) = inner else {
             return Err(self.defect("an `attempt` without a call", id));
         };
         match self.eval(f, inner) {
-            Err(Stop::Invalid(broken)) => {
-                // The failure's fields are worked out only when it is
-                // raised, as a `reject`'s are.
-                let given = self.given(f, fields)?;
-                let failure = invalid.and_then(|key| self.program.types.failure(key, given));
-                let Some(mut failure) = failure else {
+            Err(Stop::Invalid { rule, written }) => {
+                let arm = match &rule {
+                    Some(rule) => RuleArm::for_rule(arms, rule),
+                    None => arms.iter().find(|arm| arm.rule.is_none()),
+                };
+                let Some(arm) = arm else {
                     return Err(
                         self.defect("a construction that can fail, with no failure for it", id)
                     );
                 };
-                failure.broken = Some(broken);
+                // The failure's fields are worked out only when it is
+                // raised, as a `reject`'s are.
+                let given = self.given(f, &arm.fields)?;
+                let Some(mut failure) = self.program.types.failure(&arm.failure, given) else {
+                    return Err(self.defect("an arm naming something that isn't a failure", id));
+                };
+                failure.broken = Some(written);
                 Err(Stop::Failed(self.ctx.fail(failure, inner.0)))
             }
             other => other,
@@ -938,5 +950,18 @@ impl<'p> Interp<'p> {
                 return Err(self.defect("an outcome pattern on a value", id));
             }
         })
+    }
+}
+
+/// The key of the rule a value broke, as an `attempt`'s arms name it:
+/// `max` for `max: 1000`; `None` when the built-in type refused it.
+fn rule_key(invalid: &Invalid) -> Option<String> {
+    match invalid {
+        Invalid::Broken(broken) => broken
+            .rule
+            .split(':')
+            .next()
+            .map(|key| key.trim().to_string()),
+        Invalid::Builtin(_) => None,
     }
 }

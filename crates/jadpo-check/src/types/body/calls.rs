@@ -953,10 +953,11 @@ impl Body<'_> {
             );
             return (target, Fallible::Unknown);
         }
-        let verdict = if self.proves(value, &actual, &target) {
+        let breakable = self.breakable(value, &actual, &target);
+        let verdict = if breakable.is_empty() {
             Fallible::Never
         } else {
-            Fallible::Construction
+            Fallible::Construction(breakable)
         };
         (target, verdict)
     }

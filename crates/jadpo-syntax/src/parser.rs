@@ -90,6 +90,9 @@ pub(crate) struct Parser<'a> {
     newlines_ignored: bool,
     /// Whether `Name { ... }` may follow an expression here.
     pub(crate) records_allowed: bool,
+    /// While an `attempt`'s call is parsed: a block after the call holds
+    /// the `attempt`'s mappings, not a value built from the call.
+    pub(crate) attempted: bool,
     pub(crate) snippet: bool,
     depth: u32,
     too_deep: bool,
@@ -113,6 +116,7 @@ impl<'a> Parser<'a> {
             steps: Cell::new(0),
             newlines_ignored: false,
             records_allowed: true,
+            attempted: false,
             snippet,
             depth: 0,
             too_deep: false,
@@ -346,10 +350,22 @@ impl<'a> Parser<'a> {
         allowed: bool,
         f: impl FnOnce(&mut Parser<'a>) -> T,
     ) -> T {
-        let saved = self.records_allowed;
+        let saved = (self.records_allowed, self.attempted);
         self.records_allowed = allowed;
+        // Inside brackets or braces, a call is no longer the attempted one.
+        self.attempted = false;
         let out = f(self);
-        self.records_allowed = saved;
+        (self.records_allowed, self.attempted) = saved;
+        out
+    }
+
+    /// Runs `f` parsing an `attempt`'s call: a block straight after it is
+    /// left for the `attempt`.
+    pub(crate) fn attempting<T>(&mut self, f: impl FnOnce(&mut Parser<'a>) -> T) -> T {
+        let saved = self.attempted;
+        self.attempted = true;
+        let out = f(self);
+        self.attempted = saved;
         out
     }
 

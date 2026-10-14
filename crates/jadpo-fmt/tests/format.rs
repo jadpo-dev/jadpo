@@ -127,6 +127,23 @@ fn records_and_operation_blocks_hold_one_member_per_line() {
 }
 
 #[test]
+fn an_attempts_mappings_are_one_per_line() {
+    assert_eq!(
+        fmt(
+            "function f(n: Count) fails Low, High -> CakeCount {\n    var c: CakeCount = attempt CakeCount(n)   { min: Low max: High }\n    return c\n}\n"
+        ),
+        "function f(n: Count) fails Low, High -> CakeCount {\n    var c: CakeCount = attempt CakeCount(n) {\n        min: Low\n        max: High\n    }\n    return c\n}\n"
+    );
+    // An arm's failure with fields nests one level further.
+    assert_eq!(
+        fmt(
+            "function f(n: Count) fails High -> CakeCount {\n    return attempt CakeCount(n) {\n        invalid: High { asked: n }\n    }\n}\n"
+        ),
+        "function f(n: Count) fails High -> CakeCount {\n    return attempt CakeCount(n) {\n        invalid: High {\n            asked: n\n        }\n    }\n}\n"
+    );
+}
+
+#[test]
 fn routes_keep_their_paths_whole() {
     assert_eq!(
         fmt(

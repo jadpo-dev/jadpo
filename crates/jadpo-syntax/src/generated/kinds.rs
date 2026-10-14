@@ -159,7 +159,6 @@ pub enum SyntaxKind {
     ARG,
     MATCH_ARM_LIST,
     MATCH_ARM,
-    MAPPING,
     GENERIC_ARG_LIST,
     PATH_TYPE,
     NULLABLE_TYPE,
@@ -181,7 +180,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 171] = [
+const ALL: [SyntaxKind; 170] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -335,7 +334,6 @@ const ALL: [SyntaxKind; 171] = [
     ARG,
     MATCH_ARM_LIST,
     MATCH_ARM,
-    MAPPING,
     GENERIC_ARG_LIST,
     PATH_TYPE,
     NULLABLE_TYPE,

@@ -96,16 +96,17 @@ impl Body<'_> {
                 );
                 (Vec::new(), false)
             }
-            Fallible::Construction => {
+            Fallible::Construction(breakable) => {
+                let first = breakable.first().cloned().unwrap_or_default();
                 self.out.push(
                     Diagnostic::new(
                         &rule::FAILURE_OUTCOME_SUBJECT_REQUIRED,
                         format!("`{written}` has no failure to match yet"),
                     )
                     .at(head.clone(), "a construction")
-                    .reason("A construction that can fail names its failure with `invalid:`, and only a call's named failures can be matched.")
+                    .reason("A construction that can fail maps each rule it can break to a failure in its `attempt`'s block, and only a call's named failures can be matched.")
                     .next(format!(
-                        "Write `attempt {written} invalid: SomeFailure` in a `var` first, or match on a call"
+                        "Write `attempt {written} {{ {first}: SomeFailure }}` in a `var` first, or match on a call"
                     )),
                 );
                 (Vec::new(), false)

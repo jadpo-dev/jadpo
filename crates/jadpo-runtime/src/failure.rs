@@ -23,8 +23,9 @@ pub struct Failure {
     pub client: Vec<(String, Value)>,
     /// Never leaves the server.
     pub internal: Vec<(String, Value)>,
-    /// For a failure `invalid:` names: the rule the constructed value
-    /// broke, as written (`max: 1000`), never the value.
+    /// For a failure a construction's `attempt` maps a rule to: the rule
+    /// the constructed value broke, as written (`max: 1000`), never the
+    /// value.
     pub broken: Option<String>,
     /// The shadow stack where it was raised, innermost first: the first
     /// frame's site is where, and the callables are the path it travelled.

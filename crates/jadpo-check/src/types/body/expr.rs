@@ -628,8 +628,8 @@ impl Body<'_> {
                     super::facts::BuildFact::Object(name.clone()),
                 );
                 let input = *base == FieldsBase::Input;
-                let rules = self.fields_given(record, &name, &[], &fields, input, head_span);
-                self.object_built(record, &name, rules);
+                self.fields_given(record, &name, &[], &fields, input, head_span);
+                self.object_built(record);
                 Ty::Named(name)
             }
             ([], Some(Def::Scalar { .. })) | ([], None)
@@ -658,8 +658,7 @@ impl Body<'_> {
                 match &found.fields {
                     Some(fields) => {
                         let fields = fields.clone();
-                        let shown = format!("{name}.{variant_name}");
-                        let rules = self.fields_given(
+                        self.fields_given(
                             record,
                             &name,
                             &[variant_name],
@@ -667,7 +666,7 @@ impl Body<'_> {
                             false,
                             head_span,
                         );
-                        self.object_built(record, &shown, rules);
+                        self.object_built(record);
                     }
                     None => {
                         self.not_record(record, &format!("{name}.{variant_name}"), "plain variant");
@@ -728,9 +727,9 @@ impl Body<'_> {
     /// The fields given in a block: each one declared, none twice, every
     /// required one present, each value checked against its field. A value
     /// may be anything that widens to the field's declared type; when the
-    /// field adds rules of its own, they run as the object is built (area 2,
-    /// question 2). Returns the fields whose own rules the declared ranges
-    /// don't prove a computed value follows, so building can fail.
+    /// field adds rules of its own, the value must already be known to
+    /// follow them: an object literal never fails (area 2, "Construction
+    /// failures by rule").
     pub(super) fn fields_given(
         &mut self,
         record: &ast::RecordExpr,
@@ -739,8 +738,7 @@ impl Body<'_> {
         fields: &[FieldDef],
         input: bool,
         head_span: Span,
-    ) -> Vec<String> {
-        let mut unproved: Vec<String> = Vec::new();
+    ) {
         let is_variant = !variant.is_empty();
         let shown = if is_variant {
             format!("{host}.{}", variant.join("."))
@@ -829,12 +827,12 @@ impl Body<'_> {
                     .get(&node_key(value.syntax()))
                     .cloned()
                     .unwrap_or(Ty::Error);
-                if field.rules != Rules::default()
-                    && self.out.len() == before
-                    && !actual.has_error()
-                    && !self.proves(&value, &actual, &field_ty)
+                if field.rules != Rules::default() && self.out.len() == before && !actual.has_error()
                 {
-                    unproved.push(name_of(&field_ty));
+                    let breakable = self.breakable(&value, &actual, &field_ty);
+                    if !breakable.is_empty() {
+                        self.field_unproved(&value, &field_ty, &breakable);
+                    }
                 }
             }
         }
@@ -845,7 +843,7 @@ impl Body<'_> {
             .map(|f| format!("`{}`", f.name))
             .collect();
         if missing.is_empty() {
-            return unproved;
+            return;
         }
         let rule = if is_variant {
             &rule::TYPE_MISSING_VARIANT_FIELD
@@ -861,39 +859,52 @@ impl Body<'_> {
                 ))
                 .next(format!("Add `{first}: ...` to the block")),
         );
-        unproved
     }
 
-    /// Records whether building an object can fail, and reports it when
-    /// nothing handles it. Entity writes (`create`, `update`'s `set:`)
-    /// follow the same rule and are checked with area 6.
-    fn object_built(&mut self, record: &ast::RecordExpr, shown: &str, unproved: Vec<String>) {
-        let at = node_key(record.syntax());
-        if unproved.is_empty() {
-            self.facts.constructions.insert(at, super::Fallible::Never);
-            return;
-        }
+    /// Records that building an object never fails: each field's value is
+    /// already known to fit. Entity writes (`create`, `update`'s `set:`)
+    /// are checked with area 6.
+    fn object_built(&mut self, record: &ast::RecordExpr) {
         self.facts
             .constructions
-            .insert(at, super::Fallible::Construction);
-        if self.handled.contains(&at) {
-            return;
-        }
-        let listed: Vec<String> = unproved.iter().map(|f| format!("`{f}`")).collect();
-        let span = super::line_span(self.path, record.syntax());
+            .insert(node_key(record.syntax()), super::Fallible::Never);
+    }
+
+    /// A field value the declared ranges don't prove follows the rules its
+    /// field adds: it is built first, on its own line, where its failures
+    /// are mapped.
+    fn field_unproved(&mut self, value: &Expr, field_ty: &Ty, breakable: &[String]) {
+        let field = name_of(field_ty);
+        let local = match field_ty {
+            Ty::Field(_, path) => path.last().cloned().unwrap_or_default(),
+            _ => "value".to_string(),
+        };
+        let rules = self.rules_of(field_ty);
+        let written_rules: Vec<String> = breakable
+            .iter()
+            .map(|key| {
+                rules
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .map_or_else(|| format!("`{key}`"), |(_, rule)| format!("`{rule}`"))
+            })
+            .collect();
+        let shown = tree::written(value.syntax());
+        let first = breakable.first().cloned().unwrap_or_default();
+        let span = self.span(value);
         self.flow.open = true;
         self.out.push(
             Diagnostic::new(
-                &rule::FAILURE_ATTEMPT_REQUIRED,
-                format!("Building `{shown}` can fail at runtime, and nothing handles it"),
+                &rule::TYPE_FIELD_UNPROVED,
+                format!("`{shown}` might not fit `{field}`"),
             )
-            .at(span, "checked when it runs")
+            .at(span, format!("can break {}", crate::and_list(&written_rules)))
             .reason(format!(
-                "{} adds rules of its own, which run as the object is built, and the declared ranges don't prove the value follows them.",
-                crate::and_list(&listed)
+                "An object literal never fails, so each field gets a value already known to fit; the declared ranges don't prove this one follows {}, which `{field}` adds.",
+                crate::and_list(&written_rules)
             ))
             .next(format!(
-                "Write `attempt {shown} {{ ... }} invalid: SomeFailure` naming an `invalid_value` failure"
+                "Build it first on its own line, `var {local}: {field} = attempt {field}({shown}) {{ {first}: SomeFailure }}`, then give `{local}`"
             )),
         );
     }

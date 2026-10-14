@@ -82,7 +82,7 @@ fn outcome_match_recovers_maps_and_passes_on() {
 fn constructions_the_ranges_prove_safe_take_no_attempt() {
     assert_eq!(
         with_quantity(
-            "function line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)\n    return total\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge\n    return result\n}\n\nfunction halved(quantity: Quantity) -> Pence {\n    return Pence(quantity / 2)\n}\n\nfunction capped(quantity: Quantity) -> Quantity {\n    return Quantity(quantity)\n}\n"
+            "function line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)\n    return total\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        max: QuantityTooLarge\n    }\n    return result\n}\n\nfunction halved(quantity: Quantity) -> Pence {\n    return Pence(quantity / 2)\n}\n\nfunction capped(quantity: Quantity) -> Quantity {\n    return Quantity(quantity)\n}\n"
         ),
         CLEAN
     );
@@ -136,12 +136,12 @@ fn with_badges(source: &str) -> Vec<String> {
 
 #[test]
 fn building_an_object_runs_its_fields_own_rules() {
-    // A value that widens to the field's declared type is accepted; the
-    // field's own `max_length` runs as the object is built, so a longer
-    // value needs `attempt ... invalid:`.
+    // A value that widens to the field's declared type is accepted, but
+    // an object literal never fails: a value that might break the field's
+    // own `max_length` is built first, on its own line, as the field type.
     assert_eq!(
         with_badges(
-            "action make_badge(user: User) fails BadgeNameTooLong -> Badge {\n    var badge: Badge = attempt Badge {\n        name: user.display_name\n    } invalid: BadgeNameTooLong\n    return badge\n}\n"
+            "action make_badge(user: User) fails BadgeNameTooLong -> Badge {\n    var name: Badge.name = attempt Badge.name(user.display_name) {\n        max_length: BadgeNameTooLong\n    }\n    return Badge {\n        name: name\n    }\n}\n"
         ),
         CLEAN
     );
@@ -149,13 +149,15 @@ fn building_an_object_runs_its_fields_own_rules() {
         with_badges(
             "action make_badge(user: User) -> Badge {\n    return Badge {\n        name: user.display_name\n    }\n}\n"
         ),
-        ["failure.attempt_required"]
+        ["type.field_unproved"]
     );
+    // `attempt` doesn't make a literal fallible: the field is still built
+    // first.
     assert_eq!(
         with_badges(
-            "action make_badge(user: User) fails BadgeNameTooLong -> Badge {\n    var badge: Badge = attempt Badge {\n        name: user.display_name\n    }\n    return badge\n}\n"
+            "action make_badge(user: User) -> Badge {\n    var badge: Badge = attempt Badge {\n        name: user.display_name\n    }\n    return badge\n}\n"
         ),
-        ["failure.invalid_mapping_required"]
+        ["type.field_unproved"]
     );
     // Initials are at most 3 characters: the ranges prove the field's rule.
     assert_eq!(
@@ -166,7 +168,7 @@ fn building_an_object_runs_its_fields_own_rules() {
     );
     assert_eq!(
         with_badges(
-            "function initials_badge(user: User) fails BadgeNameTooLong -> Badge {\n    var badge: Badge = attempt Badge {\n        name: user.initials\n    } invalid: BadgeNameTooLong\n    return badge\n}\n"
+            "function initials_badge(user: User) -> Badge {\n    var badge: Badge = attempt Badge {\n        name: user.initials\n    }\n    return badge\n}\n"
         ),
         ["failure.attempt_infallible"]
     );
@@ -272,8 +274,12 @@ fn each_mistake_gives_its_rule() {
             "failure.stale_declaration",
         ),
         (
-            "function f(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {\n    return attempt lookup(key) invalid: LookupMissing\n}\n",
+            "function f(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {\n    return attempt lookup(key) {\n        missing: LookupMissing\n    }\n}\n",
             "failure.unknown_mapping",
+        ),
+        (
+            "function f(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {\n    return attempt lookup(key) {\n        invalid: LookupMissing\n    }\n}\n",
+            "failure.invalid_outside_construction",
         ),
     ];
     for (source, rule) in lookup_cases {
@@ -382,29 +388,124 @@ fn each_mistake_gives_its_rule() {
     }
     let quantity_cases: &[(&str, &str)] = &[
         (
-            "type QuantityRefused = Failure {\n    kind: FailureKind.rejected\n}\n\nfunction doubled(quantity: Quantity) fails QuantityRefused -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityRefused\n    return result\n}\n",
+            "type QuantityRefused = Failure {\n    kind: FailureKind.rejected\n}\n\nfunction doubled(quantity: Quantity) fails QuantityRefused -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        max: QuantityRefused\n    }\n    return result\n}\n",
             "failure.mapping_kind",
         ),
         (
-            "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) missing: QuantityTooLarge\n    return result\n}\n",
+            "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        missing: QuantityTooLarge\n    }\n    return result\n}\n",
             "failure.unknown_mapping",
         ),
         (
             "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2)\n    return result\n}\n",
-            "failure.invalid_mapping_required",
+            "failure.rule_unmapped",
         ),
         (
             "function doubled(quantity: Quantity) -> Quantity {\n    return Quantity(quantity * 2)\n}\n",
             "failure.attempt_required",
         ),
         (
-            "function doubled(quantity: Quantity) -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge\n    return result\n}\n",
+            "function doubled(quantity: Quantity) -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        invalid: QuantityTooLarge\n    }\n    return result\n}\n",
             "failure.undeclared_propagation",
         ),
     ];
     for (source, rule) in quantity_cases {
         assert_eq!(with_quantity(source), [*rule], "for:\n{source}");
     }
+}
+
+/// Types with more than one rule that can break, for mapping by rule.
+const RULES: &str = "type Count = Int {}\n\ntype Amount = Decimal {\n    scale: 4\n}\n\ntype Small = Quantity {\n    max: 10\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype Sku = Text {\n    max_length: 8\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype Written = Text {\n    max_length: 8\n}\n\ntype QuantityTooSmall = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+
+fn with_rules(source: &str) -> Vec<String> {
+    with_quantity(&format!("{RULES}{source}"))
+}
+
+#[test]
+fn construction_failures_are_mapped_by_rule() {
+    // Each rule that can break has an arm, or `invalid:` covers it; a rule
+    // the ranges prove can't break takes none.
+    let clean = [
+        // `quantity * 2` is at least 2, so only `max` can break.
+        "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
+        // `invalid:` alone covers every rule that can break.
+        "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        invalid: QuantityTooLarge\n    }\n    return result\n}\n",
+        // An arm for one rule, `invalid:` for the rest.
+        "function counted(n: Count) fails QuantityTooLarge, QuantityTooSmall -> Quantity {\n    var result: Quantity = attempt Quantity(n) {\n        max: QuantityTooLarge\n        invalid: QuantityTooSmall\n    }\n    return result\n}\n",
+        // An arm for each.
+        "function counted(n: Count) fails QuantityTooLarge, QuantityTooSmall -> Quantity {\n    var result: Quantity = attempt Quantity(n) {\n        min: QuantityTooSmall\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
+        // Rules come from the type and every type it builds on: `Small`'s
+        // `max` and `Quantity`'s `min`.
+        "function small(n: Count) fails QuantityTooLarge, QuantityTooSmall -> Small {\n    var result: Small = attempt Small(n) {\n        min: QuantityTooSmall\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
+        // `quantity` is at least 1, so `Small` can break only its `max`.
+        "function small(quantity: Quantity) fails QuantityTooLarge -> Small {\n    var result: Small = attempt Small(quantity) {\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
+        // The compiler can't reason about a pattern, so it can always break;
+        // the length is proved.
+        "function parse(written: Written) fails SkuRejected -> Sku {\n    var sku: Sku = attempt Sku(written) {\n        pattern: SkuRejected\n    }\n    return sku\n}\n",
+        // `scale` rounds the value as it is kept, so it never breaks.
+        "function price(amount: Amount) fails QuantityTooSmall -> Price {\n    var result: Price = attempt Price(amount) {\n        min: QuantityTooSmall\n    }\n    return result\n}\n",
+    ];
+    for source in clean {
+        assert_eq!(with_rules(source), CLEAN, "for:\n{source}");
+    }
+    let cases: &[(&str, &str)] = &[
+        (
+            "function counted(n: Count) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(n) {\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
+            "failure.rule_unmapped",
+        ),
+        (
+            "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {}\n    return result\n}\n",
+            "failure.rule_unmapped",
+        ),
+        (
+            "function doubled(quantity: Quantity) fails QuantityTooLarge, QuantityTooSmall -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        min: QuantityTooSmall\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
+            "failure.rule_cannot_break",
+        ),
+        (
+            "function price(amount: Amount) fails QuantityTooSmall, QuantityTooLarge -> Price {\n    var result: Price = attempt Price(amount) {\n        min: QuantityTooSmall\n        scale: QuantityTooLarge\n    }\n    return result\n}\n",
+            "failure.rule_cannot_break",
+        ),
+        (
+            "function doubled(quantity: Quantity) fails QuantityTooLarge, QuantityTooSmall -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        max: QuantityTooLarge\n        invalid: QuantityTooSmall\n    }\n    return result\n}\n",
+            "failure.invalid_covers_nothing",
+        ),
+        (
+            "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        max: QuantityTooLarge\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
+            "failure.duplicate_mapping",
+        ),
+        (
+            "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        pattern: QuantityTooLarge\n    }\n    return result\n}\n",
+            "failure.unknown_mapping",
+        ),
+        (
+            "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        maximum: QuantityTooLarge\n    }\n    return result\n}\n",
+            "failure.unknown_mapping",
+        ),
+        (
+            "function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge\n    return result\n}\n",
+            "syntax.mapping_block_required",
+        ),
+    ];
+    for (source, rule) in cases {
+        assert_eq!(with_rules(source), [*rule], "for:\n{source}");
+    }
+}
+
+#[test]
+fn invalid_covers_only_a_constructions_rules() {
+    // An entity's operation or an integration call maps each of its own
+    // conditions; `invalid:` is never their catch-all.
+    assert_eq!(
+        one(
+            "entity Todo {\n    id: Uuid\n}\n\ntype TodoNotFound = Failure {\n    kind: FailureKind.not_found\n}\n\ntype TodoRefused = Failure {\n    kind: FailureKind.invalid_value\n}\n\naction load(todo_id: Todo.id) fails TodoNotFound, TodoRefused -> Todo {\n    return attempt Todo.get(todo_id) {\n        invalid: TodoRefused\n    }\n}\n"
+        ),
+        ["failure.invalid_outside_construction"]
+    );
+    assert_eq!(
+        with_lookup(
+            "type LookupInvalid = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction f(key: LookupKey) fails LookupMissing, LookupRefused, LookupInvalid -> LookupResult {\n    return attempt lookup(key) {\n        invalid: LookupInvalid\n    }\n}\n"
+        ),
+        ["failure.invalid_outside_construction"]
+    );
 }
 
 #[test]

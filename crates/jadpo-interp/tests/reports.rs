@@ -30,7 +30,7 @@ fault: int_overflow in function line_total
     );
 }
 
-const COUNTDOWN: &str = "type Count = Int {\n    min: 0\n}\n\ntype CountBelowZero = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction countdown(n: Count) fails CountBelowZero -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = attempt Count(n - 1) invalid: CountBelowZero\n    return attempt countdown(next)\n}\n\naction start(n: Count) fails CountBelowZero -> Count {\n    return attempt countdown(n)\n}\n";
+const COUNTDOWN: &str = "type Count = Int {\n    min: 0\n}\n\ntype CountBelowZero = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction countdown(n: Count) fails CountBelowZero -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = attempt Count(n - 1) {\n        min: CountBelowZero\n    }\n    return attempt countdown(next)\n}\n\naction start(n: Count) fails CountBelowZero -> Count {\n    return attempt countdown(n)\n}\n";
 
 #[test]
 fn the_recursion_limit_shows_a_repeated_frame_once() {
@@ -43,14 +43,14 @@ fn the_recursion_limit_shows_a_repeated_frame_once() {
         shown,
         "\
 fault: recursion_limit in function countdown
- --> main.jadpo:14:20
+ --> main.jadpo:16:20
    |
-14 |     return attempt countdown(next)
+16 |     return attempt countdown(next)
    |                    ^^^^^^^^^^^^^^^ 1000 calls deep
   reason: The call stack reached 1000 frames, the most Jadpo allows, so the recursion stopped here instead of exhausting the stack.
   next: Make the recursion end sooner, or recurse over smaller values (agent)
-  stack: main.jadpo:14  function countdown (999 times)
-         main.jadpo:18  action start
+  stack: main.jadpo:16  function countdown (999 times)
+         main.jadpo:20  action start
 "
     );
 }
@@ -118,7 +118,7 @@ failed: `LookupRejected` from function lookup_or_default
 #[test]
 fn a_broken_construction_shows_the_rule_never_the_value() {
     let program = main(
-        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge  // can exceed 1000\n    return result\n}\n\naction reorder(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    return attempt doubled(quantity)\n}\n",
+        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {  // can exceed 1000\n        max: QuantityTooLarge\n    }\n    return result\n}\n\naction reorder(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    return attempt doubled(quantity)\n}\n",
     );
     assert_eq!(
         report(&program, "reorder", vec![int(501)]),
@@ -126,9 +126,9 @@ fn a_broken_construction_shows_the_rule_never_the_value() {
 failed: `QuantityTooLarge` from function doubled
  --> main.jadpo:11:36
    |
-11 |     var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge  // can exceed 1000
+11 |     var result: Quantity = attempt Quantity(quantity * 2) {  // can exceed 1000
    |                                    ^^^^^^^^^^^^^^^^^^^^^^ breaks `max: 1000`
-  reason: The value built here breaks `max: 1000`, so `attempt` gives the failure its `invalid:` names.
+  reason: The value built here breaks `max: 1000`, so `attempt` raises the failure its block maps that rule to.
   code: quantity_too_large
   kind: invalid_value (422)
   path: action reorder -> function doubled

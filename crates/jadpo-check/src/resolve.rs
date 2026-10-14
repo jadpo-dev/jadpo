@@ -1313,8 +1313,8 @@ impl<'a> Walk<'a> {
                 if let Some(inner) = attempt.expr() {
                     self.expr(&inner);
                 }
-                for mapping in attempt.mappings() {
-                    if let Some(value) = mapping.expr() {
+                for (_, mapping) in crate::tree::members(attempt.member_list()) {
+                    if let Some(value) = mapping.value() {
                         if self.names.mapped(&value, &mut self.out) {
                             self.expr(&value);
                         } else if let Expr::RecordExpr(record) = &value {

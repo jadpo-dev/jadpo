@@ -26,7 +26,7 @@ pub struct Mentions {
     names: BTreeSet<String>,
     /// The library functions it calls.
     library_calls: BTreeSet<(String, String)>,
-    /// Failures it raises with `reject` or maps to with `invalid:`.
+    /// Failures it raises with `reject` or maps a construction's rules to.
     raised: BTreeSet<String>,
 }
 
@@ -97,18 +97,19 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
             }
         }
         for site in &body.sites {
-            if let Node::Expr(
-                Expr::Reject {
+            match &site.node {
+                Node::Expr(Expr::Reject {
                     failure: Some(failure),
                     ..
+                }) => {
+                    found.raised.insert(failure.name().to_string());
                 }
-                | Expr::Attempt {
-                    invalid: Some(failure),
-                    ..
-                },
-            ) = &site.node
-            {
-                found.raised.insert(failure.name().to_string());
+                Node::Expr(Expr::Attempt { arms, .. }) => {
+                    for arm in arms {
+                        found.raised.insert(arm.failure.name().to_string());
+                    }
+                }
+                _ => {}
             }
         }
     }

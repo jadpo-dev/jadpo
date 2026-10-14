@@ -331,13 +331,12 @@ MatchArmList =
 MatchArm =
   Pat '->' Expr? Block?
 
-// `attempt` starts a statement and may map a construction's failure:
-// `attempt Quantity(n * 2) invalid: QuantityTooLarge` (areas 2–4).
+// `attempt` starts a statement. The block after an attempted call maps
+// its conditions, one per line: a construction's are the rules that can
+// break, with `invalid:` covering the rest (areas 2–4):
+// `attempt CakeCount(n) { max: OrderTooLarge }`.
 AttemptExpr =
-  'attempt' Expr Mapping*
-
-Mapping =
-  Name ':' Expr
+  'attempt' Expr MemberList?
 
 RejectExpr =
   'reject' Expr

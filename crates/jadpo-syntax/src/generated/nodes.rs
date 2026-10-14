@@ -2837,8 +2837,8 @@ impl AttemptExpr {
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.syntax)
     }
-    pub fn mappings(&self) -> AstChildren<Mapping> {
-        support::children(&self.syntax)
+    pub fn member_list(&self) -> Option<MemberList> {
+        support::child(&self.syntax)
     }
 }
 
@@ -3232,39 +3232,6 @@ impl From<LiteralPat> for Pat {
 impl From<WildcardPat> for Pat {
     fn from(node: WildcardPat) -> Pat {
         Pat::WildcardPat(node)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Mapping {
-    pub(crate) syntax: SyntaxNode,
-}
-
-impl AstNode for Mapping {
-    fn can_cast(kind: SyntaxKind) -> bool {
-        kind == MAPPING
-    }
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if Self::can_cast(syntax.kind()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-    fn syntax(&self) -> &SyntaxNode {
-        &self.syntax
-    }
-}
-
-impl Mapping {
-    pub fn name(&self) -> Option<Name> {
-        support::child(&self.syntax)
-    }
-    pub fn colon_token(&self) -> Option<SyntaxToken> {
-        support::token(&self.syntax, COLON)
-    }
-    pub fn expr(&self) -> Option<Expr> {
-        support::child(&self.syntax)
     }
 }
 

@@ -407,7 +407,7 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
             &["type.mismatch"],
         ),
         (
-            "function f(total: Price, people: Quantity) -> Tip {\n    return attempt Tip(decimal.divide(total, people, rounding: Rounding.half_even)) invalid: Refused\n}\n\ntype Tip = Decimal {\n    scale: 2\n    min: 0.00\n    max: 1.00\n}\n\ntype Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+            "function f(total: Price, people: Quantity) -> Tip {\n    return attempt Tip(decimal.divide(total, people, rounding: Rounding.half_even)) {\n        invalid: Refused\n    }\n}\n\ntype Tip = Decimal {\n    scale: 2\n    min: 0.00\n    max: 1.00\n}\n\ntype Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n",
             &["failure.undeclared_propagation"],
         ),
         (
