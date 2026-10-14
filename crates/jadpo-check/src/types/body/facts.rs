@@ -12,6 +12,7 @@ use jadpo_std::Op;
 use jadpo_syntax::SyntaxNode;
 
 use super::super::ty::Ty;
+use super::known::Origin;
 use super::{Fallible, LocalKind};
 
 /// A syntax node, as a key: its range and its kind.
@@ -97,6 +98,10 @@ pub(crate) struct Facts {
     pub builds: BTreeMap<NodeKey, BuildFact>,
     /// Whether each construction can fail.
     pub constructions: BTreeMap<NodeKey, Fallible>,
+    /// The rules of a construction only a condition around it proves
+    /// (area 2, "Conditions as proof"), each with the comparisons that
+    /// prove it.
+    pub proofs: BTreeMap<NodeKey, Vec<(String, Vec<Origin>)>>,
     /// What each call can fail with.
     pub fallible: BTreeMap<NodeKey, Fallible>,
     /// The failure each arm of an `attempt` on a construction names, by

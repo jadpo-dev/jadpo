@@ -231,10 +231,19 @@ impl Body<'_> {
             }
             return Ty::Error;
         };
-        let (a, b) = if matches!(op.as_str(), "==" | "!=") {
-            self.compared(&lhs, &rhs)
-        } else {
-            (self.operand(&lhs), self.operand(&rhs))
+        let (a, b) = match op.as_str() {
+            "==" | "!=" => self.compared(&lhs, &rhs),
+            // The right side runs only where the left side holds, for
+            // `and`, or doesn't, for `or`, and knows it (area 2,
+            // "Conditions as proof").
+            "and" | "or" => {
+                let a = self.operand(&lhs);
+                let (holds, fails) = self.split(&lhs);
+                let left = if op == "and" { holds } else { fails };
+                let b = self.knowing(&left, |body| body.operand(&rhs));
+                (a, b)
+            }
+            _ => (self.operand(&lhs), self.operand(&rhs)),
         };
         let comparison = matches!(
             op.as_str(),

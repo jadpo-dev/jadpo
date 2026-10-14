@@ -178,8 +178,10 @@ discount_for
 discount_too_large
 display_name
 display_word
+double_checked
 double_order
 double_quantity
+doubled_checked
 draft_id
 draft_name
 due_at
@@ -258,6 +260,7 @@ ingredient
 ingredient_count
 ingredient_name
 ingredients
+inside_range
 invalid_configuration
 invalid_success
 invoice

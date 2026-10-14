@@ -973,13 +973,18 @@ impl Body<'_> {
             );
             return (target, Fallible::Unknown);
         }
-        let breakable = self.breakable(value, &actual, &target);
-        let verdict = if breakable.is_empty() {
+        let verdict = self.verdict(value, &actual, &target);
+        if !verdict.proved.is_empty() {
+            self.facts
+                .proofs
+                .insert(node_key(call.syntax()), verdict.proved);
+        }
+        let fallible = if verdict.breakable.is_empty() {
             Fallible::Never
         } else {
-            Fallible::Construction(breakable)
+            Fallible::Construction(verdict.breakable)
         };
-        (target, verdict)
+        (target, fallible)
     }
 
     /// `Enum(value)`: an enum is never built from a value.

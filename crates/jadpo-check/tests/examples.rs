@@ -386,6 +386,7 @@ const BODY: &[&str] = &[
     "fallible fails",
     "fallible construction",
     "fallible unknown",
+    "construction proven by a condition",
     "pattern variant",
     "pattern variant with binding",
     "pattern true",
@@ -542,6 +543,9 @@ fn fallible(fallible: &Fallible) -> Option<&'static str> {
 
 /// What one typed body uses, by the names in [`BODY`].
 fn body_features(body: &Body, out: &mut BTreeSet<&'static str>, std: &mut BTreeSet<String>) {
+    if !body.proofs.is_empty() {
+        out.insert("construction proven by a condition");
+    }
     for local in &body.locals {
         out.insert(match local.kind {
             LocalKind::Param => "local parameter",

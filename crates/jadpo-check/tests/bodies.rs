@@ -241,17 +241,30 @@ fn constructions_say_which_rules_break_and_their_failures() {
             failure: key(Kind::Type, "Refused"),
             fields: Vec::new(),
         }],
-        "`invalid:` covers both rules"
+        "`invalid:` covers what can break"
     );
+    // The `if` before it rules out a value above 1000, so only `min` can
+    // break (area 2, "Conditions as proof"), and the body records the
+    // comparison that proves `max`.
     assert_eq!(
         *expr(body, *inner),
         Expr::Call {
             callee: Callee::Construct(TypeRef::Node(key(Kind::Type, "Quantity"))),
             args: vec![Some(SiteId(inner.0 + 1))],
             fallible: Fallible::Construction {
-                rules: vec!["min".to_string(), "max".to_string()]
+                rules: vec!["min".to_string()]
             },
         }
+    );
+    let Some(condition) = arm.condition else {
+        panic!("a condition");
+    };
+    assert_eq!(
+        body.proofs,
+        [jadpo_graph::body::Proof {
+            site: *inner,
+            by: vec![condition],
+        }]
     );
 }
 

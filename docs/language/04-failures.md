@@ -417,7 +417,8 @@ Decided in area 2: a runtime construction can fail, and its `attempt` maps
 each rule that can break in a block after the call,
 `attempt Type(value) { max: SomeFailure }`, with `invalid:` covering every
 rule without an arm of its own (area 2, "Construction failures by rule").
-When the declared ranges prove a construction cannot break any of the
+When the declared ranges, or the conditions it sits under (area 2,
+"Conditions as proof"), prove a construction cannot break any of the
 target's rules, it is not fallible, so it takes no `attempt` (question 6):
 
 ```jadpo check project=proven file=types.jadpo hidden
@@ -1197,7 +1198,7 @@ error: `Quantity(...)` can break `min`, and nothing maps it
    |
 13 |     var result: Quantity = attempt Quantity(n) {
    |                            ^^^^^^^^^^^^^^^^^^^^^ can fail at runtime
-  reason: The value is only known when the program runs, and the declared ranges don't prove it follows `min: 1`; it needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.
+  reason: The value is only known when the program runs, and neither the declared ranges nor a condition before it prove it follows `min: 1`; it needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.
   next: Add `min: SomeFailure` to the block, naming an `invalid_value` failure, or `invalid: SomeFailure` to cover every rule without an arm (agent)
   rule: failure.rule_unmapped
   help: docs/language/04-failures.html#failure-rule-unmapped
@@ -1731,7 +1732,11 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    its error says which case applies. `Pence(price * quantity)` with both at
    least 0 and no maximum on `Pence` stays plain; `Quantity(quantity * 2)`
    with a maximum of 1000 needs `attempt` and an arm for `max`. Changing a range
-   flips call sites, and the compiler reports each one.
+   flips call sites, and the compiler reports each one. *Built in chunk 2.6,*
+   with an `if` condition counting as proof (area 2, "Conditions as
+   proof"): every call site that flips is an error where it is written,
+   `failure.attempt_required` or `failure.attempt_infallible`, and when a
+   comparison is what proves it, the error says so and points at it.
 7. **One mapping form everywhere?** Five spellings exist today.
    *Decided 2026-10-12:* `condition: Failure` inside the operation's block, for
    data operations, constructions, authentication and integrations, with the
@@ -1796,7 +1801,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (roadmap chunk 1.6): declarations, kinds, codes, `fails`, `reject`, `attempt`, construction mappings and outcome `match`. A construction's failures are mapped by rule since chunk 2.5. Data operations' mappings come with area 6, and the client envelope and OpenAPI with area 7. What runs came with the interpreter on 2026-10-14 (chunk 2.1): failures with their fields, where they were raised and the path they travelled, mapped failures keeping their cause, and the `int_overflow` and `recursion_limit` faults with their `.jadpo` frames; the log events come with the runtime's hosts.
+Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (roadmap chunk 1.6): declarations, kinds, codes, `fails`, `reject`, `attempt`, construction mappings and outcome `match`. A construction's failures are mapped by rule since chunk 2.5, and an `if` condition counts as proof since chunk 2.6. Data operations' mappings come with area 6, and the client envelope and OpenAPI with area 7. What runs came with the interpreter on 2026-10-14 (chunk 2.1): failures with their fields, where they were raised and the path they travelled, mapped failures keeping their cause, and the `int_overflow` and `recursion_limit` faults with their `.jadpo` frames; the log events come with the runtime's hosts.
 
 | Topic | Decision | Date |
 |---|---|---|
@@ -1811,7 +1816,7 @@ Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (
 | Declarable kinds | `invalid_value`, `not_found`, `not_permitted`, `conflict`, `rejected`, `rate_limited`, `unavailable`; the other eight are runtime-only; 422 for `invalid_value` and `rejected`, 400 for unreadable requests; time limits are settings on integrations and routes, and a timeout an application cares about is mapped to its own failure | 2026-10-12 |
 | Invalid input detail | Each problem as `{ field, rule }` under `details`, never the value | 2026-10-12 |
 | Faults in `fails` | Never; `fails` lists domain failures; integrations map provider problems to declared failures | 2026-10-12 |
-| Construction proven safe | No `attempt` when declared ranges prove a construction cannot fail; the compiler decides and reports call sites that flip | 2026-10-12 |
+| Construction proven safe | No `attempt` when declared ranges prove a construction cannot fail; the compiler decides and reports call sites that flip. An `if` condition counts as proof too (area 2, "Construction failures by rule", 2026-10-14); each call site that flips is its own error, naming the comparison that proves it when one does (built in chunk 2.6) | 2026-10-12 |
 | Mapping form | One form everywhere: `condition: Failure` inside the operation's block, kind checked. Constructions join it on 2026-10-14, keyed by rule (area 2, "Construction failures by rule"), built in chunk 2.5; `invalid:` is the catch-all only for a construction's rules, and every other condition has its own arm | 2026-10-12 |
 | Cause on mapping | The original failure is always kept as an internal-only cause | 2026-10-12 |
 | Overflow and recursion limit | Defects: 500 `internal_fault`, writes rolled back, cause named in the log; not declarable or catchable | 2026-10-12 |
