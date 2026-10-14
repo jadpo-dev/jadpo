@@ -1,0 +1,4 @@
+/// The shelf has no cakes left to order.
+type ShelfEmpty = Failure {
+    kind: FailureKind.invalid_value
+}

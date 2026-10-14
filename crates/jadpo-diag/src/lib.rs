@@ -139,8 +139,12 @@ rules! {
         "04-failures.html#failure-duplicate-context-field", "Failure field is given twice";
     FAILURE_DUPLICATE_DECLARATION: "failure.duplicate_declaration", area 4, Error, Agent,
         "04-failures.html#failure-duplicate-declaration", "Failure is listed twice after `fails`";
-    FAILURE_INVALID_MAPPING_REQUIRED: "failure.invalid_mapping_required", area 4, Error, Agent,
-        "04-failures.html#failure-invalid-mapping-required", "Construction that can fail does not name its failure";
+    FAILURE_DUPLICATE_MAPPING: "failure.duplicate_mapping", area 4, Error, Agent,
+        "04-failures.html#failure-duplicate-mapping", "Condition is mapped twice";
+    FAILURE_INVALID_COVERS_NOTHING: "failure.invalid_covers_nothing", area 4, Error, Agent,
+        "04-failures.html#failure-invalid-covers-nothing", "Catch-all covers no rule, because every rule that can break has an arm";
+    FAILURE_INVALID_OUTSIDE_CONSTRUCTION: "failure.invalid_outside_construction", area 4, Error, Agent,
+        "04-failures.html#failure-invalid-outside-construction", "Catch-all for rules is used on something that is not a construction";
     FAILURE_KIND_REQUIRED: "failure.kind_required", area 4, Error, Agent,
         "04-failures.html#failure-kind-required", "Failure has no kind";
     FAILURE_KIND_RUNTIME_ONLY: "failure.kind_runtime_only", area 4, Error, Agent,
@@ -173,6 +177,10 @@ rules! {
         "03-logic.html#failure-propagate-placement", "Propagate is used outside a failure arm";
     FAILURE_REJECT_PLACEMENT: "failure.reject_placement", area 3, Error, Agent,
         "03-logic.html#failure-reject-placement", "Reject is used inside an expression";
+    FAILURE_RULE_CANNOT_BREAK: "failure.rule_cannot_break", area 4, Error, Agent,
+        "04-failures.html#failure-rule-cannot-break", "Arm maps a rule the value cannot break";
+    FAILURE_RULE_UNMAPPED: "failure.rule_unmapped", area 4, Error, Agent,
+        "04-failures.html#failure-rule-unmapped", "Rule that can break has no arm and no catch-all";
     FAILURE_STALE_DECLARATION: "failure.stale_declaration", area 4, Error, Agent,
         "04-failures.html#failure-stale-declaration", "Listed failure can never happen";
     FAILURE_UNDECLARED_PROPAGATION: "failure.undeclared_propagation", area 4, Error, Agent,
@@ -255,6 +263,8 @@ rules! {
         "04-failures.html#syntax-fails-after-result", "Fails list comes after the result type";
     SYNTAX_INVALID_ESCAPE: "syntax.invalid_escape", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-invalid-escape", "Unknown escape in a string";
+    SYNTAX_MAPPING_BLOCK_REQUIRED: "syntax.mapping_block_required", area 4, Error, Agent,
+        "04-failures.html#syntax-mapping-block-required", "Mappings are written after the call instead of in a block";
     SYNTAX_MATCH_ARROW: "syntax.match_arrow", area 3, Error, Agent,
         "03-logic.html#syntax-match-arrow", "Match arm uses `=>`";
     SYNTAX_MATCH_PATTERN: "syntax.match_pattern", area 3, Error, Agent,
@@ -343,6 +353,8 @@ rules! {
         "02-values-and-types.html#type-enum-empty", "Enum declares no variants";
     TYPE_FIELD_ON_NON_RECORD: "type.field_on_non_record", area 2, Error, Agent,
         "02-values-and-types.html#type-field-on-non-record", "Field is read from a value without fields";
+    TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
+        "02-values-and-types.html#type-field-unproved", "Object field value may break the field's rules";
     TYPE_INCOMPARABLE: "type.incomparable", area 3, Error, Agent,
         "03-logic.html#type-incomparable", "Values cannot be compared for equality";
     TYPE_INLINE_FUNCTION_PLACEMENT: "type.inline_function_placement", area 3, Error, Agent,

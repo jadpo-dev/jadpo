@@ -66,10 +66,12 @@ public action price_basket(
         none -> {}
     }
     // A fixed discount can be worth more than a small basket, so this is
-    // checked when it runs. `invalid:` names the failure and gives its
+    // checked when it runs. The `min` arm names the failure and gives its
     // fields, as `reject` does.
-    var total: Pence = attempt Pence(subtotal - off) invalid: DiscountTooLarge {
-        subtotal: subtotal
+    var total: Pence = attempt Pence(subtotal - off) {
+        min: DiscountTooLarge {
+            subtotal: subtotal
+        }
     }
     return Receipt {
         subtotal: subtotal

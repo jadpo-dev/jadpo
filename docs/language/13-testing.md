@@ -711,7 +711,9 @@ type PriorityTooHigh = Failure {
 }
 
 action raise_priority(priority: Priority) fails PriorityTooHigh -> Priority {
-    var higher: Priority = attempt Priority(priority + 1) invalid: PriorityTooHigh
+    var higher: Priority = attempt Priority(priority + 1) {
+        max: PriorityTooHigh
+    }
     return higher
 }
 ```
@@ -730,9 +732,9 @@ FAIL  the top priority can still be raised
   failure: `PriorityTooHigh` from action raise_priority
   at: priorities.jadpo:11:36
    |
-11 |     var higher: Priority = attempt Priority(priority + 1) invalid: PriorityTooHigh
+11 |     var higher: Priority = attempt Priority(priority + 1) {
    |                                    ^^^^^^^^^^^^^^^^^^^^^^ breaks `max: 9`
-  reason: The value built here breaks `max: 9`, so `attempt` gives the failure its `invalid:` names.
+  reason: The value built here breaks `max: 9`, so `attempt` raises the failure its block maps that rule to.
   code: priority_too_high
   kind: FailureKind.invalid_value
   path: test "the top priority can still be raised" -> action raise_priority

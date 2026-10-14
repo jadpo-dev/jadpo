@@ -375,8 +375,10 @@ const BODY: &[&str] = &[
     "match value",
     "match outcome",
     "attempt call",
-    "attempt construction with invalid",
-    "attempt construction with invalid and fields",
+    "attempt construction with rule arms",
+    "attempt construction with invalid alone",
+    "attempt construction with rule arms and invalid",
+    "attempt construction arm with fields",
     "reject with fields",
     "reject bare",
     "propagate",
@@ -700,16 +702,17 @@ fn body_features(body: &Body, out: &mut BTreeSet<&'static str>, std: &mut BTreeS
                         });
                     }
                 }
-                Expr::Attempt {
-                    invalid, fields, ..
-                } => {
-                    out.insert(if invalid.is_some() {
-                        "attempt construction with invalid"
-                    } else {
-                        "attempt call"
+                Expr::Attempt { arms, .. } => {
+                    let rules = arms.iter().any(|arm| arm.rule.is_some());
+                    let invalid = arms.iter().any(|arm| arm.rule.is_none());
+                    out.insert(match (rules, invalid) {
+                        (false, false) => "attempt call",
+                        (true, false) => "attempt construction with rule arms",
+                        (false, true) => "attempt construction with invalid alone",
+                        (true, true) => "attempt construction with rule arms and invalid",
                     });
-                    if !fields.is_empty() {
-                        out.insert("attempt construction with invalid and fields");
+                    if arms.iter().any(|arm| !arm.fields.is_empty()) {
+                        out.insert("attempt construction arm with fields");
                     }
                 }
                 Expr::Reject { fields, .. } => {

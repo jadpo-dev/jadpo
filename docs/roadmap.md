@@ -128,7 +128,7 @@ reference only).
   ([decision](decision-register.md#examples-teach-every-feature--2026-10-14)).
   Design the examples' order and commenting style first, as a reader
   learning the language would meet them.
-- [ ] **2.5 Construction failures by rule** `opus · high`: the block form
+- [x] **2.5 Construction failures by rule** `opus · high`: the block form
   `attempt CakeCount(n) { max: OrderTooLarge }` with `invalid:` as the
   catch-all, required and unreachable arms, object literals that never fail,
   and every page example and teaching example moved to it (area 2,

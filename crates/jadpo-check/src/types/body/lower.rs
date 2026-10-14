@@ -45,7 +45,6 @@ pub(super) fn lower(
         sites: Vec::new(),
         branches: Vec::new(),
         refers: Vec::new(),
-        invalid: None,
     };
     let mut body = typed::Body::default();
     for (id, local) in checker.facts.locals.iter().enumerate() {
@@ -177,8 +176,6 @@ struct Lower<'a> {
     sites: Vec<Option<typed::Site>>,
     branches: Vec<Branch>,
     refers: Vec<typed::Name>,
-    /// The failure the enclosing `attempt` maps a broken rule to.
-    invalid: Option<Key>,
 }
 
 impl Lower<'_> {
@@ -482,34 +479,40 @@ impl Lower<'_> {
             }
             Expr::MatchExpr(subject) => self.match_expr(subject),
             Expr::AttemptExpr(attempt) => {
-                let invalid = self
-                    .facts
-                    .mapped
-                    .get(&key)
-                    .and_then(|failure| self.type_key(failure));
-                let outer = std::mem::replace(&mut self.invalid, invalid.clone());
                 let inner = attempt.expr().map(|inner| self.expr(&inner));
-                self.invalid = outer;
-                // The mappings follow the call, so their sites do too.
-                let failure = self.facts.mapped.get(&key).cloned();
-                let mut fields = Vec::new();
-                for mapping in attempt.mappings() {
-                    match (mapping.expr(), &failure) {
+                // The arms follow the call, so their sites do too.
+                let mapped = self.facts.mapped.get(&key).cloned().unwrap_or_default();
+                let mut arms = Vec::new();
+                for (name, member) in tree::members(attempt.member_list()) {
+                    let rule = tree::name_text(&name).unwrap_or_default();
+                    let rule = (rule != "invalid").then_some(rule);
+                    let failure = mapped
+                        .iter()
+                        .find(|(key, _)| *key == rule)
+                        .map(|(_, failure)| failure.clone());
+                    let failure_key = failure.as_deref().and_then(|f| self.type_key(f));
+                    let fields = match (member.value(), &failure) {
                         (Some(Expr::RecordExpr(record)), Some(failure)) => {
                             if let Some(Expr::NameRef(name)) = record.expr() {
                                 self.path_names(&[name]);
                             }
-                            fields = self.fields_given(record.member_list(), failure, &[]);
+                            self.fields_given(record.member_list(), failure, &[])
                         }
-                        (Some(value), _) => self.scan(value.syntax()),
-                        (None, _) => {}
+                        (Some(value), _) => {
+                            self.scan(value.syntax());
+                            Vec::new()
+                        }
+                        (None, _) => Vec::new(),
+                    };
+                    if let Some(failure) = failure_key {
+                        arms.push(typed::RuleArm {
+                            rule,
+                            failure,
+                            fields,
+                        });
                     }
                 }
-                typed::Expr::Attempt {
-                    inner,
-                    invalid,
-                    fields,
-                }
+                typed::Expr::Attempt { inner, arms }
             }
             Expr::RejectExpr(reject) => self.reject(reject),
             Expr::PropagateExpr(_) => typed::Expr::Propagate {
@@ -702,8 +705,8 @@ impl Lower<'_> {
                     typed::Fallible::Unknown
                 }
             }
-            Some(Fallible::Construction) => typed::Fallible::Construction {
-                invalid: self.invalid.clone(),
+            Some(Fallible::Construction(rules)) => typed::Fallible::Construction {
+                rules: rules.clone(),
             },
             Some(Fallible::Unknown) | None => typed::Fallible::Unknown,
         }

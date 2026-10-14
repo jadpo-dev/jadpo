@@ -325,7 +325,7 @@ fn recursion_walks_a_recursive_type() {
     assert_eq!(value(&program, "reply_count", vec![thread]), int(4));
 }
 
-const COUNTDOWN: &str = "type Count = Int {\n    min: 0\n}\n\ntype CountBelowZero = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction countdown(n: Count) fails CountBelowZero -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = attempt Count(n - 1) invalid: CountBelowZero\n    return attempt countdown(next)\n}\n";
+const COUNTDOWN: &str = "type Count = Int {\n    min: 0\n}\n\ntype CountBelowZero = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction countdown(n: Count) fails CountBelowZero -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = attempt Count(n - 1) {\n        min: CountBelowZero\n    }\n    return attempt countdown(next)\n}\n";
 
 #[test]
 fn recursion_past_the_depth_limit_is_a_fault_not_a_crash() {
@@ -349,7 +349,7 @@ fn recursion_past_the_depth_limit_is_a_fault_not_a_crash() {
         (
             FaultKind::RecursionLimit,
             MAX_DEPTH,
-            Some("main.jadpo:14".to_string())
+            Some("main.jadpo:16".to_string())
         )
     );
 }

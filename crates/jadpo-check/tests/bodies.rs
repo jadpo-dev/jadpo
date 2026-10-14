@@ -6,8 +6,8 @@ mod support;
 use jadpo_check::types::{callables_of, typed_body};
 use jadpo_db::{Database, Layout};
 use jadpo_graph::body::{
-    ArmBody, BinaryOp, Body, Callee, Expr, Fallible, Literal, LocalKind, Node, Pattern, SiteId,
-    Stmt,
+    ArmBody, BinaryOp, Body, Callee, Expr, Fallible, Literal, LocalKind, Node, Pattern, RuleArm,
+    SiteId, Stmt,
 };
 use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::{Builtin, Op};
@@ -169,9 +169,9 @@ fn an_else_if_chain_is_one_flat_if() {
 }
 
 #[test]
-fn constructions_say_which_failure_they_map_to() {
+fn constructions_say_which_rules_break_and_their_failures() {
     let found = bodies(
-        "type Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction cap(n: Pence) fails TooMany, Refused -> Quantity {\n    if (n > 1000) {\n        reject TooMany {\n            limit: 1000\n        }\n    }\n    return attempt Quantity(n) invalid: Refused\n}\n",
+        "type Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction cap(n: Pence) fails TooMany, Refused -> Quantity {\n    if (n > 1000) {\n        reject TooMany {\n            limit: 1000\n        }\n    }\n    return attempt Quantity(n) {\n        invalid: Refused\n    }\n}\n",
     );
     let (_, body) = &found[0];
     assert_eq!(
@@ -229,20 +229,27 @@ fn constructions_say_which_failure_they_map_to() {
     };
     let Expr::Attempt {
         inner: Some(inner),
-        invalid: Some(invalid),
-        ..
+        arms,
     } = expr(body, *attempt)
     else {
         panic!();
     };
-    assert_eq!(*invalid, key(Kind::Type, "Refused"));
+    assert_eq!(
+        *arms,
+        [RuleArm {
+            rule: None,
+            failure: key(Kind::Type, "Refused"),
+            fields: Vec::new(),
+        }],
+        "`invalid:` covers both rules"
+    );
     assert_eq!(
         *expr(body, *inner),
         Expr::Call {
             callee: Callee::Construct(TypeRef::Node(key(Kind::Type, "Quantity"))),
             args: vec![Some(SiteId(inner.0 + 1))],
             fallible: Fallible::Construction {
-                invalid: Some(key(Kind::Type, "Refused"))
+                rules: vec!["min".to_string(), "max".to_string()]
             },
         }
     );

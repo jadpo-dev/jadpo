@@ -281,7 +281,7 @@ impl Report {
             fields.push((
                 "reason",
                 vec![format!(
-                    "The value built here breaks {broken}, so `attempt` gives the failure its `invalid:` names."
+                    "The value built here breaks {broken}, so `attempt` raises the failure its block maps that rule to."
                 )],
             ));
         }

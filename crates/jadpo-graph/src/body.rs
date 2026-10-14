@@ -9,7 +9,7 @@
 //! Every site has its source range, its line and its type: a literal's type
 //! is the type it goes into. Calls name what they call by identity key, a
 //! standard-library operation by the table's [`Op`], and constructions say
-//! whether they can fail and which failure `invalid:` maps that to. Locals
+//! which rules they can break and the failure each rule maps to. Locals
 //! are numbered too, parameters first. Branches (an `if`'s two ways, each
 //! arm of a `match`) are numbered in source order for path numbers and
 //! coverage (area 16).
@@ -241,13 +241,11 @@ pub enum Expr {
         arms: Vec<Arm>,
     },
     /// `attempt call(...)`, passing its failures on, or a construction
-    /// with the failure `invalid:` maps a broken rule to.
+    /// with the failure each rule it can break maps to.
     Attempt {
         inner: Option<SiteId>,
-        invalid: Option<Key>,
-        /// The fields given to the failure `invalid:` names, as `reject`
-        /// gives them.
-        fields: Vec<(Key, SiteId)>,
+        /// A construction's arms, as written; empty for a call.
+        arms: Vec<RuleArm>,
     },
     Reject {
         failure: Option<Key>,
@@ -415,12 +413,34 @@ pub enum Fallible {
     /// them.
     Fails(Vec<Key>),
     /// A construction whose value is only known at runtime: it fails when
-    /// the value breaks the type's rules, as the failure `invalid:` names.
+    /// the value breaks one of these rules, by key (`max`), with the
+    /// failure its `attempt` maps that rule to.
     Construction {
-        invalid: Option<Key>,
+        rules: Vec<String>,
     },
     /// Not known yet (an entity's operations, area 6), or already reported.
     Unknown,
+}
+
+/// One arm of an `attempt` on a construction (area 2, "Construction
+/// failures by rule"): the rule it maps, or every rule without an arm of
+/// its own (`invalid:`), and the failure raised when that rule breaks.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct RuleArm {
+    /// The rule's key, such as `max`; `None` for `invalid:`.
+    pub rule: Option<String>,
+    pub failure: Key,
+    /// The fields given to the failure, as `reject` gives them.
+    pub fields: Vec<(Key, SiteId)>,
+}
+
+impl RuleArm {
+    /// The arm that maps the rule with key `rule`: its own, or `invalid:`.
+    pub fn for_rule<'a>(arms: &'a [RuleArm], rule: &str) -> Option<&'a RuleArm> {
+        arms.iter()
+            .find(|arm| arm.rule.as_deref() == Some(rule))
+            .or_else(|| arms.iter().find(|arm| arm.rule.is_none()))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

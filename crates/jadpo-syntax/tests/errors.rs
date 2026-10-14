@@ -278,6 +278,51 @@ fn attempt_placement() {
 }
 
 #[test]
+fn a_construction_maps_its_failures_in_a_block() {
+    let text = "function doubled(count: Count) fails TooBig -> Count {\n    var doubled: Count = attempt Count(count * 2) invalid: TooBig\n    return doubled\n}\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.mapping_block_required");
+    assert_eq!(covered, "invalid: TooBig");
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "function doubled(count: Count) fails TooBig -> Count {\n    var doubled: Count = attempt Count(count * 2) {\n        invalid: TooBig\n    }\n    return doubled\n}\n"
+    );
+    // Several trailing mappings move into one block, each on its own line.
+    let text = "function f(n: Count) fails Low, High -> Count {\n    return attempt Count(n) min: Low max: High\n}\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.mapping_block_required");
+    assert_eq!(covered, "min: Low max: High");
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "function f(n: Count) fails Low, High -> Count {\n    return attempt Count(n) {\n        min: Low\n        max: High\n    }\n}\n"
+    );
+}
+
+#[test]
+fn a_block_after_an_attempted_call_holds_its_mappings() {
+    let text = "function f(n: Count) fails Low, High -> Count {\n    return attempt Count(n) {\n        min: Low\n        max: High\n    }\n}\n";
+    let parse = parse_file(text);
+    assert!(parse.errors().is_empty(), "{:#?}", parse.errors());
+    let file = SourceFile::cast(parse.syntax()).expect("a file");
+    let attempt = file
+        .syntax()
+        .descendants()
+        .find_map(jadpo_syntax::ast::AttemptExpr::cast)
+        .expect("an attempt");
+    assert!(matches!(
+        attempt.expr(),
+        Some(jadpo_syntax::ast::Expr::CallExpr(_))
+    ));
+    let keys: Vec<String> = attempt
+        .member_list()
+        .expect("a block")
+        .member_items()
+        .map(|item| item.syntax().text().to_string())
+        .collect();
+    assert_eq!(keys, ["min: Low", "max: High"]);
+}
+
+#[test]
 fn fails_after_result() {
     let text = "function check(title: Title) -> Title fails TitleBlank {\n    return title\n}\n";
     let (error, covered) = one_error(text);

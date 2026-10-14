@@ -222,10 +222,10 @@ fn values_never_change_so_a_new_one_is_built() {
 }
 
 #[test]
-fn a_runtime_construction_that_breaks_a_rule_fails_with_its_invalid_failure() {
+fn a_runtime_construction_that_breaks_a_rule_fails_with_its_arms_failure() {
     // Question 1.
     let program = main(
-        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityOutOfRange = Failure {\n    kind: FailureKind.invalid_value\n}\n\naction double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity {\n    var doubled: Quantity = attempt Quantity(quantity * 2) invalid: QuantityOutOfRange\n    return doubled\n}\n",
+        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityOutOfRange = Failure {\n    kind: FailureKind.invalid_value\n}\n\naction double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity {\n    var doubled: Quantity = attempt Quantity(quantity * 2) {\n        max: QuantityOutOfRange\n    }\n    return doubled\n}\n",
     );
     assert_eq!(value(&program, "double_quantity", vec![int(300)]), int(600));
     let failed = failure(&program, "double_quantity", vec![int(600)]);
@@ -236,7 +236,7 @@ fn a_runtime_construction_that_breaks_a_rule_fails_with_its_invalid_failure() {
 }
 
 #[test]
-fn building_an_object_runs_its_fields_rules() {
+fn a_field_is_built_first_and_the_object_never_fails() {
     // Question 2.
     let program = program(&[
         (
@@ -245,7 +245,7 @@ fn building_an_object_runs_its_fields_rules() {
         ),
         (
             "main.jadpo",
-            "type Badge = Object {\n    name: Text {\n        max_length: 12\n    }\n}\n\naction make_badge(user: User) fails BadgeNameTooLong -> Badge {\n    // user.display_name allows 80 characters; the field allows 12,\n    // so this check can fail and must say how.\n    var badge: Badge = attempt Badge {\n        name: user.display_name\n    } invalid: BadgeNameTooLong\n    return badge\n}\n",
+            "type Badge = Object {\n    name: Text {\n        max_length: 12\n    }\n}\n\naction make_badge(user: User) fails BadgeNameTooLong -> Badge {\n    // user.display_name allows 80 characters; the field allows 12, so\n    // the name is built first, where its failure is mapped.\n    var name: Badge.name = attempt Badge.name(user.display_name) {\n        max_length: BadgeNameTooLong\n    }\n    return Badge {\n        name: name\n    }\n}\n",
         ),
     ]);
     let user = |name: &str| {
@@ -265,7 +265,7 @@ fn building_an_object_runs_its_fields_rules() {
     );
     let failed = failure(&program, "make_badge", vec![user("Ada Lovelace-Byron")]);
     assert_eq!(failed.name, "BadgeNameTooLong");
-    assert_eq!(failed.broken.as_deref(), Some("`max_length: 12` on `name`"));
+    assert_eq!(failed.broken.as_deref(), Some("`max_length: 12`"));
 }
 
 #[test]
@@ -312,7 +312,7 @@ fn a_share_is_divided_with_a_named_rounding() {
 fn a_pattern_matches_the_whole_text() {
     // Question 9.
     let program = main(
-        "type Sku = Text {\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Written = Text {\n    max_length: 40\n}\n\nfunction first_sku() -> Sku {\n    var sku: Sku = \"ABC-1234\"  // checked while compiling\n    return sku\n}\n\nfunction parse_sku(written: Written) fails SkuRejected -> Sku {\n    var sku: Sku = attempt Sku(written) invalid: SkuRejected\n    return sku\n}\n",
+        "type Sku = Text {\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Written = Text {\n    max_length: 40\n}\n\nfunction first_sku() -> Sku {\n    var sku: Sku = \"ABC-1234\"  // checked while compiling\n    return sku\n}\n\nfunction parse_sku(written: Written) fails SkuRejected -> Sku {\n    var sku: Sku = attempt Sku(written) {\n        pattern: SkuRejected\n    }\n    return sku\n}\n",
     );
     assert_eq!(value(&program, "first_sku", vec![]), text("ABC-1234"));
     assert_eq!(

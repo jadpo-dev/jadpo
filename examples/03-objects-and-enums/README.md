@@ -4,6 +4,11 @@ Values with parts: objects, values that arrive from outside and values
 sent back, values that may be absent, enums and tagged unions, and types
 built from other types. The project takes cake orders.
 
+An object is a fixed set of named fields; an enum is a closed list of
+alternatives, and an alternative can carry fields of its own. Every
+shape has a name, and two shapes with the same fields are still
+different types.
+
 ## What it teaches
 
 1. **Objects and field rules.** `type CakeLine = Object { ... }`, with a field that tightens its type. See `domains/sales/types/cake_line.jadpo` and [area 2, Objects](../../docs/language/02-values-and-types.md#objects).

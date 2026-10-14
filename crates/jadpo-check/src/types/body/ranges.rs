@@ -1,6 +1,8 @@
 //! Proving a construction safe (area 4, question 6): when the declared
 //! ranges show a computed value always follows the target type's rules,
-//! `Type(value)` cannot fail and takes no `attempt`.
+//! `Type(value)` cannot fail and takes no `attempt`. The proof is made rule
+//! by rule, because an `attempt` maps each rule that can break (area 2,
+//! "Construction failures by rule").
 //!
 //! Numbers are followed through arithmetic as intervals, from literals and
 //! the `min` and `max` of each operand's type. Text, bytes and collections
@@ -186,6 +188,9 @@ fn at_most(interval: &Interval, n: Num) -> bool {
 struct Combined {
     min: Option<Num>,
     max: Option<Num>,
+    min_duration: Option<jadpo_std::Dur>,
+    max_duration: Option<jadpo_std::Dur>,
+    scale: Option<u32>,
     min_length: Option<u64>,
     max_length: Option<u64>,
     patterns: Vec<String>,
@@ -206,6 +211,19 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
         {
             out.max = Some(max);
         }
+        if let Some(min) = rules.min_duration
+            && out.min_duration.is_none_or(|m| min > m)
+        {
+            out.min_duration = Some(min);
+        }
+        if let Some(max) = rules.max_duration
+            && out.max_duration.is_none_or(|m| max < m)
+        {
+            out.max_duration = Some(max);
+        }
+        if let Some(scale) = rules.scale {
+            out.scale = Some(out.scale.map_or(scale, |s| s.min(scale)));
+        }
         if let Some(n) = rules.min_length {
             out.min_length = Some(out.min_length.map_or(n, |m| m.max(n)));
         }
@@ -221,9 +239,57 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
     out
 }
 
+impl Combined {
+    /// The rules it holds, by the keys an `attempt`'s arms use, each as
+    /// written: `("max", "max: 1000")`.
+    fn written(&self) -> Vec<(&'static str, String)> {
+        let mut out = Vec::new();
+        if let Some(min) = self.min {
+            out.push(("min", format!("min: {min}")));
+        } else if let Some(min) = self.min_duration {
+            out.push(("min", format!("min: {min}")));
+        }
+        if let Some(max) = self.max {
+            out.push(("max", format!("max: {max}")));
+        } else if let Some(max) = self.max_duration {
+            out.push(("max", format!("max: {max}")));
+        }
+        if let Some(n) = self.min_length {
+            out.push(("min_length", format!("min_length: {n}")));
+        }
+        if let Some(n) = self.max_length {
+            out.push(("max_length", format!("max_length: {n}")));
+        }
+        if let Some(pattern) = self.patterns.first() {
+            out.push(("pattern", format!("pattern: \"{pattern}\"")));
+        }
+        if self.email {
+            out.push(("format", "format: TextFormat.email".to_string()));
+        }
+        if let Some(scale) = self.scale {
+            out.push(("scale", format!("scale: {scale}")));
+        }
+        if let Some(version) = self.version {
+            out.push((
+                "version",
+                format!(
+                    "version: {}.{}",
+                    jadpo_std::UuidVersion::NAME,
+                    version.name()
+                ),
+            ));
+        }
+        out
+    }
+}
+
 impl Body<'_> {
-    /// The smallest result a standard-library call gives, when the
-    /// operation table says.
+    /// The rules of `target` and every type it builds on, by the keys an
+    /// `attempt`'s arms use, each with the rule as written.
+    pub(super) fn rules_of(&self, target: &Ty) -> Vec<(&'static str, String)> {
+        combine(self.table.rule_chain(target).into_iter().map(|(_, r)| r)).written()
+    }
+
     /// The dividend and divisor of a call to a standard-library division,
     /// given by position or by name.
     fn division(&self, call: &ast::CallExpr) -> Option<(Expr, Expr)> {
@@ -253,39 +319,59 @@ impl Body<'_> {
         }
     }
 
-    /// Whether the declared ranges prove `value`, of type `actual`, always
-    /// follows `target`'s rules.
-    pub(super) fn proves(&self, value: &Expr, actual: &Ty, target: &Ty) -> bool {
+    /// The rules of `target` the declared ranges can't prove `value`, of
+    /// type `actual`, follows, by their keys, in the order the reader
+    /// learns them. A rule the compiler can't reason about, such as a
+    /// pattern other than the value's own, can always break; `scale` never
+    /// does, because it rounds the value as it is kept.
+    pub(super) fn breakable(&self, value: &Expr, actual: &Ty, target: &Ty) -> Vec<String> {
         let needs = combine(self.table.rule_chain(target).into_iter().map(|(_, r)| r));
         let has = combine(self.table.rule_chain(actual).into_iter().map(|(_, r)| r));
+        let mut out = Vec::new();
         if needs.min.is_some() || needs.max.is_some() {
             let interval = self.interval(value);
-            if needs.min.is_some_and(|min| !at_least(&interval, min))
-                || needs.max.is_some_and(|max| !at_most(&interval, max))
-            {
-                return false;
+            if needs.min.is_some_and(|min| !at_least(&interval, min)) {
+                out.push("min".to_string());
             }
+            if needs.max.is_some_and(|max| !at_most(&interval, max)) {
+                out.push("max".to_string());
+            }
+        }
+        if needs
+            .min_duration
+            .is_some_and(|n| has.min_duration.is_none_or(|m| m < n))
+        {
+            out.push("min".to_string());
+        }
+        if needs
+            .max_duration
+            .is_some_and(|n| has.max_duration.is_none_or(|m| m > n))
+        {
+            out.push("max".to_string());
         }
         if needs
             .min_length
             .is_some_and(|n| has.min_length.is_none_or(|m| m < n))
-            || needs
-                .max_length
-                .is_some_and(|n| has.max_length.is_none_or(|m| m > n))
         {
-            return false;
+            out.push("min_length".to_string());
+        }
+        if needs
+            .max_length
+            .is_some_and(|n| has.max_length.is_none_or(|m| m > n))
+        {
+            out.push("max_length".to_string());
         }
         if needs.patterns.iter().any(|p| !has.patterns.contains(p)) {
-            return false;
+            out.push("pattern".to_string());
         }
         let is_email = self.table.base_prim(actual) == Some(super::super::ty::Prim::Email);
         if needs.email && !(has.email || is_email) {
-            return false;
+            out.push("format".to_string());
         }
         if needs.version.is_some() && needs.version != has.version {
-            return false;
+            out.push("version".to_string());
         }
-        true
+        out
     }
 
     /// The values a numeric expression can take.

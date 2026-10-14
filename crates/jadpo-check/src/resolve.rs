@@ -560,7 +560,7 @@ impl Names<'_> {
         }
     }
 
-    /// A mapping's failure, `invalid: QuantityOutOfRange`. Whether it is a
+    /// A mapping's failure, `max: QuantityTooLarge`. Whether it is a
     /// call to a type, which the caller resolves.
     pub fn mapped(&self, expr: &Expr, out: &mut Vec<Diagnostic>) -> bool {
         match expr {
@@ -1313,8 +1313,8 @@ impl<'a> Walk<'a> {
                 if let Some(inner) = attempt.expr() {
                     self.expr(&inner);
                 }
-                for mapping in attempt.mappings() {
-                    if let Some(value) = mapping.expr() {
+                for (_, mapping) in crate::tree::members(attempt.member_list()) {
+                    if let Some(value) = mapping.value() {
                         if self.names.mapped(&value, &mut self.out) {
                             self.expr(&value);
                         } else if let Expr::RecordExpr(record) = &value {

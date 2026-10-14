@@ -1,0 +1,14 @@
+// When more than one rule can break, each gets an arm of its own, or
+// `invalid:` covers every rule left without one.
+
+/// An order for every cake left on the shelf.
+action order_shelf(left: Stock) fails OrderTooLarge, ShelfEmpty -> CakeCount {
+    // `left` runs from 0 to 500 and `CakeCount` from 1 to 24, so both
+    // `min` and `max` can break. `max` has its own arm, and `invalid:`
+    // covers the rest: here only `min`, when the shelf is empty.
+    var count: CakeCount = attempt CakeCount(left) {
+        max: OrderTooLarge
+        invalid: ShelfEmpty
+    }
+    return count
+}

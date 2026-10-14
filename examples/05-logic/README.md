@@ -1,7 +1,9 @@
 # 05 · Logic
 
-How behaviour is written: operators, choices, division that says how it
-rounds, and recursion. The project is a bakery's kitchen.
+How behaviour is written: operators and the order they apply in,
+choices with `if` and `match`, division that says how it rounds, and
+recursion over a shape that contains itself. The project is a bakery's
+kitchen.
 
 ## What it teaches
 

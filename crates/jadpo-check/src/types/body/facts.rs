@@ -99,8 +99,9 @@ pub(crate) struct Facts {
     pub constructions: BTreeMap<NodeKey, Fallible>,
     /// What each call can fail with.
     pub fallible: BTreeMap<NodeKey, Fallible>,
-    /// The failure each `attempt`'s `invalid:` names.
-    pub mapped: BTreeMap<NodeKey, String>,
+    /// The failure each arm of an `attempt` on a construction names, by
+    /// the rule's key; `None` for `invalid:`, which covers the rest.
+    pub mapped: BTreeMap<NodeKey, Vec<(Option<String>, String)>>,
     /// The failure each `reject` raises.
     pub rejects: BTreeMap<NodeKey, String>,
     /// The failure each `propagate` passes on.

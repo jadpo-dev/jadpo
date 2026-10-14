@@ -413,12 +413,12 @@ action reorder(order_id: Order.id) fails OrderNotFound, QuantityUnavailable -> R
 }
 ```
 
-> **Changing.** Decided on 2026-10-14: the failure moves into a block keyed by the rule that can break, `attempt CakeCount(n) { max: OrderTooLarge }`, with `invalid:` covering any rule without its own arm; `if` conditions count as proof; object literals never fail. See the Decisions table ("Construction failures by rule"). The examples on this page show the current form until chunk 2.5 builds the new one.
-
-Decided in area 2: a runtime construction can fail and is written
-`attempt Type(value) invalid: SomeFailure`. When the declared ranges prove a
-construction cannot break the target's rules, it is not fallible, so it takes
-no `attempt` (question 6):
+Decided in area 2: a runtime construction can fail, and its `attempt` maps
+each rule that can break in a block after the call,
+`attempt Type(value) { max: SomeFailure }`, with `invalid:` covering every
+rule without an arm of its own (area 2, "Construction failures by rule").
+When the declared ranges prove a construction cannot break any of the
+target's rules, it is not fallible, so it takes no `attempt` (question 6):
 
 ```jadpo check project=proven file=types.jadpo hidden
 type Pence = Int {
@@ -442,7 +442,9 @@ function line_total(price: Pence, quantity: Quantity) -> Pence {
 }
 
 function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
-    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge  // can exceed 1000
+    var result: Quantity = attempt Quantity(quantity * 2) {  // at least 2, but can exceed 1000
+        max: QuantityTooLarge
+    }
     return result
 }
 ```
@@ -483,8 +485,11 @@ query todo_by_id(todo_id: Todo.id) fails TodoNotFound -> TodoView {
     }
 }
 
-// a runtime construction (area 2)
-var quantity: Quantity = attempt Quantity(count) invalid: QuantityOutOfRange
+// a runtime construction, keyed by the rule that can break (area 2)
+var quantity: Quantity = attempt Quantity(count) {
+    max: QuantityTooLarge
+    invalid: QuantityOutOfRange
+}
 
 // a write that breaks a unique rule (area 6)
 var account: Account = attempt Account.create {
@@ -508,7 +513,11 @@ var receipt: Receipt = match payments.charge(order) {
 | `missing:` | `not_found` |
 | `conflict:` | `conflict` |
 | `empty:` (a patch that changes nothing) | `invalid_value` |
-| `invalid:` (a construction; from chunk 2.5 also each rule key, such as `max:`) | `invalid_value` |
+| A construction's rule keys, such as `max:`, and `invalid:` covering the rest | `invalid_value` |
+
+`invalid:` is the catch-all only for a construction's rules. A read's,
+a write's or an integration call's conditions each need their own arm, and
+`invalid:` in their block is an error (`failure.invalid_outside_construction`).
 
 The failure that was mapped is kept as the internal cause of the new one, so
 the log shows both (question 8):
@@ -522,7 +531,7 @@ PaymentDeclined rejected at domains/checkout/actions/pay.jadpo:14
 ::: today
 
 Data operations already map with `missing:`, `conflict:` and `empty:`, and
-the kind is checked; `invalid:` does not exist yet. Services use
+the kind is checked; constructions map nothing. Services use
 `maps provider.x -> Failure` and outcome matches use `failure F => reject G`.
 The mapped failure is not kept anywhere.
 
@@ -1158,12 +1167,171 @@ error: `Refused` is listed twice after `fails`
 check failed: 1 error, 1 file
 ```
 
-### `failure.invalid_mapping_required`
+### `failure.rule_unmapped`
 
-A construction the declared ranges don't prove safe names the failure it
-becomes:
+Each rule a construction can break has an arm, or `invalid:` covers it:
 
-```jadpo check project=e-invalid-required expect=failure.invalid_mapping_required
+```jadpo check project=e-rule-unmapped expect=failure.rule_unmapped
+type Count = Int {}
+
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+type QuantityTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function from_count(n: Count) fails QuantityTooLarge -> Quantity {
+    var result: Quantity = attempt Quantity(n) {
+        max: QuantityTooLarge
+    }
+    return result
+}
+```
+
+```text output
+error: `Quantity(...)` can break `min`, and nothing maps it
+ --> main.jadpo:13:28
+   |
+13 |     var result: Quantity = attempt Quantity(n) {
+   |                            ^^^^^^^^^^^^^^^^^^^^^ can fail at runtime
+  reason: The value is only known when the program runs, and the declared ranges don't prove it follows `min: 1`; it needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.
+  next: Add `min: SomeFailure` to the block, naming an `invalid_value` failure, or `invalid: SomeFailure` to cover every rule without an arm (agent)
+  rule: failure.rule_unmapped
+  help: docs/language/04-failures.html#failure-rule-unmapped
+
+check failed: 1 error, 1 file
+```
+
+### `failure.rule_cannot_break`
+
+An arm for a rule the declared ranges prove holds could never run:
+
+```jadpo check project=e-rule-cannot-break expect=failure.rule_cannot_break
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+type QuantityTooSmall = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type QuantityTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function doubled(quantity: Quantity) fails QuantityTooSmall, QuantityTooLarge -> Quantity {
+    var result: Quantity = attempt Quantity(quantity * 2) {
+        min: QuantityTooSmall
+        max: QuantityTooLarge
+    }
+    return result
+}
+```
+
+```text output
+error: `Quantity(...)` can't break `min`, so it takes no arm
+ --> main.jadpo:16:9
+   |
+16 |         min: QuantityTooSmall
+   |         ^^^ never runs
+  reason: The declared ranges prove the value always follows `min: 1`, so this arm could never run.
+  next: Remove `min: ...` (agent)
+  rule: failure.rule_cannot_break
+  help: docs/language/04-failures.html#failure-rule-cannot-break
+
+check failed: 1 error, 1 file
+```
+
+### `failure.invalid_covers_nothing`
+
+```jadpo check project=e-invalid-covers-nothing expect=failure.invalid_covers_nothing
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+type QuantityTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type QuantityRefused = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function doubled(quantity: Quantity) fails QuantityTooLarge, QuantityRefused -> Quantity {
+    var result: Quantity = attempt Quantity(quantity * 2) {
+        max: QuantityTooLarge
+        invalid: QuantityRefused
+    }
+    return result
+}
+```
+
+```text output
+error: `invalid:` covers nothing here
+ --> main.jadpo:17:9
+   |
+17 |         invalid: QuantityRefused
+   |         ^^^^^^^ no rule left to cover
+  reason: Every rule `Quantity(...)` can break has its own arm (`max`), so `invalid:` could never run.
+  next: Remove `invalid: ...` (agent)
+  rule: failure.invalid_covers_nothing
+  help: docs/language/04-failures.html#failure-invalid-covers-nothing
+
+check failed: 1 error, 1 file
+```
+
+### `failure.invalid_outside_construction`
+
+`invalid:` covers only a construction's rules, never another call's
+failures or a write's conditions:
+
+```jadpo check project=e-invalid-outside-construction expect=failure.invalid_outside_construction
+type Note = Text {}
+
+type NoteRefused = Failure {
+    kind: FailureKind.rejected
+}
+
+type NoteInvalid = Failure {
+    kind: FailureKind.invalid_value
+}
+
+action check_note(note: Note) fails NoteRefused -> Note {
+    if (note == "") {
+        reject NoteRefused
+    }
+    return note
+}
+
+action save_note(note: Note) fails NoteRefused, NoteInvalid -> Note {
+    return attempt check_note(note) {
+        invalid: NoteInvalid
+    }
+}
+```
+
+```text output
+error: `check_note(...)` isn't a construction, so `invalid:` covers nothing
+ --> main.jadpo:20:9
+   |
+20 |         invalid: NoteInvalid
+   |         ^^^^^^^ not a construction
+  reason: `check_note(...)` fails with the failures its `fails` list names; `invalid:` is the catch-all only for the rules a construction's value can break, never for another call's failures.
+  next: Remove `invalid: ...`; `attempt` passes `check_note(...)`'s failures on, and `match` turns one into another (agent)
+  rule: failure.invalid_outside_construction
+  help: docs/language/04-failures.html#failure-invalid-outside-construction
+
+check failed: 1 error, 1 file
+```
+
+### `failure.duplicate_mapping`
+
+```jadpo check project=e-duplicate-mapping expect=failure.duplicate_mapping
 type Quantity = Int {
     min: 1
     max: 1000
@@ -1174,21 +1342,26 @@ type QuantityTooLarge = Failure {
 }
 
 function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
-    var result: Quantity = attempt Quantity(quantity * 2)
+    var result: Quantity = attempt Quantity(quantity * 2) {
+        max: QuantityTooLarge
+        max: QuantityTooLarge
+    }
     return result
 }
 ```
 
 ```text output
-error: `Quantity(...)` can fail, but no failure is named for it
- --> main.jadpo:11:28
+error: `max:` is mapped twice
+ --> main.jadpo:13:9
    |
-11 |     var result: Quantity = attempt Quantity(quantity * 2)
-   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ can fail at runtime
-  reason: The value is only known when the program runs, and the declared ranges don't prove it follows the type's rules; `invalid:` names the `invalid_value` failure the caller gets when it doesn't.
-  next: Add `invalid: SomeFailure` after `Quantity(...)` (agent)
-  rule: failure.invalid_mapping_required
-  help: docs/language/04-failures.html#failure-invalid-mapping-required
+12 |         max: QuantityTooLarge
+   |         --- first mapped here
+13 |         max: QuantityTooLarge
+   |         ^^^ mapped again
+  reason: Each condition is mapped once, so there is never a question of which failure the caller gets.
+  next: Remove one `max:` (agent)
+  rule: failure.duplicate_mapping
+  help: docs/language/04-failures.html#failure-duplicate-mapping
 
 check failed: 1 error, 1 file
 ```
@@ -1206,17 +1379,19 @@ type QuantityRefused = Failure {
 }
 
 function doubled(quantity: Quantity) fails QuantityRefused -> Quantity {
-    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityRefused
+    var result: Quantity = attempt Quantity(quantity * 2) {
+        max: QuantityRefused
+    }
     return result
 }
 ```
 
 ```text output
-error: `invalid:` needs an `invalid_value` failure, and `QuantityRefused` is `rejected`
- --> main.jadpo:11:68
+error: `max:` needs an `invalid_value` failure, and `QuantityRefused` is `rejected`
+ --> main.jadpo:12:14
    |
-11 |     var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityRefused
-   |                                                                    ^^^^^^^^^^^^^^^ kind `rejected`
+12 |         max: QuantityRefused
+   |              ^^^^^^^^^^^^^^^ kind `rejected`
   reason: Each mapping's condition fixes the kind of failure it becomes: a value that breaks a type's rules is `invalid_value`, so the client gets the status that means.
   next: Name an `invalid_value` failure here, or make `QuantityRefused`'s kind `FailureKind.invalid_value` (agent)
   rule: failure.mapping_kind
@@ -1226,6 +1401,8 @@ check failed: 1 error, 1 file
 ```
 
 ### `failure.unknown_mapping`
+
+A construction's arms are the rules of its type:
 
 ```jadpo check project=e-unknown-mapping expect=failure.unknown_mapping
 type Quantity = Int {
@@ -1238,28 +1415,65 @@ type QuantityTooLarge = Failure {
 }
 
 function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
-    var result: Quantity = attempt Quantity(quantity * 2) missing: QuantityTooLarge
+    var result: Quantity = attempt Quantity(quantity * 2) {
+        maximum: QuantityTooLarge
+    }
     return result
 }
 ```
 
 ```text output
-error: `Quantity(...)` has no `missing:` condition to map
- --> main.jadpo:11:59
+error: `Quantity(...)` has no `maximum:` condition to map
+ --> main.jadpo:12:9
    |
-11 |     var result: Quantity = attempt Quantity(quantity * 2) missing: QuantityTooLarge
-   |                                                           ^^^^^^^ not a condition here
-  reason: A construction has one condition to map, `invalid:`, when its value breaks the type's rules; `missing:` isn't one `Quantity(...)` has, or is given twice.
-  next: Use `invalid:` once (agent)
+12 |         maximum: QuantityTooLarge
+   |         ^^^^^^^ not a condition here
+  reason: A construction's arms are the rules of its type and the types it builds on; `Quantity(...)`'s are `min` and `max`, and `invalid:` covers any without an arm of its own.
+  next: Remove `maximum: ...`, or map one of `min` and `max` instead (agent)
   rule: failure.unknown_mapping
   help: docs/language/04-failures.html#failure-unknown-mapping
 
 check failed: 1 error, 1 file
 ```
 
+### `syntax.mapping_block_required`
+
+An `attempt`'s mappings go in a block after the call, never after it on the
+same line:
+
+```jadpo check project=e-mapping-block-required expect=syntax.mapping_block_required
+type Quantity = Int {
+    min: 1
+    max: 1000
+}
+
+type QuantityTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
+    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge
+    return result
+}
+```
+
+```text output
+error: An `attempt`'s mappings go in a block after the call
+ --> main.jadpo:11:59
+   |
+11 |     var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge
+   |                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^ after the call, not in a block
+  reason: An `attempt` maps its failures in a block, one per line, the same form writes and integration calls use; a construction's keys are the rules that can break, with `invalid:` covering the rest.
+  next: Move `invalid: QuantityTooLarge` into a block after the call: `{ invalid: QuantityTooLarge }` (agent)
+  rule: syntax.mapping_block_required
+  help: docs/language/04-failures.html#syntax-mapping-block-required
+
+check failed: 1 error, 1 file
+```
+
 The four errors below check that a data operation's mapping names a failure
-of the right kind. The new compiler checks `invalid:` the same way, as
-`failure.mapping_kind` above.
+of the right kind. The new compiler checks a construction's arms the same
+way, as `failure.mapping_kind` above.
 
 ### `failure.required_query_not_not_found`
 
@@ -1427,7 +1641,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    other domains".
 - **Five mapping spellings.** `missing: F`, `conflict Account.handle: F`,
    `inactive: F` (authentication), `maps provider.x -> F` (services) and
-   `failure F => reject G`; area 2 adds `invalid: F`.
+   `failure F => reject G`; area 2 adds a construction's rule arms.
 - **Faults are listed for integrations only.** A service operation lists
    `Unavailable`, `OutcomeUnknown` and `Misconfigured` in `fails` and callers
    match them, while a database fault never appears in any `fails` list.
@@ -1516,7 +1730,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    anything that cannot fail, so the compiler decides from the ranges, and
    its error says which case applies. `Pence(price * quantity)` with both at
    least 0 and no maximum on `Pence` stays plain; `Quantity(quantity * 2)`
-   with a maximum of 1000 needs `attempt ... invalid:`. Changing a range
+   with a maximum of 1000 needs `attempt` and an arm for `max`. Changing a range
    flips call sites, and the compiler reports each one.
 7. **One mapping form everywhere?** Five spellings exist today.
    *Decided 2026-10-12:* `condition: Failure` inside the operation's block, for
@@ -1582,12 +1796,12 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (roadmap chunk 1.6): declarations, kinds, codes, `fails`, `reject`, `attempt`, `invalid:` and outcome `match`. Data operations' mappings come with area 6, and the client envelope and OpenAPI with area 7. What runs came with the interpreter on 2026-10-14 (chunk 2.1): failures with their fields, where they were raised and the path they travelled, mapped failures keeping their cause, and the `int_overflow` and `recursion_limit` faults with their `.jadpo` frames; the log events come with the runtime's hosts.
+Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (roadmap chunk 1.6): declarations, kinds, codes, `fails`, `reject`, `attempt`, construction mappings and outcome `match`. A construction's failures are mapped by rule since chunk 2.5. Data operations' mappings come with area 6, and the client envelope and OpenAPI with area 7. What runs came with the interpreter on 2026-10-14 (chunk 2.1): failures with their fields, where they were raised and the path they travelled, mapped failures keeping their cause, and the `int_overflow` and `recursion_limit` faults with their `.jadpo` frames; the log events come with the runtime's hosts.
 
 | Topic | Decision | Date |
 |---|---|---|
 | Kind names | Carried from area 2 (Richard, 2026-10-12): kinds are lower_snake_case option names, `kind: not_found` (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
-| Runtime construction | Carried from area 2: a runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literals are checked while compiling | 2026-10-12 |
+| Runtime construction | Carried from area 2: a runtime `Type(value)` check needs `attempt` with a block mapping each rule that can break to an `invalid_value` failure, `invalid:` covering the rest (revised 2026-10-14, built in chunk 2.5); literals are checked while compiling | 2026-10-12 |
 | Failure arms | Carried from area 3: one `match` handles call outcomes; failure arms have no `failure` prefix, every failure has an arm, and an arm recovers, `reject`s or `propagate`s | 2026-10-12 |
 | `attempt` placement | Carried from area 3: only at the start of a statement, and only on a call that can fail | 2026-10-12 |
 | Signature | Carried from area 3: the whole signature on the header line, `fails` before `->` | 2026-10-12 |
@@ -1598,7 +1812,7 @@ Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (
 | Invalid input detail | Each problem as `{ field, rule }` under `details`, never the value | 2026-10-12 |
 | Faults in `fails` | Never; `fails` lists domain failures; integrations map provider problems to declared failures | 2026-10-12 |
 | Construction proven safe | No `attempt` when declared ranges prove a construction cannot fail; the compiler decides and reports call sites that flip | 2026-10-12 |
-| Mapping form | One form everywhere: `condition: Failure` inside the operation's block, kind checked. Constructions join it on 2026-10-14, keyed by rule (area 2, "Construction failures by rule") | 2026-10-12 |
+| Mapping form | One form everywhere: `condition: Failure` inside the operation's block, kind checked. Constructions join it on 2026-10-14, keyed by rule (area 2, "Construction failures by rule"), built in chunk 2.5; `invalid:` is the catch-all only for a construction's rules, and every other condition has its own arm | 2026-10-12 |
 | Cause on mapping | The original failure is always kept as an internal-only cause | 2026-10-12 |
 | Overflow and recursion limit | Defects: 500 `internal_fault`, writes rolled back, cause named in the log; not declarable or catchable | 2026-10-12 |
 | Concealment | A record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |

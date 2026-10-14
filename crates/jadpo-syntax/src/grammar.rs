@@ -1437,16 +1437,67 @@ fn stmt_value(p: &mut Parser<'_>) -> Option<CompletedMarker> {
 
 fn attempt_expr(p: &mut Parser<'_>) -> CompletedMarker {
     let m = p.start();
+    let (attempt_start, _) = p.range();
     p.bump(ATTEMPT_KW);
-    expr(p);
-    while p.at(IDENT) && p.nth(1) == COLON && !p.on_new_line() {
-        let mapping = p.start();
-        name(p, "this mapping");
-        p.bump(COLON);
-        expr(p);
-        mapping.complete(p, MAPPING);
+    p.attempting(expr);
+    if p.at(L_BRACE) && !p.on_new_line() {
+        member_list(p, Members::Record);
+    } else if p.at(IDENT) && p.nth(1) == COLON && !p.on_new_line() {
+        trailing_mappings(p, attempt_start);
     }
     m.complete(p, ATTEMPT_EXPR)
+}
+
+/// `attempt Count(n) invalid: TooBig`: the mappings written after the call
+/// instead of in its block (area 4, "Construction failures by rule"). They
+/// are kept as the block's members, so nothing else reports them, and the
+/// edit moves them into a block, one per line.
+fn trailing_mappings(p: &mut Parser<'_>, attempt_start: u32) {
+    let before = p.prev_end();
+    let (start, _) = p.range();
+    let list = p.start();
+    let mut written = Vec::new();
+    while p.at(IDENT) && p.nth(1) == COLON && !p.on_new_line() {
+        let (from, _) = p.range();
+        let mapping = p.start();
+        member_key(p);
+        p.bump(COLON);
+        if can_start_expr(p) && !p.on_new_line() {
+            p.with_records(true, expr);
+        }
+        mapping.complete(p, MEMBER);
+        written.push(p.text()[from as usize..p.prev_end() as usize].to_string());
+    }
+    list.complete(p, MEMBER_LIST);
+    let end = p.prev_end();
+    let line_start = p.text()[..attempt_start as usize]
+        .rfind('\n')
+        .map_or(0, |i| i + 1);
+    let indent: String = p.text()[line_start..]
+        .chars()
+        .take_while(|c| *c == ' ')
+        .collect();
+    let mut block = String::from(" {");
+    for mapping in &written {
+        block.push_str(&format!("\n{indent}    {mapping}"));
+    }
+    block.push_str(&format!("\n{indent}}}"));
+    let first = written.first().cloned().unwrap_or_default();
+    let error = SyntaxError::new(
+        &rule::SYNTAX_MAPPING_BLOCK_REQUIRED,
+        "An `attempt`'s mappings go in a block after the call",
+        start,
+        end,
+    )
+    .label("after the call, not in a block")
+    .reason("An `attempt` maps its failures in a block, one per line, the same form writes and integration calls use; a construction's keys are the rules that can break, with `invalid:` covering the rest.")
+    .next(if written.len() == 1 {
+        format!("Move `{first}` into a block after the call: `{{ {first} }}`")
+    } else {
+        "Move the mappings into a block after the call, one per line".to_string()
+    })
+    .edit(TextEdit::replace(before, end, block));
+    p.push_error(error);
 }
 
 fn return_stmt(p: &mut Parser<'_>) {
@@ -1891,6 +1942,9 @@ fn postfix_levels(
                 arg_list(p);
                 m.complete(p, CALL_EXPR)
             }
+            // `attempt Count(n) { max: TooBig }`: the block is the
+            // attempt's mappings.
+            L_BRACE if p.attempted && lhs.kind() == CALL_EXPR => return lhs,
             L_BRACE if p.records_allowed && !p.on_new_line() => {
                 let m = lhs.precede(p);
                 member_list(p, Members::Record);

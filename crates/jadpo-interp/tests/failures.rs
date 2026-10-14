@@ -71,7 +71,7 @@ fn a_construction_the_ranges_prove_safe_never_fails_and_one_they_dont_can() {
         ),
         (
             "main.jadpo",
-            "function line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)  // both at least 0, Pence has no maximum\n    return total\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge  // can exceed 1000\n    return result\n}\n",
+            "function line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)  // both at least 0, Pence has no maximum\n    return total\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {  // can exceed 1000\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
         ),
     ]);
     assert_eq!(value(&program, "line_total", vec![int(0), int(7)]), int(0));
@@ -83,11 +83,38 @@ fn a_construction_the_ranges_prove_safe_never_fails_and_one_they_dont_can() {
 }
 
 #[test]
+fn each_broken_rule_raises_its_arms_failure() {
+    // Area 2, "Construction failures by rule": the rule that broke picks
+    // the arm, and `invalid:` covers every rule without its own.
+    let program = main(
+        "type Count = Int {}\n\ntype CakeCount = Int {\n    min: 1\n    max: 12\n}\n\ntype Label = Text {\n    max_length: 40\n}\n\ntype Code = Text {\n    min_length: 3\n    max_length: 8\n    pattern: \"[A-Z]+\"\n}\n\ntype OrderEmpty = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype OrderTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype CodeTooLong = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype CodeRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction cakes(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {\n    var count: CakeCount = attempt CakeCount(n) {\n        min: OrderEmpty\n        max: OrderTooLarge\n    }\n    return count\n}\n\nfunction code(label: Label) fails CodeTooLong, CodeRejected -> Code {\n    var code: Code = attempt Code(label) {\n        max_length: CodeTooLong\n        invalid: CodeRejected\n    }\n    return code\n}\n",
+    );
+    assert_eq!(value(&program, "cakes", vec![int(6)]), int(6));
+    assert_eq!(failure(&program, "cakes", vec![int(0)]).name, "OrderEmpty");
+    let large = failure(&program, "cakes", vec![int(13)]);
+    assert_eq!(large.name, "OrderTooLarge");
+    assert_eq!(large.broken.as_deref(), Some("`max: 12`"));
+    assert_eq!(value(&program, "code", vec![text("ABCD")]), text("ABCD"));
+    assert_eq!(
+        failure(&program, "code", vec![text("ABCDEFGHIJ")]).name,
+        "CodeTooLong"
+    );
+    // `min_length` and `pattern` have no arm of their own.
+    assert_eq!(
+        failure(&program, "code", vec![text("AB")]).name,
+        "CodeRejected"
+    );
+    let rejected = failure(&program, "code", vec![text("abcd")]);
+    assert_eq!(rejected.name, "CodeRejected");
+    assert_eq!(rejected.broken.as_deref(), Some("`pattern: \"[A-Z]+\"`"));
+}
+
+#[test]
 fn a_construction_mapping_gives_its_failure_fields() {
-    // `invalid:` names its failure as `reject` does, fields and all
+    // An arm names its failure as `reject` does, fields and all
     // (question 7: every mapping is `condition: Failure`).
     let program = main(
-        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n    client: {\n        largest: Quantity\n    }\n    internal: {\n        asked: Quantity\n    }\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) invalid: QuantityTooLarge {\n        largest: 1000\n        asked: quantity\n    }\n    return result\n}\n",
+        "type Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n    client: {\n        largest: Quantity\n    }\n    internal: {\n        asked: Quantity\n    }\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        max: QuantityTooLarge {\n            largest: 1000\n            asked: quantity\n        }\n    }\n    return result\n}\n",
     );
     assert_eq!(value(&program, "doubled", vec![int(500)]), int(1000));
     let too_large = failure(&program, "doubled", vec![int(501)]);

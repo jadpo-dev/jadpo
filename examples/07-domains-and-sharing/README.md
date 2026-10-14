@@ -1,7 +1,13 @@
 # 07 · Domains and sharing
 
-A project with two domains, `pantry` and `sales`: what each keeps to
-itself, what it offers, and what they share.
+A project with two domains, `pantry`, which keeps the flour, and
+`sales`, which bakes what customers order: what each keeps to itself,
+what it offers, and what they share.
+
+A project grows by adding domains, never by nesting folders. Each domain
+owns everything in it, and its declarations are private unless marked
+`public`. Code two domains share moves to `shared/`. There are no
+imports: the dot in a call names the owner of what is called.
 
 ## What it teaches
 

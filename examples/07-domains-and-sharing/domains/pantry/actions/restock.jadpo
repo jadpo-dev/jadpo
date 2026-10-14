@@ -2,10 +2,11 @@
 /// the `in_store` ones.
 action restock(in_store: SackCount, delivered: SackCount) fails TooHeavy -> Grams {
     // Twelve full sacks would pass what the scales weigh, so the sum is
-    // checked when it runs, and `TooHeavy`, a shared failure, names what
-    // went wrong.
-    var total: Grams = attempt Grams(
-        sacks.grams_in(in_store) + sacks.grams_in(delivered)
-    ) invalid: TooHeavy
+    // checked when it runs. `invalid:` on its own covers every rule of
+    // `Grams` that can break, and `TooHeavy`, a shared failure, names
+    // what went wrong.
+    var total: Grams = attempt Grams(sacks.grams_in(in_store) + sacks.grams_in(delivered)) {
+        invalid: TooHeavy
+    }
     return total
 }

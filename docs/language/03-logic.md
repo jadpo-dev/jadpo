@@ -3044,7 +3044,7 @@ check failed: 1 error, 1 file
 
 | Item | Area | Status |
 |---|---|---|
-| Whether a runtime construction the declared ranges prove safe (`Pence(price * quantity)` with both minimums at 0 or above and no maximum) still needs `attempt ... invalid:` | 4 | Open |
+| Whether a runtime construction the declared ranges prove safe (`Pence(price * quantity)` with both minimums at 0 or above and no maximum) still needs `attempt` and a mapping | 4 | Decided in area 4, question 6: no |
 | `fails` sets, `reject`, `propagate` and failure arms' mapping rules; how overflow, division by zero and recursion depth faults are reported | 4 | Input to area 4 |
 | Calling actions or queries inside a `for` loop (one query per item, transaction scope) | 6 | Input to area 6 |
 | Callable settings (`consistency:`, `freshness:`, `guard:`) become defaults; reading a cache or projection is declared on the cache | 6 | Follows from a decision |

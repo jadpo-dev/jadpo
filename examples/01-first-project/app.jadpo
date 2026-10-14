@@ -1,15 +1,6 @@
-// Example 01: a first project.
-//
-// Every Jadpo project has the same shape, whatever its size. This file,
-// `app.jadpo`, marks the project's root: `jadpo check` and `jadpo test`
+// `app.jadpo` marks the project's root: `jadpo check` and `jadpo test`
 // walk up from wherever you are until they find it.
 //
 // `application` exists once per project, so it has no name. It is empty
 // here; later areas give it settings, such as the language version.
-//
-// Everything else lives in a domain: a business area, named by its folder
-// under `domains/`. This project has one domain, `baking`, with one action
-// and the tests beside it.
-//
-// Read next: domains/baking/actions/price_loaves.jadpo
 application {}
