@@ -404,8 +404,13 @@ entity Todo {
 }
 ```
 
-Today an index is a list of fields; a `kind:` option is not built yet, and
-the indexes derived from queries come with them (chunk 3.2).
+Today an index is a list of fields and a `kind:` option is not built yet.
+Since chunk 3.2 the queries' indexes are derived: for each query, and each
+list it includes, the fields it always tests with `==` or `in`, then its
+order's fields, unless an index or unique key the table already has serves
+them; a reference's own index goes once a query's index starts with its
+column. The partial indexes for `visible:` come with lifecycles (chunk
+3.4).
 
 ::: today
 

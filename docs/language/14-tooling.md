@@ -43,7 +43,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Decided, not built; `--no-run` replaces `watch` (question 3); the archived compiler had it |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: `build/manifest.json` and the catalogues hold the map today; the archived compiler had it |
 | `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Decided in area 7, not built |
-| `jadpo sql <query>` | Prints a query's generated SQL for PostgreSQL and SQLite; `--explain` runs it on a disposable database and shows the plan | Decided in area 6, not built |
+| `jadpo sql <query>` | Prints a query's generated SQL for PostgreSQL and SQLite; `--explain` runs it on a disposable database and shows the plan | Built for PostgreSQL (chunk 3.2): each statement the query sends, one for each include too, with the parameters that fill it, and `--json`; Tab completes the project's queries, and without one it fails listing them. SQLite comes with a SQLite store; `--explain` is decided, not built: the flag says `toolchain.not_built_yet` |
 | `jadpo impact <name>` | Lists what a change to `name` reaches | Decided in area 1, not built |
 | `jadpo rename <old> <new>` | Renames a declaration or field everywhere, keeping stored data | Proposed (question 5) |
 | `jadpo domain rename/split/merge` | Moves a domain's files and updates every call | Decided in area 1, not built |
