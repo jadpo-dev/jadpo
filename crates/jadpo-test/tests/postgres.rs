@@ -236,7 +236,7 @@ fn arrays_go_as_parameters_for_in_and_includes() {
         let found = rows(
             &store,
             "SELECT label FROM items WHERE id = ANY($1) ORDER BY label",
-            &[some.clone()],
+            std::slice::from_ref(&some),
         )
         .await;
         assert_eq!(

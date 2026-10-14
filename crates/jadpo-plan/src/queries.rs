@@ -166,7 +166,7 @@ impl Planner<'_> {
         }
         let mut conditions: Vec<String> = Vec::new();
         for line in &query.filter {
-            conditions.push(self.condition(&mut statement, entity, line, false, None)?);
+            conditions.push(self.condition(&mut statement, entity, line, false)?);
         }
         conditions.extend(self.access(entity));
         let size = match &query.limit {
@@ -328,13 +328,7 @@ impl Planner<'_> {
                 IncludeKind::Parent | IncludeKind::Child => {
                     let mut conditions = vec![format!("{} = ANY({keys})", quoted(&matched.born))];
                     for line in &include.filter {
-                        conditions.push(self.condition(
-                            &mut statement,
-                            target,
-                            line,
-                            false,
-                            None,
-                        )?);
+                        conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
                     conditions.extend(self.access(target));
                     let mut sql = format!(
@@ -359,13 +353,7 @@ impl Planner<'_> {
                     let mut conditions =
                         vec![format!("{} = \"key\".\"id\"", quoted(&matched.born))];
                     for line in &include.filter {
-                        conditions.push(self.condition(
-                            &mut statement,
-                            target,
-                            line,
-                            false,
-                            None,
-                        )?);
+                        conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
                     conditions.extend(self.access(target));
                     let inner_columns: Vec<String> = columns
@@ -437,15 +425,13 @@ impl Planner<'_> {
     // --- conditions ----------------------------------------------------------------
 
     /// A condition as SQL, `negated` when a `not` above it was pushed
-    /// down. `present` is the parameter a `where_present:` value already
-    /// has.
+    /// down.
     fn condition(
         &mut self,
         statement: &mut Statement,
         entity: &EntityModel,
         condition: &Condition,
         negated: bool,
-        present: Option<&(Source, SqlType)>,
     ) -> Option<String> {
         Some(match condition {
             Condition::Compare {
@@ -520,12 +506,12 @@ impl Planner<'_> {
                 let and = matches!(condition, Condition::And(_)) != negated;
                 let mut rendered = Vec::new();
                 for part in parts {
-                    rendered.push(self.condition(statement, entity, part, negated, present)?);
+                    rendered.push(self.condition(statement, entity, part, negated)?);
                 }
                 format!("({})", rendered.join(if and { " AND " } else { " OR " }))
             }
             Condition::Not(inner) => {
-                return self.condition(statement, entity, inner, !negated, present);
+                return self.condition(statement, entity, inner, !negated);
             }
             Condition::Present { value, condition } => {
                 let ty = match condition.as_ref() {
@@ -539,7 +525,7 @@ impl Planner<'_> {
                 };
                 let source = self.source(value)?;
                 let n = statement.param(source, ty);
-                let inner = self.condition(statement, entity, condition, negated, present)?;
+                let inner = self.condition(statement, entity, condition, negated)?;
                 format!("({n} IS NULL OR {inner})")
             }
         })

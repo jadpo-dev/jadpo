@@ -128,8 +128,11 @@ pub(crate) struct Decoder<'a> {
     pub query: &'a dyn Fn(&Key) -> Option<u32>,
     /// The number of each entity's plan, by its key, with the keys of the
     /// fields its create gives, in order.
-    pub entity: &'a dyn Fn(&Key) -> Option<(u32, &'a [Key])>,
+    pub entity: &'a EntityLookup<'a>,
 }
+
+/// An entity's plan number and the keys of the fields its create gives.
+pub(crate) type EntityLookup<'a> = dyn Fn(&Key) -> Option<(u32, &'a [Key])> + 'a;
 
 impl Decoder<'_> {
     fn constant(&mut self, constant: Option<Constant>) -> Option<ConstId> {

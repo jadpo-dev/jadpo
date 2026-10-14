@@ -825,6 +825,7 @@ impl Body<'_> {
     /// field adds rules of its own, the value must already be known to
     /// follow them: an object literal never fails (area 2, "Construction
     /// failures by rule").
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn fields_given(
         &mut self,
         list: Option<ast::MemberList>,
