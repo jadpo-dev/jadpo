@@ -475,17 +475,17 @@ type UserView = Output {
 ```
 
 ```jadpo check project=board file=failures.jadpo hidden
-type ProjectNotFound = Failure {
+type BoardNotFound = Failure {
     kind: FailureKind.not_found
 }
 ```
 
 ```jadpo check project=board file=project_board.jadpo
 // domains/planning/queries/project_board.jadpo
-query project_board(project_id: Project.id) fails ProjectNotFound -> ProjectBoardView {
+query project_board(project_id: Project.id) fails BoardNotFound -> ProjectBoardView {
     from: Project
     where: Project.id == project_id
-    missing: ProjectNotFound
+    missing: BoardNotFound
     include: {
         owner: Project.owner_id
         todos: {
@@ -1389,30 +1389,30 @@ entity Book {
     available: Bool
 }
 
-type Pages = Int {
+type PageCount = Int {
     min: 1
     max: 5000
 }
 
 entity Manual {
     id: Uuid
-    pages: Pages
+    page_count: PageCount
 }
 
-query longer_manuals(pages: Manual.pages) -> List<Manual> {
+query longer_manuals(manual_pages: Manual.page_count) -> List<Manual> {
     from: Manual
-    where: Manual.pages > pages * 2
-    order: [Manual.pages asc]
+    where: Manual.page_count > manual_pages * 2
+    order: [Manual.page_count asc]
     limit: 20
 }
 ```
 
 ```text output
-error: `pages * 2` is worked out, and a query computes nothing
- --> main.jadpo:24:27
+error: `manual_pages * 2` is worked out, and a query computes nothing
+ --> main.jadpo:24:32
    |
-24 |     where: Manual.pages > pages * 2
-   |                           ^^^^^^^^^ computed
+24 |     where: Manual.page_count > manual_pages * 2
+   |                                ^^^^^^^^^^^^^^^^ computed
   reason: A query's values are its parameters and their fields, literals, enum values, lists of those and `clock.now`; anything worked out from them is computed before the call.
   next: Work the value out in the action, and pass it as a parameter (agent)
   rule: query.value_unsupported
@@ -1923,7 +1923,7 @@ entity Note {
     }
 }
 
-action write(title: Note.title, at: Note.written_at) -> Note {
+action jot_down(title: Note.title, at: Note.written_at) -> Note {
     return Note.create {
         set: {
             title: title

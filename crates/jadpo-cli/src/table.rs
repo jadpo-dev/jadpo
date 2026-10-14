@@ -486,7 +486,7 @@ pub static COMMANDS: &[Command] = &[
         }],
         examples: &[Example {
             description: "Show the statements a page query sends",
-            command: "jadpo sql todos_for_owner",
+            command: "jadpo sql latest_entries",
         }],
         arguments_rule: &rule::CLI_SQL_ARGUMENTS,
         raises: &[

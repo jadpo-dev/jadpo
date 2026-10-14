@@ -6,14 +6,14 @@ test "the catalogue continues where the last page ended" {
         }
     )
     assert collection.map(first.items, book -> book.title) == ["Crime and Punishment", "Dune"]
-    var rest: Page<BookView> = browse_books(
+    var next_page: Page<BookView> = browse_books(
         CatalogueFilter {
             page_size: 2
             after: first.next
         }
     )
-    assert collection.map(rest.items, book -> book.title) == ["Emma"]
-    assert rest.next == none
+    assert collection.map(next_page.items, book -> book.title) == ["Emma"]
+    assert next_page.next == none
 }
 
 test "a filter left out applies to nothing" {

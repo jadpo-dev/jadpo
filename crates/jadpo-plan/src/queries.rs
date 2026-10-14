@@ -22,8 +22,8 @@
 //!   [`Planner::access`], which adds none yet.
 
 use jadpo_check::data::queries::{
-    self as model, Bound, Cardinality as Card, Compare, Condition, Include, IncludeKind,
-    OrderField, QueryModel, Source as From, Value,
+    self as model, Bound, Compare, Condition, Include, IncludeKind, OrderField, QueryModel,
+    Source as From, Value,
 };
 use jadpo_check::data::{DataModel, EntityModel, FieldModel};
 use jadpo_check::lookups::Lookup;
@@ -145,12 +145,12 @@ impl Planner<'_> {
         let entity = self.model.entity(&query.entity)?;
         let store = entity.store.clone()?;
         let cardinality = match query.cardinality {
-            Card::One => Cardinality::One,
-            Card::Optional => Cardinality::Optional,
-            Card::List => Cardinality::List,
-            Card::Page => Cardinality::Page,
+            model::Cardinality::One => Cardinality::One,
+            model::Cardinality::Optional => Cardinality::Optional,
+            model::Cardinality::List => Cardinality::List,
+            model::Cardinality::Page => Cardinality::Page,
         };
-        let page = query.cardinality == Card::Page;
+        let page = query.cardinality == model::Cardinality::Page;
         let mut statement = Statement::default();
         let mut columns = Columns::default();
         // The record's own columns first, in its type's order.

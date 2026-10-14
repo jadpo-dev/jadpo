@@ -4,7 +4,7 @@
 // when the action ends.
 
 /// Makes someone a member.
-action join(email: Member.email, name: Member.name) -> Member {
+action enrol(email: Member.email, name: Member.name) -> Member {
     return Member.create {
         set: {
             email: email

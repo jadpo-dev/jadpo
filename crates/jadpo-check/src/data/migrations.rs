@@ -456,9 +456,13 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         return out;
     }
     let model = data_model(db, project);
-    if !model.problems.is_empty() {
-        // The schema is partial until the entities check: their own
-        // errors come first.
+    if !model.problems.is_empty()
+        || !super::queries::query_models(db, project)
+            .problems
+            .is_empty()
+    {
+        // The schema is partial until the entities and the queries, which
+        // ask for indexes, check: their own errors come first.
         return out;
     }
     let source = super::schema(db, project);

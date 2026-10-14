@@ -7,3 +7,6 @@
 Number
 # The CLI's heading for a command's flags (area 14)
 Flags
+# Area 6's built-in page types
+PageSize
+PageCursor

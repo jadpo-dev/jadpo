@@ -926,7 +926,7 @@ impl<'a> Reader<'a> {
                     "`where_present:` holds one comparison".to_string(),
                 )
                 .at(Self::span(scope.path, &value), "not one comparison")
-                .reason("`where_present:` applies its condition only when the value on the right is there, which is how a request's optional filters are written: one field compared with one optional value, `Todo.status == filter.status`.")
+                .reason("`where_present:` applies its condition only when the value on the right is there, which is how a request's optional filters are written: one field compared with one optional value, `<Entity>.<field> == filter.<field>`.")
                 .next("Write one comparison, or move the condition to `where:`"),
             );
             return None;
@@ -1152,7 +1152,7 @@ impl<'a> Reader<'a> {
         }
         let reason = match self.field_in(scope, entity, whole) {
             true => {
-                "Write the field on the left and the value on the right: `Todo.due_at > clock.now`."
+                "Write the field on the left and the value on the right: `<Entity>.<field> > value`."
                     .to_string()
             }
             false => format!(
@@ -1737,7 +1737,7 @@ impl<'a> Reader<'a> {
                     "`order:` is a list of fields".to_string(),
                 )
                 .at(Self::span(path, &value), "not a list")
-                .reason("`order:` lists the fields to sort by in brackets, each with `asc` or `desc`: `order: [Todo.created_at desc]`.")
+                .reason("`order:` lists the fields to sort by in brackets, each with `asc` or `desc`: `order: [<Entity>.<field> desc]`.")
                 .next("Write `order: [<Entity>.<field> asc]`"),
             );
             return Vec::new();
@@ -2088,7 +2088,7 @@ impl<'a> Reader<'a> {
                     "`include:` is a block of named includes".to_string(),
                 )
                 .at(key_span, "not a block")
-                .reason("Each include puts related records under a field of the result: `include: { owner: Project.owner_id }`.")
+                .reason("Each include puts related records under a field of the result: `include: { <field>: <Entity>.<reference> }`.")
                 .next("Write `include: { <field>: <Entity>.<reference> }`"),
             );
             return Vec::new();
@@ -2158,7 +2158,7 @@ impl<'a> Reader<'a> {
                         format!("The include `{name}` doesn't say which reference it follows"),
                     )
                     .at(name_span.clone(), "no `via:`")
-                    .reason("An include follows a reference: one of this entity's own (`Project.owner_id`) gives the record it points at, and another entity's reference to this one (`Todo.project_id`) gives the records that point here.")
+                    .reason("An include follows a reference: one of this entity's own gives the record it points at, and another entity's reference to this one gives the records that point here.")
                     .next("Add `via: <Entity>.<reference>` to the block"),
                 );
                 return None;

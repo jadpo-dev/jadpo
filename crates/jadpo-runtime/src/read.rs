@@ -558,9 +558,9 @@ pub mod cursor {
             return None;
         }
         let mut take = |n: usize| -> Option<Vec<u8>> {
-            let (taken, after) = rest.split_at_checked(n)?;
+            let (piece, after) = rest.split_at_checked(n)?;
             rest = after;
-            Some(taken.to_vec())
+            Some(piece.to_vec())
         };
         let mut out = Vec::with_capacity(types.len());
         for (_, ty) in types {
