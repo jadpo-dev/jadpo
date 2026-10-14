@@ -242,8 +242,11 @@ enum Context {
     Function,
     /// An inline function given to a collection operation: pure too.
     Inline,
-    /// An action, and the test-only callables that act like one.
+    /// An action: application code.
     Action,
+    /// A test, fixture or seed: test-only code that acts like an action
+    /// and may call fixtures too (area 13).
+    Test,
 }
 
 impl Context {
@@ -256,6 +259,7 @@ impl Context {
             Context::Function => "a function",
             Context::Inline => "an inline function",
             Context::Action => "an action",
+            Context::Test => "a test",
         }
     }
 }
@@ -489,7 +493,7 @@ impl Body<'_> {
                 d.block(),
             ),
             (Decl::FixtureDecl(d), None) => target(
-                Context::Action,
+                Context::Test,
                 "fixture",
                 d.param_list(),
                 None,
@@ -517,11 +521,11 @@ impl Body<'_> {
             }
             (Decl::TestDecl(d), None) => Target {
                 name: None,
-                ..target(Context::Action, "test", None, None, false, None, d.block())
+                ..target(Context::Test, "test", None, None, false, None, d.block())
             },
             (Decl::SeedDecl(d), None) => Target {
                 name: None,
-                ..target(Context::Action, "seed", None, None, false, None, d.block())
+                ..target(Context::Test, "seed", None, None, false, None, d.block())
             },
             _ => return None,
         })

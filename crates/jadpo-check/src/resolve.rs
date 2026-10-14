@@ -513,8 +513,11 @@ impl Names<'_> {
         }
         // A scenario in the root `tests/` folder sees what another domain
         // would see: only what a domain makes public (area 13, question 1).
-        let scenario = *self.ownership == Ownership::Root && self.path.starts_with("tests/");
-        if (!symbol.visible_from(self.ownership) || scenario && !symbol.public)
+        // So does a seed calling a fixture: a private fixture is its own
+        // domain's (area 13, decided 2026-10-14).
+        let outside = *self.ownership == Ownership::Root
+            && (self.path.starts_with("tests/") || symbol.kind == ItemKind::Fixture);
+        if (!symbol.visible_from(self.ownership) || outside && !symbol.public)
             && let Ownership::Domain(domain) = &symbol.ownership
         {
             out.push(private(symbol, domain, span));
@@ -753,20 +756,22 @@ impl Names<'_> {
                 ),
                 (None, None) => self.access(symbol, span, out),
             },
-            ItemKind::Action | ItemKind::Query => match other_domain {
+            // A fixture is called like an action: bare in its own domain,
+            // through its domain from another (area 13, decided
+            // 2026-10-14).
+            ItemKind::Action | ItemKind::Query | ItemKind::Fixture => match other_domain {
                 Some(domain) => out.push(
                     Diagnostic::new(
                         &rule::SEMANTIC_UNKNOWN_CALLEE,
                         format!("`{text}` belongs to domain `{domain}`"),
                     )
                     .at(span.clone(), "needs its domain")
-                    .reason("Your own domain's actions and queries are called bare; another domain's are called through it, so each call says which domain it reaches.")
+                    .reason("Your own domain's actions, queries and fixtures are called bare; another domain's are called through it, so each call says which domain it reaches.")
                     .next(format!("Call `{domain}.{text}(...)`"))
                     .edit(Span::new(self.path, span.start, span.start), format!("{domain}.")),
                 ),
                 None => self.access(symbol, span, out),
             },
-            ItemKind::Fixture => {}
             kind => {
                 let (reason, next) = match kind {
                     ItemKind::Schedule | ItemKind::Subscriber => (
@@ -1040,12 +1045,21 @@ impl Names<'_> {
             }
             let in_domain =
                 |symbol: &&Symbol| symbol.ownership == Ownership::Domain(qualifier.clone());
+            // A domain offers its actions and queries, and its fixtures to
+            // tests, fixtures and seeds; who may call a fixture is the
+            // typed body's to check (area 13).
+            let callable = |symbol: &&Symbol| {
+                matches!(
+                    symbol.kind,
+                    ItemKind::Action | ItemKind::Query | ItemKind::Fixture
+                )
+            };
             let found = self
                 .table
                 .declared(&member)
                 .iter()
                 .filter(in_domain)
-                .find(|symbol| matches!(symbol.kind, ItemKind::Action | ItemKind::Query))
+                .find(callable)
                 .cloned();
             match found {
                 Some(symbol) => self.access(&symbol, span, out),
@@ -1477,9 +1491,11 @@ fn private(symbol: &Symbol, domain: &str, span: Span) -> Diagnostic {
         symbol.kind.with_a(),
         symbol.path
     ))
-    .next(format!(
-        "Mark `{name}` `public` if `{domain}` should offer it to other domains"
-    ))
+    .next(if symbol.kind == ItemKind::Fixture {
+        format!("Mark `{name}` `public` if `{domain}` should offer it to other domains' tests")
+    } else {
+        format!("Mark `{name}` `public` if `{domain}` should offer it to other domains")
+    })
 }
 
 fn call_direction(symbol: &Symbol, domain: &str, span: Span) -> Diagnostic {

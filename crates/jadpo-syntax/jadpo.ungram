@@ -81,7 +81,7 @@ QueryDecl =
 
 // A test-only action that builds data (area 13).
 FixtureDecl =
-  'fixture' Name ParamList? RetType? Block
+  Visibility? 'fixture' Name ParamList? RetType? Block
 
 EntityDecl =
   Visibility? 'entity' Name MemberList
