@@ -580,6 +580,7 @@ pub fn purpose(changes: &[Change], after: &Schema) -> String {
                     return format!("add_{}", crate::case::to_snake(name));
                 }
             }
+            Change::DropTable { table, .. } => return format!("remove_{table}"),
             Change::AddColumn { column, .. } => return format!("add_{column}"),
             Change::RemoveColumn { column, .. } => return format!("retire_{column}"),
             Change::AlterColumn {

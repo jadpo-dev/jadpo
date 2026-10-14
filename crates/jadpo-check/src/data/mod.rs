@@ -353,21 +353,18 @@ impl Reader<'_> {
                 "store" => store = Some(self.store_value(path, member, &key_span)),
                 "unique" => unique = Some(member.clone()),
                 "indexes" => indexes = Some(member.clone()),
-                "lifecycle" | "caches" | "policy" => self.out.push(
+                // Decided, and checked by the chunks that build them: the
+                // lifecycle (3.4) and policy (4.4). A record cache needs the
+                // Redis driver, which no chunk builds yet.
+                "lifecycle" | "policy" => {}
+                "caches" => self.out.push(
                     Diagnostic::new(
                         &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("An entity's `{word}:` isn't built yet"),
+                        "An entity's `caches:` isn't built yet",
                     )
                     .at(key_span, "decided, not built")
-                    .reason(format!(
-                        "The language decides `{word}:` ({}), but this compiler doesn't build it yet, so an entity using it couldn't run.",
-                        match word.as_str() {
-                            "lifecycle" => "area 5, built with chunk 3.4",
-                            "caches" => "area 5, built with the Redis driver",
-                            _ => "area 9, built with chunk 4.4",
-                        }
-                    ))
-                    .next(format!("Leave `{word}:` out for now")),
+                    .reason("A record cache keeps copies in a Redis store (area 5), and this compiler builds no Redis driver yet, so an entity using it couldn't run.")
+                    .next("Leave `caches:` out for now"),
                 ),
                 _ => match member.value() {
                     Some(value) if crate::types::looks_like_type(&value) => {

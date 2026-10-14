@@ -529,6 +529,7 @@ dependencies = [
 name = "jadpo-test"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "jadpo-check",
  "jadpo-db",
  "jadpo-diag",

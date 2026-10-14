@@ -112,13 +112,24 @@ fn report(test: &Test, failure: &TestFailure, root: Option<&str>) -> Report {
         }
         Detail::Fault(info) => groups.push(fault_items(info, root)),
     }
-    groups.push(vec![
+    let mut last = Vec::new();
+    if !failure.kept.is_empty() {
+        last.push(Item::Field(Field::new(
+            "data",
+            vec![Text::Prose(format!(
+                "kept as {} (--keep-failed)",
+                failure.kept.join(", ")
+            ))],
+        )));
+    }
+    last.extend([
         Item::Field(Field::value("rule", failure.rule.id)),
         Item::Field(Field::new(
             "rerun",
             vec![Text::Command(failure.rerun.clone())],
         )),
     ]);
+    groups.push(last);
     Report {
         subject: test.name.clone(),
         location: Some(format!(

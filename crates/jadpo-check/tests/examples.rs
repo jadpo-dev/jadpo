@@ -994,7 +994,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 DecisionValue::Change(change) => {
                     format!("data migration decision FieldChange.{}", change.name())
                 }
-                DecisionValue::Invalid(..) => continue,
+                DecisionValue::Invalid(..) | DecisionValue::Pending => continue,
             });
         }
     }

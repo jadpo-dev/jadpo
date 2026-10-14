@@ -501,3 +501,119 @@ fn migrations_apply_once_in_order_and_refuse_a_changed_one() {
         assert_eq!(standing(&store, &changed).await, Err(refused));
     });
 }
+
+// --- the test database -------------------------------------------------------
+
+use std::collections::BTreeMap;
+
+use jadpo_check::data::migrations::Step;
+use jadpo_runtime::Host;
+use jadpo_test::database::{TestDatabases, TestHost};
+
+/// One store's migration: a table of notes, with a unique rule.
+fn note_steps(table: &str) -> BTreeMap<String, Vec<Step>> {
+    let sql = format!(
+        "CREATE TABLE \"{table}\" (\"id\" uuid NOT NULL, \"body\" text NOT NULL, CONSTRAINT \"{table}_pkey\" PRIMARY KEY (\"id\"));\nALTER TABLE \"{table}\" ADD CONSTRAINT \"{table}_body_key\" UNIQUE (\"body\");"
+    );
+    BTreeMap::from([(
+        "main".to_string(),
+        vec![Step {
+            name: "20260101T0000_initial".into(),
+            digest: jadpo_graph::migration::section_digest(&sql),
+            sql,
+        }],
+    )])
+}
+
+async fn note_count(host: &TestHost<'_>, table: &str) -> i64 {
+    let database = host.database("main").expect("main");
+    let mut transaction = database.begin().await.unwrap();
+    let found = transaction
+        .query(&format!("SELECT count(*) FROM \"{table}\""), &[])
+        .await
+        .unwrap();
+    transaction.commit().await.unwrap();
+    match found.first().and_then(|row| row.first()) {
+        Some(SqlValue::Int8(n)) => *n,
+        other => panic!("count gave {other:?}"),
+    }
+}
+
+async fn add_note(host: &TestHost<'_>, table: &str, body: &str) -> Result<(), StoreError> {
+    let database = host.database("main").expect("main");
+    let mut transaction = database.begin().await?;
+    transaction
+        .execute(
+            &format!("INSERT INTO \"{table}\" (\"id\", \"body\") VALUES (gen_random_uuid(), $1)"),
+            &[SqlValue::Text(body.into())],
+        )
+        .await?;
+    transaction.commit().await
+}
+
+#[test]
+fn each_test_gets_its_own_copy_of_the_migrated_template() {
+    if skipped() {
+        return;
+    }
+    let started = std::time::Instant::now();
+    let databases = TestDatabases::new(note_steps("note"), false);
+    let runtime = Runtime::new().unwrap();
+    let first = TestHost::new(&databases);
+    let second = TestHost::new(&databases);
+    runtime.block_on(async {
+        add_note(&first, "note", "milk").await.unwrap();
+        assert_eq!(note_count(&first, "note").await, 1);
+        assert_eq!(note_count(&second, "note").await, 0, "a copy of its own");
+        // The template's constraints came with the copy.
+        assert_eq!(
+            add_note(&first, "note", "milk").await,
+            Err(StoreError::Conflict {
+                constraint: "note_body_key".into()
+            })
+        );
+    });
+    println!("server, template and two copies: {:?}", started.elapsed());
+    assert!(first.finish(false).is_empty());
+    assert!(
+        second.finish(true).is_empty(),
+        "nothing kept without --keep-failed"
+    );
+    // Later copies come from the pool, prepared in the background.
+    let copies = std::time::Instant::now();
+    for _ in 0..8 {
+        let host = TestHost::new(&databases);
+        runtime.block_on(async { assert_eq!(note_count(&host, "note").await, 0) });
+        host.finish(false);
+    }
+    println!("eight more copies, each used: {:?}", copies.elapsed());
+}
+
+#[test]
+fn a_failed_tests_database_is_kept_when_asked() {
+    if skipped() {
+        return;
+    }
+    let databases = TestDatabases::new(note_steps("kept_note"), true);
+    let runtime = Runtime::new().unwrap();
+    let host = TestHost::new(&databases);
+    runtime.block_on(async { add_note(&host, "kept_note", "kept").await.unwrap() });
+    let kept = host.finish(true);
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    assert!(kept[0].starts_with("jadpo_test_"), "{kept:?}");
+    drop(databases);
+    // Still there, with the failed test's row, for someone to look at.
+    let server = jadpo_test::database::server().unwrap();
+    let store = postgres(&server.url(&kept[0])).unwrap();
+    runtime.block_on(async {
+        assert_eq!(count(&store, "kept_note").await, 1);
+    });
+}
+
+#[test]
+fn a_test_that_never_uses_a_store_starts_nothing() {
+    let databases = TestDatabases::new(note_steps("unused"), false);
+    let host = TestHost::new(&databases);
+    assert!(host.finish(false).is_empty());
+    drop(databases);
+}

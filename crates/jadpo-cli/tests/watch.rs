@@ -1111,7 +1111,7 @@ fn help_and_completion_offer_watch() {
     let help = jadpo(Path::new("."), &["help", "test"]);
     assert!(
         help.stdout
-            .contains("  --watch       Rerun the tests each save reaches\n"),
+            .contains("  --watch        Rerun the tests each save reaches\n"),
         "{}",
         help.stdout
     );

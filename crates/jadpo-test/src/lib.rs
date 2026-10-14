@@ -26,6 +26,7 @@
 //! what ran, fakes, the kept database and clock overrides. Route and
 //! schedule tests come with their areas.
 
+pub mod database;
 mod diff;
 mod env;
 mod json;
@@ -125,6 +126,8 @@ pub struct Options {
     pub failed: bool,
     /// The order seed; a new one when not given.
     pub seed: Option<u64>,
+    /// Keep a failed test's database for inspection (area 13).
+    pub keep_failed: bool,
 }
 
 /// How a request to run tests ended.
@@ -248,6 +251,9 @@ pub(crate) struct Checked {
     pub tests: Vec<Test>,
     /// A project, rather than loose files: only a project keeps a record.
     pub project: bool,
+    /// Each store's migrations, which build the test databases; empty
+    /// when the project has no tables.
+    pub steps: BTreeMap<String, Vec<jadpo_check::data::migrations::Step>>,
 }
 
 /// The project's sources by path, for the code frames of its errors.
@@ -301,10 +307,20 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded, cwd: &std::path::Path) -> Resul
         });
     }
     let graph = jadpo_check::graph::graph(db, loaded.project);
+    let project = loaded.project.layout(db) == jadpo_db::Layout::Project;
+    let steps = if project {
+        jadpo_check::data::migrations::store_steps(jadpo_check::data::migrations::migrations(
+            db,
+            loaded.project,
+        ))
+    } else {
+        BTreeMap::new()
+    };
     Ok(Checked {
         prepared: Prepared::checked(db, loaded.project),
         tests: discover(graph),
-        project: loaded.project.layout(db) == jadpo_db::Layout::Project,
+        project,
+        steps,
     })
 }
 
@@ -323,6 +339,7 @@ pub(crate) fn choose_and_run(
         prepared,
         tests,
         project,
+        steps,
     } = checked;
     let project = *project;
     let filter = target.filter(loaded);
@@ -363,7 +380,10 @@ pub(crate) fn choose_and_run(
         root: root.clone(),
         seed,
     };
-    let failures = run::run_all(prepared, &ordered, seed, &rerun);
+    let databases = (!steps.is_empty())
+        .then(|| database::TestDatabases::new(steps.clone(), options.keep_failed));
+    let failures = run::run_all(prepared, &ordered, seed, &rerun, databases.as_ref());
+    drop(databases);
     let results: Vec<TestResult> = ordered
         .into_iter()
         .zip(failures)

@@ -104,9 +104,14 @@ def main() -> int:
         # against the server JADPO_TEST_DATABASE_URL names, or a disposable
         # one from the machine's PostgreSQL tools.
         if args.profile == 'full':
+            # The driver, the test database's template and copies, and
+            # `jadpo migrate apply` and `status`.
             checks.append(('live PostgreSQL',
                            ['cargo', 'test', '--locked', '-p', 'jadpo-test',
                             '--test', 'postgres', '--', '--nocapture']))
+            checks.append(('live PostgreSQL: jadpo migrate',
+                           ['cargo', 'test', '--locked', '-p', 'jadpo-cli',
+                            '--test', 'migrate']))
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
         # have, so tokio-postgres is proven to build for wasm32 too.

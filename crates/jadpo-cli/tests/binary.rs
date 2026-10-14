@@ -109,6 +109,7 @@ fn bash_completes_commands_and_values() {
             "check",
             "test",
             "fmt",
+            "migrate",
             "completions",
             "lsp",
             "help",

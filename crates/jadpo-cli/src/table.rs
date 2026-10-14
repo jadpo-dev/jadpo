@@ -135,22 +135,13 @@ pub struct Planned {
     pub anchor: &'static str,
 }
 
-pub static PLANNED_FLAGS: &[Planned] = &[
-    Planned {
-        command: "test",
-        name: "--interactive",
-        what: "Interactive tests",
-        reason: "`--interactive` opens a keyboard view of every test (area 13), which comes with the rest of area 14's tooling.",
-        anchor: "13-testing.html#running-tests",
-    },
-    Planned {
-        command: "test",
-        name: "--keep-failed",
-        what: "Kept test databases",
-        reason: "`--keep-failed` keeps a failed test's database and trace, which come with the test database (area 5).",
-        anchor: "13-testing.html#the-test-database",
-    },
-];
+pub static PLANNED_FLAGS: &[Planned] = &[Planned {
+    command: "test",
+    name: "--interactive",
+    what: "Interactive tests",
+    reason: "`--interactive` opens a keyboard view of every test (area 13), which comes with the rest of area 14's tooling.",
+    anchor: "13-testing.html#running-tests",
+}];
 
 /// The planned flag of `command` called `name`.
 pub fn planned(command: &str, name: &str) -> Option<&'static Planned> {
@@ -318,6 +309,12 @@ pub static COMMANDS: &[Command] = &[
                 description: "Rerun the tests each save reaches",
                 values: &[],
             },
+            Flag {
+                name: "--keep-failed",
+                value: None,
+                description: "Keep a failed test's database to inspect",
+                values: &[],
+            },
         ],
         examples: &[
             Example {
@@ -430,7 +427,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--store",
                 value: Some("name"),
-                description: "The store that database is, when there are several",
+                description: "Which store that database is",
                 values: &[],
             },
         ],

@@ -13,9 +13,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use jadpo_interp::{CallError, Prepared, Program, STACK_BYTES};
 use jadpo_runtime::{Ctx, Executor, FaultKind, Frame, Outcome, Sources, block_on};
 
-use crate::env::TestEnv;
+use crate::database::{TestDatabases, TestHost};
+use crate::env::{TestDatabase, TestEnv};
 use crate::outcome::{self, TestFailure};
-use crate::{Rerun, Test};
+use crate::{Rerun, Test, TestKind};
 
 /// Runs `tests`, in order, on the interpreter: what each failed with, by
 /// its place in `tests`.
@@ -24,6 +25,7 @@ pub(crate) fn run_all(
     tests: &[Test],
     seed: u64,
     rerun: &Rerun,
+    databases: Option<&TestDatabases>,
 ) -> Vec<Option<Box<TestFailure>>> {
     let sources = prepared.plan().files();
     spread(
@@ -32,6 +34,7 @@ pub(crate) fn run_all(
         seed,
         rerun,
         sources,
+        databases,
     )
 }
 
@@ -51,17 +54,25 @@ fn spread<E: Executor>(
     seed: u64,
     rerun: &Rerun,
     sources: &(dyn Sources + Sync),
+    databases: Option<&TestDatabases>,
 ) -> Vec<Option<Box<TestFailure>>> {
     let next = AtomicUsize::new(0);
     let work = || {
         let executor = make();
+        // A thread whose tests may use a store drives them on the native
+        // host's runtime, where the driver's connections run.
+        let runtime = databases.and_then(|_| jadpo_host_native::Runtime::new().ok());
+        let stores = Stores {
+            databases,
+            runtime: runtime.as_ref(),
+        };
         let mut done = Vec::new();
         loop {
             let index = next.fetch_add(1, Ordering::Relaxed);
             let Some(test) = tests.get(index) else {
                 break;
             };
-            done.push((index, one(&executor, test, seed, rerun, sources)));
+            done.push((index, one(&executor, test, seed, rerun, sources, &stores)));
         }
         done
     };
@@ -97,6 +108,13 @@ fn spread<E: Executor>(
     results.into_iter().map(|(_, failure)| failure).collect()
 }
 
+/// The run's test databases, when the project has tables, and the
+/// runtime that drives a thread's tests that use them.
+struct Stores<'a> {
+    databases: Option<&'a TestDatabases>,
+    runtime: Option<&'a jadpo_host_native::Runtime>,
+}
+
 /// Runs one test: `None` when it passed.
 fn one<E: Executor>(
     executor: &E,
@@ -104,6 +122,7 @@ fn one<E: Executor>(
     seed: u64,
     rerun: &Rerun,
     sources: &dyn Sources,
+    stores: &Stores<'_>,
 ) -> Option<Box<TestFailure>> {
     let Some(callable) = executor.callable(&test.key) else {
         return Some(Box::new(outcome::not_runnable(
@@ -113,9 +132,33 @@ fn one<E: Executor>(
             rerun,
         )));
     };
-    let env = TestEnv::new(seed, &test.key);
-    let host = env.host();
+    let mut env = TestEnv::new(seed, &test.key);
     let places = executor.places();
+    // Only a test that calls an action, query or fixture can touch a store.
+    if let (Some(databases), Some(runtime), TestKind::Action) =
+        (stores.databases, stores.runtime, test.kind)
+    {
+        env.database = TestDatabase::Copied {
+            stores: databases.stores(),
+        };
+        let host = TestHost::new(databases);
+        let outcome = {
+            let mut ctx = Ctx::new(places, &host, env.env);
+            runtime.block_on(executor.run(&mut ctx, callable, Vec::new()))
+        };
+        let failure = match outcome {
+            Outcome::Value(_) => None,
+            other => Some(Box::new(outcome::failure(
+                places, sources, test, &other, rerun,
+            ))),
+        };
+        let kept = host.finish(failure.is_some());
+        return failure.map(|mut failure| {
+            failure.kept = kept;
+            failure
+        });
+    }
+    let host = env.host();
     let mut ctx = Ctx::new(places, &host, env.env);
     let ran = block_on(executor.run(&mut ctx, callable, Vec::new()));
     let outcome = ran.unwrap_or_else(|_| {
@@ -204,6 +247,7 @@ mod tests {
             1,
             &rerun,
             &sources,
+            None,
         )
         .iter()
         .enumerate()

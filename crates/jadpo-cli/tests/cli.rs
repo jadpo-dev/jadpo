@@ -61,6 +61,9 @@ Build and check
   test          Run tests
   fmt           Format source files
 
+Data
+  migrate       Write and apply migrations    new, apply, status
+
 Set up
   completions   Turn on Tab completion        zsh, bash, fish
   lsp           Run the language server for editors
@@ -107,6 +110,9 @@ Build and check
   check         Check the project for errors
   test          Run tests
   fmt           Format source files
+
+Data
+  migrate       Write and apply migrations    new · apply · status
 
 Set up
   completions   Turn on Tab completion        zsh · bash · fish
@@ -258,13 +264,14 @@ fn help_json_is_the_whole_command_reference() {
             "check",
             "test",
             "fmt",
+            "migrate",
             "completions",
             "lsp",
             "help",
             "version"
         ]
     );
-    let completions = &data["commands"][3];
+    let completions = &data["commands"][4];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -334,6 +341,7 @@ fn help_json_is_the_whole_command_reference() {
             ("--failed", &serde_json::Value::Null),
             ("--seed", &serde_json::json!("n")),
             ("--watch", &serde_json::Value::Null),
+            ("--keep-failed", &serde_json::Value::Null),
         ]
     );
 }
@@ -635,6 +643,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "check\tCheck the project for errors",
             "test\tRun tests",
             "fmt\tFormat source files",
+            "migrate\tWrite and apply migrations",
             "completions\tTurn on Tab completion",
             "lsp\tRun the language server for editors",
             "help\tShow commands, flags and examples",
