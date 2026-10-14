@@ -3,7 +3,7 @@
 mod support;
 
 use jadpo_interp::Value;
-use support::{decimal, failure, int, main, program, text, value};
+use support::{decimal, failure, int, list, main, program, text, value};
 
 const NAMES: &str = "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype Pence = Int {\n    min: 0\n}\n";
 
@@ -395,4 +395,24 @@ fn a_text_literal_compared_with_a_value_takes_its_type() {
         Value::Bool(true)
     );
     assert_eq!(at("not_today", "Day", "2026-01-14"), Value::Bool(false));
+}
+
+#[test]
+fn a_list_written_beside_a_set_is_a_set() {
+    // A list literal compared with a set takes the set's type, so order
+    // and repeats don't matter, as they don't for sets (area 2).
+    let program = main(
+        "type Tag = Text {\n    max_length: 10\n}\n\ntype Ref = Uuid {}\n\ntype Same = Bool {}\n\nfunction same_tags(tags: Set<Tag>) -> Same {\n    return Same(tags == [\"b\", \"a\"])\n}\n\nfunction one_ref(refs: List<Ref>) -> Same {\n    return Same([\"6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d\"] == refs)\n}\n",
+    );
+    let tags = program.text_value("Tag", "a").expect("a");
+    let other = program.text_value("Tag", "b").expect("b");
+    let set = Value::set(vec![tags, other]);
+    assert_eq!(value(&program, "same_tags", vec![set]), Value::Bool(true));
+    let one = program
+        .text_value("Ref", "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
+        .expect("a ref");
+    assert_eq!(
+        value(&program, "one_ref", vec![list(vec![one])]),
+        Value::Bool(true)
+    );
 }

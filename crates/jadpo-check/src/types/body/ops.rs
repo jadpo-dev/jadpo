@@ -231,8 +231,11 @@ impl Body<'_> {
             }
             return Ty::Error;
         };
-        let a = self.operand(&lhs);
-        let b = self.operand(&rhs);
+        let (a, b) = if matches!(op.as_str(), "==" | "!=") {
+            self.compared(&lhs, &rhs)
+        } else {
+            (self.operand(&lhs), self.operand(&rhs))
+        };
         let comparison = matches!(
             op.as_str(),
             "and" | "or" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "matches"
@@ -263,6 +266,41 @@ impl Body<'_> {
             }
             "+" | "-" | "*" | "/" | "%" => self.arithmetic(binary, &op, (&lhs, &a), (&rhs, &b)),
             _ => Ty::Prim(Prim::Bool),
+        }
+    }
+
+    /// Both sides of `==` or `!=`. A list written on one side is checked
+    /// against a collection on the other, as a literal takes the other
+    /// side's type, so `tags == ["a", "b"]` compares two sets when `tags`
+    /// is a set.
+    fn compared(&mut self, lhs: &Expr, rhs: &Expr) -> (Operand, Operand) {
+        let written = |expr: &Expr| matches!(expr, Expr::ListExpr(_));
+        if written(lhs) && !written(rhs) {
+            let b = self.operand(rhs);
+            let a = self.against(lhs, &b);
+            return (a, b);
+        }
+        let a = self.operand(lhs);
+        let b = if written(rhs) && !written(lhs) {
+            self.against(rhs, &a)
+        } else {
+            self.operand(rhs)
+        };
+        (a, b)
+    }
+
+    /// A written list beside `other`: checked as `other`'s collection type
+    /// when it is one.
+    fn against(&mut self, list: &Expr, other: &Operand) -> Operand {
+        match other {
+            Operand::Value(ty)
+                if matches!(ty.strip_nullable(), Ty::List(_) | Ty::Set(_) | Ty::Map(..)) =>
+            {
+                let ty = ty.strip_nullable().clone();
+                self.check(list, &ty);
+                Operand::Value(ty)
+            }
+            _ => self.operand(list),
         }
     }
 
