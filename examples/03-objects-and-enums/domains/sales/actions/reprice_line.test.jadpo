@@ -16,15 +16,17 @@ test "repricing builds a new line and leaves the old one alone" {
     assert after != before
 }
 
-test "two objects built separately with the same fields are equal" {
+test "half price rounds down and equals a line built with the same fields" {
+    // `==` compares contents, so the line `half_price` builds equals one
+    // written out separately with the same fields.
     var line: CakeLine = CakeLine {
         cake: "Carrot"
         count: 2
-        each: 2400
+        each: 2401
     }
-    assert with_count(line, 3) == CakeLine {
+    assert half_price(line) == CakeLine {
         cake: "Carrot"
-        count: 3
-        each: 2400
+        count: 2
+        each: 1200
     }
 }

@@ -1,0 +1,18 @@
+// Handling failures in application code: the till decides what each of
+// `price_basket`'s failures means for a sale.
+
+/// What the till charges for `basket`. An old or mistyped code shouldn't
+/// stop a sale, so the till charges full price instead, and the customer
+/// can ask about the code afterwards. An empty basket, or a code worth
+/// more than the basket, still stops it.
+action till_total(basket: Basket) fails BasketEmpty, DiscountTooLarge -> Pence {
+    return match price_basket(basket) {
+        success(receipt) -> receipt.total
+        // Recovering: the same lines at full price. A handled failure
+        // leaves the `fails` list, so `CodeUnknown` isn't in this one.
+        CodeUnknown -> price_lines(basket)
+        // `propagate` passes these on unchanged, for the caller to handle.
+        BasketEmpty -> propagate
+        DiscountTooLarge -> propagate
+    }
+}

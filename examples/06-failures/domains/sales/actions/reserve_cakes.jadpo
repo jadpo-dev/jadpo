@@ -9,7 +9,11 @@
 /// they declare `fails` and `reject` exactly as actions do.
 function check_shelf(left: Stock, asked: CakeCount) fails CakeSoldOut -> CakeCount {
     // `Stock(asked)` moves the count into `Stock` so the two can be
-    // compared: ordering needs the same type on both sides. Every
+    // compared: ordering needs the same type on both sides. It is an
+    // honest conversion: cakes asked for and cakes on the shelf are both
+    // counts of the same cakes, so comparing them means something. (The
+    // compiler would convert a weight into a price just as readily if you
+    // wrote it, which is why it never converts on its own.) Every
     // `CakeCount` (1 to 24) is a valid `Stock` (0 to 500), so the compiler
     // proves this can't fail.
     if (Stock(asked) > left) {

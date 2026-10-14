@@ -1,0 +1,20 @@
+// A condition as proof. An `if` tells the compiler what is true inside
+// it, and, when a branch always leaves, what is true after it, so a
+// construction the condition makes safe needs no `attempt` and can't
+// fail. Here the condition doesn't raise anything: it chooses between two
+// answers, and each is safe on its own path.
+
+/// Twice the order, as a party often asks, when one order can hold that
+/// many; otherwise the order as it was, and the party places a second.
+action double_if_room(count: CakeCount) -> CakeCount {
+    if (count <= 12) {
+        // Inside the branch the compiler knows `count` is at most 12, and
+        // a bound on `count` carries through arithmetic, so `count * 2`
+        // is at most 24 here. `CakeCount(count * 2)` is plain, and an
+        // `attempt` on it would be an error. Only a condition proves
+        // this: a variable's starting value, an `assert` or a call to
+        // your own function never does.
+        return CakeCount(count * 2)
+    }
+    return count
+}

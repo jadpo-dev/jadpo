@@ -24,7 +24,8 @@ type CandleCount = Int {
 
 // Some values only ever arrive from outside, because no literal or
 // operation makes one inside the application yet: a photo is `Bytes`, a
-// time of day is `Time`. They can still be declared and received.
+// time of day is `Time`. They can still be declared, received and sent
+// back.
 
 /// A photo of the cake a customer wants copied.
 type CakePhoto = Bytes {
@@ -70,7 +71,10 @@ type CakeRequest = Input {
         optional: true
     }
     // A `Map` holds values by key. Maps arrive from outside as JSON
-    // objects, so a map in an `Input` or `Output` is keyed by text.
+    // objects, so a map in an `Input` or `Output` is keyed by text. There
+    // is no map literal yet, and `for` and the `collection` operations take
+    // only lists so far (example 04), so a map can be received, passed on,
+    // compared with `==` and sent back, but not yet walked or searched.
     allergies: Map<Allergen, Reaction> {
         optional: true
     }
@@ -79,13 +83,16 @@ type CakeRequest = Input {
 // An `Output` is an object sent back, such as a response. It may hold
 // other objects: here a whole `CakeLine`.
 
-/// What the bakery quotes for a cake.
+/// What the bakery quotes for a cake, with the details the customer gave
+/// read back to them to confirm.
 type CakeQuote = Output {
     line: CakeLine
     // `T?` is a type that may hold `none`. A nullable field is still
     // required: building a `CakeQuote` must say `icing: none` out loud.
     icing: Icing?
     candles: CandleCount
+    collect_at: CollectAt?
+    allergies: Map<Allergen, Reaction>?
 }
 
 // Every field is a type of its own, written `Owner.field`: here
@@ -114,9 +121,15 @@ action quote_cake(request: CakeRequest) -> CakeQuote {
         count: 1
         each: size_price(request.size)
     }
+    // The quote reads the customer's choices back to them, the allergies
+    // above all, so a mistake is caught before anything is baked. The
+    // photo isn't sent back: the customer already has it, and the
+    // decorator reads it from the order once orders are stored (area 5).
     return CakeQuote {
         line: line
         icing: request.icing
         candles: request.candles
+        collect_at: request.collect_at
+        allergies: request.allergies
     }
 }

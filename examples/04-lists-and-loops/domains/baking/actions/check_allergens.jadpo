@@ -22,11 +22,19 @@ type Badge = Enum {
     nut_free
 }
 
+// A `Set` holds each value once, so two sets are equal when they hold the
+// same values, whatever order they were written in. A set is written as a
+// list in square brackets where a set is expected, and a set literal that
+// repeats a value doesn't compile.
+//
+// A set's order isn't meaningful: code can't read one, as there is no
+// first item and no index, and the order a set is printed in says nothing
+// about how it was built. Where order matters, use a `List`. So far a set can be built, returned, passed on
+// and compared, but `for` and the `collection` operations take only lists,
+// which is why `Recipe.allergens`, searched above, is a list.
+
 /// The badges `recipe` earns; this bakery bakes no meat, so every
-/// recipe is vegetarian. A `Set` holds each value once and has no
-/// order, so two sets are equal when they hold the same values. A set is
-/// written as a list in square brackets where a set is expected; a set
-/// literal that repeats a value doesn't compile.
+/// recipe is vegetarian.
 function badges(recipe: Recipe) -> Set<Badge> {
     var animal_free: Bool = not collection.contains(
         recipe.allergens,

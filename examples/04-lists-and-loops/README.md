@@ -7,7 +7,7 @@ Collections hold many values of one type: a `List` keeps order and
 repeats, a `Set` holds each value once in no order, and a `Map` holds
 values by key. A list is written in square brackets; `for` walks it; the
 standard library's `collection` operations count, search, change and
-filter it.
+filter it. So far `for` and those operations take only lists.
 
 ## What it teaches
 
@@ -15,7 +15,9 @@ filter it.
 2. **`for` and `var mut`.** Totals built up in a loop, `return` from inside one, and `collection.count`. See `actions/weigh_recipe.jadpo` and [area 3, Loops](../../docs/language/03-logic.md#loops).
 3. **List literals.** Square brackets, items taking the list's element type. See `actions/weigh_recipe.test.jadpo`.
 4. **Inline functions.** `collection.map` and `collection.filter` with `item -> expression`. See `actions/scale_recipe.jadpo` and [area 3, Passing functions](../../docs/language/03-logic.md#passing-functions).
-5. **Searching and sets.** `collection.contains`, an `else if` chain, and a `Set` returned and compared without order. See `actions/check_allergens.jadpo`.
+5. **Searching and sets.** `collection.contains`, an `else if` chain, and a `Set` returned and compared without order, with what sets can't do yet. See `actions/check_allergens.jadpo` and [area 2, Collections](../../docs/language/02-values-and-types.md#collections).
+
+The other types in `domains/baking/types/` are short; read them as `recipe.jadpo` mentions them. Each action's tests sit beside it, in `<file>.test.jadpo`.
 
 ## Run it
 

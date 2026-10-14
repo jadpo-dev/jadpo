@@ -1067,9 +1067,17 @@ output Basket {
 A collection keeps its element type: a `List<Customer.email>` is not a
 `List<Email>`, and nothing converts one collection into another:
 `List<Tag>(names)` is `type.constructor_input`, since only a named type is
-built from a value (built in chunk 2.7). Collections are written as types today, but there are no list
-literals, no iteration and no collection functions yet; lists come from
-queries and request bodies (Review, question 4).
+built from a value (built in chunk 2.7).
+
+Lists can be built and walked: a list literal is written in square
+brackets, its items taking the list's element type (`["urgent", "home"]`),
+`for` walks a list (area 3, Loops), and `collection.count`,
+`collection.contains`, `collection.map` and `collection.filter` take one
+(Review, question 4). A list literal written where a set is expected is a
+set (question 5). So far `for` and the `collection` operations take only
+lists: a set can be built, passed, returned and compared, and a map,
+which has no literal yet, can be received, passed, compared and sent
+back, but neither can be walked or searched.
 
 ## When one type can stand in for another
 

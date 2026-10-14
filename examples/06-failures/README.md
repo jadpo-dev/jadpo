@@ -13,11 +13,15 @@ fail says at the call site what happens when it does.
 
 1. **Declaring failures.** One per file in `failures/`: `kind`, `message`, `code`, and `client` and `internal` fields, across all seven kinds an application declares. See `domains/sales/failures/` and [area 4, Declaring a failure](../../docs/language/04-failures.md#declaring-a-failure).
 2. **`fails` and `reject`.** A function that fails, and a failure raised with its fields. See `actions/reserve_cakes.jadpo` and [area 4, Raising a failure](../../docs/language/04-failures.md#raising-a-failure-reject).
-3. **Checks that can fail.** `attempt CakeCount(n) { max: OrderTooLarge }`: an arm for each rule that can break, `invalid:` covering every rule without its own, and a check the compiler proves can't fail. See `actions/double_order.jadpo`, `actions/order_shelf.jadpo` and [area 4, Passing a failure on](../../docs/language/04-failures.md#passing-a-failure-on-attempt).
-4. **A condition as proof.** An `if` that rejects an order too large to double tells the compiler the range after it, so `CakeCount(count * 2)` takes no `attempt`. See `actions/double_checked.jadpo` and [area 2, Conditions as proof](../../docs/language/02-values-and-types.md#conditions-as-proof).
-5. **`Unit` actions.** A failure rejected by name alone and an early `return`. See `actions/check_kitchen.jadpo`.
-6. **Passing failures on.** `attempt` starting a `var`, a `return` or a line of its own. See `actions/place_order.jadpo` and [area 3, Attempt](../../docs/language/03-logic.md#attempt).
-7. **Handling failures.** An outcome `match` that recovers, maps with `reject` and passes on with `propagate`, and hides someone else's order. See `actions/change_order.jadpo` and [area 4, Handling a failure in match](../../docs/language/04-failures.md#handling-a-failure-in-match).
+3. **Checks that can fail.** `attempt CakeCount(n) { max: OrderTooLarge }`: an arm for each rule that can break, and a check the compiler proves can't fail. See `actions/double_order.jadpo` and [area 4, Passing a failure on](../../docs/language/04-failures.md#passing-a-failure-on-attempt).
+4. **One failure for many rules.** `invalid:` alone covers every rule that can break, for a count keyed in at the till, and only a construction's rules; beside an arm of its own for one rule, it covers the rest. See `actions/key_in_order.jadpo`, then `actions/check_icing.jadpo`, and [area 2, Construction failures by rule](../../docs/language/02-values-and-types.md#construction-failures-by-rule).
+5. **A condition as proof.** An `if` tells the compiler the range inside it, so `CakeCount(count * 2)` takes no `attempt`. See `actions/double_if_room.jadpo` and [area 2, Conditions as proof](../../docs/language/02-values-and-types.md#conditions-as-proof).
+6. **Business rules beside type rules.** An empty shelf is raised with `reject` as a `conflict`, not as a broken rule, and that check leaves only `max` able to break. See `actions/order_shelf.jadpo`.
+7. **`Unit` actions.** A failure rejected by name alone and an early `return`. See `actions/check_kitchen.jadpo`.
+8. **Passing failures on.** `attempt` starting a `var`, a `return` or a line of its own. See `actions/place_order.jadpo` and [area 3, Attempt](../../docs/language/03-logic.md#attempt).
+9. **Handling failures.** An outcome `match` that recovers, maps with `reject` and passes on with `propagate`, and hides someone else's order. See `actions/change_order.jadpo` and [area 4, Handling a failure in match](../../docs/language/04-failures.md#handling-a-failure-in-match).
+
+The types in `domains/sales/types/` are short; read them as the actions mention them. Each action's tests sit beside it, in `<file>.test.jadpo`.
 
 ## Run it
 
@@ -49,12 +53,14 @@ target/release/jadpo fmt --check examples/06-failures
 
 - In `reserve_cakes.jadpo`, delete `fails CakeSoldOut` from `reserve_cakes`. `jadpo check` reports `failure.undeclared_propagation`: every failure that can leave a callable is listed.
   <!-- try {"file": "domains/sales/actions/reserve_cakes.jadpo", "replace": "asked: CakeCount) fails CakeSoldOut -> CakeCount {\n    // A call", "with": "asked: CakeCount) -> CakeCount {\n    // A call", "check": ["failure.undeclared_propagation"]} -->
-- In `double_order.jadpo`, replace the `attempt` and its block with `CakeCount(count * 2)`. `jadpo check` reports `failure.attempt_required`: the compiler can't prove 48 fits in `CakeCount`.
+- In `double_order.jadpo`, replace the `attempt` and its block with `CakeCount(count * 2)`. `jadpo check` reports `failure.attempt_required`: the compiler can't prove `count * 2` stays within `max: 24`; it can reach 48.
   <!-- try {"file": "domains/sales/actions/double_order.jadpo", "replace": "attempt CakeCount(count * 2) {\n        max: OrderTooLarge\n    }", "with": "CakeCount(count * 2)", "check": ["failure.attempt_required"]} -->
 - In `double_order.jadpo`, add `min: OrderTooLarge` to the block. `jadpo check` reports `failure.rule_cannot_break`: `count * 2` is never below 1, so that arm could never run.
   <!-- try {"file": "domains/sales/actions/double_order.jadpo", "replace": "        max: OrderTooLarge\n", "with": "        max: OrderTooLarge\n        min: OrderTooLarge\n", "check": ["failure.rule_cannot_break"]} -->
-- In `double_checked.jadpo`, change `24` in the condition to `30`. `jadpo check` reports `failure.attempt_required`: below the check `count * 2` can now reach 30, past `max: 24`, so the check no longer proves `CakeCount(count * 2)`.
-  <!-- try {"file": "domains/sales/actions/double_checked.jadpo", "replace": "if (count * 2 > 24)", "with": "if (count * 2 > 30)", "check": ["failure.attempt_required"]} -->
-- In `order_shelf.jadpo`, delete the `invalid: ShelfEmpty` line. `jadpo check` reports `failure.rule_unmapped`: an empty shelf breaks `min: 1`, and nothing maps it.
-  <!-- try {"file": "domains/sales/actions/order_shelf.jadpo", "replace": "        invalid: ShelfEmpty\n", "with": "", "check": ["failure.rule_unmapped"]} -->
-- Then read [07-domains-and-sharing](../07-domains-and-sharing/README.md).
+- In `key_in_order.jadpo`, change `invalid: CountOutOfRange` to `max: CountOutOfRange`. `jadpo check` reports `failure.rule_unmapped`: a keyed count can be below 1 too, and now nothing maps `min`.
+  <!-- try {"file": "domains/sales/actions/key_in_order.jadpo", "replace": "        invalid: CountOutOfRange", "with": "        max: CountOutOfRange", "check": ["failure.rule_unmapped"]} -->
+- In `double_if_room.jadpo`, change `count <= 12` to `count <= 13`. `jadpo check` reports `failure.attempt_required`: inside the branch `count * 2` can now reach 26, past `max: 24`, so the condition no longer proves `CakeCount(count * 2)`.
+  <!-- try {"file": "domains/sales/actions/double_if_room.jadpo", "replace": "if (count <= 12)", "with": "if (count <= 13)", "check": ["failure.attempt_required"]} -->
+- In `order_shelf.jadpo`, delete the `if (left == 0) { ... }` check. `jadpo check` reports `failure.rule_unmapped`: without the check `left` can be 0, which breaks `min: 1`, and no arm maps it.
+  <!-- try {"file": "domains/sales/actions/order_shelf.jadpo", "replace": "    if (left == 0) {\n        reject ShelfEmpty\n    }\n", "with": "", "check": ["failure.rule_unmapped"]} -->
+- Then read [07-testing](../07-testing/README.md).

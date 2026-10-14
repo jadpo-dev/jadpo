@@ -4,7 +4,7 @@
 // the runtime raises by itself; they are never declared, listed or
 // matched.
 
-/// The ovens are off, so nothing can be baked for now.
+/// Every oven is off, so nothing can be baked for now.
 type OvenDown = Failure {
     kind: FailureKind.unavailable
 }

@@ -7,10 +7,12 @@ kitchen.
 
 ## What it teaches
 
-1. **Operators.** Precedence, brackets, `and`, `or`, `not`, unary minus, `%`, and comparisons. See `domains/kitchen/actions/mix_dough.jadpo` and [area 3, Expressions and operators](../../docs/language/03-logic.md#expressions-and-operators).
-2. **Division.** `integer.divide` and `decimal.divide` with a named `rounding:`, each `Rounding` mode, and divisors that can't be zero. See `actions/fill_trays.jadpo` and [area 3, Expressions and operators](../../docs/language/03-logic.md#expressions-and-operators).
-3. **Choosing.** `if`, `else if` and `else`; `match` as a value and as a statement, with literal, text, `true`/`false` and `_` patterns and empty arms. See `actions/set_oven.jadpo` and [area 3, Match](../../docs/language/03-logic.md#match).
+1. **Operators.** Precedence, brackets, `and`, `or`, `not`, unary minus and comparisons. See `domains/kitchen/actions/mix_dough.jadpo` and [area 3, Expressions and operators](../../docs/language/03-logic.md#expressions-and-operators).
+2. **Division.** `integer.divide` and `decimal.divide` with a named `rounding:`, each `Rounding` mode, the remainder `%`, and divisors that can't be zero. See `actions/fill_trays.jadpo` and [area 3, Expressions and operators](../../docs/language/03-logic.md#expressions-and-operators).
+3. **Choosing.** `if`, `else if` and `else`; `match` as a value and as a statement, with literal, `true`/`false` and `_` patterns, text patterns on text typed at the oven's keypad, and empty arms. See `actions/set_oven.jadpo` and [area 3, Match](../../docs/language/03-logic.md#match).
 4. **Recursion.** A type that contains itself, walked by a function that calls itself. See `actions/count_tiers.jadpo` and [area 3, Recursion](../../docs/language/03-logic.md#recursion).
+
+Each action's tests sit beside it, in `<file>.test.jadpo`.
 
 ## Run it
 
@@ -42,6 +44,6 @@ target/release/jadpo fmt --check examples/05-logic
 
 - In `fill_trays.jadpo`, change `TrayCapacity`'s `min: 1` to `min: 0`. `jadpo check` reports `type.divisor_zero`: a divisor's type must exclude zero.
   <!-- try {"file": "domains/kitchen/actions/fill_trays.jadpo", "replace": "type TrayCapacity = Int {\n    min: 1", "with": "type TrayCapacity = Int {\n    min: 0", "check": ["type.divisor_zero"]} -->
-- In `set_oven.jadpo`, delete the `_ -> "golden"` arm in `crust_on`. `jadpo check` reports `type.match_wildcard_required`: numbers can't all be listed, so a `_` arm must catch the rest.
-  <!-- try {"file": "domains/kitchen/actions/set_oven.jadpo", "replace": "        _ -> \"golden\"\n", "with": "", "check": ["type.match_wildcard_required"]} -->
+- In `set_oven.jadpo`, delete the `_ -> Crust.golden` arm in `crust_on`. `jadpo check` reports `type.match_wildcard_required`: numbers can't all be listed, so a `_` arm must catch the rest.
+  <!-- try {"file": "domains/kitchen/actions/set_oven.jadpo", "replace": "        _ -> Crust.golden\n", "with": "", "check": ["type.match_wildcard_required"]} -->
 - Then read [06-failures](../06-failures/README.md).

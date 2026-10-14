@@ -1,6 +1,0 @@
-/// The card already has all ten stamp_count: an eleventh would break its
-/// rules, so this is an `invalid_value` failure.
-type CardFull = Failure {
-    kind: FailureKind.invalid_value
-    message: "This card is full. Redeem it first."
-}

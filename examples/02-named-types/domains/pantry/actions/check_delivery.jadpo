@@ -31,11 +31,28 @@ type InvoiceAddress = Text {
 // of time, written with a unit (`45m`, `2h`), and its bounds are written
 // the same way.
 
-/// When the delivery arrived.
-type ArrivedAt = Instant {}
+/// A moment by the bakery's clock.
+type ShopTime = Instant {}
 
-/// The last day the flour is good.
-type BestBefore = CalendarDate {}
+// `ArrivedAt` and `Cutoff` are both moments, but they mean different
+// things, so each is its own type and one can't be passed for the other.
+// Both are built on `ShopTime`, though, and that is what lets them be
+// compared: `<` orders two values of the same type, and each widens to
+// `ShopTime`. Two types built straight on `Instant` would share nothing
+// but the representation, and comparing them would be an error.
+
+/// When the delivery arrived.
+type ArrivedAt = ShopTime {}
+
+/// The latest a delivery can arrive and still be shelved that day.
+type Cutoff = ShopTime {}
+
+/// A day in the bakery's calendar, such as today.
+type BakeryDay = CalendarDate {}
+
+/// The last day the flour is good. Built on `BakeryDay`, so it can be
+/// compared with today.
+type BestBefore = BakeryDay {}
 
 /// How long the dough proves, between 30 minutes and 4 hours.
 type ProvingTime = Duration {
@@ -51,9 +68,9 @@ type Shelvable = Bool {}
 /// on the sack is one the bakery can use.
 action check_delivery(
     arrived: ArrivedAt,
-    cutoff: ArrivedAt,
+    cutoff: Cutoff,
     best_before: BestBefore,
-    today: BestBefore,
+    today: BakeryDay,
     proving: ProvingTime
 ) -> Shelvable {
     // Moments, days and durations are ordered, so `<`, `<=`, `>` and `>=`
@@ -61,13 +78,22 @@ action check_delivery(
     return Shelvable(arrived < cutoff and best_before > today and proving <= 2h)
 }
 
-// Helpers the action's tests call directly. A text literal compared with
-// `==` takes the other side's type, so `"6f1c…"` below is read as a UUID
-// and checked as one, not compared as text.
+// Before a delivery is shelved, its note is checked too. Each answer below
+// is a yes or no, and each has its own type, because "this is the delivery
+// we expected" and "these are the supplier's usual contacts" are different
+// facts. A text literal compared with `==` takes the other side's type, so
+// `"6f1c…"` below is read as a UUID and checked as one, not compared as
+// text.
+
+/// Whether a delivery is the one the bakery is waiting for.
+type AwaitedDelivery = Bool {}
+
+/// Whether a delivery note gives the supplier's usual contacts.
+type UsualContacts = Bool {}
 
 /// Whether `id` is the delivery the bakery is waiting for.
-function expected_delivery(id: DeliveryId) -> Shelvable {
-    return Shelvable(id == "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
+function expected_delivery(id: DeliveryId) -> AwaitedDelivery {
+    return AwaitedDelivery(id == "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
 }
 
 /// Whether a delivery note names the supplier's usual contacts.
@@ -76,8 +102,8 @@ function usual_contacts(
     site: SupplierSite,
     scale: ScaleAddress,
     invoices: InvoiceAddress
-) -> Shelvable {
-    return Shelvable(
+) -> UsualContacts {
+    return UsualContacts(
         desk == "orders@mill.example" and site == "https://mill.example/orders" and scale == "10.0.0.7" and invoices == "accounts@mill.example"
     )
 }

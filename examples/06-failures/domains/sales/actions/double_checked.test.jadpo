@@ -1,8 +1,0 @@
-test "an order of 12 doubles to 24" {
-    var doubled: CakeCount = attempt double_checked(12)
-    assert doubled == 24
-}
-
-test "an order of 13 is refused before it is built" {
-    assert double_checked(13) fails OrderTooLarge
-}

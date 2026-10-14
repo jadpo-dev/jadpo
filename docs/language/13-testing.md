@@ -634,7 +634,7 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
   the test database.
 - A failed test's rerun command and every path a run prints work from the
   folder the command ran in: run from outside the project, they start with
-  the project as it was typed (`examples/08-testing/domains/…`). With
+  the project as it was typed (`examples/07-testing/domains/…`). With
   `--failed`, when every test that failed last time is gone, there is
   nothing to rerun and the run passes.
 - The editor shows a run button above each test and the last result beside

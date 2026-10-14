@@ -12,13 +12,12 @@ test "a dry dough or cold water isn't ready" {
     assert not mix_dough(1000, 700, 18, 10, false)
 }
 
-test "differences have a sign, and flipping changes it" {
+test "differences have a sign" {
     assert water_difference(30) == 4
     assert water_difference(20) == -6
-    assert flipped(-6) == 6
 }
 
-test "odd weights are found by their remainder" {
-    assert odd_weight(501)
-    assert not odd_weight(500)
+test "water 4 degrees too cold is close enough, 5 isn't" {
+    assert mix_dough(1000, 700, 22, 10, false)
+    assert not mix_dough(1000, 700, 21, 10, false)
 }

@@ -1,14 +1,19 @@
-// When more than one rule can break, each gets an arm of its own, or
-// `invalid:` covers every rule left without one.
+// A business rule beside a type rule. An empty shelf breaks no rule of
+// the number 0: there is simply nothing left to sell. So it is checked
+// with `if` and raised with `reject`, as a `conflict` with the shelf's
+// state, and only what really is a type rule goes in an `attempt` arm.
 
 /// An order for every cake left on the shelf.
-action order_shelf(left: Stock) fails OrderTooLarge, ShelfEmpty -> CakeCount {
-    // `left` runs from 0 to 500 and `CakeCount` from 1 to 24, so both
-    // `min` and `max` can break. `max` has its own arm, and `invalid:`
-    // covers the rest: here only `min`, when the shelf is empty.
+action order_shelf(left: Stock) fails ShelfEmpty, OrderTooLarge -> CakeCount {
+    if (left == 0) {
+        reject ShelfEmpty
+    }
+    // `left` runs from 0 to 500 and `CakeCount` from 1 to 24. The check
+    // above counts as proof (`double_if_room.jadpo` shows more): below it
+    // `left` is at least 1, so `min` can't break, and only `max` needs an
+    // arm.
     var count: CakeCount = attempt CakeCount(left) {
         max: OrderTooLarge
-        invalid: ShelfEmpty
     }
     return count
 }

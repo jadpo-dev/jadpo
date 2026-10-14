@@ -1,0 +1,7 @@
+test "an order of 12 doubles to 24" {
+    assert double_if_room(12) == 24
+}
+
+test "an order of 13 stays as it was" {
+    assert double_if_room(13) == 13
+}

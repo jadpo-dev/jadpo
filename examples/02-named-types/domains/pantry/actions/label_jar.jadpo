@@ -11,8 +11,10 @@ type JarName = Text {
 // A `ShelfName` can be used wherever a `JarName` is expected, because
 // every valid `ShelfName` is a valid `JarName`; never the other way round.
 
-/// A name short enough for the shelf edge. It may only tighten the rules
-/// it inherits: a `max_length` above 40 would be an error.
+/// A name short enough for the shelf edge. A refinement may only tighten
+/// the rules it inherits: a `max_length` above 40 doesn't compile
+/// (`type.constraint_loosened`), since some `ShelfName`s would then not
+/// be valid `JarName`s.
 type ShelfName = JarName {
     max_length: 12
 }

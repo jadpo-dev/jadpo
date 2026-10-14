@@ -3,7 +3,7 @@ test "a shelf of 10 is one order" {
     assert count == 10
 }
 
-test "each broken rule gives its own arm's failure" {
+test "an empty shelf and a shelf too big for one order fail differently" {
     assert order_shelf(30) fails OrderTooLarge
     assert order_shelf(0) fails ShelfEmpty
 }

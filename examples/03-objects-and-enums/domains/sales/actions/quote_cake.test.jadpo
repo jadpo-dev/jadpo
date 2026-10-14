@@ -16,6 +16,8 @@ test "a plain request quotes a medium cake with no candles" {
         }
         icing: none
         candles: 0
+        collect_at: none
+        allergies: none
     }
 }
 

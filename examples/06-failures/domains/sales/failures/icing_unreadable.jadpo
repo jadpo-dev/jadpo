@@ -1,0 +1,6 @@
+/// The words asked for are empty or use characters the decorator can't
+/// pipe.
+type IcingUnreadable = Failure {
+    kind: FailureKind.invalid_value
+    message: "Icing needs letters, digits, spaces or simple punctuation."
+}

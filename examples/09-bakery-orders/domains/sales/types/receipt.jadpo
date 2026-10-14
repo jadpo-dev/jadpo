@@ -1,0 +1,9 @@
+// `public`, because the scenario in the root `tests/` folder reads the
+// receipt `price_basket` sends back.
+
+/// What the customer pays, and how it was worked out.
+public type Receipt = Output {
+    subtotal: Pence
+    discount: Pence
+    total: Pence
+}

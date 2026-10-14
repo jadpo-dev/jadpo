@@ -1,0 +1,26 @@
+// An arm for one rule beside `invalid:` for the rest.
+
+/// Words a customer types into the order form to go on a cake: any text,
+/// until it is checked.
+type AskedWords = Text {}
+
+/// Words the decorator can pipe onto a cake: 1 to 30 letters, digits,
+/// spaces and simple punctuation.
+type Icing = Text {
+    min_length: 1
+    max_length: 30
+    pattern: "[A-Za-z0-9 !,.-]*"
+}
+
+/// `asked` as words the decorator can pipe.
+action check_icing(asked: AskedWords) fails IcingTooLong, IcingUnreadable -> Icing {
+    // All three rules can break. Words that are too long get a failure of
+    // their own, because the form tells the customer to shorten them;
+    // anything else, nothing typed or a character the nozzle can't pipe,
+    // gets the one failure `invalid:` gives every rule without an arm.
+    var icing: Icing = attempt Icing(asked) {
+        max_length: IcingTooLong
+        invalid: IcingUnreadable
+    }
+    return icing
+}

@@ -1,8 +1,0 @@
-// A failure raised by two or more domains lives in `shared/failures/`.
-// `pantry` and `sales` both raise `TooHeavy` when a weight they work
-// out passes 100 kilograms.
-
-/// A weight would pass the 100 kilograms the scales can weigh.
-type TooHeavy = Failure {
-    kind: FailureKind.invalid_value
-}

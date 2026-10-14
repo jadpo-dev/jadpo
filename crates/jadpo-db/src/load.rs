@@ -22,7 +22,7 @@ pub fn find_root(start: &Path) -> Option<PathBuf> {
 /// The folder every printed path is relative to (`root`), as the reader
 /// reaches it from `cwd`, the folder the command ran in: `None` when `cwd`
 /// is inside it, since a project's own paths work from anywhere in it;
-/// otherwise the way the command line spelt it (`examples/08-testing`,
+/// otherwise the way the command line spelt it (`examples/07-testing`,
 /// `../shop`, or an absolute path), so `<root>/<path>` opens the file and
 /// a rerun command runs from `cwd`.
 pub fn shown_root(cwd: &Path, root: &Path) -> Option<String> {

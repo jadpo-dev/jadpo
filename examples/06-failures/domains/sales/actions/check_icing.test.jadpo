@@ -1,0 +1,13 @@
+test "words the decorator can pipe are accepted" {
+    var icing: Icing = attempt check_icing("Happy birthday, Sam!")
+    assert icing == "Happy birthday, Sam!"
+}
+
+test "too many words get their own failure" {
+    assert check_icing("Congratulations on your retirement, Margaret") fails IcingTooLong
+}
+
+test "nothing typed or a character the nozzle can't pipe fail the same way" {
+    assert check_icing("") fails IcingUnreadable
+    assert check_icing("Happy 🎂") fails IcingUnreadable
+}

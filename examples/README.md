@@ -25,10 +25,11 @@ README saying what it teaches, how to run it and what to try next.
 6. [06-failures/](06-failures/README.md): declaring failures, `fails`,
    `reject`, `attempt`, checks that can fail, a condition that proves one
    can't, and handling failures with `match`.
-7. [07-domains-and-sharing/](07-domains-and-sharing/README.md): several
-   domains, `public`, `shared/`, libraries, and a scenario in `tests/`.
-8. [08-testing/](08-testing/README.md): test kinds, fixtures, and
+7. [07-testing/](07-testing/README.md): test kinds, fixtures, and
    asserting failures.
+8. [08-domains-and-sharing/](08-domains-and-sharing/README.md): several
+   domains, `public`, `shared/`, libraries, a public fixture, and a
+   scenario in `tests/`.
 9. [09-bakery-orders/](09-bakery-orders/README.md): a fuller project
    that puts all of it together.
 
@@ -43,8 +44,9 @@ example.
 - `//` comments are the lesson: what a part is for and why it is written
   that way, said once, where a reader first meets it. Later examples
   don't repeat what earlier ones taught.
-- Each project's README says what the project is about and lists its
-  files in reading order. `app.jadpo` comments only on `application`
+- Each project's README says what the project is about, and its "What
+  it teaches" list names the files in the order to read them, each
+  beside the idea it shows; a file's tests sit beside it. `app.jadpo` comments only on `application`
   itself, where there is something to say, and each file opens with what
   it shows.
 
