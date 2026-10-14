@@ -44,6 +44,16 @@ impl Invalid {
         }
     }
 
+    /// The rule as a failure's report names it as broken (area 2,
+    /// "Construction failures by rule"): `` `max: 1000` ``, or for a field
+    /// of an object built with its fields, `` `max: 1000` on `quantity` ``.
+    pub fn broken(&self, field: Option<&str>) -> String {
+        match field {
+            Some(field) => format!("`{}` on `{field}`", self.rule()),
+            None => format!("`{}`", self.rule()),
+        }
+    }
+
     /// What is wrong with the value, completing "The value ...".
     pub fn why(&self) -> &str {
         match self {

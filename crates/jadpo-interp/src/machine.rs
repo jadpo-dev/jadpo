@@ -495,17 +495,7 @@ impl<'p> Machine<'p> {
 
     /// An operator's or operation's fault, at its site.
     fn value_fault(&self, ctx: &mut Ctx<'_>, fault: jadpo_value::Fault, at: SiteId) -> Stop {
-        let kind = match fault {
-            jadpo_value::Fault::IntOverflow => FaultKind::IntOverflow,
-            jadpo_value::Fault::DecimalOverflow => FaultKind::DecimalOverflow,
-            jadpo_value::Fault::DivisionByZero => {
-                FaultKind::Defect("a division by zero, which the checker rules out".into())
-            }
-            jadpo_value::Fault::Shape | jadpo_value::Fault::Stopped => {
-                FaultKind::Defect("a value of a kind the checker would have refused".into())
-            }
-        };
-        self.fault(ctx, kind, at)
+        self.fault(ctx, fault.into(), at)
     }
 
     /// A value the checker proved follows its type's rules, breaking one:
@@ -723,7 +713,7 @@ impl<'p> Machine<'p> {
                     if let Err(invalid) = validator.check(&value) {
                         return Err(Stop::Invalid {
                             rule: invalid.key(),
-                            written: format!("`{}`", invalid.rule()),
+                            written: invalid.broken(None),
                         });
                     }
                 } else if self.program.proof_checks()
@@ -752,7 +742,7 @@ impl<'p> Machine<'p> {
                     if let Err(invalid) = validator.check(&value) {
                         return Err(Stop::Invalid {
                             rule: invalid.key(),
-                            written: format!("`{}` on `{}`", invalid.rule(), given.name),
+                            written: invalid.broken(Some(&given.name)),
                         });
                     }
                 } else if self.program.proof_checks()
@@ -1424,13 +1414,7 @@ impl<'p> Machine<'p> {
                         return Err(Stop::Failed(failure));
                     };
                     if let Some(binding) = arm.binding {
-                        let fields = failure
-                            .client
-                            .iter()
-                            .chain(&failure.internal)
-                            .map(|(name, value)| (Rc::from(name.as_str()), value.clone()))
-                            .collect();
-                        self.set(ctx, Some(binding), Value::record(&failure.name, fields), at)?;
+                        self.set(ctx, Some(binding), failure.record(), at)?;
                     }
                     if let Some(activation) = self.activations.last_mut() {
                         activation.handling.push(*failure);

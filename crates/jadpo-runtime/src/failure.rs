@@ -57,6 +57,19 @@ impl Failure {
         }
     }
 
+    /// The failure as the value a `match` arm binds it to (area 4): a
+    /// record of its name holding its client fields, then its internal
+    /// ones, in the order it declares them.
+    pub fn record(&self) -> Value {
+        let fields = self
+            .client
+            .iter()
+            .chain(&self.internal)
+            .map(|(name, value)| (std::rc::Rc::from(name.as_str()), value.clone()))
+            .collect();
+        Value::record(&self.name, fields)
+    }
+
     /// Where it was raised.
     pub fn site(&self) -> Option<Frame> {
         self.frames.first().copied()
