@@ -1,0 +1,4 @@
+/// The copy is already lent until that date.
+type BookAlreadyLent = Failure {
+    kind: FailureKind.conflict
+}

@@ -1,0 +1,7 @@
+// `Loan.delete(loan)` removes the record. Nothing refers to a loan, so
+// nothing can refuse it and it can't fail.
+
+/// Takes a copy back.
+action return_book(loan: Loan) -> Unit {
+    Loan.delete(loan)
+}

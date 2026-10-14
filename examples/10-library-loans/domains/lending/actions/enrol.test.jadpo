@@ -1,0 +1,5 @@
+test "two members can't share an address" {
+    var ada: Member = attempt enrol("ada@example.test", "Ada")
+    assert ada.name == "Ada"
+    assert enrol("ada@example.test", "Another Ada") fails EmailTaken
+}

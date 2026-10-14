@@ -1487,7 +1487,10 @@ pub fn write_rules_of(model: &DataModel, entity: &str) -> Option<WriteRules> {
                     continue;
                 }
                 match reference.on_delete {
-                    Some(OnDelete::Restricted) => {
+                    // A reference that doesn't say is reported where it is
+                    // declared; taken as refusing, nothing here reports a
+                    // knock-on of it.
+                    Some(OnDelete::Restricted) | None => {
                         restricting.insert((child.name.clone(), field.name.clone()));
                     }
                     Some(OnDelete::Cascade) => {
@@ -1495,7 +1498,7 @@ pub fn write_rules_of(model: &DataModel, entity: &str) -> Option<WriteRules> {
                             queue.push(child.name.as_str());
                         }
                     }
-                    Some(OnDelete::Cleared) | None => {}
+                    Some(OnDelete::Cleared) => {}
                 }
             }
         }

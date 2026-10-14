@@ -62,12 +62,14 @@ board
 board_not_found
 bob
 book
+book_already_lent
 book_by_id
 book_card
 book_collection
 book_id
 book_ids
 book_not_found
+book_on_loan
 book_title
 book_titled
 book_view
@@ -107,6 +109,7 @@ candles
 cap_total
 capped
 card
+card_already_issued
 card_full
 card_name
 card_not_full
@@ -344,6 +347,7 @@ kitchen_busy
 kitchen_count
 label_jar
 larger
+last_lent_at
 last_seen_at
 last_viewed_at
 late
@@ -355,6 +359,7 @@ ledger_entry
 left_over
 legacy_flag
 lend
+lend_count
 lending
 line_count
 line_receipt
@@ -370,7 +375,9 @@ loaf
 loaf_count
 loaf_price
 loan
+loan_changes
 loan_days
+loan_id
 loan_period
 loan_view
 loans
@@ -580,6 +587,8 @@ reminder_tick
 reminder_time
 rename_product
 rename_todo
+renew
+renewed
 replies
 reply_count
 reply_to
@@ -588,6 +597,7 @@ reprice
 reprice_line
 request_tag
 request_timeout
+reread
 reschedule_todo
 reservation
 reserve_cakes
@@ -598,6 +608,7 @@ reserve_stock
 rested
 restock
 retag_todo
+return_book
 revoked_at
 rye
 sack_count
@@ -704,6 +715,7 @@ tier_name
 tiers_above
 till_share
 till_total
+times_lent
 title
 title_blank
 title_taken
@@ -764,7 +776,10 @@ video
 video_id
 view_count
 view_video
+vouch
+vouched
 vouched_by
+voucher
 water
 water_difference
 wear
@@ -780,6 +795,7 @@ wholemeal
 wildcard_failure
 with_delivery
 with_todos
+withdraw_copy
 work_address
 work_email
 worn

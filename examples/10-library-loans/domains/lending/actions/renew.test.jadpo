@@ -1,0 +1,24 @@
+test "a patch changes only what the request supplied" {
+    var ada: Member = attempt enrol("ada@example.test", "Ada")
+    var bob: Member = attempt enrol("bob@example.test", "Bob")
+    var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)
+    var loan: Loan = attempt lend(dune.id, ada, "2026-11-01")
+    var vouched: Loan = attempt vouch(loan.id, bob)
+    assert vouched.vouched_by == bob.id
+    var unchanged: Loan = attempt renew(vouched, LoanChanges {})
+    assert unchanged.due_on == "2026-11-01"
+    assert unchanged.vouched_by == bob.id
+    var renewed: Loan = attempt renew(
+        unchanged,
+        LoanChanges {
+            due_on: "2026-12-01"
+        }
+    )
+    assert renewed.due_on == "2026-12-01"
+    assert renewed.vouched_by == none
+}
+
+test "a loan that isn't there can't be vouched for" {
+    var bob: Member = attempt enrol("bob@example.test", "Bob")
+    assert vouch("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e", bob) fails LoanNotFound
+}

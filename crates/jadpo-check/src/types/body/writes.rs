@@ -1194,6 +1194,7 @@ impl Body<'_> {
         let mut out: Vec<(ast::Member, Breach, String)> = Vec::new();
         let mut first: BTreeMap<Breach, Span> = BTreeMap::new();
         let mut unknown = false;
+        let mut unbreakable: Vec<(Arm, Breach)> = Vec::new();
         if let Some(conflict) = conflict {
             if conflict.block().is_none()
                 && let Some(value) = conflict.value()
@@ -1249,7 +1250,7 @@ impl Body<'_> {
                 }
                 first.insert(rule.clone(), arm.key_span.clone());
                 if !breakable.contains(&rule) {
-                    self.conflict_cannot_break(&arm, &rule, entity, op, written);
+                    unbreakable.push((arm, rule));
                     continue;
                 }
                 if let Some(failure) = failure {
@@ -1258,16 +1259,18 @@ impl Body<'_> {
                 }
             }
         }
-        // An arm naming no rule was most likely meant for one of these.
-        let unmapped: Vec<String> = if unknown {
-            Vec::new()
-        } else {
-            breakable
-                .iter()
-                .filter(|rule| !first.contains_key(rule))
-                .map(Breach::written)
-                .collect()
-        };
+        let unmapped: Vec<String> = breakable
+            .iter()
+            .filter(|rule| !first.contains_key(rule))
+            .map(Breach::written)
+            .collect();
+        // An arm for a rule this write can't break was most likely meant
+        // for one it can: it says so, and the rule isn't reported again.
+        let rejected = unknown || !unbreakable.is_empty();
+        for (arm, rule) in &unbreakable {
+            self.conflict_cannot_break(arm, rule, entity, op, written, unmapped.first());
+        }
+        let unmapped: Vec<String> = if rejected { Vec::new() } else { unmapped };
         if let Some(first_rule) = unmapped.first() {
             let listed: Vec<String> = unmapped.iter().map(|r| format!("`{r}`")).collect();
             let (them, each) = if unmapped.len() == 1 {
@@ -1368,6 +1371,7 @@ impl Body<'_> {
         entity: &str,
         op: WriteOp,
         written: &str,
+        meant: Option<&String>,
     ) {
         let reason = match (rule, op) {
             (
@@ -1408,19 +1412,26 @@ impl Body<'_> {
             ),
         };
         let removal = removal(self.path, &arm.member);
-        self.out.push(
-            Diagnostic::new(
-                &rule::DATA_CONFLICT_CANNOT_BREAK,
-                format!(
-                    "`{written}` can't break `{}`, so it takes no arm",
-                    rule.written()
-                ),
-            )
-            .at(arm.key_span.clone(), "never runs")
-            .reason(reason)
-            .next(format!("Remove `{}: ...`", arm.key))
-            .edit(removal, ""),
-        );
+        let problem = Diagnostic::new(
+            &rule::DATA_CONFLICT_CANNOT_BREAK,
+            format!(
+                "`{written}` can't break `{}`, so it takes no arm",
+                rule.written()
+            ),
+        )
+        .at(arm.key_span.clone(), "never runs");
+        self.out.push(match meant {
+            Some(meant) => problem
+                .reason(format!(
+                    "{reason} It can break `{meant}`, which no arm maps."
+                ))
+                .next(format!("Use `{meant}` instead of `{}`", arm.key))
+                .edit(arm.key_span.clone(), meant.clone()),
+            None => problem
+                .reason(reason)
+                .next(format!("Remove `{}: ...`", arm.key))
+                .edit(removal, ""),
+        });
     }
 }
 

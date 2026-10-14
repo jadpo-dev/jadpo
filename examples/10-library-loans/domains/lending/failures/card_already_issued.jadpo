@@ -1,0 +1,4 @@
+/// The member already holds a card.
+type CardAlreadyIssued = Failure {
+    kind: FailureKind.conflict
+}

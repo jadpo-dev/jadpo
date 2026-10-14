@@ -152,12 +152,7 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     (
         "body fallible unknown",
-        "an entity operation's failures (area 6), or a mistake already reported",
-    ),
-    // Generated namespaces' members that check but don't run yet.
-    (
-        "generated clock.now",
-        "checks, but the interpreter can't read the clock yet (area 10): a test reaching it faults with not_built_yet",
+        "a mistake already reported, which no example has",
     ),
     // Layout places later areas fill.
     (
