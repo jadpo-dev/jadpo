@@ -93,7 +93,9 @@ Built in chunk 1.9: a refinement can only add to the rules of the type it
 builds on, so a `max` below an inherited `min` (or the other way round, for
 lengths and durations too) is `type.constraint_contradiction`, and so is a
 `Decimal` refinement whose `scale` differs from the one it inherits, since
-the scale decides how the value is stored and sent. The same settings rules
+the scale decides how the value is stored and sent. Since chunk 2.7, a bound
+looser than the one it inherits (`max_length: 50` on a type with
+`max_length: 40`) is `type.constraint_loosened`. The same settings rules
 hold for the fields of every type with fields, entities and events included;
 the settings later areas add to an entity's or event's fields (`generated`,
 `on_delete`, `unique`, `immutable`, `role`, `personal`, `erase`,
@@ -1862,6 +1864,37 @@ error: `max_length: 3` is below `min_length: 10`
   next: Correct `min_length` or `max_length` (agent)
   rule: type.constraint_contradiction
   help: docs/language/02-values-and-types.html#type-constraint-contradiction
+
+check failed: 1 error, 1 file
+```
+
+### `type.constraint_loosened`
+
+A refinement can only add to the rules of the type it builds on (built in
+chunk 2.7). Every rule along the chain still holds, so a looser bound would
+never apply and would only mislead the reader:
+
+```jadpo check project=e-constraint-loosened expect=type.constraint_loosened
+type ProductName = Text {
+    min_length: 1
+    max_length: 120
+}
+
+type ShortProductName = ProductName {
+    max_length: 150
+}
+```
+
+```text output
+error: `max_length: 150` loosens `ProductName`'s `max_length: 120`
+ --> main.jadpo:7:5
+  |
+7 |     max_length: 150
+  |     ^^^^^^^^^^ looser than `max_length: 120`
+  reason: A refinement only adds to the rules of the type it builds on, and every rule along the way still holds, so a value still needs `max_length: 120` and this one would never apply.
+  next: Make `max_length` at most 120, or remove it (agent)
+  rule: type.constraint_loosened
+  help: docs/language/02-values-and-types.html#type-constraint-loosened
 
 check failed: 1 error, 1 file
 ```

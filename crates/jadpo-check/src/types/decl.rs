@@ -960,6 +960,7 @@ impl Decls<'_> {
             }
         }
         let Some((key, theirs, word, host)) = found else {
+            self.loosened(seen, own, &chain);
             return;
         };
         let Some((span, value)) = seen.get(key) else {
@@ -993,6 +994,98 @@ impl Decls<'_> {
                 format!("Correct `{key}`, or build on a type whose rules it fits")
             }),
         );
+    }
+
+    /// A refinement's bound looser than one it inherits (area 2: a
+    /// refinement can only add to the rules of the type it builds on).
+    /// Every rule along the chain still holds, so the looser one would
+    /// never apply and only misleads the reader.
+    fn loosened(
+        &mut self,
+        seen: &BTreeMap<String, (Span, Const)>,
+        own: &Rules,
+        chain: &[(String, Rules)],
+    ) {
+        for (host, rules) in chain {
+            let show_duration = |d: Option<jadpo_std::Dur>| d.map(|d| d.to_string());
+            let pairs: [(&str, bool, Option<String>, &str); 6] = [
+                (
+                    "max",
+                    own.max
+                        .zip(rules.max)
+                        .is_some_and(|(a, b)| a.compare(b).is_gt()),
+                    rules.max.map(rules::show),
+                    "at most",
+                ),
+                (
+                    "min",
+                    own.min
+                        .zip(rules.min)
+                        .is_some_and(|(a, b)| a.compare(b).is_lt()),
+                    rules.min.map(rules::show),
+                    "at least",
+                ),
+                (
+                    "max_length",
+                    own.max_length
+                        .zip(rules.max_length)
+                        .is_some_and(|(a, b)| a > b),
+                    rules.max_length.map(|n| n.to_string()),
+                    "at most",
+                ),
+                (
+                    "min_length",
+                    own.min_length
+                        .zip(rules.min_length)
+                        .is_some_and(|(a, b)| a < b),
+                    rules.min_length.map(|n| n.to_string()),
+                    "at least",
+                ),
+                (
+                    "max",
+                    own.max_duration
+                        .zip(rules.max_duration)
+                        .is_some_and(|(a, b)| a > b),
+                    show_duration(rules.max_duration),
+                    "at most",
+                ),
+                (
+                    "min",
+                    own.min_duration
+                        .zip(rules.min_duration)
+                        .is_some_and(|(a, b)| a < b),
+                    show_duration(rules.min_duration),
+                    "at least",
+                ),
+            ];
+            let Some((key, _, Some(theirs), bound)) =
+                pairs.into_iter().find(|(_, looser, _, _)| *looser)
+            else {
+                continue;
+            };
+            let Some((span, value)) = seen.get(key) else {
+                return;
+            };
+            let written = match value {
+                Const::Number { value, .. } => rules::show(*value),
+                Const::Duration(text) => text.clone(),
+                _ => String::new(),
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_CONSTRAINT_LOOSENED,
+                    format!("`{key}: {written}` loosens `{host}`'s `{key}: {theirs}`"),
+                )
+                .at(span.clone(), format!("looser than `{key}: {theirs}`"))
+                .reason(format!(
+                    "A refinement only adds to the rules of the type it builds on, and every rule along the way still holds, so a value still needs `{key}: {theirs}` and this one would never apply."
+                ))
+                .next(format!(
+                    "Make `{key}` {bound} {theirs}, or remove it"
+                )),
+            );
+            return;
+        }
     }
 
     fn contradictions(
