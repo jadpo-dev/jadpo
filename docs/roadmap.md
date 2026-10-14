@@ -197,6 +197,19 @@ reference only).
 - [ ] **3.3 Writes:** `opus · xhigh` entity operations, conflicts, concurrent-change rerun,
   counters.
 - [ ] **3.4 Lifecycle and purge.** `opus · high`
+- [ ] **3.5 Imports** `opus · xhigh` (area 1, "Imports", 2026-10-14):
+  `use <folder> { Names }` and `use <domain>`, every name not declared in
+  the file imported, built-ins never, a test file seeing its subject's
+  declarations; a declaration another file uses moved to a file of its own,
+  with the one-step fix; errors for a missing, unknown and unused import;
+  `jadpo fmt` adding, removing and sorting imports, then run over every
+  example and every page example to migrate them; go to definition from
+  every use of a name, including on a `use` line. Done when no example or
+  page example checks without its imports.
+- [ ] **3.6 VS Code extension** `sonnet · high`: `editors/vscode` starts
+  `jadpo lsp`, with highlighting, so errors, hover and go to definition work
+  in the editor (area 14, "Editor support"). The archived extension is
+  reference only.
 
 ## Phase 4 — HTTP, identity and policy (areas 7–9)
 
