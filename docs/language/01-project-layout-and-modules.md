@@ -1148,7 +1148,8 @@ rule's real output under [Errors](#errors).
   folder says nothing about its module and vice versa.
 - **Import lists are the only comma-separated brace block.** Every other `{ }`
   block in the language holds one `name: value` item per line; `import m { A, b }`
-  holds a comma list on one line.
+  holds a comma list on one line. The 2026-10-14 `use <folder> { Names }`
+  keeps one, deliberately: see [Imports](#imports).
 - **Three call spellings, by rule.** Your own functions are called bare
   (`add_delivery(x)`), the standard library is always qualified
   (`temporal.in_zone(x)`), and the generated entity operations go through
@@ -1310,7 +1311,10 @@ build/
 - One primary declaration per file, named after it: `ServiceCredential` lives
   in `service_credential.jadpo`. Route groups and libraries are named
   declarations, so the same rule covers them. Supporting types, failures and
-  helpers used only by that file live in it too.
+  helpers used only by that file live in it too. A declaration any other
+  file uses (its own test file aside) has a file of its own, named after it,
+  so every name a `use` line brings in is `<folder>/<name>.jadpo`
+  (2026-10-14, see [Imports](#imports)).
 - A name must convert to its file name and back unchanged, so consecutive
   capitals are not allowed: `VatRate`, not `VATRate` (Rust's guideline too).
 - Names are unique across the whole project and across kinds, so every file
@@ -1334,9 +1338,11 @@ build/
 #### Sharing and promotion
 
 - A type, failure or helper used by one file lives in that file. When a
-  second file in the domain uses it, it must move to the domain's `types/` or
-  `libraries/`; when a second domain does, to `shared/` (pure types and
-  libraries only). Tests never count as users, a route only counts when
+  second file in the domain uses it, it must move to a file of its own in the
+  domain's `types/`, `failures/` or `libraries/`; when a second domain does,
+  to `shared/` (pure types, failures and libraries only). Moving to the
+  right folder is not enough: `DiscountCode` in `types/basket.jadpo` used by
+  another file must move to `types/discount_code.jadpo` (2026-10-14). Tests never count as users, a route only counts when
   nothing else uses the type, and a failure counts where it is raised.
 - Promotion is required: the compiler reports it with a one-step fix, applied
   through the editor or `jadpo fmt --layout`, never silently on save.
@@ -1400,11 +1406,71 @@ build/
   connection's operations take three names (area 11). A call that reaches
   nothing is always reported, never left to fail when it runs (built in
   chunk 2.7).
-- There are no `module` headers and no `import` lists.
+- There are no `module` headers. Imports came back on 2026-10-14 in a
+  different form: see [Imports](#imports).
 - This reverses parts of two accepted contracts, which must be updated if it
   is adopted: the naming contract (NAME-D03 module names, NAME-D04 bare calls
   within a module, NAME-D09 imports) and the event design's rule that
   ownership follows module names.
+
+#### Imports
+
+Decided by Richard on 2026-10-14; not built yet (roadmap chunk 3.5). With
+no imports, a name read in one file could be declared in that file, in its
+domain's `types/`, `failures/` or `entities/`, in `shared/`, or in another
+domain: an agent had to search for it and a reader had to click through
+files. Imports make the place every name comes from readable from the file
+itself, without searching.
+
+Each `use` line names a folder, then the names it brings in, written exactly
+as the code uses them, so finding a name in the page finds its import:
+
+```jadpo fragment
+// domains/sales/actions/price_basket.jadpo
+use shared/types { Pence, Percent }
+use shared/libraries { money }
+use sales/types { Basket, DiscountCode, Receipt }
+use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
+use sales/actions { price_lines }
+use menu
+```
+
+- **Every name not declared in the file is imported**, your own domain's
+  included. A name brought in from `sales/types` is in
+  `domains/sales/types/<name>.jadpo`; one from `shared/types` in
+  `shared/types/<name>.jadpo`. The path leaves out `domains/`, so `shared`,
+  `app`, `config`, `authentication`, `policy` and `flags` cannot name a
+  domain.
+- **What the project declares is imported, root files included**: a
+  connection in `app.jadpo` comes in as `use app { ... }`.
+- **Built-ins are never imported.** Built-in types (`Text`, `Int`,
+  `List<T>`) and standard-library namespaces (`collection.count(...)`) are
+  fixed per language version and can't be declared by a project. An
+  entity's generated operations (`Todo.get(id)`) come with the entity.
+- **Calls into another domain keep the domain's name at the call.** `use menu`
+  brings in the domain, and its public actions, queries and fixtures are
+  called as `menu.price_item(...)`, so a call that crosses domains is
+  visible on its own line. Another domain's public types and failures come
+  in by folder like any other name: `use menu/types { MenuItem }`.
+- **A test file sees everything its subject file declares** without
+  importing it, so `price_item.test.jadpo` calls the `loaf_price` helper
+  in `price_item.jadpo` directly. Anything else it uses is imported.
+- **Reading a name therefore has three answers:** it is on a `use` line, so
+  it is in `<folder>/<name>.jadpo`; it is a built-in; or it is declared in
+  this file.
+- **The formatter keeps imports.** One line per folder, sorted, and
+  `jadpo fmt` or the editor adds a missing import and removes an unused one.
+  Names are unique across the project, so the import for a name is never in
+  doubt and a forgotten one is fixed, not a compile failure for an agent.
+  `jadpo check` still reports an import that names nothing, and one the
+  file doesn't use.
+- **Every name clicks through in the editor.** Go to definition from any
+  use of a name, in a body, a signature or a `use` line, opens its
+  declaration in its `.jadpo` file.
+
+This brings back the one comma-separated `{ }` list in the language (see
+[Consistency](#consistency-with-the-rest-of-the-language)), accepted because
+the names have to appear exactly as the code writes them.
 
 #### Database
 
@@ -1580,7 +1646,7 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Promotion | Required with a one-step fix; demotion never forced | 2026-10-12 |
 | Helpers | Descriptions written once as `///`; catalogue, callers and impact computed; duplicates flagged by `jadpo check` | 2026-10-12 |
 | Domains folder | Domains live in `domains/`, so every root entry is fixed by the language | 2026-10-12 |
-| Call naming | The dot names the owner of what you call; own-domain actions and queries are bare; no imports | 2026-10-12 |
+| Call naming | The dot names the owner of what you call; own-domain actions and queries are bare; no imports (Amended 2026-10-14: imports are back, see Imports) | 2026-10-12 |
 | New domains | Creating or renaming a domain appears in the approval review, like a policy change | 2026-10-12 |
 | Policy protection | Through the approval check wherever policy lives, not by file path | 2026-10-12 |
 | Deployables | Declarations in one project, each compiled from what it reaches | 2026-10-12 |
@@ -1597,3 +1663,5 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 | Flags and monitoring files | `flags.jadpo` joins the fixed root; each domain may hold one `monitoring.jadpo` directly in its folder (Richard, from the architecture plan) | 2026-10-13 |
 | Public fixtures | A fixture may be `public`, offered to other domains' tests, fixtures and seeds and to scenarios in root `tests/`, which call it through its domain (`planning.alice_with_todos()`); only tests, fixtures and seeds ever call a fixture, and a private one stays its own domain's. Area 13 wins over the earlier rule here that `public` on a fixture was `visibility.public_not_allowed` (Richard) | 2026-10-14 |
 | Unused `public` | `public` on a declaration nothing outside its domain uses is the error `visibility.public_unused`, whose edit removes `public`. Users are another domain's code, root `tests/` scenarios, and the signature of another public declaration that is itself used outside; the domain's own tests don't count. A package's public members are its interface to other projects and are exempt (area 11) (Richard) | 2026-10-14 |
+| Imports | Every name not declared in a file is imported with `use <folder> { Names }`, own domain included; built-ins are never imported; another domain is brought in with `use <domain>` and its calls keep the domain's name; a test file sees its subject's declarations; the formatter adds and removes imports; go to definition works from every use of a name. Reverses "no imports" (Richard) | 2026-10-14 |
+| A file per shared name | A declaration any other file uses has a file of its own named after it; supporting declarations used only by their file (and its test) stay in it (Richard) | 2026-10-14 |
