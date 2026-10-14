@@ -11,16 +11,16 @@ pub fn divide(dividend: Decimal, divisor: Decimal, rounding: Rounding) -> Result
     if divisor.is_zero() {
         return Err(Fault::DivisionByZero);
     }
-    // a / 10^s1 ÷ b / 10^s2, kept at scale s1, is a × 10^s2 ÷ b.
-    let lift = 10i128
-        .checked_pow(divisor.scale)
-        .ok_or(Fault::DecimalOverflow)?;
-    let numerator = dividend
-        .mantissa
-        .checked_mul(lift)
-        .ok_or(Fault::DecimalOverflow)?;
-    let mantissa = crate::rounding::divide(numerator, divisor.mantissa, rounding)
-        .ok_or(Fault::DecimalOverflow)?;
+    // a / 10^s1 ÷ b / 10^s2, kept at scale s1, is a × 10^s2 ÷ b, worked
+    // out as wide as it needs.
+    let (mantissa, _) = crate::rounding::divide_shifted(
+        dividend.mantissa,
+        divisor.scale,
+        divisor.mantissa,
+        rounding,
+        0,
+    )
+    .ok_or(Fault::DecimalOverflow)?;
     Decimal::new(mantissa, dividend.scale)
         .rescale(dividend.scale, rounding)
         .ok_or(Fault::DecimalOverflow)
@@ -52,6 +52,17 @@ mod tests {
         assert_eq!(
             divide(half, Decimal::new(0, 0), Rounding::Up),
             Err(Fault::DivisionByZero)
+        );
+        // A divisor with many places lifts a large dividend past an i128
+        // on the way, though the share itself fits.
+        let large = Decimal::new(10i128.pow(36), 2);
+        assert_eq!(
+            divide(
+                large,
+                Decimal::new(2 * 10i128.pow(10), 10),
+                Rounding::HalfEven
+            ),
+            Ok(Decimal::new(5 * 10i128.pow(35), 2))
         );
     }
 }

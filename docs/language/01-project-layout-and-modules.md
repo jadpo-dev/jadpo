@@ -1336,7 +1336,12 @@ build/
   Your own domain's actions and queries are called bare
   (`complete_todo(todo_id)`). Searching for `inventory.` finds calls into that
   domain, but not generated entity operations such as `Order.get`, which are
-  named by their entity.
+  named by their entity. A call names one owner: a library is called by its
+  own name, never through its domain, so `pantry.sacks.grams_in(1)` or
+  `pantry.nonexistent.thing(x)` is `semantic.unknown_callee`; only a
+  connection's operations take three names (area 11). A call that reaches
+  nothing is always reported, never left to fail when it runs (built in
+  chunk 2.7).
 - There are no `module` headers and no `import` lists.
 - This reverses parts of two accepted contracts, which must be updated if it
   is adopted: the naming contract (NAME-D03 module names, NAME-D04 bare calls

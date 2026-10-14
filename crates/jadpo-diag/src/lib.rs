@@ -327,6 +327,8 @@ rules! {
         "02-values-and-types.html#type-constraint-base", "Constraint does not fit the type's base";
     TYPE_CONSTRAINT_CONTRADICTION: "type.constraint_contradiction", area 2, Error, Agent,
         "02-values-and-types.html#type-constraint-contradiction", "Constraints contradict each other";
+    TYPE_CONSTRAINT_LOOSENED: "type.constraint_loosened", area 2, Error, Agent,
+        "02-values-and-types.html#type-constraint-loosened", "Refinement loosens a rule it inherits";
     TYPE_CONSTRAINT_REPEATED: "type.constraint_repeated", area 2, Error, Agent,
         "02-values-and-types.html#type-constraint-repeated", "Constraint is given twice";
     TYPE_CONSTRUCTOR_ARGUMENT_COUNT: "type.constructor_argument_count", area 2, Error, Agent,

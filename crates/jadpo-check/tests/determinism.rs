@@ -11,67 +11,15 @@
 mod examples;
 mod support;
 
-use std::collections::BTreeMap;
-
 use jadpo_check::graph::graph;
 use jadpo_db::{Database, Layout};
 use jadpo_graph::Graph;
 use jadpo_graph::manifest::{Stamp, manifest};
 
-/// Each `check` project on the language pages: its name and its files.
+/// Every corpus project: each language page's `check` projects and each
+/// teaching example, by name, with its files.
 fn corpus() -> Vec<(String, Vec<(String, String)>)> {
-    let mut projects: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
-    let mut counters: BTreeMap<String, usize> = BTreeMap::new();
-    for example in examples::all() {
-        if !example.area_page {
-            continue;
-        }
-        let page = example
-            .place
-            .split(':')
-            .next()
-            .unwrap_or_default()
-            .to_string();
-        let n = counters.entry(page.clone()).or_default();
-        *n += 1;
-        if !example.attrs.iter().any(|attr| attr == "check") {
-            continue;
-        }
-        let attr = |name: &str| {
-            example
-                .attrs
-                .iter()
-                .find_map(|attr| attr.strip_prefix(&format!("{name}=")))
-                .map(str::to_string)
-        };
-        let project = attr("project").unwrap_or_else(|| format!("example-{n}"));
-        let file = attr("file").unwrap_or_else(|| "main.jadpo".to_string());
-        if !file.ends_with(".jadpo") {
-            continue;
-        }
-        projects
-            .entry(format!("{page} {project}"))
-            .or_default()
-            .push((file, example.source));
-    }
-    // The teaching examples' projects (examples/<project>/), which the
-    // spec corpus holds too (tools/examples.py).
-    for example in examples::all() {
-        let Some(rest) = example.place.strip_prefix("examples/") else {
-            continue;
-        };
-        let Some((project, file)) = rest.split_once('/') else {
-            continue;
-        };
-        if !file.ends_with(".jadpo") || project == "golden-todo" {
-            continue;
-        }
-        projects
-            .entry(format!("examples {project}"))
-            .or_default()
-            .push((file.to_string(), example.source));
-    }
-    projects.into_iter().collect()
+    examples::projects()
 }
 
 fn layout(files: &[(String, String)]) -> Layout {

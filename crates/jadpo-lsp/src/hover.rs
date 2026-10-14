@@ -191,14 +191,9 @@ fn members(graph: &Graph, id: NodeId, base: &Base) -> Vec<String> {
 }
 
 fn ordered_children(graph: &Graph, id: NodeId) -> Vec<NodeId> {
-    let mut children: Vec<NodeId> = graph
-        .children(id)
-        .filter(|&child| graph.node(child).kind == Kind::Field)
-        .collect();
-    // In the order they are written; a copied field sits at the entry that
-    // copied it.
-    children.sort_by_key(|&child| graph.node(child).place.as_ref().map(|p| p.start));
-    children
+    // In the order they are declared; a copied field sits at the line that
+    // copied it, in its source's order.
+    graph.fields(id)
 }
 
 /// A field as Jadpo, with where it came from when a copying line is

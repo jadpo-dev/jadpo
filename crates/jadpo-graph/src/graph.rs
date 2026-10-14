@@ -3,7 +3,7 @@
 //! changed; the next check builds a new one. Indexes are positions in this
 //! graph only and are never written out: the manifest names nodes by key.
 
-use crate::{EdgeKind, Key, Kind, Node};
+use crate::{Detail, EdgeKind, Key, Kind, Node};
 
 /// A node's position in one graph.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -121,6 +121,20 @@ impl Graph {
         let key = &self.node(parent).key;
         self.ids()
             .filter(move |&id| self.node(id).parent.as_ref() == Some(key))
+    }
+
+    /// The fields of a type, entity, variant or failure, in the order they
+    /// are declared (each field's `order`), never their keys' order.
+    pub fn fields(&self, parent: NodeId) -> Vec<NodeId> {
+        let mut fields: Vec<NodeId> = self
+            .children(parent)
+            .filter(|&id| self.node(id).kind == Kind::Field)
+            .collect();
+        fields.sort_by_key(|&id| match &self.node(id).detail {
+            Detail::Field { order, .. } => *order,
+            _ => u32::MAX,
+        });
+        fields
     }
 }
 

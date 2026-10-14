@@ -570,7 +570,10 @@ action find_customer(id: Customer.id)
 
 Decided in area 3: one `match` handles a call's outcome. Every failure the
 call can produce needs an arm, with no `_`; an arm recovers with a value,
-maps with `reject` or passes the failure on with `propagate`.
+maps with `reject` or passes the failure on with `propagate`. The arms
+handle only the call itself: a failure that leaves while its arguments are
+worked out leaves the callable around the `match`, as it would anywhere
+else (built in chunk 2.7).
 
 ```jadpo check project=outcome file=lookup.jadpo hidden
 type LookupCode = Text {}

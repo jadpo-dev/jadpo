@@ -89,30 +89,26 @@ impl Decimal {
     /// the operands' larger scale, rounded half to even there, and rounded
     /// again, half to even, when it is stored in a type with a fixed scale
     /// (area 3, question 7). Trailing zeros past the operands' scale are
-    /// dropped, so `10.00 / 4.00` is `2.50`. `None` for a zero divisor or
-    /// past 38 digits.
+    /// dropped, so `10.00 / 4.00` is `2.50`. The scaled dividend is worked
+    /// out as wide as it needs, so large operands keep every place. `None`
+    /// for a zero divisor, or when the result itself is past 38 digits or
+    /// 38 places.
     pub fn quotient(self, other: Decimal) -> Option<Decimal> {
         if other.is_zero() {
             return None;
         }
         let base = self.scale.max(other.scale);
-        // As many extra places as the numerator has room for.
-        for extra in (0..=QUOTIENT_PLACES).rev() {
-            let scale = (base + extra).min(Decimal::MAX_DIGITS);
-            // a / 10^sa ÷ b / 10^sb, kept at `scale`, is a × 10^(scale - sa + sb) ÷ b.
-            let Some(shift) = (scale + other.scale).checked_sub(self.scale) else {
-                continue;
-            };
-            let Some(numerator) = 10i128
-                .checked_pow(shift)
-                .and_then(|factor| self.mantissa.checked_mul(factor))
-            else {
-                continue;
-            };
-            let mantissa = crate::rounding::divide(numerator, other.mantissa, Rounding::HalfEven)?;
-            return bounded(Decimal::new(mantissa, scale).trimmed(base));
-        }
-        None
+        let scale = base + QUOTIENT_PLACES;
+        // a / 10^sa ÷ b / 10^sb, kept at `scale`, is a × 10^(scale - sa + sb) ÷ b.
+        let shift = scale + other.scale - self.scale;
+        let (mantissa, dropped) = crate::rounding::divide_shifted(
+            self.mantissa,
+            shift,
+            other.mantissa,
+            Rounding::HalfEven,
+            QUOTIENT_PLACES,
+        )?;
+        bounded(Decimal::new(mantissa, scale - dropped))
     }
 
     /// The same value at exactly `scale` places, rounded as `rounding` says
@@ -158,15 +154,11 @@ impl PartialOrd for Decimal {
 }
 
 impl Ord for Decimal {
-    /// By value: `1.5` equals `1.50`.
+    /// By value: `1.5` equals `1.50`. Exact whatever the scales, through
+    /// the comparison the checker's bounds use ([`jadpo_std::compare_exact`]),
+    /// so the order is total and agrees with equality.
     fn cmp(&self, other: &Decimal) -> Ordering {
-        match self.aligned(*other) {
-            Some((a, b, _)) => a.cmp(&b),
-            // Only reachable with scales far beyond any declared `scale:`.
-            None => {
-                (self.mantissa.signum(), self.scale).cmp(&(other.mantissa.signum(), other.scale))
-            }
-        }
+        jadpo_std::compare_exact(self.mantissa, self.scale, other.mantissa, other.scale)
     }
 }
 
@@ -446,9 +438,56 @@ mod tests {
             Some(decimal("0.14"))
         );
         assert_eq!(decimal("1").quotient(decimal("0")), None);
+        // Large operands keep all 18 places before the value is stored:
+        // fewer would round 333333.3349999... up to 333333.335 first.
+        let share = decimal("100000000499999999999.99")
+            .quotient(decimal("300000000000000.00"))
+            .expect("a quotient");
+        assert_eq!(share.scale, 2 + QUOTIENT_PLACES);
+        assert_eq!(
+            share.rescale(2, Rounding::HalfEven),
+            Some(decimal("333333.33"))
+        );
+        assert_eq!(
+            decimal("10000000000000000000000000000000000000")
+                .quotient(decimal("1"))
+                .map(|d| d.to_string())
+                .as_deref(),
+            Some("10000000000000000000000000000000000000"),
+            "38 digits divided by 1"
+        );
+        assert_eq!(
+            decimal("10000000000000000000000000000000000000").quotient(decimal("0.1")),
+            None,
+            "39 digits"
+        );
+        assert_eq!(
+            decimal("-1.00")
+                .quotient(decimal("8.00"))
+                .map(|d| d.to_string())
+                .as_deref(),
+            Some("-0.125")
+        );
         let big = Decimal::new(99_999_999_999_999_999_999_999_999_999_999_999_999, 0);
         assert_eq!(big.checked_add(decimal("1")), None, "39 digits");
         assert_eq!(Decimal::parse(&"9".repeat(39)), None);
+    }
+
+    #[test]
+    fn decimals_far_apart_in_scale_compare_exactly() {
+        let big = decimal("10000000000000000000.00");
+        let third = decimal("1.00")
+            .quotient(decimal("3.00"))
+            .expect("a quotient");
+        assert!(big > third, "{big} > {third}");
+        assert!(third < big);
+        assert_ne!(big, third);
+        let set = Value::set(vec![
+            Value::Decimal(big),
+            Value::Decimal(third),
+            Value::Decimal(decimal("10000000000000000000.0")),
+        ]);
+        assert_eq!(set.items().map(<[Value]>::len), Some(2), "{set}");
     }
 
     #[test]

@@ -170,6 +170,13 @@ pub enum Detail {
         failure: Option<FailureDetail>,
     },
     Field {
+        /// Its place among its owner's fields, from 0, in the order they
+        /// are declared (area 2): a field an `include` or `pick` copies
+        /// sits where that line is, in the order its source declares it,
+        /// and a written field that replaces a copied one takes its place.
+        /// A failure's fields count on across its `client` and `internal`
+        /// blocks. Values hold their fields in this order.
+        order: u32,
         /// The declared type: `List<Tag>`, `Note.id?`.
         ty: TypeRef,
         optional: bool,

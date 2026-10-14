@@ -136,7 +136,7 @@ reference only).
 - [x] **2.6 Conditions as proof** `opus · xhigh`: an `if` condition narrows
   the ranges the checker knows, so a construction it makes safe needs no
   `attempt`, and the compiler reports the call sites that flip.
-- [ ] **2.7 Phase 2 review: soundness** `opus · xhigh`. Proofs that pass
+- [x] **2.7 Phase 2 review: soundness** `opus · xhigh`. Proofs that pass
   invalid values: a `Text` built into an `Email`, `Url` or `IpAddress` type
   unchecked (the built-in check becomes a `format` rule, reachable from a
   `format:` arm); decimal comparison and ordering that overflow into a

@@ -16,7 +16,7 @@ use jadpo_graph::body::{
 use jadpo_graph::{Key, TypeRef};
 use jadpo_runtime::{Ctx, Failure, Fault, FaultKind, Frame};
 use jadpo_std::{Builtin, Kind as ParamKind};
-use jadpo_value::{Invalid, Value, ops};
+use jadpo_value::{Value, ops};
 
 use crate::program::Program;
 use crate::{Assertion, Outcome, Part};
@@ -27,10 +27,11 @@ pub(crate) enum Stop {
     Failed(Box<Failure>),
     Fault(Box<Fault>),
     /// A construction's value broke a rule, for the `attempt` whose block
-    /// maps it: the rule's key (`max`), `None` when the built-in type
-    /// itself refused the value, and the rule as written for the report.
+    /// maps it: the rule's key (`max`, or `format` when a built-in type
+    /// such as `Email` refused the text), and the rule as written for the
+    /// report.
     Invalid {
-        rule: Option<String>,
+        rule: String,
         written: String,
     },
     Assertion(Box<Assertion>),
@@ -331,7 +332,7 @@ impl<'p> Interp<'p> {
             let TypeRef::Node(expected) = expected else {
                 return Err(self.defect("an `assert … fails` naming no failure", id));
             };
-            let got = match self.eval(f, value) {
+            let got = match self.subject(f, value)? {
                 Err(Stop::Failed(failure)) if failure.key == expected.as_str() => return Ok(()),
                 Err(Stop::Failed(failure)) => crate::Got::Failure(failure),
                 Ok(value) => crate::Got::Value(value),
@@ -431,12 +432,52 @@ impl<'p> Interp<'p> {
 
     fn eval(&mut self, f: &mut Running<'p>, id: SiteId) -> Eval<Value> {
         let value = self.evaluate(f, id)?;
+        self.remember(id, &value);
+        Ok(value)
+    }
+
+    /// Keeps a value an `assert`'s condition gave, for its report.
+    fn remember(&mut self, id: SiteId, value: &Value) {
         if let Some(record) = &mut self.record
             && record.depth == self.ctx.depth()
         {
             record.values.push((id, value.clone()));
         }
-        Ok(value)
+    }
+
+    /// The subject of an outcome `match` or of `assert ... fails`, split
+    /// in two: the outer result is its arguments, worked out first, whose
+    /// failures leave the enclosing callable as they would anywhere else;
+    /// the inner one is the call itself, the only outcome the `match` or
+    /// the `assert` handles (areas 3 and 13).
+    fn subject(&mut self, f: &mut Running<'p>, id: SiteId) -> Eval<Eval<Value>> {
+        let body = f.body;
+        let called = match body.sites.get(id.0 as usize).map(|site| &site.node) {
+            Some(Node::Expr(Expr::Call {
+                callee:
+                    Callee::Function(key)
+                    | Callee::Action(key)
+                    | Callee::Fixture(key)
+                    | Callee::LibraryFunction(key),
+                args,
+                ..
+            })) => Some((key, args)),
+            _ => None,
+        };
+        let Some((key, args)) = called else {
+            // Nothing else an outcome is matched on has arguments that can
+            // fail: the checker refuses the rest as subjects.
+            return Ok(self.eval(f, id));
+        };
+        let Some(callee) = self.program.id(key) else {
+            return Err(self.defect("a call to a callable that has no body", id));
+        };
+        let values = self.args(f, args, id)?;
+        let outcome = self.invoke(callee, values, id);
+        if let Ok(value) = &outcome {
+            self.remember(id, value);
+        }
+        Ok(outcome)
     }
 
     fn evaluate(&mut self, f: &mut Running<'p>, id: SiteId) -> Eval<Value> {
@@ -481,11 +522,19 @@ impl<'p> Interp<'p> {
                 for item in items {
                     values.push(self.eval(f, *item)?);
                 }
-                Ok(if self.program.types.is_set(&site.ty) {
+                let list = if self.program.types.is_set(&site.ty) {
                     Value::set(values)
                 } else {
                     Value::list(values)
-                })
+                };
+                // A list written into a type with lengths is proved by the
+                // checker, as a literal is.
+                if self.program.proof_checks
+                    && let Err(invalid) = self.program.types.validator(&site.ty).check(&list)
+                {
+                    return Err(self.proof_broken(&invalid, id));
+                }
+                Ok(list)
             }
             Expr::Binary { op, lhs, rhs } => self.binary(f, id, *op, *lhs, *rhs),
             Expr::Unary { op, operand } => {
@@ -719,15 +768,32 @@ impl<'p> Interp<'p> {
         let Some(value) = validator.store(value) else {
             return Err(self.fault(FaultKind::DecimalOverflow, id));
         };
-        if matches!(fallible, Fallible::Construction { .. })
+        if matches!(fallible, Fallible::Construction { .. }) {
+            if let Err(invalid) = validator.check(&value) {
+                return Err(Stop::Invalid {
+                    rule: invalid.key().to_string(),
+                    written: format!("`{}`", invalid.rule()),
+                });
+            }
+        } else if self.program.proof_checks
             && let Err(invalid) = validator.check(&value)
         {
-            return Err(Stop::Invalid {
-                rule: rule_key(&invalid),
-                written: format!("`{}`", invalid.rule()),
-            });
+            return Err(self.proof_broken(&invalid, id));
         }
         Ok(value)
+    }
+
+    /// A value the checker proved follows its type's rules, breaking one:
+    /// a hole in the proof, found only when proofs are checked again
+    /// ([`Program::with_proof_checks`]).
+    fn proof_broken(&mut self, invalid: &jadpo_value::Invalid, id: SiteId) -> Stop {
+        self.defect(
+            &format!(
+                "a value the checker proved follows its type's rules, breaking `{}`",
+                invalid.rule()
+            ),
+            id,
+        )
     }
 
     /// `Type { ... }` or `Enum.variant { ... }`: each field as its field
@@ -750,14 +816,18 @@ impl<'p> Interp<'p> {
             let Some(value) = validator.store(value) else {
                 return Err(self.fault(FaultKind::DecimalOverflow, id));
             };
-            if matches!(fallible, Fallible::Construction { .. })
+            if matches!(fallible, Fallible::Construction { .. }) {
+                if let Err(invalid) = validator.check(&value) {
+                    let name = self.program.types.field_name(field).to_string();
+                    return Err(Stop::Invalid {
+                        rule: invalid.key().to_string(),
+                        written: format!("`{}` on `{name}`", invalid.rule()),
+                    });
+                }
+            } else if self.program.proof_checks
                 && let Err(invalid) = validator.check(&value)
             {
-                let name = self.program.types.field_name(field).to_string();
-                return Err(Stop::Invalid {
-                    rule: rule_key(&invalid),
-                    written: format!("`{}` on `{name}`", invalid.rule()),
-                });
+                return Err(self.proof_broken(&invalid, *site));
             }
             given.push((field.clone(), value));
         }
@@ -816,10 +886,7 @@ impl<'p> Interp<'p> {
         };
         match self.eval(f, inner) {
             Err(Stop::Invalid { rule, written }) => {
-                let arm = match &rule {
-                    Some(rule) => RuleArm::for_rule(arms, rule),
-                    None => arms.iter().find(|arm| arm.rule.is_none()),
-                };
+                let arm = RuleArm::for_rule(arms, &rule);
                 let Some(arm) = arm else {
                     return Err(
                         self.defect("a construction that can fail, with no failure for it", id)
@@ -879,7 +946,7 @@ impl<'p> Interp<'p> {
         subject: SiteId,
         arms: &'p [Arm],
     ) -> Eval<Value> {
-        match self.eval(f, subject) {
+        match self.subject(f, subject)? {
             Ok(value) => {
                 let Some(arm) = arms.iter().find(|arm| arm.pattern == Pattern::Success) else {
                     return Err(self.defect("an outcome `match` without `success`", id));
@@ -950,18 +1017,5 @@ impl<'p> Interp<'p> {
                 return Err(self.defect("an outcome pattern on a value", id));
             }
         })
-    }
-}
-
-/// The key of the rule a value broke, as an `attempt`'s arms name it:
-/// `max` for `max: 1000`; `None` when the built-in type refused it.
-fn rule_key(invalid: &Invalid) -> Option<String> {
-    match invalid {
-        Invalid::Broken(broken) => broken
-            .rule
-            .split(':')
-            .next()
-            .map(|key| key.trim().to_string()),
-        Invalid::Builtin(_) => None,
     }
 }

@@ -113,3 +113,63 @@ pub fn all() -> Vec<Example> {
     }
     examples
 }
+
+/// The specification corpus as projects (docs/compiler-runtime.md §2.7):
+/// each language page's `check` projects, named `<page> <project>`, and
+/// each teaching example in `examples/`, named `examples <project>`, with
+/// their files by project-relative path.
+pub fn projects() -> Vec<(String, Vec<(String, String)>)> {
+    use std::collections::BTreeMap;
+    let mut projects: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let mut counters: BTreeMap<String, usize> = BTreeMap::new();
+    for example in all() {
+        if !example.area_page {
+            continue;
+        }
+        let page = example
+            .place
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let n = counters.entry(page.clone()).or_default();
+        *n += 1;
+        if !example.attrs.iter().any(|attr| attr == "check") {
+            continue;
+        }
+        let attr = |name: &str| {
+            example
+                .attrs
+                .iter()
+                .find_map(|attr| attr.strip_prefix(&format!("{name}=")))
+                .map(str::to_string)
+        };
+        let project = attr("project").unwrap_or_else(|| format!("example-{n}"));
+        let file = attr("file").unwrap_or_else(|| "main.jadpo".to_string());
+        if !file.ends_with(".jadpo") {
+            continue;
+        }
+        projects
+            .entry(format!("{page} {project}"))
+            .or_default()
+            .push((file, example.source));
+    }
+    // The teaching examples' projects (examples/<project>/), which the
+    // spec corpus holds too (tools/examples.py).
+    for example in all() {
+        let Some(rest) = example.place.strip_prefix("examples/") else {
+            continue;
+        };
+        let Some((project, file)) = rest.split_once('/') else {
+            continue;
+        };
+        if !file.ends_with(".jadpo") || project == "golden-todo" {
+            continue;
+        }
+        projects
+            .entry(format!("examples {project}"))
+            .or_default()
+            .push((file.to_string(), example.source));
+    }
+    projects.into_iter().collect()
+}

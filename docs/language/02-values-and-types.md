@@ -93,7 +93,9 @@ Built in chunk 1.9: a refinement can only add to the rules of the type it
 builds on, so a `max` below an inherited `min` (or the other way round, for
 lengths and durations too) is `type.constraint_contradiction`, and so is a
 `Decimal` refinement whose `scale` differs from the one it inherits, since
-the scale decides how the value is stored and sent. The same settings rules
+the scale decides how the value is stored and sent. Since chunk 2.7, a bound
+looser than the one it inherits (`max_length: 50` on a type with
+`max_length: 40`) is `type.constraint_loosened`. The same settings rules
 hold for the fields of every type with fields, entities and events included;
 the settings later areas add to an entity's or event's fields (`generated`,
 `on_delete`, `unique`, `immutable`, `role`, `personal`, `erase`,
@@ -243,8 +245,47 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
 - **What the compiler can't reason about can always break.** A `pattern`
   other than the value's own always counts as able to break. `scale` never
   does: it rounds the value as it is kept.
+- **A validated built-in type's check is `format`.** A type built on
+  `Email`, `Url` or `IpAddress` checks its text, and when the value isn't
+  already built on the same type, that check is the `format` rule and can
+  break (built in chunk 2.7). An `Email` already is an address, and so is
+  text whose own type has `format: TextFormat.email`, the same check.
 - **Every failure is `invalid_value`.** At runtime the failure records the
-  rule that broke, such as `max: 12`, for the log, never the value.
+  rule that broke, such as `max: 12`, or the built-in type whose check
+  refused the text, such as `Email`, for the log, never the value.
+
+```jadpo check project=by-rule-format
+type ContactText = Text {
+    max_length: 200
+}
+
+type WorkEmail = Email {
+    pattern: ".*@acme[.]com"
+}
+
+type NotAnAddress = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type NotWork = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function work_email(text: ContactText) fails NotAnAddress, NotWork -> WorkEmail {
+    var email: WorkEmail = attempt WorkEmail(text) {  // any text, so the address check can break
+        format: NotAnAddress
+        pattern: NotWork
+    }
+    return email
+}
+
+function work_address(address: Email) fails NotWork -> WorkEmail {
+    var email: WorkEmail = attempt WorkEmail(address) {  // already an address: only the pattern
+        pattern: NotWork
+    }
+    return email
+}
+```
 
 ### Conditions as proof
 
@@ -1024,7 +1065,9 @@ output Basket {
 :::
 
 A collection keeps its element type: a `List<Customer.email>` is not a
-`List<Email>`. Collections are written as types today, but there are no list
+`List<Email>`, and nothing converts one collection into another:
+`List<Tag>(names)` is `type.constructor_input`, since only a named type is
+built from a value (built in chunk 2.7). Collections are written as types today, but there are no list
 literals, no iteration and no collection functions yet; lists come from
 queries and request bodies (Review, question 4).
 
@@ -1825,6 +1868,37 @@ error: `max_length: 3` is below `min_length: 10`
 check failed: 1 error, 1 file
 ```
 
+### `type.constraint_loosened`
+
+A refinement can only add to the rules of the type it builds on (built in
+chunk 2.7). Every rule along the chain still holds, so a looser bound would
+never apply and would only mislead the reader:
+
+```jadpo check project=e-constraint-loosened expect=type.constraint_loosened
+type ProductName = Text {
+    min_length: 1
+    max_length: 120
+}
+
+type ShortProductName = ProductName {
+    max_length: 150
+}
+```
+
+```text output
+error: `max_length: 150` loosens `ProductName`'s `max_length: 120`
+ --> main.jadpo:7:5
+  |
+7 |     max_length: 150
+  |     ^^^^^^^^^^ looser than `max_length: 120`
+  reason: A refinement only adds to the rules of the type it builds on, and every rule along the way still holds, so a value still needs `max_length: 120` and this one would never apply.
+  next: Make `max_length` at most 120, or remove it (agent)
+  rule: type.constraint_loosened
+  help: docs/language/02-values-and-types.html#type-constraint-loosened
+
+check failed: 1 error, 1 file
+```
+
 ### `type.invalid_pattern`
 
 A pattern must match the whole text and uses a subset of regular expressions without backreferences or lookaround (question 9):
@@ -2523,6 +2597,11 @@ Rules:
 
 - **Top to bottom.** The same kind of line may appear more than once, and the
   formatter keeps the order written, because order matters here.
+- **Fields keep their declared order.** Copied fields stand where their
+  `include` or `pick` line is, an `include`'s in the order its type
+  declares them and a `pick`'s in the order listed; a written field that
+  replaces a copied one takes its place. Values, hover and the manifest
+  (each field's `order`) follow it (built in chunk 2.7).
 - **Lists are always in brackets**, even with one entry: `include: [Todo]`.
 - **`omit` removes only what is there.** Omitting a field that is not present
   at that point is an error, which catches typos and fields since removed.
@@ -2668,7 +2747,12 @@ type RetagTodo = Input {
 boundary is a compile error, because JSON object keys are text. Built in
 chunk 1.9: a map in an `Input` or `Output`, however nested, is keyed by a type
 built on `Text` or `Uuid` (`type.map_key_boundary`), and a set literal that
-repeats a value is `type.invalid_literal`.
+repeats a value is `type.invalid_literal`. Built in chunk 2.7: a list
+written where a named set type is expected (`type Tags = Set<TagName> {}`)
+is a set, so `[b, a]` equals `[a, b]`; and since equal computed items
+collapse, a set literal's `min_length` counts only its distinct literals,
+or one value when it has any items, so `[a, b]` into a set type with
+`min_length: 2` is `type.invalid_literal`.
 
 #### Q6: no transparent aliases
 

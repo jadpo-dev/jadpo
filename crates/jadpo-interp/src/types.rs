@@ -117,18 +117,53 @@ impl Types {
         None
     }
 
-    /// What values of `ty` are made of: `Text` for an `Email`.
-    pub fn representation(&self, ty: &TypeRef) -> Option<Builtin> {
-        self.chain(ty, &mut Vec::new()).map(Builtin::representation)
+    /// The rules along `ty`'s chain down to a collection, most specific
+    /// first: the lengths a list or set type adds.
+    pub fn length_rules(&self, ty: &TypeRef) -> Vec<Rules> {
+        let mut rules = Vec::new();
+        let mut current = ty.clone();
+        for _ in 0..256 {
+            match current {
+                TypeRef::Nullable(inner) => current = *inner,
+                TypeRef::Node(key) => match self.node(&key).map(|node| &node.detail) {
+                    Some(Detail::Type {
+                        base: Base::Refines(parent),
+                        rules: own,
+                        ..
+                    }) => {
+                        rules.push(own.clone());
+                        current = parent.clone();
+                    }
+                    _ => break,
+                },
+                TypeRef::Field(key) => match self.node(&key).map(|node| &node.detail) {
+                    Some(Detail::Field { ty, rules: own, .. }) => {
+                        rules.push(own.clone());
+                        current = ty.clone();
+                    }
+                    _ => break,
+                },
+                _ => break,
+            }
+        }
+        rules
     }
 
-    /// Whether `ty` is a set.
-    pub fn is_set(&self, ty: &TypeRef) -> bool {
+    /// What `ty` is built on and its rules along the way, most specific
+    /// first; `None` for an object, an enum or a container.
+    pub fn rules(&self, ty: &TypeRef) -> Option<(Builtin, Vec<Rules>)> {
+        let mut rules = Vec::new();
+        let builtin = self.chain(ty, &mut rules)?;
+        Some((builtin, rules))
+    }
+
+    /// Whether a value of `ty` may be `none`: a `T?`, or a field type
+    /// declared as one.
+    pub fn is_nullable(&self, ty: &TypeRef) -> bool {
         let mut current = ty;
-        loop {
+        for _ in 0..256 {
             match current {
-                TypeRef::Set(_) => return true,
-                TypeRef::Nullable(inner) => current = inner,
+                TypeRef::Nullable(_) => return true,
                 TypeRef::Field(key) => match self.node(key).map(|node| &node.detail) {
                     Some(Detail::Field { ty, .. }) => current = ty,
                     _ => return false,
@@ -136,6 +171,45 @@ impl Types {
                 _ => return false,
             }
         }
+        false
+    }
+
+    /// What values of `ty` are made of: `Text` for an `Email`.
+    pub fn representation(&self, ty: &TypeRef) -> Option<Builtin> {
+        self.chain(ty, &mut Vec::new()).map(Builtin::representation)
+    }
+
+    /// Whether `ty` is a set: written `Set<T>`, or a named type or a field
+    /// type built on one.
+    pub fn is_set(&self, ty: &TypeRef) -> bool {
+        matches!(self.collection(ty), Some(TypeRef::Set(_)))
+    }
+
+    /// The `List<T>` or `Set<T>` that `ty` is, or that the named type or
+    /// field type `ty` is built on.
+    pub fn collection<'t>(&'t self, ty: &'t TypeRef) -> Option<&'t TypeRef> {
+        let mut current = ty;
+        // A chain is acyclic once checked; the bound only keeps a defect
+        // from looping.
+        for _ in 0..256 {
+            match current {
+                TypeRef::List(_) | TypeRef::Set(_) => return Some(current),
+                TypeRef::Nullable(inner) => current = inner,
+                TypeRef::Field(key) => match self.node(key).map(|node| &node.detail) {
+                    Some(Detail::Field { ty, .. }) => current = ty,
+                    _ => return None,
+                },
+                TypeRef::Node(key) => match self.node(key).map(|node| &node.detail) {
+                    Some(Detail::Type {
+                        base: Base::Refines(parent),
+                        ..
+                    }) => current = parent,
+                    _ => return None,
+                },
+                _ => return None,
+            }
+        }
+        None
     }
 
     /// A literal as a value of `ty`, the type it goes into (area 2,
@@ -187,25 +261,16 @@ impl Types {
         validator
     }
 
-    /// The fields whose parent is `parent`, in the order they are written.
+    /// The fields whose parent is `parent`, in the order they are declared,
+    /// copied fields where the line that copied them stands.
     fn fields(&self, parent: &Key) -> Vec<Field> {
         let Some(id) = self.graph.find(parent) else {
             return Vec::new();
         };
-        let mut found: Vec<&Node> = self
-            .graph
-            .children(id)
-            .map(|child| self.graph.node(child))
-            .filter(|node| node.kind == Kind::Field)
-            .collect();
-        found.sort_by_key(|node| {
-            (
-                node.place.as_ref().map_or(u32::MAX, |p| p.start),
-                node.key.clone(),
-            )
-        });
-        found
+        self.graph
+            .fields(id)
             .into_iter()
+            .map(|child| self.graph.node(child))
             .filter_map(|node| match &node.detail {
                 Detail::Field {
                     section,

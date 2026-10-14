@@ -22,7 +22,7 @@ use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::rules::{Const, Num, Rules};
-use super::super::ty::Ty;
+use super::super::ty::{Prim, Ty};
 use super::known::{Origin, Term};
 use super::{Body, node_key};
 
@@ -329,6 +329,16 @@ struct Combined {
     patterns: Vec<String>,
     email: bool,
     version: Option<jadpo_std::UuidVersion>,
+    /// The validated built-in text type at the bottom of the chain
+    /// (`Email`, `Url`, `IpAddress`), whose own check counts as `format`.
+    checked: Option<Prim>,
+}
+
+/// A validated built-in text type: its own check of the text is what
+/// `format` stands for when a value built on other text becomes one (area
+/// 2, "Construction failures by rule").
+fn checked_text(prim: Option<Prim>) -> Option<Prim> {
+    prim.filter(|prim| matches!(prim, Prim::Email | Prim::Url | Prim::IpAddress))
 }
 
 fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
@@ -398,6 +408,8 @@ impl Combined {
         }
         if self.email {
             out.push(("format", "format: TextFormat.email".to_string()));
+        } else if let Some(builtin) = self.checked {
+            out.push(("format", builtin.name().to_string()));
         }
         if let Some(scale) = self.scale {
             out.push(("scale", format!("scale: {scale}")));
@@ -420,7 +432,9 @@ impl Body<'_> {
     /// The rules of `target` and every type it builds on, by the keys an
     /// `attempt`'s arms use, each with the rule as written.
     pub(super) fn rules_of(&self, target: &Ty) -> Vec<(&'static str, String)> {
-        combine(self.table.rule_chain(target).into_iter().map(|(_, r)| r)).written()
+        let mut rules = combine(self.table.rule_chain(target).into_iter().map(|(_, r)| r));
+        rules.checked = checked_text(self.table.base_prim(target));
+        rules.written()
     }
 
     /// The dividend and divisor of a call to a standard-library division,
@@ -541,8 +555,18 @@ impl Body<'_> {
         if needs.patterns.iter().any(|p| !has.patterns.contains(p)) {
             out.push("pattern".to_string());
         }
-        let is_email = self.table.base_prim(actual) == Some(super::super::ty::Prim::Email);
-        if needs.email && !(has.email || is_email) {
+        // `format`: a `format: TextFormat.email` rule, or the target's
+        // validated built-in text type, whose check the value's own type
+        // makes only when it is built on the same one (an `Email` and a
+        // `format: TextFormat.email` text check the same).
+        let base = self.table.base_prim(actual);
+        let is_email = has.email || base == Some(Prim::Email);
+        let checked = match checked_text(self.table.base_prim(target)) {
+            None => true,
+            Some(Prim::Email) => is_email,
+            Some(builtin) => base == Some(builtin),
+        };
+        if (needs.email && !is_email) || !checked {
             out.push("format".to_string());
         }
         if needs.version.is_some() && needs.version != has.version {

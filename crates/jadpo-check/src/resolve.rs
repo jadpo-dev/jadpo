@@ -798,6 +798,49 @@ impl Names<'_> {
         }
     }
 
+    /// `owner.a.b(...)` through anything but a connection: a call names one
+    /// owner and what it calls (area 1). A library called through its
+    /// domain gets the edit that drops the domain.
+    fn too_many_names(&self, first: &ast::NameRef, rest: &[ast::NameRef]) -> Diagnostic {
+        let qualifier = text(first);
+        let names: Vec<String> = rest.iter().map(text).collect();
+        let written = format!("{qualifier}.{}", names.join("."));
+        let start = self.span(first).start;
+        let end = rest.last().map_or(start, |last| self.span(last).end);
+        let span = Span::new(self.path, start, end);
+        let reason = "A call names who it belongs to, then what it calls: `domain.action(...)`, `library.function(...)` or `namespace.operation(...)`. Only a connection's operations take three names, `connection.resource.operation(...)` (area 11).";
+        let problem = Diagnostic::new(
+            &rule::SEMANTIC_UNKNOWN_CALLEE,
+            format!("`{written}` has more dots than a call takes"),
+        )
+        .at(span, "not a call Jadpo makes")
+        .reason(reason);
+        let library = names
+            .first()
+            .filter(|name| self.table.library(name).is_some());
+        if self.table.is_domain(&qualifier)
+            && let (Some(library), [_, function]) = (library, names.as_slice())
+        {
+            let library_start = self.span(&rest[0]).start;
+            return problem
+                .reason(format!(
+                    "{reason} A library is called by its own name, which is unique in the project, so `{library}` needs no domain."
+                ))
+                .next(format!("Call `{library}.{function}(...)`"))
+                .edit(Span::new(self.path, start, library_start), "");
+        }
+        let next = if self.table.is_domain(&qualifier) {
+            format!("Call one of `{qualifier}`'s actions or queries, `{qualifier}.<action>(...)`")
+        } else if self.table.library(&qualifier).is_some() {
+            format!("Call one of `{qualifier}`'s functions, `{qualifier}.<function>(...)`")
+        } else if self.std.namespace(&qualifier).is_some() {
+            format!("Call one of `{qualifier}`'s operations, `{qualifier}.<operation>(...)`")
+        } else {
+            "Call a function, action or query as `name(...)`, `domain.action(...)` or `library.function(...)`".to_string()
+        };
+        problem.next(next)
+    }
+
     /// `Type(value)`: constructing a value of a named type.
     fn constructor(&self, name: &ast::NameRef, call: &ast::CallExpr, out: &mut Vec<Diagnostic>) {
         let text = text(name);
@@ -971,6 +1014,12 @@ impl Names<'_> {
             return;
         }
         let qualifier_span = self.span(first);
+        // Only a connection's operations take three names (area 11), and
+        // the checker says those aren't built yet.
+        if rest.len() > 1 && !self.table.is_connection(&qualifier) {
+            out.push(self.too_many_names(first, rest));
+            return;
+        }
         let member = match rest {
             [only] => Some((text(only), self.span(only))),
             _ => None,

@@ -364,6 +364,7 @@ impl Part<'_> {
         let mut children: Vec<SyntaxNode> = Vec::new();
         match base {
             Base::Failure => {
+                let mut order = 0;
                 for (block, member) in tree::members(decl.member_list()) {
                     let section = match tree::name_text(&block).as_deref() {
                         Some("client") => Section::Client,
@@ -372,7 +373,8 @@ impl Part<'_> {
                     };
                     for (field, inner) in tree::members(member.block()) {
                         if let Some(field) = tree::name_text(&field) {
-                            self.field(&name, &key, vec![field], &inner, Some(section));
+                            self.field(&name, &key, vec![field], &inner, Some(section), order);
+                            order += 1;
                             children.push(inner.syntax().clone());
                         }
                     }
@@ -463,7 +465,9 @@ impl Part<'_> {
             written.entry(name).or_insert(member);
         }
         let mut children = Vec::new();
-        for field in &fields {
+        // The table lists the fields as the copying lines leave them, top
+        // to bottom (area 2): that is their declared order.
+        for (order, field) in (0u32..).zip(&fields) {
             if field.copied {
                 // At the entry that brought it in: `Note.body` in a `pick`,
                 // or `Note` in an `include`.
@@ -474,9 +478,16 @@ impl Part<'_> {
                     }),
                     _ => None,
                 };
-                self.copied_field(host, host_key, field, entry.map(|(_, node)| node));
+                self.copied_field(host, host_key, field, entry.map(|(_, node)| node), order);
             } else if let Some(member) = written.get(&field.name) {
-                self.field(host, host_key, vec![field.name.clone()], member, None);
+                self.field(
+                    host,
+                    host_key,
+                    vec![field.name.clone()],
+                    member,
+                    None,
+                    order,
+                );
                 children.push(member.syntax().clone());
             }
         }
@@ -490,6 +501,7 @@ impl Part<'_> {
         path: Vec<String>,
         member: &ast::Member,
         section: Option<Section>,
+        order: u32,
     ) {
         let key = field_key(self.lookup.registry(), host, &path);
         let mut node = self.node(
@@ -510,6 +522,7 @@ impl Part<'_> {
             })
             .unwrap_or_default();
         node.detail = Detail::Field {
+            order,
             ty: def
                 .filter(|def| !def.declared.has_error())
                 .map_or(TypeRef::Written(written), |def| {
@@ -543,6 +556,7 @@ impl Part<'_> {
         parent: &Key,
         field: &FieldDef,
         entry: Option<&SyntaxNode>,
+        order: u32,
     ) {
         let key = field_key(
             self.lookup.registry(),
@@ -567,6 +581,7 @@ impl Part<'_> {
             _ => None,
         };
         node.detail = Detail::Field {
+            order,
             ty: type_ref(self.lookup, &field.declared),
             optional: field.optional,
             default: field
@@ -604,9 +619,12 @@ impl Part<'_> {
             payload: block.is_some(),
         };
         self.out.nodes.push(node);
+        let mut order = 0;
         for (field, member) in tree::members(block) {
             if let Some(field) = tree::name_text(&field) {
-                self.field(host, &key, vec![variant.to_string(), field], &member, None);
+                let path = vec![variant.to_string(), field];
+                self.field(host, &key, path, &member, None, order);
+                order += 1;
             }
         }
     }

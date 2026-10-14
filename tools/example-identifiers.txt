@@ -120,6 +120,7 @@ completed_at
 configured_application
 contact_address
 contact_email
+contact_text
 count_ingredients
 count_refused
 count_tiers
@@ -344,6 +345,8 @@ new_card
 new_todo
 nickname
 not_a_call
+not_an_address
+not_work
 not_your_order
 note_conflict
 note_invalid
@@ -678,6 +681,8 @@ wildcard_failure
 with_count
 with_delivery
 with_todos
+work_address
+work_email
 wrapper
 wrong_conflict
 wrong_empty

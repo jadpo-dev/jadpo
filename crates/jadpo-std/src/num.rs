@@ -35,18 +35,10 @@ impl Num {
         }
     }
 
-    /// By value: `1.5` equals `1.50`.
+    /// By value: `1.5` equals `1.50`. Exact whatever the scales, as
+    /// [`compare_exact`] is.
     pub fn compare(self, other: Num) -> Ordering {
-        let scale = self.scale.max(other.scale);
-        let lift = |n: Num| {
-            10i128
-                .checked_pow(scale - n.scale)
-                .and_then(|factor| n.mantissa.checked_mul(factor))
-        };
-        match (lift(self), lift(other)) {
-            (Some(a), Some(b)) => a.cmp(&b),
-            _ => self.mantissa.signum().cmp(&other.mantissa.signum()),
-        }
+        compare_exact(self.mantissa, self.scale, other.mantissa, other.scale)
     }
 
     /// Whether it is a whole number that fits an `Int`, a 64-bit integer.
@@ -63,6 +55,49 @@ impl Num {
             places -= 1;
         }
         places
+    }
+}
+
+/// `a × 10^-a_scale` against `b × 10^-b_scale`, exactly: the one
+/// comparison of exact numbers the checker's bounds and the runtime's
+/// decimals share (area 2, question 8). Nothing is lifted to a common
+/// scale, so no scale or mantissa overflows into a wrong answer: the
+/// number with fewer places is compared with the other's whole part at
+/// its scale, and what is left over breaks a tie. It is a total order,
+/// consistent with equality by value.
+pub fn compare_exact(a: i128, a_scale: u32, b: i128, b_scale: u32) -> Ordering {
+    let sign = |n: i128| n.cmp(&0);
+    match sign(a).cmp(&sign(b)) {
+        Ordering::Equal => {}
+        unequal => return unequal,
+    }
+    let magnitudes = if a_scale <= b_scale {
+        magnitude(a.unsigned_abs(), b.unsigned_abs(), b_scale - a_scale)
+    } else {
+        magnitude(b.unsigned_abs(), a.unsigned_abs(), a_scale - b_scale).reverse()
+    };
+    // Both negative: the larger magnitude is the smaller number.
+    if a < 0 {
+        magnitudes.reverse()
+    } else {
+        magnitudes
+    }
+}
+
+/// `x × 10^places` against `y`, for magnitudes.
+fn magnitude(x: u128, y: u128, places: u32) -> Ordering {
+    if x == 0 {
+        return 0.cmp(&y);
+    }
+    // Past 10^38 the lifted `x` is larger than any `u128`.
+    let Some(factor) = 10u128.checked_pow(places) else {
+        return Ordering::Greater;
+    };
+    // `x × factor` against `y` is `x` against `y / factor`, with the
+    // remainder deciding a tie.
+    match x.cmp(&(y / factor)) {
+        Ordering::Equal if !y.is_multiple_of(factor) => Ordering::Less,
+        other => other,
     }
 }
 
@@ -100,5 +135,111 @@ mod tests {
         assert!(num("9223372036854775807").fits_int());
         assert!(!num("9223372036854775808").fits_int());
         assert_eq!(Num::parse(&"9".repeat(40)), None);
+    }
+
+    #[test]
+    fn numbers_far_apart_in_scale_compare_exactly() {
+        let big = num("100000000000000000000000000000.0");
+        let tiny = num("0.0000000005");
+        assert_eq!(tiny.compare(big), Ordering::Less);
+        assert_eq!(big.compare(tiny), Ordering::Greater);
+        assert_eq!(
+            num("-0.0000000005").compare(num("-100000000000000000000000000000.0")),
+            Ordering::Greater
+        );
+        // Lifting either to the other's scale overflows an `i128`.
+        let huge = Num {
+            mantissa: i128::MAX,
+            scale: 0,
+        };
+        let fine = Num {
+            mantissa: 1,
+            scale: 60,
+        };
+        assert_eq!(huge.compare(fine), Ordering::Greater);
+        assert_eq!(fine.compare(huge), Ordering::Less);
+        assert_eq!(
+            Num {
+                mantissa: i128::MIN,
+                scale: 0
+            }
+            .compare(fine),
+            Ordering::Less
+        );
+        assert_eq!(
+            Num {
+                mantissa: 10,
+                scale: 1
+            }
+            .compare(Num {
+                mantissa: 1_000_000,
+                scale: 6
+            }),
+            Ordering::Equal
+        );
+        assert_eq!(
+            Num {
+                mantissa: 1,
+                scale: 0
+            }
+            .compare(Num {
+                mantissa: 1_000_001,
+                scale: 6
+            }),
+            Ordering::Less
+        );
+        assert_eq!(
+            num("0").compare(Num {
+                mantissa: 0,
+                scale: 70
+            }),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn the_order_is_total_and_transitive() {
+        let values = [
+            Num {
+                mantissa: i128::MAX,
+                scale: 0,
+            },
+            Num {
+                mantissa: i128::MAX,
+                scale: 38,
+            },
+            Num {
+                mantissa: i128::MIN,
+                scale: 3,
+            },
+            Num {
+                mantissa: -1,
+                scale: 70,
+            },
+            Num {
+                mantissa: 1,
+                scale: 70,
+            },
+            Num {
+                mantissa: 0,
+                scale: 5,
+            },
+            num("1.50"),
+            num("1.5"),
+            num("-2"),
+            num("100000000000000000000000000000.0"),
+            num("0.0000000005"),
+        ];
+        for a in values {
+            assert_eq!(a.compare(a), Ordering::Equal);
+            for b in values {
+                assert_eq!(a.compare(b), b.compare(a).reverse(), "{a:?} {b:?}");
+                for c in values {
+                    if a.compare(b).is_le() && b.compare(c).is_le() {
+                        assert!(a.compare(c).is_le(), "{a:?} <= {b:?} <= {c:?}");
+                    }
+                }
+            }
+        }
     }
 }

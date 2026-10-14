@@ -200,7 +200,8 @@ pub fn failures(graph: &Graph) -> Catalogue {
         markdown.push_str("\n\n");
         doc_paragraph(&mut markdown, node.doc.as_deref());
         let client: Vec<NodeId> = graph
-            .children(id)
+            .fields(id)
+            .into_iter()
             .filter(|&field| {
                 matches!(
                     graph.node(field).detail,

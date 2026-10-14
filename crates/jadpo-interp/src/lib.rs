@@ -17,6 +17,7 @@
 //! `clock.now`) end in the `not_built_yet` fault where they are reached.
 
 mod eval;
+mod probe;
 mod program;
 mod report;
 mod types;

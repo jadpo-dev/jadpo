@@ -112,6 +112,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             }
         }
         Detail::Field {
+            order,
             ty,
             optional,
             default,
@@ -120,6 +121,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             replaces,
             rules,
         } => {
+            out.set("order", i64::from(*order));
             out.set("type", ty.render(name));
             out.set_some("optional", *optional);
             out.set_some("default", default.as_ref().map(|d| d.render(name)));
@@ -182,6 +184,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ("base", "A type's base, or the type it refines"),
     ("rules", "Rules on a type or field, by name"),
     ("failure", "A failure's code, kind, status and message"),
+    (
+        "order",
+        "A field's place among the fields beside it, from 0, as declared; copied fields sit at the line that copied them",
+    ),
     ("type", "A field's declared type"),
     ("optional", "An input field the sender may leave out"),
     ("default", "An input field's default, as written"),

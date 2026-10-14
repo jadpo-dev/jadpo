@@ -106,6 +106,7 @@
         2
       ],
       "name": "Note.body",
+      "order": 0,
       "parent": "type Note",
       "type": "Body",
       "uses": [
@@ -123,6 +124,7 @@
         3
       ],
       "name": "Note.pinned",
+      "order": 1,
       "parent": "type Note",
       "type": "Bool"
     },
@@ -137,6 +139,7 @@
         6
       ],
       "name": "NoteRefused.length",
+      "order": 0,
       "parent": "type NoteRefused",
       "section": "client",
       "type": "Int"
@@ -152,6 +155,7 @@
         4
       ],
       "name": "Shade.tinted.level",
+      "order": 0,
       "parent": "variant Shade.tinted",
       "type": "Int"
     },
@@ -166,6 +170,7 @@
         2
       ],
       "name": "Summary.body",
+      "order": 0,
       "parent": "type Summary",
       "type": "Note.body",
       "uses": [
@@ -183,6 +188,7 @@
         3
       ],
       "name": "Summary.shade",
+      "order": 1,
       "parent": "type Summary",
       "type": "Shade",
       "uses": [

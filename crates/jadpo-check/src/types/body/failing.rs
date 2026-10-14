@@ -816,6 +816,10 @@ impl Body<'_> {
             format!(
                 "`{rule}` decides how a value is kept, rounding it half to even, so it never breaks and this arm could never run."
             )
+        } else if matches!(key.as_str(), "pattern" | "format" | "version") {
+            format!(
+                "The value's own type already follows `{rule}`, so it never breaks and this arm could never run."
+            )
         } else if !by.is_empty() {
             format!(
                 "The declared ranges and {} prove the value always follows `{rule}`, so this arm could never run.",
