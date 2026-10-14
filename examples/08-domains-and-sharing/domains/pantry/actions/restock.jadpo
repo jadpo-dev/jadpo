@@ -1,12 +1,12 @@
 /// How many grams of flour the pantry holds once `delivered` sacks join
 /// the `in_store` ones.
 action restock(in_store: SackCount, delivered: SackCount) fails TooHeavy -> Grams {
-    // Twelve full sacks would pass what the scales weigh, so the sum is
-    // checked when it runs. `invalid:` on its own covers every rule of
-    // `Grams` that can break, and `TooHeavy`, a shared failure, names
-    // what went wrong.
+    // Each side is from 0 to 96000 grams, so the sum is never below 0 but
+    // can pass the 100000 the scales weigh: only `max` can break, and it
+    // is checked when it runs. `TooHeavy`, a shared failure, names what
+    // went wrong.
     var total: Grams = attempt Grams(sacks.grams_in(in_store) + sacks.grams_in(delivered)) {
-        invalid: TooHeavy
+        max: TooHeavy
     }
     return total
 }

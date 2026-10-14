@@ -1,6 +1,6 @@
-/// The card already has all ten stamp_count: an eleventh would break its
-/// rules, so this is an `invalid_value` failure.
+/// The card already has all ten stamps, so it takes no more until it is
+/// redeemed: a `conflict` with the card's state, which redeeming clears.
 type CardFull = Failure {
-    kind: FailureKind.invalid_value
+    kind: FailureKind.conflict
     message: "This card is full. Redeem it first."
 }

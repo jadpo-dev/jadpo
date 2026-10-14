@@ -1,10 +1,15 @@
 /// `card` with one more stamp.
 action stamp_card(card: Card) fails CardFull -> Card {
-    var stamped: StampCount = attempt StampCount(card.stamp_count + 1) {
-        max: CardFull
+    // A full card must be redeemed before it takes another stamp. That is
+    // a rule of the loyalty scheme, raised with `reject`; and since
+    // `reject` leaves, below it the compiler knows `card.stamp_count` is
+    // at most 9, so the stamp below can't break `StampCount`'s `max: 10`
+    // and takes no `attempt`.
+    if (card.stamp_count == 10) {
+        reject CardFull
     }
     return Card {
         name: card.name
-        stamp_count: stamped
+        stamp_count: StampCount(card.stamp_count + 1)
     }
 }

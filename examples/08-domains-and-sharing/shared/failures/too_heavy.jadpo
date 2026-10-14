@@ -1,6 +1,8 @@
-// A failure raised by two or more domains lives in `shared/failures/`.
-// `pantry` and `sales` both raise `TooHeavy` when a weight they work
-// out passes 100 kilograms.
+// `TooHeavy` is raised by the shared `portions` library and by
+// `pantry`'s `restock`, so it lives in `shared/failures/`: code in
+// `shared/` can't depend on any one domain, and a failure raised in more
+// than one place belongs to none of them. `sales` only passes it on,
+// from `portions`.
 
 /// A weight would pass the 100 kilograms the scales can weigh.
 type TooHeavy = Failure {

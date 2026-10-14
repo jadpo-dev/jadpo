@@ -1,4 +1,4 @@
-# 08 · Testing
+# 07 · Testing
 
 How tests are written and run: kinds of test, shared test data, and
 assertions about failures. The project is a bakery's loyalty card: ten
@@ -13,10 +13,12 @@ expects.
 ## What it teaches
 
 1. **Tests beside their subject.** `<file>.test.jadpo` next to each action. See `domains/loyalty/actions/` and [area 13, Where tests live](../../docs/language/13-testing.md#where-tests-live).
-2. **Kinds of test.** A test that calls only functions is pure; one that calls an action or a fixture is an action test. See `actions/stamp_card.test.jadpo` and [area 13, Kinds of test](../../docs/language/13-testing.md#kinds-of-test).
-3. **Fixtures.** Shared test data in `fixtures/`, one fixture calling another and an action. See `domains/loyalty/fixtures/` and [area 13, Shared test data: fixtures](../../docs/language/13-testing.md#shared-test-data-fixtures).
-4. **Asserting failures.** `assert call(...) fails Failure`, and `attempt` in a test. See `actions/stamp_card.test.jadpo` and [area 13, Assertions](../../docs/language/13-testing.md#assertions).
-5. **Reading a failed test.** What `jadpo test` reports and how to rerun one test. See `actions/redeem_card.test.jadpo` and [area 13, What a failed test reports](../../docs/language/13-testing.md#what-a-failed-test-reports).
+2. **Fixtures.** Shared test data in `fixtures/`, one fixture calling another and an action. See `domains/loyalty/fixtures/new_card.jadpo`, then `stamped_once.jadpo`, and [area 13, Shared test data: fixtures](../../docs/language/13-testing.md#shared-test-data-fixtures).
+3. **Kinds of test.** A test that calls only functions is pure; one that calls an action or a fixture is an action test. See `actions/stamp_card.test.jadpo`, whose tests are all action tests, the action itself in `actions/stamp_card.jadpo`, and [area 13, Kinds of test](../../docs/language/13-testing.md#kinds-of-test).
+4. **Asserting failures.** `assert call(...) fails Failure`, and `attempt` in a test. Same file; [area 13, Assertions](../../docs/language/13-testing.md#assertions).
+5. **Reading a failed test, and a pure test.** What `jadpo test` reports and how to rerun one test, beside a test that calls only the function `stamps_to_go`. See `actions/redeem_card.test.jadpo`, `actions/redeem_card.jadpo` and [area 13, What a failed test reports](../../docs/language/13-testing.md#what-a-failed-test-reports).
+
+Example 08 shows a fixture another domain's tests can call.
 
 ## Run it
 
@@ -48,5 +50,6 @@ target/release/jadpo fmt --check examples/07-testing
 
 - In `stamp_card.test.jadpo`, change `fails CardFull` to `fails CardNotFull`. `jadpo test` fails with `test.assertion_failed` and shows the failure that happened instead.
   <!-- try {"file": "domains/loyalty/actions/stamp_card.test.jadpo", "replace": "fails CardFull", "with": "fails CardNotFull", "test": ["test.assertion_failed"]} -->
-- Run `target/release/jadpo test examples/07-testing --kind pure`, then `--seed 7`: one kind of test, then the same tests in another order.
+- While that test fails, run `target/release/jadpo test examples/07-testing --failed`: only the tests that failed last time run again.
+- Run `target/release/jadpo test examples/07-testing --kind pure`: only the one pure test runs. Then `--name "full card"`: the two tests whose names contain those words.
 - Then read [08-domains-and-sharing](../08-domains-and-sharing/README.md).
