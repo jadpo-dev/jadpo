@@ -23,8 +23,7 @@ mod types;
 
 pub use jadpo_runtime::{Failure, Fault, FaultKind, Frame, MAX_DEPTH, Places};
 pub use jadpo_value::Value;
-pub use program::{CallError, Program};
-
+pub use program::{CallError, Program, SiteSpan};
 pub use report::Report;
 
 /// How a call ended.

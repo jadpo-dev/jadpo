@@ -38,6 +38,16 @@ pub struct Program {
     pub(crate) texts: HashMap<String, String>,
 }
 
+/// Where a frame stands: its callable's file, the bytes of its site and
+/// the line the site starts on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SiteSpan<'a> {
+    pub file: &'a str,
+    pub start: u32,
+    pub end: u32,
+    pub line: u32,
+}
+
 /// Why a call couldn't start.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CallError {
@@ -231,6 +241,19 @@ impl Program {
     /// The report a person reads for an outcome that isn't a value.
     pub fn report(&self, outcome: &Outcome) -> Option<Report> {
         Report::of(self, outcome)
+    }
+
+    /// Where `frame` stands in its file; `None` for a callable's entry,
+    /// which stands at no site.
+    pub fn site(&self, frame: jadpo_runtime::Frame) -> Option<SiteSpan<'_>> {
+        let callable = self.callable(frame.callable)?;
+        let site = callable.body.sites.get(frame.site as usize)?;
+        Some(SiteSpan {
+            file: &callable.file,
+            start: site.start,
+            end: site.end,
+            line: site.line,
+        })
     }
 
     /// A file's text, by its project-relative path.

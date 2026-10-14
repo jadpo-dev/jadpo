@@ -11,5 +11,6 @@ mod help;
 mod run;
 mod suggest;
 mod table;
+mod test;
 
 pub use run::{Output, Session, run};
