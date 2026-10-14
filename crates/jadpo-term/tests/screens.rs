@@ -405,3 +405,89 @@ fn inline_code_in_a_value_wraps_whole() {
         "{out}"
     );
 }
+
+/// A watch rule: one line when its long form fits, otherwise the short form
+/// and the change list, at most five changes and a count of the rest.
+#[test]
+fn a_rule_fits_or_lists_its_changes() {
+    use jadpo_term::{Change, ChangeMark};
+    let change = |mark, path: &str| Change {
+        mark,
+        path: path.to_string(),
+    };
+    let rule = |long: &[&str], changes: Vec<Change>| Block::Rule {
+        long: long.iter().map(|fact| fact.to_string()).collect(),
+        short: vec![
+            "14:02:31".to_string(),
+            format!("{} files changed", changes.len()),
+        ],
+        changes,
+        plain: "watch".to_string(),
+    };
+    let fits = Screen::new().with(rule(
+        &["14:02:31", "saved app.jadpo", "6 tests reach it"],
+        vec![change(ChangeMark::Changed, "app.jadpo")],
+    ));
+    assert_eq!(
+        fits.render(&rich()),
+        "── 14:02:31 · saved app.jadpo · 6 tests reach it ──\n"
+    );
+    assert_eq!(
+        fits.render(&Style::new(Mode::Plain)),
+        "watch: 14:02:31, saved app.jadpo, 6 tests reach it\n"
+    );
+    let ascii = Style {
+        symbols: Symbols::Ascii,
+        ..rich()
+    };
+    assert_eq!(
+        fits.render(&ascii),
+        "-- 14:02:31, saved app.jadpo, 6 tests reach it --\n"
+    );
+    let many: Vec<Change> = (0..7)
+        .map(|i| {
+            let mark = [ChangeMark::Added, ChangeMark::Changed, ChangeMark::Removed][i % 3];
+            change(mark, &format!("domains/stock/actions/a_{i}.jadpo"))
+        })
+        .collect();
+    assert_eq!(
+        Screen::new().with(rule(&[], many)).render(&rich()),
+        "── 14:02:31 · 7 files changed ──
+  + domains/stock/actions/a_0.jadpo
+  ~ domains/stock/actions/a_1.jadpo
+  - domains/stock/actions/a_2.jadpo
+  + domains/stock/actions/a_3.jadpo
+  ~ domains/stock/actions/a_4.jadpo
+  and 2 more
+"
+    );
+}
+
+/// The live line: a muted label and facts, a problem count in its colour,
+/// each key bold; plain output spells the keys out.
+#[test]
+fn a_key_bar_names_the_keys_that_work() {
+    let bar = Screen::new().with(Block::KeyBar {
+        label: "watching".to_string(),
+        facts: vec![Fact::plain("41 files"), Fact::problem("2 failing")],
+        keys: vec![("ctrl-c".to_string(), "quit".to_string())],
+    });
+    assert_eq!(
+        bar.render(&rich()),
+        "watching 41 files · 2 failing  ctrl-c quit\n"
+    );
+    assert_eq!(
+        bar.render(&Style::new(Mode::Plain)),
+        "watching: 41 files, 2 failing, press ctrl-c to quit\n"
+    );
+    let coloured = bar.render(&Style {
+        color: Some(Depth::Ansi16),
+        bold: true,
+        ..Style::new(Mode::Rich)
+    });
+    assert!(
+        coloured.contains("\x1b[31m2 failing\x1b[0m"),
+        "{coloured:?}"
+    );
+    assert!(coloured.contains("\x1b[1mctrl-c\x1b[0m"), "{coloured:?}");
+}

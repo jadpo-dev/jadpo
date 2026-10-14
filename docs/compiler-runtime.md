@@ -523,6 +523,22 @@ Affected tests are those that reach a node whose digest changed, by
 reverse reachability over `calls`, `runs`, `reads`, `uses` and `covers`:
 changing a type's rule re-runs the tests that reach code using the type.
 
+**Watch mode (chunk 2.3).** `jadpo test --watch` (`jadpo_test::watch`)
+keeps one database and compares each good check's node digests with the
+last run's; reachability also climbs from a field, variant or site to what
+holds it, since what uses a record uses its fields. A broken build runs
+nothing and keeps the last run as the baseline, so the next good save runs
+everything changed since. Saves are found by polling modification times
+and sizes (every 40 ms, or ten times a look's cost) and gathered until the
+files are quiet for 50 ms: no platform file-event API or dependency, and
+the same on every file system. On a generated project of 230 files and
+312 tests in 12 domains (`crates/jadpo-cli/tests/watch.rs`), saving a
+library's first step rechecks that file's 10 bodies and resolves 1 file,
+and reruns the 26 tests that reach it, in 5 ms release and 39 ms debug;
+from the save on disk to the results written by the real loop, poll and
+quiet period included, took 61–71 ms release and 97–111 ms debug against
+the 1-second target. The gate asserts the counts and a 5-second ceiling.
+
 ### 2.5 Executors
 
 **One contract.** Both executors consume the graph's typed bodies plus
@@ -760,7 +776,7 @@ it), may use them.
 | Phase | `tools/verify.py` adds |
 |---|---|
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
-| 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a generous ceiling |
+| 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a generous ceiling (both built: chunks 2.2 and 2.3) |
 | 3 | Live PostgreSQL (`--profile quick` skips it) |
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |

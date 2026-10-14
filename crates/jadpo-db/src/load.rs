@@ -184,6 +184,83 @@ impl Loaded {
             Err(_) => self.remove(path),
         }
     }
+
+    /// Whether the project holds `path`, project-relative: a source file,
+    /// or in a project another file beside the code (a template).
+    pub fn tracks(&self, path: &str) -> bool {
+        tracked(path, self.project.layout(&self.db) == Layout::Project)
+    }
+
+    /// Brings `path` up to date with the disk after a change there, as a
+    /// watcher sees it: a source file's text, added or removed, or another
+    /// file's presence. A source file that exists but can't be read joins
+    /// [`Loaded::unreadable`] until it can; one that is gone leaves.
+    pub fn refresh(&mut self, path: &str) {
+        if !self.tracks(path) {
+            return;
+        }
+        self.unreadable.retain(|file| file.path != path);
+        let full = self.root.join(path);
+        if !is_source(path) {
+            let mut others = self.project.other_files(&self.db).clone();
+            let present = full.is_file();
+            let known = others.iter().any(|other| other == path);
+            if present != known {
+                if present {
+                    others.push(path.to_string());
+                    others.sort();
+                } else {
+                    others.retain(|other| other != path);
+                }
+                self.project.set_other_files(&mut self.db).to(others);
+            }
+            return;
+        }
+        let read = if full.exists() && !std::fs::metadata(&full).is_ok_and(|meta| meta.is_file()) {
+            Err("it isn't a regular file".to_string())
+        } else {
+            std::fs::read_to_string(&full).map_err(|error| {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    String::new()
+                } else {
+                    error.to_string()
+                }
+            })
+        };
+        match read {
+            Ok(text) => self.set_text(path, text),
+            Err(error) if error.is_empty() => self.remove(path),
+            Err(error) => {
+                self.remove(path);
+                self.unreadable.push(Unreadable {
+                    path: path.to_string(),
+                    error,
+                });
+                self.unreadable.sort_by(|a, b| a.path.cmp(&b.path));
+            }
+        }
+    }
+}
+
+/// Every file a project or a folder of loose files holds, relative to
+/// `folder` with `/`, in path order: what [`load`] reads and a watcher
+/// watches. Folders that can't be listed are left out.
+pub fn files_under(folder: &Path, project: bool) -> Vec<String> {
+    walk(folder, project, &mut Vec::new())
+        .iter()
+        .map(|path| display(folder, path))
+        .collect()
+}
+
+/// Whether a project-relative path is one a project holds: a source file,
+/// or in a project a file in a code folder.
+fn tracked(path: &str, project: bool) -> bool {
+    if is_source(path) {
+        return true;
+    }
+    project
+        && !path.split('/').any(|part| part.starts_with('.'))
+        && (path.starts_with("domains/") || path.starts_with("shared/"))
 }
 
 /// Whether a project-relative path is a source file the project holds.

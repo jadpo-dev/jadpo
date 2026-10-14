@@ -311,7 +311,64 @@ pub enum Block {
         command: String,
         reason: String,
     },
+    /// A muted rule between runs that names what happened
+    /// (`── 14:02:31 · saved <file> · 6 tests reach it ──`): the `long`
+    /// facts when they fit on one line, otherwise the `short` ones and the
+    /// change list below, so a path is never cut. Plain output reads
+    /// `plain: facts`.
+    Rule {
+        long: Vec<String>,
+        short: Vec<String>,
+        changes: Vec<Change>,
+        plain: String,
+    },
+    /// A live line saying what a session is waiting for and the keys that
+    /// work: a muted label and facts, then each key in bold and its action
+    /// muted (`watching 41 files  ctrl-c quit`). Plain output reads
+    /// `label: facts, press key to action`.
+    KeyBar {
+        label: String,
+        facts: Vec<Fact>,
+        keys: Vec<(String, String)>,
+    },
 }
+
+/// One line of an indented change list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Change {
+    pub mark: ChangeMark,
+    pub path: String,
+}
+
+/// Added, changed or removed: `+`, `~` or `-`, in the success, warning or
+/// failure colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChangeMark {
+    Added,
+    Changed,
+    Removed,
+}
+
+impl ChangeMark {
+    fn text(self) -> &'static str {
+        match self {
+            ChangeMark::Added => "+",
+            ChangeMark::Changed => "~",
+            ChangeMark::Removed => "-",
+        }
+    }
+
+    fn token(self) -> Token {
+        match self {
+            ChangeMark::Added => Token::Success,
+            ChangeMark::Changed => Token::Warning,
+            ChangeMark::Removed => Token::Failure,
+        }
+    }
+}
+
+/// How many changes a rule lists before counting the rest.
+const MAX_CHANGES: usize = 5;
 
 impl Block {
     pub fn header<S: Into<String>>(
@@ -463,6 +520,11 @@ impl Screen {
         self.blocks.is_empty()
     }
 
+    /// Its blocks, to put on another screen.
+    pub fn into_blocks(self) -> Vec<Block> {
+        self.blocks
+    }
+
     /// The screen as text for `style`, ending in a newline. JSON mode never
     /// renders screens; it renders as plain text if asked.
     pub fn render(&self, style: &Style) -> String {
@@ -561,6 +623,13 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             plain.as_deref(),
             style,
         )],
+        Block::Rule {
+            long,
+            short,
+            changes,
+            plain,
+        } => rule_lines(long, short, changes, plain, style),
+        Block::KeyBar { label, facts, keys } => vec![key_bar(label, facts, keys, style)],
         Block::Hint { command, reason } => {
             if rich(style) {
                 let arrow = Symbol::Next.text(style.symbols);
@@ -574,6 +643,78 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             }
         }
     }
+}
+
+fn rule_lines(
+    long: &[String],
+    short: &[String],
+    changes: &[Change],
+    plain: &str,
+    style: &Style,
+) -> Vec<Line> {
+    let joined = |facts: &[String]| facts.join(separator(style));
+    let line = |facts: &[String]| -> String {
+        if rich(style) {
+            let end = Symbol::Rule.text(style.symbols);
+            format!("{end} {} {end}", joined(facts))
+        } else {
+            format!("{plain}: {}", joined(facts))
+        }
+    };
+    let whole = line(long);
+    if !long.is_empty() && width(&whole) <= style.width {
+        return vec![vec![paint(Token::Muted, whole)]];
+    }
+    let mut lines = vec![vec![paint(Token::Muted, line(short))]];
+    for change in changes.iter().take(MAX_CHANGES) {
+        if rich(style) {
+            lines.push(vec![
+                raw("  "),
+                paint(change.mark.token(), change.mark.text()),
+                raw(" "),
+                paint(Token::Muted, change.path.as_str()),
+            ]);
+        } else {
+            lines.push(vec![raw(format!(
+                "  {} {}",
+                change.mark.text(),
+                change.path
+            ))]);
+        }
+    }
+    if changes.len() > MAX_CHANGES {
+        lines.push(vec![
+            raw("  "),
+            paint(
+                Token::Muted,
+                format!("and {} more", changes.len() - MAX_CHANGES),
+            ),
+        ]);
+    }
+    lines
+}
+
+fn key_bar(label: &str, facts: &[Fact], keys: &[(String, String)], style: &Style) -> Line {
+    if !rich(style) {
+        let mut parts: Vec<String> = facts.iter().map(|fact| fact.text.clone()).collect();
+        parts.extend(
+            keys.iter()
+                .map(|(key, action)| format!("press {key} to {action}")),
+        );
+        return vec![raw(format!("{label}: {}", parts.join(", ")))];
+    }
+    let mut line = vec![paint(Token::Muted, label)];
+    for (i, fact) in facts.iter().enumerate() {
+        let lead = if i == 0 { " " } else { separator(style) };
+        line.push(paint(Token::Muted, lead));
+        line.push(paint(fact.tone.unwrap_or(Token::Muted), fact.text.as_str()));
+    }
+    for (key, action) in keys {
+        line.push(raw("  "));
+        line.push(bold(key.as_str()));
+        line.push(paint(Token::Muted, format!(" {action}")));
+    }
+    line
 }
 
 fn summary_line(

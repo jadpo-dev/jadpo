@@ -22,6 +22,7 @@ mod outcome;
 mod record;
 mod screen;
 mod select;
+pub mod watch;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -209,13 +210,38 @@ pub fn run(options: Options) -> Ran {
 /// Loads, checks, selects and runs, on the interpreter's thread.
 fn execute(target: select::Target, options: Options, started: Instant) -> Ran {
     let loaded = jadpo_db::load(&target.folder);
+    let checked = match prepare(&loaded) {
+        Ok(checked) => checked,
+        Err(ran) => return ran,
+    };
+    choose_and_run(&loaded, &checked, &target, &options, None, started)
+}
+
+/// A project that checked without errors, ready to run: its program and
+/// every test in it.
+pub(crate) struct Checked {
+    pub program: Program,
+    pub tests: Vec<Test>,
+    /// A project, rather than loose files: only a project keeps a record.
+    pub project: bool,
+}
+
+/// The project's sources by path, for the code frames of its errors.
+pub(crate) fn sources(loaded: &jadpo_db::Loaded) -> BTreeMap<String, String> {
     let db = &loaded.db;
-    let files = loaded.project.files(db);
-    let sources: BTreeMap<String, String> = files
+    loaded
+        .project
+        .files(db)
         .iter()
         .map(|file| (file.path(db).clone(), file.text(db).clone()))
-        .collect();
-    let file_count = files.len() + loaded.unreadable.len();
+        .collect()
+}
+
+/// Checks what `loaded` holds and loads its program, or refuses with its
+/// errors.
+pub(crate) fn prepare(loaded: &jadpo_db::Loaded) -> Result<Checked, Ran> {
+    let db = &loaded.db;
+    let file_count = loaded.project.files(db).len() + loaded.unreadable.len();
     if !loaded.unreadable.is_empty() {
         let diagnostics = loaded
             .unreadable
@@ -230,37 +256,59 @@ fn execute(target: select::Target, options: Options, started: Instant) -> Ran {
                 .next("Check it can be read, then run `jadpo test` again")
             })
             .collect();
-        return Ran::Refused {
+        return Err(Ran::Refused {
             diagnostics,
-            sources,
+            sources: sources(loaded),
             files: file_count,
-        };
+        });
     }
     let diagnostics = jadpo_check::check(db, loaded.project);
     if diagnostics
         .iter()
         .any(|diagnostic| diagnostic.severity() == Severity::Error)
     {
-        return Ran::Refused {
+        return Err(Ran::Refused {
             diagnostics,
-            sources,
+            sources: sources(loaded),
             files: file_count,
-        };
+        });
     }
     let program = match Program::load(db, loaded.project) {
         Ok(program) => program,
         Err(diagnostics) => {
-            return Ran::Refused {
+            return Err(Ran::Refused {
                 diagnostics,
-                sources,
+                sources: sources(loaded),
                 files: file_count,
-            };
+            });
         }
     };
     let graph = jadpo_check::graph::graph(db, loaded.project);
-    let tests = discover(graph);
-    let project = loaded.project.layout(db) == jadpo_db::Layout::Project;
-    let filter = target.filter(&loaded);
+    Ok(Checked {
+        program,
+        tests: discover(graph),
+        project: loaded.project.layout(db) == jadpo_db::Layout::Project,
+    })
+}
+
+/// Picks the tests `options` asks for, narrowed to `only` when given (the
+/// tests a change reaches, by key), and runs them in the seed's order.
+/// When `only` leaves nothing, the run has no results.
+pub(crate) fn choose_and_run(
+    loaded: &jadpo_db::Loaded,
+    checked: &Checked,
+    target: &select::Target,
+    options: &Options,
+    only: Option<&std::collections::BTreeSet<String>>,
+    started: Instant,
+) -> Ran {
+    let Checked {
+        program,
+        tests,
+        project,
+    } = checked;
+    let project = *project;
+    let filter = target.filter(loaded);
     let last = if options.failed {
         match record::read(&loaded.root, project) {
             Ok(last) => Some(last),
@@ -279,10 +327,13 @@ fn execute(target: select::Target, options: Options, started: Instant) -> Ran {
         kind: options.kind,
         failed: options.failed,
     };
-    let chosen = match select::choose(&tests, &selection, last.as_ref(), project) {
+    let mut chosen = match select::choose(tests, &selection, last.as_ref(), project) {
         Ok(chosen) => chosen,
         Err(diagnostic) => return Ran::Stopped(diagnostic),
     };
+    if let Some(only) = only {
+        chosen.retain(|test| only.contains(&test.key));
+    }
     let seed = options.seed.unwrap_or_else(select::new_seed);
     let ordered = select::shuffle(chosen, seed);
     let rerun = Rerun {
@@ -293,16 +344,16 @@ fn execute(target: select::Target, options: Options, started: Instant) -> Ran {
     for test in ordered {
         let failure = match program.call(&test.key, Vec::new()) {
             Ok(jadpo_interp::Outcome::Value(_)) => None,
-            Ok(other) => Some(Box::new(outcome::failure(&program, &test, &other, &rerun))),
+            Ok(other) => Some(Box::new(outcome::failure(program, &test, &other, &rerun))),
             Err(error) => Some(Box::new(outcome::not_runnable(&test, &error, &rerun))),
         };
         results.push(TestResult { test, failure });
     }
     if project {
-        record::write(&loaded.root, &tests, &results);
+        record::write(&loaded.root, tests, &results);
     }
     let mut total = BTreeMap::new();
-    for test in &tests {
+    for test in tests {
         *total.entry(test.kind).or_default() += 1;
     }
     Ran::Done(Box::new(Run {

@@ -219,7 +219,9 @@ pub static COMMANDS: &[Command] = &[
                       command that reruns it. Without a path, the project is found by walking up to \
                       app.jadpo and every test runs; a file runs its tests, a folder the tests under it, \
                       and <file>:<line> the test at that line. The project must check without errors \
-                      first. Pure and action tests run so far.",
+                      first. With --watch, it keeps running: each save reruns the tests the change \
+                      reaches, through the compiler's graph, within the path, name and kind given. \
+                      Pure and action tests run so far.",
         arguments: &[Argument {
             name: "path",
             description: "A test file, <file>:<line>, or a folder",
@@ -251,6 +253,12 @@ pub static COMMANDS: &[Command] = &[
                 description: "Run in the order this seed gives",
                 values: &[],
             },
+            Flag {
+                name: "--watch",
+                value: None,
+                description: "Rerun the tests each save reaches",
+                values: &[],
+            },
         ],
         examples: &[
             Example {
@@ -264,6 +272,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Rerun the tests that failed last time",
                 command: "jadpo test --failed",
+            },
+            Example {
+                description: "Rerun the tests each save reaches, until ctrl-c",
+                command: "jadpo test --watch",
             },
             Example {
                 description: "Print the results as data for tools",
