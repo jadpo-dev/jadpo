@@ -113,14 +113,14 @@ kinds! {
     Variant: "variant", Types, Built, 2;
     Constraint: "constraint", Types, Reserved, 5;
 
-    Entity: "entity", Data, Declared, 5;
-    UniqueRule: "unique_rule", Data, Reserved, 5;
-    Index: "index", Data, Reserved, 5;
-    Reference: "reference", Data, Reserved, 5;
+    Entity: "entity", Data, Built, 5;
+    UniqueRule: "unique_rule", Data, Built, 5;
+    Index: "index", Data, Built, 5;
+    Reference: "reference", Data, Built, 5;
     Lifecycle: "lifecycle", Data, Reserved, 5;
     Cache: "cache", Data, Reserved, 5;
-    StorePlacement: "store_placement", Data, Reserved, 5;
-    SystemTable: "system_table", Data, Reserved, 5;
+    StorePlacement: "store_placement", Data, Built, 5;
+    SystemTable: "system_table", Data, Built, 5;
     PersonalMark: "personal_mark", Data, Reserved, 15;
     Retention: "retention", Data, Reserved, 15;
     Person: "person", Data, Reserved, 15;
@@ -166,7 +166,7 @@ kinds! {
     Threshold: "threshold", Services, Reserved, 16;
 
     ApiRecord: "api_record", Records, Reserved, 7;
-    MigrationSnapshot: "migration_snapshot", Records, Reserved, 5;
+    MigrationSnapshot: "migration_snapshot", Records, Built, 5;
     RegistryEntry: "registry_entry", Records, Reserved, 18;
     Acceptance: "acceptance", Records, Reserved, 18;
     LockEntry: "lock_entry", Records, Reserved, 11;
@@ -237,7 +237,7 @@ edges! {
     Runs: "runs", Reserved, "A trigger runs an action or query";
     Raises: "raises", Built, "A failure can leave the callable";
     Maps: "maps", Reserved, "One failure becomes another";
-    References: "references", Reserved, "An entity refers to another";
+    References: "references", Built, "An entity refers to another";
     Includes: "includes", Reserved, "A query includes related records";
     Grants: "grants", Reserved, "Policy grants an effect";
     Scopes: "scopes", Reserved, "Tenancy scopes an entity";

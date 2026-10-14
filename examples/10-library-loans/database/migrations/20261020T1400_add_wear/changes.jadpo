@@ -1,0 +1,16 @@
+// A migration's decisions: `jadpo migrate new` wrote a line to fill in
+// for each change it couldn't make alone, and `jadpo check` failed until
+// they were written. Run again, it wrote them into `postgres.sql`.
+
+/// Gives every copy its wear and retires the shelf codes.
+migration {
+    // `Book.wear` is required, and the copies already stored have none:
+    // `backfill:` is the value they get.
+    Book.wear: {
+        backfill: Wear.pristine
+    }
+    // `Book.shelf_code` is gone from the entity. Retiring it keeps the
+    // column and its data, now optional, for servers still running the
+    // old build; a later migration drops it.
+    Book.shelf_code: FieldChange.retired
+}

@@ -32,6 +32,9 @@ README saying what it teaches, how to run it and what to try next.
    scenario in `tests/`.
 9. [09-bakery-orders/](09-bakery-orders/README.md): a fuller project
    that puts all of it together.
+10. [10-library-loans/](10-library-loans/README.md): stored records:
+    entities, references, unique rules and indexes, and the migrations
+    that keep the database in step with them.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

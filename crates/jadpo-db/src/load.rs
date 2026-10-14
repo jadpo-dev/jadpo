@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use salsa::{Durability, Setter};
 
 use crate::places::{Ownership, locate};
-use crate::{Database, File, Layout, Project};
+use crate::{Database, File, Layout, Project, Record, is_record};
 
 /// The file that marks a project's root (area 14).
 pub const PROJECT_FILE: &str = "app.jadpo";
@@ -97,8 +97,13 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
     };
     let mut files = Vec::new();
     let mut other_files = Vec::new();
+    let mut records = Vec::new();
     for path in sources {
         let shown = display(&root, &path);
+        if layout == Layout::Project && is_record(&shown) {
+            records.push(read_record(&root, &shown));
+            continue;
+        }
         if !shown.ends_with(".jadpo") {
             other_files.push(shown);
             continue;
@@ -130,12 +135,20 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
     // `database/identities.json` is read once `jadpo rename` and the domain
     // commands, which write it, exist (area 14); until then nothing has been
     // renamed.
-    let project = Project::new(&db, files, other_files, layout, BTreeMap::new());
+    let project = Project::new(&db, files, other_files, layout, BTreeMap::new(), records);
     Loaded {
         db,
         project,
         root,
         unreadable,
+    }
+}
+
+/// The record at `path`, read from `root`.
+fn read_record(root: &Path, path: &str) -> Record {
+    Record {
+        path: path.to_string(),
+        text: std::fs::read_to_string(root.join(path)).map_err(|error| error.to_string()),
     }
 }
 
@@ -229,6 +242,18 @@ impl Loaded {
         }
         self.unreadable.retain(|file| file.path != path);
         let full = self.root.join(path);
+        if self.project.layout(&self.db) == Layout::Project && is_record(path) {
+            let mut records = self.project.records(&self.db).clone();
+            records.retain(|record| record.path != path);
+            if full.is_file() {
+                records.push(read_record(&self.root, path));
+                records.sort_by(|a, b| a.path.cmp(&b.path));
+            }
+            if &records != self.project.records(&self.db) {
+                self.project.set_records(&mut self.db).to(records);
+            }
+            return;
+        }
         if !is_source(path) {
             let mut others = self.project.other_files(&self.db).clone();
             let present = full.is_file();
@@ -288,7 +313,7 @@ fn tracked(path: &str, project: bool) -> bool {
     }
     project
         && !path.split('/').any(|part| part.starts_with('.'))
-        && (path.starts_with("domains/") || path.starts_with("shared/"))
+        && (path.starts_with("domains/") || path.starts_with("shared/") || is_record(path))
 }
 
 /// Whether a project-relative path is a source file the project holds.
@@ -348,7 +373,10 @@ fn walk(folder: &Path, project: bool, unreadable: &mut Vec<Unreadable>) -> Vec<P
                 Ok(_) if name.ends_with(".jadpo") => found.push(path),
                 Ok(_) if project => {
                     let shown = display(folder, &path);
-                    if shown.starts_with("domains/") || shown.starts_with("shared/") {
+                    if shown.starts_with("domains/")
+                        || shown.starts_with("shared/")
+                        || is_record(&shown)
+                    {
                         found.push(path);
                     }
                 }

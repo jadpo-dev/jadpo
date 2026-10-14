@@ -103,6 +103,53 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// When a generated `Instant` field is set (area 5, "Fields and their
+    /// settings").
+    Generated: "Generated" {
+        /// Once, when the record is created.
+        OnCreate: "on_create",
+        /// When the record is created and on every change.
+        OnChange: "on_change",
+    }
+}
+
+std_enum! {
+    /// What deleting a referenced record does to the records that refer to
+    /// it (area 5, "References and `on_delete`").
+    OnDelete: "OnDelete" {
+        /// The delete fails with a conflict while any record refers to it.
+        Restricted: "restricted",
+        /// Records that refer to it are deleted in the same transaction.
+        Cascade: "cascade",
+        /// The reference is set to `none`.
+        Cleared: "cleared",
+    }
+}
+
+std_enum! {
+    /// A migration's decision about a field that is gone from its entity
+    /// (area 5, "Migrations").
+    FieldChange: "FieldChange" {
+        /// Code stops using it; the column stays, for servers still running
+        /// the old build.
+        Retired: "retired",
+        /// The column is removed, in a later migration than the retirement.
+        Dropped: "dropped",
+    }
+}
+
+std_enum! {
+    /// The built-in drivers a connection in `app.jadpo` can name (area 11,
+    /// "Capabilities").
+    Driver: "Driver" {
+        /// PostgreSQL, the `database` capability.
+        Postgres: "postgres",
+        /// Redis, the `cache` capability.
+        Redis: "redis",
+    }
+}
+
 /// The name of the built-in enum of IANA time zones (area 10).
 pub const ZONE: &str = "Zone";
 
@@ -120,6 +167,10 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (TextFormat::NAME, TextFormat::NAMES.to_vec()),
         (UuidVersion::NAME, UuidVersion::NAMES.to_vec()),
         (Weekday::NAME, Weekday::NAMES.to_vec()),
+        (Generated::NAME, Generated::NAMES.to_vec()),
+        (OnDelete::NAME, OnDelete::NAMES.to_vec()),
+        (FieldChange::NAME, FieldChange::NAMES.to_vec()),
+        (Driver::NAME, Driver::NAMES.to_vec()),
         (ZONE, names(crate::zones::ZONES)),
         (LOCALE, names(crate::zones::LOCALES)),
     ]
@@ -135,6 +186,10 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         TextFormat::NAME => position(TextFormat::NAMES),
         UuidVersion::NAME => position(UuidVersion::NAMES),
         Weekday::NAME => position(Weekday::NAMES),
+        Generated::NAME => position(Generated::NAMES),
+        OnDelete::NAME => position(OnDelete::NAMES),
+        FieldChange::NAME => position(FieldChange::NAMES),
+        Driver::NAME => position(Driver::NAMES),
         ZONE => crate::zones::ZONES.iter().position(|(v, _)| *v == variant),
         LOCALE => crate::zones::LOCALES
             .iter()

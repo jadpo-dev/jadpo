@@ -99,6 +99,7 @@ fn a_construction_from_a_value_that_may_be_none_never_runs() {
         Vec::new(),
         jadpo_db::Layout::Loose,
         Default::default(),
+        Vec::new(),
     );
     let Err(errors) = jadpo_interp::Program::load(&db, project) else {
         panic!("a construction from `Count?` loaded");

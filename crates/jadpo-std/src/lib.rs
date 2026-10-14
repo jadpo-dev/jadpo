@@ -37,7 +37,10 @@ mod time;
 mod zones;
 
 pub use builtin::Builtin;
-pub use enums::{LOCALE, Rounding, TextFormat, UuidVersion, Weekday, ZONE, enums, variant_ordinal};
+pub use enums::{
+    Driver, FieldChange, Generated, LOCALE, OnDelete, Rounding, TextFormat, UuidVersion, Weekday,
+    ZONE, enums, variant_ordinal,
+};
 pub use num::{Num, compare_exact};
 pub use operations::{Kind, OPERATIONS, Op, Operation, Param, operation};
 pub use rules::{

@@ -48,6 +48,15 @@ invite hand edits, so it is a build output.
   `providers/` are already there (area 11). `providers/` is source, not a
   record: packages and their recorded responses, written like any code.
 
+> **Built (chunk 3.1).** Migrations are records: `jadpo migrate new` writes
+> each folder in `database/migrations/` (`snapshot.json`, `postgres.sql`
+> and, for decisions, `changes.jadpo`), and `jadpo check` fails while the
+> entities and the latest snapshot disagree, while the latest migration
+> waits for a decision, and when a record can't be read, naming the
+> command to run. Each folder is a `migration_snapshot` node in the
+> manifest. The identity registry is still read only once `jadpo rename`
+> writes it (area 14), so every born name is the name now.
+
 ::: today
 
 There are no records. `build/compatibility/public-failure-codes.json` is

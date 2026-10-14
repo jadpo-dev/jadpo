@@ -1,0 +1,5 @@
+/// A book's title, as printed on its spine.
+type BookTitle = Text {
+    min_length: 1
+    max_length: 200
+}

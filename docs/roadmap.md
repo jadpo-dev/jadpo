@@ -190,7 +190,7 @@ reference only).
 
 ## Phase 3 — Data (areas 5, 6)
 
-- [ ] **3.1 Entities, migrations and PostgreSQL:** `opus · high` snapshots, system tables,
+- [x] **3.1 Entities, migrations and PostgreSQL:** `opus · high` snapshots, system tables,
   the test database template.
 - [ ] **3.2 Queries:** `opus · high` filters, order, pages, includes, selected columns,
   `jadpo sql`.

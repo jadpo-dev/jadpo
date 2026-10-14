@@ -55,6 +55,7 @@ pub fn test(call: &Call) -> Reply {
         kind,
         failed: call.flag("--failed"),
         seed,
+        keep_failed: call.flag("--keep-failed"),
     };
     if call.flag("--watch") {
         // Mistakes in what to run end the command before it starts

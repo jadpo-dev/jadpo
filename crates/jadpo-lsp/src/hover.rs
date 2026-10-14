@@ -131,6 +131,36 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             format!("{}: {{ {} }}", node.name, fields.join(" "))
         }
         Detail::Variant { payload: false, .. } => node.name.clone(),
+        Detail::Entity { store, table } => {
+            let mut lines = fields_of(graph, id, true);
+            if store != "main" {
+                lines.insert(0, format!("store: {store}"));
+            }
+            let head = format!("entity {}", node.name);
+            let shown = if lines.is_empty() {
+                head
+            } else {
+                format!("{head} {{\n    {}\n}}", lines.join("\n    "))
+            };
+            format!("{shown}\n// table `{table}` in `{store}`")
+        }
+        Detail::Columns { fields, constraint } => format!(
+            "{} {}: [{}]  // `{constraint}`",
+            word,
+            short(&node.name),
+            fields.join(", ")
+        ),
+        Detail::Reference {
+            target,
+            on_delete,
+            constraint,
+        } => format!(
+            "{}: {}.id  // on_delete: OnDelete.{on_delete}, `{constraint}`",
+            node.name,
+            name(target)
+        ),
+        Detail::Placement { store } => format!("{} lives in `{store}`", node.name),
+        Detail::SystemTable { store, table } => format!("system table `{table}` in `{store}`"),
         Detail::None => match node.kind {
             Kind::Entity => {
                 let fields = fields_of(graph, id, true);
@@ -380,6 +410,7 @@ mod tests {
             Vec::new(),
             Layout::Loose,
             Default::default(),
+            Vec::new(),
         );
         let graph = graph(&db, project);
         let shown = render(graph, &Found::Node(Key::new(Kind::Type, "TodoDetail"))).expect("hover");

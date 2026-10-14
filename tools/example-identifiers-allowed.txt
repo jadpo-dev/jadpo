@@ -14,6 +14,8 @@ both
 bounds
 blank
 body
+# a statement batch: tokio-postgres's batch_execute and the runtime's Transaction::batch
+batch
 boxes
 broken
 calculate
@@ -264,3 +266,9 @@ percent
 reserved
 used
 whole
+# ordinary words the test database harness and decimal rounding use
+# (Condvar::notify_all, a template being ready, low and high bounds)
+notify
+ready
+low
+high

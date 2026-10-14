@@ -241,3 +241,271 @@ mod tests {
         assert_eq!(value.to_document(), "{\n  \"yes\": true\n}\n");
     }
 }
+
+/// Reads a JSON document into a [`Value`]: what a committed record such as
+/// a migration's `snapshot.json` is read back with. Numbers are whole
+/// numbers that fit an `i64`, as everything this crate writes; anything
+/// else, and text after the document, is an error saying where.
+pub fn parse(text: &str) -> Result<Value, String> {
+    let mut reader = Reader {
+        text,
+        bytes: text.as_bytes(),
+        at: 0,
+        depth: 0,
+    };
+    let value = reader.value()?;
+    reader.space();
+    if reader.at != reader.bytes.len() {
+        return Err(reader.error("text after the document"));
+    }
+    Ok(value)
+}
+
+struct Reader<'a> {
+    text: &'a str,
+    bytes: &'a [u8],
+    at: usize,
+    depth: usize,
+}
+
+/// Nesting deeper than this is refused rather than recursed into.
+const MAX_DEPTH: usize = 64;
+
+impl Reader<'_> {
+    fn error(&self, what: &str) -> String {
+        let line = 1 + self.bytes[..self.at.min(self.bytes.len())]
+            .iter()
+            .filter(|b| **b == b'\n')
+            .count();
+        format!("{what} on line {line}")
+    }
+
+    fn space(&mut self) {
+        while self
+            .bytes
+            .get(self.at)
+            .is_some_and(|b| matches!(b, b' ' | b'\n' | b'\r' | b'\t'))
+        {
+            self.at += 1;
+        }
+    }
+
+    fn eat(&mut self, byte: u8) -> bool {
+        self.space();
+        if self.bytes.get(self.at) == Some(&byte) {
+            self.at += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn word(&mut self, word: &str, value: Value) -> Result<Value, String> {
+        if self.bytes[self.at..].starts_with(word.as_bytes()) {
+            self.at += word.len();
+            Ok(value)
+        } else {
+            Err(self.error("an unknown word"))
+        }
+    }
+
+    fn value(&mut self) -> Result<Value, String> {
+        self.space();
+        match self.bytes.get(self.at) {
+            None => Err(self.error("the document ends early")),
+            Some(b'{') => self.nested(|reader| reader.object()),
+            Some(b'[') => self.nested(|reader| reader.array()),
+            Some(b'"') => self.string().map(Value::Str),
+            Some(b't') => self.word("true", Value::Bool(true)),
+            Some(b'f') => self.word("false", Value::Bool(false)),
+            Some(b'n') => self.word("null", Value::Null),
+            Some(b'-' | b'0'..=b'9') => self.number(),
+            Some(_) => Err(self.error("an unexpected character")),
+        }
+    }
+
+    fn nested(
+        &mut self,
+        read: impl FnOnce(&mut Self) -> Result<Value, String>,
+    ) -> Result<Value, String> {
+        self.depth += 1;
+        if self.depth > MAX_DEPTH {
+            return Err(self.error("nesting too deep"));
+        }
+        let value = read(self);
+        self.depth -= 1;
+        value
+    }
+
+    fn object(&mut self) -> Result<Value, String> {
+        self.at += 1;
+        let mut entries = BTreeMap::new();
+        if self.eat(b'}') {
+            return Ok(Value::Object(entries));
+        }
+        loop {
+            self.space();
+            if self.bytes.get(self.at) != Some(&b'"') {
+                return Err(self.error("a key that isn't text"));
+            }
+            let key = self.string()?;
+            if !self.eat(b':') {
+                return Err(self.error("a missing `:`"));
+            }
+            let value = self.value()?;
+            if entries.insert(key, value).is_some() {
+                return Err(self.error("a key given twice"));
+            }
+            if self.eat(b',') {
+                continue;
+            }
+            if self.eat(b'}') {
+                return Ok(Value::Object(entries));
+            }
+            return Err(self.error("a missing `,` or `}`"));
+        }
+    }
+
+    fn array(&mut self) -> Result<Value, String> {
+        self.at += 1;
+        let mut items = Vec::new();
+        if self.eat(b']') {
+            return Ok(Value::Array(items));
+        }
+        loop {
+            items.push(self.value()?);
+            if self.eat(b',') {
+                continue;
+            }
+            if self.eat(b']') {
+                return Ok(Value::Array(items));
+            }
+            return Err(self.error("a missing `,` or `]`"));
+        }
+    }
+
+    fn number(&mut self) -> Result<Value, String> {
+        let start = self.at;
+        if self.bytes.get(self.at) == Some(&b'-') {
+            self.at += 1;
+        }
+        while self.bytes.get(self.at).is_some_and(u8::is_ascii_digit) {
+            self.at += 1;
+        }
+        if self
+            .bytes
+            .get(self.at)
+            .is_some_and(|b| matches!(b, b'.' | b'e' | b'E'))
+        {
+            return Err(self.error("a number that isn't whole"));
+        }
+        std::str::from_utf8(&self.bytes[start..self.at])
+            .ok()
+            .and_then(|digits| digits.parse().ok())
+            .map(Value::Int)
+            .ok_or_else(|| self.error("a number out of range"))
+    }
+
+    fn string(&mut self) -> Result<String, String> {
+        self.at += 1;
+        let mut out = String::new();
+        loop {
+            let Some(&byte) = self.bytes.get(self.at) else {
+                return Err(self.error("text that never ends"));
+            };
+            match byte {
+                b'"' => {
+                    self.at += 1;
+                    return Ok(out);
+                }
+                b'\\' => {
+                    self.at += 1;
+                    let escaped = self.bytes.get(self.at).copied();
+                    self.at += 1;
+                    match escaped {
+                        Some(b'"') => out.push('"'),
+                        Some(b'\\') => out.push('\\'),
+                        Some(b'/') => out.push('/'),
+                        Some(b'n') => out.push('\n'),
+                        Some(b'r') => out.push('\r'),
+                        Some(b't') => out.push('\t'),
+                        Some(b'b') => out.push('\u{8}'),
+                        Some(b'f') => out.push('\u{c}'),
+                        Some(b'u') => {
+                            let code = self.hex4()?;
+                            let c = if (0xd800..0xdc00).contains(&code) {
+                                if !self.bytes[self.at..].starts_with(b"\\u") {
+                                    return Err(self.error("half a surrogate pair"));
+                                }
+                                self.at += 2;
+                                let low = self.hex4()?;
+                                char::from_u32(0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00))
+                            } else {
+                                char::from_u32(code)
+                            };
+                            out.push(
+                                c.ok_or_else(|| self.error("an escape that isn't a character"))?,
+                            );
+                        }
+                        _ => return Err(self.error("an unknown escape")),
+                    }
+                }
+                byte if byte < 0x20 => return Err(self.error("a control character in text")),
+                _ => {
+                    // One whole character: the reader only ever stops on a
+                    // character's first byte.
+                    let Some(c) = self
+                        .text
+                        .get(self.at..)
+                        .and_then(|rest| rest.chars().next())
+                    else {
+                        return Err(self.error("text that isn't UTF-8"));
+                    };
+                    out.push(c);
+                    self.at += c.len_utf8();
+                }
+            }
+        }
+    }
+
+    fn hex4(&mut self) -> Result<u32, String> {
+        let digits = self
+            .bytes
+            .get(self.at..self.at + 4)
+            .and_then(|d| std::str::from_utf8(d).ok())
+            .and_then(|d| u32::from_str_radix(d, 16).ok())
+            .ok_or_else(|| self.error("a bad `\\u` escape"))?;
+        self.at += 4;
+        Ok(digits)
+    }
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::*;
+
+    #[test]
+    fn what_the_writer_writes_reads_back() {
+        let mut value = Value::object();
+        value.set("name", "caf\u{e9} \"x\"\n");
+        value.set("count", -12i64);
+        value.set(
+            "list",
+            vec![Value::Bool(true), Value::Null, Value::object()],
+        );
+        let text = value.to_document();
+        assert_eq!(parse(&text), Ok(value));
+        assert_eq!(
+            parse("\"\\u00e9\\ud83d\\ude00\""),
+            Ok(Value::Str("é😀".into()))
+        );
+    }
+
+    #[test]
+    fn bad_documents_say_where() {
+        assert!(parse("{\"a\": 1.5}").is_err_and(|e| e.contains("whole")));
+        assert!(parse("{\"a\": 1,\n\"a\": 2}").is_err_and(|e| e.contains("line 2")));
+        assert!(parse("[1] x").is_err());
+        assert!(parse(&"[".repeat(100)).is_err_and(|e| e.contains("deep")));
+    }
+}

@@ -26,6 +26,8 @@ pub struct TestFailure {
     pub detail: Detail,
     /// The command that runs this test alone in the same order.
     pub rerun: String,
+    /// The databases kept for inspection (`--keep-failed`).
+    pub kept: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -287,6 +289,7 @@ pub(crate) fn failure(
             TestFailure {
                 rule: &rule::TEST_ASSERTION_FAILED,
                 rerun: rerun.command(&location.path, location.line),
+                kept: Vec::new(),
                 location,
                 detail: Detail::Assertion(Box::new(assertion_failure(places, sources, assertion))),
             }
@@ -296,6 +299,7 @@ pub(crate) fn failure(
             TestFailure {
                 rule: &rule::TEST_UNEXPECTED_FAILURE,
                 rerun: rerun.command(&location.path, location.line),
+                kept: Vec::new(),
                 location,
                 detail: Detail::Failure(Box::new(failure_info(places, sources, failure))),
             }
@@ -305,6 +309,7 @@ pub(crate) fn failure(
             TestFailure {
                 rule: &rule::TEST_FAULT,
                 rerun: rerun.command(&location.path, location.line),
+                kept: Vec::new(),
                 location,
                 detail: Detail::Fault(Box::new(fault_info(places, sources, fault))),
             }
@@ -331,6 +336,7 @@ pub(crate) fn not_runnable(
         rule: &rule::TEST_FAULT,
         location: Located::new(sources, &test.file, None, test.line, ""),
         rerun: rerun.command(&test.file, test.line),
+        kept: Vec::new(),
         detail: Detail::Fault(Box::new(FaultInfo {
             kind: "internal_fault".to_string(),
             subject: format!("internal_fault in test \"{}\"", test.name),

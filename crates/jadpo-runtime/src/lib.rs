@@ -42,6 +42,7 @@ mod failure;
 mod fault;
 mod host;
 mod limits;
+mod migrate;
 mod outcome;
 mod places;
 mod report;
@@ -52,8 +53,12 @@ pub use env::{Clock, Env};
 pub use executor::{Executor, Stalled, block_on};
 pub use failure::Failure;
 pub use fault::{Fault, FaultKind};
-pub use host::{Database, Event, Host, LocalFuture, MemoryHost, NoStore, StoreError, Transaction};
+pub use host::{
+    Database, Event, Host, LocalFuture, MemoryHost, NoStore, Row, SqlType, SqlValue, StoreError,
+    Transaction,
+};
 pub use limits::MAX_DEPTH;
+pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, standing};
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};

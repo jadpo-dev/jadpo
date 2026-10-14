@@ -104,6 +104,7 @@ fn test(order: usize, result: &TestResult) -> Json {
                 ("failure", raised),
                 ("fault", fault),
                 ("rerun", Json::from(&failure.rerun)),
+                ("kept", Json::array(failure.kept.iter().map(String::as_str))),
             ]),
         ));
     }
@@ -334,6 +335,10 @@ pub fn schema() -> Json {
                 (
                     "rerun",
                     "The command that reruns this test alone in the same order, from where the command ran",
+                ),
+                (
+                    "kept",
+                    "The databases kept for inspection with --keep-failed; empty otherwise",
                 ),
             ]),
         ),

@@ -9,6 +9,7 @@ use crate::completion;
 pub use crate::check::check;
 pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
+pub use crate::migrate::migrate;
 use crate::run::{Call, Reply, Session, both, either, quoted, unknown_command};
 use crate::suggest::nearest;
 use crate::table::{self, SHELLS};

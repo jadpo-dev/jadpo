@@ -28,6 +28,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use jadpo_check::data::migrations::DecisionValue;
 use jadpo_check::graph::graph;
 use jadpo_check::types::{
     BASES, CONSTRAINTS, COPY_LINES, FIELD_SETTINGS, callables_of, typed_body,
@@ -39,13 +40,13 @@ use jadpo_graph::body::{
     UnaryOp,
 };
 use jadpo_graph::{Base, Detail, EdgeKind, Kind, Status, TypeRef};
-use jadpo_std::{Builtin, OPERATIONS, Rules};
+use jadpo_std::{Builtin, FieldChange, Generated, OPERATIONS, OnDelete, Rules};
 use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode};
 
 /// The areas built so far (roadmap Phases 1 and 2). A graph kind these
 /// areas decide counts once nodes of it are declared.
-const BUILT_AREAS: [u8; 5] = [1, 2, 3, 4, 13];
+const BUILT_AREAS: [u8; 6] = [1, 2, 3, 4, 5, 13];
 
 /// Features no valid, runnable example can use yet, and why.
 const EXEMPT: &[(&str, &str)] = &[
@@ -102,8 +103,15 @@ const EXEMPT: &[(&str, &str)] = &[
         "not built: email templates (area 16)",
     ),
     // Later areas' declarations and the syntax only they use.
-    ("syntax ENTITY_DECL", "not built: entities (area 5)"),
     ("syntax SEED_DECL", "not built: seeds (area 5)"),
+    (
+        "graph node seed",
+        "not built: `jadpo seed`, which runs a seed's actions (area 5)",
+    ),
+    (
+        "data migration decision FieldChange.dropped",
+        "not built: a drop needs a person's acceptance (area 18)",
+    ),
     ("syntax QUERY_DECL", "not built: queries (area 6)"),
     ("syntax ORDERED_EXPR", "not built: a query's order (area 6)"),
     ("syntax ROUTES_DECL", "not built: routes (area 7)"),
@@ -167,7 +175,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     ("root file policy.jadpo", "not built: policy (area 9)"),
     ("root file flags.jadpo", "not built: flags (area 16)"),
-    ("domain folder entities", "not built: entities (area 5)"),
     ("domain folder queries", "not built: queries (area 6)"),
     ("domain folder routes", "not built: routes (area 7)"),
     ("domain folder schedules", "not built: schedules (area 12)"),
@@ -179,7 +186,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ("domain folder emails", "not built: emails (area 16)"),
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),
-    ("place migration", "not built: migrations (area 5)"),
     ("place providers", "not built: provider packages (area 11)"),
     ("place acceptances", "not built: acceptances (area 18)"),
 ];
@@ -289,6 +295,24 @@ fn built() -> BTreeSet<String> {
             .map(|folder| format!("shared folder {}", folder.name())),
     );
     out.extend(PLACES.iter().map(|place| format!("place {place}")));
+    // Area 5: the field settings' values and a migration's decisions.
+    out.extend(
+        Generated::NAMES
+            .iter()
+            .map(|v| format!("data generated {v}")),
+    );
+    out.extend(
+        OnDelete::NAMES
+            .iter()
+            .map(|v| format!("data on_delete {v}")),
+    );
+    out.insert("data field unique".to_string());
+    out.insert("data migration decision backfill".to_string());
+    out.extend(
+        FieldChange::NAMES
+            .iter()
+            .map(|v| format!("data migration decision FieldChange.{v}")),
+    );
     out
 }
 
@@ -928,7 +952,47 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 }
                 shapes(&signature.result, &mut used);
             }
-            Detail::Variant { .. } | Detail::None => {}
+            Detail::Variant { .. }
+            | Detail::None
+            | Detail::Entity { .. }
+            | Detail::Columns { .. }
+            | Detail::Reference { .. }
+            | Detail::Placement { .. }
+            | Detail::SystemTable { .. } => {}
+        }
+    }
+    // Area 5's settings and decisions, as the checker read them.
+    let model = jadpo_check::data::data_model(db, project);
+    for entity in &model.entities {
+        for field in &entity.fields {
+            if let Some(generated) = field.generated {
+                used.insert(format!("data generated {}", generated.name()));
+            }
+            if field.unique {
+                used.insert("data field unique".to_string());
+            }
+            if let Some(on_delete) = field.reference.as_ref().and_then(|r| r.on_delete) {
+                used.insert(format!("data on_delete {}", on_delete.name()));
+            }
+        }
+    }
+    for &file in project.files(db) {
+        let path = file.path(db);
+        if !path.ends_with("/changes.jadpo") {
+            continue;
+        }
+        let Some(source) = ast::SourceFile::cast(parse(db, file).syntax()) else {
+            continue;
+        };
+        let (decisions, _) = jadpo_check::data::migrations::read_decisions(path, &source);
+        for decision in decisions {
+            used.insert(match decision.value {
+                DecisionValue::Backfill(..) => "data migration decision backfill".to_string(),
+                DecisionValue::Change(change) => {
+                    format!("data migration decision FieldChange.{}", change.name())
+                }
+                DecisionValue::Invalid(..) | DecisionValue::Pending => continue,
+            });
         }
     }
     for edge in graph.edges() {

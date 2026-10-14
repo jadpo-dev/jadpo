@@ -167,7 +167,11 @@ fn json_carries_the_problems_with_lines_and_edits() {
 #[test]
 fn outside_a_project_a_named_file_is_checked_on_its_own() {
     let root = folder("loose");
-    write(&root, "notes/sketch.jadpo", "entity Basket {}\n");
+    write(
+        &root,
+        "notes/sketch.jadpo",
+        "entity Basket {\n    id: Uuid\n}\n",
+    );
     write(&root, "notes/other.jadpo", "type Broken = Missing {}\n");
     let output = jadpo(&root, &["check", "notes/sketch.jadpo"]);
     assert_eq!(output.stdout, "checked: 1 file\n");

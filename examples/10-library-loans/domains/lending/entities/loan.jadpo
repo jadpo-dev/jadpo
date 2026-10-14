@@ -1,0 +1,35 @@
+/// A book lent to a member until a date.
+entity Loan {
+    id: Uuid
+    // A field typed `Book.id` is a reference: the database keeps a foreign
+    // key and an index for it, and its block must say what deleting the
+    // book does. `restricted` refuses to delete a book that is on loan.
+    book_id: Book.id {
+        on_delete: OnDelete.restricted
+    }
+    // `cascade` deletes a member's loans with the member.
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    // An optional reference may be `cleared`: deleting the member who
+    // vouched for this loan leaves the loan, with no one vouching.
+    vouched_by: Member.id? {
+        on_delete: OnDelete.cleared
+    }
+    due_on: CalendarDate
+    changed_at: Instant {
+        generated: Generated.on_change
+    }
+
+    // A unique rule over several fields has a name, which a write's
+    // conflict names: a book is lent once on any day.
+    unique: {
+        one_loan_per_due_date: [book_id, due_on]
+    }
+
+    // Indexes the application's own queries need come from the queries;
+    // `indexes:` declares one for lookups from outside, such as a report.
+    indexes: {
+        by_due_on: [due_on]
+    }
+}

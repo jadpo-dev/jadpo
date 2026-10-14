@@ -25,7 +25,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/inventory/entities/stock_level.jadpo",
-        "entity StockLevel {\n    quantity: Quantity\n}\n",
+        "entity StockLevel {\n    id: Uuid\n    quantity: Quantity\n}\n",
     ),
     (
         "domains/inventory/actions/reserve_stock.jadpo",
@@ -129,7 +129,7 @@ fn folders_hold_their_own_kind() {
     assert_eq!(
         with(&[(
             "domains/ordering/entities/basket.jadpo",
-            "entity Basket {}\n\ntype BasketMissing = Failure {\n    kind: FailureKind.not_found\n}\n"
+            "entity Basket {\n    id: Uuid\n}\n\ntype BasketMissing = Failure {\n    kind: FailureKind.not_found\n}\n"
         )]),
         [
             "domains/ordering/entities/basket.jadpo layout.wrong_folder: Failure `BasketMissing` is in `entities/`"
@@ -621,7 +621,7 @@ fn types_built_from_other_types_resolve_what_they_copy() {
             Layout::Loose,
             &[(
                 "a.jadpo",
-                "type BasketNote = Text {}\n\nentity Basket {\n    note: BasketNote\n}\n\ntype BasketView = Output {\n    include: [Basket]\n    omit: [Basket.note]\n}\n\ntype PatchBasket = Input {\n    pick: [Basket.note, Baskit.size]\n    optional: all\n}\n"
+                "type BasketNote = Text {}\n\nentity Basket {\n    id: Uuid\n    note: BasketNote\n}\n\ntype BasketView = Output {\n    include: [Basket]\n    omit: [Basket.note]\n}\n\ntype PatchBasket = Input {\n    pick: [Basket.note, Baskit.size]\n    optional: all\n}\n"
             )]
         ),
         ["a.jadpo semantic.unknown_name: `Baskit` isn't declared"]
@@ -635,7 +635,7 @@ fn loose_files_have_no_layout_rules() {
             Layout::Loose,
             &[(
                 "anything/goes.jadpo",
-                "entity Basket {}\n\naction empty_basket() -> Unit {}\n"
+                "entity Basket {\n    id: Uuid\n}\n\naction empty_basket() -> Unit {}\n"
             )]
         ),
         Vec::<String>::new()

@@ -10,12 +10,16 @@ use jadpo_runtime::{Clock, Env, MemoryHost};
 use crate::select::splitmix;
 
 /// The database a test runs against.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum TestDatabase {
-    /// None yet: the template database copied for each test comes with
-    /// entities (area 5, roadmap 3.1).
+    /// None: the project has no tables, or the test calls no action, so
+    /// it can't touch a store.
     #[default]
     None,
+    /// Its own copy of each of these stores' template databases, at the
+    /// latest migration, handed to it the first time it uses one
+    /// ([`crate::database`]).
+    Copied { stores: Vec<String> },
 }
 
 /// The responses each integration operation gives a test, in order:
@@ -56,12 +60,10 @@ impl TestEnv {
         }
     }
 
-    /// The host the test runs on: no store, no subscribers, while
-    /// [`TestDatabase::None`] is all there is.
+    /// The host a test without a database runs on: no store, no
+    /// subscribers. A test with one runs on [`crate::database::TestHost`].
     pub fn host(&self) -> MemoryHost {
-        match self.database {
-            TestDatabase::None => MemoryHost::new(),
-        }
+        MemoryHost::new()
     }
 }
 

@@ -1,0 +1,18 @@
+[package]
+name = "jadpo-host-native"
+description = "The native host: a current-thread tokio runtime and the transport the drivers connect through"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# A runtime crate (docs/compiler-runtime.md §2.1 and §2.6) that never builds
+# for wasm32: it is listed in [workspace.metadata.targets] native_only, so
+# tools/verify.py leaves it out of the wasm32 build.
+[dependencies]
+jadpo-runtime.workspace = true
+jadpo-drivers = { workspace = true, features = ["postgres"] }
+tokio = { workspace = true, features = ["rt", "net"] }
+
+[lints]
+workspace = true

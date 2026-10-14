@@ -1,0 +1,6 @@
+/// How worn a copy is, which decides how long it may be lent.
+type Wear = Enum {
+    pristine
+    worn
+    fragile
+}

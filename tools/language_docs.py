@@ -33,10 +33,10 @@ code is written in `fragment` blocks, which are not compiled.
   python3 tools/language_docs.py             # verify and write build/language-site
   python3 tools/language_docs.py --bless     # rewrite the output blocks after `check` blocks
   python3 tools/language_docs.py --check --export-corpus  # also write build/spec-corpus/
-  python3 tools/language_docs.py --archived  # list what areas 1-4 still show from the v0 compiler
+  python3 tools/language_docs.py --archived  # list what areas 1-5 still show from the v0 compiler
   python3 tools/language_docs.py --freeze    # with the v0 compiler built: rewrite the frozen results
 
-Phase 1 is done when areas 1-4's decided examples check and their errors show
+Phase 1 is done when areas 1-4's decided examples check (area 5 joined them in chunk 3.1) and their errors show
 the new compiler's output (docs/roadmap.md). Those pages own exactly the new
 compiler's rules whose catalogue entry (`jadpo help --json`) names their area,
 and each needs a `check` block failing with it: a frozen v0 result never
@@ -75,8 +75,13 @@ TEST_SEED = '1'
 TEST_DECLARATION = re.compile(r'^\s*test\s+"', re.MULTILINE)
 # Optional build/language-site/published.json maps page stems to published URLs for cross-page links.
 FENCE = re.compile(r'^```(\S*)(.*)$')
-# Roadmap Phase 1 builds areas 1-4 with the new compiler.
-PHASE_ONE = 4
+# The areas the new compiler builds, whose pages own the new compiler's
+# rules: areas 1-4 from Phase 1, and area 5 from chunk 3.1.
+PHASE_ONE = 5
+# `migrate=<purpose>` on a block runs `jadpo migrate new <purpose>` once
+# the project's blocks up to it are written, at a fixed time per step, so
+# migration folders are named the same on every run.
+MIGRATION_EPOCH = 1792504800  # 2026-10-20T14:00:00Z
 # Area 14's command errors, shown by the CLI's tests rather than by pages.
 COMMAND_AREA = 14
 # What a note says about a block still on the frozen v0 result.
@@ -100,7 +105,7 @@ def run(args, cwd=None):
 _jadpo_built = False
 
 
-def jadpo(args, cwd=None):
+def jadpo(args, cwd=None, env=None):
     """Runs the new `jadpo`, built from this checkout, in plain mode."""
     global _jadpo_built
     if not _jadpo_built:
@@ -108,8 +113,10 @@ def jadpo(args, cwd=None):
         if code:
             sys.exit(f'could not build jadpo:\n{out}')
         _jadpo_built = True
+    extra = env or {}
     env = {k: v for k, v in os.environ.items() if k not in ('FORCE_COLOR', 'CLICOLOR_FORCE', 'COLUMNS')}
     env['JADPO_PLAIN'] = '1'
+    env.update(extra)
     result = subprocess.run([str(JADPO), *args], cwd=cwd, capture_output=True, text=True, env=env)
     return result.returncode, result.stdout + result.stderr
 
@@ -236,10 +243,18 @@ class Page:
                             if b['attrs']['file'].endswith('.jadpo'))
             runs = expected == 'pass' and has_tests or expected.startswith('test.')
             with tempfile.TemporaryDirectory() as tmp:
+                steps = 0
                 for block in blocks:
                     target = Path(tmp) / block['attrs']['file']
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(block['source'])
+                    purpose = block['attrs'].get('migrate')
+                    if purpose:
+                        migrated, said = jadpo(['migrate', 'new', purpose], cwd=tmp,
+                                               env={'SOURCE_DATE_EPOCH': str(MIGRATION_EPOCH + 60 * steps)})
+                        steps += 1
+                        if migrated:
+                            self.problems.append(f'{name}: jadpo migrate new {purpose} failed:\n{said}')
                 code, out = jadpo(['check', tmp])
                 json_code, json_out = jadpo(['check', '--json', tmp])
                 formatted, _ = jadpo(['fmt', '--check', tmp])
@@ -409,7 +424,7 @@ class Page:
         return sorted(r for r in self.catalogue if any(fnmatch(r, p) for p in patterns))
 
     def covered_rules(self):
-        """Rules an example here shows failing as stated; on areas 1-4 only
+        """Rules an example here shows failing as stated; on areas 1-5 only
         the new compiler's `check` blocks count, never a frozen v0 result."""
         return {r['expected'] for r in self.results.values()
                 if r['expected'] != 'pass' and r['ok'] and (r.get('check') or not self.phase_one())}
@@ -887,7 +902,7 @@ def main():
     parser.add_argument('--export-corpus', action='store_true',
                         help=f'write the projects with tests and their jadpo test --json to {CORPUS.relative_to(ROOT)}')
     parser.add_argument('--archived', action='store_true',
-                        help='list the blocks areas 1-4 still show from the archived compiler, and why')
+                        help='list the blocks areas 1-5 still show from the archived compiler, and why')
     args = parser.parse_args()
     if args.freeze:
         if not COMPILER.exists():
@@ -918,7 +933,7 @@ def main():
             failed = True
             print(f'  FAIL {problem}')
     if args.archived:
-        print('\nStill on the archived compiler\'s result in areas 1-4:')
+        print('\nStill on the archived compiler\'s result in areas 1-5:')
         for page in pages:
             if not 1 <= page.area() <= PHASE_ONE:
                 continue

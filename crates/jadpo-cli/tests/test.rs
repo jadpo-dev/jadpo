@@ -574,20 +574,10 @@ error: Interactive tests aren't built yet
   help: docs/language/13-testing.html#running-tests
 "
     );
+    // `--keep-failed` is built with the test database (chunk 3.1): a
+    // project without tables has nothing to keep, and passes.
     let kept = jadpo(&root, &["test", ".", "--keep-failed"]);
-    assert_eq!(kept.code, 1);
-    assert!(
-        kept.stderr
-            .starts_with("error: Kept test databases aren't built yet\n"),
-        "{}",
-        kept.stderr
-    );
-    assert!(
-        kept.stderr
-            .ends_with("  help: docs/language/13-testing.html#the-test-database\n"),
-        "{}",
-        kept.stderr
-    );
+    assert_eq!(kept.code, 0, "{}", kept.stderr);
     let help = jadpo(&root, &["test", "--help"]);
     assert!(!help.stdout.contains("--interactive"), "{}", help.stdout);
 }
@@ -1094,13 +1084,13 @@ fn help_lists_the_flags_with_examples() {
         output.stdout
     );
     for line in [
-        "  --name        Run tests whose names contain this text\n",
-        "  --kind        Run one kind: pure, action, route, schedule\n",
-        "  --failed      Rerun the tests that failed last time\n",
-        "  --seed        Run in the order this seed gives\n",
+        "  --name         Run tests whose names contain this text\n",
+        "  --kind         Run one kind: pure, action, route, schedule\n",
+        "  --failed       Rerun the tests that failed last time\n",
+        "  --seed         Run in the order this seed gives\n",
         "    jadpo test --failed\n",
         // The same column as `jadpo --help` puts it in.
-        "  --color       Choose when to use colour     auto, always, never\n",
+        "  --color        Choose when to use colour     auto, always, never\n",
     ] {
         assert!(output.stdout.contains(line), "{line}\n{}", output.stdout);
     }

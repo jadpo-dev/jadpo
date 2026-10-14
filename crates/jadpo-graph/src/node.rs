@@ -198,6 +198,34 @@ pub enum Detail {
         payload: bool,
     },
     Callable(Signature),
+    /// An entity's store and the table its records live in (area 5).
+    Entity {
+        store: String,
+        table: String,
+    },
+    /// A compound unique rule's or a declared index's fields, in order,
+    /// and the name the database knows it by (area 5).
+    Columns {
+        fields: Vec<String>,
+        constraint: String,
+    },
+    /// A reference (area 5): the entity a field typed `X.id` points at,
+    /// what deleting that record does (`restricted`, `cascade`, `cleared`),
+    /// and its foreign key's name.
+    Reference {
+        target: Key,
+        on_delete: String,
+        constraint: String,
+    },
+    /// The store an entity lives in (area 5).
+    Placement {
+        store: String,
+    },
+    /// A system table (area 5): its store and table.
+    SystemTable {
+        store: String,
+        table: String,
+    },
 }
 
 /// What an input field's `default:` fills in when the field is left out

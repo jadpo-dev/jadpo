@@ -149,10 +149,11 @@ pub fn projects() -> Vec<(String, Vec<(String, String)>)> {
         if !file.ends_with(".jadpo") {
             continue;
         }
-        projects
-            .entry(format!("{page} {project}"))
-            .or_default()
-            .push((file, example.source));
+        // A later block of the same file replaces it, as the page's
+        // checker writes them (a project shown before and after a change).
+        let files = projects.entry(format!("{page} {project}")).or_default();
+        files.retain(|(path, _)| path != &file);
+        files.push((file, example.source));
     }
     // The teaching examples' projects (examples/<project>/), which the
     // spec corpus holds too (tools/examples.py).

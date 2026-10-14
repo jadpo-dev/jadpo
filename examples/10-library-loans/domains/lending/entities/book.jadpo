@@ -1,0 +1,10 @@
+/// One copy of a book on the shelves.
+entity Book {
+    id: Uuid
+    isbn: Isbn
+    title: BookTitle
+    // Added after the first migration: `jadpo migrate new add_wear`
+    // asked what the copies already stored get (see the migration's
+    // `changes.jadpo`).
+    wear: Wear
+}

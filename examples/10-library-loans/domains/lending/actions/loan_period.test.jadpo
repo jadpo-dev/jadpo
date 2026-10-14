@@ -1,0 +1,3 @@
+test "a fragile copy goes out for a week" {
+    assert loan_period(Wear.fragile) == 7
+}
