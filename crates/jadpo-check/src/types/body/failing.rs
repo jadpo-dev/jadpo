@@ -143,6 +143,18 @@ impl Body<'_> {
 
     /// `reject Failure` or `reject Failure { ... }`.
     pub(super) fn reject(&mut self, reject: &ast::RejectExpr) {
+        if let Some(inner) = reject.expr() {
+            let mut call = false;
+            self.resolved_by(|names, out| call = names.rejected(&inner, out));
+            // `reject OutOfStock() { ... }`: nothing below checks the head
+            // of the block, so its call is resolved here.
+            if call
+                && let Expr::RecordExpr(record) = &inner
+                && let Some(head) = record.expr()
+            {
+                self.walk(|walk| walk.expr(&head));
+            }
+        }
         let span = line_span(self.path, reject.syntax());
         match reject.expr().and_then(|inner| self.failure_given(&inner)) {
             Some(name) => {
@@ -239,11 +251,19 @@ impl Body<'_> {
             let MemberItem::Member(member) = item else {
                 continue;
             };
+            // A block inside a field is never checked here; a member that
+            // isn't a field is reported elsewhere. Their names are
+            // resolved.
+            self.walk(|walk| walk.member_values(member.block()));
             let mut names = member.member_key().into_iter().flat_map(|k| k.names());
-            let (Some(first), None) = (names.next(), names.next()) else {
-                continue;
+            let single = match (names.next(), names.next()) {
+                (Some(first), None) => tree::name_text(&first).map(|field| (first, field)),
+                _ => None,
             };
-            let Some(field) = tree::name_text(&first) else {
+            let Some((first, field)) = single else {
+                if let Some(value) = member.value() {
+                    self.walk(|walk| walk.expr(&value));
+                }
                 continue;
             };
             let span = self.span(&first);
@@ -334,6 +354,15 @@ impl Body<'_> {
 
     /// `attempt call(...)`, with any mappings after it; the call's result.
     pub(super) fn attempt(&mut self, attempt: &ast::AttemptExpr, expected: Option<&Ty>) -> Ty {
+        for mapping in attempt.mappings() {
+            if let Some(value) = mapping.expr() {
+                // A call written as the failure is resolved where the
+                // mapping's value is checked, below.
+                self.resolved_by(|names, out| {
+                    names.mapped(&value, out);
+                });
+            }
+        }
         let span = line_span(self.path, attempt.syntax());
         let Some(inner) = attempt.expr() else {
             return Ty::Error;

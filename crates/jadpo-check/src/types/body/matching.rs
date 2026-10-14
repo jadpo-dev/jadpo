@@ -204,6 +204,9 @@ impl Body<'_> {
         let mut deferred: Vec<Expr> = Vec::new();
         for arm in &arms {
             self.scopes.push(Vec::new());
+            if let Some(ast::Pat::CasePat(case)) = arm.pat() {
+                self.resolved_by(|names, out| crate::resolve::pattern(names, &case, out));
+            }
             if let Some(pat) = arm.pat() {
                 let span = self.span(&pat);
                 let before = self.out.len();
@@ -250,7 +253,13 @@ impl Body<'_> {
                     }
                 }
                 if let Some((name, ty, brackets)) = reading.binding {
-                    self.declare(Some(name), ty, LocalKind::Binding, Some(brackets));
+                    self.declare(
+                        Some(name),
+                        ty,
+                        LocalKind::Binding,
+                        Some(brackets),
+                        "variable",
+                    );
                 }
             }
             completes |= self.arm_body(arm, mode, &mut value, &mut deferred);
@@ -534,7 +543,13 @@ impl Body<'_> {
     /// uses of it are not reported again, and counted as used.
     fn silenced(&mut self, name: Option<ast::Name>) -> Reading {
         if let Some(name) = name {
-            self.declare(Some(name.clone()), Ty::Error, LocalKind::Inline, None);
+            self.declare(
+                Some(name.clone()),
+                Ty::Error,
+                LocalKind::Inline,
+                None,
+                "variable",
+            );
         }
         Reading::none()
     }

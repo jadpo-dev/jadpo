@@ -41,8 +41,11 @@ pub use enums::{LOCALE, Rounding, TextFormat, UuidVersion, Weekday, ZONE, enums}
 pub use num::Num;
 pub use operations::{Kind, OPERATIONS, Op, Operation, Param, operation};
 pub use rules::{
-    Broken, Rules, check_builtin_text, compile_pattern, is_email, is_ip_address, is_url,
+    Broken, Pattern, Rules, check_builtin_text, compile_pattern, is_email, is_ip_address, is_url,
     uuid_version,
 };
-pub use time::{Dur, check_calendar_date, check_instant};
+pub use time::{
+    Dur, check_calendar_date, check_instant, date_number, format_date, format_instant, format_time,
+    instant_millis, time_millis,
+};
 pub use zones::{LOCALES, ZONES};

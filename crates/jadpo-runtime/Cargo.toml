@@ -1,0 +1,17 @@
+[package]
+name = "jadpo-runtime"
+description = "What a running Jadpo program needs from its context: frames at .jadpo places, failures, faults and the runtime's limits"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# A runtime crate (docs/compiler-runtime.md §2.1 and §2.6): it builds for
+# wasm32-unknown-unknown and depends only on runtime crates and jadpo-std,
+# so a generated application needs nothing else.
+[dependencies]
+jadpo-std.workspace = true
+jadpo-value.workspace = true
+
+[lints]
+workspace = true

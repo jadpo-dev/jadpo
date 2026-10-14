@@ -63,6 +63,15 @@ impl Body<'_> {
         call: &ast::CallExpr,
         expected: Option<&Ty>,
     ) -> (Ty, CallKind, Reach) {
+        // Resolution's part (area 1): what the callee's names reach, and
+        // whether this file may use it.
+        let first = match call.expr() {
+            Some(Expr::NameRef(name)) => Some(text(&name)),
+            Some(callee @ Expr::FieldExpr(_)) => dotted(&callee).map(|(first, _)| text(&first)),
+            _ => None,
+        };
+        let local = first.is_some_and(|first| self.is_local(&first));
+        self.resolved_by(|names, out| names.callee(call, local, out));
         match call.expr() {
             Some(Expr::NameRef(name)) => {
                 let callee = text(&name);
@@ -745,6 +754,7 @@ impl Body<'_> {
             substitute(from, bound),
             LocalKind::Inline,
             None,
+            "parameter",
         );
         if let Some(body) = lambda.expr() {
             match to {
@@ -779,7 +789,13 @@ impl Body<'_> {
         let previous = self.context;
         self.context = Context::Inline;
         self.scopes.push(Vec::new());
-        self.declare(lambda.name(), Ty::Error, LocalKind::Inline, None);
+        self.declare(
+            lambda.name(),
+            Ty::Error,
+            LocalKind::Inline,
+            None,
+            "parameter",
+        );
         if let Some(body) = lambda.expr() {
             self.infer(&body);
         }

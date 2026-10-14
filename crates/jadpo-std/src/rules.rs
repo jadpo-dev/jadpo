@@ -102,9 +102,20 @@ impl Rules {
     /// Text against its length in characters, `pattern`, `format` and
     /// `version`.
     pub fn check_text(&self, text: &str) -> Result<(), Broken> {
+        let compiled = self
+            .pattern
+            .as_deref()
+            .and_then(|pattern| compile_pattern(pattern).ok());
+        self.check_text_with(text, compiled.as_ref())
+    }
+
+    /// [`Rules::check_text`] with `pattern` already compiled by
+    /// [`compile_pattern`], as the runtime keeps it, so a value is never
+    /// checked by compiling its pattern again.
+    pub fn check_text_with(&self, text: &str, compiled: Option<&Pattern>) -> Result<(), Broken> {
         self.check_length(text.chars().count() as u64, "characters")?;
         if let Some(pattern) = &self.pattern
-            && let Ok(compiled) = compile_pattern(pattern)
+            && let Some(compiled) = compiled
             && !compiled.is_match(text)
         {
             return broken(
@@ -135,10 +146,14 @@ impl Rules {
     }
 }
 
+/// A `pattern:` rule compiled to run: it matches the whole text, in linear
+/// time.
+pub type Pattern = regex::Regex;
+
 /// Compiles a pattern the way every target runs it: it must match the
 /// whole text, and backreferences and lookaround are refused so it runs in
 /// linear time (area 2, question 9).
-pub fn compile_pattern(pattern: &str) -> Result<regex::Regex, String> {
+pub fn compile_pattern(pattern: &str) -> Result<Pattern, String> {
     let bytes = pattern.as_bytes();
     let mut escaped = false;
     for (i, &b) in bytes.iter().enumerate() {

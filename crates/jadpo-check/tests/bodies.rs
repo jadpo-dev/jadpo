@@ -283,3 +283,34 @@ fn matches_bind_locals_and_number_their_arms() {
     ));
     assert_eq!(body.branches.len(), 2);
 }
+
+#[test]
+fn a_bodys_names_are_resolved_in_its_own_walk() {
+    // Chunk 2.1: `resolve_file` resolves declarations; each body's names
+    // are resolved by the walk that types it, so its name errors and its
+    // unused variables come from one walk over one set of scopes.
+    let db = Database::default();
+    let text = "type Count = Int {}\n\nfunction tally(Total: Count) -> Count {\n    var spare: Cuont = 1\n    return missing(spare)\n}\n\nfunction other(n: Cuont) -> Count {\n    return 1\n}\n";
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", text)]);
+    let file = project.files(&db)[0];
+    let rules = |problems: &[jadpo_diag::Diagnostic]| {
+        let mut found: Vec<&str> = problems.iter().map(|d| d.rule.id).collect();
+        found.sort_unstable();
+        found
+    };
+    let callables = callables_of(&db, file);
+    assert_eq!(
+        rules(&typed_body(&db, project, callables[0]).problems),
+        [
+            "semantic.name_case",
+            "semantic.unknown_callee",
+            "semantic.unknown_name",
+        ],
+        "the parameter's case, the variable's type and the call, from the body's walk"
+    );
+    assert_eq!(
+        rules(jadpo_check::resolve_file(&db, project, file)),
+        ["semantic.unknown_name"],
+        "only `other`'s signature, a declaration"
+    );
+}

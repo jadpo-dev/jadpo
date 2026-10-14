@@ -288,7 +288,12 @@ impl Body<'_> {
                 self.flow.open = true;
                 Ty::Error
             }
-            _ => Ty::Error,
+            // A type written as a value, or a later area's form: nothing
+            // to check here, but the names in it are resolved.
+            _ => {
+                self.walk(|walk| walk.children(expr));
+                Ty::Error
+            }
         }
     }
 
@@ -328,6 +333,7 @@ impl Body<'_> {
         };
         let head = text(&first);
         if starts_upper(&head) {
+            self.resolved_by(|names, out| names.value_name(expr, out));
             return self.type_member(&head, &rest, expr);
         }
         if StdNames::get().namespace(&head) == Some(Namespace::Generated) {
@@ -594,7 +600,9 @@ impl Body<'_> {
 
     /// `Type { ... }` and `Enum.variant { ... }`.
     pub(super) fn record(&mut self, record: &ast::RecordExpr) -> Ty {
+        self.resolved_by(|names, out| crate::resolve::record_head(names, record, out));
         let Some(head) = record.expr() else {
+            self.walk(|walk| walk.member_values(record.member_list()));
             return Ty::Error;
         };
         let Some((first, rest)) = dotted(&head) else {
@@ -628,16 +636,19 @@ impl Body<'_> {
                 if Prim::from_name(&name).is_some() || self.table.def(&name).is_some() =>
             {
                 self.not_record(record, &name, "scalar");
+                self.walk(|walk| walk.member_values(record.member_list()));
                 Ty::Named(name)
             }
             ([], Some(Def::Enum { .. })) => {
                 self.not_record(record, &name, "enum");
+                self.walk(|walk| walk.member_values(record.member_list()));
                 Ty::Named(name)
             }
             ([variant], Some(Def::Enum { variants })) => {
                 let variant_name = text(variant);
                 let Some(found) = variants.iter().find(|v| v.name == variant_name).cloned() else {
                     self.unknown_variant(&name, variant);
+                    self.walk(|walk| walk.member_values(record.member_list()));
                     return Ty::Error;
                 };
                 self.facts.builds.insert(
@@ -659,7 +670,8 @@ impl Body<'_> {
                         self.object_built(record, &shown, rules);
                     }
                     None => {
-                        self.not_record(record, &format!("{name}.{variant_name}"), "plain variant")
+                        self.not_record(record, &format!("{name}.{variant_name}"), "plain variant");
+                        self.walk(|walk| walk.member_values(record.member_list()));
                     }
                 }
                 Ty::Named(name)
@@ -744,14 +756,21 @@ impl Body<'_> {
             let MemberItem::Member(member) = item else {
                 continue;
             };
-            let Some(key) = member.member_key() else {
-                continue;
-            };
-            let mut names = key.names();
-            let (Some(first), None) = (names.next(), names.next()) else {
-                continue;
-            };
-            let Some(name) = tree::name_text(&first) else {
+            // A block inside a field is never checked here; a member that
+            // isn't a field is reported elsewhere. Their names are
+            // resolved.
+            self.walk(|walk| walk.member_values(member.block()));
+            let single = member.member_key().and_then(|key| {
+                let mut names = key.names();
+                match (names.next(), names.next()) {
+                    (Some(first), None) => tree::name_text(&first).map(|name| (first, name)),
+                    _ => None,
+                }
+            });
+            let Some((first, name)) = single else {
+                if let Some(value) = member.value() {
+                    self.walk(|walk| walk.expr(&value));
+                }
                 continue;
             };
             let span = self.span(&first);
@@ -883,7 +902,10 @@ impl Body<'_> {
     pub(super) fn name_value(&mut self, name: &ast::NameRef) -> Ty {
         let written = text(name);
         if starts_upper(&written) {
-            // Types and failures as values are resolution's (area 1).
+            // A type or a failure as a value: resolved here, and the type
+            // checks have nothing to add (area 1).
+            let expr = Expr::NameRef(name.clone());
+            self.resolved_by(|names, out| names.value_name(&expr, out));
             return Ty::Error;
         }
         match self.read(name) {

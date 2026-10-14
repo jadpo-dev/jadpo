@@ -1,13 +1,18 @@
-//! Runtime values and the standard library's operations
-//! (docs/compiler-runtime.md §2.1 and §2.6).
+//! Runtime values, the operators and the standard library's operations
+//! (docs/compiler-runtime.md §2.1, §2.5 and §2.6).
 //!
 //! Every standard-library operation is listed once, typed, in `jadpo-std`'s
 //! table, declared for programs in a Jadpo stub in `jadpo-check`, and
 //! implemented once, here, as one Rust function that both the interpreter
 //! and compiled code call. [`run`] matches on the table's [`Op`]
 //! exhaustively, so an operation without an implementation does not
-//! compile. [`validate`] checks a value against its type's rules with the
+//! compile. [`ops`] defines the operators once, with checked arithmetic,
+//! and a [`Validator`] checks a value against its type's rules with the
 //! same validators the checker runs on literals.
+//!
+//! [`Value`] is shared behind `Rc`: values never change (area 2) and the
+//! runtime is single-threaded (§2.6), so copying a value is a reference
+//! count.
 //!
 //! This crate builds for `wasm32-unknown-unknown` and depends on no other
 //! workspace crate than `jadpo-std`, the leaf it shares with the compiler.
@@ -22,44 +27,39 @@
 pub mod collection;
 pub mod decimal;
 pub mod integer;
+pub mod ops;
 mod rounding;
 pub mod validate;
 mod value;
 
 pub use jadpo_std::{Op, Rounding};
-pub use value::{Decimal, Value};
+pub use ops::Fault;
+pub use validate::{Invalid, Validator};
+pub use value::{Decimal, QUOTIENT_PLACES, Record, Value, Variant};
 
-/// Runs one standard-library operation with `args` in its table order;
-/// `each` runs the call's inline function on one item. `None` is a fault:
-/// an overflow, a zero divisor the checker could not rule out, or
-/// arguments the checker would have refused.
-pub fn run(op: Op, args: &[Value], each: &mut dyn FnMut(&Value) -> Option<Value>) -> Option<Value> {
+/// Runs one standard-library operation with the values of its parameters
+/// in table order, its inline-function parameter left out; `each` runs the
+/// call's inline function on one item, and gives no value when it stopped
+/// (the caller knows why: it is [`Fault::Stopped`] here).
+pub fn run(
+    op: Op,
+    args: &[Value],
+    each: &mut dyn FnMut(&Value) -> Option<Value>,
+) -> Result<Value, Fault> {
     match (op, args) {
         (Op::CollectionContains, [Value::List(items), item]) => {
-            Some(Value::Bool(collection::contains(items, item)))
+            Ok(Value::Bool(collection::contains(items, item)))
         }
-        (Op::CollectionCount, [Value::List(items)]) => Some(Value::Int(collection::count(items))),
+        (Op::CollectionCount, [Value::List(items)]) => Ok(Value::Int(collection::count(items))),
         (Op::CollectionFilter, [Value::List(items)]) => {
-            let mut kept = Vec::new();
-            for item in items {
-                if each(item)? == Value::Bool(true) {
-                    kept.push(item.clone());
-                }
-            }
-            Some(Value::List(kept))
+            collection::filter(items, each).map(Value::list)
         }
-        (Op::CollectionMap, [Value::List(items)]) => {
-            let mut mapped = Vec::with_capacity(items.len());
-            for item in items {
-                mapped.push(each(item)?);
-            }
-            Some(Value::List(mapped))
-        }
+        (Op::CollectionMap, [Value::List(items)]) => collection::map(items, each).map(Value::list),
         (Op::DecimalDivide, [dividend, divisor, rounding]) => {
             let decimal = |value: &Value| match value {
-                Value::Decimal(d) => Some(*d),
-                Value::Int(n) => Some(Decimal::new(i128::from(*n), 0)),
-                _ => None,
+                Value::Decimal(d) => Ok(*d),
+                Value::Int(n) => Ok(Decimal::from_int(*n)),
+                _ => Err(Fault::Shape),
             };
             decimal::divide(
                 decimal(dividend)?,
@@ -71,31 +71,39 @@ pub fn run(op: Op, args: &[Value], each: &mut dyn FnMut(&Value) -> Option<Value>
         (Op::IntegerDivide, [Value::Int(dividend), Value::Int(divisor), rounding]) => {
             integer::divide(*dividend, *divisor, rounding_of(rounding)?).map(Value::Int)
         }
-        _ => None,
+        (
+            Op::CollectionContains
+            | Op::CollectionCount
+            | Op::CollectionFilter
+            | Op::CollectionMap
+            | Op::DecimalDivide
+            | Op::IntegerDivide,
+            _,
+        ) => Err(Fault::Shape),
     }
 }
 
 /// A `Rounding` value as the runtime holds it: a plain variant.
-fn rounding_of(value: &Value) -> Option<Rounding> {
+fn rounding_of(value: &Value) -> Result<Rounding, Fault> {
     match value {
-        Value::Variant(name, fields) if fields.is_empty() => Rounding::from_name(name),
-        _ => None,
+        Value::Variant(variant) if variant.fields.is_empty() => {
+            Rounding::from_name(&variant.name).ok_or(Fault::Shape)
+        }
+        _ => Err(Fault::Shape),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use super::*;
 
     fn variant(name: &str) -> Value {
-        Value::Variant(name.to_string(), BTreeMap::new())
+        Value::variant(Rounding::NAME, name, Vec::new())
     }
 
     #[test]
     fn every_operation_in_the_table_runs() {
-        let items = Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let items = Value::list(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
         let mut double = |item: &Value| match item {
             Value::Int(n) => Some(Value::Int(n * 2)),
             _ => None,
@@ -116,11 +124,11 @@ mod tests {
             let result = run(operation.op, &args, &mut |item| {
                 Some(Value::Bool(matches!(item, Value::Int(n) if n % 2 == 1)))
             });
-            assert!(result.is_some(), "{} runs", operation.qualified());
+            assert!(result.is_ok(), "{} runs", operation.qualified());
         }
         assert_eq!(
             run(Op::CollectionMap, std::slice::from_ref(&items), &mut double),
-            Some(Value::List(vec![
+            Ok(Value::list(vec![
                 Value::Int(2),
                 Value::Int(4),
                 Value::Int(6)
@@ -136,7 +144,7 @@ mod tests {
                 ],
                 &mut double
             ),
-            Some(Value::Decimal(Decimal::new(333, 2)))
+            Ok(Value::Decimal(Decimal::new(333, 2)))
         );
         assert_eq!(
             run(
@@ -144,8 +152,12 @@ mod tests {
                 &[Value::Int(1), Value::Int(0), variant("up")],
                 &mut double
             ),
-            None,
+            Err(Fault::DivisionByZero),
             "a zero divisor is a fault"
+        );
+        assert_eq!(
+            run(Op::CollectionCount, &[Value::Int(1)], &mut double),
+            Err(Fault::Shape)
         );
     }
 }
