@@ -47,5 +47,7 @@ target/release/jadpo fmt --check examples/03-objects-and-enums
 ## Try next
 
 - In `quote_cake.test.jadpo`, delete the line `icing: none` from the expected `CakeQuote`. `jadpo check` reports `type.missing_field`: a nullable field is still required.
+  <!-- try {"file": "domains/sales/actions/quote_cake.test.jadpo", "replace": "        icing: none\n", "with": "", "check": ["type.missing_field"]} -->
 - In `quote_cake.jadpo`, add a variant `wedding` to `CakeSize`. `jadpo check` reports `type.match_non_exhaustive` in `size_price`: every `match` must cover every variant.
+  <!-- try {"file": "domains/sales/actions/quote_cake.jadpo", "replace": "    large\n}", "with": "    large\n    wedding\n}", "check": ["type.match_non_exhaustive"]} -->
 - Then read [04-lists-and-loops](../04-lists-and-loops/README.md).

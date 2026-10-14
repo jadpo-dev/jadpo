@@ -47,6 +47,9 @@ target/release/jadpo fmt --check examples/07-domains-and-sharing
 ## Try next
 
 - In `take_flour.jadpo`, delete `public`. `jadpo check` reports `visibility.private_cross_domain` where `sales` calls it.
+  <!-- try {"file": "domains/pantry/actions/take_flour.jadpo", "replace": "public action take_flour", "with": "action take_flour", "check": ["visibility.private_cross_domain"]} -->
 - In `a_days_flour.jadpo`, delete `public`. `jadpo check` reports `visibility.private_cross_domain` where `sales`'s test and the scenario call it.
+  <!-- try {"file": "domains/pantry/fixtures/a_days_flour.jadpo", "replace": "public fixture a_days_flour", "with": "fixture a_days_flour", "check": ["visibility.private_cross_domain"]} -->
 - In `tests/flour_runs_out.test.jadpo`, add `assert sacks.grams_in(1) == 16000`. `jadpo check` reports `visibility.private_cross_domain`: a scenario can't use `pantry`'s private library, though the pantry's own tests can.
+  <!-- try {"file": "tests/flour_runs_out.test.jadpo", "replace": "    assert pantry.take_flour(16001, 1) fails FlourShort\n", "with": "    assert pantry.take_flour(16001, 1) fails FlourShort\n    assert sacks.grams_in(1) == 16000\n", "check": ["visibility.private_cross_domain"]} -->
 - Then read [08-testing](../08-testing/README.md).

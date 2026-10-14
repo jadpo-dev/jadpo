@@ -45,5 +45,7 @@ target/release/jadpo fmt --check examples/09-bakery-orders
 ## Try next
 
 - In `price_item.jadpo`, change the white loaf's price from 250 to 260. Four tests fail with `test.assertion_failed`, while the scenario still passes, because it asks the menu for the price.
+  <!-- try {"file": "domains/menu/actions/price_item.jadpo", "replace": "Grain.white -> 250", "with": "Grain.white -> 260", "test": ["test.assertion_failed"], "failed": 4} -->
 - In `price_basket.jadpo`, delete the `_ -> reject CodeUnknown { ... }` arm. `jadpo check` reports `type.match_wildcard_required`, and `failure.stale_declaration` because `CodeUnknown` can no longer happen.
+  <!-- try {"file": "domains/sales/actions/price_basket.jadpo", "replace": "        _ -> reject CodeUnknown {\n            code: code\n        }\n", "with": "", "check": ["failure.stale_declaration", "type.match_wildcard_required"]} -->
 - That is the last example. The [language pages](../../docs/language/README.md) hold the full specification.

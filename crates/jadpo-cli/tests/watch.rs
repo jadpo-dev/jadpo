@@ -24,10 +24,12 @@ use jadpo_test::Options;
 use jadpo_test::watch::{Edit, EditKind, Event, Watch};
 use jadpo_test::{Ran, Run};
 
-/// The generous ceiling on one save's results in the gate (§2.7): far
-/// above the 1-second target, so a slow CI machine never flakes, and far
-/// below what a full recheck and rerun would take on a large project.
-const CEILING: Duration = Duration::from_secs(5);
+/// The ceiling on one save's results in the gate (§2.7): the 1-second
+/// target plus 250 ms for a loaded CI machine. The slowest save on CI's
+/// shared runner took 138 ms in a debug build (2026-10-14), this machine's
+/// about 120 ms, so a run several times slower than usual still passes,
+/// while a change that makes saves miss the target fails the gate.
+const CEILING: Duration = Duration::from_millis(1250);
 
 const DOMAINS: [&str; 12] = [
     "north", "south", "east", "west", "harbour", "meadow", "quarry", "orchard", "valley", "summit",

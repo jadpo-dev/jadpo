@@ -42,5 +42,7 @@ target/release/jadpo fmt --check examples/01-first-project
 ## Try next
 
 - In `price_loaves.test.jadpo`, change `price_loaves(250, 1)` to `price_loaves(250, 0)`. `jadpo check` refuses it with `type.invalid_literal`: `LoafCount` starts at 1, and literals are checked while compiling.
+  <!-- try {"file": "domains/baking/actions/price_loaves.test.jadpo", "replace": "price_loaves(250, 1)", "with": "price_loaves(250, 0)", "check": ["type.invalid_literal"]} -->
 - In `price_loaves.jadpo`, change `return Pence(each * loaves)` to `return each * loaves`. `jadpo check` reports `type.mismatch`: arithmetic gives a plain `Int`, and only `Pence(...)` makes it `Pence` again.
+  <!-- try {"file": "domains/baking/actions/price_loaves.jadpo", "replace": "return Pence(each * loaves)", "with": "return each * loaves", "check": ["type.mismatch"]} -->
 - Then read [02-named-types](../02-named-types/README.md).

@@ -48,8 +48,13 @@ target/release/jadpo fmt --check examples/06-failures
 ## Try next
 
 - In `reserve_cakes.jadpo`, delete `fails CakeSoldOut` from `reserve_cakes`. `jadpo check` reports `failure.undeclared_propagation`: every failure that can leave a callable is listed.
+  <!-- try {"file": "domains/sales/actions/reserve_cakes.jadpo", "replace": "asked: CakeCount) fails CakeSoldOut -> CakeCount {\n    // A call", "with": "asked: CakeCount) -> CakeCount {\n    // A call", "check": ["failure.undeclared_propagation"]} -->
 - In `double_order.jadpo`, replace the `attempt` and its block with `CakeCount(count * 2)`. `jadpo check` reports `failure.attempt_required`: the compiler can't prove 48 fits in `CakeCount`.
+  <!-- try {"file": "domains/sales/actions/double_order.jadpo", "replace": "attempt CakeCount(count * 2) {\n        max: OrderTooLarge\n    }", "with": "CakeCount(count * 2)", "check": ["failure.attempt_required"]} -->
 - In `double_order.jadpo`, add `min: OrderTooLarge` to the block. `jadpo check` reports `failure.rule_cannot_break`: `count * 2` is never below 1, so that arm could never run.
+  <!-- try {"file": "domains/sales/actions/double_order.jadpo", "replace": "        max: OrderTooLarge\n", "with": "        max: OrderTooLarge\n        min: OrderTooLarge\n", "check": ["failure.rule_cannot_break"]} -->
 - In `double_checked.jadpo`, change `24` in the condition to `30`. `jadpo check` reports `failure.attempt_required`: below the check `count * 2` can now reach 30, past `max: 24`, so the check no longer proves `CakeCount(count * 2)`.
+  <!-- try {"file": "domains/sales/actions/double_checked.jadpo", "replace": "if (count * 2 > 24)", "with": "if (count * 2 > 30)", "check": ["failure.attempt_required"]} -->
 - In `order_shelf.jadpo`, delete the `invalid: ShelfEmpty` line. `jadpo check` reports `failure.rule_unmapped`: an empty shelf breaks `min: 1`, and nothing maps it.
+  <!-- try {"file": "domains/sales/actions/order_shelf.jadpo", "replace": "        invalid: ShelfEmpty\n", "with": "", "check": ["failure.rule_unmapped"]} -->
 - Then read [07-domains-and-sharing](../07-domains-and-sharing/README.md).

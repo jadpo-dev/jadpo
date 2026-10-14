@@ -8,7 +8,18 @@ manifest `jadpo check` writes never lands in the repository, and must:
 - check with no diagnostics at all, errors or warnings (`jadpo check --json`);
 - be canonically formatted (`jadpo fmt --check`);
 - have tests, all passing under `jadpo test --json --seed 1`;
-- have its own README.md, and appear in examples/README.md's reading order.
+- have its own README.md, and appear in examples/README.md's reading order;
+- give, for each edit its README's "Try next" suggests, the outcome it
+  names. Each such bullet ("In `<file>`, ...") is followed by a comment a
+  reader of the rendered page never sees:
+
+    <!-- try {"file": "domains/x/actions/y.jadpo", "replace": "a", "with": "b",
+              "check": ["type.mismatch"]} -->
+
+  `replace` must occur exactly once in the file; `check` lists the rules
+  `jadpo check --json` then reports (each at least once, nothing else), or
+  `test` the codes the failed tests of `jadpo test --json --seed 1` have,
+  with `failed` the number of failed tests when the bullet counts them.
 
 `--export-corpus` writes each project and its `jadpo test --json` document
 to build/spec-corpus/examples/<project>/, beside the language pages'
@@ -22,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -82,6 +94,82 @@ def check(project: Path) -> tuple[list[str], str | None]:
     return problems, document if not problems else None
 
 
+TRY = re.compile(r'<!-- try (\{.*?\}) -->', re.DOTALL)
+
+
+def try_next(project: Path) -> tuple[list[dict], list[str]]:
+    """The edits the README's "Try next" section suggests, and the
+    bullets that suggest an edit without saying it in a `try` comment."""
+    readme = project / 'README.md'
+    if not readme.is_file():
+        return [], []
+    text = readme.read_text()
+    section = text.split('## Try next', 1)[1] if '## Try next' in text else ''
+    section = re.split(r'^## ', section, maxsplit=1, flags=re.MULTILINE)[0]
+    edits, problems = [], []
+    bullets = re.split(r'^- ', section, flags=re.MULTILINE)[1:]
+    for bullet in bullets:
+        found = TRY.search(bullet)
+        if found is None:
+            if bullet.startswith('In `'):
+                first = bullet.split('\n', 1)[0][:60]
+                problems.append(f'{project.name}: README "Try next" bullet "{first}…" needs a <!-- try {{...}} --> comment')
+            continue
+        try:
+            edits.append(json.loads(found.group(1)))
+        except ValueError as error:
+            problems.append(f'{project.name}: README try comment isn\'t JSON: {error}')
+    return edits, problems
+
+
+def try_outcomes(project: Path) -> list[str]:
+    """Applies each "Try next" edit to a copy and checks it gives what the
+    README says."""
+    name = project.name
+    edits, problems = try_next(project)
+    for edit in edits:
+        label = f'{name}: README "Try next" edit of {edit.get("file")}'
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / name
+            for path in source_files(project):
+                target = copy / path.relative_to(project)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, target)
+            target = copy / edit.get('file', '')
+            if not target.is_file():
+                problems.append(f'{label}: no such file')
+                continue
+            text = target.read_text()
+            if text.count(edit.get('replace', '')) != 1 or not edit.get('replace'):
+                problems.append(f'{label}: the text to replace must occur exactly once, and occurs {text.count(edit.get("replace", "")) if edit.get("replace") else 0} times')
+                continue
+            target.write_text(text.replace(edit['replace'], edit.get('with', '')))
+            if 'check' in edit:
+                _, out = jadpo(['check', '--json', '.'], cwd=copy)
+                try:
+                    rules = sorted({d['rule'] for d in json.loads(out)['diagnostics']})
+                except (ValueError, KeyError):
+                    problems.append(f'{label}: jadpo check --json gave no report')
+                    continue
+                if rules != sorted(edit['check']):
+                    problems.append(f'{label}: the README says {", ".join(edit["check"])}, but jadpo check reports {", ".join(rules) or "nothing"}')
+            if 'test' in edit:
+                _, out = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
+                try:
+                    document = json.loads(out)
+                except ValueError:
+                    problems.append(f'{label}: jadpo test --json gave no document')
+                    continue
+                tests = (document.get('data') or {}).get('tests') or []
+                codes = [t['failure']['code'] for t in tests if t.get('outcome') == 'failed']
+                if sorted(set(codes)) != sorted(edit['test']):
+                    rules = [d.get('rule') for d in document.get('diagnostics', [])]
+                    problems.append(f'{label}: the README says {", ".join(edit["test"])}, but jadpo test gives {", ".join(sorted(set(codes))) or ", ".join(rules) or "a pass"}')
+                elif 'failed' in edit and len(codes) != edit['failed']:
+                    problems.append(f'{label}: the README says {edit["failed"]} tests fail, but {len(codes)} do')
+    return problems
+
+
 def reading_order_problems(found: list[Path]) -> list[str]:
     index = EXAMPLES / 'README.md'
     if not index.is_file():
@@ -109,6 +197,7 @@ def main() -> int:
     documents = {}
     for project in found:
         found_problems, document = check(project)
+        found_problems += try_outcomes(project)
         problems += found_problems
         if document is not None:
             documents[project] = document

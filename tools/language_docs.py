@@ -83,6 +83,15 @@ COMMAND_AREA = 14
 ARCHIVED_NOTES = ('archived compiler', 'being removed')
 
 
+# A slow machine adds the run's duration to a summary line (` in 0.1 s`);
+# output blocks are compared and written without it.
+RUN_TIME = re.compile(r' in \d+(?:\.\d+)? s$', re.MULTILINE)
+
+
+def without_run_time(text):
+    return RUN_TIME.sub('', text)
+
+
 def run(args, cwd=None):
     result = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
     return result.returncode, result.stdout + result.stderr
@@ -239,7 +248,9 @@ class Page:
                     # are the project's own.
                     test_code, test_out = jadpo(['test', '.', '--seed', TEST_SEED], cwd=tmp)
                     test_json_code, test_json = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=tmp)
-            out = out.replace(tmp + '/', '').replace(tmp, '.')
+            out = without_run_time(out.replace(tmp + '/', '').replace(tmp, '.'))
+            if runs:
+                test_out = without_run_time(test_out)
             if runs:
                 self.run_tests(name, blocks, expected, code, formatted,
                                (test_code, test_out, test_json_code, test_json), bless)
