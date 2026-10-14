@@ -64,6 +64,8 @@ pub struct AssertionFailure {
 pub struct ShownLine {
     pub line: u32,
     pub source: String,
+    /// Whether the statement goes on past this line.
+    pub continues: bool,
     /// 0-based character column in `source`, the value, and whether it is
     /// the condition's own value (a plain `assert`'s `false`).
     pub marks: Vec<(usize, String, bool)>,
@@ -471,6 +473,7 @@ fn shown(
             ShownLine {
                 line: first_line + i as u32,
                 source,
+                continues: i + 1 < raw_lines.len(),
                 marks: Vec::new(),
             }
         })
@@ -519,6 +522,10 @@ fn shown(
             value,
         });
     }
+    // A statement over several lines (a record written member by member)
+    // shows its first line: the values hang under it, and `--json` keeps
+    // the rest.
+    lines.truncate(1);
     (statement.to_string(), lines, parts)
 }
 

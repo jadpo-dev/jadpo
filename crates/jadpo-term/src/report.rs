@@ -42,6 +42,9 @@ pub struct DiagramLine {
     /// The line as written, without its indentation.
     pub source: String,
     pub marks: Vec<Mark>,
+    /// Whether the statement goes on past this line, which is then shown
+    /// ending in a muted `…`.
+    pub continues: bool,
 }
 
 /// A value hung under the character at `column` (0-based, in characters
@@ -114,6 +117,15 @@ fn rich(style: &Style) -> bool {
     style.mode == Mode::Rich
 }
 
+/// Plain output has no symbols.
+fn symbols(style: &Style) -> crate::detect::Symbols {
+    if rich(style) {
+        style.symbols
+    } else {
+        crate::detect::Symbols::Ascii
+    }
+}
+
 impl Report {
     pub(crate) fn lines(&self, style: &Style) -> Vec<Line> {
         let mut lines = vec![if rich(style) {
@@ -164,7 +176,14 @@ fn diagram_lines(diagram: &Diagram, style: &Style) -> Vec<Line> {
     let mut lines = Vec::new();
     for line in &diagram.lines {
         let source = visible(&line.source);
-        lines.push(vec![raw(format!("  {source}"))]);
+        let mut shown = vec![raw(format!("  {source}"))];
+        if line.continues {
+            shown.push(paint(
+                Token::Muted,
+                format!(" {}", Symbol::Cut.text(symbols(style))),
+            ));
+        }
+        lines.push(shown);
         // Columns as the line is shown, hidden characters spelt out.
         let mut pending: Vec<(usize, &Mark)> = line
             .marks

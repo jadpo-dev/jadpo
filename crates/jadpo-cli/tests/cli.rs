@@ -58,6 +58,7 @@ fn top_level_plain() -> String {
 
 Build and check
   check         Check the project for errors
+  test          Run tests
   fmt           Format source files
 
 Set up
@@ -104,6 +105,7 @@ fn rich_help_uses_symbols_and_the_same_grid() {
 
 Build and check
   check         Check the project for errors
+  test          Run tests
   fmt           Format source files
 
 Set up
@@ -252,9 +254,17 @@ fn help_json_is_the_whole_command_reference() {
         .collect();
     assert_eq!(
         names,
-        ["check", "fmt", "completions", "lsp", "help", "version"]
+        [
+            "check",
+            "test",
+            "fmt",
+            "completions",
+            "lsp",
+            "help",
+            "version"
+        ]
     );
-    let completions = &data["commands"][2];
+    let completions = &data["commands"][3];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -292,6 +302,39 @@ fn help_json_is_the_whole_command_reference() {
         && rule["severity"] == "error"
         && rule["decides"] == "agent"));
     assert_eq!(rules.len(), jadpo_diag::CATALOGUE.len());
+    // `jadpo test` lists every code a run can end in, beside its own
+    // argument errors.
+    let test = &data["commands"][1];
+    assert_eq!(test["usage"], "jadpo test [path]");
+    assert_eq!(
+        test["rules"],
+        serde_json::json!([
+            "cli.test_arguments",
+            "test.assertion_failed",
+            "test.unexpected_failure",
+            "test.fault",
+            "test.failed",
+            "test.no_tests",
+            "test.runtime_start_failed",
+            "toolchain.not_built_yet",
+            "toolchain.project_not_found"
+        ])
+    );
+    let flags: Vec<(&str, &serde_json::Value)> = test["flags"]
+        .as_array()
+        .expect("flags")
+        .iter()
+        .map(|f| (f["name"].as_str().expect("name"), &f["value"]))
+        .collect();
+    assert_eq!(
+        flags,
+        [
+            ("--name", &serde_json::json!("text")),
+            ("--kind", &serde_json::json!("kind")),
+            ("--failed", &serde_json::Value::Null),
+            ("--seed", &serde_json::json!("n")),
+        ]
+    );
 }
 
 #[test]
@@ -367,12 +410,12 @@ fn an_unknown_command_with_nothing_near_points_at_help() {
 
 #[test]
 fn commands_that_are_not_built_yet_are_unknown() {
-    let output = jadpo(&["test"]);
+    let output = jadpo(&["build"]);
     assert_eq!(output.code, 2);
     assert!(
         output
             .stderr
-            .starts_with("error: `test` isn't a jadpo command"),
+            .starts_with("error: `build` isn't a jadpo command"),
         "{}",
         output.stderr
     );
@@ -589,6 +632,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
         complete(&[""]),
         [
             "check\tCheck the project for errors",
+            "test\tRun tests",
             "fmt\tFormat source files",
             "completions\tTurn on Tab completion",
             "lsp\tRun the language server for editors",

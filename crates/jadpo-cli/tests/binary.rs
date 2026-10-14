@@ -105,7 +105,15 @@ fn bash_completes_commands_and_values() {
     };
     assert_eq!(
         complete("jadpo ''", 1),
-        ["check", "test", "fmt", "completions", "lsp", "help", "version"]
+        [
+            "check",
+            "test",
+            "fmt",
+            "completions",
+            "lsp",
+            "help",
+            "version"
+        ]
     );
     assert_eq!(complete("jadpo ver", 1), ["version"]);
     assert_eq!(

@@ -40,6 +40,9 @@ pub struct Command {
     pub examples: &'static [Example],
     /// The rule for this command's own argument errors.
     pub arguments_rule: &'static Rule,
+    /// Other rules a run of this command can end in, for `jadpo help
+    /// --json`.
+    pub raises: &'static [&'static Rule],
     pub run: fn(&Call) -> Reply,
 }
 
@@ -203,6 +206,7 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_CHECK_ARGUMENTS,
+        raises: &[],
         run: commands::check,
     },
     Command {
@@ -267,6 +271,16 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_TEST_ARGUMENTS,
+        raises: &[
+            &rule::TEST_ASSERTION_FAILED,
+            &rule::TEST_UNEXPECTED_FAILURE,
+            &rule::TEST_FAULT,
+            &rule::TEST_FAILED,
+            &rule::TEST_NO_TESTS,
+            &rule::TEST_RUNTIME_START_FAILED,
+            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
         run: commands::test,
     },
     Command {
@@ -305,6 +319,7 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_FMT_ARGUMENTS,
+        raises: &[],
         run: commands::fmt,
     },
     Command {
@@ -336,6 +351,7 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_COMPLETIONS_ARGUMENTS,
+        raises: &[],
         run: commands::completions,
     },
     Command {
@@ -360,6 +376,7 @@ pub static COMMANDS: &[Command] = &[
             command: "jadpo lsp",
         }],
         arguments_rule: &rule::CLI_LSP_ARGUMENTS,
+        raises: &[],
         run: commands::lsp,
     },
     Command {
@@ -391,6 +408,7 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_HELP_ARGUMENTS,
+        raises: &[],
         run: commands::help,
     },
     Command {
@@ -412,6 +430,7 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_VERSION_ARGUMENTS,
+        raises: &[],
         run: commands::version,
     },
 ];

@@ -141,8 +141,8 @@ fn argument_json(argument: &Argument) -> Json {
 }
 
 /// One command as data: everything its help screen shows, plus the rules it
-/// can raise of its own (every command can also raise the `cli.unknown_*`
-/// and `cli.presentation_arguments` rules).
+/// can raise of its own, its argument errors first (every command can also
+/// raise the `cli.unknown_*` and `cli.presentation_arguments` rules).
 pub fn command_json(command: &Command) -> Json {
     Json::object([
         ("name", command.name.into()),
@@ -165,7 +165,13 @@ pub fn command_json(command: &Command) -> Json {
                 ])
             })),
         ),
-        ("rules", Json::array([command.arguments_rule.id])),
+        (
+            "rules",
+            Json::array(
+                std::iter::once(command.arguments_rule.id)
+                    .chain(command.raises.iter().map(|rule| rule.id)),
+            ),
+        ),
     ])
 }
 

@@ -125,6 +125,7 @@ fn diagram(assertion: &AssertionFailure) -> Diagram {
             .iter()
             .map(|line| DiagramLine {
                 source: line.source.clone(),
+                continues: line.continues,
                 marks: line
                     .marks
                     .iter()

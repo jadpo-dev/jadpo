@@ -38,6 +38,7 @@ fn assertion() -> Report {
                 lines: vec![DiagramLine {
                     source: "assert add(2, 3) == add(1, 1) + 1".into(),
                     marks: vec![mark(7, "5"), mark(20, "2"), mark(30, "3")],
+                    continues: false,
                 }],
             })],
             vec![
@@ -117,6 +118,7 @@ fn a_value_that_would_run_into_the_next_drops_a_row_and_long_ones_are_cut() {
                         mark(28, "\"2026-01-14T12:00:00Z\""),
                         mark(33, "\"2026-01-13T12:00:00Z\""),
                     ],
+                    continues: false,
                 }],
             })],
             vec![Item::Field(Field::new(
@@ -151,6 +153,7 @@ fn a_value_that_would_run_into_the_next_drops_a_row_and_long_ones_are_cut() {
             lines: vec![DiagramLine {
                 source: "assert names == expected".into(),
                 marks: vec![mark(7, &format!("[{}]", "\"a name\", ".repeat(12)))],
+                continues: false,
             }],
         })]],
     };
@@ -167,11 +170,16 @@ fn a_value_that_would_run_into_the_next_drops_a_row_and_long_ones_are_cut() {
                 lines: vec![DiagramLine {
                     source: "assert names == expected".into(),
                     marks: vec![mark(7, &"x".repeat(100))],
+                    continues: true,
                 }],
             })]],
         }))
         .render(&plain());
     assert!(whole.contains(&"x".repeat(100)));
+    assert!(
+        whole.contains("  assert names == expected ...\n"),
+        "{whole}"
+    );
 }
 
 #[test]
