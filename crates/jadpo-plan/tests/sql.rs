@@ -137,9 +137,14 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
         let source = match &param.source {
             WriteSource::Input(at) => format!("input {at}"),
             WriteSource::Field { input, field } => format!("input {input}.{field}"),
-            WriteSource::Supplied { input, field } => format!("whether input {input} supplied {field}"),
+            WriteSource::Supplied { input, field } => {
+                format!("whether input {input} supplied {field}")
+            }
             WriteSource::AnySupplied { input, fields } => {
-                format!("whether input {input} supplied any of {}", fields.join(", "))
+                format!(
+                    "whether input {input} supplied any of {}",
+                    fields.join(", ")
+                )
             }
             WriteSource::NewId => "a new identity".to_string(),
             WriteSource::Now => "clock.now".to_string(),
@@ -192,7 +197,10 @@ fn every_query_shape_matches_its_golden_sql() {
             }
         }
     }
-    assert!(written.len() >= 6 + 5 + 7, "every query, entity and write is planned");
+    assert!(
+        written.len() >= 6 + 5 + 7,
+        "every query, entity and write is planned"
+    );
     let mut different = Vec::new();
     for (name, text) in &written {
         let path = folder().join(format!("{name}.sql"));

@@ -248,7 +248,10 @@ impl Transaction for PgTransaction {
 
     fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
-            let done = self.client.batch_execute(jadpo_runtime::RELEASE_SAVEPOINT).await;
+            let done = self
+                .client
+                .batch_execute(jadpo_runtime::RELEASE_SAVEPOINT)
+                .await;
             self.note(done)?;
             self.saved.pop();
             Ok(())

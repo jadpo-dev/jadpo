@@ -492,11 +492,10 @@ impl Part<'_> {
     /// kind `not_found` and no fields, placed at the entity.
     fn provided_failure(&mut self, decl: &ast::EntityDecl, entity: &str) {
         let name = format!("{entity}NotFound");
-        let provided = self
-            .lookup
-            .declared(&name)
-            .iter()
-            .any(|symbol| symbol.provided.as_deref() == Some(entity) && symbol.path == *self.path);
+        let provided =
+            self.lookup.declared(&name).iter().any(|symbol| {
+                symbol.provided.as_deref() == Some(entity) && symbol.path == *self.path
+            });
         if !provided {
             return;
         }

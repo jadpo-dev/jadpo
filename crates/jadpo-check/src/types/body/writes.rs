@@ -213,7 +213,11 @@ impl Body<'_> {
             return None;
         }
         // `Todo.update(value)` builds a field called `update`.
-        if self.table.field(&head, &rest.iter().map(text).collect::<Vec<_>>()).is_some() {
+        if self
+            .table
+            .field(&head, &rest.iter().map(text).collect::<Vec<_>>())
+            .is_some()
+        {
             return None;
         }
         let entity = self.callable_kind(&head) == Some(ItemKind::Entity);
@@ -274,7 +278,11 @@ impl Body<'_> {
             WriteOp::Delete => Ty::Prim(Prim::Unit),
             _ => Ty::Named(entity.to_string()),
         };
-        let fields: Vec<FieldDef> = self.table.fields(entity).map(<[_]>::to_vec).unwrap_or_default();
+        let fields: Vec<FieldDef> = self
+            .table
+            .fields(entity)
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
         let rules = self.writes.write_rules(entity).cloned().unwrap_or_default();
         // The record it writes, loaded earlier or named by `id`.
         let mut by_id = false;
@@ -304,7 +312,9 @@ impl Body<'_> {
             .collect();
         // `set:`.
         if let Some(set) = members.get("set") {
-            self.write_set(entity, op, by_id, set, &fields, &settable, &head_span, &written);
+            self.write_set(
+                entity, op, by_id, set, &fields, &settable, &head_span, &written,
+            );
             for (name, member) in tree::members(set.block()) {
                 let Some(field) = tree::name_text(&name) else {
                     continue;
@@ -335,7 +345,9 @@ impl Body<'_> {
             }
         }
         if let Some(supplied) = members.get("when_supplied") {
-            let input = patch_input.as_ref().map(|(input, fields)| (input.as_str(), fields.as_slice()));
+            let input = patch_input
+                .as_ref()
+                .map(|(input, fields)| (input.as_str(), fields.as_slice()));
             for (field, value) in self.when_supplied(entity, by_id, supplied, input, &settable) {
                 if let Some(target) = rules.reference(&field)
                     && !self.holds(&value, target)
@@ -499,7 +511,9 @@ impl Body<'_> {
                     ),
                     _ => format!("`{written}` takes {}.", sections_list(op)),
                 }
-            } else if word == "patch" && found.contains_key("set") || word == "set" && found.contains_key("patch") {
+            } else if word == "patch" && found.contains_key("set")
+                || word == "set" && found.contains_key("patch")
+            {
                 "An update gives its fields in `set:`, or changes the fields a request supplied with `patch:`, never both.".to_string()
             } else {
                 found.insert(word, member);
@@ -594,7 +608,9 @@ impl Body<'_> {
                     format!("`{written}`'s `set:` gives no fields"),
                 )
                 .at(span, "nothing to change")
-                .reason("An update changes at least one field: an empty `set:` would write nothing.")
+                .reason(
+                    "An update changes at least one field: an empty `set:` would write nothing.",
+                )
                 .next("Add the fields it changes to `set:`"),
             );
         }
@@ -615,7 +631,15 @@ impl Body<'_> {
         };
         let stored = by_id.then(|| entity.to_string());
         let outer = std::mem::replace(&mut self.stored, stored);
-        self.fields_given(set.block(), entity, &[], settable, required, head_span.clone(), &skip);
+        self.fields_given(
+            set.block(),
+            entity,
+            &[],
+            settable,
+            required,
+            head_span.clone(),
+            &skip,
+        );
         self.stored = outer;
         if by_id {
             for (_, member) in &given {
@@ -632,7 +656,9 @@ impl Body<'_> {
                 "`{entity}.id` is generated when the record is created and never supplied by callers."
             )
         } else {
-            format!("`{entity}.{field}` is generated from the operation's clock; code never assigns it.")
+            format!(
+                "`{entity}.{field}` is generated from the operation's clock; code never assigns it."
+            )
         };
         self.out.push(
             Diagnostic::new(
@@ -693,12 +719,20 @@ impl Body<'_> {
         if by_id {
             self.one_step(entity, &value, written);
         }
-        let input_fields: Vec<FieldDef> = self.table.fields(&input).map(<[_]>::to_vec).unwrap_or_default();
+        let input_fields: Vec<FieldDef> = self
+            .table
+            .fields(&input)
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
         let mut changed = Vec::new();
         let span = self.span(&value);
         for field in &input_fields {
             let Some(target) = settable.iter().find(|f| f.name == field.name) else {
-                let all: Vec<FieldDef> = self.table.fields(entity).map(<[_]>::to_vec).unwrap_or_default();
+                let all: Vec<FieldDef> = self
+                    .table
+                    .fields(entity)
+                    .map(<[_]>::to_vec)
+                    .unwrap_or_default();
                 let generated = all
                     .iter()
                     .any(|f| f.name == field.name && (f.generated || f.name == "id"));
@@ -1009,7 +1043,13 @@ impl Body<'_> {
     /// A stored field inside a value: it may stand alone, or under `+`,
     /// `-`, brackets and constructions that can't fail, which the database
     /// works out exactly as Jadpo would.
-    fn stored_operand(&mut self, stored: &SyntaxNode, root: &SyntaxNode, entity: &str, written: &str) {
+    fn stored_operand(
+        &mut self,
+        stored: &SyntaxNode,
+        root: &SyntaxNode,
+        entity: &str,
+        written: &str,
+    ) {
         let mut child = stored.clone();
         while child != *root {
             let Some(parent) = child.parent() else {
@@ -1086,7 +1126,12 @@ impl Body<'_> {
     /// `id` of that entity may read (area 6, "Counters"). Anywhere else it
     /// is a mistake. Its type, or `None` when `head` isn't an entity with
     /// that field.
-    pub(super) fn stored_field(&mut self, head: &str, rest: &[ast::NameRef], expr: &Expr) -> Option<Ty> {
+    pub(super) fn stored_field(
+        &mut self,
+        head: &str,
+        rest: &[ast::NameRef],
+        expr: &Expr,
+    ) -> Option<Ty> {
         if self.callable_kind(head) != Some(ItemKind::Entity) {
             return None;
         }
@@ -1158,11 +1203,7 @@ impl Body<'_> {
                     )),
                 );
             }
-            for item in conflict
-                .block()
-                .iter()
-                .flat_map(|list| list.member_items())
-            {
+            for item in conflict.block().iter().flat_map(|list| list.member_items()) {
                 let MemberItem::Member(member) = item else {
                     continue;
                 };
@@ -1277,8 +1318,15 @@ impl Body<'_> {
         let rules_line = if breakable.is_empty() {
             format!("`{entity}.{}` can break no rule.", op.word())
         } else {
-            let listed: Vec<String> = breakable.iter().map(|b| format!("`{}`", b.written())).collect();
-            format!("`{entity}.{}` can break {}.", op.word(), crate::and_list(&listed))
+            let listed: Vec<String> = breakable
+                .iter()
+                .map(|b| format!("`{}`", b.written()))
+                .collect();
+            format!(
+                "`{entity}.{}` can break {}.",
+                op.word(),
+                crate::and_list(&listed)
+            )
         };
         let problem = Diagnostic::new(
             &rule::DATA_CONFLICT_UNKNOWN,
@@ -1306,9 +1354,13 @@ impl Body<'_> {
         written: &str,
     ) {
         let reason = match (rule, op) {
-            (Breach::Reference { entity: holder, field }, WriteOp::Create | WriteOp::Update)
-                if holder == entity =>
-            {
+            (
+                Breach::Reference {
+                    entity: holder,
+                    field,
+                },
+                WriteOp::Create | WriteOp::Update,
+            ) if holder == entity => {
                 let target = self
                     .writes
                     .write_rules(holder)
@@ -1319,7 +1371,13 @@ impl Body<'_> {
                     "A reference naming a record that isn't there reports `{target}NotFound`, which `attempt` passes on; only a delete is refused by a reference, as a conflict."
                 )
             }
-            (Breach::Reference { entity: holder, field }, _) => format!(
+            (
+                Breach::Reference {
+                    entity: holder,
+                    field,
+                },
+                _,
+            ) => format!(
                 "Deleting a `{entity}` is refused only by a `restricted` reference to it, or to a record its delete cascades to; `{holder}.{field}` isn't one."
             ),
             (Breach::Unique { .. }, WriteOp::Delete) => {
@@ -1337,7 +1395,10 @@ impl Body<'_> {
         self.out.push(
             Diagnostic::new(
                 &rule::DATA_CONFLICT_CANNOT_BREAK,
-                format!("`{written}` can't break `{}`, so it takes no arm", rule.written()),
+                format!(
+                    "`{written}` can't break `{}`, so it takes no arm",
+                    rule.written()
+                ),
             )
             .at(arm.key_span.clone(), "never runs")
             .reason(reason)
@@ -1345,7 +1406,6 @@ impl Body<'_> {
             .edit(removal, ""),
         );
     }
-
 }
 
 /// The rules a write can break (area 6, "When a write is refused"): a

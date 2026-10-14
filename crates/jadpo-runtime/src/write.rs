@@ -157,7 +157,11 @@ pub async fn write(
         };
         let (Some(sql), Some(column)) = (row.get(*at as usize), returns.columns.get(*at as usize))
         else {
-            return Err(defect(ctx, "a returned row without a column it needs", site));
+            return Err(defect(
+                ctx,
+                "a returned row without a column it needs",
+                site,
+            ));
         };
         match from_sql(sql, column) {
             Ok(value) => fields.push((std::rc::Rc::from(name.as_str()), value)),

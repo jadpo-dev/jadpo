@@ -40,12 +40,12 @@ use jadpo_graph::{Key, Kind};
 
 pub use constant::Constant;
 pub use queries::{EntityPlan, MissingPlan, MissingValue, QueryPlan, quoted};
-pub use writes::{Refusal, WriteSitePlan};
 pub use sites::{ArmPattern, ConstId, Decoded, Given, Raise, SitePlan};
 pub use types::{
     FailureId, FailurePlan, FieldPlan, ShapeId, ShapePlan, Types, ValidatorId, ValidatorPlan,
     VariantPlan, last,
 };
+pub use writes::{Refusal, WriteSitePlan};
 
 /// One callable with a body: a function, action, fixture, library
 /// function, test or seed.

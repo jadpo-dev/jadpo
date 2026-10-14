@@ -461,7 +461,11 @@ impl Body<'_> {
         // `attempt Todo.update(todo) { ... }`: the block is the write's
         // own (area 6), not mappings.
         let write = matches!(attempt.expr(), Some(Expr::CallExpr(call)) if self.write_call(&call).is_some());
-        let arms = if write { Vec::new() } else { self.arms(attempt) };
+        let arms = if write {
+            Vec::new()
+        } else {
+            self.arms(attempt)
+        };
         let span = line_span(self.path, attempt.syntax());
         let Some(inner) = attempt.expr() else {
             return Ty::Error;

@@ -887,7 +887,9 @@ impl Lower<'_> {
                 Some("set") => set.extend(self.fields_given(member.block(), &fact.entity, &[])),
                 Some("patch") => {
                     if let Some(value) = member.value() {
-                        if let Some(Ty::Named(input)) = self.facts.types.get(&node_key(value.syntax())) {
+                        if let Some(Ty::Named(input)) =
+                            self.facts.types.get(&node_key(value.syntax()))
+                        {
                             patch_input = Some(input.clone());
                         }
                         patch = Some(self.expr(&value));
@@ -899,7 +901,11 @@ impl Lower<'_> {
                             continue;
                         };
                         let input_field = patch_input.as_ref().map(|input| {
-                            field_key(self.names.registry(), input, std::slice::from_ref(&supplied_name))
+                            field_key(
+                                self.names.registry(),
+                                input,
+                                std::slice::from_ref(&supplied_name),
+                            )
                         });
                         self.node(supplied.syntax(), input_field.clone(), false);
                         let given = self.fields_given(fields.block(), &fact.entity, &[]);
@@ -919,8 +925,10 @@ impl Lower<'_> {
                         })
                         .collect();
                     for arm in arms {
-                        let Some((_, breach, failure)) =
-                            fact.arms.iter().find(|(written, _, _)| written.syntax() == arm.syntax())
+                        let Some((_, breach, failure)) = fact
+                            .arms
+                            .iter()
+                            .find(|(written, _, _)| written.syntax() == arm.syntax())
                         else {
                             self.scan(arm.syntax());
                             continue;
@@ -930,17 +938,34 @@ impl Lower<'_> {
                                 entity: holder,
                                 name,
                                 field: true,
-                            } => field_key(self.names.registry(), holder, std::slice::from_ref(name)),
-                            Breach::Unique { entity: holder, name, .. } => {
-                                let born = self.names.registry().born(jadpo_graph::Kind::Entity, holder, None);
+                            } => {
+                                field_key(self.names.registry(), holder, std::slice::from_ref(name))
+                            }
+                            Breach::Unique {
+                                entity: holder,
+                                name,
+                                ..
+                            } => {
+                                let born = self.names.registry().born(
+                                    jadpo_graph::Kind::Entity,
+                                    holder,
+                                    None,
+                                );
                                 self.names.registry().key(
                                     jadpo_graph::Kind::UniqueRule,
                                     &format!("{holder}.{name}"),
                                     Some((holder, &born)),
                                 )
                             }
-                            Breach::Reference { entity: holder, field } => {
-                                let born = self.names.registry().born(jadpo_graph::Kind::Entity, holder, None);
+                            Breach::Reference {
+                                entity: holder,
+                                field,
+                            } => {
+                                let born = self.names.registry().born(
+                                    jadpo_graph::Kind::Entity,
+                                    holder,
+                                    None,
+                                );
                                 self.names.registry().key(
                                     jadpo_graph::Kind::Reference,
                                     &format!("{holder}.{field}"),
@@ -996,7 +1021,11 @@ impl Lower<'_> {
             .iter()
             .filter_map(|(field, failure)| {
                 Some((
-                    field_key(self.names.registry(), &fact.entity, std::slice::from_ref(field)),
+                    field_key(
+                        self.names.registry(),
+                        &fact.entity,
+                        std::slice::from_ref(field),
+                    ),
                     self.type_key(failure)?,
                 ))
             })
@@ -1011,7 +1040,10 @@ impl Lower<'_> {
             when_supplied,
             conflicts,
             missing,
-            not_found: fact.not_found.as_deref().and_then(|failure| self.type_key(failure)),
+            not_found: fact
+                .not_found
+                .as_deref()
+                .and_then(|failure| self.type_key(failure)),
             fallible: self.fallible(Some(&fact.fallible)),
         }
     }

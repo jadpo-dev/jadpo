@@ -27,7 +27,9 @@ use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::read::{Field, Record, SqlType};
 use jadpo_std::write::{Returned, WriteOp, WriteParam, WritePlan, WriteSource};
 
-use crate::queries::{MissingPlan, MissingValue, Planner, column_type, field, quoted, where_clause};
+use crate::queries::{
+    MissingPlan, MissingValue, Planner, column_type, field, quoted, where_clause,
+};
 use crate::types::{Types, ValidatorId};
 
 /// What one write site runs, and what its refusals raise.
@@ -302,7 +304,9 @@ impl Planner<'_> {
                 let mut conditions = vec![format!("\"id\" = {id}")];
                 conditions.extend(self.access(entity_model));
                 let mut sql = match op {
-                    WriteOp::Update => format!("UPDATE {table}\nSET {}", assignments.join(",\n    ")),
+                    WriteOp::Update => {
+                        format!("UPDATE {table}\nSET {}", assignments.join(",\n    "))
+                    }
                     _ => format!("DELETE FROM {table}"),
                 };
                 where_clause(&mut sql, &conditions, "");
@@ -415,7 +419,10 @@ impl Planner<'_> {
             Node::Expr(Expr::Unary {
                 op: UnaryOp::Negate,
                 operand,
-            }) => format!("(-{})", self.stored_sql(body, *operand, entity, ty, writing)?),
+            }) => format!(
+                "(-{})",
+                self.stored_sql(body, *operand, entity, ty, writing)?
+            ),
             Node::Expr(Expr::Call {
                 callee: Callee::Construct(_),
                 args,

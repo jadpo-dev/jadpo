@@ -1329,7 +1329,9 @@ impl<'a> Walk<'a> {
     /// `conflict:` arm's failure.
     pub fn write_block(&mut self, list: Option<ast::MemberList>) {
         for (name, member) in crate::tree::members(list) {
-            if crate::tree::name_text(&name).as_deref() != Some("conflict") || member.block().is_none() {
+            if crate::tree::name_text(&name).as_deref() != Some("conflict")
+                || member.block().is_none()
+            {
                 self.member(&member);
                 continue;
             }
@@ -1415,9 +1417,7 @@ impl<'a> Walk<'a> {
                 let write = match record.expr() {
                     Some(Expr::CallExpr(call)) => is_write(&call),
                     Some(head) => dotted(&head).is_some_and(|(first, rest)| {
-                        starts_upper(&text(&first))
-                            && rest.len() == 1
-                            && text(&rest[0]) == "create"
+                        starts_upper(&text(&first)) && rest.len() == 1 && text(&rest[0]) == "create"
                     }),
                     None => false,
                 };

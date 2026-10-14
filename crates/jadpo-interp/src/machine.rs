@@ -53,7 +53,10 @@ pub(crate) enum Stop {
     /// The store refused a write with the rule its `conflict:` arm at
     /// `arm` maps, for the write's handler to raise that arm's failure
     /// with the refusal as its cause (area 6).
-    Refused { arm: u32, cause: Box<Failure> },
+    Refused {
+        arm: u32,
+        cause: Box<Failure>,
+    },
 }
 
 /// What a site that pauses waits on: a call into the runtime's action
