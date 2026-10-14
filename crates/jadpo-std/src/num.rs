@@ -36,9 +36,9 @@ impl Num {
     }
 
     /// By value: `1.5` equals `1.50`. Exact whatever the scales, as
-    /// [`compare_scaled`] is.
+    /// [`compare_exact`] is.
     pub fn compare(self, other: Num) -> Ordering {
-        compare_scaled(self.mantissa, self.scale, other.mantissa, other.scale)
+        compare_exact(self.mantissa, self.scale, other.mantissa, other.scale)
     }
 
     /// Whether it is a whole number that fits an `Int`, a 64-bit integer.
@@ -65,7 +65,7 @@ impl Num {
 /// number with fewer places is compared with the other's whole part at
 /// its scale, and what is left over breaks a tie. It is a total order,
 /// consistent with equality by value.
-pub fn compare_scaled(a: i128, a_scale: u32, b: i128, b_scale: u32) -> Ordering {
+pub fn compare_exact(a: i128, a_scale: u32, b: i128, b_scale: u32) -> Ordering {
     let sign = |n: i128| n.cmp(&0);
     match sign(a).cmp(&sign(b)) {
         Ordering::Equal => {}

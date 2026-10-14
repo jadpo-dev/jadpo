@@ -808,10 +808,10 @@ impl Names<'_> {
         let start = self.span(first).start;
         let end = rest.last().map_or(start, |last| self.span(last).end);
         let span = Span::new(self.path, start, end);
-        let reason = "A call names one owner, then what it calls: `domain.action(...)`, `library.function(...)` or `namespace.operation(...)`. Only a connection's operations take three names, `connection.resource.operation(...)` (area 11).";
+        let reason = "A call names who it belongs to, then what it calls: `domain.action(...)`, `library.function(...)` or `namespace.operation(...)`. Only a connection's operations take three names, `connection.resource.operation(...)` (area 11).";
         let problem = Diagnostic::new(
             &rule::SEMANTIC_UNKNOWN_CALLEE,
-            format!("`{written}` names more than one owner"),
+            format!("`{written}` has more dots than a call takes"),
         )
         .at(span, "not a call Jadpo makes")
         .reason(reason);
@@ -836,7 +836,7 @@ impl Names<'_> {
         } else if self.std.namespace(&qualifier).is_some() {
             format!("Call one of `{qualifier}`'s operations, `{qualifier}.<operation>(...)`")
         } else {
-            "Call a function, action or query by its owner and its name".to_string()
+            "Call a function, action or query as `name(...)`, `domain.action(...)` or `library.function(...)`".to_string()
         };
         problem.next(next)
     }

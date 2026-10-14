@@ -186,7 +186,7 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ("failure", "A failure's code, kind, status and message"),
     (
         "order",
-        "A field's place among its owner's fields, from 0, as declared; copied fields sit at the line that copied them",
+        "A field's place among the fields beside it, from 0, as declared; copied fields sit at the line that copied them",
     ),
     ("type", "A field's declared type"),
     ("optional", "An input field the sender may leave out"),

@@ -77,7 +77,7 @@ impl Body<'_> {
             )
             .at(span, "reaches nothing")
             .reason("A call reaches a function, action, query or fixture, a library's function, a standard-library operation, an entity's operation, or a named type being built; this names none of them.")
-            .next("Call a declared function, action or query by its owner and its name"),
+            .next("Call a declared function, action or query as `name(...)`, `domain.action(...)` or `library.function(...)`"),
         );
     }
 

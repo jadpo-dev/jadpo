@@ -101,7 +101,7 @@ impl Decimal {
         let scale = base + QUOTIENT_PLACES;
         // a / 10^sa ÷ b / 10^sb, kept at `scale`, is a × 10^(scale - sa + sb) ÷ b.
         let shift = scale + other.scale - self.scale;
-        let (mantissa, dropped) = crate::rounding::divide_scaled(
+        let (mantissa, dropped) = crate::rounding::divide_shifted(
             self.mantissa,
             shift,
             other.mantissa,
@@ -155,10 +155,10 @@ impl PartialOrd for Decimal {
 
 impl Ord for Decimal {
     /// By value: `1.5` equals `1.50`. Exact whatever the scales, through
-    /// the comparison the checker's bounds use ([`jadpo_std::compare_scaled`]),
+    /// the comparison the checker's bounds use ([`jadpo_std::compare_exact`]),
     /// so the order is total and agrees with equality.
     fn cmp(&self, other: &Decimal) -> Ordering {
-        jadpo_std::compare_scaled(self.mantissa, self.scale, other.mantissa, other.scale)
+        jadpo_std::compare_exact(self.mantissa, self.scale, other.mantissa, other.scale)
     }
 }
 

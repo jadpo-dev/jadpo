@@ -13,7 +13,7 @@ pub fn divide(dividend: Decimal, divisor: Decimal, rounding: Rounding) -> Result
     }
     // a / 10^s1 ÷ b / 10^s2, kept at scale s1, is a × 10^s2 ÷ b, worked
     // out as wide as it needs.
-    let (mantissa, _) = crate::rounding::divide_scaled(
+    let (mantissa, _) = crate::rounding::divide_shifted(
         dividend.mantissa,
         divisor.scale,
         divisor.mantissa,

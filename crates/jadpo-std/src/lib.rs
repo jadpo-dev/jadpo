@@ -38,7 +38,7 @@ mod zones;
 
 pub use builtin::Builtin;
 pub use enums::{LOCALE, Rounding, TextFormat, UuidVersion, Weekday, ZONE, enums};
-pub use num::{Num, compare_scaled};
+pub use num::{Num, compare_exact};
 pub use operations::{Kind, OPERATIONS, Op, Operation, Param, operation};
 pub use rules::{
     Broken, Pattern, Rules, check_builtin_text, compile_pattern, is_email, is_ip_address, is_url,

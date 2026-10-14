@@ -7,7 +7,7 @@ use jadpo_std::Rounding;
 /// `dividend / divisor` rounded as `rounding` says; `None` when the divisor
 /// is zero or the result overflows.
 pub(crate) fn divide(dividend: i128, divisor: i128, rounding: Rounding) -> Option<i128> {
-    divide_scaled(dividend, 0, divisor, rounding, 0).map(|(quotient, _)| quotient)
+    divide_shifted(dividend, 0, divisor, rounding, 0).map(|(quotient, _)| quotient)
 }
 
 /// `dividend × 10^shift / divisor`, worked out exactly however wide the
@@ -16,7 +16,7 @@ pub(crate) fn divide(dividend: i128, divisor: i128, rounding: Rounding) -> Optio
 /// the divisor is zero or the result is past an `i128`. This is how `/`
 /// keeps every one of its 18 extra places on large operands (area 3,
 /// question 7) rather than as many as an `i128` has room for.
-pub(crate) fn divide_scaled(
+pub(crate) fn divide_shifted(
     dividend: i128,
     shift: u32,
     divisor: i128,
@@ -28,7 +28,7 @@ pub(crate) fn divide_scaled(
     }
     let mut numerator = Wide::from(dividend.unsigned_abs());
     for _ in 0..shift {
-        numerator.mul_small(10);
+        numerator.multiply_by(10);
     }
     let whole = divisor.unsigned_abs();
     let (mut quotient, remainder) = numerator.div_rem(whole);
@@ -47,8 +47,8 @@ pub(crate) fn divide_scaled(
         }
     }
     let mut dropped = 0;
-    while dropped < trim && !quotient.is_zero() && quotient.rem_small(10) == 0 {
-        quotient.div_small(10);
+    while dropped < trim && !quotient.is_zero() && quotient.remainder_by(10) == 0 {
+        quotient.divide_by(10);
         dropped += 1;
     }
     let magnitude = i128::try_from(quotient.to_u128()?).ok()?;
@@ -75,12 +75,12 @@ impl Wide {
         self.0.first().is_some_and(|limb| limb & 1 == 1)
     }
 
-    fn mul_small(&mut self, factor: u64) {
+    fn multiply_by(&mut self, factor: u64) {
         let mut carry = 0u128;
         for limb in &mut self.0 {
-            let product = u128::from(*limb) * u128::from(factor) + carry;
-            *limb = product as u64;
-            carry = product >> 64;
+            let wide = u128::from(*limb) * u128::from(factor) + carry;
+            *limb = wide as u64;
+            carry = wide >> 64;
         }
         if carry != 0 {
             self.0.push(carry as u64);
@@ -98,7 +98,7 @@ impl Wide {
         self.0.push(1);
     }
 
-    fn rem_small(&self, divisor: u64) -> u64 {
+    fn remainder_by(&self, divisor: u64) -> u64 {
         let mut remainder = 0u128;
         for &limb in self.0.iter().rev() {
             remainder = ((remainder << 64) | u128::from(limb)) % u128::from(divisor);
@@ -106,7 +106,7 @@ impl Wide {
         remainder as u64
     }
 
-    fn div_small(&mut self, divisor: u64) {
+    fn divide_by(&mut self, divisor: u64) {
         let mut remainder = 0u128;
         for limb in self.0.iter_mut().rev() {
             let current = (remainder << 64) | u128::from(*limb);
@@ -171,17 +171,17 @@ mod tests {
         // 10^37 × 10^56 / 3 overflows an i128 long before the division,
         // and the result does not fit either.
         assert_eq!(
-            divide_scaled(10i128.pow(37), 56, 3, Rounding::HalfEven, 0),
+            divide_shifted(10i128.pow(37), 56, 3, Rounding::HalfEven, 0),
             None
         );
         // ...but trailing zeros may bring it back: 10^37 × 10^20 / 10^20.
         assert_eq!(
-            divide_scaled(10i128.pow(37), 20, 10i128.pow(20), Rounding::HalfEven, 20),
+            divide_shifted(10i128.pow(37), 20, 10i128.pow(20), Rounding::HalfEven, 20),
             Some((10i128.pow(17), 20))
         );
         // 10000000049999999999999 × 10^20 / 30000000000000000, half even.
         assert_eq!(
-            divide_scaled(
+            divide_shifted(
                 10_000_000_049_999_999_999_999,
                 20,
                 30_000_000_000_000_000,
@@ -191,11 +191,14 @@ mod tests {
             Some((33_333_333_499_999_999_999_996_667, 0))
         );
         assert_eq!(
-            divide_scaled(-7, 1, 2, Rounding::HalfEven, 1),
+            divide_shifted(-7, 1, 2, Rounding::HalfEven, 1),
             Some((-35, 0))
         );
-        assert_eq!(divide_scaled(-1, 0, 4, Rounding::Up, 0), Some((-1, 0)));
-        assert_eq!(divide_scaled(5, 0, 2, Rounding::HalfEven, 0), Some((2, 0)));
-        assert_eq!(divide_scaled(15, 0, 2, Rounding::HalfEven, 0), Some((8, 0)));
+        assert_eq!(divide_shifted(-1, 0, 4, Rounding::Up, 0), Some((-1, 0)));
+        assert_eq!(divide_shifted(5, 0, 2, Rounding::HalfEven, 0), Some((2, 0)));
+        assert_eq!(
+            divide_shifted(15, 0, 2, Rounding::HalfEven, 0),
+            Some((8, 0))
+        );
     }
 }
