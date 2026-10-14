@@ -27,8 +27,9 @@ type Badge = Enum {
 // list in square brackets where a set is expected, and a set literal that
 // repeats a value doesn't compile.
 //
-// A set has no order code can use: no first item and no index. Where order
-// matters, use a `List`. So far a set can be built, returned, passed on
+// A set's order isn't meaningful: code can't read one, as there is no
+// first item and no index, and the order a set is printed in says nothing
+// about how it was built. Where order matters, use a `List`. So far a set can be built, returned, passed on
 // and compared, but `for` and the `collection` operations take only lists,
 // which is why `Recipe.allergens`, searched above, is a list.
 
