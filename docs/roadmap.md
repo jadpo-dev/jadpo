@@ -201,6 +201,16 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [ ] **10.1 The golden todo end to end** `opus · high` on both targets, rewritten in the
   decided language, its contract cases passing. One independent review of
   the whole first build.
+- [ ] **10.2 How easily agents write Jadpo** `opus · high`: the same 10–20
+  realistic changes to one app (the golden todo, with its TypeScript
+  baseline and adversarial changes) done by fresh agent sessions in Jadpo
+  and in TypeScript, several runs each, with hidden acceptance tests.
+  Measures correctness, attempts and tokens to green, where each mistake
+  was caught (check, test or escaped), how easily a person reviews the
+  diff, and how often a tempting unsafe shortcut gets through. The agent
+  gets the language pages, since no model has seen Jadpo (Richard,
+  2026-10-14). The method is designed at the start of the chunk; its
+  results steer the order of the work after the first build.
 
 ## After the first build, in order
 
