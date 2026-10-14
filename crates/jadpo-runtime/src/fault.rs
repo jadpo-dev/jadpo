@@ -36,6 +36,23 @@ impl FaultKind {
     }
 }
 
+impl From<jadpo_value::Fault> for FaultKind {
+    /// What an operator's or operation's fault is to the runtime: overflow
+    /// is the program's, the rest are defects the checker rules out.
+    fn from(fault: jadpo_value::Fault) -> FaultKind {
+        match fault {
+            jadpo_value::Fault::IntOverflow => FaultKind::IntOverflow,
+            jadpo_value::Fault::DecimalOverflow => FaultKind::DecimalOverflow,
+            jadpo_value::Fault::DivisionByZero => {
+                FaultKind::Defect("a division by zero, which the checker rules out".into())
+            }
+            jadpo_value::Fault::Shape | jadpo_value::Fault::Stopped => {
+                FaultKind::Defect("a value of a kind the checker would have refused".into())
+            }
+        }
+    }
+}
+
 /// A fault and where it happened.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fault {

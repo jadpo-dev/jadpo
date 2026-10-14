@@ -381,6 +381,7 @@ impl Part<'_> {
                 }
             }
             Base::Enum => {
+                let mut order = 0;
                 for item in decl
                     .member_list()
                     .into_iter()
@@ -398,7 +399,8 @@ impl Part<'_> {
                         _ => continue,
                     };
                     let Some(variant) = variant else { continue };
-                    self.variant(&name, &key, &variant, block, &syntax);
+                    self.variant(&name, &key, &variant, block, &syntax, order);
+                    order += 1;
                     children.push(syntax);
                 }
             }
@@ -606,6 +608,7 @@ impl Part<'_> {
         variant: &str,
         block: Option<ast::MemberList>,
         syntax: &SyntaxNode,
+        order: u32,
     ) {
         let key = variant_key(self.lookup.registry(), host, variant);
         let mut node = self.node(
@@ -616,6 +619,7 @@ impl Part<'_> {
         );
         node.parent = Some(parent.clone());
         node.detail = Detail::Variant {
+            order,
             payload: block.is_some(),
         };
         self.out.nodes.push(node);

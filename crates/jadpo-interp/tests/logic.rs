@@ -133,15 +133,18 @@ fn match_chooses_between_the_cases_of_a_value() {
     ]);
     let id = Value::uuid("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e");
     let paid = program
+        .codec()
         .variant("PaymentOutcome", "paid", vec![("receipt_id", id.clone())])
         .expect("paid");
     assert_eq!(value(&program, "receipt", vec![paid]), id);
     let declined = program
+        .codec()
         .variant("PaymentOutcome", "declined", vec![])
         .expect("declined");
     assert_eq!(value(&program, "receipt", vec![declined]), Value::None);
     for status in ["open", "done"] {
         let todo = program
+            .codec()
             .object(
                 "Todo",
                 vec![
@@ -149,6 +152,7 @@ fn match_chooses_between_the_cases_of_a_value() {
                     (
                         "status",
                         program
+                            .codec()
                             .variant("TodoStatus", status, vec![])
                             .expect("status"),
                     ),
@@ -237,6 +241,7 @@ fn a_loop_runs_its_body_once_per_item() {
     ]);
     let line = |n: i64| {
         program
+            .codec()
             .object("OrderLine", vec![("subtotal", int(n))])
             .expect("OrderLine")
     };
@@ -273,6 +278,7 @@ fn inline_functions_are_passed_to_collection_operations() {
     );
     let todo = |title: &str, status: &str| {
         program
+            .codec()
             .object(
                 "Todo",
                 vec![
@@ -280,6 +286,7 @@ fn inline_functions_are_passed_to_collection_operations() {
                     (
                         "status",
                         program
+                            .codec()
                             .variant("TodoStatus", status, vec![])
                             .expect("status"),
                     ),
@@ -312,6 +319,7 @@ fn recursion_walks_a_recursive_type() {
     ]);
     let comment = |replies: Vec<Value>| {
         program
+            .codec()
             .object(
                 "Comment",
                 vec![("body", text("hi")), ("replies", list(replies))],
@@ -370,6 +378,7 @@ fn a_parameter_that_accepts_several_types_takes_an_enum() {
     ]);
     let id = Value::uuid("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e");
     let supplier = program
+        .codec()
         .variant("PartyId", "supplier", vec![("id", id)])
         .expect("supplier");
     assert_eq!(
@@ -403,6 +412,7 @@ fn a_set_literal_holds_each_value_once_in_order() {
     );
     let tags = value(&program, "tags", vec![]);
     let expected = program
+        .codec()
         .object(
             "Tags",
             vec![("tags", Value::set(vec![text("urgent"), text("home")]))],
@@ -437,7 +447,12 @@ fn a_return_inside_a_match_arm_leaves_the_callable() {
     let program = main(
         "type TodoStatus = Enum {\n    open\n    done\n}\n\ntype Label = Text {}\n\nfunction describe(status: TodoStatus) -> Label {\n    match status {\n        TodoStatus.open -> {\n            return \"to do\"\n        }\n        TodoStatus.done -> {}\n    }\n    return \"finished\"\n}\n",
     );
-    let status = |name: &str| program.variant("TodoStatus", name, vec![]).expect("status");
+    let status = |name: &str| {
+        program
+            .codec()
+            .variant("TodoStatus", name, vec![])
+            .expect("status")
+    };
     assert_eq!(
         value(&program, "describe", vec![status("open")]),
         text("to do")

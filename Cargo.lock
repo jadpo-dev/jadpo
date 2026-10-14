@@ -266,6 +266,7 @@ dependencies = [
  "jadpo-db",
  "jadpo-diag",
  "jadpo-graph",
+ "jadpo-plan",
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-value",
@@ -282,6 +283,16 @@ dependencies = [
  "lsp-server",
  "lsp-types",
  "serde_json",
+]
+
+[[package]]
+name = "jadpo-plan"
+version = "0.1.0"
+dependencies = [
+ "jadpo-check",
+ "jadpo-db",
+ "jadpo-graph",
+ "jadpo-std",
 ]
 
 [[package]]
@@ -325,6 +336,7 @@ dependencies = [
  "jadpo-diag",
  "jadpo-graph",
  "jadpo-interp",
+ "jadpo-runtime",
  "jadpo-term",
  "serde_json",
 ]

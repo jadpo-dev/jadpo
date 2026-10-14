@@ -13,6 +13,7 @@ use jadpo_graph::body::{
     SiteId, Stmt as TypedStmt, UnaryOp,
 };
 use jadpo_graph::{Key, TypeRef};
+use jadpo_std::RuleKey;
 use jadpo_syntax::ast::{self, AstNode, BlockItem, Expr, Pat, Stmt};
 use jadpo_syntax::{SyntaxKind, SyntaxNode};
 
@@ -80,6 +81,7 @@ pub(super) fn lower(
     body.block = lower.block(block);
     body.proofs = lower.proofs();
     body.sites = lower.sites.into_iter().flatten().collect();
+    body.pauses = body.sites.iter().any(|site| site.pauses);
     body.branches = lower.branches;
     lower.refers.sort_by_key(|name| (name.start, name.end));
     lower.refers.dedup();
@@ -266,13 +268,32 @@ impl Lower<'_> {
 
     fn fill(&mut self, id: usize, node: &SyntaxNode, ty: TypeRef, site: typed::Node) {
         let (start, end) = range(node);
+        let pauses = self.pauses(node, &site);
         self.sites[id] = Some(typed::Site {
             start,
             end,
             line: self.lines.line(start),
             ty,
             node: site,
+            pauses,
         });
+    }
+
+    /// Whether a site can pause (docs/compiler-runtime.md §2.5): an effect,
+    /// or a call into the runtime's action boundary. Functions are pure
+    /// (area 3), so calls to them, operations and constructions never do.
+    fn pauses(&self, node: &SyntaxNode, site: &typed::Node) -> bool {
+        match site {
+            typed::Node::Stmt(TypedStmt::Emit { .. }) => true,
+            typed::Node::Expr(typed::Expr::Call { callee, .. }) => matches!(
+                callee,
+                Callee::Action(_) | Callee::Fixture(_) | Callee::Query(_) | Callee::Entity { .. }
+            ),
+            typed::Node::Expr(typed::Expr::Unchecked) => {
+                self.facts.effects.contains(&node_key(node))
+            }
+            _ => false,
+        }
     }
 
     fn branch(&mut self, of: usize, node: &SyntaxNode) -> BranchId {
@@ -534,6 +555,12 @@ impl Lower<'_> {
                         }
                         (None, _) => Vec::new(),
                     };
+                    // An arm naming no rule is reported; it maps nothing.
+                    let rule = match rule.as_deref().map(RuleKey::from_word) {
+                        None => None,
+                        Some(Some(key)) => Some(key),
+                        Some(None) => continue,
+                    };
                     if let Some(failure) = failure_key {
                         arms.push(typed::RuleArm {
                             rule,
@@ -736,7 +763,10 @@ impl Lower<'_> {
                 }
             }
             Some(Fallible::Construction(rules)) => typed::Fallible::Construction {
-                rules: rules.clone(),
+                rules: rules
+                    .iter()
+                    .filter_map(|rule| RuleKey::from_word(rule))
+                    .collect(),
             },
             Some(Fallible::Unknown) | None => typed::Fallible::Unknown,
         }

@@ -4,23 +4,27 @@
 //!
 //! A [`Watch`] keeps one database for its lifetime. Each burst of saves
 //! updates its inputs, so the check that follows recomputes only what the
-//! saves touched; the graph it builds is compared with the graph of the
-//! last run node by node, and the tests that reach a node whose digest
-//! changed, by reverse reachability over `calls`, `runs`, `reads`, `uses`
-//! and `covers` (and from a field, variant or site to what holds it), are
-//! the ones that run. A save that breaks the build shows its errors and
-//! runs nothing; the next save that checks runs everything changed since
-//! the last run. A [`Poller`] finds the saves.
+//! saves touched; the graph it builds is compared with the last run's
+//! graph, which the session keeps (shared, not copied), and the tests that
+//! reach what changed are the ones that run ([`affected`]). How a change
+//! travels depends on the edge ([`follow`]): along most edges the source
+//! depends on the target, so a change climbs back to whatever reaches the
+//! source; along a few the source changes how its target behaves, so a
+//! changed or removed source counts as a change to its target. A save that
+//! breaks the build shows its errors and runs nothing; the next save that
+//! checks runs everything changed since the last run. A [`Poller`] finds
+//! the saves.
 
 mod poll;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 use jadpo_db::{Database, Loaded};
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_graph::{Digest, EdgeKind, Graph, Kind};
+use jadpo_graph::{Digest, EdgeKind, Graph, Kind, NodeId};
 
 pub use poll::{Poller, merge};
 
@@ -91,27 +95,69 @@ pub struct Event {
     pub fixed: bool,
 }
 
-/// The edges a test reaches what it depends on through (§2.4).
-const REACH: [EdgeKind; 5] = [
-    EdgeKind::Calls,
-    EdgeKind::Runs,
-    EdgeKind::Reads,
-    EdgeKind::Uses,
-    EdgeKind::Covers,
-];
+/// How a change travels along an edge of one kind, when working out the
+/// tests it reaches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Follow {
+    /// The source depends on the target (a call, a read, a type it uses):
+    /// a change to the target reaches whatever reaches the source.
+    Backwards,
+    /// The source changes how the target behaves (a subscriber what an
+    /// event does, a grant who may call an action): a change to the
+    /// source, or its removal, is a change to the target.
+    Forwards,
+    /// No test's result follows it.
+    Irrelevant,
+}
 
-/// Every node's digest, by key.
-type Digests = HashMap<String, Option<Digest>>;
+/// How a change travels along edges of `kind`. Every kind is named, so a
+/// kind added to the graph can't be left out of watch mode: this match
+/// stops compiling until it is classified.
+///
+/// An emitted event's subscribers are reached forwards, then backwards: a
+/// changed subscriber is a change to the event it subscribes to, which
+/// reaches every action that emits it (`emits`, backwards), and so the
+/// tests that call them.
+pub fn follow(kind: EdgeKind) -> Follow {
+    match kind {
+        EdgeKind::Calls
+        | EdgeKind::Reads
+        | EdgeKind::Writes
+        | EdgeKind::Emits
+        | EdgeKind::Runs
+        | EdgeKind::Raises
+        | EdgeKind::References
+        | EdgeKind::Includes
+        | EdgeKind::Uses
+        | EdgeKind::Covers => Follow::Backwards,
+        EdgeKind::Subscribes
+        | EdgeKind::Maps
+        | EdgeKind::Grants
+        | EdgeKind::Scopes
+        | EdgeKind::Invalidates
+        | EdgeKind::Provides => Follow::Forwards,
+        // A deployable reaches what it ships; no test runs a deployable.
+        EdgeKind::Reaches => Follow::Irrelevant,
+    }
+}
+
+/// The edge kinds a change travels along `way`.
+fn kinds(way: Follow) -> impl Iterator<Item = EdgeKind> {
+    EdgeKind::ALL
+        .iter()
+        .copied()
+        .filter(move |kind| follow(*kind) == way)
+}
 
 /// A watch session: the options it was started with, the project's
-/// long-lived database, and the graph's digests at the last run.
+/// long-lived database, and the graph of the last run.
 #[derive(Debug)]
 pub struct Watch {
     target: select::Target,
     options: Options,
     loaded: Loaded,
-    /// The digests the last run saw; `None` until a run has happened.
-    baseline: Option<Digests>,
+    /// The graph the last run saw; `None` until a run has happened.
+    baseline: Option<Arc<Graph>>,
     /// The edits since the last run, while the build is broken.
     pending: Vec<Edit>,
     /// The keys of the tests failing now.
@@ -270,9 +316,14 @@ impl Watch {
             Ok(checked) => checked,
             Err(ran) => return (None, Some(ran), false),
         };
-        let graph = jadpo_check::graph::graph(&self.loaded.db, self.loaded.project);
-        let now = digests(graph);
-        let only = self.baseline.as_ref().map(|before| affected(graph, before));
+        let graph = Arc::clone(jadpo_check::graph::graph(
+            &self.loaded.db,
+            self.loaded.project,
+        ));
+        let only = self
+            .baseline
+            .as_ref()
+            .map(|before| affected(&graph, before));
         let ran = crate::choose_and_run(
             &self.loaded,
             &checked,
@@ -281,7 +332,7 @@ impl Watch {
             only.as_ref(),
             started,
         );
-        self.baseline = Some(now);
+        self.baseline = Some(graph);
         // `--failed` picks the first run only; later runs are what each
         // change reaches.
         self.options.failed = false;
@@ -316,33 +367,68 @@ pub fn validate(options: &Options) -> Option<Ran> {
     select::resolve(options).err()
 }
 
-/// Every node's digest, by key.
-fn digests(graph: &Graph) -> Digests {
-    graph
+/// The keys of the tests a change from `before` to `graph` reaches. What
+/// changed is every node that is new or whose digest differs, and the
+/// target of every [`Follow::Forwards`] edge from one of those, or from a
+/// node `before` had and `graph` hasn't; then reverse reachability over
+/// the [`Follow::Backwards`] edges, and from a node to what holds it (a
+/// field to its type, a site to its callable), since what uses a type uses
+/// its fields.
+pub fn affected(graph: &Graph, before: &Graph) -> BTreeSet<String> {
+    let digests: HashMap<&str, Option<Digest>> = before
         .nodes()
         .iter()
-        .map(|node| (node.key.as_str().to_string(), node.digest))
-        .collect()
-}
-
-/// The keys of the tests that reach a node whose digest differs from
-/// `before`, or that is new: reverse reachability over [`REACH`], and from
-/// a node to what holds it (a field to its type, a site to its callable),
-/// since what uses a type uses its fields.
-pub fn affected(graph: &Graph, before: &HashMap<String, Option<Digest>>) -> BTreeSet<String> {
-    let mut seen = vec![false; graph.len()];
-    let mut queue = Vec::new();
-    for id in graph.ids() {
-        let node = graph.node(id);
-        if before.get(node.key.as_str()) != Some(&node.digest) {
-            seen[id.index()] = true;
+        .map(|node| (node.key.as_str(), node.digest))
+        .collect();
+    let mut changed = vec![false; graph.len()];
+    let mut queue: Vec<NodeId> = Vec::new();
+    // Whether `id` is newly marked changed.
+    let mut mark = |id: NodeId, queue: &mut Vec<NodeId>| {
+        let new = !changed[id.index()];
+        if new {
+            changed[id.index()] = true;
             queue.push(id);
         }
+        new
+    };
+    for id in graph.ids() {
+        let node = graph.node(id);
+        if digests.get(node.key.as_str()) != Some(&node.digest) {
+            mark(id, &mut queue);
+        }
+    }
+    // What a removed node changed the behaviour of, by key, as `before`
+    // had it.
+    for id in before.ids() {
+        if graph.find(&before.node(id).key).is_some() {
+            continue;
+        }
+        for kind in kinds(Follow::Forwards) {
+            for target in before.outgoing(id, kind) {
+                if let Some(now) = graph.find(&before.node(target).key) {
+                    mark(now, &mut queue);
+                }
+            }
+        }
+    }
+    // A changed node changes what it changes the behaviour of, and so on.
+    let mut forwards = queue.clone();
+    while let Some(id) = forwards.pop() {
+        for kind in kinds(Follow::Forwards) {
+            for target in graph.outgoing(id, kind) {
+                if mark(target, &mut queue) {
+                    forwards.push(target);
+                }
+            }
+        }
+    }
+    let mut seen = vec![false; graph.len()];
+    for id in &queue {
+        seen[id.index()] = true;
     }
     while let Some(id) = queue.pop() {
-        let mut next: Vec<_> = REACH
-            .iter()
-            .flat_map(|kind| graph.incoming(id, *kind))
+        let mut next: Vec<_> = kinds(Follow::Backwards)
+            .flat_map(|kind| graph.incoming(id, kind))
             .collect();
         if let Some(parent) = &graph.node(id).parent
             && let Some(parent) = graph.find(parent)
@@ -361,4 +447,135 @@ pub fn affected(graph: &Graph, before: &HashMap<String, Option<Digest>>) -> BTre
         .filter(|id| seen[id.index()] && graph.node(*id).kind == Kind::Test)
         .map(|id| graph.node(id).key.as_str().to_string())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use jadpo_graph::{Builder, Key, Node};
+
+    use super::*;
+
+    /// A graph of two tests, one calling `source` and one calling
+    /// `target`, with `source` `kind` `target`; each node's digest from its
+    /// version, and `source` left out when `with_source` is false.
+    fn graph(kind: EdgeKind, versions: [&str; 2], with_source: bool) -> Graph {
+        let mut builder = Builder::new();
+        let mut node = |kind: Kind, name: &str, version: &str| {
+            let mut node = Node::new(Key::new(kind, name), kind, name);
+            node.digest = Some(Digest::of([name, version]));
+            builder.node(node);
+        };
+        node(Kind::Test, "reaches the source", "1");
+        node(Kind::Test, "reaches the target", "1");
+        if with_source {
+            node(Kind::Function, "source", versions[0]);
+        }
+        node(Kind::Function, "target", versions[1]);
+        let key = |kind: Kind, name: &str| Key::new(kind, name);
+        builder.edge(
+            key(Kind::Test, "reaches the source"),
+            EdgeKind::Calls,
+            key(Kind::Function, "source"),
+        );
+        builder.edge(
+            key(Kind::Test, "reaches the target"),
+            EdgeKind::Calls,
+            key(Kind::Function, "target"),
+        );
+        builder.edge(
+            key(Kind::Function, "source"),
+            kind,
+            key(Kind::Function, "target"),
+        );
+        builder.build()
+    }
+
+    /// Which tests rerun after `after` replaces `before`, as `source` and
+    /// `target` for the test that reaches each.
+    fn rerun(before: &Graph, after: &Graph) -> Vec<&'static str> {
+        let reached = affected(after, before);
+        [
+            ("source", "reaches the source"),
+            ("target", "reaches the target"),
+        ]
+        .into_iter()
+        .filter(|(_, test)| reached.contains(Key::new(Kind::Test, test).as_str()))
+        .map(|(which, _)| which)
+        .collect()
+    }
+
+    #[test]
+    fn every_edge_kind_carries_a_change_the_way_it_is_classified() {
+        for &kind in EdgeKind::ALL {
+            let before = graph(kind, ["1", "1"], true);
+            let target_changed = graph(kind, ["1", "2"], true);
+            let source_changed = graph(kind, ["2", "1"], true);
+            let source_removed = graph(kind, ["1", "1"], false);
+            // A removed source takes its callers' edges with it: in a real
+            // project their own text changes too, so only what it changed
+            // the behaviour of is left to find.
+            let (on_target, on_source, on_removal) = match follow(kind) {
+                Follow::Backwards => (vec!["source", "target"], vec!["source"], vec![]),
+                Follow::Forwards => (vec!["target"], vec!["source", "target"], vec!["target"]),
+                Follow::Irrelevant => (vec!["target"], vec!["source"], vec![]),
+            };
+            assert_eq!(
+                rerun(&before, &target_changed),
+                on_target,
+                "{kind:?}: target changed"
+            );
+            assert_eq!(
+                rerun(&before, &source_changed),
+                on_source,
+                "{kind:?}: source changed"
+            );
+            assert_eq!(
+                rerun(&before, &source_removed),
+                on_removal,
+                "{kind:?}: source removed"
+            );
+            assert!(
+                rerun(&before, &before).is_empty(),
+                "{kind:?}: nothing changed"
+            );
+        }
+    }
+
+    #[test]
+    fn a_changed_subscriber_reaches_the_tests_of_actions_that_emit_its_event() {
+        let build = |version: &str| {
+            let mut builder = Builder::new();
+            for (kind, name, digest) in [
+                (Kind::Test, "places an order", "1"),
+                (Kind::Action, "place_order", "1"),
+                (Kind::Type, "OrderPlaced", "1"),
+                (Kind::Subscriber, "send_receipt", version),
+            ] {
+                let mut node = Node::new(Key::new(kind, name), kind, name);
+                node.digest = Some(Digest::of([name, digest]));
+                builder.node(node);
+            }
+            builder.edge(
+                Key::new(Kind::Test, "places an order"),
+                EdgeKind::Calls,
+                Key::new(Kind::Action, "place_order"),
+            );
+            builder.edge(
+                Key::new(Kind::Action, "place_order"),
+                EdgeKind::Emits,
+                Key::new(Kind::Type, "OrderPlaced"),
+            );
+            builder.edge(
+                Key::new(Kind::Subscriber, "send_receipt"),
+                EdgeKind::Subscribes,
+                Key::new(Kind::Type, "OrderPlaced"),
+            );
+            builder.build()
+        };
+        let reached = affected(&build("2"), &build("1"));
+        assert_eq!(
+            reached.into_iter().collect::<Vec<_>>(),
+            [Key::new(Kind::Test, "places an order").as_str()]
+        );
+    }
 }

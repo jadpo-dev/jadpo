@@ -1,54 +1,107 @@
-//! A checked project ready to run: every callable's typed body, the places
-//! its frames name, and what its types are made of, copied out of the
-//! checker's queries once so running needs no database.
+//! A checked project ready to run, in two parts. [`Prepared`] is what
+//! every thread shares behind an `Arc`: the plan (`jadpo-plan`), each type's
+//! rules compiled into a validator once, and the frame table. [`Program`]
+//! is one thread's view of it, with what can't cross threads because the
+//! runtime's values are `Rc`-shared (§2.6): the plan's constants and shapes
+//! decoded into values. The test runner prepares a project once and makes
+//! a `Program` on each thread it runs tests on.
 
-use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
-use jadpo_check::types::{callables_of, typed_body};
 use jadpo_db::{Db, Project};
 use jadpo_diag::{Diagnostic, Severity};
-use jadpo_graph::body::Body;
-use jadpo_graph::{Key, Kind};
-use jadpo_runtime::{CallablePlace, Places};
-use jadpo_value::Value;
+use jadpo_graph::Key;
+use jadpo_graph::Section;
+use jadpo_plan::{ConstId, FailureId, Plan, ShapeId, ValidatorId};
+use jadpo_runtime::{
+    CallablePlace, Ctx, Env, Executor, Failure, FaultKind, Frame, LocalFuture, MemoryHost, Outcome,
+    Places, Report, SitePlace,
+};
+use jadpo_value::{Validator, Value};
 
-use crate::Outcome;
-use crate::eval::Interp;
-use crate::report::Report;
-use crate::types::Types;
+use crate::drive;
+use crate::values::{Codec, Shape, value};
 
-/// One callable with a body.
+/// A checked project, shared by every thread that runs it.
 #[derive(Debug)]
-pub(crate) struct Callable {
-    pub key: Key,
-    pub kind: Kind,
-    pub file: String,
-    pub body: Body,
+pub struct Prepared {
+    plan: Plan,
+    /// The plan's validators, compiled, by number.
+    validators: Vec<Validator>,
+    places: Places,
 }
 
-/// A project that checked without errors, ready to run.
+impl Prepared {
+    /// Reads `project` if it checks without errors; its errors otherwise.
+    pub fn load(db: &dyn Db, project: Project) -> Result<Arc<Prepared>, Vec<Diagnostic>> {
+        let errors: Vec<Diagnostic> = jadpo_check::check(db, project)
+            .into_iter()
+            .filter(|d| d.severity() == Severity::Error)
+            .collect();
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok(Prepared::checked(db, project))
+    }
+
+    /// Reads `project`, which the caller has checked has no errors.
+    pub fn checked(db: &dyn Db, project: Project) -> Arc<Prepared> {
+        let plan = Plan::build(db, project);
+        let validators = plan
+            .types()
+            .validators()
+            .iter()
+            .map(|plan| Validator::new(plan.builtin, plan.rules.clone()))
+            .collect();
+        let mut places = Places::new();
+        for callable in plan.callables() {
+            places.push(CallablePlace {
+                label: callable.label.clone(),
+                file: callable.file.clone(),
+                line: callable.line,
+                sites: callable
+                    .body
+                    .sites
+                    .iter()
+                    .zip(&callable.sites)
+                    .map(|(site, decoded)| SitePlace {
+                        line: site.line,
+                        start: site.start,
+                        end: site.end,
+                        anchor: decoded.anchor,
+                    })
+                    .collect(),
+            });
+        }
+        Arc::new(Prepared {
+            plan,
+            validators,
+            places,
+        })
+    }
+
+    pub fn plan(&self) -> &Plan {
+        &self.plan
+    }
+
+    /// Where every frame is.
+    pub fn places(&self) -> &Places {
+        &self.places
+    }
+}
+
+/// A prepared project on one thread, ready to run its callables.
 #[derive(Debug)]
 pub struct Program {
-    pub(crate) callables: Vec<Callable>,
-    by_key: HashMap<Key, u32>,
-    pub(crate) places: Places,
-    pub(crate) types: Types,
-    /// Each file's text, by project-relative path, for reports.
-    pub(crate) texts: HashMap<String, String>,
+    prepared: Arc<Prepared>,
+    /// The plan's constants as values, by number.
+    constants: Vec<Value>,
+    /// The plan's shapes with their names as values hold them, by number.
+    shapes: Vec<Shape>,
     /// Whether constructions the checker proved are checked again as they
     /// run ([`Program::with_proof_checks`]).
-    pub(crate) proof_checks: bool,
-}
-
-/// Where a frame stands: its callable's file, the bytes of its site and
-/// the line the site starts on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SiteSpan<'a> {
-    pub file: &'a str,
-    pub start: u32,
-    pub end: u32,
-    pub line: u32,
+    proof_checks: bool,
 }
 
 /// Why a call couldn't start.
@@ -80,66 +133,23 @@ impl fmt::Display for CallError {
 }
 
 impl Program {
-    /// Reads every callable of `project` out of its checked queries. A
+    /// This thread's view of `prepared`.
+    pub fn new(prepared: Arc<Prepared>) -> Program {
+        let types = prepared.plan.types();
+        let constants = prepared.plan.constants().iter().map(value).collect();
+        let shapes = types.shapes().iter().map(Shape::new).collect();
+        Program {
+            prepared,
+            constants,
+            shapes,
+            proof_checks: false,
+        }
+    }
+
+    /// Reads every callable of `project` and prepares it on this thread. A
     /// project with errors doesn't run: its errors come back instead.
     pub fn load(db: &dyn Db, project: Project) -> Result<Program, Vec<Diagnostic>> {
-        let errors: Vec<Diagnostic> = jadpo_check::check(db, project)
-            .into_iter()
-            .filter(|d| d.severity() == Severity::Error)
-            .collect();
-        if !errors.is_empty() {
-            return Err(errors);
-        }
-        let graph = jadpo_check::graph::graph(db, project).clone();
-        let mut found: Vec<Callable> = Vec::new();
-        let mut texts = HashMap::new();
-        for &file in project.files(db) {
-            let path = file.path(db).clone();
-            texts.insert(path.clone(), file.text(db).clone());
-            for callable in callables_of(db, file) {
-                let checked = typed_body(db, project, callable);
-                let Some(key) = checked.key.clone() else {
-                    continue;
-                };
-                let Some(kind) = key.kind() else { continue };
-                found.push(Callable {
-                    key,
-                    kind,
-                    file: path.clone(),
-                    body: checked.body.clone(),
-                });
-            }
-        }
-        found.sort_by(|a, b| a.key.cmp(&b.key));
-        found.dedup_by(|a, b| a.key == b.key);
-        let mut places = Places::new();
-        let mut by_key = HashMap::new();
-        for callable in &found {
-            let node = graph.get(&callable.key);
-            let name = node.map_or(callable.key.name(), |node| node.name.as_str());
-            let label = match callable.kind {
-                Kind::Test => format!("test \"{name}\""),
-                kind => format!("{} {name}", kind.word()),
-            };
-            let line = node
-                .and_then(|node| node.place.as_ref())
-                .map_or(1, |place| place.lines.0);
-            let id = places.push(CallablePlace {
-                label,
-                file: callable.file.clone(),
-                line,
-                sites: callable.body.sites.iter().map(|site| site.line).collect(),
-            });
-            by_key.insert(callable.key.clone(), id);
-        }
-        Ok(Program {
-            callables: found,
-            by_key,
-            places,
-            types: Types::new(graph),
-            texts,
-            proof_checks: false,
-        })
+        Prepared::load(db, project).map(Program::new)
     }
 
     /// The same program, checking again every construction the checker
@@ -153,10 +163,25 @@ impl Program {
         self
     }
 
+    pub fn prepared(&self) -> &Arc<Prepared> {
+        &self.prepared
+    }
+
+    pub fn plan(&self) -> &Plan {
+        &self.prepared.plan
+    }
+
+    /// Builds values of the project's types from their parts.
+    pub fn codec(&self) -> Codec<'_> {
+        Codec {
+            types: self.plan().types(),
+        }
+    }
+
     /// Every callable with a body, by key: functions, actions, fixtures,
     /// library functions, tests and seeds.
     pub fn keys(&self) -> impl Iterator<Item = &Key> + '_ {
-        self.callables.iter().map(|callable| &callable.key)
+        self.plan().callables().iter().map(|callable| &callable.key)
     }
 
     /// Arguments to probe callable `name` with: for each parameter, values
@@ -165,15 +190,15 @@ impl Program {
     /// number, text, a UUID or a flag, or a list or set of them, which
     /// this doesn't sample.
     pub fn probe_arguments(&self, name: &str, limit: usize) -> Option<Vec<Vec<Value>>> {
-        let key = self.find(name)?;
-        let callable = self.callable(self.id(key)?)?;
+        let callable = self.plan().callable(self.plan().find(name)?)?;
+        let types = self.plan().types();
         let choices: Vec<Vec<Value>> = callable
             .body
             .params
             .iter()
             .map(|param| {
                 let ty = &callable.body.locals.get(param.0 as usize)?.ty;
-                let values = crate::probe::values(&self.types, ty)?;
+                let values = crate::probe::values(types, ty)?;
                 (!values.is_empty()).then_some(values)
             })
             .collect::<Option<_>>()?;
@@ -182,124 +207,122 @@ impl Program {
 
     /// Where every frame is.
     pub fn places(&self) -> &Places {
-        &self.places
-    }
-
-    /// The callable a key's text or a name means: `function line_total`,
-    /// `line_total`, `rounding.half_even`, or a test's key,
-    /// `test main "a large size is rejected"`.
-    pub fn find(&self, name: &str) -> Option<&Key> {
-        self.callables
-            .iter()
-            .find(|callable| callable.key.as_str() == name)
-            .or_else(|| {
-                self.callables
-                    .iter()
-                    .find(|callable| callable.key.name() == name)
-            })
-            .map(|callable| &callable.key)
-    }
-
-    pub(crate) fn id(&self, key: &Key) -> Option<u32> {
-        self.by_key.get(key).copied()
-    }
-
-    pub(crate) fn callable(&self, id: u32) -> Option<&Callable> {
-        self.callables.get(id as usize)
-    }
-
-    /// Runs the callable `name` (see [`Program::find`]) with `args`, one
-    /// per parameter, taken as values of the parameters' types: its value,
-    /// the failure that left it, a fault, or a test's failed assertion.
-    ///
-    /// Each call is a tree walk on the thread's own stack, a few Rust frames
-    /// per Jadpo frame; run deep recursion inside [`crate::on_large_stack`].
-    pub fn call(&self, name: &str, args: Vec<Value>) -> Result<Outcome, CallError> {
-        let key = self
-            .find(name)
-            .ok_or_else(|| CallError::Unknown(name.to_string()))?;
-        let id = self
-            .id(key)
-            .ok_or_else(|| CallError::Unknown(name.to_string()))?;
-        let callable = self
-            .callable(id)
-            .ok_or_else(|| CallError::Unknown(name.to_string()))?;
-        if callable.body.params.len() != args.len() {
-            return Err(CallError::Arity {
-                callable: self.places.label(id).to_string(),
-                expected: callable.body.params.len(),
-                given: args.len(),
-            });
-        }
-        Ok(Interp::run(self, id, args))
-    }
-
-    /// An object of type `ty` from its fields by name, in the order the
-    /// type declares them; `None` when `ty` isn't an object or a field is
-    /// missing or unknown.
-    pub fn object(&self, ty: &str, fields: Vec<(&str, Value)>) -> Option<Value> {
-        let key = [Kind::Type, Kind::Entity]
-            .into_iter()
-            .map(|kind| Key::new(kind, ty))
-            .find(|key| self.types.graph().get(key).is_some())?;
-        self.fields_by_name(&key, fields)
-    }
-
-    /// Variant `variant` of enum `ty`, with a payload variant's fields by
-    /// name.
-    pub fn variant(&self, ty: &str, variant: &str, fields: Vec<(&str, Value)>) -> Option<Value> {
-        let key = Key::new(Kind::Variant, &format!("{ty}.{variant}"));
-        self.types.graph().get(&key)?;
-        self.fields_by_name(&key, fields)
-    }
-
-    fn fields_by_name(&self, key: &Key, fields: Vec<(&str, Value)>) -> Option<Value> {
-        let shape = self.types.shape(key);
-        if fields.len() != shape.fields.len() {
-            return None;
-        }
-        let given = fields
-            .into_iter()
-            .map(|(name, value)| {
-                shape
-                    .fields
-                    .iter()
-                    .find(|field| &*field.name == name)
-                    .map(|field| (field.key.clone(), value))
-            })
-            .collect::<Option<Vec<_>>>()?;
-        self.types.build(key, given)
-    }
-
-    /// A value of the named type `ty` from `text`, as a literal of it would
-    /// be: a UUID, an instant or a date from its ISO text, text otherwise.
-    pub fn text_value(&self, ty: &str, text: &str) -> Option<Value> {
-        let key = Key::new(Kind::Type, ty);
-        let target = jadpo_graph::TypeRef::Node(key);
-        let builtin = self.types.representation(&target)?;
-        crate::eval::text_literal(builtin, text)
-    }
-
-    /// The report a person reads for an outcome that isn't a value.
-    pub fn report(&self, outcome: &Outcome) -> Option<Report> {
-        Report::of(self, outcome)
-    }
-
-    /// Where `frame` stands in its file; `None` for a callable's entry,
-    /// which stands at no site.
-    pub fn site(&self, frame: jadpo_runtime::Frame) -> Option<SiteSpan<'_>> {
-        let callable = self.callable(frame.callable)?;
-        let site = callable.body.sites.get(frame.site as usize)?;
-        Some(SiteSpan {
-            file: &callable.file,
-            start: site.start,
-            end: site.end,
-            line: site.line,
-        })
+        &self.prepared.places
     }
 
     /// A file's text, by its project-relative path.
     pub fn text(&self, path: &str) -> Option<&str> {
-        self.texts.get(path).map(String::as_str)
+        self.plan().text(path)
+    }
+
+    /// Runs the callable `name` (a key's text or a name, as
+    /// [`Plan::find`] reads it) with `args`, one per parameter, taken as
+    /// values of the parameters' types, on a host with no store and the
+    /// default environment: its value, the failure that left it, a fault,
+    /// or a test's failed assertion.
+    pub fn call(&self, name: &str, args: Vec<Value>) -> Result<Outcome, CallError> {
+        let unknown = || CallError::Unknown(name.to_string());
+        let id = self.plan().find(name).ok_or_else(unknown)?;
+        let callable = self.plan().callable(id).ok_or_else(unknown)?;
+        if callable.body.params.len() != args.len() {
+            return Err(CallError::Arity {
+                callable: callable.label.clone(),
+                expected: callable.body.params.len(),
+                given: args.len(),
+            });
+        }
+        let host = MemoryHost::new();
+        let mut ctx = Ctx::new(self.places(), &host, Env::default());
+        let ran = jadpo_runtime::block_on(self.run(&mut ctx, id, args));
+        Ok(ran.unwrap_or_else(|_| {
+            Outcome::Fault(ctx.fault(
+                FaultKind::Defect("a wait nothing would end".into()),
+                Frame::ENTRY,
+            ))
+        }))
+    }
+
+    /// The report a person reads for an outcome that isn't a value.
+    pub fn report(&self, outcome: &Outcome) -> Option<Report> {
+        Report::of(outcome, self.places(), self.plan().files())
+    }
+
+    // --- for the machine ----------------------------------------------------
+
+    pub(crate) fn proof_checks(&self) -> bool {
+        self.proof_checks
+    }
+
+    /// Validator `id`; one with no rules when the plan has none of that
+    /// number, which it always has.
+    pub(crate) fn validator(&self, id: ValidatorId) -> &Validator {
+        static NONE: std::sync::OnceLock<Validator> = std::sync::OnceLock::new();
+        self.prepared
+            .validators
+            .get(id.0 as usize)
+            .unwrap_or_else(|| NONE.get_or_init(|| Validator::new(None, Vec::new())))
+    }
+
+    pub(crate) fn constant(&self, id: ConstId) -> Value {
+        self.constants
+            .get(id.0 as usize)
+            .cloned()
+            .unwrap_or(Value::Unit)
+    }
+
+    pub(crate) fn shape(&self, id: ShapeId) -> Option<&Shape> {
+        self.shapes.get(id.0 as usize)
+    }
+
+    /// Failure `id`, with the fields given in `values` placed by `slots`,
+    /// ready to raise; `None` when a field is missing.
+    pub(crate) fn failure(
+        &self,
+        id: FailureId,
+        slots: &[Option<u32>],
+        values: Vec<Value>,
+    ) -> Option<Failure> {
+        let plan = self.plan().types().failure(id)?;
+        let mut given: Vec<Option<Value>> = vec![None; plan.fields.len()];
+        for (slot, value) in slots.iter().zip(values) {
+            if let Some(place) = slot.and_then(|slot| given.get_mut(slot as usize))
+                && place.is_none()
+            {
+                *place = Some(value);
+            }
+        }
+        let mut failure = Failure::new(plan.key.as_str(), plan.name.as_str(), plan.code.as_str());
+        failure.kind = plan.kind.clone();
+        failure.status = plan.status;
+        failure.message = plan.message.clone();
+        for (field, value) in plan.fields.iter().zip(given) {
+            let entry = (field.name.clone(), value?);
+            match field.section {
+                Some(Section::Client) => failure.client.push(entry),
+                _ => failure.internal.push(entry),
+            }
+        }
+        Some(failure)
+    }
+}
+
+impl Executor for Program {
+    fn places(&self) -> &Places {
+        Program::places(self)
+    }
+
+    fn callable(&self, key: &str) -> Option<u32> {
+        self.plan().find(key)
+    }
+
+    fn run<'a, 'p: 'a>(
+        &'a self,
+        ctx: &'a mut Ctx<'p>,
+        callable: u32,
+        args: Vec<Value>,
+    ) -> LocalFuture<'a, Outcome> {
+        Box::pin(async move {
+            drive::outcome(drive::invoke(self, ctx, callable, args, Frame::ENTRY).await)
+        })
     }
 }

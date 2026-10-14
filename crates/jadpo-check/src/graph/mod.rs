@@ -20,6 +20,8 @@ pub use part::{FilePart, file_part};
 pub use similar::{FunctionShape, function_shapes, similar_problems};
 pub use text::LineIndex;
 
+use std::sync::Arc;
+
 use jadpo_db::{Db, ItemKind, Project, symbols};
 use jadpo_syntax::ast::Decl;
 
@@ -177,9 +179,11 @@ pub(crate) fn test_key(registry: &jadpo_graph::Registry, path: &str, sentence: &
     registry.key(Kind::Test, &format!("{subject} \"{sentence}\""), None)
 }
 
-/// The project's graph.
+/// The project's graph, shared behind `Arc` (docs/compiler-runtime.md
+/// §2.3): what reads it whole, such as the interpreter's plan or watch
+/// mode's last run, keeps a reference rather than a copy.
 #[salsa::tracked(returns(ref))]
-pub fn graph(db: &dyn Db, project: Project) -> Graph {
+pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
     let symbols = symbols(db, project);
     let registry = registry(db, project);
     let mut builder = Builder::new();
@@ -205,5 +209,5 @@ pub fn graph(db: &dyn Db, project: Project) -> Graph {
             builder.edge(from.clone(), *kind, to.clone());
         }
     }
-    builder.build()
+    Arc::new(builder.build())
 }

@@ -191,6 +191,9 @@ pub enum Detail {
         rules: Rules,
     },
     Variant {
+        /// Its place among its enum's variants, from 0, in the order they
+        /// are declared: what a set orders them by (area 2, "Set order").
+        order: u32,
         /// Whether it carries data.
         payload: bool,
     },

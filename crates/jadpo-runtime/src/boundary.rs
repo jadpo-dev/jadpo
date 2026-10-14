@@ -1,0 +1,337 @@
+//! The action boundary (docs/compiler-runtime.md §2.5), which the runtime
+//! owns rather than either executor: every action is all-or-nothing (areas
+//! 3 and 6). The outermost action opens the boundary; the body, which the
+//! executor supplies, runs; the transaction is begun at the body's first
+//! store operation ([`Ctx::transaction`]); when another transaction
+//! changed what it read, the whole body runs again within the budget;
+//! then it commits, or rolls back when the body failed, and only after a
+//! commit are the events it emitted delivered. An action called inside
+//! another joins its transaction (area 1, "Cross-domain writes"), and so
+//! does a fixture's, since a fixture is a test-only action (area 13); a
+//! test, or a fixture's caller, opens a boundary per action it calls, so
+//! each commits on its own.
+
+use crate::{Ctx, Failure, LocalFuture, Outcome, StoreError};
+
+/// How many times a body runs before a concurrent change gives up with
+/// `unavailable` (area 6: "after three attempts within a second, the
+/// existing retry budget"). The second's bound comes with the host's
+/// clock.
+pub const RERUN_ATTEMPTS: u32 = 3;
+
+/// An action's body, as an executor runs it; the boundary may run it more
+/// than once, each time from the start.
+pub trait ActionBody<'p> {
+    fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome>;
+}
+
+/// What the runtime raises when an action can't finish because its store
+/// can't (area 4: `unavailable`, 503, "a dependency is temporarily
+/// unavailable"; raised by the runtime).
+pub fn unavailable() -> Failure {
+    let mut failure = Failure::new("runtime unavailable", "Unavailable", "unavailable");
+    failure.kind = Some("unavailable".to_string());
+    failure.status = Some(503);
+    failure
+}
+
+/// How a run of the body ended at the store.
+enum Ended {
+    Committed,
+    RolledBack,
+    /// Another transaction changed what it read: run it again.
+    Changed,
+    /// The store couldn't finish.
+    Unavailable,
+}
+
+/// Runs `body` as an action: inside the running action's boundary when
+/// there is one, otherwise in a boundary of its own, which commits or
+/// rolls back, reruns on a concurrent change, and delivers what the body
+/// emitted after it commits.
+pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
+    if ctx.in_action() {
+        return body.run(ctx).await;
+    }
+    ctx.actions += 1;
+    let mut attempt = 1;
+    loop {
+        ctx.boundary = Some(Default::default());
+        let outcome = body.run(ctx).await;
+        let boundary = ctx.boundary.take().unwrap_or_default();
+        let succeeded = matches!(outcome, Outcome::Value(_));
+        let ended = match boundary.transaction {
+            _ if boundary.concurrent_change => {
+                if let Some(transaction) = boundary.transaction {
+                    let _ = transaction.rollback().await;
+                }
+                Ended::Changed
+            }
+            Some(transaction) if succeeded => match transaction.commit().await {
+                Ok(()) => Ended::Committed,
+                Err(StoreError::ConcurrentChange) => Ended::Changed,
+                Err(_) => Ended::Unavailable,
+            },
+            // A failed body's own outcome stands whatever the rollback
+            // says: nothing it wrote is kept either way.
+            Some(transaction) => {
+                let _ = transaction.rollback().await;
+                Ended::RolledBack
+            }
+            None if succeeded => Ended::Committed,
+            None => Ended::RolledBack,
+        };
+        match ended {
+            Ended::Committed => {
+                if !boundary.outbox.is_empty() {
+                    ctx.host().deliver(boundary.outbox).await;
+                }
+                return outcome;
+            }
+            Ended::RolledBack => return outcome,
+            Ended::Changed if attempt < RERUN_ATTEMPTS => attempt += 1,
+            Ended::Changed | Ended::Unavailable => {
+                return Outcome::Failed(Box::new(Failure {
+                    frames: ctx.frames(),
+                    ..unavailable()
+                }));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use jadpo_value::Value;
+
+    use super::*;
+    use crate::{Database, Env, Event, Fault, FaultKind, Host, Places, Transaction, block_on};
+
+    /// A store that writes down what happens to it, and reports a
+    /// concurrent change at the first `changes` commits.
+    #[derive(Default)]
+    struct Log {
+        lines: RefCell<Vec<String>>,
+        changes: RefCell<u32>,
+    }
+
+    struct Tx(Rc<Log>);
+
+    impl Transaction for Tx {
+        fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
+            let log = Rc::clone(&self.0);
+            Box::pin(async move {
+                let mut changes = log.changes.borrow_mut();
+                if *changes > 0 {
+                    *changes -= 1;
+                    log.lines.borrow_mut().push("changed".into());
+                    return Err(StoreError::ConcurrentChange);
+                }
+                log.lines.borrow_mut().push("commit".into());
+                Ok(())
+            })
+        }
+
+        fn rollback(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
+            let log = Rc::clone(&self.0);
+            Box::pin(async move {
+                log.lines.borrow_mut().push("rollback".into());
+                Ok(())
+            })
+        }
+    }
+
+    struct Store(Rc<Log>);
+
+    impl Database for Store {
+        fn begin(&self) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+            let log = Rc::clone(&self.0);
+            Box::pin(async move {
+                log.lines.borrow_mut().push("begin".into());
+                Ok(Box::new(Tx(log)) as Box<dyn Transaction>)
+            })
+        }
+    }
+
+    struct Recorded {
+        store: Store,
+        log: Rc<Log>,
+    }
+
+    impl Recorded {
+        fn new(changes: u32) -> Recorded {
+            let log = Rc::new(Log::default());
+            *log.changes.borrow_mut() = changes;
+            Recorded {
+                store: Store(Rc::clone(&log)),
+                log,
+            }
+        }
+
+        fn lines(&self) -> Vec<String> {
+            self.log.lines.borrow().clone()
+        }
+    }
+
+    impl Host for Recorded {
+        fn database(&self) -> &dyn Database {
+            &self.store
+        }
+
+        fn deliver(&self, events: Vec<Event>) -> LocalFuture<'_, ()> {
+            for event in events {
+                self.log
+                    .lines
+                    .borrow_mut()
+                    .push(format!("deliver {}", event.key));
+            }
+            Box::pin(async {})
+        }
+    }
+
+    /// A body that writes (or not), emits, then ends as `end` says, and
+    /// runs `inner` as an action called inside it.
+    struct Write<'i> {
+        writes: bool,
+        end: fn() -> Outcome,
+        inner: Option<&'i mut Write<'i>>,
+        runs: u32,
+    }
+
+    impl<'p> ActionBody<'p> for Write<'_> {
+        fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+            Box::pin(async move {
+                self.runs += 1;
+                if self.writes && ctx.transaction().await.is_err() {
+                    return Outcome::Value(Value::Unit);
+                }
+                ctx.emit(Event {
+                    key: format!("type Ran{}", self.runs),
+                    value: Value::Unit,
+                });
+                if let Some(inner) = self.inner.as_deref_mut() {
+                    let outcome = action(ctx, inner).await;
+                    if !matches!(outcome, Outcome::Value(_)) {
+                        return outcome;
+                    }
+                }
+                (self.end)()
+            })
+        }
+    }
+
+    fn ok() -> Outcome {
+        Outcome::Value(Value::Unit)
+    }
+
+    fn fault() -> Outcome {
+        Outcome::Fault(Box::new(Fault {
+            kind: FaultKind::IntOverflow,
+            frames: Vec::new(),
+        }))
+    }
+
+    fn run(host: &Recorded, body: &mut Write<'_>) -> Outcome {
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, host, Env::default());
+        block_on(action(&mut ctx, body)).expect("nothing waits")
+    }
+
+    #[test]
+    fn the_transaction_opens_at_the_first_store_operation_and_events_follow_the_commit() {
+        let host = Recorded::new(0);
+        let mut body = Write {
+            writes: true,
+            end: ok,
+            inner: None,
+            runs: 0,
+        };
+        assert_eq!(run(&host, &mut body), ok());
+        assert_eq!(host.lines(), ["begin", "commit", "deliver type Ran1"]);
+        let host = Recorded::new(0);
+        let mut reading_nothing = Write {
+            writes: false,
+            end: ok,
+            inner: None,
+            runs: 0,
+        };
+        run(&host, &mut reading_nothing);
+        assert_eq!(
+            host.lines(),
+            ["deliver type Ran1"],
+            "no store, no transaction"
+        );
+    }
+
+    #[test]
+    fn a_body_that_fails_rolls_back_and_delivers_nothing() {
+        let host = Recorded::new(0);
+        let mut body = Write {
+            writes: true,
+            end: fault,
+            inner: None,
+            runs: 0,
+        };
+        assert_eq!(run(&host, &mut body), fault());
+        assert_eq!(host.lines(), ["begin", "rollback"]);
+    }
+
+    #[test]
+    fn an_action_called_inside_another_joins_its_transaction() {
+        let host = Recorded::new(0);
+        let mut inner = Write {
+            writes: true,
+            end: ok,
+            inner: None,
+            runs: 0,
+        };
+        let mut outer = Write {
+            writes: true,
+            end: ok,
+            inner: Some(&mut inner),
+            runs: 0,
+        };
+        assert_eq!(run(&host, &mut outer), ok());
+        assert_eq!(
+            host.lines(),
+            ["begin", "commit", "deliver type Ran1", "deliver type Ran1"],
+            "one transaction, both actions' events after it commits"
+        );
+    }
+
+    #[test]
+    fn a_concurrent_change_reruns_the_whole_body_within_the_budget() {
+        let host = Recorded::new(1);
+        let mut body = Write {
+            writes: true,
+            end: ok,
+            inner: None,
+            runs: 0,
+        };
+        assert_eq!(run(&host, &mut body), ok());
+        assert_eq!(body.runs, 2);
+        assert_eq!(
+            host.lines(),
+            ["begin", "changed", "begin", "commit", "deliver type Ran2"],
+            "the first attempt's events are thrown away with it"
+        );
+        let host = Recorded::new(RERUN_ATTEMPTS);
+        let mut body = Write {
+            writes: true,
+            end: ok,
+            inner: None,
+            runs: 0,
+        };
+        let Outcome::Failed(failure) = run(&host, &mut body) else {
+            panic!("unavailable");
+        };
+        assert_eq!(body.runs, RERUN_ATTEMPTS);
+        assert_eq!(
+            (failure.code.as_str(), failure.status),
+            ("unavailable", Some(503))
+        );
+    }
+}

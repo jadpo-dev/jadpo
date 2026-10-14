@@ -12,6 +12,7 @@ jadpo-db.workspace = true
 jadpo-diag.workspace = true
 jadpo-graph.workspace = true
 jadpo-interp.workspace = true
+jadpo-runtime.workspace = true
 jadpo-term.workspace = true
 serde_json.workspace = true
 

@@ -34,6 +34,7 @@ fn reject_raises_a_declared_failure_with_its_fields() {
     ]);
     let id = Value::uuid("0192f3a4-3b5e-7c1a-9d2e-4f6a8b0c1d2e");
     let product = program
+        .codec()
         .object("Product", vec![("id", id.clone()), ("available", int(5))])
         .expect("Product");
     assert_eq!(

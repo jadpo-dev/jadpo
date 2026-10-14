@@ -46,6 +46,33 @@ impl Num {
         self.scale == 0 && i64::try_from(self.mantissa).is_ok()
     }
 
+    /// The value with exactly `scale` places, as a type with a fixed
+    /// `scale` keeps it (`5` as `5.00`): places it drops are rounded half to
+    /// even, as a computed decimal is where it is stored (area 3, question
+    /// 7). `None` past 38 digits.
+    pub fn at_scale(self, scale: u32) -> Option<Num> {
+        const LIMIT: u128 = 10u128.pow(38);
+        let mantissa = if scale >= self.scale {
+            self.mantissa
+                .checked_mul(10i128.checked_pow(scale - self.scale)?)?
+        } else {
+            let factor = 10i128.checked_pow(self.scale - scale)?;
+            let (quotient, remainder) = (self.mantissa / factor, self.mantissa % factor);
+            let twice = remainder.unsigned_abs().checked_mul(2)?;
+            let away = match twice.cmp(&factor.unsigned_abs()) {
+                Ordering::Greater => true,
+                Ordering::Equal => quotient % 2 != 0,
+                Ordering::Less => false,
+            };
+            match (away, self.mantissa < 0) {
+                (false, _) => quotient,
+                (true, false) => quotient.checked_add(1)?,
+                (true, true) => quotient.checked_sub(1)?,
+            }
+        };
+        (mantissa.unsigned_abs() < LIMIT && scale <= 38).then_some(Num { mantissa, scale })
+    }
+
     /// Decimal places, ignoring trailing zeros: `1.50` has one.
     pub fn significant_places(self) -> u32 {
         let mut places = self.scale;
@@ -135,6 +162,21 @@ mod tests {
         assert!(num("9223372036854775807").fits_int());
         assert!(!num("9223372036854775808").fits_int());
         assert_eq!(Num::parse(&"9".repeat(40)), None);
+    }
+
+    #[test]
+    fn a_fixed_scale_keeps_every_digit_or_refuses() {
+        assert_eq!(num("5").at_scale(2), Some(num("5.00")));
+        assert_eq!(
+            num("5").at_scale(2).map(|n| n.to_string()).as_deref(),
+            Some("5.00")
+        );
+        assert_eq!(num("1.50").at_scale(1).map(|n| n.mantissa), Some(15));
+        assert_eq!(num("1.55").at_scale(1), Some(num("1.6")), "half to even");
+        assert_eq!(num("1.45").at_scale(1), Some(num("1.4")), "half to even");
+        assert_eq!(num("-1.55").at_scale(1), Some(num("-1.6")));
+        assert_eq!(num("1.451").at_scale(1), Some(num("1.5")));
+        assert_eq!(num(&"9".repeat(37)).at_scale(2), None, "39 digits");
     }
 
     #[test]

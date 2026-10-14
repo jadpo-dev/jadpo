@@ -126,11 +126,11 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                 format!("{field} {{ {} }}", settings.join(" "))
             }
         }
-        Detail::Variant { payload: true } => {
+        Detail::Variant { payload: true, .. } => {
             let fields: Vec<String> = fields_of(graph, id, false);
             format!("{}: {{ {} }}", node.name, fields.join(" "))
         }
-        Detail::Variant { payload: false } => node.name.clone(),
+        Detail::Variant { payload: false, .. } => node.name.clone(),
         Detail::None => match node.kind {
             Kind::Entity => {
                 let fields = fields_of(graph, id, true);

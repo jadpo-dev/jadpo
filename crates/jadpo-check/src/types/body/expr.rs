@@ -426,6 +426,7 @@ impl Body<'_> {
             [member] if StdNames::get().generated_member(head, member) => {
                 if head == CLOCK {
                     self.clock_read(span, &written);
+                    self.facts.effects.insert(node_key(expr.syntax()));
                     return Ty::Prim(Prim::Instant);
                 }
                 Ty::Error
