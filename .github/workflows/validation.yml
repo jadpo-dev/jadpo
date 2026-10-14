@@ -17,6 +17,23 @@ jobs:
   supported-language:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # The gate's live PostgreSQL step runs against this server through
+    # JADPO_TEST_DATABASE_URL; local runs start a disposable one instead
+    # (docs/compiler-runtime.md §2.7).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jadpo
+          POSTGRES_PASSWORD: jadpo
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jadpo -d postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -29,4 +46,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         if: hashFiles('Cargo.toml') != ''
       - name: Run the gate
+        env:
+          JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
         run: python3 tools/verify.py
