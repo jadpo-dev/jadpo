@@ -433,23 +433,23 @@ fn moving_a_test_to_another_domain_keeps_its_key() {
 
 #[test]
 fn only_a_domains_interface_can_be_public() {
-    let in_project = |path: &str, text: &str| {
-        rules(
-            Layout::Project,
-            &[
-                support::APP,
-                (
-                    "domains/planning/types/count.jadpo",
-                    "type Count = Int {}\n",
-                ),
-                (
-                    "domains/planning/actions/keep.jadpo",
-                    "action keep(n: Count) -> Count {\n    return n\n}\n",
-                ),
-                (path, text),
-            ],
-        )
+    let with_users = |path: &str, text: &str, users: &[(&str, &str)]| {
+        let mut files = vec![
+            support::APP,
+            (
+                "domains/planning/types/count.jadpo",
+                "type Count = Int {}\n",
+            ),
+            (
+                "domains/planning/actions/keep.jadpo",
+                "action keep(n: Count) -> Count {\n    return n\n}\n",
+            ),
+            (path, text),
+        ];
+        files.extend_from_slice(users);
+        rules(Layout::Project, &files)
     };
+    let in_project = |path: &str, text: &str| with_users(path, text, &[]);
     assert_eq!(
         in_project(
             "domains/planning/types/count.test.jadpo",
@@ -464,19 +464,29 @@ fn only_a_domains_interface_can_be_public() {
         ),
         ["visibility.public_not_allowed"]
     );
+    // A public declaration is one another domain uses (area 1, "Unused
+    // `public`"): here a root scenario.
     assert_eq!(
-        in_project(
+        with_users(
             "domains/planning/actions/tick.jadpo",
-            "public action tick() -> Unit {}\n"
+            "public action tick() -> Unit {}\n",
+            &[(
+                "tests/ticking.test.jadpo",
+                "test \"planning ticks\" {\n    planning.tick()\n}\n"
+            )]
         ),
         CLEAN
     );
     // A domain offers its fixtures to other domains' tests (area 13,
     // decided 2026-10-14); a seed is still never public.
     assert_eq!(
-        in_project(
+        with_users(
             "domains/planning/fixtures/counted.jadpo",
-            "public fixture counted() -> Count {\n    return keep(3)\n}\n"
+            "public fixture counted() -> Count {\n    return keep(3)\n}\n",
+            &[(
+                "tests/counting.test.jadpo",
+                "test \"planning counts\" {\n    assert planning.counted() == 3\n}\n"
+            )]
         ),
         CLEAN
     );

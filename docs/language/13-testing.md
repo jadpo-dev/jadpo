@@ -2,7 +2,7 @@
 title: Testing
 area: 13
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
+checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
 rules:
   - configuration.field_unknown
   - configuration.fixture_duplicate
@@ -24,7 +24,7 @@ How a Jadpo program is tested: where tests live, the four kinds of test,
 controlling the clock, configuration and fakes in tests, shared test data,
 assertions, the test database, and how tests meet caches and events.
 
-> Decided on 2026-10-13. Code outside the collapsed boxes applies the decisions from areas 1 to 13. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-13. Code outside the collapsed boxes applies the decisions from areas 1 to 13. The archived compiler's syntax and behaviour (tag `archive/compiler-v0`) are collapsed beneath each section that changed; the [status table](#status) says what the new compiler builds.
 
 Examples use the golden todo app's `planning` domain: `User` and `Todo`
 entities, a `create_todo` action, a `TodoNotFound` failure, an
@@ -575,6 +575,46 @@ FAIL  a rate-limited reminder is retried
   without parsing text. Each is shown with its real report under
   [Errors](#errors).
 
+#### As JSON
+
+`jadpo test --json` prints one document in the envelope every command
+shares (`schemaVersion` 2, `command`, `ok`, `data`, `diagnostics`), and
+`jadpo help --json` describes every field under `testReport` (built, chunks
+2.2 and 2.8). `data` holds the order `seed`; `root`, the project folder as
+seen from where the command ran (`"."` from inside it), which every path is
+relative to; the `selection`; the `counts`; and the `tests` in the order
+they ran. A failed test's `failure` has its `code` and `help`, its
+`location` in the test, one of `assertion`, `failure` or `fault`, and the
+`rerun` command, which works from where the command ran. Part of the
+document for the `test.fault` example under [Errors](#errors):
+
+```json
+{
+  "code": "test.fault",
+  "location": { "path": "plans.test.jadpo", "start": 93, "end": 117, "line": 3, "column": 12, "endLine": 3, "endColumn": 36, "label": "" },
+  "fault": {
+    "kind": "int_overflow",
+    "at": { "path": "plans.jadpo", "start": 118, "end": 134, "line": 6, "column": 19, "endLine": 6, "endColumn": 35, "label": "out of range" },
+    "stack": [
+      { "location": { "path": "plans.jadpo", "start": 118, "end": 134, "line": 6, "column": 19, "endLine": 6, "endColumn": 35, "label": "" }, "callable": "function plan_effort", "repeats": 1 },
+      { "location": { "path": "plans.test.jadpo", "start": 93, "end": 117, "line": 3, "column": 12, "endLine": 3, "endColumn": 36, "label": "" }, "callable": "test \"a long plan still adds up\"", "repeats": 1 }
+    ]
+  },
+  "rerun": "jadpo test plans.test.jadpo:3 --seed 1"
+}
+```
+
+Every location, a test's, a failure's `at`, a stack frame's and a
+diagnostic's, has the one shape `path`, `start`, `end`, `line`, `column`,
+`endLine`, `endColumn`, `label`. A stack frame is `{ location, callable,
+repeats }`, a recursion counted once. A project with errors runs nothing:
+`data` is `{ ran: false, root, fileCount, errors, warnings }` and the errors
+are the diagnostics. `--failed` with nothing to rerun gives `{ selection,
+gone, tests: [] }`, where `gone` counts the tests that failed last time and
+are no longer in the project. `--watch --json` writes one document per
+line, its `data` with a `watch` object (`event`, `changed`, `reached`,
+`failing`, `files`, `fixed`).
+
 ## Running tests
 
 - `jadpo test` runs everything; `jadpo test <file>` one file;
@@ -589,6 +629,14 @@ FAIL  a rate-limited reminder is retried
   test's last result. Type to search files and tests; run a file, a single
   test or everything; rerun failures; open a failure's full report; toggle
   watch mode. It needs a terminal; agents use the flags above and `--json`.
+  Decided, not built: the flag says `toolchain.not_built_yet` until it
+  comes with the rest of area 14's tooling, as `--keep-failed` does until
+  the test database.
+- A failed test's rerun command and every path a run prints work from the
+  folder the command ran in: run from outside the project, they start with
+  the project as it was typed (`examples/08-testing/domains/…`). With
+  `--failed`, when every test that failed last time is gone, there is
+  nothing to rerun and the run passes.
 - The editor shows a run button above each test and the last result beside
   it (language server).
 - There is no `test.only` in source: focusing is a command-line choice, so a
@@ -684,12 +732,12 @@ nothing.
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
+> The three `test.*` codes run on the new compiler, with `jadpo test`'s real report. The `check` errors after them (fakes, the test clock and configuration fixtures) are the archived compiler's, in its syntax and with its output, until areas 10 and 11 are built.
 
-Every error this area can produce with `jadpo check`, with an example that
-triggers it and the compiler's actual output. The three codes a failed test
-gets from `jadpo test` follow, each with `jadpo test`'s real report (run with
-`--seed 1`).
+Every error this area can produce, with an example that triggers it and
+the real output: first the three codes a failed test gets from `jadpo
+test`, each with its report (run with `--seed 1`), then the archived
+compiler's `jadpo check` errors for what the new compiler hasn't built.
 
 ### `test.assertion_failed`
 
@@ -1238,8 +1286,10 @@ fixture local {
 
 ### Status
 
-Each row says how it was checked: compiled with `jadpo check`, run with
-`jadpo test`, or read from generated code.
+Each row says what the new compiler does: built (with the chunk, checked
+by `jadpo check` or run by `jadpo test`), or decided and not built yet;
+what the archived compiler did (tag `archive/compiler-v0`) is kept where it
+explains a decision.
 
 | Feature | Status |
 |---|---|
@@ -1247,13 +1297,13 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 | Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test), and the footer and `--json` count each kind. Route and schedule tests come with areas 7 and 12; `--kind route` and `--kind schedule` say so (`toolchain.not_built_yet`). |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
-| Clock | Works: the fixture clock is fixed and `advance clock by` moves only the next call (run). Without a fixture the clock is fixed at 2000-01-01T00:00:00Z, which is not documented (read from generated code). `advance clock by` works without a fixture clock, although the grammar says it needs one (run). |
-| Configuration | Works: fixture values are type-checked, and a fixture must mark exactly the secret fields as secret (compiled). Every fixture must list every field without a default (compiled). Tests swap a global configuration object, so they cannot run in parallel (read from generated code). |
-| Integration fakes | Works: an unfaked operation reachable from a test is an error, responses go through the real adapter with retries and mapping, and each test gets its own response queue (run). Running out of responses gives `outcome_unknown` instead of failing the test (read from the test plan, not probed). Requests sent cannot be asserted. |
-| Database | **Conflicts with area 5 (read from generated code):** each test gets an in-memory SQLite database with tables created from the entities, not migrations; PostgreSQL is refused. Tests run one at a time. |
-| Caller | Direct calls in tests run with no caller, and a test cannot set one (read from generated code). |
-| Placement | Tests can sit in any file; `<name>.test.jadpo` is not checked (compiled). |
-| Watch mode | Works (run, chunk 2.3): `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run. A save shows its results in about 0.1 s on a 230-file project. The keys in the decided screen (`enter`, `a`, `f`) wait for `--interactive`; ctrl-c quits. |
+| Clock | Decided, not built: the test clock comes with time (area 10, roadmap 5.2). The archived compiler fixed a fixture's clock and moved it with `advance clock by`, which moved only the next call; without a fixture it was fixed at 2000-01-01T00:00:00Z. |
+| Configuration | Decided, not built: configuration in tests comes with configuration (area 10, roadmap 5.1). The archived compiler type-checked fixture values, required exactly the secret fields to be marked secret and every field without a default to be listed, and swapped a global configuration object, so tests couldn't run in parallel. |
+| Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2). In the archived compiler an unfaked operation reachable from a test was an error, responses went through the real adapter with retries and mapping, each test had its own response queue, running out gave `outcome_unknown`, and requests sent couldn't be asserted. |
+| Database | Decided, not built: the test database comes with entities (area 5, roadmap 3.1); tests that need data can't be written yet. The archived compiler gave each test an in-memory SQLite database built from the entities, not migrations, which conflicted with area 5, and ran tests one at a time. |
+| Caller | Decided, not built: acting as a user comes with identity (area 8, roadmap 4.3). Tests run with no caller, in the new compiler as in the archived one. |
+| Placement | Built (chunk 1.3, checked): a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. The archived compiler let tests sit in any file. |
+| Watch mode | Works (run, chunk 2.3): `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the decided screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
 | Fixtures | Work (run): a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked but `jadpo seed` is not built. |
 | `test.no_tests` | Raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none (run, chunk 2.2). |
 

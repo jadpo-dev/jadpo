@@ -9,7 +9,7 @@ use jadpo_diag::{Diagnostic, Label, Severity, Span};
 use crate::sources::{Position, Sources};
 
 /// Raised when a document's shape changes in a way readers must notice.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Json {
@@ -270,7 +270,7 @@ pub fn diagnostic_json(diagnostic: &Diagnostic, sources: &dyn Sources) -> Json {
         ("reason", diagnostic.reason.as_ref().into()),
         ("next", next.into()),
         ("impact", diagnostic.impact.as_ref().into()),
-        ("help", diagnostic.rule.help().into()),
+        ("help", diagnostic.help().into()),
     ])
 }
 

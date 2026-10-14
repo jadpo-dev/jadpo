@@ -83,6 +83,11 @@ impl Body<'_> {
         let (known, checked) = match &fallible {
             Fallible::Fails(names) => (names.clone(), true),
             Fallible::Never => {
+                if let Some(Expr::CallExpr(call)) = &subject
+                    && let Some(callee) = self.callee_name(call)
+                {
+                    self.deferred.push((self.out.len(), callee));
+                }
                 self.out.push(
                     Diagnostic::new(
                         &rule::FAILURE_OUTCOME_INFALLIBLE,

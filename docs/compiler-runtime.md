@@ -554,7 +554,9 @@ library's first step rechecks that file's 10 bodies and resolves 1 file,
 and reruns the 26 tests that reach it, in 5 ms release and 39 ms debug;
 from the save on disk to the results written by the real loop, poll and
 quiet period included, took 61–71 ms release and 97–111 ms debug against
-the 1-second target. The gate asserts the counts and a 5-second ceiling.
+the 1-second target. The gate asserts the counts and a 1.25-second
+ceiling: the target plus 250 ms for a loaded CI machine, whose slowest save
+took 138 ms in a debug build (chunk 2.8).
 
 ### 2.5 Executors
 
@@ -836,7 +838,7 @@ it), may use them.
 | Phase | `tools/verify.py` adds |
 |---|---|
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
-| 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a generous ceiling (both built: chunks 2.2 and 2.3); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
+| 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
 | 3 | Live PostgreSQL (`--profile quick` skips it) |
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |

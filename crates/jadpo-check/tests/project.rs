@@ -45,7 +45,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/ordering/events/order_placed.jadpo",
-        "public type OrderPlaced = Event {\n    total: Price\n}\n",
+        "type OrderPlaced = Event {\n    total: Price\n}\n",
     ),
     (
         "domains/ordering/routes/checkouts.jadpo",
@@ -138,6 +138,118 @@ fn folders_hold_their_own_kind() {
     assert_eq!(
         with(&[("config.jadpo", "action reset() -> Unit {}\n")]),
         ["config.jadpo layout.wrong_folder: Action `reset` is in `config.jadpo`"]
+    );
+}
+
+#[test]
+fn a_test_in_a_code_file_is_sent_beside_it() {
+    let db = jadpo_db::Database::default();
+    let mut files = SHOP.to_vec();
+    files.push((
+        "domains/ordering/actions/cancel.jadpo",
+        "action cancel() -> Unit {}\n\ntest \"cancelling\" {\n    cancel()\n}\n",
+    ));
+    let project = support::project(&db, Layout::Project, &files);
+    let found = jadpo_check::check(&db, project);
+    let wrong: Vec<_> = found
+        .iter()
+        .filter(|d| d.rule.id == "layout.wrong_folder")
+        .collect();
+    assert_eq!(wrong.len(), 1, "{found:?}");
+    assert_eq!(
+        wrong[0].next.as_ref().map(|next| next.text.as_str()),
+        Some(
+            "Move `cancelling` to `domains/ordering/actions/cancel.test.jadpo`, beside the file it tests"
+        )
+    );
+    assert_eq!(
+        wrong[0].reason.as_deref(),
+        Some(
+            "`actions/` holds one action per file; a test sits beside what it tests, in a file whose name ends in `.test.jadpo`."
+        )
+    );
+}
+
+#[test]
+fn public_is_only_for_what_another_domain_uses() {
+    // Area 1, "Unused `public`" (Richard, 2026-10-14).
+    let db = jadpo_db::Database::default();
+    let mut files = SHOP.to_vec();
+    files.push((
+        "domains/inventory/actions/count_stock.jadpo",
+        "public action count_stock(quantity: Quantity) -> Quantity {\n    return quantity\n}\n",
+    ));
+    // The domain's own tests don't count.
+    files.push((
+        "domains/inventory/actions/count_stock.test.jadpo",
+        "test \"counting stock\" {\n    assert count_stock(Quantity(2)) == 2\n}\n",
+    ));
+    let project = support::project(&db, Layout::Project, &files);
+    let found = jadpo_check::check(&db, project);
+    assert_eq!(found.len(), 1, "{found:?}");
+    let problem = &found[0];
+    assert_eq!(problem.rule.id, "visibility.public_unused");
+    assert_eq!(
+        problem.message,
+        "`count_stock` is `public`, but nothing outside `inventory` uses it"
+    );
+    let primary = problem.primary.as_ref().expect("a location");
+    assert_eq!(
+        (
+            primary.span.path.as_str(),
+            primary.span.start,
+            primary.span.end
+        ),
+        ("domains/inventory/actions/count_stock.jadpo", 0, 6)
+    );
+    let next = problem.next.as_ref().expect("a next step");
+    assert_eq!(next.text, "Remove `public`");
+    assert_eq!(next.edits.len(), 1);
+    assert_eq!((next.edits[0].span.start, next.edits[0].span.end), (0, 7));
+    assert_eq!(next.edits[0].replacement, "");
+
+    // Another domain's code, another domain's tests and a root scenario
+    // are users; so is the signature of a public declaration that one of
+    // them uses.
+    assert_eq!(
+        with(&[
+            (
+                "domains/inventory/types/bin_code.jadpo",
+                "public type BinCode = Text {}\n"
+            ),
+            (
+                "domains/inventory/actions/pick_bin.jadpo",
+                "public action pick_bin(code: BinCode) -> Unit {}\n"
+            ),
+            (
+                "domains/ordering/actions/pick.jadpo",
+                "action pick() -> Unit {\n    inventory.pick_bin(\"A1\")\n}\n"
+            ),
+            stocked(true),
+            (
+                "domains/ordering/actions/checkout.test.jadpo",
+                "test \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n"
+            ),
+        ]),
+        Vec::<String>::new()
+    );
+    // A public type only an unused public action's signature names is
+    // unused too.
+    assert_eq!(
+        with(&[
+            (
+                "domains/inventory/types/bin_code.jadpo",
+                "public type BinCode = Text {}\n"
+            ),
+            (
+                "domains/inventory/actions/pick_bin.jadpo",
+                "public action pick_bin(code: BinCode) -> Unit {}\n"
+            ),
+        ]),
+        [
+            "domains/inventory/actions/pick_bin.jadpo visibility.public_unused: `pick_bin` is `public`, but nothing outside `inventory` uses it",
+            "domains/inventory/types/bin_code.jadpo visibility.public_unused: `BinCode` is `public`, but nothing outside `inventory` uses it",
+        ]
     );
 }
 

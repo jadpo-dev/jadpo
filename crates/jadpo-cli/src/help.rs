@@ -84,7 +84,7 @@ fn argument_row(argument: &Argument) -> Row {
     );
     match &argument.values {
         Values::Fixed(values) => row.extra(values.iter().map(|value| value.name)),
-        Values::Commands | Values::Path => row,
+        Values::Commands | Values::Path | Values::TestPath => row,
     }
 }
 
@@ -129,7 +129,7 @@ fn argument_json(argument: &Argument) -> Json {
                 ])
             })),
         ),
-        Values::Path => ("path", Json::array(Vec::<Json>::new())),
+        Values::Path | Values::TestPath => ("path", Json::array(Vec::<Json>::new())),
     };
     Json::object([
         ("name", argument.name.into()),
@@ -193,8 +193,9 @@ fn from_graph(value: &jadpo_graph::json::Value) -> Json {
     }
 }
 
-/// The whole command reference, the rule catalogue and the manifest's
-/// schema, for agents and for the docs check.
+/// The whole command reference, the rule catalogue, and the schemas of
+/// the manifest and of `jadpo test --json`, for agents and for the docs
+/// check.
 pub fn reference_json() -> Json {
     Json::object([
         ("name", "jadpo".into()),
@@ -221,5 +222,6 @@ pub fn reference_json() -> Json {
             })),
         ),
         ("manifest", from_graph(&jadpo_graph::manifest::schema())),
+        ("testReport", jadpo_test::schema()),
     ])
 }

@@ -240,7 +240,7 @@ fn help_json_is_the_whole_command_reference() {
     let output = jadpo(&["help", "--json"]);
     assert_eq!(output.code, 0);
     let document = json(&output);
-    assert_eq!(document["schemaVersion"], 1);
+    assert_eq!(document["schemaVersion"], 2);
     assert_eq!(document["command"], "help");
     assert_eq!(document["ok"], true);
     let data = &document["data"];

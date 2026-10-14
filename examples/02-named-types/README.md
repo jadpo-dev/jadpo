@@ -48,5 +48,7 @@ target/release/jadpo fmt --check examples/02-named-types
 ## Try next
 
 - In `label_jar.test.jadpo`, change `"RY-042"` to `"ry-042"`. `jadpo check` reports `type.invalid_literal`: the pattern must match the whole text.
+  <!-- try {"file": "domains/pantry/actions/label_jar.test.jadpo", "replace": "\"RY-042\"", "with": "\"ry-042\"", "check": ["type.invalid_literal"]} -->
 - In `weigh_flour.jadpo`, change `total_weight(each, sacks)` to `total_weight(temperature, sacks)`. `jadpo check` reports `type.mismatch`: a `Celsius` is never a `Grams`, though both are whole numbers.
+  <!-- try {"file": "domains/pantry/actions/weigh_flour.jadpo", "replace": "total_weight(each, sacks)", "with": "total_weight(temperature, sacks)", "check": ["type.mismatch"]} -->
 - Then read [03-objects-and-enums](../03-objects-and-enums/README.md).

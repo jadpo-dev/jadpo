@@ -111,7 +111,8 @@ pub fn candidates(words: &[String], cwd: Option<&Path>) -> String {
                 .map(|value| (value.name.to_string(), value.description))
                 .collect(),
             Some(Values::Commands) => commands(current),
-            Some(Values::Path) => paths(current, cwd),
+            Some(Values::Path) => paths(current, cwd, ".jadpo"),
+            Some(Values::TestPath) => paths(current, cwd, ".test.jadpo"),
             None => Vec::new(),
         }
     } else {
@@ -124,9 +125,9 @@ pub fn candidates(words: &[String], cwd: Option<&Path>) -> String {
         .collect()
 }
 
-/// Folders and `.jadpo` files beside the word typed so far; hidden ones
-/// only when the word asks for them.
-fn paths(current: &str, cwd: Option<&Path>) -> Vec<(String, &'static str)> {
+/// Folders and the files whose names end in `ending` beside the word
+/// typed so far; hidden ones only when the word asks for them.
+fn paths(current: &str, cwd: Option<&Path>, ending: &str) -> Vec<(String, &'static str)> {
     let Some(cwd) = cwd else {
         return Vec::new();
     };
@@ -147,8 +148,13 @@ fn paths(current: &str, cwd: Option<&Path>) -> Vec<(String, &'static str)> {
             let kind = entry.file_type().ok()?;
             if kind.is_dir() {
                 Some((format!("{folder}{name}/"), "Folder"))
-            } else if name.ends_with(".jadpo") {
-                Some((format!("{folder}{name}"), "Jadpo file"))
+            } else if name.ends_with(ending) {
+                let what = if ending == ".test.jadpo" {
+                    "Test file"
+                } else {
+                    "Jadpo file"
+                };
+                Some((format!("{folder}{name}"), what))
             } else {
                 None
             }

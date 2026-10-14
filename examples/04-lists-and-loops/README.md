@@ -46,5 +46,7 @@ target/release/jadpo fmt --check examples/04-lists-and-loops
 ## Try next
 
 - In `weigh_recipe.jadpo`, change `var mut total` to `var total`. `jadpo check` reports `type.assign_immutable`: only a `var mut` can be assigned.
+  <!-- try {"file": "domains/baking/actions/weigh_recipe.jadpo", "replace": "var mut total", "with": "var total", "check": ["type.assign_immutable"]} -->
 - In `weigh_recipe.test.jadpo`, change `== 860` to `== 861`. `jadpo test` fails with `test.assertion_failed`, showing each side's value and the command that reruns just that test.
+  <!-- try {"file": "domains/baking/actions/weigh_recipe.test.jadpo", "replace": "== 860", "with": "== 861", "test": ["test.assertion_failed"]} -->
 - Then read [05-logic](../05-logic/README.md).

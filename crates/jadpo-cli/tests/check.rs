@@ -142,7 +142,7 @@ fn json_carries_the_problems_with_lines_and_edits() {
     assert_eq!(output.code, 1);
     assert_eq!(output.stderr, "");
     let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
-    assert_eq!(document["schemaVersion"], 1);
+    assert_eq!(document["schemaVersion"], 2);
     assert_eq!(document["command"], "check");
     assert_eq!(document["ok"], false);
     assert_eq!(document["data"]["layout"], "project");

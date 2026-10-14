@@ -2,7 +2,7 @@
 title: Values and types
 area: 2
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
+checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
 ---
 
 # Values and types

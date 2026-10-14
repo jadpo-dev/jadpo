@@ -11,7 +11,10 @@ python3 tools/language_docs.py           # check and render, including decisions
 
 ## Writing a page
 
-- Front matter gives `title`, `area`, `status`, `checked-with` and `rules`: the
+- Front matter gives `title`, `area`, `status`, `checked-with` (what checks
+  its examples: this checkout's `jadpo` for pages with ` ```jadpo check `
+  blocks, and the archived v0 compiler's commit for blocks still on its
+  frozen results) and `rules`: the
   compiler error IDs this area owns (globs allowed). Each rule belongs to one
   area, and the check fails until every owned rule has an example.
 - A ` ```jadpo check ` block is checked by the new `jadpo`, built from this

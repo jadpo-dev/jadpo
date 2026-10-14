@@ -19,10 +19,7 @@ pub struct TestFailure {
     /// `test.assertion_failed`, `test.unexpected_failure` or `test.fault`.
     pub rule: &'static Rule,
     /// Where in the test it failed.
-    pub file: String,
-    pub line: u32,
-    /// 1-based, in characters.
-    pub column: usize,
+    pub location: Located,
     pub detail: Detail,
     /// The command that runs this test alone in the same order.
     pub rerun: String,
@@ -118,16 +115,87 @@ impl ChangeMark {
     }
 }
 
-/// A site with its line of source and carets.
+/// A site, in the one location shape every `--json` document uses
+/// (diagnostics too): its project-relative path, byte range, 1-based start
+/// and end line and column, and the label beside its carets; with its line
+/// of source for the code frame.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Located {
     pub path: String,
+    pub start: u32,
+    pub end: u32,
     pub line: u32,
     /// 1-based, in characters.
     pub column: usize,
+    pub end_line: u32,
+    pub end_column: usize,
     pub source: String,
+    /// How many characters of the line the carets cover.
     pub length: usize,
     pub label: String,
+}
+
+impl Located {
+    /// The site at `span` of `path` (or, without one, the start of `line`),
+    /// its positions read from the program's text.
+    pub(crate) fn new(
+        program: &Program,
+        path: &str,
+        span: Option<(u32, u32)>,
+        line: u32,
+        label: &str,
+    ) -> Located {
+        let text = program.text(path).unwrap_or_default();
+        let (start, end) = span.unwrap_or_else(|| {
+            let offset = line_offset(text, line);
+            (offset, offset)
+        });
+        let from = jadpo_term::Position::of(text, start);
+        let to = jadpo_term::Position::of(text, end);
+        let source = jadpo_term::line_text(text, from.line).to_string();
+        Located {
+            path: path.to_string(),
+            start,
+            end,
+            line: from.line as u32,
+            column: from.column,
+            end_line: to.line as u32,
+            end_column: to.column,
+            length: if to.line == from.line {
+                to.column.saturating_sub(from.column).max(1)
+            } else {
+                source
+                    .chars()
+                    .count()
+                    .saturating_sub(from.column - 1)
+                    .max(1)
+            },
+            source,
+            label: label.to_string(),
+        }
+    }
+}
+
+/// The byte offset where 1-based `line` starts.
+fn line_offset(text: &str, line: u32) -> u32 {
+    let mut offset = 0;
+    for _ in 1..line {
+        match text[offset..].find('\n') {
+            Some(i) => offset += i + 1,
+            None => break,
+        }
+    }
+    offset as u32
+}
+
+/// One frame of a fault's stack: the site, the callable, and how many
+/// frames in a row it stands for (a recursion shown once).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StackFrame {
+    pub location: Located,
+    /// `function line_total`, `test "…"`.
+    pub callable: String,
+    pub repeats: usize,
 }
 
 /// A declared failure (area 4) and where it came from.
@@ -165,22 +233,22 @@ pub struct FaultInfo {
     pub reason: Option<String>,
     /// The next step, with who decides: `… (agent)`.
     pub next: Option<String>,
-    /// Innermost first: `file:line` and the callable, a run of one frame
-    /// shown once with how many times it repeats.
-    pub stack: Vec<(String, String)>,
+    /// Innermost first, a run of one frame shown once with how many times
+    /// it repeats.
+    pub stack: Vec<StackFrame>,
 }
 
 /// Where the test frame stands: the outermost frame's site.
-fn place_in_test(program: &Program, frames: &[Frame], test: &Test) -> (String, u32, usize) {
-    let found = frames.last().and_then(|frame| program.site(*frame));
-    match found {
-        Some(span) => {
-            let column = program
-                .text(span.file)
-                .map_or(1, |text| column_of(text, span.start as usize));
-            (span.file.to_string(), span.line, column)
-        }
-        None => (test.file.clone(), test.line, 1),
+fn place_in_test(program: &Program, frames: &[Frame], test: &Test) -> Located {
+    match frames.last().and_then(|frame| program.site(*frame)) {
+        Some(span) => Located::new(
+            program,
+            span.file,
+            Some((span.start, span.end.max(span.start))),
+            span.line,
+            "",
+        ),
+        None => Located::new(program, &test.file, None, test.line, ""),
     }
 }
 
@@ -201,40 +269,35 @@ pub(crate) fn failure(
 ) -> TestFailure {
     match outcome {
         Outcome::Assertion(assertion) => {
-            let (file, line, column) = place_in_test(program, &assertion.frames, test);
+            let location = place_in_test(program, &assertion.frames, test);
             TestFailure {
                 rule: &rule::TEST_ASSERTION_FAILED,
-                rerun: rerun.command(&file, line),
-                file,
-                line,
-                column,
+                rerun: rerun.command(&location.path, location.line),
+                location,
                 detail: Detail::Assertion(Box::new(assertion_failure(program, assertion))),
             }
         }
         Outcome::Failed(failure) => {
-            let (file, line, column) = place_in_test(program, &failure.frames, test);
+            let location = place_in_test(program, &failure.frames, test);
             TestFailure {
                 rule: &rule::TEST_UNEXPECTED_FAILURE,
-                rerun: rerun.command(&file, line),
-                file,
-                line,
-                column,
+                rerun: rerun.command(&location.path, location.line),
+                location,
                 detail: Detail::Failure(Box::new(failure_info(program, failure))),
             }
         }
         Outcome::Fault(fault) => {
-            let (file, line, column) = place_in_test(program, &fault.frames, test);
+            let location = place_in_test(program, &fault.frames, test);
             TestFailure {
                 rule: &rule::TEST_FAULT,
-                rerun: rerun.command(&file, line),
-                file,
-                line,
-                column,
+                rerun: rerun.command(&location.path, location.line),
+                location,
                 detail: Detail::Fault(Box::new(fault_info(program, fault))),
             }
         }
         // A test that gives a value passed; the caller never asks.
         Outcome::Value(_) => not_runnable(
+            program,
             test,
             &CallError::Unknown("a test that passed".to_string()),
             rerun,
@@ -244,12 +307,15 @@ pub(crate) fn failure(
 
 /// A test the interpreter couldn't start: a defect, since every test the
 /// graph lists has a body.
-pub(crate) fn not_runnable(test: &Test, error: &CallError, rerun: &Rerun) -> TestFailure {
+pub(crate) fn not_runnable(
+    program: &Program,
+    test: &Test,
+    error: &CallError,
+    rerun: &Rerun,
+) -> TestFailure {
     TestFailure {
         rule: &rule::TEST_FAULT,
-        file: test.file.clone(),
-        line: test.line,
-        column: 1,
+        location: Located::new(program, &test.file, None, test.line, ""),
         rerun: rerun.command(&test.file, test.line),
         detail: Detail::Fault(Box::new(FaultInfo {
             kind: "internal_fault".to_string(),
@@ -265,14 +331,20 @@ pub(crate) fn not_runnable(test: &Test, error: &CallError, rerun: &Rerun) -> Tes
     }
 }
 
-fn located(report: &Report) -> Option<Located> {
-    report.location.as_ref().map(|location| Located {
-        path: location.path.clone(),
-        line: location.line,
-        column: location.column,
-        source: location.source.clone(),
-        length: location.length,
-        label: location.label.clone(),
+fn located(program: &Program, report: &Report) -> Option<Located> {
+    report.location.as_ref().map(|location| {
+        let mut located = Located::new(
+            program,
+            &location.path,
+            location.span,
+            location.line,
+            &location.label,
+        );
+        // The report measured the carets as the line is shown.
+        if !location.source.is_empty() {
+            located.length = location.length;
+        }
+        located
     })
 }
 
@@ -308,7 +380,7 @@ fn failure_info(program: &Program, failure: &Failure) -> FailureInfo {
             .as_ref()
             .and_then(|r| field(r, "reason"))
             .and_then(|lines| lines.first().cloned()),
-        at: report.as_ref().and_then(located),
+        at: report.as_ref().and_then(|report| located(program, report)),
         path: failure
             .frames
             .iter()
@@ -326,28 +398,28 @@ fn failure_info(program: &Program, failure: &Failure) -> FailureInfo {
 fn fault_info(program: &Program, fault: &Fault) -> FaultInfo {
     let report = program.report(&Outcome::Fault(Box::new(fault.clone())));
     let places = program.places();
-    let mut stack: Vec<(String, String)> = Vec::new();
-    let mut runs: Vec<usize> = Vec::new();
+    let mut stack: Vec<StackFrame> = Vec::new();
     for frame in &fault.frames {
         let Some(place) = places.place(*frame) else {
             continue;
         };
-        let entry = (
-            format!("{}:{}", place.file, place.line),
-            place.label.to_string(),
-        );
-        if stack.last() == Some(&entry) {
-            if let Some(run) = runs.last_mut() {
-                *run += 1;
+        let span = program
+            .site(*frame)
+            .map(|site| (site.start, site.end.max(site.start)));
+        let location = Located::new(program, place.file, span, place.line, "");
+        match stack.last_mut() {
+            Some(last)
+                if last.callable == place.label
+                    && (last.location.path.as_str(), last.location.line)
+                        == (place.file, place.line) =>
+            {
+                last.repeats += 1;
             }
-        } else {
-            stack.push(entry);
-            runs.push(1);
-        }
-    }
-    for ((_, label), run) in stack.iter_mut().zip(runs) {
-        if run > 1 {
-            label.push_str(&format!(" ({run} times)"));
+            _ => stack.push(StackFrame {
+                location,
+                callable: place.label.to_string(),
+                repeats: 1,
+            }),
         }
     }
     FaultInfo {
@@ -360,7 +432,7 @@ fn fault_info(program: &Program, fault: &Fault) -> FaultInfo {
             jadpo_interp::FaultKind::NotBuiltYet(_) => Some(rule::TOOLCHAIN_NOT_BUILT_YET.id),
             _ => None,
         },
-        at: report.as_ref().and_then(located),
+        at: report.as_ref().and_then(|report| located(program, report)),
         reason: report
             .as_ref()
             .and_then(|r| field(r, "reason"))

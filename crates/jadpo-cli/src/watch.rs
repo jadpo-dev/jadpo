@@ -15,7 +15,7 @@ use std::io::Write;
 
 use jadpo_term::{
     Block, Change, ChangeMark, ColorChoice, Environment, Fact, Json, Screen, Stream, Style,
-    envelope,
+    envelope, shown_path,
 };
 use jadpo_test::Options;
 use jadpo_test::watch::{Edit, EditKind, Event, Poller, Watch};
@@ -131,12 +131,23 @@ impl Watcher {
         }
         let mut screen = Screen::new();
         if let Some(time) = time {
-            screen.push(rule(&event, time));
+            screen.push(rule(&event, time, self.watch.shown_root().as_deref()));
         }
-        if let Some(ran) = event.ran {
-            for block in view(ran).0.into_blocks() {
-                screen.push(block);
+        match event.ran {
+            Some(ran) => {
+                for block in view(ran).0.into_blocks() {
+                    screen.push(block);
+                }
             }
+            // Nothing reruns, but the errors the last look showed are gone.
+            None if event.fixed => screen.push(Block::summary(
+                jadpo_term::Outcome::Success,
+                "errors fixed",
+                [Fact::plain(
+                    "no test reaches what changed since the last run",
+                )],
+            )),
+            None => {}
         }
         let waiting = Screen::new().with(key_bar(event.files, event.failing));
         let waiting = waiting.render(&self.err);
@@ -165,8 +176,9 @@ impl Watcher {
 
 /// `── 14:02:31 · saved <file> · 6 tests reach it ──`, or with several
 /// files or a long path, a count in the rule and the change list below.
-fn rule(event: &Event, time: &str) -> Block {
+fn rule(event: &Event, time: &str, root: Option<&str>) -> Block {
     let reach = event.reached.map(|reached| match reached {
+        0 if event.fixed => "errors fixed".to_string(),
         0 => "nothing to rerun".to_string(),
         1 => "1 test reaches it".to_string(),
         n => format!("{n} tests reach it"),
@@ -177,7 +189,7 @@ fn rule(event: &Event, time: &str) -> Block {
         [only] => {
             long = vec![
                 time.to_string(),
-                format!("{} {}", only.kind.verb(), only.path),
+                format!("{} {}", only.kind.verb(), shown_path(root, &only.path)),
             ];
             short.push(format!("{} 1 file", only.kind.verb()));
         }
@@ -198,7 +210,7 @@ fn rule(event: &Event, time: &str) -> Block {
                 EditKind::Saved => ChangeMark::Changed,
                 EditKind::Removed => ChangeMark::Removed,
             },
-            path: edit.path.clone(),
+            path: shown_path(root, &edit.path),
         })
         .collect();
     Block::Rule {
@@ -240,6 +252,7 @@ fn json_line(event: Event, first: bool) -> String {
         ("reached", event.reached.into()),
         ("failing", event.failing.into()),
         ("files", event.files.into()),
+        ("fixed", event.fixed.into()),
     ]);
     let (data, diagnostics, sources) = match event.ran {
         Some(ran) => {
@@ -263,20 +276,24 @@ fn json_line(event: Event, first: bool) -> String {
 }
 
 /// Writes a frame: the erase first, so results replace the waiting line.
-pub fn write(frame: &Frame, out: &mut dyn Write, err: &mut dyn Write) {
+/// An error writing results means nothing reads them any more (`| head`
+/// has exited), and ends the session; the waiting line on stderr is only
+/// for people, so its errors are ignored.
+pub fn write(frame: &Frame, out: &mut dyn Write, err: &mut dyn Write) -> std::io::Result<()> {
     if frame.erase {
         let _ = err.write_all(ERASE.as_bytes());
         let _ = err.flush();
     }
-    let _ = out.write_all(frame.stdout.as_bytes());
-    let _ = out.flush();
+    out.write_all(frame.stdout.as_bytes())?;
+    out.flush()?;
     let _ = err.write_all(frame.stderr.as_bytes());
     let _ = err.flush();
+    Ok(())
 }
 
 /// Runs a session on the process's own streams until it is stopped with
-/// Ctrl-C; the exit code when it ends on its own, which only a mistake in
-/// what to run does.
+/// Ctrl-C or nothing reads its results any more; the exit code when it
+/// ends on its own, which is 1 or 2 only for a mistake in what to run.
 pub fn serve(args: &WatchArgs, env: &Environment) -> u8 {
     let offset = local_offset();
     serve_to(
@@ -298,16 +315,20 @@ pub fn serve_to(
     clock: &dyn Fn() -> String,
     stop: &dyn Fn() -> bool,
 ) -> u8 {
-    write(&Watcher::header(args, env, &clock()), out, err);
+    if write(&Watcher::header(args, env, &clock()), out, err).is_err() {
+        return 0;
+    }
     let (mut watcher, frame) = match Watcher::start(args, env, jadpo_db::Database::default()) {
         Ok(started) => started,
         Err((frame, code)) => {
-            write(&frame, out, err);
+            let _ = write(&frame, out, err);
             return code;
         }
     };
     let mut poller = Poller::new(watcher.watch().root(), watcher.watch().is_project());
-    write(&frame, out, err);
+    if write(&frame, out, err).is_err() {
+        return 0;
+    }
     // A save while the first run was running happened before the poller's
     // first look: comparing every file's text with the database's catches
     // it, and prints nothing when nothing changed.
@@ -315,12 +336,16 @@ pub fn serve_to(
         .paths()
         .map(|path| Edit::new(path, EditKind::Saved))
         .collect();
-    if let Some(frame) = watcher.update(every, &clock()) {
-        write(&frame, out, err);
+    if let Some(frame) = watcher.update(every, &clock())
+        && write(&frame, out, err).is_err()
+    {
+        return 0;
     }
     while let Some(edits) = poller.wait(stop) {
-        if let Some(frame) = watcher.update(edits, &clock()) {
-            write(&frame, out, err);
+        if let Some(frame) = watcher.update(edits, &clock())
+            && write(&frame, out, err).is_err()
+        {
+            return 0;
         }
     }
     0

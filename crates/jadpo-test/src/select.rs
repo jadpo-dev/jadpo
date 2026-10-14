@@ -18,9 +18,6 @@ pub(crate) struct Target {
     /// The file or folder named, absolute.
     pub path: Option<PathBuf>,
     pub line: Option<u32>,
-    /// For loose files, the folder as it was written, so a rerun command
-    /// works from where the run started.
-    pub prefix: Option<String>,
 }
 
 /// The path filter, relative to the root.
@@ -81,7 +78,6 @@ pub(crate) fn resolve(options: &Options) -> Result<Target, Ran> {
                 folder: root,
                 path: None,
                 line: None,
-                prefix: None,
             }),
             None => Err(Ran::NoProject),
         };
@@ -120,26 +116,10 @@ pub(crate) fn resolve(options: &Options) -> Result<Target, Ran> {
         path.parent()
             .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
     };
-    let prefix = match jadpo_db::find_root(&folder) {
-        Some(_) => None,
-        None => {
-            let shown = if path.is_dir() {
-                Path::new(&as_written).to_path_buf()
-            } else {
-                Path::new(&as_written)
-                    .parent()
-                    .map(Path::to_path_buf)
-                    .unwrap_or_default()
-            };
-            let shown = shown.to_string_lossy().replace('\\', "/");
-            (!shown.is_empty() && shown != ".").then_some(shown)
-        }
-    };
     Ok(Target {
         folder,
         path: Some(path),
         line,
-        prefix,
     })
 }
 
@@ -149,6 +129,15 @@ fn no_tests(message: String, reason: String, next: String) -> Box<Diagnostic> {
             .reason(reason)
             .next(next),
     )
+}
+
+/// `a pure`, `an action`.
+fn with_a(word: &str) -> String {
+    if word.starts_with(['a', 'e', 'i', 'o', 'u']) {
+        format!("an {word}")
+    } else {
+        format!("a {word}")
+    }
 }
 
 fn count(n: usize, one: &str, many: &str) -> String {
@@ -256,9 +245,9 @@ pub(crate) fn choose(
             return Err(no_tests(
                 format!("No {} tests to run", kind.word()),
                 format!(
-                    "Of the {} asked for, none is a {} test: a test's kind comes from what it calls.",
+                    "Of the {} asked for, none is {} test: a test's kind comes from what it calls.",
                     count(before, "test", "tests"),
-                    kind.word()
+                    with_a(kind.word())
                 ),
                 "Leave out `--kind` to run every kind".to_string(),
             ));
@@ -267,10 +256,26 @@ pub(crate) fn choose(
     if let Some(last) = last {
         chosen.retain(|test| last.contains(&test.key));
         if chosen.is_empty() {
+            // Only filters can leave them out: when none of them exists
+            // any more, there is nothing to rerun (`Ran::NothingToRerun`).
+            let given: Vec<&str> = [
+                selection.path.as_ref().map(|_| "path"),
+                selection.name.as_ref().map(|_| "name"),
+                selection.kind.map(|_| "kind"),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let given: Vec<String> = given.iter().map(|word| word.to_string()).collect();
             return Err(no_tests(
                 "None of the tests asked for failed last time".to_string(),
-                "The tests that failed last time are left out by the other filters, or no longer exist.".to_string(),
-                "Leave out `--failed` to run the tests asked for".to_string(),
+                format!(
+                    "The {} that failed last time {} left out by the {} given.",
+                    count(last.len(), "test", "tests"),
+                    if last.len() == 1 { "is" } else { "are" },
+                    crate::screen::either_and(&given)
+                ),
+                "Leave out `--failed` to run the tests asked for, or leave out the other filters to rerun every failure".to_string(),
             ));
         }
     }
@@ -295,6 +300,7 @@ pub(crate) fn kind_not_built(kind: TestKind) -> Diagnostic {
     )
     .reason(reason)
     .next("Run `jadpo test --kind pure` or `jadpo test --kind action`")
+    .help_at("13-testing.html#kinds-of-test")
 }
 
 /// A seed for a run that wasn't given one: short enough to type.

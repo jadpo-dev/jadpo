@@ -9,7 +9,10 @@ fn main() -> ExitCode {
         .skip(1)
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
-    let output = jadpo_cli::run(&args, &Environment::from_process());
+    let env = Environment::from_process();
+    let spinner = jadpo_cli::spinner(&args, &env);
+    let output = jadpo_cli::run(&args, &env);
+    spinner.finish();
     // A closed pipe (`jadpo help | head`) is not an error worth reporting.
     let _ = std::io::stdout().write_all(output.stdout.as_bytes());
     let _ = std::io::stderr().write_all(output.stderr.as_bytes());

@@ -42,7 +42,7 @@ pub struct Call {
     /// The command's own flags that were given (`--check`).
     pub flags: Vec<&'static str>,
     /// The command's own flags that take a value, with the value given
-    /// (`--seed 48213`); the last one given wins.
+    /// (`--seed 48213`); each is given at most once.
     pub values: Vec<(&'static str, String)>,
     /// The folder the command runs in.
     pub cwd: Option<PathBuf>,
@@ -264,6 +264,38 @@ pub(crate) fn finish(
     output
 }
 
+/// The live line a slow command shows on stderr while it works: `check`
+/// and `test` (not `--watch`, which draws its own, nor `--help` or
+/// `--json`), and only where stderr animates.
+pub fn spinner(args: &[String], env: &Environment) -> jadpo_term::Spinner {
+    let (json, choice) = presentation(args);
+    let style = Style::detect(env, json, choice, Stream::Stderr);
+    let mut words = args.iter().take_while(|arg| *arg != "--").peekable();
+    let mut command = None;
+    let mut quiet = json;
+    while let Some(arg) = words.next() {
+        match arg.as_str() {
+            "--color" => {
+                words.next_if(|value| ColorChoice::parse(value).is_some());
+            }
+            "--watch" | "--help" | "-h" => quiet = true,
+            word if !word.starts_with('-') && command.is_none() => {
+                command = table::find(word).map(|command| command.name);
+            }
+            _ => {}
+        }
+    }
+    let doing = match command {
+        Some("test") => "Running tests",
+        Some("check") => "Checking",
+        _ => "",
+    };
+    if quiet || doing.is_empty() {
+        return jadpo_term::Spinner::start(&Style::new(jadpo_term::Mode::Plain), "");
+    }
+    jadpo_term::Spinner::start(&style, doing)
+}
+
 /// `--json` and `--color` read before anything else, so even a mistake on
 /// the command line is reported in the form that was asked for.
 fn presentation(args: &[String]) -> (bool, ColorChoice) {
@@ -377,12 +409,24 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
                 parsed.flags.push(flag.name);
             }
             (name, Some(value)) if let Some(flag) = value_flag(command, name) => {
+                if let (Some(command), Some((_, first))) = (
+                    command,
+                    parsed.values.iter().find(|(given, _)| *given == flag.name),
+                ) {
+                    return Err(Box::new(repeated_value(command, flag, first, &value)));
+                }
                 parsed.values.push((flag.name, value));
             }
             (name, None)
                 if let (Some(command), Some(flag)) = (command, value_flag(command, name)) =>
             {
                 return Err(Box::new(missing_value(command, flag)));
+            }
+            (name, _)
+                if let Some(planned) =
+                    command.and_then(|command| table::planned(command.name, name)) =>
+            {
+                return Err(Box::new(not_built_flag(planned)));
             }
             (_, value) => {
                 let written = value.map_or_else(|| name.clone(), |value| format!("{name}={value}"));
@@ -509,21 +553,60 @@ fn unknown_flag(written: &str, name: &str, command: Option<&Command>) -> Diagnos
     }
 }
 
+/// A decided flag that isn't built yet.
+fn not_built_flag(planned: &table::Planned) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!("{} aren't built yet", planned.what),
+    )
+    .reason(planned.reason)
+    .next(format!(
+        "Leave out `{}`; `jadpo {} --help` lists what is built",
+        planned.name, planned.command
+    ))
+    .help_at(planned.anchor)
+}
+
+/// A flag that takes one value, given more than once: which one was meant
+/// can't be known, so neither is guessed.
+fn repeated_value(command: &Command, flag: &Flag, first: &str, second: &str) -> Diagnostic {
+    Diagnostic::new(
+        command.arguments_rule,
+        format!("`{}` is given more than once", flag.name),
+    )
+    .reason(format!(
+        "`{}` takes one value, and this command line gives it `{first}` and then `{second}`.",
+        flag.name
+    ))
+    .next(format!("Keep one `{}`", flag.name))
+}
+
+/// What a flag's value is called in a sentence: "some text", "a number".
+fn value_noun(placeholder: &str) -> String {
+    match placeholder {
+        "text" => "some text".to_string(),
+        "n" => "a number".to_string(),
+        word if word.starts_with(['a', 'e', 'i', 'o', 'u']) => format!("an {word}"),
+        word => format!("a {word}"),
+    }
+}
+
 fn missing_value(command: &Command, flag: &Flag) -> Diagnostic {
     let placeholder = flag.value.unwrap_or("value");
+    let noun = value_noun(placeholder);
     let values: Vec<String> = flag
         .values
         .iter()
         .map(|value| value.name.to_string())
         .collect();
     let reason = if values.is_empty() {
-        format!("`{}` takes a {placeholder}.", flag.name)
+        format!("`{}` takes {noun}.", flag.name)
     } else {
         format!("`{}` takes {}.", flag.name, either(&quoted(&values)))
     };
     Diagnostic::new(
         command.arguments_rule,
-        format!("`{}` needs a {placeholder}", flag.name),
+        format!("`{}` needs {noun}", flag.name),
     )
     .reason(reason)
     .next(format!(

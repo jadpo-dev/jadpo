@@ -637,7 +637,25 @@ impl Body<'_> {
             problem = problem.edit(Span::new(self.path, inner_end, end), "");
         }
         self.flow.open = true;
+        if let Expr::CallExpr(call) = inner
+            && let Some(callee) = self.callee_name(call)
+        {
+            self.deferred.push((self.out.len(), callee));
+        }
         self.out.push(problem);
+    }
+
+    /// The name of the function or action a call reaches, as
+    /// [`super::FailureSets`] names it: `library.function` for a
+    /// library's.
+    pub(super) fn callee_name(&self, call: &ast::CallExpr) -> Option<String> {
+        match self.facts.reaches.get(&node_key(call.syntax()))? {
+            Reach::Callable { name, .. } => Some(name.clone()),
+            Reach::Library {
+                library, function, ..
+            } => Some(format!("{library}.{function}")),
+            _ => None,
+        }
     }
 
     /// Points at each comparison that proves a construction.
@@ -1081,6 +1099,7 @@ impl Body<'_> {
             if let Some((at, text)) = insert {
                 problem = problem.edit(at, text);
             }
+            self.undeclared = true;
             self.out.push(problem);
         }
         if self.flow.open {

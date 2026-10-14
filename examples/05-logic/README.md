@@ -41,5 +41,7 @@ target/release/jadpo fmt --check examples/05-logic
 ## Try next
 
 - In `fill_trays.jadpo`, change `TrayCapacity`'s `min: 1` to `min: 0`. `jadpo check` reports `type.divisor_zero`: a divisor's type must exclude zero.
+  <!-- try {"file": "domains/kitchen/actions/fill_trays.jadpo", "replace": "type TrayCapacity = Int {\n    min: 1", "with": "type TrayCapacity = Int {\n    min: 0", "check": ["type.divisor_zero"]} -->
 - In `set_oven.jadpo`, delete the `_ -> "golden"` arm in `crust_on`. `jadpo check` reports `type.match_wildcard_required`: numbers can't all be listed, so a `_` arm must catch the rest.
+  <!-- try {"file": "domains/kitchen/actions/set_oven.jadpo", "replace": "        _ -> \"golden\"\n", "with": "", "check": ["type.match_wildcard_required"]} -->
 - Then read [06-failures](../06-failures/README.md).

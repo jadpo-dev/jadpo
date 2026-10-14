@@ -64,4 +64,8 @@ target/release/jadpo test examples/01-first-project
 ```
 
 The gate (`python3 tools/verify.py`) checks, formats and tests every
-example, and fails when a built feature appears in none of them.
+example, and fails when a built feature appears in none of them. It also
+makes each "Try next" edit and checks it gives the error or failed test
+the README names: under each such bullet, a comment the rendered page
+hides (`<!-- try {"file": …, "replace": …, "with": …, "check": […]} -->`)
+spells the edit out exactly.

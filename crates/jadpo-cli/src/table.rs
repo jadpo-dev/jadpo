@@ -78,6 +78,8 @@ pub enum Values {
     Commands,
     /// A file or folder, completed from the folder the command runs in.
     Path,
+    /// A test file or a folder: `.test.jadpo` files, and folders.
+    TestPath,
 }
 
 #[derive(Debug)]
@@ -115,6 +117,47 @@ pub const COLORS: &[Value] = &[
         description: "Never use colour",
     },
 ];
+
+/// A flag a language page decides that isn't built yet. It is left out
+/// of help and completion, like an unbuilt command, but using it says so
+/// with `toolchain.not_built_yet` and the section that decides it, rather
+/// than calling it unknown.
+#[derive(Debug)]
+pub struct Planned {
+    pub command: &'static str,
+    pub name: &'static str,
+    /// What it does, as a plural noun phrase or a sentence subject:
+    /// "Interactive tests".
+    pub what: &'static str,
+    /// Why it isn't here yet, as a sentence.
+    pub reason: &'static str,
+    /// The deciding section, relative to `docs/language/`.
+    pub anchor: &'static str,
+}
+
+pub static PLANNED_FLAGS: &[Planned] = &[
+    Planned {
+        command: "test",
+        name: "--interactive",
+        what: "Interactive tests",
+        reason: "`--interactive` opens a keyboard view of every test (area 13), which comes with the rest of area 14's tooling.",
+        anchor: "13-testing.html#running-tests",
+    },
+    Planned {
+        command: "test",
+        name: "--keep-failed",
+        what: "Kept test databases",
+        reason: "`--keep-failed` keeps a failed test's database and trace, which come with the test database (area 5).",
+        anchor: "13-testing.html#the-test-database",
+    },
+];
+
+/// The planned flag of `command` called `name`.
+pub fn planned(command: &str, name: &str) -> Option<&'static Planned> {
+    PLANNED_FLAGS
+        .iter()
+        .find(|flag| flag.command == command && flag.name == name)
+}
 
 pub static GLOBAL_FLAGS: &[Flag] = &[
     Flag {
@@ -226,7 +269,7 @@ pub static COMMANDS: &[Command] = &[
             name: "path",
             description: "A test file, <file>:<line>, or a folder",
             required: false,
-            values: Values::Path,
+            values: Values::TestPath,
         }],
         flags: &[
             Flag {

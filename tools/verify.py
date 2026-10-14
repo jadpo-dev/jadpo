@@ -77,7 +77,8 @@ def main() -> int:
             ('compiler tests', ['cargo', 'test', '--locked', '--workspace']),
             # Phase 2 (docs/compiler-runtime.md §2.7): a save in a generated
             # 230-file project shows the tests it reaches, through the real
-            # watch loop, under a generous ceiling; the times are printed.
+            # watch loop, within the 1-second target plus a CI allowance;
+            # the times are printed.
             ('watch-mode latency',
              ['cargo', 'test', '--locked', '-p', 'jadpo-cli', '--test', 'watch',
               'a_save_shows_the_tests_it_reaches_within_the_target', '--', '--nocapture']),

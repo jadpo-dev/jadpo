@@ -98,9 +98,11 @@ pub fn check(call: &Call) -> Reply {
         .map(|file| (file.path(db).clone(), file.text(db).clone()))
         .collect();
     let paths: Vec<&String> = files.iter().map(|file| file.path(db)).collect();
+    let root = jadpo_db::shown_root(&cwd, &loaded.root);
     report(
         diagnostics,
         sources,
+        root,
         &paths,
         loaded.unreadable.len(),
         (layout, written),
@@ -115,6 +117,7 @@ fn count(n: usize, one: &str, many: &str) -> String {
 fn report(
     diagnostics: Vec<Diagnostic>,
     sources: BTreeMap<String, String>,
+    root: Option<String>,
     paths: &[&String],
     unreadable: usize,
     (layout, written): (Layout, Vec<String>),
@@ -145,7 +148,11 @@ fn report(
     };
     let mut screen = Screen::new();
     for diagnostic in &diagnostics {
-        screen.push(Block::diagnostic(diagnostic, &sources));
+        screen.push(Block::diagnostic_from(
+            diagnostic,
+            &sources,
+            root.as_deref(),
+        ));
     }
     screen.push(Block::summary(outcome, headline, facts));
     let data = Json::object([
@@ -157,6 +164,7 @@ fn report(
             }
             .into(),
         ),
+        ("root", Json::from(root.as_deref().unwrap_or("."))),
         ("files", Json::array(paths.iter().map(|path| path.as_str()))),
         ("errors", errors.into()),
         ("warnings", warnings.into()),

@@ -47,5 +47,6 @@ target/release/jadpo fmt --check examples/08-testing
 ## Try next
 
 - In `stamp_card.test.jadpo`, change `fails CardFull` to `fails CardNotFull`. `jadpo test` fails with `test.assertion_failed` and shows the failure that happened instead.
+  <!-- try {"file": "domains/loyalty/actions/stamp_card.test.jadpo", "replace": "fails CardFull", "with": "fails CardNotFull", "test": ["test.assertion_failed"]} -->
 - Run `target/release/jadpo test examples/08-testing --kind pure`, then `--seed 7`: one kind of test, then the same tests in another order.
 - Then read [09-bakery-orders](../09-bakery-orders/README.md).

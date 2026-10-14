@@ -14,4 +14,4 @@ mod table;
 mod test;
 pub mod watch;
 
-pub use run::{Output, Session, run};
+pub use run::{Output, Session, run, spinner};

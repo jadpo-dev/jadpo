@@ -31,6 +31,8 @@ use crate::{Assertion, AssertionDetail, Got, Outcome};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Location {
     pub path: String,
+    /// The site's byte range in the file, when the site is known.
+    pub span: Option<(u32, u32)>,
     pub line: u32,
     /// 1-based, in characters.
     pub column: usize,
@@ -91,6 +93,7 @@ fn site_text(program: &Program, frame: Frame, label: &str) -> SiteText {
     }
     let location = program.places().place(frame).map(|place| Location {
         path: place.file.to_string(),
+        span: None,
         line: place.line,
         column: 1,
         source: String::new(),
@@ -131,6 +134,7 @@ fn framed(
     Some(SiteText {
         location: Some(Location {
             path: callable.file.clone(),
+            span: Some((site.start, site.end.max(site.start))),
             line: site.line,
             column: before.chars().count() + 1,
             source: source.to_string(),

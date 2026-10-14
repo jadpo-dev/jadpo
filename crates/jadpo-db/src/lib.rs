@@ -15,7 +15,9 @@ mod places;
 mod table;
 
 pub use items::{Base, Item, ItemKind, ItemTree, Param, Signature, item_tree};
-pub use load::{Loaded, PROJECT_FILE, Unreadable, files_under, find_root, load, load_into};
+pub use load::{
+    Loaded, PROJECT_FILE, Unreadable, files_under, find_root, load, load_into, shown_root,
+};
 pub use places::{Folder, Location, Ownership, Place, RootFile, Stray, locate};
 pub use table::{Symbol, Symbols, symbols};
 
