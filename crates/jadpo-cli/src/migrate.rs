@@ -468,12 +468,12 @@ fn changes_file(
                     .and_then(|ty| example_backfill(lookup, ty))
                     .map_or_else(String::new, |e| format!(", such as `backfill: {e}`"));
                 format!(
-                    "    // `{key}` is required: give the `{}` records already stored a\n    // value with `backfill:`{example}.\n    {key}: {{}}\n",
+                    "    // `{key}` is required: give the `{}` records already\n    // stored a value with `backfill:`{example}.\n    {key}: {{}}\n",
                     need.entity
                 )
             }
             NeededKind::Retire => format!(
-                "    // `{key}` is gone: `FieldChange.retired` keeps its column and data\n    // while code stops using it.\n    {key}: {{}}\n"
+                "    // `{key}` is gone. `FieldChange.retired` keeps its column\n    // and data while code stops using it.\n    {key}: {{}}\n"
             ),
         };
         added.push_str(&advice);
