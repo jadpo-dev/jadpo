@@ -76,6 +76,7 @@ fn plan() -> Plan {
         Vec::new(),
         Layout::Loose,
         Default::default(),
+        Vec::new(),
     );
     let problems: Vec<String> = jadpo_check::check(&db, project)
         .iter()

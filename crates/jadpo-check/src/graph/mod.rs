@@ -209,5 +209,69 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
             builder.edge(from.clone(), *kind, to.clone());
         }
     }
+    for node in records(db, project) {
+        builder.node(node.clone());
+    }
     Arc::new(builder.build())
+}
+
+/// The project's data nodes that no source file holds (area 5): the system
+/// tables each store gets, and each finished migration's snapshot.
+#[salsa::tracked(returns(ref))]
+pub fn records(db: &dyn Db, project: Project) -> Vec<Node> {
+    let registry = registry(db, project);
+    let mut out = Vec::new();
+    for (store_name, store) in &crate::data::schema(db, project).stores {
+        for (table_name, table) in &store.tables {
+            if !matches!(table.owner, jadpo_graph::schema::Owner::System(_)) {
+                continue;
+            }
+            let name = format!("{store_name}.{table_name}");
+            let mut node = Node::new(
+                registry.key(Kind::SystemTable, &name, None),
+                Kind::SystemTable,
+                name.clone(),
+            );
+            let mut one = jadpo_graph::schema::Schema::default();
+            let mut only = jadpo_graph::schema::Store {
+                driver: store.driver.clone(),
+                tables: Default::default(),
+            };
+            only.tables.insert(table_name.clone(), table.clone());
+            one.stores.insert(store_name.clone(), only);
+            node.digest = Some(jadpo_graph::Digest::of([one.to_document().as_str()]));
+            node.detail = jadpo_graph::Detail::SystemTable {
+                store: store_name.clone(),
+                table: table_name.clone(),
+            };
+            out.push(node);
+        }
+    }
+    let texts: std::collections::BTreeMap<&str, &str> = project
+        .records(db)
+        .iter()
+        .filter_map(|r| Some((r.path.as_str(), r.text.as_ref().ok()?.as_str())))
+        .collect();
+    for migration in &crate::data::migrations::migrations(db, project).list {
+        let path = migration.snapshot_path();
+        let (Some(Ok(_)), Some(text)) = (&migration.snapshot, texts.get(path.as_str())) else {
+            continue;
+        };
+        let mut node = Node::new(
+            registry.key(Kind::MigrationSnapshot, &migration.name, None),
+            Kind::MigrationSnapshot,
+            migration.name.clone(),
+        );
+        let lines = LineIndex::new(text);
+        let end = u32::try_from(text.len()).unwrap_or(u32::MAX);
+        node.place = Some(jadpo_graph::Place {
+            file: path.clone(),
+            start: 0,
+            end,
+            lines: (1, lines.line(end.saturating_sub(1))),
+        });
+        node.digest = Some(jadpo_graph::Digest::of([*text]));
+        out.push(node);
+    }
+    out
 }

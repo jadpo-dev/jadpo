@@ -193,6 +193,10 @@ fn line(member: &ast::Member, base: FieldsBase) -> Line {
         return Line::Other;
     };
     let value = member.value();
+    if base == FieldsBase::Entity && crate::data::SECTIONS.contains(&key.as_str()) {
+        // An entity's section, never a field (area 5).
+        return Line::Other;
+    }
     let copying = COPY_LINES.contains(&key.as_str());
     if copying && base == FieldsBase::Entity {
         // An entity copies no fields (area 5), so a copying word with a

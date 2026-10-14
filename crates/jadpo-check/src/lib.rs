@@ -9,6 +9,7 @@
 //! position so the same source always gives the same output.
 
 mod case;
+pub mod data;
 mod failures;
 pub mod graph;
 mod layout;
@@ -81,8 +82,14 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(types::body_problems(db, project, file).iter().cloned());
             out.extend(types::recursion_problems(db, project, file).iter().cloned());
             out.extend(graph::similar_problems(db, project, file).iter().cloned());
+            out.extend(data::data_problems(db, project, file).iter().cloned());
         }
         out.extend(types::call_problems(db, project).iter().cloned());
+        out.extend(
+            data::migrations::migration_problems(db, project)
+                .iter()
+                .cloned(),
+        );
     }
     sort(&mut out);
     out

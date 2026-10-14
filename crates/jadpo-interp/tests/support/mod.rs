@@ -13,7 +13,14 @@ pub fn program(files: &[(&str, &str)]) -> Program {
         .iter()
         .map(|(path, text)| File::new(&db, path.to_string(), text.to_string()))
         .collect();
-    let project = Project::new(&db, inputs, Vec::new(), Layout::Loose, Default::default());
+    let project = Project::new(
+        &db,
+        inputs,
+        Vec::new(),
+        Layout::Loose,
+        Default::default(),
+        Vec::new(),
+    );
     match Program::load(&db, project) {
         Ok(program) => program,
         Err(errors) => panic!(

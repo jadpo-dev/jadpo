@@ -425,12 +425,128 @@ impl Part<'_> {
             decl.syntax().clone(),
         );
         node.public = decl.visibility().is_some();
+        let model = crate::data::data_model(self.db, self.project);
+        let entity = model.entity(&name).filter(|e| &e.path == self.path);
+        if let Some(entity) = entity
+            && let Some(store) = &entity.store
+        {
+            node.detail = Detail::Entity {
+                store: store.clone(),
+                table: entity.table.clone(),
+            };
+        }
         self.out.nodes.push(node);
         let children = self.written_fields(&name, &key, decl.member_list());
         let uses = self
             .resolver
             .uses(decl.syntax(), &|n| children.iter().any(|child| child == n));
         self.edges(&key, EdgeKind::Uses, uses);
+        if let Some(entity) = entity {
+            self.entity_data(decl, &key, entity);
+        }
+    }
+
+    /// An entity's data nodes (area 5): where it is stored, its compound
+    /// unique rules, its declared indexes and its references, each keyed
+    /// under the entity so a rename of the entity carries them.
+    fn entity_data(
+        &mut self,
+        decl: &ast::EntityDecl,
+        key: &Key,
+        entity: &crate::data::EntityModel,
+    ) {
+        let registry = self.lookup.registry();
+        let born = registry.born(Kind::Entity, &entity.name, None);
+        let child = |kind: Kind, name: &str| {
+            registry.key(
+                kind,
+                &format!("{}.{name}", entity.name),
+                Some((&entity.name, &born)),
+            )
+        };
+        let sections: BTreeMap<String, ast::Member> = tree::members(decl.member_list())
+            .into_iter()
+            .filter_map(|(name, member)| Some((tree::name_text(&name)?, member)))
+            .collect();
+        if let Some(store) = &entity.store {
+            let syntax = sections
+                .get("store")
+                .map_or_else(|| decl.syntax().clone(), |m| m.syntax().clone());
+            let mut node = self.node(
+                registry.key(Kind::StorePlacement, &entity.name, None),
+                Kind::StorePlacement,
+                entity.name.clone(),
+                syntax,
+            );
+            node.parent = Some(key.clone());
+            node.doc = None;
+            node.detail = Detail::Placement {
+                store: store.clone(),
+            };
+            self.out.nodes.push(node);
+        }
+        for (section, kind, rules) in [
+            ("unique", Kind::UniqueRule, &entity.unique),
+            ("indexes", Kind::Index, &entity.indexes),
+        ] {
+            let members: BTreeMap<String, ast::Member> = sections
+                .get(section)
+                .map(|m| tree::members(m.block()))
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|(name, member)| Some((tree::name_text(&name)?, member)))
+                .collect();
+            for rule in rules {
+                let Some(member) = members.get(&rule.name) else {
+                    continue;
+                };
+                let mut node = self.node(
+                    child(kind, &rule.name),
+                    kind,
+                    format!("{}.{}", entity.name, rule.name),
+                    member.syntax().clone(),
+                );
+                node.parent = Some(key.clone());
+                node.detail = Detail::Columns {
+                    fields: rule.fields.clone(),
+                    constraint: if kind == Kind::UniqueRule {
+                        crate::data::unique_constraint(entity, &rule.name)
+                    } else {
+                        crate::data::index_name(entity, &rule.name)
+                    },
+                };
+                self.out.nodes.push(node);
+            }
+        }
+        for field in &entity.fields {
+            let (Some(reference), Some(member)) = (&field.reference, sections.get(&field.name))
+            else {
+                continue;
+            };
+            let Some(on_delete) = reference.on_delete else {
+                continue;
+            };
+            let Some(target) = declaration_key(self.lookup, &reference.target) else {
+                continue;
+            };
+            let mut node = self.node(
+                child(Kind::Reference, &field.name),
+                Kind::Reference,
+                format!("{}.{}", entity.name, field.name),
+                member.syntax().clone(),
+            );
+            node.parent = Some(field_key(registry, &entity.name, &[field.name.clone()]));
+            node.doc = None;
+            node.detail = Detail::Reference {
+                target: target.clone(),
+                on_delete: on_delete.name().to_string(),
+                constraint: crate::data::foreign_key(entity, field),
+            };
+            self.out.nodes.push(node);
+            self.out
+                .edges
+                .push((key.clone(), EdgeKind::References, target));
+        }
     }
 
     /// The written fields of an object or entity, and a node for each

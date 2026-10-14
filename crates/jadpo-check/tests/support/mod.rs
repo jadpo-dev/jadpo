@@ -10,7 +10,14 @@ pub fn project(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project
         .iter()
         .map(|(path, text)| File::new(db, path.to_string(), text.to_string()))
         .collect();
-    Project::new(db, files, Vec::new(), layout, Default::default())
+    Project::new(
+        db,
+        files,
+        Vec::new(),
+        layout,
+        Default::default(),
+        Vec::new(),
+    )
 }
 
 /// A project of `files`, created in the order given and listed in path
@@ -22,7 +29,14 @@ pub fn project_in_path_order(db: &Database, layout: Layout, files: &[(&str, &str
         .map(|(path, text)| File::new(db, path.to_string(), text.to_string()))
         .collect();
     files.sort_by(|a, b| a.path(db).cmp(b.path(db)));
-    Project::new(db, files, Vec::new(), layout, Default::default())
+    Project::new(
+        db,
+        files,
+        Vec::new(),
+        layout,
+        Default::default(),
+        Vec::new(),
+    )
 }
 
 /// Each problem as `path rule: message`.

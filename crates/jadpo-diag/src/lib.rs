@@ -109,6 +109,8 @@ rules! {
         "14-tooling.html#command-errors", "Help command has invalid arguments";
     CLI_LSP_ARGUMENTS: "cli.lsp_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Language-server command has invalid arguments";
+    CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Migrate command has invalid arguments";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Terminal presentation option is invalid";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
@@ -119,6 +121,46 @@ rules! {
         "14-tooling.html#command-errors", "Unknown flag";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Version command has invalid arguments";
+    DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
+        "05-data.html#data-cleared-required-reference", "A reference that can never be `none` is cleared on delete";
+    DATA_DUPLICATE_RULE: "data.duplicate_rule", area 5, Error, Agent,
+        "05-data.html#data-duplicate-rule", "Unique rule or index repeats another";
+    DATA_ENTITY_IN_FIELD: "data.entity_in_field", area 5, Error, Agent,
+        "05-data.html#data-entity-in-field", "Field holds an entity instead of a reference to one";
+    DATA_FIELD_LIST_REQUIRED: "data.field_list_required", area 5, Error, Agent,
+        "05-data.html#data-field-list-required", "Unique rule or index is not a list of fields";
+    DATA_GENERATED_TYPE: "data.generated_type", area 5, Error, Agent,
+        "05-data.html#data-generated-type", "Generated field is not a required `Instant`";
+    DATA_IDENTITY_MISSING: "data.identity_missing", area 5, Error, Agent,
+        "05-data.html#data-identity-missing", "Entity has no `id` field";
+    DATA_IDENTITY_TYPE: "data.identity_type", area 5, Error, Agent,
+        "05-data.html#data-identity-type", "Entity's `id` is not a required `Uuid`";
+    DATA_NAME_TOO_LONG: "data.name_too_long", area 5, Error, Agent,
+        "05-data.html#data-name-too-long", "Name is too long for a table or column";
+    DATA_ON_DELETE_NOT_REFERENCE: "data.on_delete_not_reference", area 5, Error, Agent,
+        "05-data.html#data-on-delete-not-reference", "Field that is not a reference sets `on_delete`";
+    DATA_ON_DELETE_REQUIRED: "data.on_delete_required", area 5, Error, Human,
+        "05-data.html#data-on-delete-required", "Reference does not say what deleting its record does";
+    DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
+        "05-data.html#data-reference-across-stores", "Reference points at an entity in another store";
+    DATA_REFERENCE_CYCLE: "data.reference_cycle", area 5, Error, Human,
+        "05-data.html#data-reference-cycle", "Required references form a cycle";
+    DATA_REPEATED_FIELD: "data.repeated_field", area 5, Error, Agent,
+        "05-data.html#data-repeated-field", "Unique rule or index lists a field twice";
+    DATA_RESERVED_TABLE_NAME: "data.reserved_table_name", area 5, Error, Agent,
+        "05-data.html#data-reserved-table-name", "Entity's table name starts with `jadpo_`";
+    DATA_STORE_REQUIRED: "data.store_required", area 5, Error, Human,
+        "05-data.html#data-store-required", "Entity names no store and there is no `main`";
+    DATA_STORE_UNKNOWN: "data.store_unknown", area 5, Error, Agent,
+        "05-data.html#data-store-unknown", "Entity's store is not a database connection";
+    DATA_UNIQUE_NULLABLE_FIELD: "data.unique_nullable_field", area 5, Error, Agent,
+        "05-data.html#data-unique-nullable-field", "Unique rule includes a field that can be `none`";
+    DATA_UNIQUE_SINGLE_FIELD: "data.unique_single_field", area 5, Error, Agent,
+        "05-data.html#data-unique-single-field", "Unique rule has only one field";
+    DATA_UNKNOWN_FIELD: "data.unknown_field", area 5, Error, Agent,
+        "05-data.html#data-unknown-field", "Unique rule or index names a field the entity does not have";
+    DATA_UNKNOWN_SECTION: "data.unknown_section", area 5, Error, Agent,
+        "05-data.html#data-unknown-section", "Entity has a section Jadpo does not know";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
         "03-logic.html#effect-function-calls-action", "Function calls an action or query";
     EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
@@ -213,6 +255,18 @@ rules! {
         "01-project-layout-and-modules.html#layout-wrong-folder", "Declaration is in the wrong folder";
     LIBRARY_SIMILAR_EXISTS: "library.similar_exists", area 1, Warning, Agent,
         "01-project-layout-and-modules.html#library-similar-exists", "A library function already does the same";
+    MIGRATION_DECISION_INVALID: "migration.decision_invalid", area 5, Error, Agent,
+        "05-data.html#migration-decision-invalid", "Migration decision does not fit its change";
+    MIGRATION_DECISION_REQUIRED: "migration.decision_required", area 5, Error, Human,
+        "05-data.html#migration-decision-required", "Migration needs a decision";
+    MIGRATION_DECISION_UNKNOWN: "migration.decision_unknown", area 5, Error, Agent,
+        "05-data.html#migration-decision-unknown", "Migration decides about something that is not changing";
+    MIGRATION_OUT_OF_DATE: "migration.out_of_date", area 5, Error, Agent,
+        "05-data.html#migration-out-of-date", "Entities and the latest migration disagree";
+    MIGRATION_RECORD_INVALID: "migration.record_invalid", area 5, Error, Human,
+        "05-data.html#migration-record-invalid", "Migration folder cannot be read";
+    MIGRATION_UNFINISHED: "migration.unfinished", area 5, Error, Agent,
+        "05-data.html#migration-unfinished", "Latest migration is not finished";
     NAMING_FOLDED_COLLISION: "naming.folded_collision", area 1, Error, Agent,
         "01-project-layout-and-modules.html#naming-folded-collision", "Two names fold to the same file name";
     NAMING_GENERIC_NAME: "naming.generic_name", area 1, Error, Human,

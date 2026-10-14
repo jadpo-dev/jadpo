@@ -45,12 +45,37 @@ pub struct File {
     pub text: String,
 }
 
+/// A committed record beside the source that isn't a `.jadpo` file (area
+/// 18): a migration's `snapshot.json` and `postgres.sql`, read whole.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Record {
+    /// Project-relative, with `/`.
+    pub path: String,
+    /// Its text, or why it couldn't be read.
+    pub text: Result<String, String>,
+}
+
+/// Whether a project-relative path is a record [`Record`] holds: a file in
+/// a migration's folder that isn't source.
+pub fn is_record(path: &str) -> bool {
+    matches!(
+        path.split('/').collect::<Vec<_>>().as_slice(),
+        [
+            "database",
+            "migrations",
+            _,
+            "snapshot.json" | "postgres.sql"
+        ]
+    )
+}
+
 /// The project: its source files in path order, the paths of every other
-/// file inside it (templates and other assets), its layout, and the
-/// identity registry's lines (area 18): for each thing renamed since it was
-/// born, `kind name-now` and its born name, as `database/identities.json`
-/// holds them. The registry is an input like the files, so a rename it
-/// records re-keys exactly what it touches.
+/// file inside it (templates and other assets), its layout, the identity
+/// registry's lines (area 18): for each thing renamed since it was born,
+/// `kind name-now` and its born name, as `database/identities.json` holds
+/// them, and its migrations' records in path order. The registry and the
+/// records are inputs like the files, so a rename re-keys exactly what it
+/// touches and a new migration rechecks only what reads the migrations.
 #[salsa::input(debug)]
 pub struct Project {
     #[returns(ref)]
@@ -61,6 +86,8 @@ pub struct Project {
     pub layout: Layout,
     #[returns(ref)]
     pub identities: BTreeMap<String, String>,
+    #[returns(ref)]
+    pub records: Vec<Record>,
 }
 
 /// The database every compiler query runs against.

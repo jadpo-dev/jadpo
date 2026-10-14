@@ -33,7 +33,14 @@ fn load(files: &[(String, String)]) -> Option<Program> {
     } else {
         Layout::Loose
     };
-    let project = Project::new(&db, inputs, Vec::new(), layout, Default::default());
+    let project = Project::new(
+        &db,
+        inputs,
+        Vec::new(),
+        layout,
+        Default::default(),
+        Vec::new(),
+    );
     // A project written to show an error doesn't run.
     Program::load(&db, project).ok()
 }

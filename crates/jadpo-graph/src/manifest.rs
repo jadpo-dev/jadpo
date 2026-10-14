@@ -160,6 +160,24 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             );
             out.set("signature", entry);
         }
+        Detail::Entity { store, table } | Detail::SystemTable { store, table } => {
+            out.set("store", store.as_str());
+            out.set("table", table.as_str());
+        }
+        Detail::Columns { fields, constraint } => {
+            out.set("fields", fields.iter().map(Value::from).collect::<Vec<_>>());
+            out.set("constraint", constraint.as_str());
+        }
+        Detail::Reference {
+            target,
+            on_delete,
+            constraint,
+        } => {
+            out.set("target", target.as_str());
+            out.set("onDelete", on_delete.as_str());
+            out.set("constraint", constraint.as_str());
+        }
+        Detail::Placement { store } => out.set("store", store.as_str()),
     }
 }
 
@@ -201,6 +219,24 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     (
         "signature",
         "A callable's parameters, result and fails list",
+    ),
+    (
+        "store",
+        "The connection an entity, its placement or a system table is in",
+    ),
+    (
+        "table",
+        "The table an entity's records or a system table's rows live in",
+    ),
+    ("fields", "A unique rule's or index's fields, in order"),
+    (
+        "constraint",
+        "The name the database knows a unique rule, index or reference by",
+    ),
+    ("target", "The id of the entity a reference points at"),
+    (
+        "onDelete",
+        "What deleting a referenced record does: restricted, cascade or cleared",
     ),
 ];
 
