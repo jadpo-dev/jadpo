@@ -36,6 +36,8 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    examples and errors it must make pass, and write those as failing tests
    first.
 3. Build until its "done when" holds and the gate (`tools/verify.py`) passes.
+   From 2.4 on, every chunk adds or extends the commented examples in
+   `examples/` so the coverage check still passes with what it built.
 4. Open a pull request from a branch named `chunk-<number>`, merge it when CI
    passes, and tick it here in the same pull request.
    If the chunk needs a language decision that is not on the pages, stop and
@@ -119,6 +121,13 @@ reference only).
 - [x] **2.2 Test runner:** `opus · high` file, line, name, seed, failure reports as decided,
   `--json`.
 - [x] **2.3 Watch mode** `opus · high` under the 1-second target on a fixture project.
+- [ ] **2.4 Teaching examples** `opus · high`: commented example projects in
+  `examples/` covering every feature of areas 1–4 and 13 built so far, each
+  with its own tests run by `jadpo test` in the gate, and the coverage check
+  that fails when a built feature appears in no example
+  ([decision](decision-register.md#examples-teach-every-feature--2026-10-14)).
+  Design the examples' order and commenting style first, as a reader
+  learning the language would meet them.
 
 ## Phase 3 — Data (areas 5, 6)
 
