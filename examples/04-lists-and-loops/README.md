@@ -3,6 +3,12 @@
 Collections of values, walking them with `for`, and the standard
 library's `collection` operations. The project is a recipe book.
 
+Collections hold many values of one type: a `List` keeps order and
+repeats, a `Set` holds each value once in no order, and a `Map` holds
+values by key. A list is written in square brackets; `for` walks it; the
+standard library's `collection` operations count, search, change and
+filter it.
+
 ## What it teaches
 
 1. **Collections as types.** `List` fields holding objects, in `types/`. See `domains/baking/types/recipe.jadpo` and [area 2, Collections](../../docs/language/02-values-and-types.md#collections).

@@ -1,0 +1,9 @@
+test "a shelf of 10 is one order" {
+    var count: CakeCount = attempt order_shelf(10)
+    assert count == 10
+}
+
+test "each broken rule gives its own arm's failure" {
+    assert order_shelf(30) fails OrderTooLarge
+    assert order_shelf(0) fails ShelfEmpty
+}

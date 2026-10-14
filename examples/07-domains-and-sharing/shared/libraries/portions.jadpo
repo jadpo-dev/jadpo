@@ -6,7 +6,9 @@
 library portions {
     /// The weight of `count` portions of `each` grams.
     function together(each: Grams, count: PortionCount) fails TooHeavy -> Grams {
-        var total: Grams = attempt Grams(each * count) invalid: TooHeavy
+        var total: Grams = attempt Grams(each * count) {
+            max: TooHeavy
+        }
         return total
     }
 

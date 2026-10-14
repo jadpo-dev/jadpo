@@ -1,11 +1,1 @@
-// Example 04: lists and loops.
-//
-// Collections hold many values of one type: a `List` keeps order and
-// repeats, a `Set` holds each value once in no order, and a `Map` holds
-// values by key. A list is written in square brackets; `for` walks it;
-// the standard library's `collection` operations count, search, change
-// and filter it.
-//
-// The project is a bakery's recipe book. README.md lists the files in
-// reading order.
 application {}

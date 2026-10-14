@@ -1,14 +1,19 @@
 # 09 · A bakery's orders
 
 A fuller project that puts the earlier examples together: pricing a
-basket from the menu, with discount codes, across two domains.
+basket from the menu, with discount codes, across two domains. It uses
+shared types and a shared library, inputs and outputs built from other
+types, tagged unions, loops, the standard library, failures declared,
+raised, passed on and handled, fixtures, and tests at every level. Its
+comments point out what each part is for rather than re-teaching it;
+the earlier examples teach each idea on its own.
 
 ## What it teaches
 
 1. **Shared types and a library.** A tagged union for menu items and a `money` library both domains use. See `shared/`.
 2. **The menu.** A public action that prices each kind of item with `match`. See `domains/menu/actions/price_item.jadpo`.
 3. **The basket.** A public `Input` whose list has a length rule and whose code may be left out. See `domains/sales/types/basket.jadpo`.
-4. **Pricing.** A loop over the lines calling another domain, a statement `match` on an optional code, a text `match` that rejects unknown codes, and a check that names its failure with fields: `invalid: DiscountTooLarge { ... }`. See `domains/sales/actions/price_basket.jadpo` and [area 4, Turning one failure into another](../../docs/language/04-failures.md#turning-one-failure-into-another).
+4. **Pricing.** A loop over the lines calling another domain, a statement `match` on an optional code, a text `match` that rejects unknown codes, and a check whose `min` arm names its failure with fields: `min: DiscountTooLarge { ... }`. See `domains/sales/actions/price_basket.jadpo` and [area 4, Turning one failure into another](../../docs/language/04-failures.md#turning-one-failure-into-another).
 5. **Tests at every level.** A fixture, action tests, a test that handles a failure with `match`, and a scenario across both domains. See `domains/sales/fixtures/family_basket.jadpo`, `domains/sales/actions/price_basket.test.jadpo` and `tests/basket_to_receipt.test.jadpo`.
 
 ## Run it

@@ -1,6 +1,8 @@
 /// `card` with one more stamp.
 action stamp_card(card: Card) fails CardFull -> Card {
-    var stamped: StampCount = attempt StampCount(card.stamp_count + 1) invalid: CardFull
+    var stamped: StampCount = attempt StampCount(card.stamp_count + 1) {
+        max: CardFull
+    }
     return Card {
         name: card.name
         stamp_count: stamped

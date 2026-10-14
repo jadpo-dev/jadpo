@@ -1,7 +1,14 @@
 # 08 · Testing
 
 How tests are written and run: kinds of test, shared test data, and
-assertions about failures. The project is a loyalty card.
+assertions about failures. The project is a bakery's loyalty card: ten
+stamps earn a free coffee.
+
+A test runs the real application; only the outside world and the clock
+are ever replaced, and nothing in this example needs either. There are
+no mocks of your own code. Tests sit beside what they test, shared test
+data comes from fixtures, and a failure assertion names the failure it
+expects.
 
 ## What it teaches
 

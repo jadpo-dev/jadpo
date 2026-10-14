@@ -1,11 +1,1 @@
-// Example 07: domains and sharing.
-//
-// A project grows by adding domains, never by nesting folders. Each domain
-// owns everything in it, and its declarations are private unless marked
-// `public`. Code two domains share moves to `shared/`. There are no
-// imports: the dot in a call names the owner of what is called.
-//
-// The project has two domains: `pantry`, which keeps the flour, and
-// `sales`, which bakes what customers order. README.md lists the files
-// in reading order.
 application {}

@@ -2,7 +2,13 @@
 
 Every built-in representation Jadpo has so far, the rules a type can add
 to it, and how values move between types. The project is a bakery's
-pantry.
+pantry; each action shows one family of built-in types.
+
+The rule behind Jadpo's types: representation is not meaning. A weight
+and a temperature are both whole numbers underneath, but they mean
+different things, so they are different types, and the compiler never
+converts between them silently. A value becomes a type only by being
+checked against that type's rules.
 
 ## What it teaches
 
