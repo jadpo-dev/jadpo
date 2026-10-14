@@ -212,3 +212,160 @@ fn fault_json(info: &FaultInfo) -> Json {
         ),
     ])
 }
+
+/// What each field of `jadpo test --json` means, for `jadpo help --json`
+/// (area 13, "What a failed test reports"): the `data` of a run, of a
+/// refused run, of nothing to rerun and of a watch step, each test, each
+/// failure, and the one location shape every document shares.
+pub fn schema() -> Json {
+    let fields = |pairs: &[(&str, &str)]| {
+        Json::object(
+            pairs
+                .iter()
+                .map(|(name, meaning)| (name.to_string(), Json::from(*meaning))),
+        )
+    };
+    Json::object([
+        ("command", "test".into()),
+        (
+            "data",
+            fields(&[
+                ("seed", "The order seed the run used"),
+                (
+                    "root",
+                    "The project folder as seen from where the command ran (\".\" from inside it); every path is relative to it",
+                ),
+                (
+                    "selection",
+                    "What was asked for: path, line, name, kind, failed",
+                ),
+                (
+                    "counts",
+                    "total, ran, passed, failed, and totalByKind and ranByKind for pure, action, route and schedule",
+                ),
+                ("tests", "Every test that ran, in the order it ran"),
+            ]),
+        ),
+        (
+            "refused",
+            fields(&[
+                (
+                    "ran",
+                    "false: the project has errors, which are the document's diagnostics",
+                ),
+                ("root", "As for a run"),
+                ("fileCount", "How many files the project holds"),
+                ("errors", "How many errors"),
+                ("warnings", "How many warnings"),
+            ]),
+        ),
+        (
+            "nothingToRerun",
+            fields(&[
+                ("selection", "{ failed: true }"),
+                (
+                    "gone",
+                    "How many tests failed last time and are no longer in the project; 0 when none failed",
+                ),
+                ("tests", "Empty"),
+            ]),
+        ),
+        (
+            "watch",
+            fields(&[
+                ("event", "start or change"),
+                (
+                    "changed",
+                    "The files that changed, each { path, change: added, saved or removed }",
+                ),
+                (
+                    "reached",
+                    "How many tests reach the change; null for the first run and while the build has errors",
+                ),
+                (
+                    "failing",
+                    "How many tests fail now, as far as the session has run them",
+                ),
+                ("files", "How many files the project holds"),
+                (
+                    "fixed",
+                    "Whether the build had errors before this step and checks now",
+                ),
+            ]),
+        ),
+        (
+            "test",
+            fields(&[
+                ("order", "Its place in the run, from 1"),
+                (
+                    "key",
+                    "Its identity: the subject it sits beside and its sentence",
+                ),
+                ("name", "Its sentence"),
+                ("file", "Its file"),
+                ("line", "Its first line"),
+                ("endLine", "Its last line"),
+                ("kind", "pure, action, route or schedule"),
+                ("outcome", "passed or failed"),
+                ("failure", "Only when it failed"),
+            ]),
+        ),
+        (
+            "failure",
+            fields(&[
+                (
+                    "code",
+                    "test.assertion_failed, test.unexpected_failure or test.fault",
+                ),
+                ("help", "The code's entry on the language pages"),
+                ("location", "Where in the test it failed (a location)"),
+                (
+                    "assertion",
+                    "For an assert that didn't hold: source, operator, expected, actual, fails, returned, instead (a failure), parts (each source, line, column, value) and diff (each change, path, expected, actual)",
+                ),
+                (
+                    "failure",
+                    "For a failure that left the test: name, code, kind, message, client, internal, reason, at (a location), path (the callables it travelled through, outermost first) and cause",
+                ),
+                (
+                    "fault",
+                    "For a fault: kind, message, rule, at (a location), reason, next and stack (stack frames, innermost first)",
+                ),
+                (
+                    "rerun",
+                    "The command that reruns this test alone in the same order, from where the command ran",
+                ),
+            ]),
+        ),
+        (
+            "stackFrame",
+            fields(&[
+                ("location", "The call's site (a location)"),
+                (
+                    "callable",
+                    "The callable it is in, such as `function line_total`",
+                ),
+                (
+                    "repeats",
+                    "How many frames in a row it stands for: a recursion is one frame",
+                ),
+            ]),
+        ),
+        (
+            "location",
+            fields(&[
+                ("path", "The file, relative to the project root"),
+                ("start", "The first byte"),
+                ("end", "The byte after the last"),
+                ("line", "The first line, from 1"),
+                ("column", "The first column, from 1, in characters"),
+                ("endLine", "The last line"),
+                ("endColumn", "The column after the last character"),
+                (
+                    "label",
+                    "The few words beside the carets; empty when there are none",
+                ),
+            ]),
+        ),
+    ])
+}

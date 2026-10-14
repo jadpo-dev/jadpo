@@ -32,7 +32,7 @@ use jadpo_diag::{Diagnostic, Severity, Span, rule};
 use jadpo_graph::{EdgeKind, Graph, Kind};
 use jadpo_interp::Program;
 
-pub use json::json;
+pub use json::{json, schema};
 pub use outcome::{
     AssertionFailure, Change, ChangeMark, Detail, FailureInfo, FaultInfo, Located, ShownLine,
     ShownPart, StackFrame, TestFailure,

@@ -376,6 +376,57 @@ fn paths_are_never_cut_and_long_paths_wrap() {
     );
 }
 
+/// The keys of a JSON object.
+fn keys(value: &serde_json::Value) -> Vec<String> {
+    let mut keys: Vec<String> = value
+        .as_object()
+        .map(|object| object.keys().cloned().collect())
+        .unwrap_or_default();
+    keys.sort();
+    keys
+}
+
+#[test]
+fn help_json_documents_every_field_test_json_writes() {
+    let help = json(&jadpo(Path::new("."), &["help", "--json"]));
+    let schema = &help["data"]["testReport"];
+    let root = loose("schema", &[ADDS, MOVES, KEPT, PRICED]);
+    let document = json(&jadpo(&root, &["test", ".", "--json", "--seed", "1"]));
+    let data = &document["data"];
+    assert_eq!(keys(data), keys(&schema["data"]));
+    for test in data["tests"].as_array().expect("tests") {
+        let mut listed = keys(&schema["test"]);
+        if test.get("failure").is_none() {
+            listed.retain(|key| key != "failure");
+        }
+        assert_eq!(keys(test), listed);
+        let Some(failure) = test.get("failure") else {
+            continue;
+        };
+        assert_eq!(keys(failure), keys(&schema["failure"]));
+        assert_eq!(keys(&failure["location"]), keys(&schema["location"]));
+        for frame in failure["fault"]["stack"].as_array().into_iter().flatten() {
+            assert_eq!(keys(frame), keys(&schema["stackFrame"]));
+            assert_eq!(keys(&frame["location"]), keys(&schema["location"]));
+        }
+        for at in [&failure["failure"]["at"], &failure["fault"]["at"]] {
+            if at.is_object() {
+                assert_eq!(keys(at), keys(&schema["location"]));
+            }
+        }
+    }
+    // Diagnostics share the location shape.
+    let refused = loose(
+        "schema-refused",
+        &["test \"adds\" {\n    assert add(2, 3) == totl\n}\n"],
+    );
+    let document = json(&jadpo(&refused, &["test", ".", "--json"]));
+    assert_eq!(keys(&document["data"]), keys(&schema["refused"]));
+    let mut location = keys(&document["diagnostics"][0]["location"]);
+    location.sort();
+    assert_eq!(location, keys(&schema["location"]));
+}
+
 #[test]
 fn a_repeated_frame_counts_its_repeats_as_data() {
     let root = folder("repeats");

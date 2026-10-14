@@ -643,7 +643,7 @@ class Renderer:
                 continue
             if line.strip() == '::: today':
                 flush()
-                out.append('<details class="today"><summary>Today\'s syntax, before the rework (still compiled and checked)</summary>')
+                out.append('<details class="today"><summary>The archived compiler\'s syntax and behaviour (tag archive/compiler-v0)</summary>')
                 i += 1
                 continue
             if line.strip() == ':::':
@@ -729,9 +729,9 @@ class Renderer:
                 part = part.replace(f'<h{level} ', f'<h{level - 1} ').replace(f'</h{level}>', f'</h{level - 1}>')
             out.append(part)
         today = Renderer(self.page)
-        out.append('<details class="collapsed" id="today"><summary>How the compiler works today, before the rework</summary>'
+        out.append('<details class="collapsed" id="today"><summary>How the archived compiler worked (tag archive/compiler-v0)</summary>'
                    + today.render(first_h2, review) + '</details>')
-        self.toc.append(('today', 'Today (collapsed)', ''))
+        self.toc.append(('today', 'Archived compiler (collapsed)', ''))
         review_notes = Renderer(self.page)
         review_notes.review_mode = True
         body = ''.join(review_notes.render(a, b) for a, b, _ in notes)

@@ -2,7 +2,7 @@
 title: Project layout and modules
 area: 1
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-11)
+checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
 ---
 
 # Project layout and modules
@@ -12,7 +12,7 @@ another, and the naming rules every name follows.
 
 ## Project layout
 
-> **Changing.** Decided on 2026-10-12 to replace this with a fixed root and domain folders; see [Decided layout](#decided-layout). This section describes the compiler today.
+> **Archived.** This section describes the archived compiler (tag `archive/compiler-v0`). The new compiler builds the fixed root and domain folders decided on 2026-10-12 (chunk 1.3); see [Decided layout](#decided-layout).
 
 A project is every `.jadpo` file under the folder you give the compiler. A few
 folder names have a recognised role. The golden todo app is laid out like this:
@@ -63,7 +63,7 @@ means or its database identity.
 
 ## Source files
 
-> **Changing.** All code will live in domain folders and names stay unique project-wide; see [Decided layout](#decided-layout).
+> **Archived.** This section describes the archived compiler. In the new compiler all code lives in domain folders and names stay unique project-wide (chunk 1.3); see [Decided layout](#decided-layout).
 
 File order and declaration order never matter: a declaration can refer to one
 defined later or in another file. Without module headers the whole project
@@ -75,7 +75,7 @@ an error (see `semantic.duplicate_declaration` below).
 
 ## Modules
 
-> **Being removed.** Decided on 2026-10-12: `module`, `import` and module-level `public` are replaced by domain folders, owner-qualified calls and public declarations per domain; see [Decided layout](#decided-layout).
+> **Being removed.** The archived compiler's `module`, `import` and module-level `public`, replaced by decision on 2026-10-12 with domain folders, owner-qualified calls and public declarations per domain, which the new compiler builds (chunk 1.3); see [Decided layout](#decided-layout).
 
 A file opts into modules by starting with a `module` header. Declarations are
 private to their module unless marked `public`, and another module uses them
@@ -119,7 +119,7 @@ The rules:
 
 ## Naming
 
-> **Changing.** Module names go away, consecutive capitals will be rejected (`VatRate`, not `VATRate`) and calls will name their owner; see [Decided layout](#decided-layout).
+> **Archived.** This section describes the archived compiler's naming. In the new compiler module names are gone, a name must survive the round trip between its forms, so consecutive capitals are rejected (`VatRate`, not `VATRate`), and calls name their owner (chunk 1.3); see [Decided layout](#decided-layout).
 
 Every name has one spelling, decided by what kind of thing it names.
 
@@ -156,7 +156,7 @@ or library.
 
 ## Comments
 
-> **Changing.** `///` documentation comments were decided on 2026-10-12; see [Decided layout](#decided-layout).
+> **Archived.** This section describes the archived compiler. The new compiler reads `///` documentation comments, decided on 2026-10-12; see [Decided layout](#decided-layout).
 
 Line comments start with `//`. They carry no meaning and are kept for tooling.
 There are no block comments and no documentation comments yet.
@@ -1127,15 +1127,19 @@ check failed: 1 error, 1 file
 
 ### Status
 
+Each row is the archived compiler's (tag `archive/compiler-v0`); the new
+compiler builds the decided layout instead (chunks 1.3 and 1.9), with each
+rule's real output under [Errors](#errors).
+
 | Feature | Status |
 |---|---|
-| Role folders | Partly checked. Only "entities live in `entities/`, one per file" is enforced, and an entity at the root or in a made-up folder is still accepted. The documented rule that failures cannot go in `values/` is not enforced. |
-| Files, single namespace, order independence | Works in general. |
-| Modules, `public`, selective imports, cycle check | Works in general, within the limits listed above. The golden app does not use modules. |
-| Naming case rules | Works in general. |
-| Reserved words | Inconsistent: `var return = x` is accepted, but `return` cannot then be read back. A fix policy was chosen on 2026-10-01 and not built. |
-| Comments | `//` only. Documentation comments are undesigned. |
-| Golden app layout | A todo route (`GET /todos/{todo_id}`) sits in the health route file and is accepted. The reminder job, mail service and readiness check were dropped in the migration, so the layout has never held them. |
+| Role folders | Archived: partly checked. Only "entities live in `entities/`, one per file" is enforced, and an entity at the root or in a made-up folder is still accepted. The documented rule that failures cannot go in `values/` is not enforced. |
+| Files, single namespace, order independence | Archived: worked in general. The new compiler keeps order independence; names are unique project-wide. |
+| Modules, `public`, selective imports, cycle check | Archived: worked in general, within the limits listed above. The new compiler has domains and per-declaration `public` instead, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused` (chunk 2.8). |
+| Naming case rules | Archived: worked in general. The new compiler adds the round trip and the folded-collision rules (chunk 1.3). |
+| Reserved words | Archived: inconsistent: `var return = x` is accepted, but `return` cannot then be read back. A fix policy was chosen on 2026-10-01 and not built. |
+| Comments | Archived: `//` only. The new compiler reads `///` documentation comments. |
+| Golden app layout | Archived: a todo route (`GET /todos/{todo_id}`) sits in the health route file and is accepted. The reminder job, mail service and readiness check were dropped in the migration, so the layout has never held them. |
 
 ### Consistency with the rest of the language
 
@@ -1322,7 +1326,7 @@ build/
   chunk 1.9.
 - Tests sit beside their subject as `<name>.test.jadpo`. Scenarios that span
   several domains go in the root `tests/`. The kind of test (pure,
-  integration, route, schedule) is known from what it calls, so it is not a
+  action, route, schedule) is known from what it calls, so it is not a
   folder; `jadpo test --kind route` runs one kind.
 - Non-Jadpo files (provider contracts, email templates, search mappings) sit
   beside the file that uses them and must be referenced from it.
