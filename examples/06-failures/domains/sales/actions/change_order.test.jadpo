@@ -25,7 +25,7 @@ test "someone else's order looks missing" {
         count: 2
     }
     assert change_order(order, 8, 5, 10) fails OrderNotFound
-    assert changeable(order, 8) fails NotYourOrder
+    assert may_change(order, 8) fails NotYourOrder
 }
 
 test "an order in the oven can't change" {

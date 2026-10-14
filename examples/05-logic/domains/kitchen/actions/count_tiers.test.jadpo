@@ -1,11 +1,11 @@
 test "a three-tier cake counts every tier" {
-    var top: Tier = Tier {
+    var top_tier: Tier = Tier {
         name: "Top"
         above: []
     }
     var middle: Tier = Tier {
         name: "Middle"
-        above: [top]
+        above: [top_tier]
     }
     var base: Tier = Tier {
         name: "Base"
@@ -20,9 +20,9 @@ test "two tiers can rest side by side on one" {
         name: "Cupcake"
         above: []
     }
-    var stand: Tier = Tier {
+    var cake_stand: Tier = Tier {
         name: "Stand"
         above: [cupcake, cupcake]
     }
-    assert count_tiers(stand) == 3
+    assert count_tiers(cake_stand) == 3
 }

@@ -13,6 +13,6 @@ test "a basket charges the menu's prices" {
             }
         ]
     }
-    var receipt: Receipt = attempt ordering.price_basket(basket)
+    var receipt: Receipt = attempt sales.price_basket(basket)
     assert receipt.total == menu.price_item(loaf) * 3
 }

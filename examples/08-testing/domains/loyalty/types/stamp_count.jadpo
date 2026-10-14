@@ -1,5 +1,5 @@
 /// How many stamps a card holds; ten fill it.
-type Stamps = Int {
+type StampCount = Int {
     min: 0
     max: 10
 }

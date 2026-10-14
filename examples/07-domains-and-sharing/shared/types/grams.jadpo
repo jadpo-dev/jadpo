@@ -1,6 +1,6 @@
 // `shared/` holds pure types and libraries used by more than one domain,
 // in the same folders a domain has. `Grams` is used by both `pantry` and
-// `ordering`, so it lives here. Promotion is a move, not a rewrite: the
+// `sales`, so it lives here. Promotion is a move, not a rewrite: the
 // type keeps its name, so nothing that uses it changes.
 
 /// A weight in grams, up to 100 kilograms.

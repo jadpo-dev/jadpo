@@ -2,18 +2,18 @@
 action redeem_card(card: Card) fails CardNotFull -> Card {
     if (stamps_to_go(card) > 0) {
         reject CardNotFull {
-            stamps: card.stamps
+            stamp_count: card.stamp_count
         }
     }
     return Card {
-        holder: card.holder
-        stamps: 0
+        name: card.name
+        stamp_count: 0
     }
 }
 
 /// How many more stamps `card` needs before it can be redeemed.
-function stamps_to_go(card: Card) -> Stamps {
-    // `card.stamps` is 0 to 10, so `10 - card.stamps` is too, and the
-    // compiler proves it fits `Stamps`.
-    return Stamps(10 - card.stamps)
+function stamps_to_go(card: Card) -> StampCount {
+    // `card.stamp_count` is 0 to 10, so `10 - card.stamp_count` is too, and the
+    // compiler proves it fits `StampCount`.
+    return StampCount(10 - card.stamp_count)
 }

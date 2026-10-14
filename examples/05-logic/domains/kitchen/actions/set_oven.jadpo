@@ -16,7 +16,7 @@ type OvenTemperature = Int {
 }
 
 /// How a bake's top should come out.
-type Finish = Text {
+type Crust = Text {
     max_length: 20
 }
 
@@ -39,7 +39,7 @@ function temperature_for(bake: Bake) -> OvenTemperature {
 }
 
 /// What a shelf does to a bake's top.
-function finish_on(shelf: Shelf) -> Finish {
+function crust_on(shelf: Shelf) -> Crust {
     // Literal patterns match exact values; a negative number is written
     // with its sign. Numbers and text can't all be listed, so a `_` arm
     // catches the rest, and is only allowed where cases can't be listed.
@@ -50,9 +50,9 @@ function finish_on(shelf: Shelf) -> Finish {
     }
 }
 
-/// The shelf that gives `finish`; text patterns match exact text.
-function shelf_for(finish: Finish) -> Shelf {
-    return match finish {
+/// The shelf that gives `crust`; text patterns match exact text.
+function shelf_for(crust: Crust) -> Shelf {
+    return match crust {
         "pale" -> -2
         "dark" -> 2
         _ -> 0
@@ -62,8 +62,13 @@ function shelf_for(finish: Finish) -> Shelf {
 /// Whether the oven fills with steam.
 type Steam = Bool {}
 
+/// A word on the oven's display.
+type DisplayWord = Text {
+    max_length: 12
+}
+
 /// The steam setting as a word for the oven's display.
-function steam_word(steam: Steam) -> Finish {
+function steam_word(steam: Steam) -> DisplayWord {
     // `true` and `false` are patterns too, and together cover anything
     // built on `Bool`.
     return match steam {

@@ -2,6 +2,6 @@
 type CardNotFull = Failure {
     kind: FailureKind.rejected
     client: {
-        stamps: Stamps
+        stamp_count: StampCount
     }
 }

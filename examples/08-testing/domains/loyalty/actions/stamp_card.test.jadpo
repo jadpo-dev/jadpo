@@ -7,12 +7,12 @@
 
 test "a stamp adds one to the card" {
     var card: Card = attempt stamp_card(new_card(3))
-    assert card.stamps == 4
-    assert card.holder == "Ada"
+    assert card.stamp_count == 4
+    assert card.name == "Ada"
 }
 
 test "a fixture can build on an action" {
-    assert stamped_once().stamps == 1
+    assert stamped_once().stamp_count == 1
 }
 
 test "a full card takes no more stamps" {

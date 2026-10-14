@@ -1,5 +1,6 @@
 //! Same source, same bytes (docs/compiler-runtime.md §2.8): every project
-//! in the specification corpus, each language page's `check` blocks, is
+//! in the specification corpus, each language page's `check` blocks and
+//! each teaching example in `examples/`, is
 //! checked twice, the second time with its files read in the opposite
 //! order, and the two manifests must be identical. A project's files are
 //! always listed in path order, as `jadpo_db::load` lists them; what
@@ -52,6 +53,23 @@ fn corpus() -> Vec<(String, Vec<(String, String)>)> {
             .entry(format!("{page} {project}"))
             .or_default()
             .push((file, example.source));
+    }
+    // The teaching examples' projects (examples/<project>/), which the
+    // spec corpus holds too (tools/examples.py).
+    for example in examples::all() {
+        let Some(rest) = example.place.strip_prefix("examples/") else {
+            continue;
+        };
+        let Some((project, file)) = rest.split_once('/') else {
+            continue;
+        };
+        if !file.ends_with(".jadpo") || project == "golden-todo" {
+            continue;
+        }
+        projects
+            .entry(format!("examples {project}"))
+            .or_default()
+            .push((file.to_string(), example.source));
     }
     projects.into_iter().collect()
 }

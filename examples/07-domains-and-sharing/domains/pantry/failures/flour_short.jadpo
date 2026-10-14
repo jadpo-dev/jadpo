@@ -1,4 +1,4 @@
-// `public` lets other domains see a declaration. `ordering` handles this
+// `public` lets other domains see a declaration. `sales` handles this
 // failure, so it is public; it is still raised only here, so it lives in
 // this domain's `failures/`.
 

@@ -1,4 +1,4 @@
-// The menu's items, shared because `menu` prices them and `ordering` puts
+// The menu's items, shared because `menu` prices them and `sales` puts
 // them in baskets. A tagged union: each kind of item carries only the
 // choices that make sense for it.
 

@@ -1,20 +1,20 @@
-// A public action is a domain's way in for other domains: `ordering` calls
+// A public action is a domain's way in for other domains: `sales` calls
 // it as `pantry.take_flour(...)`. Another domain never reaches inside: it
 // calls public actions and reads public types, and the domain keeps its
 // own rules. When data arrives (area 5), a public action called from
 // another domain shares its caller's transaction, so both commit or
 // neither does.
 
-/// Takes `wanted` grams from the `held` full sacks, and says how much
+/// Takes `asked` grams from the `in_store` full sacks, and says how much
 /// flour went.
-public action take_flour(wanted: Grams, held: SackCount) fails FlourShort -> Grams {
+public action take_flour(asked: Grams, in_store: SackCount) fails FlourShort -> Grams {
     // A local can't reuse a library's or a domain's name, so
     // `sacks.grams_in` below always means the library.
-    var available: Grams = sacks.grams_in(held)
-    if (wanted > available) {
+    var available: Grams = sacks.grams_in(in_store)
+    if (asked > available) {
         reject FlourShort {
             available: available
         }
     }
-    return wanted
+    return asked
 }

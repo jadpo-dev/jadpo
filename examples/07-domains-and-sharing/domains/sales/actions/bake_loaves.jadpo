@@ -20,9 +20,12 @@ function flour_for(loaves: LoafCount) fails TooHeavy -> Grams {
     return portions.larger(needed, 2000)
 }
 
-/// Bakes `loaves` loaves with flour from the `held` sacks in the pantry.
+/// Bakes `loaves` loaves with flour from the `in_store` sacks in the pantry.
 /// Public, so the scenario in the root `tests/` folder can call it.
-public action bake_loaves(loaves: LoafCount, held: SackCount) fails TooHeavy, FlourShort -> Grams {
+public action bake_loaves(
+    loaves: LoafCount,
+    in_store: SackCount
+) fails TooHeavy, FlourShort -> Grams {
     var flour: Grams = attempt flour_for(loaves)
-    return attempt pantry.take_flour(flour, held)
+    return attempt pantry.take_flour(flour, in_store)
 }

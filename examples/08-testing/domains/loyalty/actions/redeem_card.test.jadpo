@@ -6,8 +6,8 @@
 test "a full card is emptied when redeemed" {
     var emptied: Card = attempt redeem_card(new_card(10))
     assert emptied == Card {
-        holder: "Ada"
-        stamps: 0
+        name: "Ada"
+        stamp_count: 0
     }
 }
 
@@ -17,8 +17,8 @@ test "a card short of ten stamps can't be redeemed" {
 
 test "the stamps still to go count down to zero" {
     var nearly: Card = Card {
-        holder: "Grace"
-        stamps: 7
+        name: "Grace"
+        stamp_count: 7
     }
     assert stamps_to_go(nearly) == 3
 }

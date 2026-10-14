@@ -6,14 +6,6 @@
 // converts between them silently. A value becomes a type only by being
 // checked against that type's rules.
 //
-// This project is a bakery's pantry. Each action shows one family of
-// built-in types:
-//
-//   domains/pantry/types/grams.jadpo            a type two files share
-//   domains/pantry/actions/weigh_flour.jadpo    whole numbers, Bool, conversions
-//   domains/pantry/actions/price_flour.jadpo    exact decimals and their scale
-//   domains/pantry/actions/label_jar.jadpo      text: lengths, patterns, refinements
-//   domains/pantry/actions/check_delivery.jadpo identities, emails, links, time
-//
-// Read them in that order; each has a test file beside it.
+// The project is a bakery's pantry; each action shows one family of
+// built-in types. README.md lists the files in reading order.
 application {}

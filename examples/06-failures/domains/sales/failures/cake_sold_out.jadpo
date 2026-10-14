@@ -16,6 +16,6 @@ type CakeSoldOut = Failure {
         left: Stock
     }
     internal: {
-        wanted: CakeCount
+        asked: CakeCount
     }
 }

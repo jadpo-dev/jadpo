@@ -1,0 +1,44 @@
+# 09 · A bakery's orders
+
+A fuller project that puts the earlier examples together: pricing a
+basket from the menu, with discount codes, across two domains.
+
+## What it teaches
+
+1. **Shared types and a library.** A tagged union for menu items and a `money` library both domains use. See `shared/`.
+2. **The menu.** A public action that prices each kind of item with `match`. See `domains/menu/actions/price_item.jadpo`.
+3. **The basket.** A public `Input` whose list has a length rule and whose code may be left out. See `domains/sales/types/basket.jadpo`.
+4. **Pricing.** A loop over the lines calling another domain, a statement `match` on an optional code, a text `match` that rejects unknown codes, and a check that names its failure with fields: `invalid: DiscountTooLarge { ... }`. See `domains/sales/actions/price_basket.jadpo` and [area 4, Turning one failure into another](../../docs/language/04-failures.md#turning-one-failure-into-another).
+5. **Tests at every level.** A fixture, action tests, a test that handles a failure with `match`, and a scenario across both domains. See `domains/sales/fixtures/family_basket.jadpo`, `domains/sales/actions/price_basket.test.jadpo` and `tests/basket_to_receipt.test.jadpo`.
+
+## Run it
+
+From the repository root, build `jadpo` once, then run each command on
+this project:
+
+```sh
+cargo build --release -p jadpo-cli
+target/release/jadpo check examples/09-bakery-orders
+target/release/jadpo test examples/09-bakery-orders
+target/release/jadpo test examples/09-bakery-orders/domains/sales/actions/price_basket.test.jadpo:10
+target/release/jadpo test examples/09-bakery-orders --watch
+target/release/jadpo fmt --check examples/09-bakery-orders
+```
+
+- `check` ends with `checked: <n> files` and no errors. It also writes
+  the project's manifest to `build/` inside the project, which git
+  ignores.
+- `test` runs every test in an order a seed decides and ends with
+  `tested: <n> passed`, counting each kind of test (pure or action).
+  `<file>:<line>` runs the one test on that line; `--seed <n>` repeats an
+  order.
+- `--watch` keeps running and, on every save, reruns the tests the change
+  reaches. Stop it with ctrl-c.
+- `fmt --check` ends with `formatted: <n> files`: every file is already
+  in the one layout `jadpo fmt` writes.
+
+## Try next
+
+- In `price_item.jadpo`, change the white loaf's price from 250 to 260. Four tests fail with `test.assertion_failed`, while the scenario still passes, because it asks the menu for the price.
+- In `price_basket.jadpo`, delete the `_ -> reject CodeUnknown { ... }` arm. `jadpo check` reports `type.match_wildcard_required`, and `failure.stale_declaration` because `CodeUnknown` can no longer happen.
+- That is the last example. The [language pages](../../docs/language/README.md) hold the full specification.

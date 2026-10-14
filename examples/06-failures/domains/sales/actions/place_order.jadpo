@@ -7,14 +7,14 @@
 // can't call actions: a function is pure, while an action is an
 // operation that, in later areas, reads and writes data.
 
-/// Takes an order for `wanted` cakes, if the kitchen can bake them and
+/// Takes an order for `asked` cakes, if the kitchen can bake them and
 /// the shelf has them.
 action place_order(
     left: Stock,
-    wanted: CakeCount,
+    asked: CakeCount,
     load: HourlyLoad,
     ovens: OvensOn
 ) fails CakeSoldOut, KitchenBusy, OvenDown -> CakeCount {
     attempt check_kitchen(load, ovens)
-    return attempt reserve_cakes(left, wanted)
+    return attempt reserve_cakes(left, asked)
 }

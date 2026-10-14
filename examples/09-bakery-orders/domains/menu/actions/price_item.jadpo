@@ -1,4 +1,4 @@
-// The menu's prices. `ordering` asks for them through this public action
+// The menu's prices. `sales` asks for them through this public action
 // rather than keeping prices of its own, so a price changes in one place.
 
 /// What one of `item` costs.

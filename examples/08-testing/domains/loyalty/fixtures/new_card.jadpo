@@ -7,10 +7,10 @@
 // as it does for a customer. A failure inside a fixture fails the test
 // that called it, so a fixture has no `fails` list.
 
-/// A card for Ada with `stamps` stamps on it.
-fixture new_card(stamps: Stamps) -> Card {
+/// A card for Ada with `stamp_count` stamps on it.
+fixture new_card(stamp_count: StampCount) -> Card {
     return Card {
-        holder: "Ada"
-        stamps: stamps
+        name: "Ada"
+        stamp_count: stamp_count
     }
 }

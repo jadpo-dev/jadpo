@@ -18,7 +18,7 @@ type Order = Object {
 }
 
 /// `order`, if `caller` may still change it.
-function changeable(order: Order, caller: CustomerNumber) fails NotYourOrder, OrderLocked -> Order {
+function may_change(order: Order, caller: CustomerNumber) fails NotYourOrder, OrderLocked -> Order {
     if (order.owner != caller) {
         reject NotYourOrder
     }
@@ -32,15 +32,15 @@ function changeable(order: Order, caller: CustomerNumber) fails NotYourOrder, Or
     return order
 }
 
-/// `order` changed to `wanted` cakes for `caller`, taken from the `left`
+/// `order` changed to `asked` cakes for `caller`, taken from the `left`
 /// on the shelf. When the shelf is short, the order keeps its old count.
 action change_order(
     order: Order,
     caller: CustomerNumber,
-    wanted: CakeCount,
+    asked: CakeCount,
     left: Stock
 ) fails OrderNotFound, OrderLocked -> Order {
-    var allowed: Order = match changeable(order, caller) {
+    var allowed: Order = match may_change(order, caller) {
         success(checked) -> checked
         // Someone else's order is reported as missing, so a caller can't
         // tell an order they may not see from one that doesn't exist. The
@@ -51,7 +51,7 @@ action change_order(
         // so `OrderLocked` stays in this action's `fails` list.
         OrderLocked -> propagate
     }
-    var count: CakeCount = match reserve_cakes(left, wanted) {
+    var count: CakeCount = match reserve_cakes(left, asked) {
         success(reserved) -> reserved
         // Recovering: a handled failure leaves the `fails` list.
         CakeSoldOut -> allowed.count

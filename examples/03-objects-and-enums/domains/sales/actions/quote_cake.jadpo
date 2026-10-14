@@ -40,7 +40,7 @@ type Allergen = Text {
 }
 
 /// How strongly a customer reacts to an allergen.
-type Severity = Enum {
+type Reaction = Enum {
     mild
     severe
 }
@@ -71,7 +71,7 @@ type CakeRequest = Input {
     }
     // A `Map` holds values by key. Maps arrive from outside as JSON
     // objects, so a map in an `Input` or `Output` is keyed by text.
-    allergies: Map<Allergen, Severity> {
+    allergies: Map<Allergen, Reaction> {
         optional: true
     }
 }
