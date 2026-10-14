@@ -20,7 +20,10 @@ mod tree;
 pub mod types;
 mod usage;
 
-pub use failures::{FailureInfo, FailureTable, failure_problems, failure_table};
+pub use failures::{
+    DECLARABLE_KINDS, FailureInfo, FailureTable, MEMBERS as FAILURE_MEMBERS, failure_problems,
+    failure_table,
+};
 pub use layout::layout_problems;
 pub use naming::{domain_problems, naming_problems};
 pub use resolve::resolve_file;
