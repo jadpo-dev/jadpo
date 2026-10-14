@@ -79,7 +79,7 @@ impl DiagnosticView {
                 .map(|next| (next.text.clone(), next.decides)),
             impact: diagnostic.impact.clone(),
             rule: diagnostic.rule.id.to_string(),
-            help: diagnostic.rule.help(),
+            help: diagnostic.help(),
         }
     }
 

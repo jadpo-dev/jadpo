@@ -494,6 +494,11 @@ pub struct Diagnostic {
     pub next: Option<Next>,
     /// Printed only when it says something the rest does not.
     pub impact: Option<String>,
+    /// A page section that says more than the rule's own entry, relative
+    /// to `docs/language/`: for a rule many areas share, such as
+    /// `toolchain.not_built_yet`, the section that decides what isn't
+    /// built.
+    pub help: Option<String>,
 }
 
 impl Diagnostic {
@@ -506,7 +511,23 @@ impl Diagnostic {
             reason: None,
             next: None,
             impact: None,
+            help: None,
         }
+    }
+
+    /// The help link printed on the `help` line: the section given with
+    /// [`Diagnostic::help_at`], or the rule's entry.
+    pub fn help(&self) -> String {
+        match &self.help {
+            Some(anchor) => format!("docs/language/{anchor}"),
+            None => self.rule.help(),
+        }
+    }
+
+    /// Points the help link at `anchor` (`13-testing.html#kinds-of-test`).
+    pub fn help_at(mut self, anchor: impl Into<String>) -> Diagnostic {
+        self.help = Some(anchor.into());
+        self
     }
 
     pub fn severity(&self) -> Severity {

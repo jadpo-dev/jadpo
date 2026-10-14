@@ -127,8 +127,11 @@ pub enum Ran {
     /// Nothing ran, and this says why: no tests, nothing matched, a
     /// command-line mistake, or a kind not built yet.
     Stopped(Box<Diagnostic>),
-    /// `--failed`, and nothing failed last time.
-    NothingToRerun,
+    /// `--failed`, and nothing failed last time (`gone` is 0), or every
+    /// test that did is gone from the project now (`gone` counts them).
+    NothingToRerun {
+        gone: usize,
+    },
     Done(Box<Run>),
 }
 
@@ -317,8 +320,13 @@ pub(crate) fn choose_and_run(
     } else {
         None
     };
-    if options.failed && last.as_ref().is_some_and(|last| last.is_empty()) {
-        return Ran::NothingToRerun;
+    if let Some(last) = &last {
+        if last.is_empty() {
+            return Ran::NothingToRerun { gone: 0 };
+        }
+        if !tests.iter().any(|test| last.contains(&test.key)) {
+            return Ran::NothingToRerun { gone: last.len() };
+        }
     }
     let selection = Selection {
         path: filter.path.clone(),

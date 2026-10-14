@@ -270,7 +270,7 @@ pub fn diagnostic_json(diagnostic: &Diagnostic, sources: &dyn Sources) -> Json {
         ("reason", diagnostic.reason.as_ref().into()),
         ("next", next.into()),
         ("impact", diagnostic.impact.as_ref().into()),
-        ("help", diagnostic.rule.help().into()),
+        ("help", diagnostic.help().into()),
     ])
 }
 

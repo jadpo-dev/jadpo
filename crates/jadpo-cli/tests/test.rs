@@ -401,7 +401,7 @@ error: Route tests aren't built yet
   reason: A route test sends a request through a route (area 7), and this toolchain runs pure and action tests so far.
   next: Run `jadpo test --kind pure` or `jadpo test --kind action` (agent)
   rule: toolchain.not_built_yet
-  help: docs/language/03-logic.html#toolchain-not-built-yet
+  help: docs/language/13-testing.html#kinds-of-test
 "
     );
     let kinds = loose("kinds", &[ADDS, ACTS]);
@@ -411,9 +411,83 @@ error: Route tests aren't built yet
     );
     let output = jadpo(&root, &["test", ".", "--kind", "action"]);
     assert!(
-        output.stdout.starts_with("error: No action tests to run\n"),
+        output
+            .stdout
+            .starts_with("error: No action tests to run\n  reason: Of the 1 test asked for, none is an action test:"),
         "{}",
         output.stdout
+    );
+}
+
+#[test]
+fn decided_flags_that_are_not_built_say_so() {
+    let root = loose("planned", &[ADDS]);
+    let interactive = jadpo(&root, &["test", "--interactive"]);
+    assert_eq!(interactive.code, 1);
+    assert_eq!(
+        interactive.stderr,
+        "\
+error: Interactive tests aren't built yet
+  reason: `--interactive` opens a keyboard view of every test (area 13), which comes with the rest of area 14's tooling.
+  next: Leave out `--interactive`; `jadpo test --help` lists what is built (agent)
+  rule: toolchain.not_built_yet
+  help: docs/language/13-testing.html#running-tests
+"
+    );
+    let kept = jadpo(&root, &["test", ".", "--keep-failed"]);
+    assert_eq!(kept.code, 1);
+    assert!(
+        kept.stderr
+            .starts_with("error: Kept test databases aren't built yet\n"),
+        "{}",
+        kept.stderr
+    );
+    assert!(
+        kept.stderr
+            .ends_with("  help: docs/language/13-testing.html#the-test-database\n"),
+        "{}",
+        kept.stderr
+    );
+    let help = jadpo(&root, &["test", "--help"]);
+    assert!(!help.stdout.contains("--interactive"), "{}", help.stdout);
+}
+
+#[test]
+fn failed_when_the_failed_tests_are_gone_has_nothing_to_rerun() {
+    let root = project(
+        "failed-gone",
+        "test \"tallies one\" {\n    assert tally(1) == 1\n}\n\ntest \"tallies two\" {\n    assert tally(2) == 3\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["test", "--seed", "1"]).code, 1);
+    write(
+        &root,
+        TALLY_TEST,
+        "test \"tallies one\" {\n    assert tally(1) == 1\n}\n",
+    );
+    let gone = jadpo(&root, &["test", "--failed"]);
+    assert_eq!(
+        gone.stdout,
+        "nothing to rerun: the test that failed last time is gone\n"
+    );
+    assert_eq!(gone.code, 0);
+    let document = json(&jadpo(&root, &["test", "--failed", "--json"]));
+    assert_eq!(document["ok"], true);
+    assert_eq!(document["data"]["gone"], 1);
+    // Left out by a filter is still a mistake in what was asked for.
+    write(
+        &root,
+        TALLY_TEST,
+        "test \"tallies one\" {\n    assert tally(1) == 1\n}\n\ntest \"tallies two\" {\n    assert tally(2) == 3\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["test", "--seed", "1"]).code, 1);
+    let filtered = jadpo(&root, &["test", "--failed", "--name", "one"]);
+    assert_eq!(filtered.code, 1);
+    assert!(
+        filtered.stdout.contains(
+            "  reason: The 1 test that failed last time is left out by the name given.\n"
+        ),
+        "{}",
+        filtered.stdout
     );
 }
 
@@ -691,12 +765,32 @@ error: `pur` isn't a kind of test
     assert_eq!(
         name.stderr,
         "\
-error: `--name` needs a text
-  reason: `--name` takes a text.
+error: `--name` needs some text
+  reason: `--name` takes some text.
   next: Give it after the flag: `jadpo test --name <text>` (agent)
   rule: cli.test_arguments
   help: docs/language/14-tooling.html#command-errors
 "
+    );
+    let twice = jadpo(&root, &["test", ".", "--seed", "1", "--seed", "2"]);
+    assert_eq!(twice.code, 2);
+    assert_eq!(
+        twice.stderr,
+        "\
+error: `--seed` is given more than once
+  reason: `--seed` takes one value, and this command line gives it `1` and then `2`.
+  next: Keep one `--seed` (agent)
+  rule: cli.test_arguments
+  help: docs/language/14-tooling.html#command-errors
+"
+    );
+    let no_seed = jadpo(&root, &["test", ".", "--seed"]);
+    assert!(
+        no_seed
+            .stderr
+            .starts_with("error: `--seed` needs a number\n"),
+        "{}",
+        no_seed.stderr
     );
     let missing = jadpo(&root, &["test", "elsewhere.test.jadpo"]);
     assert_eq!(missing.code, 2);
@@ -733,6 +827,8 @@ fn help_lists_the_flags_with_examples() {
         "  --failed      Rerun the tests that failed last time\n",
         "  --seed        Run in the order this seed gives\n",
         "    jadpo test --failed\n",
+        // The same column as `jadpo --help` puts it in.
+        "  --color       Choose when to use colour     auto, always, never\n",
     ] {
         assert!(output.stdout.contains(line), "{line}\n{}", output.stdout);
     }

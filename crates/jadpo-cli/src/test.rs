@@ -107,14 +107,19 @@ pub(crate) fn view(ran: Ran) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String,
             vec![*diagnostic],
             BTreeMap::new(),
         ),
-        Ran::NothingToRerun => (
+        Ran::NothingToRerun { gone } => (
             Screen::new().with(Block::summary(
                 Outcome::Success,
                 "nothing to rerun",
-                [Fact::plain("no test failed last time")],
+                [Fact::plain(match gone {
+                    0 => "no test failed last time".to_string(),
+                    1 => "the test that failed last time is gone".to_string(),
+                    n => format!("the {n} tests that failed last time are gone"),
+                })],
             )),
             Json::object([
                 ("selection", Json::object([("failed", true.into())])),
+                ("gone", gone.into()),
                 ("tests", Json::Array(Vec::new())),
             ]),
             Vec::new(),

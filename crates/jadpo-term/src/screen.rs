@@ -482,8 +482,16 @@ impl Grid {
             .unwrap_or(0)
             .max(MIN_NAME_WIDTH)
             + 2;
+        // Only rows whose third column can fit beside their own
+        // description set its position, so one long description doesn't
+        // push the column away from where other screens put it.
         let with_extra = rows()
-            .filter(|row| !row.extra.is_empty())
+            .filter(|row| {
+                let extra = width(&row.extra.join(separator(style)));
+                !row.extra.is_empty()
+                    && 2 + name + width(&row.description).max(MIN_DESCRIPTION_WIDTH) + 2 + extra
+                        <= style.width
+            })
             .map(|row| width(&row.description))
             .max();
         let description = match with_extra {
@@ -771,7 +779,9 @@ fn list_row(row: &Row, grid: &Grid, style: &Style) -> Line {
     let extra = row.extra.join(separator(style));
     match grid.description {
         Some(column)
-            if !row.extra.is_empty() && width(&name) + column + width(&extra) <= style.width =>
+            if !row.extra.is_empty()
+                && width(&row.description) + 2 <= column
+                && width(&name) + column + width(&extra) <= style.width =>
         {
             let description = format!("{:<column$}", row.description);
             vec![raw(name), raw(description), paint(Token::Muted, extra)]
