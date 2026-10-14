@@ -295,7 +295,7 @@ fn lists_are_built_counted_searched_and_looped_over() {
 fn a_share_is_divided_with_a_named_rounding() {
     // Question 8.
     let program = main(
-        "type Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\ntype ShareBelowZero = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction share(total: Price, people: People) fails ShareBelowZero -> Price {\n    var share: Price = attempt Price(decimal.divide(total, people, rounding: Rounding.half_even)) invalid: ShareBelowZero\n    return share\n}\n",
+        "type Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\nfunction share(total: Price, people: People) -> Price {\n    var share: Price = Price(decimal.divide(total, people, rounding: Rounding.half_even))  // from zero up to the total\n    return share\n}\n",
     );
     assert_eq!(
         value(&program, "share", vec![decimal("10.00"), int(3)]).to_string(),
