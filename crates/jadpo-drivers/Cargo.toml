@@ -1,0 +1,29 @@
+[package]
+name = "jadpo-drivers"
+description = "The runtime's capability drivers over a transport the host supplies: PostgreSQL first"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# A runtime crate (docs/compiler-runtime.md §2.1 and §2.6): it builds for
+# wasm32-unknown-unknown, with and without its drivers, and depends only on
+# runtime crates. Each driver is a cargo feature, so a deployable links only
+# the drivers it reaches.
+[features]
+default = []
+postgres = ["dep:tokio-postgres", "dep:bytes"]
+
+[dependencies]
+jadpo-runtime.workspace = true
+tokio.workspace = true
+tokio-postgres = { workspace = true, optional = true }
+bytes = { workspace = true, optional = true }
+
+# In a browser or a Workers isolate, randomness (for SCRAM's nonce) comes
+# from JavaScript.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio-postgres = { workspace = true, optional = true, features = ["js"] }
+
+[lints]
+workspace = true
