@@ -102,6 +102,24 @@ impl Postgres {
         Err(last)
     }
 
+    /// Runs statements without parameters outside any transaction, on a
+    /// connection of their own: for what PostgreSQL refuses inside one,
+    /// such as `CREATE DATABASE`. Tools and the test harness use it;
+    /// actions never do, since everything they run is in their
+    /// transaction.
+    pub fn batch_outside_transaction<'a>(
+        &'a self,
+        sql: &'a str,
+    ) -> LocalFuture<'a, Result<(), StoreError>> {
+        Box::pin(async move {
+            let client = self.connect().await?;
+            client
+                .batch_execute(sql)
+                .await
+                .map_err(|error| store_error(&error))
+        })
+    }
+
     fn open(&self, client: Client) -> Box<dyn Transaction> {
         Box::new(PgTransaction {
             client,
