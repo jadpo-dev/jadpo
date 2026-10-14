@@ -1098,31 +1098,32 @@ fn a_save_shows_the_tests_it_reaches_within_the_target() {
     out.wait_for(0, "tested: 312 passed", Duration::from_secs(60));
     err.wait_for(0, "watching: 230 files", Duration::from_secs(5));
     // Each save: the file, what to change, and the footer its reruns end
-    // in, which counts exactly the tests that reach it.
+    // in, which counts exactly the tests that reach it (a slow machine adds
+    // the run's duration after it).
     let saves = [
         (
             LIBRARY,
             "(a + b)",
             "(b + a)",
-            "tested: 26 passed, 26 of 312 tests\n",
+            "tested: 26 passed, 26 of 312 tests",
         ),
         (
             ACTION,
             "(x, 1)",
             "(1, x)",
-            "tested: 2 passed, 2 of 312 tests\n",
+            "tested: 2 passed, 2 of 312 tests",
         ),
         (
             "domains/river/libraries/river_maths.test.jadpo",
             "river_step_9(1, 2) == 12",
             "river_step_9(2, 1) == 12",
-            "tested: 1 passed, 1 of 312 tests\n",
+            "tested: 1 passed, 1 of 312 tests",
         ),
         (
             LIBRARY,
             "(b + a)",
             "(a + b)",
-            "tested: 26 passed, 26 of 312 tests\n",
+            "tested: 26 passed, 26 of 312 tests",
         ),
     ];
     let mut times = Vec::new();
