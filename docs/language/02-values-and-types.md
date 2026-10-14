@@ -2901,7 +2901,7 @@ to when that page is written.
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
+Decided by Richard from 2026-10-12, each on the date shown. Status, above, says what is built.
 
 | Topic | Decision | Date |
 |---|---|---|

@@ -5,7 +5,7 @@
 **Status:** a record of where the golden todo pressed on the language, not
 permission to weaken the application. The dispositions below describe the
 archived compiler; the decided language answers these gaps on the
-[language pages](../../docs/language/README.md), and roadmap Phase 10 writes
+[language pages](../language/README.md), and roadmap Phase 10 writes
 the application in it.
 
 The v0 compiler could not check the original `app.jadpo` or `policy.jadpo`

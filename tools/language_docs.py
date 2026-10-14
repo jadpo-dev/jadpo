@@ -745,9 +745,9 @@ class Renderer:
                 part = part.replace(f'<h{level} ', f'<h{level - 1} ').replace(f'</h{level}>', f'</h{level - 1}>')
             out.append(part)
         today = Renderer(self.page)
-        out.append('<details class="collapsed" id="today"><summary>How the archived compiler worked (tag archive/compiler-v0)</summary>'
+        out.append('<details class="collapsed" id="today"><summary>Reference: the full page, with every example and error</summary>'
                    + today.render(first_h2, review) + '</details>')
-        self.toc.append(('today', 'Archived compiler (collapsed)', ''))
+        self.toc.append(('today', 'Full reference (collapsed)', ''))
         review_notes = Renderer(self.page)
         review_notes.review_mode = True
         body = ''.join(review_notes.render(a, b) for a, b, _ in notes)

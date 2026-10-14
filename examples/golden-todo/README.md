@@ -21,9 +21,7 @@ unexecuted. The other documents are subordinate evidence:
 3. [`typescript-baseline.md`](typescript-baseline.md) fixes the equivalent
    TypeScript stack that Phase 9's benchmarks and chunk 10.2's agent
    comparison measure against.
-4. [`language-friction.md`](language-friction.md) is a snapshot of what the
-   archived compiler could not yet express when the contract was frozen.
-5. [`REVIEW.md`](REVIEW.md) records the contract's review history and the
+4. [`REVIEW.md`](REVIEW.md) records the contract's review history and the
    pending independent-review checklist.
 
 If the source and the acceptance behaviour disagree, the contradiction blocks
