@@ -27,6 +27,7 @@ pub fn json(run: &Run) -> Json {
             "seed",
             Json::Int(i64::try_from(run.seed).unwrap_or(i64::MAX)),
         ),
+        ("root", Json::from(run.root.as_deref().unwrap_or("."))),
         ("selection", selection(&run.selection)),
         (
             "counts",
@@ -98,14 +99,7 @@ fn test(order: usize, result: &TestResult) -> Json {
             Json::object([
                 ("code", failure.rule.id.into()),
                 ("help", failure.rule.help().into()),
-                (
-                    "location",
-                    Json::object([
-                        ("path", Json::from(&failure.file)),
-                        ("line", failure.line.into()),
-                        ("column", failure.column.into()),
-                    ]),
-                ),
+                ("location", location(&failure.location)),
                 ("assertion", assertion),
                 ("failure", raised),
                 ("fault", fault),
@@ -124,14 +118,23 @@ fn pairs(fields: &[(String, String)]) -> Json {
     )
 }
 
+/// The location object every `--json` document shares, diagnostics'
+/// included.
+fn location(located: &Located) -> Json {
+    Json::object([
+        ("path", Json::from(&located.path)),
+        ("start", located.start.into()),
+        ("end", located.end.into()),
+        ("line", located.line.into()),
+        ("column", located.column.into()),
+        ("endLine", located.end_line.into()),
+        ("endColumn", located.end_column.into()),
+        ("label", Json::from(&located.label)),
+    ])
+}
+
 fn located(located: &Option<Located>) -> Json {
-    located.as_ref().map_or(Json::Null, |located| {
-        Json::object([
-            ("path", Json::from(&located.path)),
-            ("line", located.line.into()),
-            ("column", located.column.into()),
-        ])
-    })
+    located.as_ref().map_or(Json::Null, location)
 }
 
 fn assertion_json(assertion: &AssertionFailure) -> Json {
@@ -199,10 +202,11 @@ fn fault_json(info: &FaultInfo) -> Json {
         ("next", info.next.as_ref().into()),
         (
             "stack",
-            Json::array(info.stack.iter().map(|(place, label)| {
+            Json::array(info.stack.iter().map(|frame| {
                 Json::object([
-                    ("place", Json::from(place)),
-                    ("callable", Json::from(label)),
+                    ("location", location(&frame.location)),
+                    ("callable", Json::from(&frame.callable)),
+                    ("repeats", frame.repeats.into()),
                 ])
             })),
         ),

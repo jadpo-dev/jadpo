@@ -19,6 +19,34 @@ pub fn find_root(start: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
+/// The folder every printed path is relative to (`root`), as the reader
+/// reaches it from `cwd`, the folder the command ran in: `None` when `cwd`
+/// is inside it, since a project's own paths work from anywhere in it;
+/// otherwise the way the command line spelt it (`examples/08-testing`,
+/// `../shop`, or an absolute path), so `<root>/<path>` opens the file and
+/// a rerun command runs from `cwd`.
+pub fn shown_root(cwd: &Path, root: &Path) -> Option<String> {
+    let real = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if real(cwd).starts_with(real(root)) {
+        return None;
+    }
+    let relative = root.strip_prefix(cwd).unwrap_or(root);
+    let mut lead = String::new();
+    let mut parts: Vec<String> = Vec::new();
+    for part in relative.components() {
+        match part {
+            std::path::Component::Prefix(prefix) => {
+                lead.push_str(&prefix.as_os_str().to_string_lossy());
+            }
+            std::path::Component::RootDir => lead.push('/'),
+            std::path::Component::CurDir => {}
+            other => parts.push(other.as_os_str().to_string_lossy().into_owned()),
+        }
+    }
+    let shown = format!("{lead}{}", parts.join("/"));
+    (!shown.is_empty()).then_some(shown)
+}
+
 /// A source file that could not be read.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Unreadable {

@@ -241,7 +241,7 @@ impl Watch {
 
     /// The count reached, what ran, and whether the build checked.
     fn check_and_run(&mut self, started: Instant) -> (Option<usize>, Option<Ran>, bool) {
-        let checked = match crate::prepare(&self.loaded) {
+        let checked = match crate::prepare(&self.loaded, &self.options.cwd) {
             Ok(checked) => checked,
             Err(ran) => return (None, Some(ran), false),
         };

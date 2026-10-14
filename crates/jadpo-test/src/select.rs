@@ -18,9 +18,6 @@ pub(crate) struct Target {
     /// The file or folder named, absolute.
     pub path: Option<PathBuf>,
     pub line: Option<u32>,
-    /// For loose files, the folder as it was written, so a rerun command
-    /// works from where the run started.
-    pub prefix: Option<String>,
 }
 
 /// The path filter, relative to the root.
@@ -81,7 +78,6 @@ pub(crate) fn resolve(options: &Options) -> Result<Target, Ran> {
                 folder: root,
                 path: None,
                 line: None,
-                prefix: None,
             }),
             None => Err(Ran::NoProject),
         };
@@ -120,26 +116,10 @@ pub(crate) fn resolve(options: &Options) -> Result<Target, Ran> {
         path.parent()
             .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
     };
-    let prefix = match jadpo_db::find_root(&folder) {
-        Some(_) => None,
-        None => {
-            let shown = if path.is_dir() {
-                Path::new(&as_written).to_path_buf()
-            } else {
-                Path::new(&as_written)
-                    .parent()
-                    .map(Path::to_path_buf)
-                    .unwrap_or_default()
-            };
-            let shown = shown.to_string_lossy().replace('\\', "/");
-            (!shown.is_empty() && shown != ".").then_some(shown)
-        }
-    };
     Ok(Target {
         folder,
         path: Some(path),
         line,
-        prefix,
     })
 }
 

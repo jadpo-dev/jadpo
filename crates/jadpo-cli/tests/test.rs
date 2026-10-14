@@ -307,6 +307,17 @@ FAIL  a large order is priced
 test failed: 1 failed, 1 pure test
 "
     );
+    let document = json(&jadpo(&root, &["test", ".", "--json", "--seed", "1"]));
+    let fault = &document["data"]["tests"][0]["failure"]["fault"];
+    assert_eq!(fault["at"]["path"], "sizes.jadpo");
+    assert_eq!(fault["at"]["line"], 43);
+    assert_eq!(fault["at"]["column"], 18);
+    assert_eq!(fault["at"]["endColumn"], 34);
+    assert_eq!(fault["at"]["label"], "out of range");
+    assert_eq!(fault["stack"][0]["location"]["path"], "sizes.jadpo");
+    assert_eq!(fault["stack"][0]["location"]["line"], 43);
+    assert_eq!(fault["stack"][0]["callable"], "function line_total");
+    assert_eq!(fault["stack"][0]["repeats"], 1);
     let rich = strip_ansi(&jadpo_in(terminal(), &root, &["test", ".", "--seed", "1"]).stdout);
     assert!(
         rich.contains(
@@ -314,6 +325,82 @@ test failed: 1 failed, 1 pure test
         ),
         "{rich}"
     );
+}
+
+#[test]
+fn paths_are_never_cut_and_long_paths_wrap() {
+    let root = folder("narrow");
+    write(&root, "app.jadpo", APP);
+    write(&root, COUNT, "type Count = Int {\n    min: 0\n}\n");
+    write(
+        &root,
+        "domains/stock/failures/too_many.jadpo",
+        "type TooMany = Failure {\n    kind: FailureKind.rejected\n}\n",
+    );
+    write(
+        &root,
+        "domains/stock/actions/reserve_every_cake_on_the_shelf.jadpo",
+        "function check_the_shelf_has_plenty_left(n: Count) fails TooMany -> Count {\n    if (n > 20) {\n        reject TooMany\n    }\n    return n\n}\n\naction reserve_every_cake_on_the_shelf(n: Count) fails TooMany -> Count {\n    return attempt check_the_shelf_has_plenty_left(n)\n}\n",
+    );
+    write(
+        &root,
+        "domains/stock/actions/reserve_every_cake_on_the_shelf.test.jadpo",
+        "test \"reserving more cakes than the shelf holds\" {\n    var n: Count = attempt reserve_every_cake_on_the_shelf(30)\n    assert n == 30\n}\n",
+    );
+    let narrow = strip_ansi(
+        &jadpo_in(
+            terminal().with_var("COLUMNS", "50"),
+            &root,
+            &["test", "--seed", "1"],
+        )
+        .stdout,
+    );
+    assert!(
+        narrow
+            .contains("  at\n  domains/stock/actions/reserve_every_cake_on_the_shelf.jadpo:3:9\n"),
+        "{narrow}"
+    );
+    assert!(!narrow.contains('…'), "{narrow}");
+    let wide = strip_ansi(&jadpo_in(terminal(), &root, &["test", "--seed", "1"]).stdout);
+    assert!(
+        wide.contains(
+            "  path      test \"reserving more cakes than the shelf holds\"\n            → action reserve_every_cake_on_the_shelf\n            → function check_the_shelf_has_plenty_left\n"
+        ),
+        "{wide}"
+    );
+    // Only a whole command, on its own line, may pass 80 columns.
+    assert!(
+        wide.lines()
+            .all(|line| line.chars().count() <= 80 || line.starts_with("  jadpo test ")),
+        "{wide}"
+    );
+}
+
+#[test]
+fn a_repeated_frame_counts_its_repeats_as_data() {
+    let root = folder("repeats");
+    write(
+        &root,
+        "count.jadpo",
+        "type Count = Int {\n    min: 0\n}\n\nfunction countdown(n: Count) -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = Count(n - 1)\n    return countdown(next)\n}\n",
+    );
+    write(
+        &root,
+        "count.test.jadpo",
+        "test \"counts down\" {\n    assert countdown(5000) == 0\n}\n",
+    );
+    let output = jadpo(&root, &["test", ".", "--seed", "1"]);
+    assert!(
+        output
+            .stdout
+            .contains("  stack: count.jadpo:10      function countdown (999 times)\n"),
+        "{}",
+        output.stdout
+    );
+    let document = json(&jadpo(&root, &["test", ".", "--json", "--seed", "1"]));
+    let frame = &document["data"]["tests"][0]["failure"]["fault"]["stack"][0];
+    assert_eq!(frame["callable"], "function countdown");
+    assert_eq!(frame["repeats"], 999);
 }
 
 #[test]
@@ -386,6 +473,8 @@ fn a_project_with_errors_is_refused_with_them() {
     let document = json(&jadpo(&root, &["test", ".", "--json"]));
     assert_eq!(document["ok"], false);
     assert_eq!(document["data"]["ran"], false);
+    assert_eq!(document["data"]["fileCount"], 2);
+    assert!(document["data"].get("files").is_none());
     assert_eq!(document["diagnostics"][0]["rule"], "type.unknown_value");
 }
 
@@ -498,7 +587,7 @@ fn json_is_one_versioned_document_with_every_failure_as_data() {
     assert_eq!(output.code, 1);
     assert_eq!(output.stderr, "");
     let document = json(&output);
-    assert_eq!(document["schemaVersion"], 1);
+    assert_eq!(document["schemaVersion"], 2);
     assert_eq!(document["command"], "test");
     assert_eq!(document["ok"], false);
     assert_eq!(document["diagnostics"][0]["rule"], "test.failed");
@@ -515,7 +604,29 @@ fn json_is_one_versioned_document_with_every_failure_as_data() {
         .expect("the record test");
     let failure = &record["failure"];
     assert_eq!(failure["code"], "test.assertion_failed");
+    // One location shape everywhere, as diagnostics have it.
+    let mut keys: Vec<&str> = failure["location"]
+        .as_object()
+        .expect("a location")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        [
+            "column",
+            "end",
+            "endColumn",
+            "endLine",
+            "label",
+            "line",
+            "path",
+            "start"
+        ]
+    );
     assert_eq!(failure["location"]["line"], 10);
+    assert_eq!(failure["location"]["endLine"], 13);
     assert_eq!(failure["rerun"], "jadpo test sizes.test.jadpo:10 --seed 7");
     let assertion = &failure["assertion"];
     assert_eq!(assertion["operator"], "==");
@@ -638,6 +749,116 @@ error: `sizes.jadpo` has no tests
         )),
         "{}",
         from_parent.stdout
+    );
+    assert!(
+        from_parent
+            .stdout
+            .contains(&format!(" --> {name}/sizes.test.jadpo:6\n")),
+        "{}",
+        from_parent.stdout
+    );
+}
+
+#[test]
+fn paths_and_rerun_commands_work_from_where_the_command_ran() {
+    let root = project(
+        "from-parent",
+        "test \"tallies one\" {\n    assert tally(1) == 1\n}\n\ntest \"tallies two\" {\n    assert tally(2) == 3\n}\n",
+    );
+    write(
+        &root,
+        "domains/stock/actions/overflow.jadpo",
+        "action overflow(count: Count) -> Count {\n    return Count(count * 9223372036854775807)\n}\n",
+    );
+    write(
+        &root,
+        "domains/stock/actions/overflow.test.jadpo",
+        "test \"overflows\" {\n    assert overflow(2) == 1\n}\n",
+    );
+    let parent = root.parent().expect("parent");
+    let name = root.file_name().and_then(|n| n.to_str()).expect("name");
+    let output = jadpo(parent, &["test", name, "--seed", "1"]);
+    assert_eq!(output.code, 1);
+    for line in [
+        format!(" --> {name}/domains/stock/actions/tally.test.jadpo:6\n"),
+        format!("rerun: jadpo test {name}/domains/stock/actions/tally.test.jadpo:6 --seed 1\n"),
+        format!("  at: {name}/domains/stock/actions/overflow.jadpo:2:18\n"),
+        format!("  stack: {name}/domains/stock/actions/overflow.jadpo:2"),
+    ] {
+        assert!(output.stdout.contains(&line), "{line}\n{}", output.stdout);
+    }
+    // The rerun command runs as printed, from the same folder.
+    let rerun = jadpo(
+        parent,
+        &[
+            "test",
+            &format!("{name}/domains/stock/actions/tally.test.jadpo:6"),
+            "--seed",
+            "1",
+        ],
+    );
+    assert_eq!(rerun.code, 1);
+    assert!(
+        rerun.stdout.starts_with("FAIL  tallies two\n"),
+        "{}",
+        rerun.stdout
+    );
+    // `--json` keeps paths relative to the project and says where it is.
+    let document = json(&jadpo(parent, &["test", name, "--json", "--seed", "1"]));
+    assert_eq!(document["data"]["root"], name);
+    let tally = document["data"]["tests"]
+        .as_array()
+        .expect("tests")
+        .iter()
+        .find(|test| test["name"] == "tallies two")
+        .expect("the failed test")
+        .clone();
+    assert_eq!(
+        tally["failure"]["location"]["path"],
+        "domains/stock/actions/tally.test.jadpo"
+    );
+    assert_eq!(
+        tally["failure"]["rerun"],
+        format!("jadpo test {name}/domains/stock/actions/tally.test.jadpo:6 --seed 1")
+    );
+    // From inside the project, paths stay the project's own.
+    let inside = jadpo(&root, &["test", "--seed", "1"]);
+    assert!(
+        inside
+            .stdout
+            .contains("rerun: jadpo test domains/stock/actions/tally.test.jadpo:6 --seed 1\n"),
+        "{}",
+        inside.stdout
+    );
+    assert_eq!(
+        json(&jadpo(&root, &["test", "--json", "--seed", "1"]))["data"]["root"],
+        "."
+    );
+    // A refused run's errors point at files from here too.
+    write(
+        &root,
+        TALLY,
+        "action tally(count: Count) -> Count {\n    return cont\n}\n",
+    );
+    let refused = jadpo(parent, &["test", name]);
+    assert!(
+        refused.stdout.contains(&format!(
+            " --> {name}/domains/stock/actions/tally.jadpo:2:12\n"
+        )),
+        "{}",
+        refused.stdout
+    );
+    let checked = jadpo(parent, &["check", name]);
+    assert!(
+        checked.stdout.contains(&format!(
+            " --> {name}/domains/stock/actions/tally.jadpo:2:12\n"
+        )),
+        "{}",
+        checked.stdout
+    );
+    assert_eq!(
+        json(&jadpo(parent, &["check", name, "--json"]))["data"]["root"],
+        name
     );
 }
 

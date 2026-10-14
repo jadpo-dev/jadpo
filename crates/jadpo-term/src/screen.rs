@@ -428,6 +428,18 @@ impl Block {
         Block::Diagnostic(Box::new(DiagnosticView::new(diagnostic, sources)))
     }
 
+    /// A diagnostic whose location is shown under `root`, the project as
+    /// the command line spelt it, when the command ran outside it.
+    pub fn diagnostic_from(
+        diagnostic: &Diagnostic,
+        sources: &dyn Sources,
+        root: Option<&str>,
+    ) -> Block {
+        Block::Diagnostic(Box::new(DiagnosticView::from_root(
+            diagnostic, sources, root,
+        )))
+    }
+
     pub fn summary(
         outcome: Outcome,
         headline: impl Into<String>,

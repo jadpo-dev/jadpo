@@ -6,7 +6,7 @@ use jadpo_diag::{Decider, Diagnostic, Label, Severity};
 use crate::detect::{Mode, Style};
 use crate::palette::{Symbol, Token};
 use crate::screen::{Line, decider, field, headline, paint, raw, strong, visible, width};
-use crate::sources::{Position, Sources, line_text};
+use crate::sources::{Position, Sources, line_text, shown_path};
 
 /// One mark under a source line.
 #[derive(Clone, Debug)]
@@ -41,6 +41,16 @@ pub struct DiagnosticView {
 
 impl DiagnosticView {
     pub fn new(diagnostic: &Diagnostic, sources: &dyn Sources) -> DiagnosticView {
+        DiagnosticView::from_root(diagnostic, sources, None)
+    }
+
+    /// [`DiagnosticView::new`], its location under `root`, the project as
+    /// the command line spelt it (`shown_path`).
+    pub fn from_root(
+        diagnostic: &Diagnostic,
+        sources: &dyn Sources,
+        root: Option<&str>,
+    ) -> DiagnosticView {
         let mut location = None;
         let mut frame: Vec<FrameLine> = Vec::new();
         if let Some(primary) = &diagnostic.primary {
@@ -51,7 +61,12 @@ impl DiagnosticView {
             match sources.source(path).filter(|_| !whole_file) {
                 Some(text) => {
                     let start = Position::of(text, primary.span.start);
-                    location = Some(format!("{path}:{}:{}", start.line, start.column));
+                    location = Some(format!(
+                        "{}:{}:{}",
+                        shown_path(root, path),
+                        start.line,
+                        start.column
+                    ));
                     let labels = std::iter::once((primary, true)).chain(
                         diagnostic
                             .secondary
@@ -64,7 +79,7 @@ impl DiagnosticView {
                     }
                     frame.sort_by_key(|line| line.number);
                 }
-                None => location = Some(path.clone()),
+                None => location = Some(shown_path(root, path)),
             }
         }
         DiagnosticView {

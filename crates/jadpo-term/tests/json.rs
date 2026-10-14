@@ -57,7 +57,7 @@ fn an_envelope_carries_schema_version_command_ok_data_and_diagnostics() {
     );
     assert!(
         document.starts_with(
-            "{\n  \"schemaVersion\": 1,\n  \"command\": \"version\",\n  \"ok\": true,"
+            "{\n  \"schemaVersion\": 2,\n  \"command\": \"version\",\n  \"ok\": true,"
         ),
         "{document}"
     );

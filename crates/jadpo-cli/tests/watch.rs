@@ -932,7 +932,7 @@ fn json_streams_one_envelope_per_line_and_nothing_on_stderr() {
         })
         .collect();
     for document in &documents {
-        assert_eq!(document["schemaVersion"], 1);
+        assert_eq!(document["schemaVersion"], 2);
         assert_eq!(document["command"], "test");
     }
     let start = &documents[0];

@@ -100,7 +100,8 @@ pub(crate) fn view(ran: Ran) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String,
             diagnostics,
             sources,
             files,
-        } => refused(diagnostics, sources, files),
+            root,
+        } => refused(diagnostics, sources, files, root),
         Ran::Stopped(diagnostic) => (
             Screen::new().with(Block::diagnostic(&diagnostic, &())),
             Json::Null,
@@ -179,6 +180,7 @@ fn refused(
     diagnostics: Vec<Diagnostic>,
     sources: BTreeMap<String, String>,
     files: usize,
+    root: Option<String>,
 ) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String, String>) {
     let errors = diagnostics
         .iter()
@@ -187,7 +189,11 @@ fn refused(
     let warnings = diagnostics.len() - errors;
     let mut screen = Screen::new();
     for diagnostic in &diagnostics {
-        screen.push(Block::diagnostic(diagnostic, &sources));
+        screen.push(Block::diagnostic_from(
+            diagnostic,
+            &sources,
+            root.as_deref(),
+        ));
     }
     let mut facts = vec![Fact::problem(count(errors, "error", "errors"))];
     if warnings > 0 {
@@ -197,7 +203,8 @@ fn refused(
     screen.push(Block::summary(Outcome::Failure, "tests not run", facts));
     let data = Json::object([
         ("ran", false.into()),
-        ("files", files.into()),
+        ("root", Json::from(root.as_deref().unwrap_or("."))),
+        ("fileCount", files.into()),
         ("errors", errors.into()),
         ("warnings", warnings.into()),
     ]);

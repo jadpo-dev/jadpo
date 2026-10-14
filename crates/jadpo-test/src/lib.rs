@@ -35,7 +35,7 @@ use jadpo_interp::Program;
 pub use json::json;
 pub use outcome::{
     AssertionFailure, Change, ChangeMark, Detail, FailureInfo, FaultInfo, Located, ShownLine,
-    ShownPart, TestFailure,
+    ShownPart, StackFrame, TestFailure,
 };
 pub use record::RECORD;
 pub use screen::screen;
@@ -123,6 +123,8 @@ pub enum Ran {
         diagnostics: Vec<Diagnostic>,
         sources: BTreeMap<String, String>,
         files: usize,
+        /// Where the project is from the folder the command ran in.
+        root: Option<String>,
     },
     /// Nothing ran, and this says why: no tests, nothing matched, a
     /// command-line mistake, or a kind not built yet.
@@ -139,6 +141,10 @@ pub enum Ran {
 #[derive(Debug)]
 pub struct Run {
     pub seed: u64,
+    /// The folder the run's paths are relative to, as the command line
+    /// spelt it when the command ran outside it (`jadpo_db::shown_root`);
+    /// `None` from inside, where the project's own paths work.
+    pub root: Option<String>,
     /// What was asked for, for `--json`.
     pub selection: Selection,
     /// Every test in the project, by kind.
@@ -213,7 +219,7 @@ pub fn run(options: Options) -> Ran {
 /// Loads, checks, selects and runs, on the interpreter's thread.
 fn execute(target: select::Target, options: Options, started: Instant) -> Ran {
     let loaded = jadpo_db::load(&target.folder);
-    let checked = match prepare(&loaded) {
+    let checked = match prepare(&loaded, &options.cwd) {
         Ok(checked) => checked,
         Err(ran) => return ran,
     };
@@ -242,8 +248,9 @@ pub(crate) fn sources(loaded: &jadpo_db::Loaded) -> BTreeMap<String, String> {
 
 /// Checks what `loaded` holds and loads its program, or refuses with its
 /// errors.
-pub(crate) fn prepare(loaded: &jadpo_db::Loaded) -> Result<Checked, Ran> {
+pub(crate) fn prepare(loaded: &jadpo_db::Loaded, cwd: &std::path::Path) -> Result<Checked, Ran> {
     let db = &loaded.db;
+    let root = jadpo_db::shown_root(cwd, &loaded.root);
     let file_count = loaded.project.files(db).len() + loaded.unreadable.len();
     if !loaded.unreadable.is_empty() {
         let diagnostics = loaded
@@ -263,6 +270,7 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded) -> Result<Checked, Ran> {
             diagnostics,
             sources: sources(loaded),
             files: file_count,
+            root: root.clone(),
         });
     }
     let diagnostics = jadpo_check::check(db, loaded.project);
@@ -274,6 +282,7 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded) -> Result<Checked, Ran> {
             diagnostics,
             sources: sources(loaded),
             files: file_count,
+            root: root.clone(),
         });
     }
     let program = match Program::load(db, loaded.project) {
@@ -283,6 +292,7 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded) -> Result<Checked, Ran> {
                 diagnostics,
                 sources: sources(loaded),
                 files: file_count,
+                root,
             });
         }
     };
@@ -344,8 +354,9 @@ pub(crate) fn choose_and_run(
     }
     let seed = options.seed.unwrap_or_else(select::new_seed);
     let ordered = select::shuffle(chosen, seed);
+    let root = jadpo_db::shown_root(&options.cwd, &loaded.root);
     let rerun = Rerun {
-        prefix: target.prefix.clone(),
+        root: root.clone(),
         seed,
     };
     let mut results = Vec::with_capacity(ordered.len());
@@ -353,7 +364,9 @@ pub(crate) fn choose_and_run(
         let failure = match program.call(&test.key, Vec::new()) {
             Ok(jadpo_interp::Outcome::Value(_)) => None,
             Ok(other) => Some(Box::new(outcome::failure(program, &test, &other, &rerun))),
-            Err(error) => Some(Box::new(outcome::not_runnable(&test, &error, &rerun))),
+            Err(error) => Some(Box::new(outcome::not_runnable(
+                program, &test, &error, &rerun,
+            ))),
         };
         results.push(TestResult { test, failure });
     }
@@ -366,6 +379,7 @@ pub(crate) fn choose_and_run(
     }
     Ran::Done(Box::new(Run {
         seed,
+        root,
         selection,
         total,
         results,
@@ -373,21 +387,20 @@ pub(crate) fn choose_and_run(
     }))
 }
 
-/// How a failed test's rerun command names its file: relative to the
-/// project root, or, for loose files, under the folder as it was given.
+/// How a failed test's rerun command names its file: under the project
+/// as the command line spelt it when the command ran outside it, so the
+/// command runs from the same folder; otherwise relative to the root,
+/// which works from anywhere inside.
 #[derive(Clone, Debug)]
 pub(crate) struct Rerun {
-    pub prefix: Option<String>,
+    pub root: Option<String>,
     pub seed: u64,
 }
 
 impl Rerun {
     /// `jadpo test <file>:<line> --seed <seed>`.
     pub fn command(&self, file: &str, line: u32) -> String {
-        let path = match &self.prefix {
-            Some(prefix) => format!("{}/{file}", prefix.trim_end_matches('/')),
-            None => file.to_string(),
-        };
+        let path = jadpo_term::shown_path(self.root.as_deref(), file);
         format!("jadpo test {path}:{line} --seed {}", self.seed)
     }
 }

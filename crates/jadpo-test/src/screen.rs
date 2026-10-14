@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use jadpo_term::{
     Block, Diagram, DiagramLine, Fact, Field, Frame, Item, Mark, Outcome, Report, Screen, Text,
-    Token,
+    Token, shown_path,
 };
 
 use crate::outcome::{AssertionFailure, ChangeMark, Detail, FailureInfo, FaultInfo, Located};
@@ -33,9 +33,10 @@ fn count(n: usize, one: &str, many: &str) -> String {
 /// The run's screen: every failure's report, then the footer.
 pub fn screen(run: &Run) -> Screen {
     let mut screen = Screen::new();
+    let root = run.root.as_deref();
     for result in &run.results {
         if let Some(failure) = &result.failure {
-            screen.push(Block::report(report(&result.test, failure)));
+            screen.push(Block::report(report(&result.test, failure, root)));
         }
     }
     screen.push(footer(run));
@@ -87,22 +88,27 @@ fn footer(run: &Run) -> Block {
     }
 }
 
-fn report(test: &Test, failure: &TestFailure) -> Report {
+fn report(test: &Test, failure: &TestFailure, root: Option<&str>) -> Report {
     let mut groups = Vec::new();
     match &failure.detail {
         Detail::Assertion(assertion) => {
             groups.push(vec![Item::Diagram(diagram(assertion))]);
-            let values = assertion_fields(assertion);
+            let values = assertion_fields(assertion, root);
             if !values.is_empty() {
                 groups.push(values);
             }
         }
         Detail::Failure(info) => {
-            let mut items = vec![Item::Field(Field::value("failure", info.subject.as_str()))];
-            items.extend(failure_items(info));
+            // What happened names a callable, so it wraps rather than
+            // being cut.
+            let mut items = vec![Item::Field(Field::new(
+                "failure",
+                vec![Text::Prose(info.subject.clone())],
+            ))];
+            items.extend(failure_items(info, root));
             groups.push(items);
         }
-        Detail::Fault(info) => groups.push(fault_items(info)),
+        Detail::Fault(info) => groups.push(fault_items(info, root)),
     }
     groups.push(vec![
         Item::Field(Field::value("rule", failure.rule.id)),
@@ -113,7 +119,11 @@ fn report(test: &Test, failure: &TestFailure) -> Report {
     ]);
     Report {
         subject: test.name.clone(),
-        location: Some(format!("{}:{}", failure.file, failure.line)),
+        location: Some(format!(
+            "{}:{}",
+            shown_path(root, &failure.location.path),
+            failure.location.line
+        )),
         groups,
     }
 }
@@ -140,7 +150,7 @@ fn diagram(assertion: &AssertionFailure) -> Diagram {
     }
 }
 
-fn assertion_fields(assertion: &AssertionFailure) -> Vec<Item> {
+fn assertion_fields(assertion: &AssertionFailure, root: Option<&str>) -> Vec<Item> {
     let mut items = Vec::new();
     if let Some(expected) = &assertion.expected {
         items.push(Item::Field(Field::value("expected", expected.as_str())));
@@ -210,16 +220,22 @@ fn assertion_fields(assertion: &AssertionFailure) -> Vec<Item> {
         items.push(Item::Field(Field::new("diff", lines)));
     }
     if let Some(instead) = &assertion.instead {
-        items.extend(failure_items(instead));
+        items.extend(failure_items(instead, root));
     }
     items
 }
 
-fn at(items: &mut Vec<Item>, located: &Option<Located>) {
+fn at(items: &mut Vec<Item>, located: &Option<Located>, root: Option<&str>) {
     if let Some(located) = located {
-        items.push(Item::Field(Field::value(
+        // A path is never cut: one too long for its line gets its own.
+        items.push(Item::Field(Field::new(
             "at",
-            format!("{}:{}:{}", located.path, located.line, located.column),
+            vec![Text::Place(format!(
+                "{}:{}:{}",
+                shown_path(root, &located.path),
+                located.line,
+                located.column
+            ))],
         )));
         if !located.source.is_empty() {
             items.push(Item::Frame(Frame {
@@ -242,9 +258,9 @@ fn fields_value(fields: &[(String, String)]) -> String {
     format!("{{ {} }}", shown.join(", "))
 }
 
-fn failure_items(info: &FailureInfo) -> Vec<Item> {
+fn failure_items(info: &FailureInfo, root: Option<&str>) -> Vec<Item> {
     let mut items = Vec::new();
-    at(&mut items, &info.at);
+    at(&mut items, &info.at, root);
     if let Some(reason) = &info.reason {
         items.push(Item::Field(Field::new(
             "reason",
@@ -291,9 +307,12 @@ fn failure_items(info: &FailureInfo) -> Vec<Item> {
     items
 }
 
-fn fault_items(info: &FaultInfo) -> Vec<Item> {
-    let mut items = vec![Item::Field(Field::value("fault", info.subject.as_str()))];
-    at(&mut items, &info.at);
+fn fault_items(info: &FaultInfo, root: Option<&str>) -> Vec<Item> {
+    let mut items = vec![Item::Field(Field::new(
+        "fault",
+        vec![Text::Prose(info.subject.clone())],
+    ))];
+    at(&mut items, &info.at, root);
     if let Some(reason) = &info.reason {
         items.push(Item::Field(Field::new(
             "reason",
@@ -311,7 +330,18 @@ fn fault_items(info: &FaultInfo) -> Vec<Item> {
             "stack",
             info.stack
                 .iter()
-                .map(|(place, label)| Text::Pair(place.clone(), label.clone()))
+                .map(|frame| {
+                    let place = format!(
+                        "{}:{}",
+                        shown_path(root, &frame.location.path),
+                        frame.location.line
+                    );
+                    let callable = match frame.repeats {
+                        1 => frame.callable.clone(),
+                        n => format!("{} ({n} times)", frame.callable),
+                    };
+                    Text::Pair(place, callable)
+                })
                 .collect(),
         )));
     }

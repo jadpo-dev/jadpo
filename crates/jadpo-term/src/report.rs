@@ -87,8 +87,12 @@ pub enum Text {
     /// A command to run: never cut; on a line of its own when it doesn't
     /// fit beside its label.
     Command(String),
+    /// A place in a file (`path:line:column`): never cut; on a line of its
+    /// own when it doesn't fit beside its label, so it copies whole.
+    Place(String),
     /// Callables a call travelled through, outermost first, joined by
-    /// muted arrows.
+    /// muted arrows; wrapped between steps, each continuation starting
+    /// with its arrow.
     Path(Vec<String>),
     /// Two columns, the first aligned across the field's lines: a frame's
     /// `file:line` and its callable.
@@ -309,15 +313,15 @@ fn field_lines(field: &Field, style: &Style) -> Vec<Line> {
                 }
                 rows.push(row);
             }
-            Text::Command(command) => {
-                let piece = if rich(style) {
-                    paint(Token::Accent, command.as_str())
-                } else {
-                    raw(command.as_str())
+            Text::Command(whole) | Text::Place(whole) => {
+                let piece = match text {
+                    Text::Command(_) if rich(style) => paint(Token::Accent, whole.as_str()),
+                    _ => raw(whole.as_str()),
                 };
-                if rich(style) && width(command) > room && rows.is_empty() {
-                    // Commands are never cut: one that doesn't fit beside
-                    // its label gets a line of its own, so it copies whole.
+                if rich(style) && width(whole) > room && rows.is_empty() && field.lines.len() == 1 {
+                    // Commands and paths are never cut: one that doesn't
+                    // fit beside its label gets a line of its own, so it
+                    // copies whole.
                     let mut lines = vec![vec![raw("  "), paint(Token::Muted, label)]];
                     lines.push(vec![raw("  "), piece]);
                     return lines;
@@ -326,16 +330,26 @@ fn field_lines(field: &Field, style: &Style) -> Vec<Line> {
             }
             Text::Path(steps) => {
                 let arrow = if rich(style) {
-                    format!(" {} ", Symbol::Next.text(style.symbols))
+                    Symbol::Next.text(style.symbols)
                 } else {
-                    " -> ".to_string()
+                    "->"
                 };
                 let mut row = Vec::new();
+                let mut used = 0;
                 for (i, step) in steps.iter().enumerate() {
                     if i > 0 {
-                        row.push(paint(Token::Muted, arrow.as_str()));
+                        let joined = width(arrow) + 2 + width(step);
+                        if rich(style) && used + joined > room {
+                            rows.push(std::mem::take(&mut row));
+                            row.push(paint(Token::Muted, format!("{arrow} ")));
+                            used = width(arrow) + 1;
+                        } else {
+                            row.push(paint(Token::Muted, format!(" {arrow} ")));
+                            used += width(arrow) + 2;
+                        }
                     }
                     row.push(raw(step.as_str()));
+                    used += width(step);
                 }
                 rows.push(row);
             }

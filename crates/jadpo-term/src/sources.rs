@@ -26,6 +26,17 @@ impl Sources for HashMap<String, String> {
     }
 }
 
+/// A project-relative `path` as the reader reaches it: under `root`, the
+/// project as the command line spelt it, when the command ran outside it
+/// (`jadpo_db::shown_root`).
+pub fn shown_path(root: Option<&str>, path: &str) -> String {
+    match root {
+        Some(root) if !path.is_empty() => format!("{}/{path}", root.trim_end_matches('/')),
+        Some(root) => root.to_string(),
+        None => path.to_string(),
+    }
+}
+
 /// A 1-based line and column. Columns count characters, not bytes, so they
 /// match what an editor shows for any text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
