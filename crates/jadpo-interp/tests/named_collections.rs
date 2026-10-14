@@ -84,3 +84,27 @@ fn a_proven_named_collection_holds_with_its_proof_checked_again() {
         "TooMany"
     );
 }
+
+#[test]
+fn a_construction_from_a_value_that_may_be_none_never_runs() {
+    let db = jadpo_db::Database::default();
+    let file = jadpo_db::File::new(
+        &db,
+        "main.jadpo".to_string(),
+        "type Count = Int {}\n\ntype Quantity = Int {\n    min: 1\n}\n\nfunction quantity(maybe: Count?) -> Quantity {\n    return Quantity(maybe)\n}\n".to_string(),
+    );
+    let project = jadpo_db::Project::new(
+        &db,
+        vec![file],
+        Vec::new(),
+        jadpo_db::Layout::Loose,
+        Default::default(),
+    );
+    let Err(errors) = jadpo_interp::Program::load(&db, project) else {
+        panic!("a construction from `Count?` loaded");
+    };
+    assert_eq!(
+        errors.iter().map(|d| d.rule.id).collect::<Vec<_>>(),
+        ["type.constructor_input"]
+    );
+}

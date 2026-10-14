@@ -263,3 +263,34 @@ fn a_written_list_takes_the_named_collections_lengths_while_compiling() {
         ["type.invalid_literal"]
     );
 }
+
+#[test]
+fn a_value_that_may_be_none_builds_nothing() {
+    // Every construction, not only a collection's: `none` follows no
+    // type's rules, so the absent case is handled first.
+    let source = "type Quantity = Int {\n    min: 1\n}\n\ntype Order = Object {\n    count: Count {\n        min: 1\n    }\n}\n\nfunction quantity(maybe: Count?) -> Quantity {\n    return Quantity(maybe)\n}\n\nfunction order_count(maybe: Count?) -> Order.count {\n    return Order.count(maybe)\n}\n\nfunction plain(maybe: Count?) -> Count {\n    return Count(maybe)\n}\n";
+    let found = explained(source);
+    assert_eq!(
+        found.iter().map(|d| d[0].as_str()).collect::<Vec<_>>(),
+        [
+            "type.constructor_input",
+            "type.constructor_input",
+            "type.constructor_input"
+        ],
+        "{found:#?}"
+    );
+    let [_, message, reason, next] = &found[0];
+    assert_eq!(message, "`Quantity` can't be built from `Count?`");
+    assert_eq!(reason, "`Count?` may be `none`, and a `Quantity` can't be.");
+    assert_eq!(
+        next,
+        "Use `match` to handle `none` before building a `Quantity`"
+    );
+    // A field type that may be `none` itself takes one.
+    assert_eq!(
+        with_types(
+            "type Note = Object {\n    count: Count?\n}\n\nfunction note_count(maybe: Count?) -> Note.count {\n    return Note.count(maybe)\n}\n"
+        ),
+        CLEAN
+    );
+}

@@ -1010,6 +1010,25 @@ impl Body<'_> {
         if actual.has_error() || target.has_error() || self.out.len() > before {
             return (target, Fallible::Unknown);
         }
+        if self.table.is_nullable(&actual) && !self.table.is_nullable(&target) {
+            // `none` follows no type's rules, so the absent case is handled
+            // before anything is built from the value.
+            let span = self.span(value);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_CONSTRUCTOR_INPUT,
+                    format!("`{target}` can't be built from `{actual}`"),
+                )
+                .at(span, format!("this is `{actual}`"))
+                .reason(format!(
+                    "`{actual}` may be `none`, and a `{target}` can't be."
+                ))
+                .next(format!(
+                    "Use `match` to handle `none` before building a `{target}`"
+                )),
+            );
+            return (target, Fallible::Unknown);
+        }
         if self.table.assignable(&actual, &target) {
             return (target, Fallible::Never);
         }
@@ -1091,11 +1110,11 @@ impl Body<'_> {
     /// list, a set from a set or a list (its repeats collapse), a map from
     /// a map; the items are never converted in the same step, and
     /// collections stay invariant. Reports the value and gives `false`
-    /// when it isn't such a collection.
+    /// when it isn't such a collection; one that may be `none` is reported
+    /// before, as for every construction.
     fn collection_input(&mut self, value: &Expr, actual: &Ty, target: &Ty) -> bool {
         let into = self.table.structure(target);
         let from = self.table.structure(actual);
-        let nullable = self.table.is_nullable(actual);
         let same_kind = matches!(
             (&into, &from),
             (Ty::List(_), Ty::List(_))
@@ -1107,7 +1126,7 @@ impl Body<'_> {
             (Ty::Map(ka, va), Ty::Map(kb, vb)) => ka == kb && va == vb,
             _ => false,
         };
-        if same_kind && items_fit && !nullable {
+        if same_kind && items_fit {
             return true;
         }
         let kind = collection_kind(&into);
@@ -1141,11 +1160,6 @@ impl Body<'_> {
                     collection_words(&from)
                 ),
                 format!("{build} where it is made, so the {from_kind} is a `{wanted}`"),
-            )
-        } else if same_kind {
-            (
-                format!("`{actual}` may be `none`, and a `{target}` can't be."),
-                format!("Use `match` to handle `none` before building a `{target}`"),
             )
         } else if let (Ty::List(item), Ty::Set(_)) = (&into, &from) {
             (

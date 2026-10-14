@@ -164,6 +164,9 @@ A constructor accepts a value with the same representation as the type: `Int`
 or any `Int`-based type for `Quantity`, a decimal literal such as `0.0` (not
 `0`) for a `Decimal`-based type. This is also how you deliberately convert
 between two named types: the value is re-checked against the target's rules.
+A value that may be `none` builds nothing: `Quantity(maybe)` with
+`maybe: Count?` is `type.constructor_input`, and `match` handles the
+absent case first (built in chunk 2.11).
 
 ```jadpo check project=convert
 type Pence = Int {
