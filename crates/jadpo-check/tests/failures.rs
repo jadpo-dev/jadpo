@@ -109,6 +109,23 @@ fn constructions_the_ranges_prove_safe_take_no_attempt() {
     );
 }
 
+#[test]
+fn the_standard_divisions_are_proved_like_slash() {
+    // `integer.divide` and `decimal.divide` of a value never below zero by
+    // a divisor of at least 1 give a result from zero up to the dividend,
+    // whichever way they round, as `/` does.
+    let source = "type Buns = Int {\n    min: 0\n    max: 500\n}\n\ntype PerTray = Int {\n    min: 1\n    max: 48\n}\n\ntype Trays = Int {\n    min: 0\n    max: 500\n}\n\ntype Price = Decimal {\n    scale: 2\n    min: 0.00\n}\n\ntype People = Int {\n    min: 1\n}\n\nfunction trays(buns: Buns, per_tray: PerTray) -> Trays {\n    return Trays(integer.divide(buns, per_tray, rounding: Rounding.up))\n}\n\nfunction share(bill: Price, people: People) -> Price {\n    return Price(decimal.divide(dividend: bill, divisor: people, rounding: Rounding.half_up))\n}\n";
+    assert_eq!(one(source), CLEAN);
+    // A divisor that may be below 1 can make the result larger than the
+    // dividend, so a bounded result still needs its check.
+    assert_eq!(
+        one(
+            "type Price = Decimal {\n    scale: 2\n    min: 0.00\n    max: 10.00\n}\n\ntype Fraction = Decimal {\n    scale: 2\n    min: 0.01\n    max: 1.00\n}\n\nfunction scaled(bill: Price, by: Fraction) -> Price {\n    return Price(decimal.divide(bill, by, rounding: Rounding.half_up))\n}\n"
+        ),
+        ["failure.attempt_required"]
+    );
+}
+
 /// A user whose display name allows 80 characters and initials 3, and a
 /// badge whose name field adds its own limit of 12 (area 2, question 2).
 const BADGES: &str = "entity User {\n    id: Uuid\n    display_name: Text {\n        max_length: 80\n    }\n    initials: Text {\n        max_length: 3\n    }\n}\n\ntype Nickname = Text {\n    max_length: 10\n}\n\ntype BadgeNameTooLong = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Badge = Object {\n    name: Text {\n        max_length: 12\n    }\n}\n\n";
