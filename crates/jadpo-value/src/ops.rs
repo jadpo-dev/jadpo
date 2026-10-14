@@ -48,12 +48,14 @@ pub fn int_divide(a: i64, b: i64) -> Result<i64, Fault> {
     a.checked_div(b).ok_or(Fault::IntOverflow)
 }
 
-/// `a % b`, with the sign of `a`, as Rust's `%`.
+/// `a % b`, with the sign of `a`, as Rust's `%`. A remainder is never
+/// larger than its divisor, so it never overflows: `i64::MIN % -1` is 0,
+/// though `i64::MIN / -1` is past the range.
 pub fn int_remainder(a: i64, b: i64) -> Result<i64, Fault> {
     if b == 0 {
         return Err(Fault::DivisionByZero);
     }
-    a.checked_rem(b).ok_or(Fault::IntOverflow)
+    Ok(a.wrapping_rem(b))
 }
 
 pub fn int_negate(a: i64) -> Result<i64, Fault> {
@@ -196,6 +198,10 @@ mod tests {
         assert_eq!(
             remainder(&Value::Int(-7), &Value::Int(2)),
             Ok(Value::Int(-1))
+        );
+        assert_eq!(
+            remainder(&Value::Int(i64::MIN), &Value::Int(-1)),
+            Ok(Value::Int(0))
         );
         assert_eq!(
             divide(&Value::Int(1), &Value::Int(0)),
