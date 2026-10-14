@@ -1,11 +1,16 @@
 // The root `tests/` folder holds scenarios that span domains. A scenario
-// sees what another domain would see: public actions, types and failures,
-// called through their domain, and everything in `shared/`. It can't call
-// `pantry`'s private `sacks` library.
+// sees what another domain would see: public actions, types, failures and
+// fixtures, called through their domain, and everything in `shared/`. It
+// can't call `pantry`'s private `sacks` library.
 
 test "baking takes flour from the pantry until it runs short" {
     var used: Grams = attempt sales.bake_loaves(30, 1)
     assert used == 13500
     assert sales.bake_loaves(40, 1) fails FlourShort
     assert pantry.take_flour(16001, 1) fails FlourShort
+}
+
+test "a day's flour is more than one sack" {
+    var taken: Grams = attempt pantry.take_flour(16001, pantry.a_days_flour())
+    assert taken == 16001
 }

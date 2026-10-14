@@ -16,6 +16,7 @@ imports: the dot in a call names the owner of what is called.
 3. **`public`.** A public action and a public failure, the only things another domain can reach. See `domains/pantry/actions/take_flour.jadpo`, `domains/pantry/failures/flour_short.jadpo` and [area 1, Ownership and calls replace modules](../../docs/language/01-project-layout-and-modules.md#ownership-and-calls-replace-modules).
 4. **Calling across domains.** The dot names the owner: `pantry.take_flour(...)`. See `domains/sales/actions/bake_loaves.jadpo`.
 5. **A scenario.** A test in the root `tests/` folder sees only what domains make public. See `tests/flour_runs_out.test.jadpo` and [area 13, Where tests live](../../docs/language/13-testing.md#where-tests-live).
+6. **A public fixture.** `pantry` offers its test data to other domains' tests: `sales`'s tests and the scenario call `pantry.a_days_flour()`, which application code never can. See `domains/pantry/fixtures/a_days_flour.jadpo` and [area 13, Shared test data: fixtures](../../docs/language/13-testing.md#shared-test-data-fixtures).
 
 ## Run it
 
@@ -46,5 +47,6 @@ target/release/jadpo fmt --check examples/07-domains-and-sharing
 ## Try next
 
 - In `take_flour.jadpo`, delete `public`. `jadpo check` reports `visibility.private_cross_domain` where `sales` calls it.
+- In `a_days_flour.jadpo`, delete `public`. `jadpo check` reports `visibility.private_cross_domain` where `sales`'s test and the scenario call it.
 - In `tests/flour_runs_out.test.jadpo`, add `assert sacks.grams_in(1) == 16000`. `jadpo check` reports `visibility.private_cross_domain`: a scenario can't use `pantry`'s private library, though the pantry's own tests can.
 - Then read [08-testing](../08-testing/README.md).

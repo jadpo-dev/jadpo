@@ -245,6 +245,127 @@ fn a_scenario_sees_only_what_domains_make_public() {
     );
 }
 
+/// A fixture of `inventory`'s, public or not.
+fn stocked(public: bool) -> (&'static str, &'static str) {
+    (
+        "domains/inventory/fixtures/stocked.jadpo",
+        if public {
+            "public fixture stocked() -> Quantity {\n    return Quantity(5)\n}\n"
+        } else {
+            "fixture stocked() -> Quantity {\n    return Quantity(5)\n}\n"
+        },
+    )
+}
+
+#[test]
+fn a_public_fixture_is_offered_to_other_domains_tests_fixtures_and_seeds() {
+    // Area 13, decided 2026-10-14: a public fixture is called through its
+    // domain from another domain's tests, fixtures and seeds, and from a
+    // scenario in root `tests/`.
+    assert_eq!(
+        with(&[
+            stocked(true),
+            (
+                "domains/ordering/actions/checkout.test.jadpo",
+                "test \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n"
+            ),
+            (
+                "domains/ordering/fixtures/stocked_order.jadpo",
+                "fixture stocked_order() -> Quantity {\n    return inventory.stocked()\n}\n"
+            ),
+            (
+                "tests/stocked_items_check_out.test.jadpo",
+                "test \"stocked items check out\" {\n    attempt ordering.checkout(Price(1.00), inventory.stocked())\n}\n"
+            ),
+            (
+                "database/seeds/stocked_demo.jadpo",
+                "seed stocked_demo {\n    inventory.reserve_stock(inventory.stocked())\n}\n"
+            ),
+        ]),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_private_fixture_stays_in_its_domain() {
+    let calls = [
+        (
+            "domains/ordering/actions/checkout.test.jadpo",
+            "test \"checking out stocked items\" {\n    attempt checkout(Price(1.00), inventory.stocked())\n}\n",
+        ),
+        (
+            "tests/stocked_items_check_out.test.jadpo",
+            "test \"stocked items check out\" {\n    attempt ordering.checkout(Price(1.00), inventory.stocked())\n}\n",
+        ),
+        (
+            "database/seeds/stocked_demo.jadpo",
+            "seed stocked_demo {\n    inventory.reserve_stock(inventory.stocked())\n}\n",
+        ),
+        (
+            "domains/inventory/actions/reserve_stock.test.jadpo",
+            "test \"reserving stock\" {\n    reserve_stock(stocked())\n}\n",
+        ),
+    ];
+    let mut files = vec![stocked(false)];
+    files.extend_from_slice(&calls);
+    assert_eq!(
+        with(&files),
+        [
+            "database/seeds/stocked_demo.jadpo visibility.private_cross_domain: `stocked` is private to domain `inventory`",
+            "domains/ordering/actions/checkout.test.jadpo visibility.private_cross_domain: `stocked` is private to domain `inventory`",
+            "tests/stocked_items_check_out.test.jadpo visibility.private_cross_domain: `stocked` is private to domain `inventory`",
+        ]
+    );
+    let db = jadpo_db::Database::default();
+    let mut all = SHOP.to_vec();
+    all.extend_from_slice(&files);
+    let project = support::project(&db, Layout::Project, &all);
+    let private = jadpo_check::check(&db, project)
+        .iter()
+        .find(|d| d.rule.id == "visibility.private_cross_domain")
+        .and_then(|d| d.next.clone())
+        .map(|next| next.text);
+    assert_eq!(
+        private.as_deref(),
+        Some("Mark `stocked` `public` if `inventory` should offer it to other domains' tests")
+    );
+    // Another domain calls a fixture through its domain, like an action.
+    assert_eq!(
+        with(&[
+            stocked(true),
+            (
+                "domains/ordering/actions/checkout.test.jadpo",
+                "test \"checking out stocked items\" {\n    attempt checkout(Price(1.00), stocked())\n}\n"
+            ),
+        ]),
+        [
+            "domains/ordering/actions/checkout.test.jadpo semantic.unknown_callee: `stocked` belongs to domain `inventory`"
+        ]
+    );
+}
+
+#[test]
+fn only_tests_fixtures_and_seeds_call_a_fixture() {
+    // Area 13: application code never calls a fixture, public or not.
+    assert_eq!(
+        with(&[
+            stocked(true),
+            (
+                "domains/inventory/actions/restock.jadpo",
+                "action restock() -> Quantity {\n    return stocked()\n}\n"
+            ),
+            (
+                "domains/ordering/actions/reorder.jadpo",
+                "action reorder() -> Quantity {\n    return inventory.stocked()\n}\n"
+            ),
+        ]),
+        [
+            "domains/inventory/actions/restock.jadpo semantic.not_callable: An action can't call fixture `stocked`",
+            "domains/ordering/actions/reorder.jadpo semantic.not_callable: An action can't call fixture `inventory.stocked`",
+        ]
+    );
+}
+
 #[test]
 fn shared_code_never_depends_on_a_domain() {
     assert_eq!(

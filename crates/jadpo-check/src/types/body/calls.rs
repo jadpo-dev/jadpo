@@ -227,7 +227,12 @@ impl Body<'_> {
             if let Some(sig) = self
                 .calls
                 .signature(member)
-                .filter(|_| matches!(kind, Some(ItemKind::Action | ItemKind::Query)))
+                .filter(|_| {
+                    matches!(
+                        kind,
+                        Some(ItemKind::Action | ItemKind::Query | ItemKind::Fixture)
+                    )
+                })
                 .cloned()
             {
                 let span = self.span(callee);
@@ -272,11 +277,26 @@ impl Body<'_> {
     }
 
     /// Who may call whom (area 3): a function, or an inline function, calls
-    /// only functions, library functions and the standard library.
+    /// only functions, library functions and the standard library; only
+    /// tests, fixtures and seeds call a fixture (area 13).
     pub(super) fn may_call(&mut self, span: Span, callee: &str, kind: Option<&ItemKind>) {
         let Some(kind @ (ItemKind::Action | ItemKind::Query | ItemKind::Fixture)) = kind else {
             return;
         };
+        if *kind == ItemKind::Fixture && self.context == Context::Action {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_NOT_CALLABLE,
+                    format!("An action can't call fixture `{callee}`"),
+                )
+                .at(span, "test data")
+                .reason("A fixture builds test data: only tests, other fixtures and seeds call it, and it is never compiled into a deployable.")
+                .next(format!(
+                    "Call the actions `{callee}` calls, or move this call into a test, fixture or seed"
+                )),
+            );
+            return;
+        }
         if !self.context.is_pure() {
             return;
         }

@@ -847,6 +847,9 @@ impl AstNode for FixtureDecl {
 }
 
 impl FixtureDecl {
+    pub fn visibility(&self) -> Option<Visibility> {
+        support::child(&self.syntax)
+    }
     pub fn fixture_kw_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, FIXTURE_KW)
     }
