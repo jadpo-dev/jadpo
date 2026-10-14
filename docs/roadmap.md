@@ -148,7 +148,7 @@ reference only).
   (`a.b.c()`) that check clean and fault at run time. A refinement that
   loosens an inherited rule (`max_length: 50` on a 40) is an error, as
   area 2 says a refinement only adds rules.
-- [ ] **2.8 Phase 2 review: tooling and docs** `opus · high`. Rerun
+- [x] **2.8 Phase 2 review: tooling and docs** `opus · high`. Rerun
   commands and locations that work from where the command was run; a
   callable's undeclared failures no longer give its callers wrong `next`
   steps; `--watch` exits when its output closes and says when errors
