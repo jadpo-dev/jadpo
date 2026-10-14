@@ -1,0 +1,13 @@
+// A unique reference makes a one-to-one link: each member holds at most
+// one card, so a query reading members can include the card as one
+// record rather than a list.
+
+/// A member's library card.
+entity Card {
+    id: Uuid
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+        unique: true
+    }
+    number: CardNumber
+}

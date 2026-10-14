@@ -1,0 +1,4 @@
+test "a copy that isn't there can't be lent" {
+    var ada: Member = join("ada@example.test", "Ada")
+    assert lend("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e", ada, "2026-11-01") fails BookNotFound
+}

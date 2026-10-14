@@ -1,0 +1,14 @@
+// `Member.get(member_id)` reads one record by its `id`, or fails with
+// `MemberNotFound`; its fields typed `Member.id` hold the id it looked
+// for.
+
+/// Gives a member their library card.
+action issue_card(member_id: Member.id, number: Card.number) fails MemberNotFound -> Card {
+    var member: Member = attempt Member.get(member_id)
+    return Card.create {
+        set: {
+            member_id: member.id
+            number: number
+        }
+    }
+}

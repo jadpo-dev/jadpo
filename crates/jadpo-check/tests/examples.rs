@@ -29,6 +29,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use jadpo_check::data::migrations::DecisionValue;
+use jadpo_check::data::queries::{Condition, Include, SECTIONS};
 use jadpo_check::graph::graph;
 use jadpo_check::types::{
     BASES, CONSTRAINTS, COPY_LINES, FIELD_SETTINGS, callables_of, typed_body,
@@ -46,7 +47,7 @@ use jadpo_syntax::ast::{self, AstNode};
 
 /// The areas built so far (roadmap Phases 1 and 2). A graph kind these
 /// areas decide counts once nodes of it are declared.
-const BUILT_AREAS: [u8; 6] = [1, 2, 3, 4, 5, 13];
+const BUILT_AREAS: [u8; 7] = [1, 2, 3, 4, 5, 6, 13];
 
 /// Features no valid, runnable example can use yet, and why.
 const EXEMPT: &[(&str, &str)] = &[
@@ -112,8 +113,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "data migration decision FieldChange.dropped",
         "not built: a drop needs a person's acceptance (area 18)",
     ),
-    ("syntax QUERY_DECL", "not built: queries (area 6)"),
-    ("syntax ORDERED_EXPR", "not built: a query's order (area 6)"),
     ("syntax ROUTES_DECL", "not built: routes (area 7)"),
     ("syntax ROUTE_ENTRY", "not built: routes (area 7)"),
     ("syntax ROUTE_PATH", "not built: routes (area 7)"),
@@ -142,11 +141,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ("base EmailMessage", "not built: emails (area 16)"),
     // Typed body parts later areas build.
     ("body stmt emit", "not built: events (area 12)"),
-    ("body call query", "not built: queries (area 6)"),
-    (
-        "body call entity operation",
-        "not built: entity operations (area 6)",
-    ),
     (
         "body operator in",
         "a query's condition (area 6); area 3's operators don't include it",
@@ -175,7 +169,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     ("root file policy.jadpo", "not built: policy (area 9)"),
     ("root file flags.jadpo", "not built: flags (area 16)"),
-    ("domain folder queries", "not built: queries (area 6)"),
     ("domain folder routes", "not built: routes (area 7)"),
     ("domain folder schedules", "not built: schedules (area 12)"),
     ("domain folder events", "not built: events (area 12)"),
@@ -307,6 +300,28 @@ fn built() -> BTreeSet<String> {
             .map(|v| format!("data on_delete {v}")),
     );
     out.insert("data field unique".to_string());
+    // Area 6: a query's sections, how many records it returns, its
+    // includes and the shapes of its conditions.
+    out.extend(
+        SECTIONS
+            .iter()
+            .map(|section| format!("query section {section}")),
+    );
+    out.extend(
+        ["one", "optional", "list", "page"]
+            .iter()
+            .map(|c| format!("query result {c}")),
+    );
+    out.extend(
+        ["parent", "children", "child", "nested"]
+            .iter()
+            .map(|k| format!("query include {k}")),
+    );
+    out.extend(
+        ["comparison", "in", "none", "and", "or", "not", "present"]
+            .iter()
+            .map(|c| format!("query condition {c}")),
+    );
     out.insert("data migration decision backfill".to_string());
     out.extend(
         FieldChange::NAMES
@@ -975,6 +990,72 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 used.insert(format!("data on_delete {}", on_delete.name()));
             }
         }
+    }
+    // Area 6's queries, as the checker read them.
+    let queries = jadpo_check::data::queries::query_models(db, project);
+    for query in &queries.queries {
+        used.insert("query section from".to_string());
+        used.insert(format!("query result {}", query.cardinality.word()));
+        if query
+            .filter
+            .iter()
+            .any(|c| !matches!(c, Condition::Present { .. }))
+        {
+            used.insert("query section where".to_string());
+        }
+        if query.order.iter().any(|o| !o.added) {
+            used.insert("query section order".to_string());
+        }
+        if query.limit.is_some() {
+            let section = if query.after.is_some() {
+                "page"
+            } else {
+                "limit"
+            };
+            used.insert(format!("query section {section}"));
+        }
+        if !query.includes.is_empty() {
+            used.insert("query section include".to_string());
+        }
+        if query.missing.is_some() {
+            used.insert("query section missing".to_string());
+        }
+        fn conditions(all: &[Condition], used: &mut BTreeSet<String>) {
+            for condition in all {
+                let word = match condition {
+                    Condition::Compare { .. } => "comparison",
+                    Condition::In { .. } => "in",
+                    Condition::IsNone { .. } => "none",
+                    Condition::And(_) => "and",
+                    Condition::Or(_) => "or",
+                    Condition::Not(_) => "not",
+                    Condition::Present { .. } => {
+                        used.insert("query section where_present".to_string());
+                        "present"
+                    }
+                };
+                used.insert(format!("query condition {word}"));
+                match condition {
+                    Condition::And(inner) | Condition::Or(inner) => conditions(inner, used),
+                    Condition::Not(inner)
+                    | Condition::Present {
+                        condition: inner, ..
+                    } => conditions(std::slice::from_ref(inner), used),
+                    _ => {}
+                }
+            }
+        }
+        conditions(&query.filter, &mut used);
+        fn includes(all: &[Include], level: usize, used: &mut BTreeSet<String>) {
+            for include in all {
+                used.insert(format!("query include {}", include.kind.word()));
+                if level > 1 {
+                    used.insert("query include nested".to_string());
+                }
+                includes(&include.includes, level + 1, used);
+            }
+        }
+        includes(&query.includes, 1, &mut used);
     }
     for &file in project.files(db) {
         let path = file.path(db);

@@ -1,0 +1,16 @@
+// The built-in `PageSize` is an `Int` from 1 to 100, and `PageCursor` the
+// opaque cursor a page gives for the next: a client sends it back as
+// `after`, and leaves it out for the first page.
+
+/// Which copies to list, a page at a time.
+type CatalogueFilter = Input {
+    wear: Wear {
+        optional: true
+    }
+    page_size: PageSize {
+        default: 10
+    }
+    after: PageCursor {
+        optional: true
+    }
+}

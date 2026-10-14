@@ -1,0 +1,10 @@
+/// Puts a new copy on the shelves.
+action add_copy(isbn: Book.isbn, title: Book.title, wear: Wear) -> Book {
+    return Book.create {
+        set: {
+            isbn: isbn
+            title: title
+            wear: wear
+        }
+    }
+}

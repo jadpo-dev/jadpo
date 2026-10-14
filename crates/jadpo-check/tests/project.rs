@@ -29,7 +29,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/inventory/actions/reserve_stock.jadpo",
-        "public action reserve_stock(quantity: Quantity) -> Unit {\n    attempt StockLevel.get(quantity)\n}\n",
+        "public action reserve_stock(quantity: Quantity) -> Unit {\n    var level: StockLevel = StockLevel.create {\n        set: {\n            quantity: quantity\n        }\n    }\n    if (level.quantity == quantity) {\n        return\n    }\n}\n",
     ),
     (
         "domains/inventory/actions/reserve_stock.test.jadpo",

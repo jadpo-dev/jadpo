@@ -1,0 +1,13 @@
+test "a member's page holds their card and loans, soonest first" {
+    var ada: Borrower = ada_borrows_two()
+    var page: MemberPage = attempt member_loans(ada.member.id)
+    assert page.name == "Ada"
+    assert page.card == CardView {
+        number: "00012345"
+    }
+    assert collection.map(page.loans, loan -> loan.book.title) == ["Dune", "Emma"]
+}
+
+test "a member who isn't there fails" {
+    assert member_loans("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e") fails MemberNotFound
+}

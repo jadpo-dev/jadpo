@@ -1,0 +1,11 @@
+// A query is one declarative read, in its own file in the domain's
+// `queries/` folder: `from:` names the entity, each `where:` line is a
+// condition every record must meet, and the result type says how many
+// records come back. `Member?` is at most one, so the condition tests a
+// unique field with `==`.
+
+/// The member with this address, if there is one.
+query member_by_email(email: Member.email) -> Member? {
+    from: Member
+    where: Member.email == email
+}

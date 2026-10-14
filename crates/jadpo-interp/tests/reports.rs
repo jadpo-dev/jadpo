@@ -59,28 +59,21 @@ fault: recursion_limit in function countdown
 
 #[test]
 fn something_not_built_yet_names_its_rule() {
-    let program = program(&[
-        (
-            "todos.jadpo",
-            "entity Todo {\n    id: Uuid\n}\n\ntype TodoNotFound = Failure {\n    kind: FailureKind.not_found\n}\n",
-        ),
-        (
-            "main.jadpo",
-            "action archive_todo(todo_id: Todo.id) fails TodoNotFound -> Unit {\n    attempt Todo.get(todo_id)  // fails or carries on\n}\n",
-        ),
-    ]);
-    let id = Value::uuid("01908f6e-1c2a-7b3c-9d4e-5f6a7b8c9d0e");
+    let program = program(&[(
+        "main.jadpo",
+        "type Note = Text {\n    max_length: 40\n}\n\naction record(note: Note) -> Unit {\n    emit note  // events come with area 12\n}\n",
+    )]);
     assert_eq!(
-        report(&program, "archive_todo", vec![id]),
+        report(&program, "record", vec![Value::text("hi")]),
         "\
-fault: not_built_yet in action archive_todo
- --> main.jadpo:2:13
+fault: not_built_yet in action record
+ --> main.jadpo:6:5
   |
-2 |     attempt Todo.get(todo_id)  // fails or carries on
-  |             ^^^^^^^^^^^^^^^^^ not built yet
-  reason: The language declares `Todo.get`, but this toolchain has nothing to run it with yet, so the call stopped here.
-  next: Do without `Todo.get` for now, or test this part once its area is built (agent)
-  stack: main.jadpo:2  action archive_todo
+6 |     emit note  // events come with area 12
+  |     ^^^^^^^^^ not built yet
+  reason: The language declares `emit`, but this toolchain has nothing to run it with yet, so the call stopped here.
+  next: Do without `emit` for now, or test this part once its area is built (agent)
+  stack: main.jadpo:6  action record
   rule: toolchain.not_built_yet
   help: docs/language/03-logic.html#toolchain-not-built-yet
 "

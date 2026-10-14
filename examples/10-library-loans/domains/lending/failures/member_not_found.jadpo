@@ -1,0 +1,7 @@
+/// No member has that id.
+type MemberNotFound = Failure {
+    kind: FailureKind.not_found
+    client: {
+        member_id: Member.id
+    }
+}

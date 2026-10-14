@@ -69,7 +69,8 @@ fn inline_functions_take_the_list_and_the_expected_result() {
         check(&format!(
             "{todos}function open_titles(todos: List<Todo>) -> List<TodoTitle> {{\n    var open: List<Todo> = collection.filter(todos, todo -> todo.status == TodoStatus.open)\n    var titles: List<TodoTitle> = collection.map(open, todo -> todo.title)\n    return titles\n}}\n\naction rename(todo: Todo, title: TodoTitle) -> Unit {{\n    var fresh: TodoTitle = title\n    Todo.update(todo) {{\n        set: {{\n            title: fresh\n        }}\n    }}\n}}\n"
         )),
-        CLEAN
+        // `update` comes with chunk 3.3; `fresh` is still read in its block.
+        ["toolchain.not_built_yet"]
     );
     assert_eq!(
         check(&format!(

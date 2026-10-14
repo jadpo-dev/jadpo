@@ -1,0 +1,8 @@
+// `Book.get(book_id)` fails with the domain's failure called
+// `BookNotFound`, of kind `not_found`; until the compiler provides one, a
+// domain that reads books by id declares it here.
+
+/// No book has that id.
+type BookNotFound = Failure {
+    kind: FailureKind.not_found
+}

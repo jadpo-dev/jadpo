@@ -481,7 +481,7 @@ pub static COMMANDS: &[Command] = &[
         flags: &[Flag {
             name: "--explain",
             value: None,
-            description: "Show PostgreSQL's plan for it (not built yet)",
+            description: "Show PostgreSQL's plan (not built yet)",
             values: &[],
         }],
         examples: &[Example {
