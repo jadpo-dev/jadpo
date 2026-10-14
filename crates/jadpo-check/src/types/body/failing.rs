@@ -118,6 +118,10 @@ impl Body<'_> {
     /// failure: the project's, or the one the compiler provides. A write's
     /// failures come from what it writes, recorded where it is checked.
     fn entity_fallible(&self, entity: &str, operation: &str) -> Fallible {
+        // A function can't read the store, which is reported where it does.
+        if self.context.is_pure() {
+            return Fallible::Unknown;
+        }
         let missing = format!("{entity}NotFound");
         if operation == "get" && self.failures.is_declared_failure(&missing) {
             Fallible::Fails(vec![missing])
@@ -158,6 +162,17 @@ impl Body<'_> {
     /// outcome `match` (area 3, question 11).
     pub(super) fn unhandled(&mut self, call: &ast::CallExpr) {
         if self.handled.contains(&node_key(call.syntax())) {
+            return;
+        }
+        // A construction over a stored field in an update by `id` is the
+        // database's to work out, so nothing could handle it: the write
+        // reports it (area 6, "Counters").
+        if self.stored.is_some()
+            && call
+                .syntax()
+                .descendants()
+                .any(|node| self.facts.stored.contains(&node_key(&node)))
+        {
             return;
         }
         let fallible = self.call_fallible(call);
@@ -575,7 +590,7 @@ impl Body<'_> {
 
     /// "`max: 1000`", or "`min: 1` and `max: 1000`": the rules a
     /// construction can break, as its type writes them.
-    fn written_rules(&self, call: &ast::CallExpr, breakable: &[String]) -> String {
+    pub(super) fn written_rules(&self, call: &ast::CallExpr, breakable: &[String]) -> String {
         let rules = self.construction_rules(call);
         let listed: Vec<String> = breakable
             .iter()

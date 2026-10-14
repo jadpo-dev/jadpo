@@ -370,6 +370,7 @@ impl Body<'_> {
             })
             .collect();
         let breakable = breakable(entity, op, &rules, &sets.fields);
+        let before = self.out.len();
         let arms = self.conflicts(
             entity,
             op,
@@ -379,6 +380,10 @@ impl Body<'_> {
             &head_span,
             &written,
         );
+        // A mapping already reported leaves what the write fails with
+        // unknown, so nothing reports a knock-on of it (an `attempt` that
+        // looks needless, a `fails` entry that looks stale).
+        let mapping_reported = self.out.len() > before;
         let mut failures: Vec<String> = Vec::new();
         for failure in not_found
             .iter()
@@ -389,7 +394,10 @@ impl Body<'_> {
                 failures.push(failure.clone());
             }
         }
-        let fallible = if failures.is_empty() {
+        let fallible = if mapping_reported {
+            self.flow.open = true;
+            Fallible::Unknown
+        } else if failures.is_empty() {
             Fallible::Never
         } else {
             Fallible::Fails(failures)
@@ -1068,17 +1076,18 @@ impl Body<'_> {
                     match self.facts.reaches.get(&key) {
                         Some(Reach::Construct(_)) => {
                             if let Some(Fallible::Construction(rules)) =
-                                self.facts.constructions.get(&key)
+                                self.facts.constructions.get(&key).cloned()
                             {
                                 let span = crate::tree::node_span(self.path, &parent);
-                                let listed: Vec<String> =
-                                    rules.iter().map(|r| format!("`{r}`")).collect();
+                                let rules = match ast::CallExpr::cast(parent.clone()) {
+                                    Some(call) => self.written_rules(&call, &rules),
+                                    None => crate::and_list(&rules),
+                                };
                                 self.out.push(
                                     Diagnostic::new(
                                         &rule::DATA_STORED_VALUE_UNPROVEN,
                                         format!(
-                                            "`{written}` by `id` could store a value that breaks {}",
-                                            crate::and_list(&listed)
+                                            "`{written}` by `id` could store a value that breaks {rules}"
                                         ),
                                     )
                                     .at(span, "worked out by the database")
@@ -1184,6 +1193,7 @@ impl Body<'_> {
     ) -> Vec<(ast::Member, Breach, String)> {
         let mut out: Vec<(ast::Member, Breach, String)> = Vec::new();
         let mut first: BTreeMap<Breach, Span> = BTreeMap::new();
+        let mut unknown = false;
         if let Some(conflict) = conflict {
             if conflict.block().is_none()
                 && let Some(value) = conflict.value()
@@ -1230,6 +1240,7 @@ impl Body<'_> {
                 };
                 let Some(rule) = rule else {
                     self.conflict_unknown(&arm, entity, op, breakable, rules);
+                    unknown = true;
                     continue;
                 };
                 if let Some(earlier) = first.get(&rule) {
@@ -1247,11 +1258,16 @@ impl Body<'_> {
                 }
             }
         }
-        let unmapped: Vec<String> = breakable
-            .iter()
-            .filter(|rule| !first.contains_key(rule))
-            .map(Breach::written)
-            .collect();
+        // An arm naming no rule was most likely meant for one of these.
+        let unmapped: Vec<String> = if unknown {
+            Vec::new()
+        } else {
+            breakable
+                .iter()
+                .filter(|rule| !first.contains_key(rule))
+                .map(Breach::written)
+                .collect()
+        };
         if let Some(first_rule) = unmapped.first() {
             let listed: Vec<String> = unmapped.iter().map(|r| format!("`{r}`")).collect();
             let (them, each) = if unmapped.len() == 1 {
