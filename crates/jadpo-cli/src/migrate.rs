@@ -607,7 +607,7 @@ fn change_groups(
     before: &Schema,
     after: &Schema,
     model: &DataModel,
-) -> Vec<(String, Vec<(ChangeMark, Vec<String>)>)> {
+) -> Vec<jadpo_term::ChangeGroup> {
     let now = |born: &str| {
         model
             .entities
@@ -622,7 +622,8 @@ fn change_groups(
             .and_then(|s| s.tables.get(name))
             .cloned()
     };
-    let mut groups: BTreeMap<(bool, String), Vec<(ChangeMark, Vec<String>)>> = BTreeMap::new();
+    type Rows = Vec<(ChangeMark, Vec<String>)>;
+    let mut groups: BTreeMap<(bool, String), Rows> = BTreeMap::new();
     for change in records::readable_changes(before, after) {
         let (store, Some(name)) = change.table() else {
             continue;

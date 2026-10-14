@@ -334,7 +334,7 @@ pub enum Block {
     /// after a muted note saying what was compared.
     Changes {
         note: Option<String>,
-        groups: Vec<(String, Vec<(ChangeMark, Vec<String>)>)>,
+        groups: Vec<ChangeGroup>,
     },
     /// Something for a person to decide: `◆ decision  <subject>` in the
     /// decision colour, where it is, and the next step with its owner.
@@ -353,6 +353,9 @@ pub enum Block {
         keys: Vec<(String, String)>,
     },
 }
+
+/// A heading and its change lines, each a mark and its columns.
+pub type ChangeGroup = (String, Vec<(ChangeMark, Vec<String>)>);
 
 /// One line of an indented change list.
 #[derive(Clone, Debug, PartialEq, Eq)]

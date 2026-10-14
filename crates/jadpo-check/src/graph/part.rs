@@ -535,7 +535,11 @@ impl Part<'_> {
                 format!("{}.{}", entity.name, field.name),
                 member.syntax().clone(),
             );
-            node.parent = Some(field_key(registry, &entity.name, &[field.name.clone()]));
+            node.parent = Some(field_key(
+                registry,
+                &entity.name,
+                std::slice::from_ref(&field.name),
+            ));
             node.doc = None;
             node.detail = Detail::Reference {
                 target: target.clone(),

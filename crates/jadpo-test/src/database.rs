@@ -225,10 +225,13 @@ struct Shared {
     changed: Condvar,
 }
 
+/// The server and each store's template, by store.
+type Started = (Arc<Server>, BTreeMap<String, String>);
+
 #[derive(Default)]
 struct State {
     /// The server and each store's template, once the first test asked.
-    ready: Option<Result<(Arc<Server>, BTreeMap<String, String>), String>>,
+    ready: Option<Result<Started, String>>,
     /// Copies prepared and not yet taken.
     pool: VecDeque<Copy>,
     /// How many copies tests want ready.
@@ -333,7 +336,7 @@ fn poisoned() -> String {
 /// then keeps copies ready and drops the ones tests gave back, until the
 /// run is over.
 fn prepare(shared: &Shared) {
-    let ready = (|| -> Result<(Arc<Server>, BTreeMap<String, String>), String> {
+    let ready = (|| -> Result<Started, String> {
         let server = server()?;
         let mut templates = BTreeMap::new();
         for (store, steps) in &shared.steps {

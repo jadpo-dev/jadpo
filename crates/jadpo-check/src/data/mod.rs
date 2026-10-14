@@ -949,9 +949,9 @@ impl Reader<'_> {
                     .at(span, "same fields")
                     .also(earlier.span.clone(), "first here")
                     .reason(if unique {
-                        format!("Both cover the same fields, in whatever order, so they are one rule; a write's conflict names one of them (area 6).")
+                        "Both cover the same fields, in whatever order, so they are one rule; a write's conflict names one of them (area 6).".to_string()
                     } else {
-                        format!("Both list the same fields in the same order, so the database would keep the same index twice.")
+                        "Both list the same fields in the same order, so the database would keep the same index twice.".to_string()
                     })
                     .next(format!("Remove `{rule_name}`")),
                 );
