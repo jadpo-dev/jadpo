@@ -11,6 +11,9 @@ rules:
   - configuration.fixture_value_invalid
   - configuration.fixture_value_missing
   - semantic.test_service_fake_required
+  - test.assertion_failed
+  - test.fault
+  - test.unexpected_failure
   - type.test_call_context
   - type.test_clock_context
 ---
@@ -67,11 +70,34 @@ which fails the test when its condition is false. Each test starts from
 nothing: its own empty database, its own clock and its own fakes, so tests
 never depend on each other and can run in any order.
 
-```jadpo fragment
+```jadpo check project=writing-a-test file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=writing-a-test file=domains/planning/libraries/due_dates.jadpo hidden
+type DueAt = Instant {}
+
+type Overdue = Bool {}
+
+library due_dates {
+    /// Whether a todo due at `due` is overdue at `now`.
+    function is_overdue(due: DueAt, now: DueAt) -> Overdue {
+        return Overdue(due < now)
+    }
+}
+```
+
+```jadpo check project=writing-a-test file=domains/planning/actions/remind_if_overdue.jadpo hidden
+action remind_if_overdue(due: DueAt, now: DueAt) -> Overdue {
+    return due_dates.is_overdue(due, now)
+}
+```
+
+```jadpo check project=writing-a-test file=domains/planning/libraries/due_dates.test.jadpo
 // domains/planning/libraries/due_dates.test.jadpo
 test "a todo due yesterday is overdue" {
-    var due: Instant = "2026-01-14T12:00:00Z"
-    var now: Instant = "2026-01-15T12:00:00Z"
+    var due: DueAt = "2026-01-14T12:00:00Z"
+    var now: DueAt = "2026-01-15T12:00:00Z"
     assert due_dates.is_overdue(due, now)
 }
 ```
@@ -490,8 +516,10 @@ FAIL  a rate-limited reminder is retried
 - **How to reproduce it:** the clock, the order seed, configuration
   overrides, fake usage, the kept database and the exact rerun command.
 - Every failure has a stable code (`test.assertion_failed`,
-  `test.fake_unused`, `test.fake_exhausted`, `test.unexpected_failure`) so an
-  agent can act on it without parsing text.
+  `test.fake_unused`, `test.fake_exhausted`, `test.unexpected_failure`, and
+  `test.fault` for a fault such as an overflow) so an agent can act on it
+  without parsing text. Each is shown with its real report under
+  [Errors](#errors).
 
 ## Running tests
 
@@ -605,7 +633,156 @@ nothing.
 > The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
 
 Every error this area can produce with `jadpo check`, with an example that
-triggers it and the compiler's actual output.
+triggers it and the compiler's actual output. The three codes a failed test
+gets from `jadpo test` follow, each with `jadpo test`'s real report (run with
+`--seed 1`).
+
+### `test.assertion_failed`
+
+An `assert` whose condition is false, or an `assert … fails` whose call
+returned or failed differently. Records are compared field by field:
+
+```jadpo check project=e-assertion-failed file=todos.jadpo hidden
+type TodoTitle = Text {
+    min_length: 1
+    max_length: 200
+}
+
+type Priority = Int {
+    min: 1
+    max: 9
+}
+
+type TodoDraft = Object {
+    title: TodoTitle
+    priority: Priority
+}
+
+function draft(title: TodoTitle) -> TodoDraft {
+    return TodoDraft {
+        title: title
+        priority: 3
+    }
+}
+```
+
+```jadpo check project=e-assertion-failed file=todos.test.jadpo expect=test.assertion_failed
+test "a new draft has normal priority" {
+    var fresh: TodoDraft = draft("Buy milk")
+    assert fresh == TodoDraft {
+        title: "Buy milk"
+        priority: 2
+    }
+}
+```
+
+```text output
+FAIL  a new draft has normal priority
+ --> todos.test.jadpo:3
+
+  assert fresh == TodoDraft { ...
+         |        |
+         |        TodoDraft { title: "Buy milk", priority: 2 }
+         TodoDraft { title: "Buy milk", priority: 3 }
+
+  expected: TodoDraft { title: "Buy milk", priority: 2 }
+  actual: TodoDraft { title: "Buy milk", priority: 3 }
+  diff: ~ priority: expected 2, actual 3
+
+  rule: test.assertion_failed
+  rerun: jadpo test todos.test.jadpo:3 --seed 1
+
+test failed: 1 failed, 1 pure test
+```
+
+### `test.unexpected_failure`
+
+A call under `attempt` failed, so the test ended with a failure it didn't
+check for:
+
+```jadpo check project=e-unexpected-failure file=priorities.jadpo hidden
+type Priority = Int {
+    min: 1
+    max: 9
+}
+
+type PriorityTooHigh = Failure {
+    kind: FailureKind.invalid_value
+}
+
+action raise_priority(priority: Priority) fails PriorityTooHigh -> Priority {
+    var higher: Priority = attempt Priority(priority + 1) invalid: PriorityTooHigh
+    return higher
+}
+```
+
+```jadpo check project=e-unexpected-failure file=priorities.test.jadpo expect=test.unexpected_failure
+test "the top priority can still be raised" {
+    var bumped: Priority = attempt raise_priority(9)
+    assert bumped == 9
+}
+```
+
+```text output
+FAIL  the top priority can still be raised
+ --> priorities.test.jadpo:2
+
+  failure: `PriorityTooHigh` from action raise_priority
+  at: priorities.jadpo:11:36
+   |
+11 |     var higher: Priority = attempt Priority(priority + 1) invalid: PriorityTooHigh
+   |                                    ^^^^^^^^^^^^^^^^^^^^^^ breaks `max: 9`
+  reason: The value built here breaks `max: 9`, so `attempt` gives the failure its `invalid:` names.
+  code: priority_too_high
+  kind: FailureKind.invalid_value
+  path: test "the top priority can still be raised" -> action raise_priority
+
+  rule: test.unexpected_failure
+  rerun: jadpo test priorities.test.jadpo:2 --seed 1
+
+test failed: 1 failed, 1 action test
+```
+
+### `test.fault`
+
+The runtime stopped the test with a fault (area 4), here an overflow:
+
+```jadpo check project=e-test-fault file=plans.jadpo hidden
+type Effort = Int {
+    min: 0
+}
+
+function plan_effort(per_todo: Effort, todos: Effort) -> Effort {
+    return Effort(per_todo * todos)
+}
+```
+
+```jadpo check project=e-test-fault file=plans.test.jadpo expect=test.fault
+test "a long plan still adds up" {
+    var per_todo: Effort = 4611686018427387904
+    assert plan_effort(per_todo, 2) > 0
+}
+```
+
+```text output
+FAIL  a long plan still adds up
+ --> plans.test.jadpo:3
+
+  fault: int_overflow in function plan_effort
+  at: plans.jadpo:6:19
+  |
+6 |     return Effort(per_todo * todos)
+  |                   ^^^^^^^^^^^^^^^^ out of range
+  reason: `per_todo * todos` gives a whole number outside `Int`'s range, -9223372036854775808 to 9223372036854775807; Jadpo stops rather than wrap around.
+  next: Bound the values that feed it with `max`, so the result always fits (agent)
+  stack: plans.jadpo:6       function plan_effort
+         plans.test.jadpo:3  test "a long plan still adds up"
+
+  rule: test.fault
+  rerun: jadpo test plans.test.jadpo:3 --seed 1
+
+test failed: 1 failed, 1 pure test
+```
 
 ### `semantic.test_service_fake_required`
 
@@ -1010,17 +1187,17 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 
 | Feature | Status |
 |---|---|
-| Pure and action tests | Work: `test "…" { }`, `assert`, and `call` for actions (run). `call` is optional: `var r = read_clock()` also compiles and runs (compiled). |
-| Kind of test | **Bug (run):** a test that calls an action without `call` is reported as `pure`, so the report's counts are wrong. Route and schedule tests do not exist; their counts are always 0. |
-| Assertion messages | **Gap (run):** a failed `assert` reports `assertion failed at source bytes 529..542`, with no line, expression or values. |
-| Checking a failure | **Gap (compiled):** needs a `match` whose arms all return the success type; there is no direct form. A failure under `attempt` fails the test and names the failure (run). |
+| Pure and action tests | Work in the new compiler (run, chunk 2.2): `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions, one at a time in an order seed's order. |
+| Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test), and the footer and `--json` count each kind. Route and schedule tests come with areas 7 and 12; `--kind route` and `--kind schedule` say so (`toolchain.not_built_yet`). |
+| Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
+| Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Clock | Works: the fixture clock is fixed and `advance clock by` moves only the next call (run). Without a fixture the clock is fixed at 2000-01-01T00:00:00Z, which is not documented (read from generated code). `advance clock by` works without a fixture clock, although the grammar says it needs one (run). |
 | Configuration | Works: fixture values are type-checked, and a fixture must mark exactly the secret fields as secret (compiled). Every fixture must list every field without a default (compiled). Tests swap a global configuration object, so they cannot run in parallel (read from generated code). |
 | Integration fakes | Works: an unfaked operation reachable from a test is an error, responses go through the real adapter with retries and mapping, and each test gets its own response queue (run). Running out of responses gives `outcome_unknown` instead of failing the test (read from the test plan, not probed). Requests sent cannot be asserted. |
 | Database | **Conflicts with area 5 (read from generated code):** each test gets an in-memory SQLite database with tables created from the entities, not migrations; PostgreSQL is refused. Tests run one at a time. |
 | Caller | Direct calls in tests run with no caller, and a test cannot set one (read from generated code). |
 | Placement | Tests can sit in any file; `<name>.test.jadpo` is not checked (compiled). |
-| `test.no_tests` | Raised by `jadpo test` only, never by `jadpo check`, so it is not claimed here (area 14). |
+| `test.no_tests` | Raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none (run, chunk 2.2). |
 
 ### Consistency with the rest of the language
 

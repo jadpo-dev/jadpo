@@ -42,7 +42,7 @@ pub fn test(call: &Call) -> Reply {
             return Reply::failed(
                 Diagnostic::new(&rule::CLI_TEST_ARGUMENTS, "`--name` needs some text")
                     .reason("`--name` runs the tests whose names contain the text it is given.")
-                    .next("Give part of a test's name, such as `--name overdue`"),
+                    .next("Give part of a test's name after `--name`"),
             );
         }
         name => name.map(str::to_string),

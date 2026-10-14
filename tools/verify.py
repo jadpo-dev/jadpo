@@ -38,8 +38,11 @@ def step(name: str, command: list[str]) -> bool:
 
 def main() -> int:
     checks = [
-        # Builds jadpo from this checkout and runs it over the `check` blocks.
-        ('language specification', [sys.executable, 'tools/language_docs.py', '--check']),
+        # Builds jadpo from this checkout and runs it over the `check` blocks;
+        # projects that declare tests also run under `jadpo test` (Phase 2)
+        # and are exported to build/spec-corpus/ (docs/compiler-runtime.md §2.7).
+        ('language specification and jadpo test over the spec corpus',
+         [sys.executable, 'tools/language_docs.py', '--check', '--export-corpus']),
         ('example names', [sys.executable, 'tools/example_names.py', '--check']),
     ]
     if (ROOT / 'Cargo.toml').exists():

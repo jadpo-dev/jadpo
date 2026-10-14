@@ -11,6 +11,15 @@ formatted unless the rule is a syntax error, and be followed by a
 rewrites. A project with an `app.jadpo` block is checked as a project, with
 the layout rules on; one without is checked as loose files.
 
+A `check` project that declares tests is also run (docs/compiler-runtime.md
+§2.7): without `expect=`, `jadpo test --json` must pass; with
+`expect=test.<code>`, the project must check cleanly and exactly one test
+must fail with that code, and the ```text output block after it holds
+`jadpo test`'s exact plain output. Both run with `--seed 1`, so the order
+and the rerun commands are the same every time. `--export-corpus` writes
+each such project and its `jadpo test --json` document to
+build/spec-corpus/<page>/<project>/ for the differential run.
+
 Every other compiled ```jadpo block shows how the archived v0 compiler treated it.
 The v0 compiler was removed on 2026-10-13 (tag archive/compiler-v0); its
 results are frozen in docs/language/reference/v0-results.json, and a block
@@ -23,6 +32,7 @@ code is written in `fragment` blocks, which are not compiled.
   python3 tools/language_docs.py --check     # verify only
   python3 tools/language_docs.py             # verify and write build/language-site
   python3 tools/language_docs.py --bless     # rewrite the output blocks after `check` blocks
+  python3 tools/language_docs.py --check --export-corpus  # also write build/spec-corpus/
   python3 tools/language_docs.py --archived  # list what areas 1-4 still show from the v0 compiler
   python3 tools/language_docs.py --freeze    # with the v0 compiler built: rewrite the frozen results
 
@@ -59,6 +69,10 @@ OUTPUT_FENCE = '```text output'
 FROZEN = DOCS / 'reference/v0-results.json'
 TEMPLATE = Path(__file__).resolve().parent / 'language_docs_template.html'
 OUT_DEFAULT = ROOT / 'build/language-site'
+CORPUS = ROOT / 'build/spec-corpus'
+# Runs are ordered by this seed, so outputs and rerun commands are stable.
+TEST_SEED = '1'
+TEST_DECLARATION = re.compile(r'^\s*test\s+"', re.MULTILINE)
 # Optional build/language-site/published.json maps page stems to published URLs for cross-page links.
 FENCE = re.compile(r'^```(\S*)(.*)$')
 # Roadmap Phase 1 builds areas 1-4 with the new compiler.
@@ -160,6 +174,8 @@ class Page:
         self.problems = []
         self.results = {}
         self.blessings = []
+        # Projects with tests that ran: (name, files, jadpo test --json).
+        self.corpus = []
 
     def collect_blocks(self):
         lines = self.body.splitlines()
@@ -207,6 +223,9 @@ class Page:
             if len(expected) > 1:
                 self.problems.append(f'{name}: blocks disagree on expect=')
             expected = expected.pop()
+            has_tests = any(TEST_DECLARATION.search(b['source']) for b in blocks
+                            if b['attrs']['file'].endswith('.jadpo'))
+            runs = expected == 'pass' and has_tests or expected.startswith('test.')
             with tempfile.TemporaryDirectory() as tmp:
                 for block in blocks:
                     target = Path(tmp) / block['attrs']['file']
@@ -215,7 +234,16 @@ class Page:
                 code, out = jadpo(['check', tmp])
                 json_code, json_out = jadpo(['check', '--json', tmp])
                 formatted, _ = jadpo(['fmt', '--check', tmp])
+                if runs:
+                    # From inside the project, so paths and rerun commands
+                    # are the project's own.
+                    test_code, test_out = jadpo(['test', '.', '--seed', TEST_SEED], cwd=tmp)
+                    test_json_code, test_json = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=tmp)
             out = out.replace(tmp + '/', '').replace(tmp, '.')
+            if runs:
+                self.run_tests(name, blocks, expected, code, formatted,
+                               (test_code, test_out, test_json_code, test_json), bless)
+                continue
             # The rules come from the JSON report, not the text, so a code
             # frame quoting `rule: ...` can't stand in for a diagnostic.
             try:
@@ -254,6 +282,50 @@ class Page:
                     else:
                         self.problems.append(f'{name}: its output block differs from jadpo\'s output (run --bless)')
             self.results[name] = {'expected': expected, 'ok': ok, 'output': out.strip(), 'rules': rules, 'check': True}
+
+    def run_tests(self, name, blocks, expected, check_code, formatted, ran, bless):
+        """A `check` project with tests, run by `jadpo test`: it must check
+        cleanly and be formatted; then all its tests pass, or, for
+        `expect=test.<code>`, exactly one fails with that code and the
+        output block shows the run."""
+        test_code, test_out, test_json_code, test_json = ran
+        ok = check_code == 0 and formatted == 0
+        if check_code:
+            self.problems.append(f'{name}: has tests, so it must check cleanly before they run')
+        elif formatted:
+            self.problems.append(f'{name}: checks but is not canonically formatted (run jadpo fmt)')
+        try:
+            document = json.loads(test_json)
+        except ValueError:
+            document = {}
+            self.problems.append(f'{name}: jadpo test --json gave no document')
+        if test_json_code != test_code:
+            self.problems.append(f'{name}: jadpo test exits {test_code} but --json exits {test_json_code}')
+        tests = (document.get('data') or {}).get('tests') or []
+        codes = [t['failure']['code'] for t in tests if t.get('outcome') == 'failed']
+        if expected == 'pass':
+            if test_code != 0 or codes or not tests:
+                ok = False
+                shown = codes[:3] or [d.get('rule') for d in document.get('diagnostics', [])][:3]
+                self.problems.append(f'{name}: its tests must pass, but jadpo test says {shown or "nothing ran"}')
+        else:
+            if codes != [expected] or test_code != 1:
+                ok = False
+                self.problems.append(f'{name}: expected exactly one test to fail with {expected} but got {codes or "no failures"}')
+            last = [b for b in blocks if 'expect' in b['attrs']][-1]
+            written = last.get('output', {}).get('text')
+            if written != test_out:
+                if bless:
+                    self.blessings.append((last, test_out))
+                elif written is None:
+                    self.problems.append(f'{name}: add a {OUTPUT_FENCE} block after it (run --bless)')
+                else:
+                    self.problems.append(f'{name}: its output block differs from jadpo test\'s output (run --bless)')
+        files = [(b['attrs']['file'], b['source']) for b in blocks]
+        if ok:
+            self.corpus.append((name, files, test_json))
+        self.results[name] = {'expected': expected, 'ok': ok, 'output': test_out.strip(), 'rules': codes,
+                              'check': True}
 
     def bless(self):
         """Writes each check block's real output after it."""
@@ -767,6 +839,23 @@ def render_log(pages, published):
     out.insert(2, f'<p><strong>{totals[0]} decided, {totals[1]} open</strong> across {len(pages)} area page(s).</p>')
     return '\n'.join(out), toc
 
+def export_corpus(corpus):
+    """Writes each project with tests, as its blocks give it, and its
+    `jadpo test --json` document to build/spec-corpus/<page>/<project>/,
+    replacing what was there (docs/compiler-runtime.md §2.7)."""
+    import shutil
+    if CORPUS.exists():
+        shutil.rmtree(CORPUS)
+    for page, (name, files, document) in corpus:
+        folder = CORPUS / page.path.stem / name
+        for path, source in files:
+            target = folder / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(source)
+        (folder / 'test.json').write_text(document)
+    print(f'wrote {len(corpus)} project(s) to {CORPUS.relative_to(ROOT)}')
+
+
 AREAS = [
     (1, 'Project layout and modules'), (2, 'Values and types'), (3, 'Logic'), (4, 'Failures'),
     (5, 'Data'), (6, 'Reads and writes'), (7, 'HTTP'), (8, 'Identity'), (9, 'Policy'),
@@ -781,6 +870,8 @@ def main():
     parser.add_argument('--out', default=str(OUT_DEFAULT))
     parser.add_argument('--freeze', action='store_true', help='compile with the v0 compiler and rewrite the frozen results')
     parser.add_argument('--bless', action='store_true', help='rewrite the output blocks after check blocks')
+    parser.add_argument('--export-corpus', action='store_true',
+                        help=f'write the projects with tests and their jadpo test --json to {CORPUS.relative_to(ROOT)}')
     parser.add_argument('--archived', action='store_true',
                         help='list the blocks areas 1-4 still show from the archived compiler, and why')
     args = parser.parse_args()
@@ -831,6 +922,10 @@ def main():
             failed = True
             print(f'  FAIL {rule} (area {entry.get("area")}) is claimed by no page')
     print(f'{len(owners)}/{len(catalogue)} catalogue errors are assigned to an area')
+    corpus = [(page, entry) for page in pages for entry in page.corpus]
+    print(f'{len(corpus)} spec project(s) with tests ran under jadpo test')
+    if args.export_corpus:
+        export_corpus(corpus)
     if args.freeze and not failed:
         FROZEN.parent.mkdir(parents=True, exist_ok=True)
         FROZEN.write_text(json.dumps({

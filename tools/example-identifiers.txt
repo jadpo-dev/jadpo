@@ -38,6 +38,7 @@ browser_session
 budget
 build_product
 bulk_quantity
+bumped
 business_zone
 cancel_unpaid_orders
 cap_total
@@ -123,6 +124,7 @@ due_window
 duplicate_failure
 duplicate_success
 edit_todo
+effort
 email_on_completion
 email_on_done
 empty_customer_patch
@@ -144,12 +146,14 @@ first_conflict
 first_quantity
 follow_up
 formatted_price
+fresh
 gbp
 get_patch_item_reviewer
 group_name
 handle_tenant
 has_urgent
 health_report
+higher
 home_zone
 http_status
 illegal_write
@@ -160,6 +164,7 @@ invalid_configuration
 invalid_success
 invoice
 invoice_transfer
+is_overdue
 issued_at
 issued_label
 item_conflict
@@ -232,6 +237,7 @@ other_user_todos
 out_of_stock
 outcome_label
 over_maximum
+overdue
 overdue_reminders
 owner
 owner_email
@@ -257,8 +263,10 @@ payment_outcome
 payment_refused
 payment_succeeded
 pence
+per_todo
 ping
 place_order
+plan_effort
 pong
 portions
 postcode
@@ -268,6 +276,7 @@ price
 price_line
 price_text
 priority
+priority_too_high
 private_label
 private_note
 product
@@ -285,6 +294,7 @@ quantity_refused
 quantity_too_large
 quantity_unavailable
 queue_overdue_reminders
+raise_priority
 read_clock
 receipt
 receipt_id
@@ -297,6 +307,7 @@ register_customer
 registration_accepted
 registration_closed
 remind_at
+remind_if_overdue
 reminder
 reminder_cutoff
 reminder_intent_id
@@ -396,6 +407,7 @@ todo_conflict
 todo_count
 todo_cursor
 todo_detail
+todo_draft
 todo_event
 todo_id
 todo_ids
