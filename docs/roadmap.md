@@ -133,7 +133,7 @@ reference only).
   catch-all, required and unreachable arms, object literals that never fail,
   and every page example and teaching example moved to it (area 2,
   "Construction failures by rule", 2026-10-14).
-- [ ] **2.6 Conditions as proof** `opus · xhigh`: an `if` condition narrows
+- [x] **2.6 Conditions as proof** `opus · xhigh`: an `if` condition narrows
   the ranges the checker knows, so a construction it makes safe needs no
   `attempt`, and the compiler reports the call sites that flip.
 
