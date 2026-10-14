@@ -737,3 +737,36 @@ fn help_lists_the_flags_with_examples() {
         assert!(output.stdout.contains(line), "{line}\n{}", output.stdout);
     }
 }
+
+#[test]
+fn a_public_fixture_runs_from_another_domains_test_and_a_scenario() {
+    // Area 13, decided 2026-10-14: a public fixture is called through its
+    // domain from another domain's tests and from root `tests/`.
+    let root = project(
+        "public-fixture",
+        "test \"tallies a stocked count\" {\n    assert tally(stocked()) == 5\n}\n",
+    );
+    write(
+        &root,
+        "domains/stock/fixtures/stocked.jadpo",
+        "public fixture stocked() -> Count {\n    return tally(5)\n}\n",
+    );
+    write(
+        &root,
+        "domains/orders/actions/place.jadpo",
+        "action place() -> Unit {}\n",
+    );
+    write(
+        &root,
+        "domains/orders/actions/place.test.jadpo",
+        "test \"an order sees stocked items\" {\n    place()\n    assert stock.stocked() == 5\n}\n",
+    );
+    write(
+        &root,
+        "tests/stock_is_stocked.test.jadpo",
+        "test \"a scenario starts from stocked items\" {\n    assert stock.stocked() == 5\n}\n",
+    );
+    let output = jadpo(&root, &["test", "."]);
+    assert_eq!(output.stdout, "tested: 3 passed, 3 action tests\n");
+    assert_eq!(output.code, 0);
+}

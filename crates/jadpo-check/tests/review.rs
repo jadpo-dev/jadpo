@@ -471,6 +471,22 @@ fn only_a_domains_interface_can_be_public() {
         ),
         CLEAN
     );
+    // A domain offers its fixtures to other domains' tests (area 13,
+    // decided 2026-10-14); a seed is still never public.
+    assert_eq!(
+        in_project(
+            "domains/planning/fixtures/counted.jadpo",
+            "public fixture counted() -> Count {\n    return keep(3)\n}\n"
+        ),
+        CLEAN
+    );
+    assert_eq!(
+        in_project(
+            "database/seeds/local_demo.jadpo",
+            "public seed local_demo {}\n"
+        ),
+        ["visibility.public_not_allowed"]
+    );
 }
 
 #[test]
