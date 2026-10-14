@@ -1,0 +1,4 @@
+/// A weight in grams, never negative.
+type Grams = Int {
+    min: 0
+}

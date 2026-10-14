@@ -1,0 +1,34 @@
+// A list literal is written in square brackets, and its items take the
+// list's element type, so `"Flour"` here is an `IngredientName`.
+
+test "a recipe weighs as much as its ingredients" {
+    var bread: Recipe = Recipe {
+        ingredients: [
+            Ingredient {
+                name: "Flour"
+                weight: 500
+            },
+            Ingredient {
+                name: "Water"
+                weight: 350
+            },
+            Ingredient {
+                name: "Salt"
+                weight: 10
+            }
+        ]
+        allergens: [Allergen.gluten]
+    }
+    assert weigh_recipe(bread) == 860
+    assert count_ingredients(bread) == 3
+    assert weight_of(bread, "Water") == 350
+    assert weight_of(bread, "Yeast") == none
+}
+
+test "an empty recipe weighs nothing" {
+    var nothing: Recipe = Recipe {
+        ingredients: []
+        allergens: []
+    }
+    assert weigh_recipe(nothing) == 0
+}

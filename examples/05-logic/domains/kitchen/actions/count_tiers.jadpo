@@ -1,0 +1,35 @@
+// Recursion. A type may contain itself, as a tier of a wedding cake holds
+// the tiers stacked on it, and a function may call itself; recursion is
+// the only way to walk such a shape. Only functions recurse: an action
+// that calls itself, directly or through others, doesn't compile, and the
+// runtime stops a function that recurses too deep with a defined fault.
+
+/// What a tier is called on the order.
+type TierName = Text {
+    max_length: 30
+}
+
+/// A cake tier and the tiers resting on top of it.
+type Tier = Object {
+    name: TierName
+    above: List<Tier>
+}
+
+/// A number of tiers.
+type TierCount = Int {
+    min: 0
+}
+
+/// How many tiers sit on `tier`, at any height.
+function tiers_above(tier: Tier) -> TierCount {
+    var mut count: TierCount = 0
+    for upper in tier.above {
+        count = TierCount(count + 1 + tiers_above(upper))
+    }
+    return count
+}
+
+/// How many tiers the whole cake has, the base included.
+action count_tiers(base: Tier) -> TierCount {
+    return TierCount(1 + tiers_above(base))
+}

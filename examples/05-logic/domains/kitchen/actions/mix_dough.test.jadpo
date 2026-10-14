@@ -1,0 +1,24 @@
+test "a wet dough at the right temperature, kneaded ten minutes, is ready" {
+    assert mix_dough(1000, 700, 25, 10, false)
+}
+
+test "resting stands in for kneading" {
+    assert mix_dough(1000, 700, 25, 3, true)
+    assert not mix_dough(1000, 700, 25, 3, false)
+}
+
+test "a dry dough or cold water isn't ready" {
+    assert not mix_dough(1000, 600, 25, 10, false)
+    assert not mix_dough(1000, 700, 18, 10, false)
+}
+
+test "differences have a sign, and flipping changes it" {
+    assert water_difference(30) == 4
+    assert water_difference(20) == -6
+    assert flipped(-6) == 6
+}
+
+test "odd weights are found by their remainder" {
+    assert odd_weight(501)
+    assert not odd_weight(500)
+}

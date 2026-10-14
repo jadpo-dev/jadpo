@@ -1,0 +1,24 @@
+test "bread on the top shelf is turned down" {
+    assert set_oven(Bake.bread, 2) == 210
+    assert set_oven(Bake.bread, 1) == 220
+    assert set_oven(Bake.bread, 0) == 230
+}
+
+test "pastry is turned down above the middle, meringue never" {
+    assert set_oven(Bake.pastry, 1) == 190
+    assert set_oven(Bake.pastry, -1) == 200
+    assert set_oven(Bake.meringue, 2) == 100
+}
+
+test "the lowest and highest shelves change the finish" {
+    assert finish_on(-2) == "pale"
+    assert finish_on(2) == "dark"
+    assert finish_on(0) == "golden"
+    assert shelf_for("dark") == 2
+    assert shelf_for("golden") == 0
+}
+
+test "steam is shown as a word" {
+    assert steam_word(true) == "steam on"
+    assert steam_word(false) == "steam off"
+}

@@ -1,0 +1,17 @@
+test "a recipe with milk isn't safe for someone avoiding milk" {
+    var scone: Recipe = Recipe {
+        ingredients: []
+        allergens: [Allergen.gluten, Allergen.milk]
+    }
+    assert not check_allergens(scone, [Allergen.milk])
+    assert check_allergens(scone, [Allergen.nuts, Allergen.egg])
+}
+
+test "a set compares without order" {
+    var flapjack: Recipe = Recipe {
+        ingredients: []
+        allergens: [Allergen.gluten]
+    }
+    // The badges come back in one order and are compared in another.
+    assert badges(flapjack) == [Badge.nut_free, Badge.vegan, Badge.vegetarian]
+}

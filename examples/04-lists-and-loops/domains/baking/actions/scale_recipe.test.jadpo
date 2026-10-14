@@ -1,0 +1,39 @@
+test "scaling multiplies every ingredient's weight" {
+    var sponge: Recipe = Recipe {
+        ingredients: [
+            Ingredient {
+                name: "Flour"
+                weight: 200
+            },
+            Ingredient {
+                name: "Sugar"
+                weight: 150
+            }
+        ]
+        allergens: [Allergen.gluten, Allergen.egg]
+    }
+    var double: Recipe = scale_recipe(sponge, 2)
+    assert collection.map(double.ingredients, ingredient -> ingredient.weight) == [400, 300]
+    assert double.allergens == sponge.allergens
+}
+
+test "the heavy ingredients keep their order" {
+    var loaf: Recipe = Recipe {
+        ingredients: [
+            Ingredient {
+                name: "Flour"
+                weight: 500
+            },
+            Ingredient {
+                name: "Salt"
+                weight: 10
+            },
+            Ingredient {
+                name: "Water"
+                weight: 350
+            }
+        ]
+        allergens: [Allergen.gluten]
+    }
+    assert heavy_ingredients(loaf, 100) == ["Flour", "Water"]
+}

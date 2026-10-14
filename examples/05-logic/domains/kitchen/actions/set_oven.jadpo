@@ -1,0 +1,100 @@
+// Choosing. `if` runs a block when a condition holds, with any number of
+// `else if`s and one `else`. `match` chooses between the cases of a value,
+// must cover every case, and works both as a statement and as a value.
+
+/// What goes in the oven.
+type Bake = Enum {
+    bread
+    pastry
+    meringue
+}
+
+/// An oven temperature in degrees.
+type OvenTemperature = Int {
+    min: 0
+    max: 300
+}
+
+/// How a bake's top should come out.
+type Finish = Text {
+    max_length: 20
+}
+
+/// A shelf in the oven, counted from the middle: below it is negative.
+type Shelf = Int {
+    min: -2
+    max: 2
+}
+
+/// The oven's temperature for a bake.
+function temperature_for(bake: Bake) -> OvenTemperature {
+    // A `match` that gives a value has one expression per arm: `pattern ->
+    // value`. Covering every variant means no `_` is needed, and adding a
+    // variant later makes every `match` that misses it a compile error.
+    return match bake {
+        Bake.bread -> 230
+        Bake.pastry -> 200
+        Bake.meringue -> 100
+    }
+}
+
+/// What a shelf does to a bake's top.
+function finish_on(shelf: Shelf) -> Finish {
+    // Literal patterns match exact values; a negative number is written
+    // with its sign. Numbers and text can't all be listed, so a `_` arm
+    // catches the rest, and is only allowed where cases can't be listed.
+    return match shelf {
+        -2 -> "pale"
+        2 -> "dark"
+        _ -> "golden"
+    }
+}
+
+/// The shelf that gives `finish`; text patterns match exact text.
+function shelf_for(finish: Finish) -> Shelf {
+    return match finish {
+        "pale" -> -2
+        "dark" -> 2
+        _ -> 0
+    }
+}
+
+/// Whether the oven fills with steam.
+type Steam = Bool {}
+
+/// The steam setting as a word for the oven's display.
+function steam_word(steam: Steam) -> Finish {
+    // `true` and `false` are patterns too, and together cover anything
+    // built on `Bool`.
+    return match steam {
+        true -> "steam on"
+        false -> "steam off"
+    }
+}
+
+/// The temperature to set for `bake` on `shelf`: a high shelf runs hot,
+/// so the oven is turned down for it.
+action set_oven(bake: Bake, shelf: Shelf) -> OvenTemperature {
+    var base: OvenTemperature = temperature_for(bake)
+    var mut setting: OvenTemperature = base
+    // A `match` used as a statement: each arm is a block, `{ ... }`, and an
+    // arm with nothing to do is an empty block.
+    match bake {
+        Bake.meringue -> {}
+        Bake.bread -> {
+            if (shelf == 2) {
+                setting = 210
+            } else if (shelf == 1) {
+                setting = 220
+            } else {
+                setting = base
+            }
+        }
+        Bake.pastry -> {
+            if (shelf > 0) {
+                setting = 190
+            }
+        }
+    }
+    return setting
+}

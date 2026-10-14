@@ -1,0 +1,7 @@
+/// An allergen a recipe can contain.
+type Allergen = Enum {
+    gluten
+    egg
+    milk
+    nuts
+}
