@@ -2,52 +2,7 @@
 title: Data
 area: 5
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
-rules:
-  - data.compound_constraint_fields
-  - data.constraint_duplicate_field
-  - data.constraint_nullable_field
-  - data.constraint_unknown_field
-  - data.delivery_mode_invalid
-  - data.duplicate_constraint_shape
-  - data.entity_not_persistent
-  - data.identity_field_unknown
-  - data.identity_nullable
-  - data.inverse_duplicate_name
-  - data.inverse_not_owning_reference
-  - data.inverse_optional_not_unique
-  - data.inverse_via_field
-  - data.modifier_non_entity
-  - data.multiple_identities
-  - data.persistence_role_invalid
-  - data.persistence_role_required
-  - data.persistence_store_required
-  - data.receiver_kind_invalid
-  - data.relationship_cycle
-  - data.relationship_set_null_required
-  - data.relationship_target_field
-  - data.relationship_target_not_key
-  - data.relationship_type_mismatch
-  - data.representation_authority_invalid
-  - data.representation_duplicate
-  - data.representation_setting_invalid
-  - data.representation_setting_required
-  - index.recommendation_available
-  - migration.identity_duplicate_id
-  - migration.identity_duplicate_path
-  - migration.identity_physical_name
-  - migration.identity_registry_drift
-  - migration.identity_registry_invalid
-  - migration.identity_registry_not_canonical
-  - migration.identity_registry_owner
-  - syntax.constraint_non_entity
-  - syntax.duplicate_field_modifier
-  - syntax.expected_inverse_cardinality
-  - syntax.generated_*
-  - syntax.inverse_non_entity
-  - syntax.lifecycle_*
-  - type.generated_*
-  - type.lifecycle_*
+checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
 ---
 
 # Data
@@ -56,36 +11,61 @@ How a Jadpo program declares the records it keeps and how their schema
 changes. Reading and writing records is area 6; who may read or change one
 is area 9.
 
-> Decided on 2026-10-12. Code on this page shows the language after the rework, applying the decisions from areas 1 to 5; none of it compiles yet. Today's compiled syntax is collapsed beneath each section that changes. The reasoning behind the store and cache rules is in [the stores and caching mapping](research/data-stores-and-caching-mapping.md); where it differs, this page wins.
+> Decided on 2026-10-12. Built in chunk 3.1: entities, their fields, references, unique rules, indexes and stores, migrations and the test database; the examples marked `check` compile with this checkout's `jadpo`. Lifecycles (chunk 3.4), caches (with the Redis driver) and seeds come later, and their examples are proposals. The archived compiler's syntax is collapsed beneath each section that changed. The reasoning behind the store and cache rules is in [the stores and caching mapping](research/data-stores-and-caching-mapping.md); where it differs, this page wins.
 
 Examples use the golden todo app's `planning` domain, plus a shop where Redis
 is needed.
 
 ## Stores
 
-Stores are declared in `app.jadpo`; with none declared, there is one called
-`main` on PostgreSQL. Each store's engine is fixed in source, so every
-environment runs the same engine (D1 is on the roadmap). Every entity lives
-in exactly one store, `main` unless its file says `store: name`; anything
-never saved is a `type`. An entity in Redis must declare an expiry. An action
-writes to at most one store; work across stores goes through an event and a
-subscriber.
+Stores are connections declared in `app.jadpo` (area 11 merged area 5's
+`stores:` into one `connections:` block); with no database declared, there
+is one called `main` on PostgreSQL. Each store's driver is fixed in source,
+so every environment runs the same engine (D1 is on the roadmap). Every
+entity lives in exactly one store, `main` unless its file says `store:
+name`; anything never saved is a `type`. An entity in Redis must declare an
+expiry. An action writes to at most one store; work across stores goes
+through an event and a subscriber.
 
-```jadpo fragment
-// app.jadpo in a shop that caches its catalogue
+```jadpo check project=stores file=app.jadpo
+// app.jadpo in a shop that keeps its orders apart from its catalogue
 application {
-    stores: {
-        main: {
-            engine: Engine.postgres
-            url: config.database_url
+    connections: {
+        catalogue: {
+            driver: Driver.postgres
         }
-        cache: {
-            engine: Engine.redis
-            url: config.redis_url
+        orders: {
+            driver: Driver.postgres
         }
     }
 }
 ```
+
+```jadpo check project=stores file=domains/shop/entities/product.jadpo
+/// Something the shop sells.
+entity Product {
+    id: Uuid
+    name: Text
+
+    store: catalogue
+}
+```
+
+```jadpo check project=stores file=domains/shop/entities/order.jadpo migrate=initial
+/// A customer's order.
+entity Order {
+    id: Uuid
+    placed_at: Instant {
+        generated: Generated.on_create
+    }
+
+    store: orders
+}
+```
+
+Each connection's settings, such as its URL from configuration, come with
+areas 10 and 11; until then `jadpo migrate apply` takes the database's URL
+with `--url`.
 
 ::: today
 
@@ -126,11 +106,21 @@ There is no compound identity: a link between two entities is an entity with
 its own `id` and a compound unique rule. An entity value is an immutable
 snapshot; reading a field never touches the database.
 
-```jadpo fragment
+```jadpo check project=entities file=user.jadpo hidden
+entity User {
+    id: Uuid
+}
+
+type ProjectName = Text {
+    max_length: 80
+}
+```
+
+```jadpo check project=entities file=project.jadpo
 // domains/planning/entities/project.jadpo
 /// A group of todos with a shared goal.
 entity Project {
-    id: Uuid                    // version 7, generated on create
+    id: Uuid  // version 7, generated on create
     owner_id: User.id {
         on_delete: OnDelete.restricted
     }
@@ -155,15 +145,15 @@ lifecycle's `initial:`. A generated field is a required `Instant` set from
 the operation's clock, on create or on every change; code never assigns it
 and it is never in an `Input`.
 
-```jadpo fragment
+```jadpo check project=fields
 entity Todo {
-    ...
+    id: Uuid
     due_at: Instant?
     created_at: Instant {
-        generated: Generated.on_create   // set once, when the record is created
+        generated: Generated.on_create  // set once, when the record is created
     }
     updated_at: Instant {
-        generated: Generated.on_change   // set on create and on every change
+        generated: Generated.on_change  // set on create and on every change
     }
 }
 ```
@@ -199,9 +189,23 @@ as a list; its fields must exist, be distinct and be required, so every
 engine agrees on what a duplicate is. The name is what a write's conflict
 mapping refers to (area 6).
 
-```jadpo fragment
+```jadpo check project=unique
+type ProjectName = Text {
+    max_length: 80
+}
+
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true  // one user per address
+    }
+}
+
 entity Project {
-    ...
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
     name: ProjectName
 
     unique: {
@@ -248,14 +252,22 @@ record could be created first.
 | `OnDelete.cascade` | Records that refer to it are deleted in the same transaction | any reference |
 | `OnDelete.cleared` | The reference is set to `none` | an optional reference (`Project.id?`) |
 
-```jadpo fragment
+```jadpo check project=references
+entity User {
+    id: Uuid
+}
+
+entity Project {
+    id: Uuid
+}
+
 entity Todo {
-    ...
+    id: Uuid
     owner_id: User.id {
         on_delete: OnDelete.restricted  // a user with todos cannot be deleted
     }
     project_id: Project.id? {
-        on_delete: OnDelete.cleared     // the todo stays; it leaves the project
+        on_delete: OnDelete.cleared  // the todo stays; it leaves the project
     }
 }
 ```
@@ -381,14 +393,19 @@ outside the application; special kinds (full-text, JSON, geographic) take a
 `kind:` option where the store supports it. Every index change appears in its
 migration and in the build's schema report, beside the query that needed it.
 
-```jadpo fragment
+```jadpo check project=indexes
 entity Todo {
-    ...
+    id: Uuid
+    due_at: Instant?
+
     indexes: {
-        by_due_at: [due_at]         // for the reporting export; no query needs it
+        by_due_at: [due_at]  // for the reporting export; no query needs it
     }
 }
 ```
+
+Today an index is a list of fields; a `kind:` option is not built yet, and
+the indexes derived from queries come with them (chunk 3.2).
 
 ::: today
 
@@ -492,29 +509,100 @@ database/migrations/20261020T1400_add_priority/
   changes.jadpo        only when a decision is needed
 ```
 
-```jadpo fragment
+When a change needs a decision, `jadpo migrate new` writes `changes.jadpo`
+with a line to fill in for each one, `Todo.priority: {}`; `jadpo check`
+names what is missing until it is written, and `jadpo migrate new` run
+again finishes the migration, writing the decisions into its SQL.
+
+```jadpo check project=migrations file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=migrations file=domains/planning/entities/todo.jadpo hidden migrate=initial
+entity Todo {
+    id: Uuid
+    legacy_flag: Bool
+}
+```
+
+```jadpo check project=migrations file=domains/planning/types/priority.jadpo hidden
+type Priority = Enum {
+    low
+    normal
+    high
+}
+```
+
+```jadpo check project=migrations file=domains/planning/entities/todo.jadpo hidden migrate=add_priority
+entity Todo {
+    id: Uuid
+    priority: Priority
+}
+```
+
+```jadpo check project=migrations file=database/migrations/20261020T1401_add_priority/changes.jadpo migrate=finish
 // changes.jadpo
 /// Adds a priority to every todo and retires the legacy flag.
 migration {
     Todo.priority: {
-        backfill: Priority.normal       // existing rows need a value
+        backfill: Priority.normal  // existing rows need a value
     }
     Todo.legacy_flag: FieldChange.retired
 }
 ```
 
-- **Renames keep their data**: `database/identities.json` gives each table
-  and column a stable identity, so renaming a field renames its column.
-- **Decisions only where needed**: a value for existing rows, or retiring a
-  field. Removing a field takes two migrations, `FieldChange.retired` (code
-  stops using it, the column stays for servers still running the old build)
-  and later `FieldChange.dropped`, which needs explicit acceptance.
+- **Renames keep their data**: the identity registry (area 18) records what
+  each renamed thing was born as, and tables and columns keep the names they
+  were born with, so renaming a field keeps its column. `jadpo rename`,
+  which writes the registry, comes with area 14's tooling; until then a
+  field renamed by hand reads as one removed and one added, and the removed
+  one's decision says so.
+- **Decisions only where needed**: a value for existing rows of a required
+  field, or retiring a field. Removing a field takes two migrations,
+  `FieldChange.retired` (code stops using it, the column stays, now
+  nullable, for servers still running the old build) and later
+  `FieldChange.dropped`, which needs explicit acceptance (area 18; not built
+  yet). Removing an entity, moving one between stores and changing a
+  column's type other than widening it aren't built yet: `jadpo migrate
+  new` says so.
 - **Forgetting is caught at once**: `jadpo check` fails while the entities
   and the latest snapshot disagree, naming what changed and the command to
-  run, so the editor, the build and CI all stop.
+  run, so the editor, the build and CI all stop. Loose files, with no
+  `app.jadpo`, have no migrations, so the check is a project's.
 - **`jadpo migrate apply`** runs pending migrations as a deploy step, each in
-  a transaction, one per store; the application refuses to start against a
-  database that does not match.
+  a transaction, one per store, and records each in the store's
+  `jadpo_migrations` table; it refuses a database that applied a migration
+  the project doesn't have or one that changed since. `jadpo migrate status`
+  lists the migrations and which a database has applied. Until
+  configuration gives each connection its URL (area 10), both take it with
+  `--url`. The application's refusal to start against a database that
+  does not match comes with the compiled deployables (Phase 8).
+
+A migration's `postgres.sql` holds a section per store, each opened by a
+`-- store: <name>` line, and names every table, column, constraint and index
+as the snapshot does: a table after its entity's born name in
+`lower_snake_case` (`Todo` is `todo`), a column after its field, keys and
+indexes `<table>_<name>_key`, `_fkey` and `_idx`, cut with a digest past
+PostgreSQL's 63 bytes. Each store that holds an entity also gets the
+runtime's system tables, prefixed `jadpo_` (below).
+
+## System tables
+
+Tables the runtime needs are generated, prefixed `jadpo_`, and part of the
+migration snapshots like any entity, so drift in them fails `jadpo check`
+too. The ones that must commit with an action's own writes go in every
+store that holds an entity, since any of them can be written:
+
+| Table | Holds | Behaviour |
+|---|---|---|
+| `jadpo_outbox` | Each event an action emitted, with its trace context | Area 12, chunk 6.1 |
+| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure | Area 12, chunk 6.1 |
+| `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7, chunk 4.2 |
+
+Schedule state, sessions and the stores system features name explicitly
+(`schedules: { store: main }`) join them with their chunks. The manifest
+holds a `system_table` node for each, and `jadpo_migrations`, which
+`jadpo migrate apply` keeps, is the runtime's own and in no snapshot.
 
 ::: today
 
@@ -577,2242 +665,825 @@ receiver, and a value receiver that writes needs `guard:`.
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
-
 Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+new compiler's actual output. A lifecycle's errors come with chunk 3.4, and
+the errors of reading and writing records with area 6. An example's hidden
+files and the migrations its `jadpo migrate new` steps write are in the
+page's source.
 
-### Identity
+### `data.identity_missing`
 
-### `data.identity_field_unknown`
-
-```jadpo project=e-identity-unknown expect=data.identity_field_unknown
+```jadpo check project=e-identity-missing expect=data.identity_missing
 entity Note {
-    id: Uuid
-
-    identity: key
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-```
-
-### `data.identity_nullable`
-
-```jadpo project=e-identity-nullable expect=data.identity_nullable
-entity Note {
-    id: Uuid?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-```
-
-### `data.multiple_identities`
-
-The `identity:` item and a trailing `identity` name different fields:
-
-```jadpo project=e-multiple-identities expect=data.multiple_identities
-entity Note {
-    id: Uuid
-    key: Uuid identity
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-```
-
-### `data.modifier_non_entity`
-
-```jadpo project=e-modifier-non-entity expect=data.modifier_non_entity
-type Contact = Object {
-    email: Text unique
-}
-```
-
-### `syntax.duplicate_field_modifier`
-
-```jadpo project=e-duplicate-modifier expect=syntax.duplicate_field_modifier
-entity Account {
-    id: Uuid identity
-    handle: Text unique unique
-}
-```
-
-### Generated fields
-
-### `type.generated_identity_invalid`
-
-```jadpo project=e-generated-identity expect=type.generated_identity_invalid
-entity Note {
-    id: Text { generated: identity }
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-```
-
-### `syntax.generated_on_required`
-
-```jadpo project=e-generated-on expect=syntax.generated_on_required
-entity Note {
-    id: Uuid identity
-    created_at: Instant generated { when: create }
-}
-```
-
-### `syntax.generated_role_invalid`
-
-```jadpo project=e-generated-role expect=syntax.generated_role_invalid
-entity Note {
-    id: Uuid identity
-    created_at: Instant generated { on: delete }
-}
-```
-
-### `type.generated_field_type`
-
-```jadpo project=e-generated-type expect=type.generated_field_type
-entity Note {
-    id: Uuid { generated: identity }
-    created_on: CalendarDate generated { on: create }
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-```
-
-### `type.generated_field_context`
-
-```jadpo project=e-generated-context expect=type.generated_field_context
-type Draft = Object {
-    saved_at: Instant generated { on: create }
-}
-```
-
-### `type.generated_field_assignment`
-
-```jadpo project=e-generated-assignment expect=type.generated_field_assignment
-entity Note {
-    id: Uuid { generated: identity }
     body: Text
-    created_at: Instant generated { on: create }
+}
+```
 
-    identity: id
+```text output
+error: `Note` has no `id` field
+ --> main.jadpo:1:8
+  |
+1 | entity Note {
+  |        ^^^^ no `id`
+  reason: Every entity's identity is one field, `id`, based on `Uuid`: generated when a record is created and never supplied by callers, so other code can refer to it as `Entity.id`.
+  next: Add `id: Uuid` as the entity's first field (agent)
+  rule: data.identity_missing
+  help: docs/language/05-data.html#data-identity-missing
 
-    persistence {
-        store: primary
-        role: authority
+check failed: 1 error, 1 file
+```
+
+### `data.identity_type`
+
+```jadpo check project=e-identity-type expect=data.identity_type
+entity Note {
+    id: Text
+}
+```
+
+```text output
+error: `Note.id` must be a required `Uuid`
+ --> main.jadpo:2:5
+  |
+2 |     id: Text
+  |     ^^ not a `Uuid`
+  reason: An entity's `id` is a `Uuid`, or a named type built on one; links between entities are references to it.
+  next: Write `id: Uuid` (agent)
+  rule: data.identity_type
+  help: docs/language/05-data.html#data-identity-type
+
+check failed: 1 error, 1 file
+```
+
+### `data.entity_in_field`
+
+```jadpo check project=e-entity-in-field expect=data.entity_in_field
+entity User {
+    id: Uuid
+}
+
+entity Todo {
+    id: Uuid
+    owner: User
+}
+```
+
+```text output
+error: `Todo.owner` holds a whole `User`
+ --> main.jadpo:7:12
+  |
+7 |     owner: User
+  |            ^^^^ a `User` record
+  reason: An entity value is a snapshot, never stored inside another record; a field refers to a record by its identity, `User.id`, which the database keeps as a foreign key.
+  next: Store `User.id` instead (agent)
+  rule: data.entity_in_field
+  help: docs/language/05-data.html#data-entity-in-field
+
+check failed: 1 error, 1 file
+```
+
+### `data.generated_type`
+
+```jadpo check project=e-generated-type expect=data.generated_type
+entity Note {
+    id: Uuid
+    created_on: CalendarDate {
+        generated: Generated.on_create
     }
+}
+```
 
-    action add(body: Note.body, at: Note.created_at) -> Note {
-        return attempt create Note {
-            body: body
-            created_at: at
+```text output
+error: `Note.created_on` can't be generated
+ --> main.jadpo:4:9
+  |
+4 |         generated: Generated.on_create
+  |         ^^^^^^^^^ not an `Instant`
+  reason: A generated field is a required `Instant` set from the operation's clock, on create or on every change; code never assigns it.
+  next: Type `created_on` as `Instant`, or remove `generated:` (agent)
+  rule: data.generated_type
+  help: docs/language/05-data.html#data-generated-type
+
+check failed: 1 error, 1 file
+```
+
+### `data.on_delete_required`
+
+```jadpo check project=e-on-delete-required expect=data.on_delete_required
+entity User {
+    id: Uuid
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id
+}
+```
+
+```text output
+error: `Todo.owner_id` doesn't say what deleting its `User` does
+ --> main.jadpo:7:5
+  |
+7 |     owner_id: User.id
+  |     ^^^^^^^^ refers to a `User`
+  reason: Any field typed `User.id` is a reference with a foreign key, and its block must say what happens when the `User` is deleted: `OnDelete.restricted` refuses the delete, `OnDelete.cascade` deletes this record too, and `OnDelete.cleared` sets an optional reference to `none`. There is no default.
+  next: Add `on_delete:` to `owner_id`'s block (human)
+  rule: data.on_delete_required
+  help: docs/language/05-data.html#data-on-delete-required
+
+check failed: 1 error, 1 file
+```
+
+### `data.on_delete_not_reference`
+
+```jadpo check project=e-on-delete-not-reference expect=data.on_delete_not_reference
+entity Note {
+    id: Uuid
+    title: Text {
+        on_delete: OnDelete.cascade
+    }
+}
+```
+
+```text output
+error: `Note.title` isn't a reference
+ --> main.jadpo:4:20
+  |
+4 |         on_delete: OnDelete.cascade
+  |                    ^^^^^^^^^^^^^^^^ nothing to delete
+  reason: `on_delete:` says what deleting a referenced record does, so it belongs only on a field typed `X.id`.
+  next: Remove `on_delete:` (agent)
+  rule: data.on_delete_not_reference
+  help: docs/language/05-data.html#data-on-delete-not-reference
+
+check failed: 1 error, 1 file
+```
+
+### `data.cleared_required_reference`
+
+```jadpo check project=e-cleared-required expect=data.cleared_required_reference
+entity Project {
+    id: Uuid
+}
+
+entity Todo {
+    id: Uuid
+    project_id: Project.id {
+        on_delete: OnDelete.cleared
+    }
+}
+```
+
+```text output
+error: `Todo.project_id` can't be cleared
+ --> main.jadpo:8:20
+  |
+8 |         on_delete: OnDelete.cleared
+  |                    ^^^^^^^^^^^^^^^^ the field can't be `none`
+  reason: `OnDelete.cleared` sets the reference to `none` when the `Project` is deleted, which only an optional reference (`Project.id?`) can hold.
+  next: Make it `Project.id?`, or use `OnDelete.restricted` or `OnDelete.cascade` (agent)
+  rule: data.cleared_required_reference
+  help: docs/language/05-data.html#data-cleared-required-reference
+
+check failed: 1 error, 1 file
+```
+
+### `data.reference_cycle`
+
+Neither record could be created first, whatever happens on delete:
+
+```jadpo check project=e-reference-cycle expect=data.reference_cycle
+entity Team {
+    id: Uuid
+    lead_id: Member.id {
+        on_delete: OnDelete.restricted
+    }
+}
+
+entity Member {
+    id: Uuid
+    team_id: Team.id {
+        on_delete: OnDelete.restricted
+    }
+}
+```
+
+```text output
+error: Required references form a cycle through `Member`
+ --> main.jadpo:10:5
+   |
+ 3 |     lead_id: Member.id {
+   |     ------- and this one
+10 |     team_id: Team.id {
+   |     ^^^^^^^ required reference
+  reason: `Member.team_id` and `Team.lead_id` are both required, so no record could be created first: each needs one that already exists.
+  next: Make one of these references optional (`X.id?`) (human)
+  rule: data.reference_cycle
+  help: docs/language/05-data.html#data-reference-cycle
+
+check failed: 1 error, 1 file
+```
+
+### `data.reference_across_stores`
+
+```jadpo check project=e-across-stores file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        archive: {
+            driver: Driver.postgres
         }
     }
 }
 ```
 
-### `type.generated_field_input`
-
-Only a patch input is checked; an ordinary `input` with a generated field
-compiles (see Status):
-
-```jadpo project=e-generated-input expect=type.generated_field_input
-entity Note {
-    id: Uuid identity
-    body: Text
-    changed_at: Instant generated { on: create_or_change }
-}
-
-input PatchNote {
-    changed_at: Note.changed_at optional
-}
-
-failure EmptyNotePatch {
-    kind: InvalidValue
-    code: "empty_note_patch"
-}
-
-failure NoteNotFound {
-    kind: NotFound
-    code: "note_not_found"
-}
-
-failure NoteConflict {
-    kind: Conflict
-    code: "note_conflict"
-}
-
-action patch_note(id: Note.id, patch: PatchNote)
-    fails EmptyNotePatch, NoteNotFound, NoteConflict
-    -> Note
-{
-    return attempt update required Note {
-        where: id == id
-        patch: patch
-        empty: EmptyNotePatch
-        missing: NoteNotFound
-        conflict: NoteConflict
-    }
-}
-```
-
-### Storage
-
-### `data.entity_not_persistent`
-
-An entity with an `identity:` item and no `persistence` block cannot be
-written, although one with a trailing `identity` and no block can:
-
-```jadpo project=e-not-persistent expect=data.entity_not_persistent
-entity Visit {
-    id: Uuid { generated: identity }
-    path: Text
-
-    identity: id
-
-    action record(path: Visit.path) -> Visit {
-        return attempt create Visit {
-            path: path
-        }
-    }
-}
-```
-
-### `data.persistence_store_required`
-
-```jadpo project=e-store-required expect=data.persistence_store_required
-entity Note {
+```jadpo check project=e-across-stores file=domains/planning/entities/user.jadpo hidden
+entity User {
     id: Uuid
-
-    identity: id
-
-    persistence {
-        role: authority
-    }
 }
 ```
 
-### `data.persistence_role_required`
-
-```jadpo project=e-role-required expect=data.persistence_role_required
-entity Note {
+```jadpo check project=e-across-stores file=domains/planning/entities/old_todo.jadpo expect=data.reference_across_stores
+entity OldTodo {
     id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
     }
+
+    store: archive
 }
 ```
 
-### `data.persistence_role_invalid`
+```text output
+error: `OldTodo.owner_id` refers to a `User` in another store
+ --> domains/planning/entities/old_todo.jadpo:3:5
+  |
+3 |     owner_id: User.id {
+  |     ^^^^^^^^ `OldTodo` is in `archive`
+  reason: A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber.
+  next: Keep `OldTodo` and `User` in one store, or store the id as a plain `Uuid` (human)
+  rule: data.reference_across_stores
+  help: docs/language/05-data.html#data-reference-across-stores
 
-```jadpo project=e-role-invalid expect=data.persistence_role_invalid
-entity Note {
+check failed: 1 error, 3 files
+```
+
+### `data.unknown_field`
+
+```jadpo check project=e-unknown-field expect=data.unknown_field
+entity Project {
     id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: replica
-    }
-}
-```
-
-### `data.representation_duplicate`
-
-```jadpo project=e-representation-duplicate expect=data.representation_duplicate
-entity Customer {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    cache hot {
-        store: redis
-        from: primary
-        delivery: durable
-    }
-
-    cache hot {
-        store: memcached
-        from: primary
-        delivery: durable
-    }
-}
-```
-
-### `data.representation_authority_invalid`
-
-```jadpo project=e-representation-authority expect=data.representation_authority_invalid
-entity Customer {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    cache hot {
-        store: redis
-        from: warehouse
-        delivery: durable
-    }
-}
-```
-
-### `data.representation_setting_required`
-
-```jadpo project=e-representation-required expect=data.representation_setting_required
-entity Customer {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    cache hot {
-        from: primary
-        delivery: durable
-    }
-}
-```
-
-### `data.representation_setting_invalid`
-
-```jadpo project=e-representation-setting expect=data.representation_setting_invalid
-entity Customer {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    cache hot {
-        store: redis
-        from: primary
-        delivery: durable
-        expiry: short
-    }
-}
-```
-
-### `data.delivery_mode_invalid`
-
-```jadpo project=e-delivery-mode expect=data.delivery_mode_invalid
-entity Customer {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    cache hot {
-        store: redis
-        from: primary
-        delivery: eventual
-    }
-}
-```
-
-### Uniqueness and indexes
-
-### `syntax.constraint_non_entity`
-
-```jadpo project=e-constraint-non-entity expect=syntax.constraint_non_entity
-type Team = Object {
     name: Text
-    constraint named: unique(name)
-}
-```
 
-### `data.compound_constraint_fields`
-
-```jadpo project=e-compound-fields expect=data.compound_constraint_fields
-entity Account {
-    id: Uuid
-    handle: Text
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        constraint only_handle: unique(handle)
+    unique: {
+        name_per_owner: [owner_id, name]
     }
 }
 ```
 
-### `data.constraint_unknown_field`
+```text output
+error: `Project` has no field `owner_id`
+ --> main.jadpo:6:26
+  |
+6 |         name_per_owner: [owner_id, name]
+  |                          ^^^^^^^^ no such field
+  reason: The unique rule `name_per_owner` names fields of `Project`, its own.
+  next: Remove `owner_id` (agent)
+  rule: data.unknown_field
+  help: docs/language/05-data.html#data-unknown-field
 
-```jadpo project=e-constraint-unknown expect=data.constraint_unknown_field
-entity Account {
+check failed: 1 error, 1 file
+```
+
+### `data.repeated_field`
+
+```jadpo check project=e-repeated-field expect=data.repeated_field
+entity Todo {
     id: Uuid
-    tenant: Text
+    due_at: Instant
 
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        constraint tenant_handle: unique(tenant, handle)
+    indexes: {
+        by_due_at: [due_at, due_at]
     }
 }
 ```
 
-### `data.constraint_duplicate_field`
+```text output
+error: The index `by_due_at` lists `due_at` twice
+ --> main.jadpo:6:29
+  |
+6 |         by_due_at: [due_at, due_at]
+  |                             ^^^^^^ listed again
+  reason: Each field counts once in an index.
+  next: Remove the second `due_at` (agent)
+  rule: data.repeated_field
+  help: docs/language/05-data.html#data-repeated-field
 
-```jadpo project=e-constraint-duplicate expect=data.constraint_duplicate_field
-entity Account {
+check failed: 1 error, 1 file
+```
+
+### `data.field_list_required`
+
+```jadpo check project=e-field-list expect=data.field_list_required
+entity Project {
     id: Uuid
-    handle: Text
+    owner: Text
+    name: Text
 
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        constraint pair: unique(handle, handle)
+    unique: {
+        name_per_owner: owner
     }
 }
 ```
 
-### `data.constraint_nullable_field`
+```text output
+error: The unique rule `name_per_owner` isn't a list of fields
+ --> main.jadpo:7:25
+  |
+7 |         name_per_owner: owner
+  |                         ^^^^^ not a list
+  reason: Each unique rule is a list of the entity's fields in brackets: `name_per_owner: [field, other]`.
+  next: Write `name_per_owner: [field, ...]` (agent)
+  rule: data.field_list_required
+  help: docs/language/05-data.html#data-field-list-required
 
-```jadpo project=e-constraint-nullable expect=data.constraint_nullable_field
+check failed: 1 error, 1 file
+```
+
+### `data.unique_nullable_field`
+
+```jadpo check project=e-unique-nullable expect=data.unique_nullable_field
 entity Account {
     id: Uuid
     tenant: Text
     handle: Text?
 
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        constraint tenant_handle: unique(tenant, handle)
+    unique: {
+        tenant_handle: [tenant, handle]
     }
 }
 ```
 
-### `data.duplicate_constraint_shape`
+```text output
+error: `Account.handle` can be `none`
+ --> main.jadpo:7:33
+  |
+7 |         tenant_handle: [tenant, handle]
+  |                                 ^^^^^^ optional field
+  reason: The fields of a unique rule over several fields must be required, so every engine agrees on what a duplicate is.
+  next: Make `handle` required, or leave it out of `tenant_handle` (agent)
+  rule: data.unique_nullable_field
+  help: docs/language/05-data.html#data-unique-nullable-field
 
-The same two fields in a different order are the same rule:
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-duplicate-shape expect=data.duplicate_constraint_shape
+### `data.unique_single_field`
+
+```jadpo check project=e-unique-single expect=data.unique_single_field
+entity Account {
+    id: Uuid
+    handle: Text
+
+    unique: {
+        only_handle: [handle]
+    }
+}
+```
+
+```text output
+error: The unique rule `only_handle` has one field
+ --> main.jadpo:6:9
+  |
+6 |         only_handle: [handle]
+  |         ^^^^^^^^^^^ one field
+  reason: The `unique:` section holds rules over several fields; a single field is made unique in its own block, `handle: ... { unique: true }`.
+  next: Move it to `handle`'s block as `unique: true` (agent)
+  rule: data.unique_single_field
+  help: docs/language/05-data.html#data-unique-single-field
+
+check failed: 1 error, 1 file
+```
+
+### `data.duplicate_rule`
+
+The same two fields in another order are the same rule:
+
+```jadpo check project=e-duplicate-rule expect=data.duplicate_rule
 entity Account {
     id: Uuid
     tenant: Text
     handle: Text
 
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        constraint tenant_handle: unique(tenant, handle)
-        constraint handle_tenant: unique(handle, tenant)
+    unique: {
+        tenant_handle: [tenant, handle]
+        handle_tenant: [handle, tenant]
     }
 }
 ```
 
-### `index.recommendation_available`
+```text output
+error: The unique rule `handle_tenant` repeats `tenant_handle`
+ --> main.jadpo:8:9
+  |
+7 |         tenant_handle: [tenant, handle]
+  |         ------------- first here
+8 |         handle_tenant: [handle, tenant]
+  |         ^^^^^^^^^^^^^ same fields
+  reason: Both cover the same fields, in whatever order, so they are one rule; a write's conflict names one of them (area 6).
+  next: Remove `handle_tenant` (agent)
+  rule: data.duplicate_rule
+  help: docs/language/05-data.html#data-duplicate-rule
 
-A warning: the build still succeeds.
+check failed: 1 error, 1 file
+```
 
-```jadpo project=e-index-recommendation expect=index.recommendation_available
-type GroupName = Text {}
+### `data.store_unknown`
 
-entity Member {
-    id: Uuid { generated: identity }
-    group: GroupName
+```jadpo check project=e-store-unknown file=app.jadpo hidden
+application {}
+```
 
-    identity: id
+```jadpo check project=e-store-unknown file=domains/notes/entities/note.jadpo expect=data.store_unknown
+entity Note {
+    id: Uuid
 
-    persistence {
-        store: primary
-        role: authority
-    }
+    store: archive
+}
+```
 
-    query in_group(group: Member.group)
-    freshness: authoritative
-        -> List<Member>
-    {
-        return attempt query many Member {
-            where: group == group
-            order_by: id asc
-            limit: 50
-            offset: 0
+```text output
+error: `archive` isn't a database `Note` can live in
+ --> domains/notes/entities/note.jadpo:4:12
+  |
+4 |     store: archive
+  |            ^^^^^^^ not a database
+  reason: `app.jadpo` declares no connection called `archive`; an entity's `store:` names a connection with `driver: Driver.postgres`, or `main` when `app.jadpo` declares no database.
+  next: Name a database connection, or declare one in `app.jadpo` (agent)
+  rule: data.store_unknown
+  help: docs/language/05-data.html#data-store-unknown
+
+check failed: 1 error, 2 files
+```
+
+### `data.store_required`
+
+`app.jadpo` declares a database, so `main` is no longer implied:
+
+```jadpo check project=e-store-required file=app.jadpo hidden
+application {
+    connections: {
+        archive: {
+            driver: Driver.postgres
         }
     }
 }
 ```
 
-### References
+```jadpo check project=e-store-required file=domains/notes/entities/note.jadpo expect=data.store_required
+entity Note {
+    id: Uuid
+}
+```
 
-### `data.relationship_target_field`
+```text output
+error: `Note` names no store, and there is no `main`
+ --> domains/notes/entities/note.jadpo:1:8
+  |
+1 | entity Note {
+  |        ^^^^ which store?
+  reason: An entity lives in `main` unless its file says `store: <connection>`, and `app.jadpo` declares no database called `main`; its databases are `archive`.
+  next: Add `store: archive` to `Note` (human)
+  rule: data.store_required
+  help: docs/language/05-data.html#data-store-required
 
-```jadpo project=e-reference-target-field expect=data.relationship_target_field
-entity User {
+check failed: 1 error, 2 files
+```
+
+### `data.unknown_section`
+
+The archived compiler's `identity:` item:
+
+```jadpo check project=e-unknown-section expect=data.unknown_section
+entity Note {
     id: Uuid
 
     identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
 }
+```
 
-entity Todo {
+```text output
+error: `identity` isn't something an entity holds
+ --> main.jadpo:4:5
+  |
+4 |     identity: id
+  |     ^^^^^^^^ not a field or a section
+  reason: An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:` and `policy:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.
+  next: Remove it from `Note`, or move it where it belongs (agent)
+  rule: data.unknown_section
+  help: docs/language/05-data.html#data-unknown-section
+
+check failed: 1 error, 1 file
+```
+
+### `data.reserved_table_name`
+
+```jadpo check project=e-reserved-table expect=data.reserved_table_name
+entity JadpoAudit {
     id: Uuid
-    owner_id: User.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references owner_id: User.key on_delete: cascade
-    }
 }
 ```
 
-### `data.relationship_target_not_key`
+```text output
+error: `JadpoAudit`'s table would be called `jadpo_audit`
+ --> main.jadpo:1:8
+  |
+1 | entity JadpoAudit {
+  |        ^^^^^^^^^^ a system table's prefix
+  reason: Tables whose names start with `jadpo_` are the runtime's own (the outbox, delivery records, idempotency keys), so no entity's table may take that prefix.
+  next: Rename `JadpoAudit` (agent)
+  rule: data.reserved_table_name
+  help: docs/language/05-data.html#data-reserved-table-name
 
-```jadpo project=e-reference-not-key expect=data.relationship_target_not_key
-entity User {
+check failed: 1 error, 1 file
+```
+
+### `data.name_too_long`
+
+```jadpo check project=e-name-too-long expect=data.name_too_long
+entity Note {
     id: Uuid
-    email: Text
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-
-entity Todo {
-    id: Uuid
-    owner_email: User.email
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references owner_email: User.email on_delete: cascade
-    }
+    the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest: Instant?
 }
 ```
 
-### `data.relationship_type_mismatch`
+```text output
+error: `Note.the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest` is too long a name for a column
+ --> main.jadpo:3:5
+  |
+3 |     the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest: Instant?
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 67 characters
+  reason: Its column would be called `the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest`, and PostgreSQL keeps names of at most 63 bytes, so a longer one would be cut and could clash with another.
+  next: Choose a shorter name (agent)
+  rule: data.name_too_long
+  help: docs/language/05-data.html#data-name-too-long
 
-```jadpo project=e-reference-type expect=data.relationship_type_mismatch
-entity User {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-
-entity Todo {
-    id: Uuid
-    owner_id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references owner_id: User.id on_delete: cascade
-    }
-}
+check failed: 1 error, 1 file
 ```
 
-### `data.relationship_set_null_required`
+### `migration.out_of_date`
 
-```jadpo project=e-reference-set-null expect=data.relationship_set_null_required
-entity User {
-    id: Uuid
+A project with an entity and no migration yet:
 
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-
-entity Todo {
-    id: Uuid
-    owner_id: User.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references owner_id: User.id on_delete: set_null
-    }
-}
+```jadpo check project=e-out-of-date file=app.jadpo hidden
+application {}
 ```
 
-### `data.relationship_cycle`
-
-The message talks about cascading deletes, but the same error appears with
-`restrict`; the real problem is that neither record can be created first
-(see Status):
-
-```jadpo project=e-reference-cycle expect=data.relationship_cycle
-entity Team {
-    id: Uuid
-    lead_id: Member.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references lead_id: Member.id on_delete: restrict
-    }
-}
-
-entity Member {
-    id: Uuid
-    team_id: Team.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references team_id: Team.id on_delete: restrict
-    }
-}
-```
-
-### Inverses
-
-### `syntax.inverse_non_entity`
-
-```jadpo project=e-inverse-non-entity expect=syntax.inverse_non_entity
-input Team {
-    name: Text
-    inverse members: many Member via: Member.team_id
-}
-```
-
-### `syntax.expected_inverse_cardinality`
-
-```jadpo project=e-inverse-cardinality expect=syntax.expected_inverse_cardinality
-entity User {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        inverse todos: several Todo via: Todo.owner_id
-    }
-}
-
-entity Todo {
-    id: Uuid
-    owner_id: User.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references owner_id: User.id on_delete: cascade
-    }
-}
-```
-
-### `data.inverse_via_field`
-
-```jadpo project=e-inverse-via expect=data.inverse_via_field
-entity User {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        inverse todos: many Todo via: Todo.user_id
-    }
-}
-
-entity Todo {
-    id: Uuid
-    owner_id: User.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references owner_id: User.id on_delete: cascade
-    }
-}
-```
-
-### `data.inverse_not_owning_reference`
-
-```jadpo project=e-inverse-not-owning expect=data.inverse_not_owning_reference
-entity User {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        inverse todos: many Todo via: Todo.owner_id
-    }
-}
-
-entity Todo {
-    id: Uuid
-    owner_id: User.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-```
-
-### `data.inverse_optional_not_unique`
-
-```jadpo project=e-inverse-optional expect=data.inverse_optional_not_unique
-entity User {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        inverse profile: optional Profile via: Profile.user_id
-    }
-}
-
-entity Profile {
-    id: Uuid
-    user_id: User.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references user_id: User.id on_delete: cascade
-    }
-}
-```
-
-### `data.inverse_duplicate_name`
-
-```jadpo project=e-inverse-duplicate expect=data.inverse_duplicate_name
-entity User {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        inverse todos: many Todo via: Todo.owner_id
-        inverse todos: many Todo via: Todo.owner_id
-    }
-}
-
-entity Todo {
-    id: Uuid
-    owner_id: User.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references owner_id: User.id on_delete: cascade
-    }
-}
-```
-
-### Lifecycle syntax
-
-The examples from here to the end of the lifecycle errors change one thing in
-this valid entity:
-
-```jadpo project=e-lifecycle-base
-config RetentionConfiguration {
-    retention: Duration {
-        binding: "RETENTION"
-    }
-}
-
-type TodoTitle = Text {}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: TodoTitle
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-        purge after config.retention from deleted_at
-    }
-}
-```
-
-### `syntax.lifecycle_non_entity`
-
-```jadpo project=e-lc-non-entity expect=syntax.lifecycle_non_entity
-type Draft = Object {
-    deleted_at: Instant?
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-    }
-}
-```
-
-### `syntax.lifecycle_duplicate`
-
-```jadpo project=e-lc-duplicate expect=syntax.lifecycle_duplicate
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-    }
-}
-```
-
-### `syntax.lifecycle_setting_invalid`
-
-```jadpo project=e-lc-setting expect=syntax.lifecycle_setting_invalid
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        restore: true
-        visible when deleted_at == none
-    }
-}
-```
-
-### `syntax.lifecycle_initial_duplicate`
-
-```jadpo project=e-lc-initial-duplicate expect=syntax.lifecycle_initial_duplicate
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-    }
-}
-```
-
-### `syntax.lifecycle_visible_when_required`
-
-```jadpo project=e-lc-visible-when expect=syntax.lifecycle_visible_when_required
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible if deleted_at == none
-    }
-}
-```
-
-### `syntax.lifecycle_visible_duplicate`
-
-```jadpo project=e-lc-visible-duplicate expect=syntax.lifecycle_visible_duplicate
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        visible when deleted_at == none
-    }
-}
-```
-
-### `syntax.lifecycle_transition_from_required`
-
-```jadpo project=e-lc-transition-from expect=syntax.lifecycle_transition_from_required
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-}
-```
-
-### `syntax.lifecycle_transition_set_required`
-
-```jadpo project=e-lc-transition-set expect=syntax.lifecycle_transition_set_required
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-        }
-    }
-}
-```
-
-### `syntax.lifecycle_transition_setting_invalid`
-
-`when:` is this page's proposed spelling; today it is rejected:
-
-```jadpo project=e-lc-transition-setting expect=syntax.lifecycle_transition_setting_invalid
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            when: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-}
-```
-
-### `syntax.lifecycle_transition_duplicate`
-
-```jadpo project=e-lc-transition-duplicate expect=syntax.lifecycle_transition_duplicate
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-}
-```
-
-### `syntax.lifecycle_purge_after_required`
-
-```jadpo project=e-lc-purge-after expect=syntax.lifecycle_purge_after_required
-config RetentionConfiguration {
-    retention: Duration {
-        binding: "RETENTION"
-    }
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-        purge once config.retention from deleted_at
-    }
-}
-```
-
-### `syntax.lifecycle_purge_from_required`
-
-`since` is this page's proposed word; today it is rejected:
-
-```jadpo project=e-lc-purge-from expect=syntax.lifecycle_purge_from_required
-config RetentionConfiguration {
-    retention: Duration {
-        binding: "RETENTION"
-    }
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-        purge after config.retention since deleted_at
-    }
-}
-```
-
-### `syntax.lifecycle_purge_duplicate`
-
-```jadpo project=e-lc-purge-duplicate expect=syntax.lifecycle_purge_duplicate
-config RetentionConfiguration {
-    retention: Duration {
-        binding: "RETENTION"
-    }
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-        purge after config.retention from deleted_at
-        purge after config.retention from deleted_at
-    }
-}
-```
-
-### Lifecycle rules
-
-### `type.lifecycle_requires_persistent_entity`
-
-```jadpo project=e-lc-requires-persistent expect=type.lifecycle_requires_persistent_entity
-entity Todo {
-    id: Uuid
-    deleted_at: Instant?
-
-    identity: id
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-}
-```
-
-### `type.lifecycle_initial_required`
-
-```jadpo project=e-lc-initial-required expect=type.lifecycle_initial_required
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-}
-```
-
-### `type.lifecycle_visible_required`
-
-```jadpo project=e-lc-visible-required expect=type.lifecycle_visible_required
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-}
-```
-
-### `type.lifecycle_field_unknown`
-
-```jadpo project=e-lc-field-unknown expect=type.lifecycle_field_unknown
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-            archived_at: none
-        }
-        visible when deleted_at == none
-    }
-}
-```
-
-### `type.lifecycle_field_ineligible`
-
-The identity cannot be owned by the lifecycle:
-
-```jadpo project=e-lc-field-ineligible expect=type.lifecycle_field_ineligible
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-            id: none
-        }
-        visible when deleted_at == none
-    }
-}
-```
-
-### `type.lifecycle_initial_duplicate`
-
-```jadpo project=e-lc-initial-field-duplicate expect=type.lifecycle_initial_duplicate
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-            deleted_at: none
-        }
-        visible when deleted_at == none
-    }
-}
-```
-
-### `type.lifecycle_initial_field_required`
-
-A transition changes `deleted_at`, so `initial:` must give it a starting
-value:
-
-```jadpo project=e-lc-initial-field expect=type.lifecycle_initial_field_required
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-}
-```
-
-### `type.lifecycle_predicate_unsupported`
-
-Visibility may only compare lifecycle fields with fixed values:
-
-```jadpo project=e-lc-predicate expect=type.lifecycle_predicate_unsupported
-type TodoTitle = Text {}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: TodoTitle
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none or title == "x"
-    }
-}
-```
-
-### `type.lifecycle_transition_source_invalid`
-
-```jadpo project=e-lc-transition-source expect=type.lifecycle_transition_source_invalid
-type TodoTitle = Text {}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: TodoTitle
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: title == "x"
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-}
-```
-
-### `type.lifecycle_restore_forbidden`
-
-```jadpo project=e-lc-restore expect=type.lifecycle_restore_forbidden
-enum AccountStatus {
-    active
-    disabled
-}
-
-entity Account {
-    id: Uuid { generated: identity }
-    status: AccountStatus
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            status: Account.status(AccountStatus.active)
-        }
-        visible when status == AccountStatus.active
-        transition restore {
-            from: status == AccountStatus.disabled
-            set: {
-                status: Account.status(AccountStatus.active)
-            }
-        }
-    }
-}
-```
-
-### `type.lifecycle_transition_field_duplicate`
-
-```jadpo project=e-lc-transition-field expect=type.lifecycle_transition_field_duplicate
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-                deleted_at: clock.now
-            }
-        }
-    }
-}
-```
-
-### `type.lifecycle_value_unsupported`
-
-A transition can set fixed values, `none` and `clock.now`, nothing computed:
-
-```jadpo project=e-lc-value expect=type.lifecycle_value_unsupported
-type TodoTitle = Text {}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: TodoTitle
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-                title: TodoTitle("gone")
-            }
-        }
-    }
-}
-```
-
-### `type.lifecycle_purge_field_invalid`
-
-```jadpo project=e-lc-purge-field expect=type.lifecycle_purge_field_invalid
-config RetentionConfiguration {
-    retention: Duration {
-        binding: "RETENTION"
-    }
-}
-
-type TodoTitle = Text {}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: TodoTitle
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-        purge after config.retention from title
-    }
-}
-```
-
-### `type.lifecycle_purge_initial_invalid`
-
-```jadpo project=e-lc-purge-initial expect=type.lifecycle_purge_initial_invalid
-config RetentionConfiguration {
-    retention: Duration {
-        binding: "RETENTION"
-    }
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: clock.now
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-        purge after config.retention from deleted_at
-    }
-}
-```
-
-### `type.lifecycle_purge_transition_invalid`
-
-```jadpo project=e-lc-purge-transition expect=type.lifecycle_purge_transition_invalid
-config RetentionConfiguration {
-    retention: Duration {
-        binding: "RETENTION"
-    }
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: none
-            }
-        }
-        purge after config.retention from deleted_at
-    }
-}
-```
-
-### `type.lifecycle_purge_retention_invalid`
-
-```jadpo project=e-lc-purge-retention expect=type.lifecycle_purge_retention_invalid
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-        purge after Duration("PT720H") from deleted_at
-    }
-}
-```
-
-### Writes that a lifecycle forbids
-
-The update and delete forms are area 6; these errors protect the lifecycle.
-
-### `type.lifecycle_field_create_forbidden`
-
-```jadpo project=e-lc-create expect=type.lifecycle_field_create_forbidden
-type TodoTitle = Text {}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: TodoTitle
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-
-    action add(title: Todo.title) -> Todo {
-        return attempt create Todo {
-            title: title
-            deleted_at: none
-        }
-    }
-}
-```
-
-### `type.lifecycle_field_update_forbidden`
-
-```jadpo project=e-lc-update expect=type.lifecycle_field_update_forbidden
-failure TodoMissing {
-    kind: NotFound
-    code: "todo_missing"
-}
-
-failure TodoConflict {
-    kind: Conflict
-    code: "todo_conflict"
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-
-    action restore(id: Todo.id)
-        fails TodoMissing, TodoConflict
-        -> Todo
-    {
-        return attempt update required Todo {
-            where: id == id
-            set: {
-                deleted_at: none
-            }
-            missing: TodoMissing
-            conflict: TodoConflict
-        }
-    }
-}
-```
-
-### `type.lifecycle_hard_delete_forbidden`
-
-```jadpo project=e-lc-hard-delete expect=type.lifecycle_hard_delete_forbidden
-failure TodoMissing {
-    kind: NotFound
-    code: "todo_missing"
-}
-
-failure TodoConflict {
-    kind: Conflict
-    code: "todo_conflict"
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-
-    action remove(id: Todo.id)
-        fails TodoMissing, TodoConflict
-        -> Todo
-    {
-        return attempt delete required Todo {
-            where: id == id
-            missing: TodoMissing
-            conflict: TodoConflict
-        }
-    }
-}
-```
-
-### `type.lifecycle_transition_unknown`
-
-```jadpo project=e-lc-transition-unknown expect=type.lifecycle_transition_unknown
-failure TodoMissing {
-    kind: NotFound
-    code: "todo_missing"
-}
-
-failure TodoConflict {
-    kind: Conflict
-    code: "todo_conflict"
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-
-    action archive(id: Todo.id)
-        fails TodoMissing, TodoConflict
-        -> Todo
-    {
-        return attempt update required Todo {
-            where: id == id
-            transition: archive
-            missing: TodoMissing
-            conflict: TodoConflict
-        }
-    }
-}
-```
-
-### `type.lifecycle_transition_identity_required`
-
-```jadpo project=e-lc-transition-identity expect=type.lifecycle_transition_identity_required
-type TodoTitle = Text {}
-
-failure TodoMissing {
-    kind: NotFound
-    code: "todo_missing"
-}
-
-failure TodoConflict {
-    kind: Conflict
-    code: "todo_conflict"
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: TodoTitle
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-
-    action delete_titled(title: Todo.title)
-        fails TodoMissing, TodoConflict
-        -> Todo
-    {
-        return attempt update required Todo {
-            where: title == title
-            transition: delete
-            missing: TodoMissing
-            conflict: TodoConflict
-        }
-    }
-}
-```
-
-### `type.lifecycle_transition_body_invalid`
-
-```jadpo project=e-lc-transition-body expect=type.lifecycle_transition_body_invalid
-type TodoTitle = Text {}
-
-failure TodoMissing {
-    kind: NotFound
-    code: "todo_missing"
-}
-
-failure TodoConflict {
-    kind: Conflict
-    code: "todo_conflict"
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: TodoTitle
-    deleted_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    lifecycle {
-        initial: {
-            deleted_at: none
-        }
-        visible when deleted_at == none
-        transition delete {
-            from: deleted_at == none
-            set: {
-                deleted_at: clock.now
-            }
-        }
-    }
-
-    action delete_renamed(id: Todo.id, title: Todo.title)
-        fails TodoMissing, TodoConflict
-        -> Todo
-    {
-        return attempt update required Todo {
-            where: id == id
-            transition: delete
-            set: {
-                title: title
-            }
-            missing: TodoMissing
-            conflict: TodoConflict
-        }
-    }
-}
-```
-
-### Operations
-
-### `data.receiver_kind_invalid`
-
-```jadpo project=e-receiver expect=data.receiver_kind_invalid
+```jadpo check project=e-out-of-date file=domains/notes/entities/note.jadpo expect=migration.out_of_date
 entity Note {
     id: Uuid
     body: Text
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    function summary(self: snapshot) -> Text {
-        return self.body
-    }
 }
 ```
 
-### Schema identity registry
+```text output
+error: No migration creates these entities' tables yet
+ --> domains/notes/entities/note.jadpo:1:8
+  |
+1 | entity Note {
+  |        ^^^^ no table yet
+  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for deliveries, new system table for idempotency keys and new system table for outbox.
+  next: Run `jadpo migrate new initial` (agent)
+  rule: migration.out_of_date
+  help: docs/language/05-data.html#migration-out-of-date
 
-These errors come from `jadpo check` on a project with a registry. Each
-example shows the registry file beside the source; the registry is written
-with one entry per line, the layout area 1 decided, except where that layout
-is itself the error.
+check failed: 1 error, 2 files
+```
 
-### `migration.identity_registry_not_canonical`
+### `migration.record_invalid`
 
-The decided one-entry-per-line layout is rejected today, because only the
-single-line form counts as compiler-written:
+A snapshot edited by hand:
 
-```jadpo project=e-registry-canonical expect=migration.identity_registry_not_canonical
+```jadpo check project=e-record-invalid file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-record-invalid file=domains/notes/entities/note.jadpo hidden migrate=initial
 entity Note {
     id: Uuid
-    body: Text
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
 }
 ```
 
-```jadpo project=e-registry-canonical file=schema.identities.json
-{"schema_version":1,"entries":[
-{"id":"schema-v1/constraint/Note.id#primary_key","kind":"primary_key","path":"Note.id#primary_key","physical_name":"note_pkey","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/entity/Note","kind":"entity","path":"Note","physical_name":"note","owner_id":null,"previous_paths":[]},
-{"id":"schema-v1/field/Note.body","kind":"field","path":"Note.body","physical_name":"body","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/field/Note.id","kind":"field","path":"Note.id","physical_name":"id","owner_id":"schema-v1/entity/Note","previous_paths":[]}
-]}
+```jadpo check project=e-record-invalid file=database/migrations/20261020T1400_initial/snapshot.json expect=migration.record_invalid
+{"format": 1}
 ```
 
-### `migration.identity_registry_drift`
+```text output
+error: `database/migrations/20261020T1400_initial/snapshot.json` can't be read
+ --> database/migrations/20261020T1400_initial/snapshot.json
+  reason: A migration's records are written by `jadpo migrate new` and never edited by hand; this one can't be used: it has no `stores` object.
+  next: Restore it from version control (human)
+  rule: migration.record_invalid
+  help: docs/language/05-data.html#migration-record-invalid
 
-The field was renamed from `body` to `text` by hand, without
-`jadpo schema rename`:
+check failed: 1 error, 2 files
+```
 
-```jadpo project=e-registry-drift expect=migration.identity_registry_drift
+### `migration.decision_required`
+
+`stars` is new and required; `jadpo migrate new add_stars` wrote the migration and left the decision to fill in:
+
+```jadpo check project=e-decision-required file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-decision-required file=domains/notes/entities/note.jadpo hidden migrate=initial
 entity Note {
     id: Uuid
-    text: Text
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
 }
 ```
 
-```jadpo project=e-registry-drift file=schema.identities.json
-{"schema_version":1,"entries":[{"id":"schema-v1/constraint/Note.id#primary_key","kind":"primary_key","path":"Note.id#primary_key","physical_name":"note_pkey","owner_id":"schema-v1/entity/Note","previous_paths":[]},{"id":"schema-v1/entity/Note","kind":"entity","path":"Note","physical_name":"note","owner_id":null,"previous_paths":[]},{"id":"schema-v1/field/Note.body","kind":"field","path":"Note.body","physical_name":"body","owner_id":"schema-v1/entity/Note","previous_paths":[]},{"id":"schema-v1/field/Note.id","kind":"field","path":"Note.id","physical_name":"id","owner_id":"schema-v1/entity/Note","previous_paths":[]}]}
+```jadpo check project=e-decision-required file=domains/notes/types/stars.jadpo hidden
+type Stars = Int {
+    min: 1
+    max: 5
+}
 ```
 
-### `migration.identity_registry_invalid`
-
-```jadpo project=e-registry-invalid expect=migration.identity_registry_invalid
+```jadpo check project=e-decision-required file=domains/notes/entities/note.jadpo hidden migrate=add_stars
 entity Note {
     id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
+    stars: Stars
 }
 ```
 
-```jadpo project=e-registry-invalid file=schema.identities.json
-{"schema_version":1}
+```jadpo check project=e-decision-required file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_required
+migration {
+    Note.stars: {}
+}
 ```
 
-### `migration.identity_duplicate_id`
+```text output
+error: Migration `20261020T1401_add_stars` needs a decision about `Note.stars`
+ --> database/migrations/20261020T1401_add_stars/changes.jadpo:2:5
+  |
+2 |     Note.stars: {}
+  |     ^^^^^^^^^^ decide here
+  reason: `Note.stars` is required, and the `Note` records already stored have no value for it.
+  next: Set `backfill:` for `Note.stars`, such as `backfill: 1`, then run `jadpo migrate new` to finish the migration (human)
+  rule: migration.decision_required
+  help: docs/language/05-data.html#migration-decision-required
 
-```jadpo project=e-registry-duplicate-id expect=migration.identity_duplicate_id
+check failed: 1 error, 4 files
+```
+
+### `migration.decision_invalid`
+
+```jadpo check project=e-decision-invalid file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-decision-invalid file=domains/notes/entities/note.jadpo hidden migrate=initial
 entity Note {
     id: Uuid
-    body: Text
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
 }
 ```
 
-```jadpo project=e-registry-duplicate-id file=schema.identities.json
-{"schema_version":1,"entries":[
-{"id":"schema-v1/constraint/Note.id#primary_key","kind":"primary_key","path":"Note.id#primary_key","physical_name":"note_pkey","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/entity/Note","kind":"entity","path":"Note","physical_name":"note","owner_id":null,"previous_paths":[]},
-{"id":"schema-v1/field/Note.body","kind":"field","path":"Note.body","physical_name":"body","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/field/Note.body","kind":"field","path":"Note.title","physical_name":"title","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/field/Note.id","kind":"field","path":"Note.id","physical_name":"id","owner_id":"schema-v1/entity/Note","previous_paths":[]}
-]}
+```jadpo check project=e-decision-invalid file=domains/notes/types/stars.jadpo hidden
+type Stars = Int {
+    min: 1
+    max: 5
+}
 ```
 
-### `migration.identity_duplicate_path`
-
-```jadpo project=e-registry-duplicate-path expect=migration.identity_duplicate_path
+```jadpo check project=e-decision-invalid file=domains/notes/entities/note.jadpo hidden migrate=add_stars
 entity Note {
     id: Uuid
-    body: Text
+    stars: Stars
+}
+```
 
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
+```jadpo check project=e-decision-invalid file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_invalid
+migration {
+    Note.stars: {
+        backfill: 9
     }
 }
 ```
 
-```jadpo project=e-registry-duplicate-path file=schema.identities.json
-{"schema_version":1,"entries":[
-{"id":"schema-v1/constraint/Note.id#primary_key","kind":"primary_key","path":"Note.id#primary_key","physical_name":"note_pkey","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/entity/Note","kind":"entity","path":"Note","physical_name":"note","owner_id":null,"previous_paths":[]},
-{"id":"schema-v1/field/Note.body","kind":"field","path":"Note.body","physical_name":"body","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/field/Note.copy","kind":"field","path":"Note.body","physical_name":"body","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/field/Note.id","kind":"field","path":"Note.id","physical_name":"id","owner_id":"schema-v1/entity/Note","previous_paths":[]}
-]}
+```text output
+error: The decision about `Note.stars` doesn't fit its change
+ --> database/migrations/20261020T1401_add_stars/changes.jadpo:3:19
+  |
+3 |         backfill: 9
+  |                   ^ doesn't fit
+  reason: This value can't fill `Note.stars`: it is above the field's `max`.
+  next: Write `Note.stars: { backfill: <value> }` with a value of its type (agent)
+  rule: migration.decision_invalid
+  help: docs/language/05-data.html#migration-decision-invalid
+
+check failed: 1 error, 4 files
 ```
 
-### `migration.identity_registry_owner`
+### `migration.decision_unknown`
 
-`Note.body` names the wrong owning entity:
+```jadpo check project=e-decision-unknown file=app.jadpo hidden
+application {}
+```
 
-```jadpo project=e-registry-owner expect=migration.identity_registry_owner
+```jadpo check project=e-decision-unknown file=domains/notes/entities/note.jadpo hidden migrate=initial
 entity Note {
     id: Uuid
-    body: Text
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-
-entity Tag {
-    id: Uuid
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
 }
 ```
 
-```jadpo project=e-registry-owner file=schema.identities.json
-{"schema_version":1,"entries":[
-{"id":"schema-v1/constraint/Note.id#primary_key","kind":"primary_key","path":"Note.id#primary_key","physical_name":"note_pkey","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/constraint/Tag.id#primary_key","kind":"primary_key","path":"Tag.id#primary_key","physical_name":"tag_pkey","owner_id":"schema-v1/entity/Tag","previous_paths":[]},
-{"id":"schema-v1/entity/Note","kind":"entity","path":"Note","physical_name":"note","owner_id":null,"previous_paths":[]},
-{"id":"schema-v1/entity/Tag","kind":"entity","path":"Tag","physical_name":"tag","owner_id":null,"previous_paths":[]},
-{"id":"schema-v1/field/Note.body","kind":"field","path":"Note.body","physical_name":"body","owner_id":"schema-v1/entity/Tag","previous_paths":[]},
-{"id":"schema-v1/field/Note.id","kind":"field","path":"Note.id","physical_name":"id","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/field/Tag.id","kind":"field","path":"Tag.id","physical_name":"id","owner_id":"schema-v1/entity/Tag","previous_paths":[]}
-]}
+```jadpo check project=e-decision-unknown file=domains/notes/types/stars.jadpo hidden
+type Stars = Int {
+    min: 1
+    max: 5
+}
 ```
 
-### `migration.identity_physical_name`
-
-```jadpo project=e-registry-physical expect=migration.identity_physical_name
+```jadpo check project=e-decision-unknown file=domains/notes/entities/note.jadpo hidden migrate=add_stars
 entity Note {
     id: Uuid
-    body: Text
+    stars: Stars
+}
+```
 
-    identity: id
+```jadpo check project=e-decision-unknown file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_unknown
+migration {
+    Note.stars: {
+        backfill: 3
+    }
+    Note.body: FieldChange.retired
+}
+```
 
-    persistence {
-        store: primary
-        role: authority
+```text output
+error: Nothing about `Note.body` needs a decision
+ --> database/migrations/20261020T1401_add_stars/changes.jadpo:5:5
+  |
+5 |     Note.body: FieldChange.retired
+  |     ^^^^^^^^^ no such change
+  reason: A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `20261020T1401_add_stars` changes about `Note.body` does: a decision is a value for existing rows of a required field, or retiring a field that is gone.
+  next: Remove `Note.body` (agent)
+  rule: migration.decision_unknown
+  help: docs/language/05-data.html#migration-decision-unknown
+
+check failed: 1 error, 4 files
+```
+
+### `migration.unfinished`
+
+The decision is written, but the SQL was written before it:
+
+```jadpo check project=e-unfinished file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-unfinished file=domains/notes/entities/note.jadpo hidden migrate=initial
+entity Note {
+    id: Uuid
+}
+```
+
+```jadpo check project=e-unfinished file=domains/notes/types/stars.jadpo hidden
+type Stars = Int {
+    min: 1
+    max: 5
+}
+```
+
+```jadpo check project=e-unfinished file=domains/notes/entities/note.jadpo hidden migrate=add_stars
+entity Note {
+    id: Uuid
+    stars: Stars
+}
+```
+
+```jadpo check project=e-unfinished file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.unfinished
+migration {
+    Note.stars: {
+        backfill: 3
     }
 }
 ```
 
-```jadpo project=e-registry-physical file=schema.identities.json
-{"schema_version":1,"entries":[
-{"id":"schema-v1/constraint/Note.id#primary_key","kind":"primary_key","path":"Note.id#primary_key","physical_name":"note_pkey","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/entity/Note","kind":"entity","path":"Note","physical_name":"note","owner_id":null,"previous_paths":[]},
-{"id":"schema-v1/field/Note.body","kind":"field","path":"Note.body","physical_name":"","owner_id":"schema-v1/entity/Note","previous_paths":[]},
-{"id":"schema-v1/field/Note.id","kind":"field","path":"Note.id","physical_name":"id","owner_id":"schema-v1/entity/Note","previous_paths":[]}
-]}
+```text output
+error: Migration `20261020T1401_add_stars` doesn't hold its decisions yet
+ --> database/migrations/20261020T1401_add_stars/changes.jadpo:1:1
+  |
+1 | migration {
+  | ^^^^^^^^^ decided
+  reason: Its decisions are all written in `changes.jadpo`, but `database/migrations/20261020T1401_add_stars/postgres.sql` was written before them, so it doesn't carry them out.
+  next: Run `jadpo migrate new` to finish it (agent)
+  rule: migration.unfinished
+  help: docs/language/05-data.html#migration-unfinished
+
+check failed: 1 error, 4 files
 ```
 
 ## Review

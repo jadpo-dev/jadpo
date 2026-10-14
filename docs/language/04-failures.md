@@ -406,7 +406,7 @@ public action reserve_for_order(order: Order) fails QuantityUnavailable -> Reser
 }
 ```
 
-```jadpo check project=reorder file=domains/ordering/actions/reorder.jadpo
+```jadpo check project=reorder file=domains/ordering/actions/reorder.jadpo migrate=initial
 action reorder(order_id: Order.id) fails OrderNotFound, QuantityUnavailable -> Reservation {
     var order: Order = attempt Order.get(order_id)  // can fail with OrderNotFound
     return attempt inventory.reserve_for_order(order)  // can fail with QuantityUnavailable

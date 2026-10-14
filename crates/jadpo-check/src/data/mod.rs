@@ -772,6 +772,7 @@ impl Reader<'_> {
     ) -> Vec<ListRule> {
         let section = if unique { "unique" } else { "indexes" };
         let what = if unique { "unique rule" } else { "index" };
+        let a_what = if unique { "a unique rule" } else { "an index" };
         let Some(list) = member.block() else {
             let at = member
                 .value()
@@ -819,9 +820,11 @@ impl Reader<'_> {
                             format!("The {what} `{rule_name}` isn't a list of fields"),
                         )
                         .at(node_span(path, &at), "not a list")
-                        .reason(format!(
-                            "Each {what} is a list of the entity's fields in brackets, even with one: `{rule_name}: [field]`."
-                        ))
+                        .reason(if unique {
+                            format!("Each unique rule is a list of the entity's fields in brackets: `{rule_name}: [field, other]`.")
+                        } else {
+                            format!("Each index is a list of the entity's fields in brackets, even with one: `{rule_name}: [field]`.")
+                        })
                         .next(format!("Write `{rule_name}: [field, ...]`")),
                     );
                     continue;
@@ -840,7 +843,8 @@ impl Reader<'_> {
                         )
                         .at(entry_span, "not a field's name")
                         .reason(format!(
-                            "A {what} lists the entity's own fields by name, such as `owner_id`."
+                            "{} lists the entity's own fields by name, such as `owner_id`.",
+                            capitalise(a_what)
                         ))
                         .next("Write the field's name"),
                     );
@@ -874,7 +878,7 @@ impl Reader<'_> {
                             format!("The {what} `{rule_name}` lists `{field}` twice"),
                         )
                         .at(entry_span, "listed again")
-                        .reason(format!("Each field counts once in a {what}."))
+                        .reason(format!("Each field counts once in {a_what}."))
                         .next(format!("Remove the second `{field}`")),
                     );
                     continue;
@@ -920,7 +924,8 @@ impl Reader<'_> {
                     )
                     .at(span, "empty")
                     .reason(format!(
-                        "A {what} names at least one of the entity's fields."
+                        "{} names at least one of the entity's fields.",
+                        capitalise(a_what)
                     ))
                     .next(format!("List its fields, or remove `{rule_name}`")),
                 );
@@ -1042,7 +1047,11 @@ impl Reader<'_> {
                         .reason(format!(
                             "{} {} required, so no record could be created first: each needs one that already exists.",
                             crate::and_list(&path),
-                            if cycle.len() == 1 { "is" } else { "are all" }
+                            match cycle.len() {
+                                1 => "is",
+                                2 => "are both",
+                                _ => "are all",
+                            }
                         ))
                         .next("Make one of these references optional (`X.id?`)"),
                 );
@@ -1083,6 +1092,14 @@ fn find_cycle<'a>(
         }
     }
     None
+}
+
+fn capitalise(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
 }
 
 /// The first two words of a declaration or entry, to name it by:

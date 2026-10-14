@@ -339,12 +339,19 @@ fn snake(text: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
-/// `20261020T1400_<purpose>`, now in UTC, a minute after the latest
-/// migration when the clock is behind it, so names keep the order.
+/// `20261020T1400_<purpose>`, now in UTC (or at `SOURCE_DATE_EPOCH`, the
+/// reproducible-builds convention, when it is set), a minute after the
+/// latest migration when the clock is behind it, so names keep the order.
 fn folder_name(set: &Migrations, purpose: &str) -> String {
-    let millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(0));
+    let fixed = std::env::var("SOURCE_DATE_EPOCH")
+        .ok()
+        .and_then(|seconds| seconds.trim().parse::<i64>().ok())
+        .map(|seconds| seconds.saturating_mul(1000));
+    let millis = fixed.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(0))
+    });
     let stamp = |millis: i64| -> String {
         jadpo_std::format_instant(millis)
             .chars()
