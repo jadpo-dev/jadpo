@@ -50,6 +50,8 @@ pub struct Ctx<'p> {
     frames: Vec<Frame>,
     recording: Option<Recording>,
     pub(crate) boundary: Option<Boundary>,
+    /// How many boundaries it has opened.
+    pub(crate) actions: u32,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -75,6 +77,7 @@ impl<'p> Ctx<'p> {
             frames: Vec::new(),
             recording: None,
             boundary: None,
+            actions: 0,
         }
     }
 
@@ -232,6 +235,13 @@ impl<'p> Ctx<'p> {
     }
 
     // --- the action boundary ----------------------------------------------
+
+    /// How many actions this invocation has run in a boundary of their
+    /// own: each action or fixture a test calls opens one, and an action it
+    /// calls joins it.
+    pub fn actions(&self) -> u32 {
+        self.actions
+    }
 
     /// Whether an action is running: its boundary is open.
     pub fn in_action(&self) -> bool {

@@ -53,6 +53,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
     if ctx.in_action() {
         return body.run(ctx).await;
     }
+    ctx.actions += 1;
     let mut attempt = 1;
     loop {
         ctx.boundary = Some(Default::default());

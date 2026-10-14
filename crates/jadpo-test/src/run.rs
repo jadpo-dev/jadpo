@@ -131,3 +131,86 @@ fn one<E: Executor>(
         ))),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::time::Duration;
+
+    use jadpo_interp::Value;
+    use jadpo_runtime::{Fault, LocalFuture, Places};
+
+    use super::*;
+    use crate::TestKind;
+
+    /// An executor whose callable `n` faults when `n` is a multiple of 3,
+    /// and takes longer the earlier it comes, so threads finish out of
+    /// order.
+    struct Fake {
+        places: Places,
+    }
+
+    impl Executor for Fake {
+        fn places(&self) -> &Places {
+            &self.places
+        }
+
+        fn callable(&self, key: &str) -> Option<u32> {
+            key.strip_prefix("test n").and_then(|n| n.parse().ok())
+        }
+
+        fn run<'a, 'p: 'a>(
+            &'a self,
+            _ctx: &'a mut Ctx<'p>,
+            callable: u32,
+            _args: Vec<Value>,
+        ) -> LocalFuture<'a, Outcome> {
+            Box::pin(async move {
+                std::thread::sleep(Duration::from_micros(u64::from(40 - callable) * 50));
+                if callable.is_multiple_of(3) {
+                    Outcome::Fault(Box::new(Fault {
+                        kind: FaultKind::IntOverflow,
+                        frames: Vec::new(),
+                    }))
+                } else {
+                    Outcome::Value(Value::Unit)
+                }
+            })
+        }
+    }
+
+    #[test]
+    fn results_come_back_in_the_tests_order_whichever_thread_ran_them() {
+        let tests: Vec<Test> = (0..40)
+            .map(|n| Test {
+                key: format!("test n{n}"),
+                name: format!("n{n}"),
+                file: "main.test.jadpo".into(),
+                line: n + 1,
+                end_line: n + 1,
+                kind: TestKind::Pure,
+            })
+            .collect();
+        let rerun = Rerun {
+            root: None,
+            seed: 1,
+        };
+        let sources: BTreeMap<String, String> = BTreeMap::new();
+        let failed: Vec<usize> = spread(
+            || Fake {
+                places: Places::new(),
+            },
+            &tests,
+            1,
+            &rerun,
+            &sources,
+        )
+        .iter()
+        .enumerate()
+        .filter(|(_, failure)| failure.is_some())
+        .map(|(n, _)| n)
+        .collect();
+        let expected: Vec<usize> = (0..40).filter(|n: &usize| n.is_multiple_of(3)).collect();
+        assert_eq!(failed, expected);
+    }
+}
