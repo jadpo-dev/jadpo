@@ -40,7 +40,7 @@ function loaves_total(each: Pence, loaves: LoafCount) -> Pence {
 /// paper bag, which costs 5 pence.
 action price_loaves(each: Pence, loaves: LoafCount) -> Pence {
     // Every variable states its type. `var` names a value that never
-    // changes; example 05 shows `var mut` for one that does.
+    // changes; example 04 shows `var mut` for one that does.
     var total: Pence = loaves_total(each, loaves)
     // A condition is always in brackets and must be a `Bool`: Jadpo has no
     // truthiness. Comparing a `LoafCount` with the literal 3 is fine,
