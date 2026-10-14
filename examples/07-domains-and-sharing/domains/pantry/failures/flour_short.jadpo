@@ -1,0 +1,11 @@
+// `public` lets other domains see a declaration. `ordering` handles this
+// failure, so it is public; it is still raised only here, so it lives in
+// this domain's `failures/`.
+
+/// The pantry has less flour than asked for.
+public type FlourShort = Failure {
+    kind: FailureKind.conflict
+    client: {
+        available: Grams
+    }
+}
