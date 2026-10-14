@@ -28,6 +28,7 @@ pub mod collection;
 pub mod decimal;
 pub mod integer;
 pub mod ops;
+pub mod order;
 mod rounding;
 pub mod validate;
 mod value;
@@ -98,7 +99,8 @@ mod tests {
     use super::*;
 
     fn variant(name: &str) -> Value {
-        Value::variant(Rounding::NAME, name, Vec::new())
+        let ordinal = jadpo_std::variant_ordinal(Rounding::NAME, name).unwrap_or(0);
+        Value::variant(Rounding::NAME, ordinal, name, Vec::new())
     }
 
     #[test]

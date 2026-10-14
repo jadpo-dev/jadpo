@@ -337,6 +337,10 @@ impl Types {
         Some(match &shape.variant {
             Some(variant) => Value::Variant(Rc::new(jadpo_value::Variant {
                 ty: Rc::clone(&shape.ty),
+                ordinal: match self.node(key).map(|node| &node.detail) {
+                    Some(Detail::Variant { order, .. }) => *order,
+                    _ => jadpo_std::variant_ordinal(&shape.ty, variant).unwrap_or(0),
+                },
                 name: Rc::clone(variant),
                 fields,
             })),

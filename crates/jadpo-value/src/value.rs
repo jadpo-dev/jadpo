@@ -2,7 +2,8 @@
 //! immutable (area 2), so values are shared behind `Rc` and copying one
 //! never copies its contents; `==` compares contents: objects and variants
 //! field by field, lists in order, sets and maps as sets (area 2, question
-//! 12), and decimals by value, so `1.5` equals `1.50`.
+//! 12), and decimals by value, so `1.5` equals `1.50`. `Ord` is the
+//! canonical order sets and maps keep ([`crate::order`]).
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -176,7 +177,7 @@ impl fmt::Display for Decimal {
 /// An object's value: its type's name and its fields in the order the type
 /// declares them, so two objects built with their fields written in
 /// different orders are equal.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Record {
     pub ty: Rc<str>,
     pub fields: Vec<(Rc<str>, Value)>,
@@ -188,11 +189,15 @@ impl Record {
     }
 }
 
-/// An enum's value: the enum's name, the variant's, and the fields a
-/// payload variant carries, in the order it declares them.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// An enum's value: the enum's name, the variant's and its place among the
+/// enum's variants, and the fields a payload variant carries, in the order
+/// it declares them.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Variant {
     pub ty: Rc<str>,
+    /// Where the variant stands in its enum, from 0, as declared: what sets
+    /// order variants by (area 2, "Set order").
+    pub ordinal: u32,
     pub name: Rc<str>,
     pub fields: Vec<(Rc<str>, Value)>,
 }
@@ -213,7 +218,7 @@ fn field<'a>(fields: &'a [(Rc<str>, Value)], name: &str) -> Option<&'a Value> {
 /// A runtime value. Named types are erased to what they are built on: a
 /// value has already been checked against its type's rules when it was
 /// built. A nullable value is the value itself or [`Value::None`].
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Value {
     Unit,
     None,
@@ -234,11 +239,25 @@ pub enum Value {
     /// Milliseconds.
     Duration(i64),
     List(Rc<[Value]>),
-    /// Kept sorted and without repeats, so equality is set equality.
+    /// Kept in the canonical order without repeats, so equality is set
+    /// equality.
     Set(Rc<[Value]>),
     Map(Rc<BTreeMap<Value, Value>>),
     Record(Rc<Record>),
     Variant(Rc<Variant>),
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Value {
+    /// The canonical order (area 2, "Set order").
+    fn cmp(&self, other: &Value) -> Ordering {
+        crate::order::compare(self, other)
+    }
 }
 
 impl Value {
@@ -260,7 +279,7 @@ impl Value {
         Value::List(Rc::from(items))
     }
 
-    /// A set from any values: sorted, repeats dropped.
+    /// A set from any values: in the canonical order, repeats dropped.
     pub fn set(mut items: Vec<Value>) -> Value {
         items.sort();
         items.dedup();
@@ -275,11 +294,12 @@ impl Value {
         }))
     }
 
-    /// Variant `name` of enum `ty`, with a payload variant's `fields` in
-    /// their declared order.
-    pub fn variant(ty: &str, name: &str, fields: Vec<(Rc<str>, Value)>) -> Value {
+    /// Variant `name` of enum `ty`, the `ordinal`th it declares, with a
+    /// payload variant's `fields` in their declared order.
+    pub fn variant(ty: &str, ordinal: u32, name: &str, fields: Vec<(Rc<str>, Value)>) -> Value {
         Value::Variant(Rc::new(Variant {
             ty: Rc::from(ty),
+            ordinal,
             name: Rc::from(name),
             fields,
         }))
@@ -494,12 +514,13 @@ mod tests {
     fn values_print_as_jadpo_writes_them() {
         let paid = Value::variant(
             "PaymentOutcome",
+            0,
             "paid",
             vec![("receipt".into(), Value::text("r-1"))],
         );
         assert_eq!(paid.to_string(), "PaymentOutcome.paid { receipt: \"r-1\" }");
         assert_eq!(
-            Value::variant("TicketStatus", "open", Vec::new()).to_string(),
+            Value::variant("TicketStatus", 0, "open", Vec::new()).to_string(),
             "TicketStatus.open"
         );
         let money = Value::record(
