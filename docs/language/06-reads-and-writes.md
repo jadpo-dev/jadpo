@@ -13,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, `Entity.create` with `set:`, the rule against reads in a loop, and `jadpo sql`; the examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. The other writes (`update`, `delete`, conflicts, counters and the rerun after a concurrent change) come with chunk 3.3 and lifecycles with chunk 3.4, so their examples are proposals. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Lifecycles come with chunk 3.4, so their examples are proposals. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -581,14 +581,24 @@ domains call that domain's public actions.
 | `Todo.create { set: { ... } }` | adds a record |
 | `Todo.update(todo) { set: { ... } }` | changes fields of a record loaded earlier in the action |
 | `Todo.update(todo) { patch: input }` | changes only the fields a request supplied |
+| `Todo.update(todo_id) { set: { ... } }` | changes the record with that `id` in one step (counters, below) |
 | `Todo.delete(todo)` | removes the record, or runs the lifecycle's `delete` transition |
 | `User.disable(user)` | runs a lifecycle transition, named after it |
 
-Built so far: `get` and `create` with `set:`. `update`, `delete` and the
-`conflict:` mappings come with chunk 3.3 and transitions with chunk 3.4;
-calling one is `toolchain.not_built_yet`. Until the compiler provides the
-not-found failure, the domain declares it, and `get` gives each of its
-fields typed `<Entity>.id` the id it looked for.
+Built since chunk 3.3: every operation but the lifecycle's transitions,
+which come with chunk 3.4; calling one is `toolchain.not_built_yet`. An
+`update` or `delete` takes the record loaded earlier in the action, or its
+`id`: by `id` it fails with the entity's not-found failure when no record
+has it (chosen in chunk 3.3, since area 5's lifecycle writes
+`Todo.delete(todo_id)` and this table `Todo.delete(todo)`). An update gives
+its fields in `set:` or the request's changes with `patch:`, never both, and
+`when_supplied:` goes with `patch:` (chosen in chunk 3.3). A create and an
+update give back the record as stored; a delete gives nothing. Each fills
+the store's own fields: a new version 7 `id` (`Ctx::new_id`, from the
+invocation's seed) on create, and the operation's clock in each generated
+field, `on_create` once and `on_change` on every update. Every write joins
+the action's transaction, and the graph has a `writes` edge from the
+callable to the entity.
 
 ```jadpo check project=operations file=planning.jadpo hidden
 type ProjectName = Text {
@@ -630,23 +640,44 @@ Nothing else is an entity operation: `Todo.fetch(todo_id)` is
 still builds a value of the field's type (area 2).
 
 `TodoNotFound` is the domain's failure of that name in `failures/`, or one
-the compiler provides with kind `not_found` when the domain declares none.
-A write that cannot fail needs no `attempt` (area 3).
+the compiler provides with kind `not_found` when the domain declares none:
+public, with no fields, placed at the entity in the graph (chosen in chunk
+3.3). A read or write gives each field typed `<Entity>.id` of a declared one
+the `id` it looked for. A write that cannot fail needs no `attempt` (area
+3).
 
-```jadpo fragment
+```jadpo check project=reschedule file=planning.jadpo hidden
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type DueAt = Instant {}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    due_at: DueAt?
+    reminder_sent_at: Instant?
+}
+
+type DueDateInPast = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=reschedule file=reschedule_todo.jadpo
 // domains/planning/actions/reschedule_todo.jadpo
-action reschedule_todo(todo_id: Todo.id, due_at: DueAt) fails TodoNotFound, DueDateInPast -> TodoView {
-    var todo: Todo = attempt Todo.get(todo_id)
+action reschedule_todo(todo_id: Todo.id, due_at: DueAt) fails TodoNotFound, DueDateInPast -> Todo {
+    var todo: Todo = attempt Todo.get(todo_id)  // TodoNotFound: provided
     if (due_at <= clock.now) {
         reject DueDateInPast
     }
-    var changed: Todo = Todo.update(todo) {
+    return Todo.update(todo) {
         set: {
             due_at: due_at
             reminder_sent_at: none
         }
     }
-    return TodoView(changed)
 }
 ```
 
@@ -656,16 +687,42 @@ cleared (area 2). `when_supplied:` sets further fields when a given field
 was supplied. A patch with no fields changes nothing and succeeds, as JSON
 Merge Patch does, so there is no `empty:` failure.
 
-```jadpo fragment
-var changed: Todo = Todo.update(todo) {
-    patch: changes
-    when_supplied: {
-        due_at: {
-            reminder_sent_at: none
+```jadpo check project=patch file=planning.jadpo hidden
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    due_at: Instant?
+    reminder_sent_at: Instant?
+}
+```
+
+```jadpo check project=patch file=edit_todo.jadpo
+type TodoChanges = Input {
+    pick: [Todo.title, Todo.due_at]
+    optional: all
+}
+
+action edit_todo(todo: Todo, changes: TodoChanges) -> Todo {
+    return Todo.update(todo) {
+        patch: changes
+        when_supplied: {
+            due_at: {
+                reminder_sent_at: none
+            }
         }
     }
 }
 ```
+
+The statement's text is fixed: each field of the input is written `CASE
+WHEN <supplied> THEN <value> ELSE <column> END`, and an `on_change` field
+changes only when one was supplied. A value built without one of its
+optional `Input` fields remembers it was left out, which only a patch
+reads; it still equals one given `none`.
 
 ::: today
 
@@ -752,23 +809,81 @@ that blocks deleting a project). The compiler knows which rules every write
 can break, so a missing mapping is a compile error and there is no
 catch-all. The database's own error is kept as the internal cause (area 4).
 
-```jadpo fragment
-var project: Project = attempt Project.create {
-    set: {
-        owner_id: owner.id
-        name: name
+```jadpo check project=refused file=planning.jadpo hidden
+type ProjectName = Text {
+    max_length: 80
+}
+
+entity User {
+    id: Uuid
+}
+
+entity Project {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
     }
-    conflict: {
-        Project.name_per_owner: ProjectNameTaken
+    name: ProjectName
+
+    unique: {
+        name_per_owner: [owner_id, name]
     }
 }
 
-attempt Project.delete(project) {
-    conflict: {
-        Todo.project_id: ProjectHasTodos
+entity Todo {
+    id: Uuid
+    project_id: Project.id {
+        on_delete: OnDelete.restricted
+    }
+}
+
+type ProjectNameTaken = Failure {
+    kind: FailureKind.conflict
+}
+
+type ProjectHasTodos = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=refused file=start_project.jadpo
+action start_project(owner: User, name: Project.name) fails ProjectNameTaken -> Project {
+    return attempt Project.create {
+        set: {
+            owner_id: owner.id  // a loaded record's id: the owner is there
+            name: name
+        }
+        conflict: {
+            Project.name_per_owner: ProjectNameTaken
+        }
     }
 }
 ```
+
+```jadpo check project=refused file=close_project.jadpo
+action close_project(project: Project) fails ProjectHasTodos -> Unit {
+    attempt Project.delete(project) {
+        conflict: {
+            Todo.project_id: ProjectHasTodos
+        }
+    }
+}
+```
+
+What a write can break is worked out from what it writes: a create, every
+unique rule of its entity; an update, the unique rules over the fields it
+sets; a delete, each `restricted` reference to the record, or to a record
+its delete cascades to. A reference's value names a record that is surely
+there when it is read from a record loaded earlier in the action
+(`owner.id`, or a loaded record's own reference to that entity) or is
+`none`; any other value may name one that isn't, so the write can fail with
+that entity's not-found failure, which `attempt` passes on (chosen in chunk
+3.3: the transaction's snapshot holds a record loaded in it, and a
+concurrent delete of it is a concurrent change). The runtime maps the
+store's constraint name back to the rule (area 5 names every constraint).
+A write that can be refused, run by an action another action called, runs
+inside a savepoint, so a caller that handles the failure with `match`
+carries on in a transaction the refusal didn't end.
 
 ## All-or-nothing actions and concurrent changes
 
@@ -792,6 +907,18 @@ request A: updates todo 7, commits
 On PostgreSQL this is the repeatable-read isolation level, whose "could not
 serialize" error the runtime already retries. Catching a client that edits
 a stale copy across two requests is HTTP's `If-Match` (area 7).
+
+Built in chunk 3.3. Every action's transaction runs at repeatable read, so
+its snapshot is taken at its first statement and a record it loaded is the
+record as of then; an `update` or `delete` of a row another transaction
+changed since is PostgreSQL's serialisation failure, which the driver
+reports as a concurrent change. The runtime then rolls the transaction
+back, throws away the attempt's events, and runs the whole action again
+from its first line: its reads see the other transaction's change, and its
+new records get new identities. The budget is three attempts; the second
+bound waits for a host clock, which comes with time (chunk 5.2). A record
+handed to an action from outside its transaction (a test passing one an
+earlier action returned) is checked only as far as its row is still there.
 
 ::: today
 
@@ -852,17 +979,39 @@ record's `id` instead of a loaded record, and its values may use only
 parameters, constants, `clock.now` and the record's stored fields, so it
 never reruns the action.
 
-```jadpo fragment
-attempt Post.update(post_id) {
-    set: {
-        view_count: Post.view_count + 1
-        last_viewed_at: clock.now
+```jadpo check project=counter file=post.jadpo hidden
+type ViewCount = Int {
+    min: 0
+}
+
+entity Post {
+    id: Uuid
+    view_count: ViewCount
+    last_viewed_at: Instant?
+}
+```
+
+```jadpo check project=counter file=view_post.jadpo
+action view_post(post_id: Post.id) fails PostNotFound -> Post {
+    return attempt Post.update(post_id) {
+        set: {
+            view_count: ViewCount(Post.view_count + 1)
+            last_viewed_at: clock.now
+        }
     }
 }
 ```
 
-Today `set:` cannot read the stored value: `Post.view_count` there is an
-unknown name.
+Built in chunk 3.3: the statement is `UPDATE "post" SET "view_count" =
+("view_count" + $1), ...`, and no row is `PostNotFound`. The database works
+a stored field out with `+` and `-`, which give the same result in SQL as
+in Jadpo, under constructions the declared ranges prove (`ViewCount(...)`
+here, since a count of at least 0 plus 1 is at least 0); anything else needs
+the record loaded first. One correction to the paragraph above: at
+repeatable read, PostgreSQL refuses to write a row another transaction
+changed after this action's first statement, so a counter inside an action
+that read first does rerun when two requests race; no increment is lost
+either way, and one that is the action's first statement never reruns.
 
 ## Reading in a loop
 
@@ -948,16 +1097,13 @@ invariant check) must come from the store being written. Across stores
 there are no joins, filters or ordering; an include reaches another store
 only to fetch records by `id`. Moving an entity to another store can break
 an action that never names it, so the error names the cause:
+`store.action_spans_stores`, below, points at the write or the call that
+brings in the second store.
 
-```text
-error[store.action_spans_stores]: checkout writes two stores
-  --> domains/ordering/actions/checkout.jadpo:12
-   | writes Order (store main) and Cart (store carts)
-   = fix: clear the cart in a subscriber to OrderEvent.placed, or keep Cart in main
-```
-
-Today only the main store runs, and `consistency: atomic` across two stores
-is rejected (`data.atomic_domain_mismatch`).
+Built in chunk 3.3: the check, counting every action an action calls. At
+run time an action's transaction is begun in the store its first store
+operation names, and any operation on another store in the same action is
+a fault; reading another store outside the transaction is not built yet.
 
 ## Where a read comes from
 
@@ -2996,3 +3142,9 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Cache reads | Only a query a route runs directly may be served from a cache; reads in actions, policy and authentication go to the store; a client that just wrote skips caches | 2026-10-12 |
 | Policy in query plans | Policy compiled into each query's `WHERE`; fields a policy condition filters on get indexes; row-level security later, opt-in | 2026-10-12 |
 | Caches in tests | `jadpo test` supplies an in-memory cache that behaves like Redis, emptied between tests | 2026-10-12 |
+| Write targets | Chosen in chunk 3.3: `update` and `delete` take the record loaded earlier or its `id`; by `id` no record is the entity's not-found failure; a delete gives nothing | 2026-10-14 |
+| Update sections | Chosen in chunk 3.3: `set:` or `patch:`, never both; `when_supplied:` only with `patch:`, never setting a field the patch has or one another entry sets | 2026-10-14 |
+| Provided not-found failure | Chosen in chunk 3.3: kind `not_found`, public, no fields, placed at its entity | 2026-10-14 |
+| References that hold | Chosen in chunk 3.3: a reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure | 2026-10-14 |
+| Stored values | Chosen in chunk 3.3: an update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove | 2026-10-14 |
+| Refusals in a called action | Chosen in chunk 3.3: a write that can be refused, run by an action another action called, runs inside a savepoint, so a caller handling the failure carries on | 2026-10-14 |
