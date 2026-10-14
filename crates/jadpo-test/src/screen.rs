@@ -11,6 +11,8 @@ use jadpo_term::{
     Token, shown_path,
 };
 
+use jadpo_runtime::fields_text;
+
 use crate::outcome::{AssertionFailure, ChangeMark, Detail, FailureInfo, FaultInfo, Located};
 use crate::{Run, Test, TestFailure, TestKind};
 
@@ -249,15 +251,6 @@ fn at(items: &mut Vec<Item>, located: &Option<Located>, root: Option<&str>) {
     }
 }
 
-/// `{ name: value, … }`, as Jadpo writes a value's fields.
-fn fields_value(fields: &[(String, String)]) -> String {
-    let shown: Vec<String> = fields
-        .iter()
-        .map(|(name, value)| format!("{name}: {value}"))
-        .collect();
-    format!("{{ {} }}", shown.join(", "))
-}
-
 fn failure_items(info: &FailureInfo, root: Option<&str>) -> Vec<Item> {
     let mut items = Vec::new();
     at(&mut items, &info.at, root);
@@ -283,13 +276,13 @@ fn failure_items(info: &FailureInfo, root: Option<&str>) -> Vec<Item> {
     if !info.client.is_empty() {
         items.push(Item::Field(Field::value(
             "client",
-            fields_value(&info.client),
+            fields_text(info.client.iter().map(|(name, value)| (name, value))),
         )));
     }
     if !info.internal.is_empty() {
         items.push(Item::Field(Field::value(
             "internal",
-            fields_value(&info.internal),
+            fields_text(info.internal.iter().map(|(name, value)| (name, value))),
         )));
     }
     if !info.cause.is_empty() {

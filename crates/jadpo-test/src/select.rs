@@ -312,7 +312,7 @@ pub(crate) fn new_seed() -> u64 {
     mixed % 99_999 + 1
 }
 
-fn splitmix(state: u64) -> u64 {
+pub(crate) fn splitmix(state: u64) -> u64 {
     let mut z = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
     z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
     z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);

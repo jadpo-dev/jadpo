@@ -51,7 +51,8 @@ fn reading_the_clock_is_not_built_yet() {
         ),
     ]);
     let due = program
-        .text_value("DueAt", "2026-10-25T08:30:00Z")
+        .codec()
+        .text("DueAt", "2026-10-25T08:30:00Z")
         .expect("an instant");
     let stopped = fault(&program, "check_due", vec![due.clone(), due]);
     assert_eq!(
@@ -77,7 +78,7 @@ fn time_values_compare_in_order() {
     let program = main(
         "type DueAt = Instant {}\n\ntype Late = Bool {}\n\nfunction late(due_at: DueAt, done_at: DueAt) -> Late {\n    return Late(done_at > due_at)\n}\n\nfunction deadline() -> DueAt {\n    return \"2026-10-25T09:30:00+01:00\"\n}\n",
     );
-    let at = |text: &str| program.text_value("DueAt", text).expect("an instant");
+    let at = |text: &str| program.codec().text("DueAt", text).expect("an instant");
     assert_eq!(
         value(
             &program,
@@ -174,13 +175,17 @@ fn an_entity_write_is_named_by_its_operation() {
         "type TodoStatus = Enum {\n    open\n    done\n}\n\nentity Todo {\n    id: Uuid\n    status: TodoStatus\n}\n\naction finish(todo: Todo) -> Todo {\n    var done: Todo = Todo.update(todo) {\n        set: {\n            status: TodoStatus.done\n        }\n    }\n    return done\n}\n",
     );
     let todo = program
+        .codec()
         .object(
             "Todo",
             vec![
                 ("id", Value::uuid("01908f6e-1c2a-7b3c-9d4e-5f6a7b8c9d0e")),
                 (
                     "status",
-                    program.variant("TodoStatus", "open", vec![]).expect("open"),
+                    program
+                        .codec()
+                        .variant("TodoStatus", "open", vec![])
+                        .expect("open"),
                 ),
             ],
         )

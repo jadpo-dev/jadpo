@@ -1,14 +1,17 @@
-//! A failed test as data that leaves the interpreter's thread (values are
+//! A failed test as data that leaves the thread it ran on (values are
 //! shared behind `Rc` there, so everything here is text): its stable code,
 //! where in the test it failed, and what area 13 says a report shows: the
 //! assertion with each part's value, expected and actual, a record's
 //! differences field by field, or the failure or fault that happened
-//! instead with its `.jadpo` frames.
+//! instead with its `.jadpo` frames. It is read from the runtime's outcome,
+//! the frame table and the sources alone, so it is the same whichever
+//! executor ran the test.
 
 use jadpo_diag::{Rule, rule};
-use jadpo_interp::{
-    Assertion, AssertionDetail, CallError, Failure, Fault, Frame, Got, Outcome, Program, Report,
-    Value,
+use jadpo_interp::{CallError, Value};
+use jadpo_runtime::{
+    Assertion, AssertionDetail, Failure, Fault, FaultKind, Frame, Got, Outcome, Places, Report,
+    Sources,
 };
 
 use crate::diff::diff;
@@ -137,15 +140,15 @@ pub struct Located {
 
 impl Located {
     /// The site at `span` of `path` (or, without one, the start of `line`),
-    /// its positions read from the program's text.
+    /// its positions read from the sources.
     pub(crate) fn new(
-        program: &Program,
+        sources: &dyn Sources,
         path: &str,
         span: Option<(u32, u32)>,
         line: u32,
         label: &str,
     ) -> Located {
-        let text = program.text(path).unwrap_or_default();
+        let text = sources.text(path).unwrap_or_default();
         let (start, end) = span.unwrap_or_else(|| {
             let offset = line_offset(text, line);
             (offset, offset)
@@ -238,17 +241,27 @@ pub struct FaultInfo {
     pub stack: Vec<StackFrame>,
 }
 
+/// Where a frame stands, with its code frame; without a site, the start
+/// of its line.
+fn located_frame(places: &Places, sources: &dyn Sources, frame: Frame) -> Option<Located> {
+    let place = places.place(frame)?;
+    let span = places
+        .site(frame)
+        .map(|(_, site)| (site.start, site.end.max(site.start)));
+    Some(Located::new(sources, place.file, span, place.line, ""))
+}
+
 /// Where the test frame stands: the outermost frame's site.
-fn place_in_test(program: &Program, frames: &[Frame], test: &Test) -> Located {
-    match frames.last().and_then(|frame| program.site(*frame)) {
-        Some(span) => Located::new(
-            program,
-            span.file,
-            Some((span.start, span.end.max(span.start))),
-            span.line,
+fn place_in_test(places: &Places, sources: &dyn Sources, frames: &[Frame], test: &Test) -> Located {
+    match frames.last().and_then(|frame| places.site(*frame)) {
+        Some((file, site)) => Located::new(
+            sources,
+            file,
+            Some((site.start, site.end.max(site.start))),
+            site.line,
             "",
         ),
-        None => Located::new(program, &test.file, None, test.line, ""),
+        None => Located::new(sources, &test.file, None, test.line, ""),
     }
 }
 
@@ -262,42 +275,43 @@ fn column_of(text: &str, offset: usize) -> usize {
 }
 
 pub(crate) fn failure(
-    program: &Program,
+    places: &Places,
+    sources: &dyn Sources,
     test: &Test,
     outcome: &Outcome,
     rerun: &Rerun,
 ) -> TestFailure {
     match outcome {
         Outcome::Assertion(assertion) => {
-            let location = place_in_test(program, &assertion.frames, test);
+            let location = place_in_test(places, sources, &assertion.frames, test);
             TestFailure {
                 rule: &rule::TEST_ASSERTION_FAILED,
                 rerun: rerun.command(&location.path, location.line),
                 location,
-                detail: Detail::Assertion(Box::new(assertion_failure(program, assertion))),
+                detail: Detail::Assertion(Box::new(assertion_failure(places, sources, assertion))),
             }
         }
         Outcome::Failed(failure) => {
-            let location = place_in_test(program, &failure.frames, test);
+            let location = place_in_test(places, sources, &failure.frames, test);
             TestFailure {
                 rule: &rule::TEST_UNEXPECTED_FAILURE,
                 rerun: rerun.command(&location.path, location.line),
                 location,
-                detail: Detail::Failure(Box::new(failure_info(program, failure))),
+                detail: Detail::Failure(Box::new(failure_info(places, sources, failure))),
             }
         }
         Outcome::Fault(fault) => {
-            let location = place_in_test(program, &fault.frames, test);
+            let location = place_in_test(places, sources, &fault.frames, test);
             TestFailure {
                 rule: &rule::TEST_FAULT,
                 rerun: rerun.command(&location.path, location.line),
                 location,
-                detail: Detail::Fault(Box::new(fault_info(program, fault))),
+                detail: Detail::Fault(Box::new(fault_info(places, sources, fault))),
             }
         }
         // A test that gives a value passed; the caller never asks.
         Outcome::Value(_) => not_runnable(
-            program,
+            sources,
             test,
             &CallError::Unknown("a test that passed".to_string()),
             rerun,
@@ -305,17 +319,17 @@ pub(crate) fn failure(
     }
 }
 
-/// A test the interpreter couldn't start: a defect, since every test the
+/// A test the executor couldn't start: a defect, since every test the
 /// graph lists has a body.
 pub(crate) fn not_runnable(
-    program: &Program,
+    sources: &dyn Sources,
     test: &Test,
     error: &CallError,
     rerun: &Rerun,
 ) -> TestFailure {
     TestFailure {
         rule: &rule::TEST_FAULT,
-        location: Located::new(program, &test.file, None, test.line, ""),
+        location: Located::new(sources, &test.file, None, test.line, ""),
         rerun: rerun.command(&test.file, test.line),
         detail: Detail::Fault(Box::new(FaultInfo {
             kind: "internal_fault".to_string(),
@@ -331,10 +345,10 @@ pub(crate) fn not_runnable(
     }
 }
 
-fn located(program: &Program, report: &Report) -> Option<Located> {
+fn located(sources: &dyn Sources, report: &Report) -> Option<Located> {
     report.location.as_ref().map(|location| {
         let mut located = Located::new(
-            program,
+            sources,
             &location.path,
             location.span,
             location.line,
@@ -348,14 +362,6 @@ fn located(program: &Program, report: &Report) -> Option<Located> {
     })
 }
 
-fn field<'r>(report: &'r Report, label: &str) -> Option<&'r [String]> {
-    report
-        .fields
-        .iter()
-        .find(|(name, _)| *name == label)
-        .map(|(_, lines)| lines.as_slice())
-}
-
 fn texts(fields: &[(String, Value)]) -> Vec<(String, String)> {
     fields
         .iter()
@@ -363,9 +369,8 @@ fn texts(fields: &[(String, Value)]) -> Vec<(String, String)> {
         .collect()
 }
 
-fn failure_info(program: &Program, failure: &Failure) -> FailureInfo {
-    let report = program.report(&Outcome::Failed(Box::new(failure.clone())));
-    let places = program.places();
+fn failure_info(places: &Places, sources: &dyn Sources, failure: &Failure) -> FailureInfo {
+    let report = Report::failure(failure, places, sources);
     FailureInfo {
         name: failure.name.clone(),
         code: failure.code.clone(),
@@ -373,91 +378,61 @@ fn failure_info(program: &Program, failure: &Failure) -> FailureInfo {
         message: failure.message.clone(),
         client: texts(&failure.client),
         internal: texts(&failure.internal),
-        subject: report
-            .as_ref()
-            .map_or_else(|| format!("`{}`", failure.name), |r| r.subject.clone()),
-        reason: report
-            .as_ref()
-            .and_then(|r| field(r, "reason"))
-            .and_then(|lines| lines.first().cloned()),
-        at: report.as_ref().and_then(|report| located(program, report)),
+        reason: report.reason().map(str::to_string),
+        at: located(sources, &report),
         path: failure
             .frames
             .iter()
             .rev()
             .map(|frame| places.label(frame.callable).to_string())
             .collect(),
-        cause: report
-            .as_ref()
-            .and_then(|r| field(r, "cause"))
-            .map(<[String]>::to_vec)
-            .unwrap_or_default(),
+        cause: report.cause().to_vec(),
+        subject: report.subject,
     }
 }
 
-fn fault_info(program: &Program, fault: &Fault) -> FaultInfo {
-    let report = program.report(&Outcome::Fault(Box::new(fault.clone())));
-    let places = program.places();
-    let mut stack: Vec<StackFrame> = Vec::new();
-    for frame in &fault.frames {
-        let Some(place) = places.place(*frame) else {
-            continue;
-        };
-        let span = program
-            .site(*frame)
-            .map(|site| (site.start, site.end.max(site.start)));
-        let location = Located::new(program, place.file, span, place.line, "");
-        match stack.last_mut() {
-            Some(last)
-                if last.callable == place.label
-                    && (last.location.path.as_str(), last.location.line)
-                        == (place.file, place.line) =>
-            {
-                last.repeats += 1;
-            }
-            _ => stack.push(StackFrame {
-                location,
-                callable: place.label.to_string(),
-                repeats: 1,
-            }),
-        }
-    }
+fn fault_info(places: &Places, sources: &dyn Sources, fault: &Fault) -> FaultInfo {
+    let report = Report::fault(fault, places, sources);
+    let stack = places
+        .collapse(&fault.frames)
+        .into_iter()
+        .filter_map(|run| {
+            Some(StackFrame {
+                location: located_frame(places, sources, run.frame)?,
+                callable: run.place.label.to_string(),
+                repeats: run.repeats,
+            })
+        })
+        .collect();
     FaultInfo {
         kind: fault.kind.classification().to_string(),
-        subject: report.as_ref().map_or_else(
-            || fault.kind.classification().to_string(),
-            |r| r.subject.clone(),
-        ),
-        rule: match fault.kind {
-            jadpo_interp::FaultKind::NotBuiltYet(_) => Some(rule::TOOLCHAIN_NOT_BUILT_YET.id),
-            _ => None,
-        },
-        at: report.as_ref().and_then(|report| located(program, report)),
-        reason: report
-            .as_ref()
-            .and_then(|r| field(r, "reason"))
-            .and_then(|lines| lines.first().cloned()),
-        next: report
-            .as_ref()
-            .and_then(|r| field(r, "next"))
-            .and_then(|lines| lines.first().cloned()),
+        rule: matches!(fault.kind, FaultKind::NotBuiltYet(_))
+            .then_some(rule::TOOLCHAIN_NOT_BUILT_YET.id),
+        at: located(sources, &report),
+        reason: report.reason().map(str::to_string),
+        next: report.next().map(str::to_string),
+        subject: report.subject,
         stack,
     }
 }
 
-fn assertion_failure(program: &Program, assertion: &Assertion) -> AssertionFailure {
+fn assertion_failure(
+    places: &Places,
+    sources: &dyn Sources,
+    assertion: &Assertion,
+) -> AssertionFailure {
     let statement = assertion
         .frames
         .first()
-        .and_then(|frame| program.site(*frame));
+        .and_then(|frame| places.site(*frame));
     let (source, lines, parts) = match statement {
-        Some(span) => {
-            let text = program.text(span.file).unwrap_or_default();
+        Some((file, site)) => {
+            let text = sources.text(file).unwrap_or_default();
             shown(
                 text,
-                span.start as usize,
-                span.end as usize,
-                span.line,
+                site.start as usize,
+                site.end as usize,
+                site.line,
                 assertion,
             )
         }
@@ -501,7 +476,7 @@ fn assertion_failure(program: &Program, assertion: &Assertion) -> AssertionFailu
                 }
                 Got::Failure(instead) => {
                     failure.actual = Some(format!("failure `{}`", instead.name));
-                    failure.instead = Some(Box::new(failure_info(program, instead)));
+                    failure.instead = Some(Box::new(failure_info(places, sources, instead)));
                 }
             }
         }

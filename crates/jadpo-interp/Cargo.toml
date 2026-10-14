@@ -13,6 +13,7 @@ jadpo-check.workspace = true
 jadpo-db.workspace = true
 jadpo-diag.workspace = true
 jadpo-graph.workspace = true
+jadpo-plan.workspace = true
 jadpo-runtime.workspace = true
 jadpo-std.workspace = true
 jadpo-value.workspace = true

@@ -1,33 +1,96 @@
-//! The per-invocation context (docs/compiler-runtime.md §2.5): the shadow
-//! stack of frames both executors keep, the depth limit, and the faults
-//! and failures that capture it. Effects (`read`, `write`, `emit`, `call`,
-//! `now`) join it with their areas.
+//! The per-invocation context (docs/compiler-runtime.md §2.5): what an
+//! executor is handed, never what it owns. It keeps the shadow stack of
+//! frames both executors push, the depth limit, the faults and failures
+//! that capture the stack, the recording of a failed `assert`'s parts, and
+//! the state of the action boundary the runtime runs ([`crate::action`]):
+//! the transaction it opens at the first store operation and the events
+//! waiting to be delivered once it commits. Effects (`read`, `write`,
+//! `call`) join it with their areas.
 
-use crate::{Failure, Fault, FaultKind, Frame, MAX_DEPTH, Places};
+use std::fmt;
+
+use jadpo_value::Value;
+
+use crate::outcome::{Assertion, AssertionDetail, Part};
+use crate::{
+    Env, Event, Failure, Fault, FaultKind, Frame, Host, MAX_DEPTH, Places, StoreError, Transaction,
+};
+
+/// The values an `assert`'s condition gave, site by site, while it runs.
+struct Recording {
+    /// The asserting callable and the depth of its frame: callees run
+    /// deeper, and their values aren't the condition's.
+    callable: u32,
+    depth: usize,
+    values: Vec<(u32, Value)>,
+    /// How many inline functions it is inside: their values are per item,
+    /// not one a report could show.
+    paused: u32,
+}
+
+/// An action's boundary while its body runs: opened when the outermost
+/// action starts, joined by every action it calls (area 6).
+#[derive(Default)]
+pub(crate) struct Boundary {
+    /// Begun at the first store operation.
+    pub transaction: Option<Box<dyn Transaction>>,
+    /// What the action emitted, for after it commits.
+    pub outbox: Vec<Event>,
+    /// A store operation found another transaction had changed what this
+    /// one read, so the body is run again.
+    pub concurrent_change: bool,
+}
 
 /// One invocation's context.
-#[derive(Debug)]
 pub struct Ctx<'p> {
     places: &'p Places,
+    host: &'p dyn Host,
+    env: Env,
     /// Outermost first.
     frames: Vec<Frame>,
+    recording: Option<Recording>,
+    pub(crate) boundary: Option<Boundary>,
+}
+
+impl fmt::Debug for Ctx<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Ctx")
+            .field("env", &self.env)
+            .field("frames", &self.frames)
+            .field("recording", &self.recording.is_some())
+            .field("in_action", &self.boundary.is_some())
+            .finish()
+    }
 }
 
 impl<'p> Ctx<'p> {
-    /// A context running `entry`, the callable an invocation starts at.
-    pub fn new(places: &'p Places, entry: u32) -> Ctx<'p> {
+    /// A context for one invocation on `host`, under `env`, naming its
+    /// frames from `places`. Its stack is empty until the executor enters
+    /// the callable the invocation starts at.
+    pub fn new(places: &'p Places, host: &'p dyn Host, env: Env) -> Ctx<'p> {
         Ctx {
             places,
-            frames: vec![Frame {
-                callable: entry,
-                site: Frame::ENTRY,
-            }],
+            host,
+            env,
+            frames: Vec::new(),
+            recording: None,
+            boundary: None,
         }
     }
 
     pub fn places(&self) -> &'p Places {
         self.places
     }
+
+    pub fn host(&self) -> &'p dyn Host {
+        self.host
+    }
+
+    pub fn env(&self) -> &Env {
+        &self.env
+    }
+
+    // --- frames -----------------------------------------------------------
 
     /// How many frames the stack holds.
     pub fn depth(&self) -> usize {
@@ -50,9 +113,7 @@ impl<'p> Ctx<'p> {
 
     /// Leaves the current callable.
     pub fn leave(&mut self) {
-        if self.frames.len() > 1 {
-            self.frames.pop();
-        }
+        self.frames.pop();
     }
 
     /// Moves the current frame to `site`.
@@ -82,12 +143,146 @@ impl<'p> Ctx<'p> {
         failure.frames = self.frames();
         Box::new(failure)
     }
+
+    // --- recording an assertion -------------------------------------------
+
+    /// An `assert` starts working out its condition in the current frame:
+    /// from here until [`Ctx::assertion_end`], the values its frame's
+    /// expressions give are kept for the report if it fails.
+    pub fn assertion_begin(&mut self) {
+        self.recording = self.frames.last().map(|frame| Recording {
+            callable: frame.callable,
+            depth: self.frames.len(),
+            values: Vec::new(),
+            paused: 0,
+        });
+    }
+
+    /// Whether a value the current frame works out now is one of the
+    /// condition's parts.
+    pub fn recording(&self) -> bool {
+        self.recording
+            .as_ref()
+            .is_some_and(|recording| recording.paused == 0 && recording.depth == self.frames.len())
+    }
+
+    /// Keeps the value site `site` of the current frame gave, when it is
+    /// one of the condition's parts.
+    pub fn record(&mut self, site: u32, value: &Value) {
+        if self.recording()
+            && let Some(recording) = &mut self.recording
+        {
+            recording.values.push((site, value.clone()));
+        }
+    }
+
+    /// An inline function runs: its values are per item, so none is kept
+    /// until [`Ctx::resume_recording`].
+    pub fn pause_recording(&mut self) {
+        if let Some(recording) = &mut self.recording {
+            recording.paused += 1;
+        }
+    }
+
+    pub fn resume_recording(&mut self) {
+        if let Some(recording) = &mut self.recording {
+            recording.paused = recording.paused.saturating_sub(1);
+        }
+    }
+
+    /// The `assert` is done: the parts it recorded, each site once, in the
+    /// order their anchors are written.
+    pub fn assertion_end(&mut self) -> Vec<Part> {
+        let Some(recording) = self.recording.take() else {
+            return Vec::new();
+        };
+        let sites = self
+            .places
+            .callable(recording.callable)
+            .map(|callable| callable.sites.as_slice())
+            .unwrap_or_default();
+        let mut seen = std::collections::HashSet::new();
+        let mut parts: Vec<Part> = Vec::new();
+        for (site, value) in recording.values {
+            let Some(place) = sites.get(site as usize) else {
+                continue;
+            };
+            if !seen.insert(site) {
+                continue;
+            }
+            parts.push(Part {
+                start: place.start,
+                end: place.end,
+                anchor: place.anchor,
+                value,
+            });
+        }
+        parts.sort_by_key(|part| (part.anchor, std::cmp::Reverse(part.end)));
+        parts
+    }
+
+    /// The `assert` at `site` of the current frame didn't hold.
+    pub fn assertion_failed(&mut self, site: u32, detail: AssertionDetail) -> Box<Assertion> {
+        self.at(site);
+        Box::new(Assertion {
+            frames: self.frames(),
+            detail,
+            parts: Vec::new(),
+        })
+    }
+
+    // --- the action boundary ----------------------------------------------
+
+    /// Whether an action is running: its boundary is open.
+    pub fn in_action(&self) -> bool {
+        self.boundary.is_some()
+    }
+
+    /// The running action's transaction, begun at the first store
+    /// operation (area 6): every action it calls joins it. Outside an
+    /// action there is none.
+    pub async fn transaction(&mut self) -> Result<&mut dyn Transaction, StoreError> {
+        let host = self.host;
+        let Some(boundary) = &mut self.boundary else {
+            return Err(StoreError::Fault(
+                "a store operation outside an action".into(),
+            ));
+        };
+        if boundary.transaction.is_none() {
+            boundary.transaction = Some(host.database().begin().await?);
+        }
+        match &mut boundary.transaction {
+            Some(transaction) => Ok(transaction.as_mut()),
+            None => Err(StoreError::Fault("no transaction".into())),
+        }
+    }
+
+    /// Queues `event` in the running action's outbox, delivered once it
+    /// commits (area 12); `false` outside an action.
+    pub fn emit(&mut self, event: Event) -> bool {
+        match &mut self.boundary {
+            Some(boundary) => {
+                boundary.outbox.push(event);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// A store operation found what this action read changed by another
+    /// transaction: the boundary runs the whole action again within its
+    /// budget (area 6).
+    pub fn concurrent_change(&mut self) {
+        if let Some(boundary) = &mut self.boundary {
+            boundary.concurrent_change = true;
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CallablePlace;
+    use crate::{CallablePlace, MemoryHost, SitePlace};
 
     fn places() -> Places {
         let mut places = Places::new();
@@ -96,7 +291,20 @@ mod tests {
                 label: label.into(),
                 file: "main.jadpo".into(),
                 line,
-                sites: vec![line + 1, line + 2],
+                sites: vec![
+                    SitePlace {
+                        line: line + 1,
+                        start: 5,
+                        end: 9,
+                        anchor: 7,
+                    },
+                    SitePlace {
+                        line: line + 2,
+                        start: 1,
+                        end: 9,
+                        anchor: 1,
+                    },
+                ],
             });
         }
         places
@@ -105,7 +313,9 @@ mod tests {
     #[test]
     fn faults_carry_the_frames_innermost_first() {
         let places = places();
-        let mut ctx = Ctx::new(&places, 0);
+        let host = MemoryHost::new();
+        let mut ctx = Ctx::new(&places, &host, Env::default());
+        ctx.enter(0, Frame::ENTRY).expect("room");
         ctx.enter(1, 1).expect("room");
         let fault = ctx.fault(FaultKind::IntOverflow, 0);
         assert_eq!(
@@ -130,7 +340,9 @@ mod tests {
     #[test]
     fn the_depth_limit_is_a_fault_at_the_call() {
         let places = places();
-        let mut ctx = Ctx::new(&places, 0);
+        let host = MemoryHost::new();
+        let mut ctx = Ctx::new(&places, &host, Env::default());
+        ctx.enter(0, Frame::ENTRY).expect("room");
         for _ in 1..MAX_DEPTH {
             ctx.enter(1, 0).expect("room");
         }
@@ -145,5 +357,31 @@ mod tests {
             })
         );
         assert_eq!(fault.kind.classification(), "recursion_limit");
+    }
+
+    #[test]
+    fn an_assertion_records_its_own_frames_values_once_in_anchor_order() {
+        let places = places();
+        let host = MemoryHost::new();
+        let mut ctx = Ctx::new(&places, &host, Env::default());
+        ctx.enter(0, Frame::ENTRY).expect("room");
+        ctx.assertion_begin();
+        assert!(ctx.recording());
+        ctx.record(0, &Value::Int(1));
+        ctx.record(0, &Value::Int(2));
+        ctx.enter(1, 1).expect("room");
+        ctx.record(1, &Value::Int(3));
+        ctx.leave();
+        ctx.pause_recording();
+        ctx.record(1, &Value::Int(4));
+        ctx.resume_recording();
+        ctx.record(1, &Value::Int(5));
+        let parts: Vec<(u32, Value)> = ctx
+            .assertion_end()
+            .into_iter()
+            .map(|part| (part.anchor, part.value))
+            .collect();
+        assert_eq!(parts, [(1, Value::Int(5)), (7, Value::Int(1))]);
+        assert!(!ctx.recording());
     }
 }

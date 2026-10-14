@@ -426,6 +426,14 @@ impl Types {
         constant::literal(literal, builtin, scale)
     }
 
+    /// `text` as a literal of `ty` holds it, when `ty` is built on a
+    /// built-in type: a UUID, an instant or a date from its ISO text, text
+    /// otherwise.
+    pub fn text(&self, ty: &TypeRef, text: &str) -> Option<Constant> {
+        let builtin = self.representation(ty)?;
+        constant::text(Some(builtin), text)
+    }
+
     /// The fields whose parent is `parent`, in the order they are declared,
     /// copied fields where the line that copied them stands.
     fn fields(&self, parent: &Key, depth: usize) -> Vec<FieldPlan> {

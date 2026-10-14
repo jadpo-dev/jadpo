@@ -74,9 +74,11 @@ fn an_object_is_built_with_every_field() {
         "ProductView { name: \"Lamp\", price: Money { amount: 1299 } }"
     );
     let money = program
+        .codec()
         .object("Money", vec![("amount", int(1299))])
         .expect("Money");
     let expected = program
+        .codec()
         .object(
             "ProductView",
             vec![("price", money), ("name", text("Lamp"))],
@@ -94,6 +96,7 @@ fn field_types_read_through_an_entity() {
         "entity Customer {\n    id: Uuid\n    email: Email\n}\n\nentity Supplier {\n    id: Uuid\n    email: Email\n}\n\nfunction contact_address(email: Email) -> Email {\n    return email\n}\n\nfunction customer_contact(customer: Customer) -> Email {\n    return contact_address(customer.email)\n}\n\nfunction supplier_contact(supplier: Supplier) -> Email {\n    return contact_address(supplier.email)\n}\n",
     );
     let customer = program
+        .codec()
         .object(
             "Customer",
             vec![
@@ -119,6 +122,7 @@ fn an_absent_value_is_matched() {
     ]);
     let listing = |subtitle: Value| {
         program
+            .codec()
             .object(
                 "Listing",
                 vec![("name", text("Lamp")), ("subtitle", subtitle)],
@@ -148,6 +152,7 @@ fn an_optional_input_field_left_out_reads_as_none() {
         ),
     ]);
     let request = program
+        .codec()
         .object("UpdateProfile", vec![("nickname", Value::None)])
         .expect("UpdateProfile");
     assert_eq!(
@@ -179,6 +184,7 @@ fn enums_and_tagged_unions() {
     );
     assert_eq!(value(&program, "label", vec![declined]), text("declined"));
     let paid = program
+        .codec()
         .variant(
             "PaymentOutcome",
             "paid",
@@ -193,6 +199,7 @@ fn enums_and_tagged_unions() {
         .expect("paid");
     assert_eq!(value(&program, "label", vec![paid]), text("paid"));
     let pending = program
+        .codec()
         .variant("PaymentOutcome", "pending", vec![])
         .expect("pending");
     assert_eq!(value(&program, "label", vec![pending]), text("pending"));
@@ -208,6 +215,7 @@ fn values_never_change_so_a_new_one_is_built() {
         ),
     ]);
     let lamp = program
+        .codec()
         .object(
             "Product",
             vec![("name", text("Lamp")), ("price", int(1299))],
@@ -250,6 +258,7 @@ fn a_field_is_built_first_and_the_object_never_fails() {
     ]);
     let user = |name: &str| {
         program
+            .codec()
             .object(
                 "User",
                 vec![
@@ -335,9 +344,11 @@ fn equality_compares_contents() {
     assert_eq!(value(&program, "same", vec![]), Value::Bool(true));
     let money = |amount: &str, currency: &str| {
         let currency = program
+            .codec()
             .variant("Currency", currency, vec![])
             .expect("Currency");
         program
+            .codec()
             .object(
                 "Money",
                 vec![("amount", decimal(amount)), ("currency", currency)],
@@ -383,7 +394,7 @@ fn a_text_literal_compared_with_a_value_takes_its_type() {
         "type Ref = Uuid {}\n\ntype When = Instant {}\n\ntype Day = CalendarDate {}\n\ntype Same = Bool {}\n\nfunction known_ref(id: Ref) -> Same {\n    return Same(id == \"6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d\")\n}\n\nfunction new_year(at: When) -> Same {\n    return Same(\"2026-01-01T00:00:00Z\" == at)\n}\n\nfunction not_today(day: Day?) -> Same {\n    return Same(day != \"2026-01-14\")\n}\n",
     );
     let at = |name: &str, ty: &str, text: &str| {
-        let given = program.text_value(ty, text).expect("a value");
+        let given = program.codec().text(ty, text).expect("a value");
         value(&program, name, vec![given])
     };
     assert_eq!(
@@ -404,9 +415,10 @@ fn a_list_written_beside_a_set_is_a_set() {
     let program = main(
         "type Tag = Text {\n    max_length: 10\n}\n\ntype Ref = Uuid {}\n\ntype Same = Bool {}\n\ntype Labels = Object {\n    tags: Set<Tag>\n}\n\nfunction same_tags(labels: Labels) -> Same {\n    return Same(labels.tags == [\"b\", \"a\"])\n}\n\nfunction one_ref(refs: List<Ref>) -> Same {\n    return Same([\"6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d\"] == refs)\n}\n",
     );
-    let tags = program.text_value("Tag", "a").expect("a");
-    let other = program.text_value("Tag", "b").expect("b");
+    let tags = program.codec().text("Tag", "a").expect("a");
+    let other = program.codec().text("Tag", "b").expect("b");
     let labels = program
+        .codec()
         .object("Labels", vec![("tags", Value::set(vec![tags, other]))])
         .expect("Labels");
     assert_eq!(
@@ -414,7 +426,8 @@ fn a_list_written_beside_a_set_is_a_set() {
         Value::Bool(true)
     );
     let one = program
-        .text_value("Ref", "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
+        .codec()
+        .text("Ref", "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
         .expect("a ref");
     assert_eq!(
         value(&program, "one_ref", vec![list(vec![one])]),

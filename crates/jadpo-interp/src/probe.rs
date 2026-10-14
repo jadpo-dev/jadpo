@@ -5,10 +5,9 @@
 //! checker proved that a valid argument breaks.
 
 use jadpo_graph::TypeRef;
+use jadpo_plan::Types;
 use jadpo_std::{Builtin, Num};
-use jadpo_value::{Decimal, Value};
-
-use crate::types::Types;
+use jadpo_value::{Decimal, Validator, Value};
 
 /// Text worth trying: empty, short, each validated built-in type's kind of
 /// text and text that is none of them.
@@ -31,7 +30,7 @@ pub(crate) fn values(types: &Types, ty: &TypeRef) -> Option<Vec<Value>> {
     if let Some(collection) = types.collection(ty) {
         return collections(types, ty, collection);
     }
-    let (builtin, chain) = types.rules(ty)?;
+    let (builtin, chain) = types.chain(ty)?;
     let mut nums: Vec<Num> = Vec::new();
     let mut lengths: Vec<u64> = vec![0, 1, 3];
     for rules in &chain {
@@ -88,7 +87,7 @@ pub(crate) fn values(types: &Types, ty: &TypeRef) -> Option<Vec<Value>> {
         }
         _ => return None,
     };
-    let validator = types.validator(ty);
+    let validator = validator(types, ty);
     let mut out: Vec<Value> = Vec::new();
     for candidate in candidates {
         let Some(value) = validator.store(candidate) else {
@@ -115,7 +114,7 @@ fn collections(types: &Types, ty: &TypeRef, collection: &TypeRef) -> Option<Vec<
         return Some(Vec::new());
     }
     let mut lengths: Vec<u64> = vec![0, 1, 2, 3, 13];
-    let validator = types.validator(ty);
+    let validator = validator(types, ty);
     for rules in types.length_rules(ty) {
         for length in [rules.min_length, rules.max_length].into_iter().flatten() {
             lengths.extend([length.saturating_sub(1), length, length + 1]);
@@ -141,6 +140,12 @@ fn collections(types: &Types, ty: &TypeRef, collection: &TypeRef) -> Option<Vec<
         out.push(Value::None);
     }
     Some(out)
+}
+
+/// `ty`'s rules ready to run.
+fn validator(types: &Types, ty: &TypeRef) -> Validator {
+    let plan = types.validator_plan(ty);
+    Validator::new(plan.builtin, plan.rules)
 }
 
 /// `n` moved by one unit in its last place: the value just inside or just

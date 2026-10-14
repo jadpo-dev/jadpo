@@ -12,26 +12,36 @@
 //! keeps its last run's failures in `build/test/last-run.json`, so
 //! `--failed` can rerun them.
 //!
+//! Each test runs through the runtime's executor trait, the interpreter
+//! until compiled code joins it in Phase 8, with its own environment
+//! ([`TestEnv`]: its seed and clock, and the places its database and fakes
+//! will take), on one thread per core; results come back in the seed's
+//! order.
+//!
 //! What later phases add is left out rather than imitated: the trace of
 //! what ran, fakes, the kept database and clock overrides. Route and
 //! schedule tests come with their areas.
 
 mod diff;
+mod env;
 mod json;
 mod outcome;
 mod record;
+mod run;
 mod screen;
 mod select;
 pub mod watch;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use jadpo_diag::{Diagnostic, Severity, Span, rule};
 use jadpo_graph::{EdgeKind, Graph, Kind};
-use jadpo_interp::Program;
+use jadpo_interp::Prepared;
 
+pub use env::{Fakes, TestDatabase, TestEnv};
 pub use json::{json, schema};
 pub use outcome::{
     AssertionFailure, Change, ChangeMark, Detail, FailureInfo, FaultInfo, Located, ShownLine,
@@ -226,10 +236,10 @@ fn execute(target: select::Target, options: Options, started: Instant) -> Ran {
     choose_and_run(&loaded, &checked, &target, &options, None, started)
 }
 
-/// A project that checked without errors, ready to run: its program and
-/// every test in it.
+/// A project that checked without errors, ready to run: its prepared
+/// program, shared by the threads that run it, and every test in it.
 pub(crate) struct Checked {
-    pub program: Program,
+    pub prepared: Arc<Prepared>,
     pub tests: Vec<Test>,
     /// A project, rather than loose files: only a project keeps a record.
     pub project: bool,
@@ -285,20 +295,9 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded, cwd: &std::path::Path) -> Resul
             root: root.clone(),
         });
     }
-    let program = match Program::load(db, loaded.project) {
-        Ok(program) => program,
-        Err(diagnostics) => {
-            return Err(Ran::Refused {
-                diagnostics,
-                sources: sources(loaded),
-                files: file_count,
-                root,
-            });
-        }
-    };
     let graph = jadpo_check::graph::graph(db, loaded.project);
     Ok(Checked {
-        program,
+        prepared: Prepared::checked(db, loaded.project),
         tests: discover(graph),
         project: loaded.project.layout(db) == jadpo_db::Layout::Project,
     })
@@ -316,7 +315,7 @@ pub(crate) fn choose_and_run(
     started: Instant,
 ) -> Ran {
     let Checked {
-        program,
+        prepared,
         tests,
         project,
     } = checked;
@@ -359,17 +358,12 @@ pub(crate) fn choose_and_run(
         root: root.clone(),
         seed,
     };
-    let mut results = Vec::with_capacity(ordered.len());
-    for test in ordered {
-        let failure = match program.call(&test.key, Vec::new()) {
-            Ok(jadpo_interp::Outcome::Value(_)) => None,
-            Ok(other) => Some(Box::new(outcome::failure(program, &test, &other, &rerun))),
-            Err(error) => Some(Box::new(outcome::not_runnable(
-                program, &test, &error, &rerun,
-            ))),
-        };
-        results.push(TestResult { test, failure });
-    }
+    let failures = run::run_all(prepared, &ordered, seed, &rerun);
+    let results: Vec<TestResult> = ordered
+        .into_iter()
+        .zip(failures)
+        .map(|(test, failure)| TestResult { test, failure })
+        .collect();
     if project {
         record::write(&loaded.root, tests, &results);
     }

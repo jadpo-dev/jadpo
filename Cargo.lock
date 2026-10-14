@@ -266,6 +266,7 @@ dependencies = [
  "jadpo-db",
  "jadpo-diag",
  "jadpo-graph",
+ "jadpo-plan",
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-value",
@@ -335,6 +336,7 @@ dependencies = [
  "jadpo-diag",
  "jadpo-graph",
  "jadpo-interp",
+ "jadpo-runtime",
  "jadpo-term",
  "serde_json",
 ]
