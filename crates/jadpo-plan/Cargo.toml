@@ -1,0 +1,20 @@
+[package]
+name = "jadpo-plan"
+description = "What both executors need besides control flow: type plans, failure shapes, constants and the frame table"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# A compiler crate (docs/compiler-runtime.md §2.1): read from the checker's
+# graph and typed bodies, consumed by the interpreter now and the code
+# generator in Phase 8. It reaches no runtime crate, so it describes values
+# with its own constants and the shared leaf's rules.
+[dependencies]
+jadpo-check.workspace = true
+jadpo-db.workspace = true
+jadpo-graph.workspace = true
+jadpo-std.workspace = true
+
+[lints]
+workspace = true
