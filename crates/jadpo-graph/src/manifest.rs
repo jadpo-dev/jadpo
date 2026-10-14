@@ -12,7 +12,6 @@
 
 use std::collections::BTreeMap;
 
-use crate::body::Literal;
 use crate::json::Value;
 use crate::{Detail, EdgeKind, Graph, Key, Kind, Node, NodeId, Rules, rule_pairs};
 
@@ -123,7 +122,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
         } => {
             out.set("type", ty.render(name));
             out.set_some("optional", *optional);
-            out.set_some("default", default.as_ref().map(Literal::written));
+            out.set_some("default", default.as_ref().map(|d| d.render(name)));
             out.set_some("section", section.map(|s| s.word()));
             out.set_some("copiedFrom", copied_from.as_ref().map(|key| key.as_str()));
             out.set_some("replaces", replaces.as_ref().map(|key| key.as_str()));

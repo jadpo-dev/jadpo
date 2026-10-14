@@ -112,7 +112,7 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                 settings.push("optional: true".to_string());
             }
             if let Some(default) = default {
-                settings.push(format!("default: {}", default.written()));
+                settings.push(format!("default: {}", default.render(&name)));
             }
             let place = match section {
                 Some(Section::Client) => "client field ",

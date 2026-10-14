@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use jadpo_graph::body::Literal;
-use jadpo_graph::{Base, Detail, Graph, Key, Kind, Node, Rules, Section, TypeRef};
+use jadpo_graph::{Base, Detail, FieldDefault, Graph, Key, Kind, Node, Rules, Section, TypeRef};
 use jadpo_runtime::Failure;
 use jadpo_std::Builtin;
 use jadpo_value::{Validator, Value};
@@ -23,7 +23,7 @@ pub(crate) struct Field {
     pub section: Option<Section>,
     /// What an `Input` left without this field holds: `none` for an
     /// optional field, its `default:` for one with a default (area 2).
-    pub absent: Option<Literal>,
+    pub absent: Option<FieldDefault>,
 }
 
 /// What an object or a variant is made of.
@@ -218,7 +218,7 @@ impl Types {
                     section: *section,
                     absent: default
                         .clone()
-                        .or_else(|| optional.then_some(Literal::None)),
+                        .or_else(|| optional.then_some(FieldDefault::Literal(Literal::None))),
                 }),
                 _ => None,
             })
@@ -260,10 +260,12 @@ impl Types {
         for field in &shape.fields {
             let value = match given.iter().position(|(key, _)| *key == field.key) {
                 Some(at) => given.swap_remove(at).1,
-                None => {
-                    let absent = field.absent.as_ref()?;
-                    self.literal(absent, &TypeRef::Field(field.key.clone()))?
-                }
+                None => match field.absent.as_ref()? {
+                    FieldDefault::Literal(literal) => {
+                        self.literal(literal, &TypeRef::Field(field.key.clone()))?
+                    }
+                    FieldDefault::Variant(variant) => self.build(variant, Vec::new())?,
+                },
             };
             fields.push((Rc::clone(&field.name), value));
         }

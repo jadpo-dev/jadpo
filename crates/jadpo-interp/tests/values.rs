@@ -427,10 +427,10 @@ fn an_input_left_without_a_field_takes_its_default_or_none() {
     // A field an `Input` may leave out reads as `none`, and one with a
     // `default:` as that value (area 2, "Absent values").
     let program = main(
-        "type ProductName = Text {\n    max_length: 120\n}\n\ntype PageSize = Int {\n    min: 1\n    max: 100\n}\n\ntype Price = Decimal {\n    scale: 2\n}\n\ntype ListProducts = Input {\n    name: ProductName {\n        optional: true\n    }\n    page_size: PageSize {\n        default: 25\n    }\n    subtitle: ProductName? {\n        default: none\n    }\n    floor: Price {\n        default: 1.5\n    }\n}\n\nfunction first_page() -> ListProducts {\n    return ListProducts {}\n}\n",
+        "type ProductName = Text {\n    max_length: 120\n}\n\ntype PageSize = Int {\n    min: 1\n    max: 100\n}\n\ntype Price = Decimal {\n    scale: 2\n}\n\ntype ListProducts = Input {\n    name: ProductName {\n        optional: true\n    }\n    page_size: PageSize {\n        default: 25\n    }\n    subtitle: ProductName? {\n        default: none\n    }\n    floor: Price {\n        default: 1.5\n    }\n    sort: Sort {\n        default: Sort.newest\n    }\n}\n\ntype Sort = Enum {\n    newest\n    cheapest\n}\n\nfunction first_page() -> ListProducts {\n    return ListProducts {}\n}\n",
     );
     assert_eq!(
         value(&program, "first_page", vec![]).to_string(),
-        "ListProducts { name: none, page_size: 25, subtitle: none, floor: 1.50 }"
+        "ListProducts { name: none, page_size: 25, subtitle: none, floor: 1.50, sort: Sort.newest }"
     );
 }

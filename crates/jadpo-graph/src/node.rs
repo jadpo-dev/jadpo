@@ -174,7 +174,7 @@ pub enum Detail {
         ty: TypeRef,
         optional: bool,
         /// An input field's `default:`, filled in when it is left out.
-        default: Option<Literal>,
+        default: Option<FieldDefault>,
         section: Option<Section>,
         /// For a field brought in by `include` or `pick`: where it comes from.
         copied_from: Option<Key>,
@@ -188,6 +188,24 @@ pub enum Detail {
         payload: bool,
     },
     Callable(Signature),
+}
+
+/// What an input field's `default:` fills in when the field is left out
+/// (area 2): a literal, or a plain variant of an enum.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FieldDefault {
+    Literal(Literal),
+    Variant(Key),
+}
+
+impl FieldDefault {
+    /// As Jadpo writes it: `25`, `none`, `Size.medium`.
+    pub fn render(&self, name: &dyn Fn(&Key) -> String) -> String {
+        match self {
+            FieldDefault::Literal(literal) => literal.written(),
+            FieldDefault::Variant(key) => name(key),
+        }
+    }
 }
 
 /// One node.
