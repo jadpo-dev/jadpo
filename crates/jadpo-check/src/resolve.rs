@@ -565,6 +565,12 @@ impl Names<'_> {
                 self.type_name(name, Want::Failure, out);
                 false
             }
+            // A failure with its fields, as `reject` gives them; the
+            // fields' values are the caller's to resolve.
+            Expr::RecordExpr(record) if let Some(Expr::NameRef(name)) = record.expr() => {
+                self.type_name(&name, Want::Failure, out);
+                false
+            }
             other => self.not_a_failure_value(other, out),
         }
     }
@@ -1305,10 +1311,12 @@ impl<'a> Walk<'a> {
                     self.expr(&inner);
                 }
                 for mapping in attempt.mappings() {
-                    if let Some(value) = mapping.expr()
-                        && self.names.mapped(&value, &mut self.out)
-                    {
-                        self.expr(&value);
+                    if let Some(value) = mapping.expr() {
+                        if self.names.mapped(&value, &mut self.out) {
+                            self.expr(&value);
+                        } else if let Expr::RecordExpr(record) = &value {
+                            self.member_values(record.member_list());
+                        }
                     }
                 }
             }

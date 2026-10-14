@@ -245,6 +245,9 @@ pub enum Expr {
     Attempt {
         inner: Option<SiteId>,
         invalid: Option<Key>,
+        /// The fields given to the failure `invalid:` names, as `reject`
+        /// gives them.
+        fields: Vec<(Key, SiteId)>,
     },
     Reject {
         failure: Option<Key>,

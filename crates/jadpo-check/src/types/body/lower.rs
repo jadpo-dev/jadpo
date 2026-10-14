@@ -487,15 +487,29 @@ impl Lower<'_> {
                     .mapped
                     .get(&key)
                     .and_then(|failure| self.type_key(failure));
-                for mapping in attempt.mappings() {
-                    if let Some(value) = mapping.expr() {
-                        self.scan(value.syntax());
-                    }
-                }
                 let outer = std::mem::replace(&mut self.invalid, invalid.clone());
                 let inner = attempt.expr().map(|inner| self.expr(&inner));
                 self.invalid = outer;
-                typed::Expr::Attempt { inner, invalid }
+                // The mappings follow the call, so their sites do too.
+                let failure = self.facts.mapped.get(&key).cloned();
+                let mut fields = Vec::new();
+                for mapping in attempt.mappings() {
+                    match (mapping.expr(), &failure) {
+                        (Some(Expr::RecordExpr(record)), Some(failure)) => {
+                            if let Some(Expr::NameRef(name)) = record.expr() {
+                                self.path_names(&[name]);
+                            }
+                            fields = self.fields_given(record.member_list(), failure, &[]);
+                        }
+                        (Some(value), _) => self.scan(value.syntax()),
+                        (None, _) => {}
+                    }
+                }
+                typed::Expr::Attempt {
+                    inner,
+                    invalid,
+                    fields,
+                }
             }
             Expr::RejectExpr(reject) => self.reject(reject),
             Expr::PropagateExpr(_) => typed::Expr::Propagate {

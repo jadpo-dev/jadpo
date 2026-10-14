@@ -501,7 +501,11 @@ impl<'p> Interp<'p> {
                 outcome,
                 arms,
             } => self.matching(f, id, *subject, *outcome, arms),
-            Expr::Attempt { inner, invalid } => self.attempt(id, *inner, invalid.as_ref(), f),
+            Expr::Attempt {
+                inner,
+                invalid,
+                fields,
+            } => self.attempt(id, *inner, invalid.as_ref(), fields, f),
             Expr::Reject { failure, fields } => self.reject(f, id, failure.as_ref(), fields),
             Expr::Propagate { .. } => match f.handling.last() {
                 Some(failure) => Err(Stop::Failed(Box::new(failure.clone()))),
@@ -798,6 +802,7 @@ impl<'p> Interp<'p> {
         id: SiteId,
         inner: Option<SiteId>,
         invalid: Option<&Key>,
+        fields: &'p [(Key, SiteId)],
         f: &mut Running<'p>,
     ) -> Eval<Value> {
         let Some(inner) = inner else {
@@ -805,7 +810,10 @@ impl<'p> Interp<'p> {
         };
         match self.eval(f, inner) {
             Err(Stop::Invalid(broken)) => {
-                let failure = invalid.and_then(|key| self.program.types.failure(key, Vec::new()));
+                // The failure's fields are worked out only when it is
+                // raised, as a `reject`'s are.
+                let given = self.given(f, fields)?;
+                let failure = invalid.and_then(|key| self.program.types.failure(key, given));
                 let Some(mut failure) = failure else {
                     return Err(
                         self.defect("a construction that can fail, with no failure for it", id)
