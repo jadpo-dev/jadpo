@@ -1506,7 +1506,7 @@ action find_customer(id: Customer.id)
 
 ### `failure.required_mutation_not_not_found`
 
-> The archived compiler's example: data operations' mappings are checked once data operations are built (area 6).
+> The archived compiler's example: since chunk 3.3 a write maps no `missing:`, since a record that isn't there is the entity's own not-found failure (area 6), so this mistake no longer exists.
 
 ```jadpo project=e-mutation-missing-kind expect=failure.required_mutation_not_not_found
 entity Customer {
@@ -1537,7 +1537,7 @@ action delete_customer(id: Customer.id)
 
 ### `failure.mutation_conflict_not_conflict`
 
-> The archived compiler's example: data operations' mappings are checked once data operations are built (area 6).
+> The archived compiler's example: since chunk 3.3 a write's `conflict:` arm naming a failure of another kind is `failure.mapping_kind`, above (area 6).
 
 ```jadpo project=e-mutation-conflict-kind expect=failure.mutation_conflict_not_conflict
 entity Customer {
@@ -1568,7 +1568,7 @@ action delete_customer(id: Customer.id)
 
 ### `failure.patch_empty_not_invalid_value`
 
-> The archived compiler's example: data operations' mappings are checked once data operations are built (area 6).
+> The archived compiler's example: a patch that supplies nothing succeeds and changes nothing (area 6, question 7), so `empty:` and this mistake are gone.
 
 ```jadpo project=e-patch-empty-kind expect=failure.patch_empty_not_invalid_value
 entity Customer {

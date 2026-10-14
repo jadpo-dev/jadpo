@@ -272,9 +272,10 @@ Built so far: every crate above but `jadpo-codegen` and
 `jadpo-host-workers`; `jadpo-plan` began in chunk 2.10 with type plans,
 failure shapes, constants and the frame table (§2.5), and `jadpo-drivers`
 (PostgreSQL only) and `jadpo-host-native` in chunk 3.1 (§2.6). Since chunk
-3.2 `jadpo-plan` also holds the SQL each query, `get` and `create` runs
-(`QueryPlan`, `EntityPlan`), as the read and create plans
-`jadpo_std::read` defines: plain data (statement text, where each
+3.2 `jadpo-plan` also holds the SQL each query and `get` runs
+(`QueryPlan`, `EntityPlan`), and since chunk 3.3 each write site's
+(`WriteSitePlan`), as the read and write plans `jadpo_std::read` and
+`jadpo_std::write` define: plain data (statement text, where each
 parameter comes from, how each column becomes a value and a row a
 record) that `jadpo-plan` decides and `jadpo-runtime` runs, so both
 executors send the same statements and build the same values, and compiled
@@ -297,8 +298,11 @@ for each query, and each list it includes, the fields it always tests with
 `==` or `in`, in the order its lines name them, then its order's fields,
 unless an index or unique key the table already has serves them; a
 reference's own index goes once a query's index starts with its column.
-Their columns are ascending, which PostgreSQL also reads backwards. The
-SQL of the writes after `create` joins `jadpo-plan` with chunk 3.3.
+Their columns are ascending, which PostgreSQL also reads backwards. What
+each write can break (`data::write_rules`: an entity's unique rules, its
+references, and the restricting references a delete reaches through every
+`cascade`) is a per-entity query the checker and the plan both read, so a
+body depends only on the entities it writes.
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
@@ -669,8 +673,11 @@ is a test-only action, area 13). The transaction begins at the body's first
 store operation (`Ctx::transaction`); a concurrent change runs the whole
 body again, up to `RERUN_ATTEMPTS` (3) times, then fails `unavailable`; a
 body that fails rolls back; and what it emitted is delivered only after it
-commits. The second of area 6's budget waits for the host's clock, and
-caches come with area 5.
+commits. The second of area 6's budget waits for the host's clock (no host
+reads one yet; chunk 5.2 brings time), and caches come with area 5. Since
+chunk 3.3 the context counts the actions joined inside the open boundary
+(`Ctx::nested`), so a write that can be refused, run by a called action,
+runs inside a savepoint its caller can carry on from.
 
 **Interpreter.** Functions are pure (area 3) and run synchronously. Only
 actions, queries and tests are `async`, and the checker knows which
@@ -703,9 +710,11 @@ conditions around them, and a broken one becomes the
 failure its arm names, or `invalid:`'s (a validated built-in type's own
 check, such as `Email`'s, is the `format` rule); an object literal never
 fails. An outcome `match` and `assert … fails` work out their call's
-arguments first, so only the call's own failures reach their arms. Effects later areas build (`emit`,
-`clock.now` in a body) end in the `not_built_yet` fault where they are
-reached; since chunk 3.2 queries, `get` and `create` run (below). A call walks the Rust stack a few frames per
+arguments first, so only the call's own failures reach their arms. Effects later areas build (`emit`)
+end in the `not_built_yet` fault where they are reached; since chunk 3.2
+queries and `get` run, and since chunk 3.3 `create`, `update` and `delete`
+(below), and `clock.now` in an action reads the invocation's clock
+(`Ctx::now`), the one generated fields and a query's `clock.now` read. A call walks the Rust stack a few frames per
 Jadpo frame, so recursion to the depth limit runs inside
 `on_large_stack`; hosts, `async` frames and codecs come with their areas.
 
@@ -736,14 +745,22 @@ canonical order area 2 decides ("Set order"), which is `Value`'s `Ord` in
 in declared order, objects and tagged unions field by field.
 
 Since chunk 3.2 a site that pauses names its target: a callable, a
-query's plan, an entity's `get` or its `create`. The driver runs a read
-or a create through the runtime (`jadpo_runtime::read` and `create`)
-inside the running action's transaction, or, called outside any action
-(by a test, later by a route's display read), in a boundary of its own,
-as a one-statement action. A read for exactly one record that finds none
-comes back `Missing`, and the executor raises the failure its plan names
-(`missing:`, or `<Entity>NotFound` for `get`), its fields from the call's
-arguments.
+query's plan, an entity's `get` or, since chunk 3.3, a write's plan. The
+driver runs a read or a write through the runtime (`jadpo_runtime::read`
+and `write`) inside the running action's transaction, or, called outside
+any action (by a test, later by a route's display read), in a boundary of
+its own, as a one-statement action. A read for exactly one record that
+finds none comes back `Missing`, and the executor raises the failure its
+plan names (`missing:`, or `<Entity>NotFound` for `get`), its fields from
+the call's arguments. A write (one typed `Write` node for `create`,
+`update` and `delete`) works out its inputs first, in the order its plan
+lists them (its record, then the values its block gives, each kept the way
+its field's type keeps it), then pauses; the runtime gives back the
+record, `Missing` (by `id`, no record) or which of the plan's constraints
+the store refused, and the executor raises the entity's not-found failure,
+a reference's not-found failure, or the failure the site's `conflict:` arm
+names, working out that arm's fields only then, with the store's refusal
+as its internal cause.
 
 **Code generation.** `quote!` into a `syn` tree, printed with
 [prettyplease](https://github.com/dtolnay/prettyplease): deterministic,
@@ -864,9 +881,38 @@ last record's order values, as URL-safe base64, which a query refuses
 new version 7 identity (`Ctx::new_id`, its random bits from the
 invocation's seed) and the clock for generated fields, and builds the
 record from the values it sent. A store's refusal becomes what the
-runtime raises: `unavailable`, a rerun after a concurrent change, the
-`not_built_yet` fault for a broken unique rule or reference until chunk
-3.3 maps them, and otherwise the `Store` fault with the driver's reason.
+runtime raises: `unavailable`, a rerun after a concurrent change, and
+otherwise the `Store` fault with the driver's reason.
+
+Built in chunk 3.3: `jadpo_runtime::write` runs a write plan
+(`jadpo_std::write`, one per write site, planned in `jadpo-plan`'s
+`writes`). A create inserts every column, with a new identity and the
+clock in its generated fields; an update sets what `set:` gives and every
+`on_change` field, on the loaded record's `id` or the `id` it is given;
+both return the row (`RETURNING`), decoded with the read plans' codecs. A
+patch writes each field of its input as `CASE WHEN <supplied> THEN <value>
+ELSE <column> END`, so its text is fixed and a field left out keeps its
+value (a record built without an optional `Input` field remembers it,
+`Record::omitted`). An update by `id` works out a stored field
+(`Post.view_count + 1`) in the statement, with `+` and `-` only. A delete
+removes the row; by `id`, no row is `Missing`, and of a loaded record it is
+a fault, since a record changed by another transaction is a concurrent
+change and one this transaction can't see was deleted by it, or loaded
+outside it. The plan lists the constraints a refusal can name: each
+`conflict:` arm's rule (a unique field's or named rule's key, or a
+restricting reference's foreign key, reached through every `cascade`), and
+each reference the write sets, which raises that entity's not-found failure
+unless its value was read from a record loaded earlier, when the record
+deleted since is a fault. `Transaction` gained `savepoint`,
+`release_savepoint` and `rollback_to_savepoint`; the PostgreSQL driver
+forgets a refused statement's error once the transaction returns to its
+savepoint, so the transaction can still commit. Every transaction is at
+repeatable read, so an update or delete of a row another transaction
+changed since the first statement is PostgreSQL's serialisation failure,
+classified as a concurrent change: the boundary rolls back and runs the
+whole action again. A live test forces one from a second connection and
+proves the rerun reads afresh, keeps only the second attempt's rows and
+loses no counter increment (`crates/jadpo-cli/tests/writes.rs`).
 The driver also sends `time` values and one-dimensional arrays.
 `Host::database(store)` gives each store by its connection's name, and an
 action's transaction is begun in the store its first store operation
@@ -1060,7 +1106,7 @@ it), may use them.
 |---|---|
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
-| 3 | Live PostgreSQL (`--profile quick` skips it): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2). A golden SQL file per query shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
+| 3 | Live PostgreSQL (`--profile quick` skips it): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |
 
