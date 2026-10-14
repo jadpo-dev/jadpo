@@ -1,0 +1,17 @@
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query titles(title: Book.title) -> List<Title> {
+    from: Book
+    where: Book.title == title
+    order: [Book.id asc]
+    limit: 20
+}

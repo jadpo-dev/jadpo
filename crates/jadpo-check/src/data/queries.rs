@@ -422,6 +422,9 @@ struct Reader<'a> {
 struct Sections {
     first: BTreeMap<String, ast::Member>,
     filters: Vec<(bool, ast::Member)>,
+    /// Sections an unknown one was reported as probably meaning, which
+    /// aren't reported missing as well.
+    suggested: BTreeSet<String>,
 }
 
 /// What a query is reading: its file, its parameters and the entity whose
@@ -480,8 +483,11 @@ impl<'a> Reader<'a> {
         };
         let mut complete = true;
         for section in needs {
-            if !sections.first.contains_key(*section) {
-                complete = false;
+            if sections.first.contains_key(*section) {
+                continue;
+            }
+            complete = false;
+            if !sections.suggested.contains(*section) {
                 self.section_required(&name, &span, cardinality, &sig.result, section);
             }
         }
@@ -636,6 +642,9 @@ impl<'a> Reader<'a> {
             let near = nearest(&written, known.iter().copied())
                 .map(str::to_string)
                 .or_else(|| renamed(&written).map(str::to_string));
+            if let Some(near) = &near {
+                out.suggested.insert(near.clone());
+            }
             let listed: Vec<String> = known.iter().map(|s| format!("`{s}:`")).collect();
             let problem = Diagnostic::new(
                 &rule::QUERY_UNKNOWN_SECTION,
@@ -1063,7 +1072,7 @@ impl<'a> Reader<'a> {
                             self.unsupported(
                                 scope,
                                 &expr,
-                                format!("`{token}` orders numbers, times, dates and durations, and `{written}` is `{}`.", field_ty.strip_nullable()),
+                                format!("`{token}` orders numbers, times, dates and durations, as it does in a body, and `{written}` is `{}`.", field.ty.strip_nullable()),
                                 format!("Compare `{written}` with `==`, `!=` or `in`"),
                             );
                             return None;
@@ -1317,7 +1326,7 @@ impl<'a> Reader<'a> {
     }
 
     fn unsupported(&mut self, scope: &Scope<'_>, expr: &Expr, reason: String, next: String) {
-        let written = tree::written(expr.syntax());
+        let written = shown(expr.syntax());
         self.out.push(
             Diagnostic::new(
                 &rule::QUERY_CONDITION_UNSUPPORTED,
@@ -1330,7 +1339,7 @@ impl<'a> Reader<'a> {
     }
 
     fn optional_in_where(&mut self, scope: &Scope<'_>, value: &Expr) {
-        let written = tree::written(value.syntax());
+        let written = shown(value.syntax());
         self.out.push(
             Diagnostic::new(
                 &rule::QUERY_OPTIONAL_VALUE,
@@ -1343,7 +1352,7 @@ impl<'a> Reader<'a> {
     }
 
     fn mismatch(&mut self, scope: &Scope<'_>, value: &Expr, actual: &Ty, expected: &Ty) {
-        let written = tree::written(value.syntax());
+        let written = shown(value.syntax());
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_MISMATCH,
@@ -1374,7 +1383,7 @@ impl<'a> Reader<'a> {
                     self.out.push(crate::types::literal::diagnostic(
                         self.lookup,
                         problem,
-                        &tree::written(expr.syntax()),
+                        &shown(expr.syntax()),
                         expected.strip_nullable(),
                         Self::span(scope.path, &expr),
                         false,
@@ -1410,7 +1419,7 @@ impl<'a> Reader<'a> {
                         self.out.push(
                             Diagnostic::new(
                                 &rule::QUERY_OPTIONAL_VALUE,
-                                format!("`{}` may be absent, and a list's items can't be", tree::written(item.syntax())),
+                                format!("`{}` may be absent, and a list's items can't be", shown(item.syntax())),
                             )
                             .at(Self::span(scope.path, &item), "may be `none`")
                             .reason("Each item of a list a field is tested `in` is a value; an absent one would match nothing.")
@@ -1469,7 +1478,7 @@ impl<'a> Reader<'a> {
                 self.out.push(
                     Diagnostic::new(
                         &rule::QUERY_CONDITION_UNSUPPORTED,
-                        format!("`{}` compares a field with a field", tree::written(expr.syntax())),
+                        format!("`{}` compares a field with a field", shown(expr.syntax())),
                     )
                     .at(Self::span(scope.path, &expr), "a field, not a value")
                     .reason("A condition compares a field with a value the call supplies; comparing two fields of a record can't be served by an index.")
@@ -1516,7 +1525,7 @@ impl<'a> Reader<'a> {
                 self.out.push(
                     Diagnostic::new(
                         &rule::QUERY_VALUE_UNSUPPORTED,
-                        format!("`{}` may be `none`, so `{field}` can't be read", tree::written(expr.syntax())),
+                        format!("`{}` may be `none`, so `{field}` can't be read", shown(expr.syntax())),
                     )
                     .at(Self::span(scope.path, &expr), "inside a value that may be `none`")
                     .reason("A query reads a parameter's fields only through values that are always there.")
@@ -1605,7 +1614,7 @@ impl<'a> Reader<'a> {
     }
 
     fn value_unsupported(&mut self, scope: &Scope<'_>, expr: &Expr) {
-        let written = tree::written(expr.syntax());
+        let written = shown(expr.syntax());
         self.out.push(
             Diagnostic::new(
                 &rule::QUERY_VALUE_UNSUPPORTED,
@@ -1737,7 +1746,7 @@ impl<'a> Reader<'a> {
         for item in list.exprs() {
             let item_span = Self::span(path, &item);
             let Expr::OrderedExpr(ordered) = &item else {
-                let written = tree::written(item.syntax());
+                let written = shown(item.syntax());
                 self.out.push(
                     Diagnostic::new(
                         &rule::QUERY_ORDER_DIRECTION,
@@ -1794,8 +1803,8 @@ impl<'a> Reader<'a> {
                     )
                     .at(item_span.clone(), format!("`{}`", field_type_name(&field.ty)))
                     .reason(format!(
-                        "A query sorts by numbers, times, dates, durations, text and identities; `{written}` is {}, whose values have no order the database and Jadpo agree on.",
-                        crate::types::literal::what(self.lookup, &field.ty)
+                        "A query sorts by numbers, times, dates, durations, text and identities, which the database and Jadpo order the same way; `{written}` is `{}`.",
+                        field.ty
                     ))
                     .next("Sort by another field"),
                 );
@@ -1893,7 +1902,7 @@ impl<'a> Reader<'a> {
                         &rule::TYPE_MISMATCH,
                         format!(
                             "`{}` can't be used where a whole number is required",
-                            tree::written(value.syntax())
+                            shown(value.syntax())
                         ),
                     )
                     .at(span, "not a whole number")
@@ -1917,7 +1926,7 @@ impl<'a> Reader<'a> {
                     &rule::TYPE_MISMATCH,
                     format!(
                         "`{}` can't be used where a whole number is required",
-                        tree::written(value.syntax())
+                        shown(value.syntax())
                     ),
                 )
                 .at(span, format!("a `{ty}`"))
@@ -1934,7 +1943,7 @@ impl<'a> Reader<'a> {
             .iter()
             .find_map(|(_, rules)| rules.max);
         if max.is_none() {
-            let written = tree::written(value.syntax());
+            let written = shown(value.syntax());
             self.out.push(
                 Diagnostic::new(
                     &rule::QUERY_LIMIT_UNBOUNDED,
@@ -1995,7 +2004,7 @@ impl<'a> Reader<'a> {
                         self.out.push(
                             Diagnostic::new(
                                 &rule::QUERY_PAGE_SETTING,
-                                format!("`after:` takes a `PageCursor`, and `{}` is `{ty}`", tree::written(value.syntax())),
+                                format!("`after:` takes a `PageCursor`, and `{}` is `{ty}`", shown(value.syntax())),
                             )
                             .at(Self::span(scope.path, &value), format!("a `{ty}`"))
                             .reason("`after:` is the cursor a previous page gave in its `next`, which a client sends back: a `PageCursor`, usually an optional field of the request's `Input`.")
@@ -2185,7 +2194,7 @@ impl<'a> Reader<'a> {
             found = Some((kind, other, f));
         }
         let Some((kind, target, via)) = found else {
-            let written = tree::written(via_expr.syntax());
+            let written = shown(via_expr.syntax());
             let mut options: Vec<String> = entity
                 .fields
                 .iter()
@@ -2783,7 +2792,7 @@ impl<'a> Reader<'a> {
                 && !self.lookup.assignable(&ty, &found.declared)
             {
                 ok = false;
-                let written = tree::written(value.syntax());
+                let written = shown(value.syntax());
                 self.out.push(
                     Diagnostic::new(
                         &rule::TYPE_MISMATCH,
@@ -2958,4 +2967,13 @@ fn first_words(node: &jadpo_syntax::SyntaxNode) -> String {
 
 fn field_type_name(ty: &Ty) -> String {
     ty.to_string()
+}
+
+/// An expression as written, its spaces kept and its lines joined.
+fn shown(node: &jadpo_syntax::SyntaxNode) -> String {
+    node.text()
+        .to_string()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }

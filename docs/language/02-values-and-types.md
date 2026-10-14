@@ -814,11 +814,6 @@ type ProductName = Text {
     min_length: 1
     max_length: 120
 }
-
-type PageSize = Int {
-    min: 1
-    max: 100
-}
 ```
 
 ```jadpo check project=input-settings file=main.jadpo
