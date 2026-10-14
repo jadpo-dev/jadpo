@@ -168,7 +168,7 @@ reference only).
   tests; fixtures taught before public fixtures (08 before 07); the wrong
   comments and README claims the review lists; sets and maps described as
   far as they work.
-- [ ] **2.10 Executor shape for Phase 3** `opus · xhigh`, from the Phase 2
+- [x] **2.10 Executor shape for Phase 3** `opus · xhigh`, from the Phase 2
   review, before any database work. The typed body says which sites and
   callables can pause; the interpreter walks actions, tests and fixtures
   asynchronously and functions synchronously; `Ctx` is passed in, and the
