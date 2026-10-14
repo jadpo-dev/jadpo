@@ -16,7 +16,7 @@ use jadpo_graph::body::{
 use jadpo_graph::{Key, TypeRef};
 use jadpo_runtime::{Ctx, Failure, Fault, FaultKind, Frame};
 use jadpo_std::{Builtin, Kind as ParamKind};
-use jadpo_value::{Invalid, Value, ops};
+use jadpo_value::{Value, ops};
 
 use crate::program::Program;
 use crate::{Assertion, Outcome, Part};
@@ -27,10 +27,11 @@ pub(crate) enum Stop {
     Failed(Box<Failure>),
     Fault(Box<Fault>),
     /// A construction's value broke a rule, for the `attempt` whose block
-    /// maps it: the rule's key (`max`), `None` when the built-in type
-    /// itself refused the value, and the rule as written for the report.
+    /// maps it: the rule's key (`max`, or `format` when a built-in type
+    /// such as `Email` refused the text), and the rule as written for the
+    /// report.
     Invalid {
-        rule: Option<String>,
+        rule: String,
         written: String,
     },
     Assertion(Box<Assertion>),
@@ -723,7 +724,7 @@ impl<'p> Interp<'p> {
             && let Err(invalid) = validator.check(&value)
         {
             return Err(Stop::Invalid {
-                rule: rule_key(&invalid),
+                rule: invalid.key().to_string(),
                 written: format!("`{}`", invalid.rule()),
             });
         }
@@ -755,7 +756,7 @@ impl<'p> Interp<'p> {
             {
                 let name = self.program.types.field_name(field).to_string();
                 return Err(Stop::Invalid {
-                    rule: rule_key(&invalid),
+                    rule: invalid.key().to_string(),
                     written: format!("`{}` on `{name}`", invalid.rule()),
                 });
             }
@@ -816,10 +817,7 @@ impl<'p> Interp<'p> {
         };
         match self.eval(f, inner) {
             Err(Stop::Invalid { rule, written }) => {
-                let arm = match &rule {
-                    Some(rule) => RuleArm::for_rule(arms, rule),
-                    None => arms.iter().find(|arm| arm.rule.is_none()),
-                };
+                let arm = RuleArm::for_rule(arms, &rule);
                 let Some(arm) = arm else {
                     return Err(
                         self.defect("a construction that can fail, with no failure for it", id)
@@ -950,18 +948,5 @@ impl<'p> Interp<'p> {
                 return Err(self.defect("an outcome pattern on a value", id));
             }
         })
-    }
-}
-
-/// The key of the rule a value broke, as an `attempt`'s arms name it:
-/// `max` for `max: 1000`; `None` when the built-in type refused it.
-fn rule_key(invalid: &Invalid) -> Option<String> {
-    match invalid {
-        Invalid::Broken(broken) => broken
-            .rule
-            .split(':')
-            .next()
-            .map(|key| key.trim().to_string()),
-        Invalid::Builtin(_) => None,
     }
 }

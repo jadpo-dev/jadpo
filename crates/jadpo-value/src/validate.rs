@@ -17,18 +17,42 @@ use crate::{Decimal, Value};
 /// Why a value isn't valid for its type.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Invalid {
-    /// The built-in type itself refuses it: why.
-    Builtin(String),
+    /// The built-in type itself refuses it, such as text that isn't an
+    /// email address for a type built on `Email`: which type, and why.
+    Builtin { builtin: Builtin, why: String },
     /// A rule is broken.
     Broken(Broken),
 }
 
 impl Invalid {
-    /// The rule as written, `max: 1000`, or what the built-in type needs.
+    /// The rule as written, `max: 1000`, or the built-in type whose own
+    /// check refused it, `Email`.
     pub fn rule(&self) -> String {
         match self {
-            Invalid::Builtin(why) => why.clone(),
+            Invalid::Builtin { builtin, .. } => builtin.name().to_string(),
             Invalid::Broken(broken) => broken.rule.clone(),
+        }
+    }
+
+    /// The key an `attempt`'s arm names it by: `max` for `max: 1000`, and
+    /// `format` for a built-in type's own check (area 2, "Construction
+    /// failures by rule").
+    pub fn key(&self) -> &str {
+        match self {
+            Invalid::Builtin { .. } => "format",
+            Invalid::Broken(broken) => broken
+                .rule
+                .split(':')
+                .next()
+                .map_or(broken.rule.as_str(), str::trim),
+        }
+    }
+
+    /// What is wrong with the value, completing "The value ...".
+    pub fn why(&self) -> &str {
+        match self {
+            Invalid::Builtin { why, .. } => why,
+            Invalid::Broken(broken) => &broken.why,
         }
     }
 }
@@ -97,7 +121,7 @@ impl Validator {
     /// Checks `value` against the built-in type and every rule.
     pub fn check(&self, value: &Value) -> Result<(), Invalid> {
         if let (Some(builtin), Value::Text(text) | Value::Uuid(text)) = (self.builtin, value) {
-            check_builtin_text(builtin, text).map_err(Invalid::Builtin)?;
+            check_builtin_text(builtin, text).map_err(|why| Invalid::Builtin { builtin, why })?;
         }
         for (rules, pattern) in &self.rules {
             match value {
@@ -158,8 +182,13 @@ mod tests {
         assert!(check(&Value::text("héé"), Builtin::Text, [&name]).is_ok());
         assert!(matches!(
             check(&Value::text("not an address"), Builtin::Email, []),
-            Err(Invalid::Builtin(_))
+            Err(Invalid::Builtin {
+                builtin: Builtin::Email,
+                ..
+            })
         ));
+        let refused = check(&Value::text("junk"), Builtin::Url, []).expect_err("not a URL");
+        assert_eq!((refused.key(), refused.rule().as_str()), ("format", "Url"));
         let sku = Validator::new(
             Some(Builtin::Text),
             vec![Rules {

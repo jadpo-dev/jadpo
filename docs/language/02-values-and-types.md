@@ -243,8 +243,47 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
 - **What the compiler can't reason about can always break.** A `pattern`
   other than the value's own always counts as able to break. `scale` never
   does: it rounds the value as it is kept.
+- **A validated built-in type's check is `format`.** A type built on
+  `Email`, `Url` or `IpAddress` checks its text, and when the value isn't
+  already built on the same type, that check is the `format` rule and can
+  break (built in chunk 2.7). An `Email` already is an address, and so is
+  text whose own type has `format: TextFormat.email`, the same check.
 - **Every failure is `invalid_value`.** At runtime the failure records the
-  rule that broke, such as `max: 12`, for the log, never the value.
+  rule that broke, such as `max: 12`, or the built-in type whose check
+  refused the text, such as `Email`, for the log, never the value.
+
+```jadpo check project=by-rule-format
+type ContactText = Text {
+    max_length: 200
+}
+
+type WorkEmail = Email {
+    pattern: ".*@acme[.]com"
+}
+
+type NotAnAddress = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type NotWork = Failure {
+    kind: FailureKind.invalid_value
+}
+
+function work_email(text: ContactText) fails NotAnAddress, NotWork -> WorkEmail {
+    var email: WorkEmail = attempt WorkEmail(text) {  // any text, so the address check can break
+        format: NotAnAddress
+        pattern: NotWork
+    }
+    return email
+}
+
+function work_address(address: Email) fails NotWork -> WorkEmail {
+    var email: WorkEmail = attempt WorkEmail(address) {  // already an address: only the pattern
+        pattern: NotWork
+    }
+    return email
+}
+```
 
 ### Conditions as proof
 
