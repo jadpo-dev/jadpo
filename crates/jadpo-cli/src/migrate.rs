@@ -74,7 +74,12 @@ fn load(call: &Call) -> Result<(PathBuf, Loaded), Reply> {
 
 /// A screen of the problems that stop the command, as `jadpo check` shows
 /// them, and the summary.
-fn blocked(loaded: &Loaded, cwd: &Path, problems: Vec<Diagnostic>, headline: &str) -> Reply {
+pub(crate) fn blocked(
+    loaded: &Loaded,
+    cwd: &Path,
+    problems: Vec<Diagnostic>,
+    headline: &str,
+) -> Reply {
     let db = &loaded.db;
     let sources: BTreeMap<String, String> = loaded
         .project

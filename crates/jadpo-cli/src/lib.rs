@@ -10,6 +10,7 @@ mod fmt;
 mod help;
 mod migrate;
 mod run;
+mod sql;
 mod suggest;
 mod table;
 mod test;

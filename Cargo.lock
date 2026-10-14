@@ -399,6 +399,7 @@ dependencies = [
  "jadpo-graph",
  "jadpo-host-native",
  "jadpo-lsp",
+ "jadpo-plan",
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-syntax",

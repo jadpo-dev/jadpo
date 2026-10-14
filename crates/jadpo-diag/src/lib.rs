@@ -113,6 +113,8 @@ rules! {
         "14-tooling.html#command-errors", "Migrate command has invalid arguments";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Terminal presentation option is invalid";
+    CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Sql command has invalid arguments";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Test command has invalid arguments";
     CLI_UNKNOWN_COMMAND: "cli.unknown_command", area 14, Error, Agent,

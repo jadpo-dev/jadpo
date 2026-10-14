@@ -11,6 +11,7 @@ pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
 pub use crate::migrate::migrate;
 use crate::run::{Call, Reply, Session, both, either, quoted, unknown_command};
+pub use crate::sql::sql;
 use crate::suggest::nearest;
 use crate::table::{self, SHELLS};
 pub use crate::test::test;
