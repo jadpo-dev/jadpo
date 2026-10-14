@@ -195,6 +195,22 @@ pub const SHELLS: &[Value] = &[
     },
 ];
 
+/// What `jadpo migrate` does (area 14, question 4).
+pub const MIGRATE_ACTIONS: &[Value] = &[
+    Value {
+        name: "new",
+        description: "Write the next migration, or finish the latest",
+    },
+    Value {
+        name: "apply",
+        description: "Run a database's pending migrations",
+    },
+    Value {
+        name: "status",
+        description: "List the migrations and what a database has applied",
+    },
+];
+
 /// The kinds of test (area 13, "Kinds of test"); route and schedule tests
 /// come with their areas.
 pub const KINDS: &[Value] = &[
@@ -376,6 +392,75 @@ pub static COMMANDS: &[Command] = &[
         arguments_rule: &rule::CLI_FMT_ARGUMENTS,
         raises: &[],
         run: commands::fmt,
+    },
+    Command {
+        name: "migrate",
+        synonyms: &[],
+        group: "Data",
+        summary: "Write and apply migrations",
+        description: "Keep the database in step with the entities (area 5). `new` compares the \
+                      entities with the latest migration's snapshot and writes the next folder in \
+                      database/migrations/: the whole schema as snapshot.json, the SQL that gets there \
+                      as postgres.sql, and changes.jadpo when a change needs a decision, such as a \
+                      value for existing rows; once the decisions are written, `new` again finishes \
+                      it. `apply` runs a database's pending migrations, each in a transaction; \
+                      `status` lists the migrations and, with --url, which a database has applied. \
+                      Until configuration gives each connection its URL, --url names the database.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do",
+                required: true,
+                values: Values::Fixed(MIGRATE_ACTIONS),
+            },
+            Argument {
+                name: "purpose",
+                description: "What a new migration does, in lower_snake_case",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+        ],
+        flags: &[
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "The PostgreSQL database to apply to or read",
+                values: &[],
+            },
+            Flag {
+                name: "--store",
+                value: Some("name"),
+                description: "The store that database is, when there are several",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "Write the migration for a new field",
+                command: "jadpo migrate new add_priority",
+            },
+            Example {
+                description: "Finish the latest migration once its decisions are written",
+                command: "jadpo migrate new",
+            },
+            Example {
+                description: "Apply the pending migrations to a database",
+                command: "jadpo migrate apply --url postgresql://localhost/todos",
+            },
+            Example {
+                description: "List the migrations and which a database has applied",
+                command: "jadpo migrate status --url postgresql://localhost/todos",
+            },
+        ],
+        arguments_rule: &rule::CLI_MIGRATE_ARGUMENTS,
+        raises: &[
+            &rule::MIGRATION_APPLY_FAILED,
+            &rule::MIGRATION_STORE_DIVERGED,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::migrate,
     },
     Command {
         name: "completions",

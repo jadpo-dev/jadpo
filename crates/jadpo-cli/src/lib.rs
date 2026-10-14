@@ -8,6 +8,7 @@ mod completion;
 mod derived;
 mod fmt;
 mod help;
+mod migrate;
 mod run;
 mod suggest;
 mod table;

@@ -255,6 +255,8 @@ rules! {
         "01-project-layout-and-modules.html#layout-wrong-folder", "Declaration is in the wrong folder";
     LIBRARY_SIMILAR_EXISTS: "library.similar_exists", area 1, Warning, Agent,
         "01-project-layout-and-modules.html#library-similar-exists", "A library function already does the same";
+    MIGRATION_APPLY_FAILED: "migration.apply_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Migrations could not be applied";
     MIGRATION_DECISION_INVALID: "migration.decision_invalid", area 5, Error, Agent,
         "05-data.html#migration-decision-invalid", "Migration decision does not fit its change";
     MIGRATION_DECISION_REQUIRED: "migration.decision_required", area 5, Error, Human,
@@ -265,6 +267,8 @@ rules! {
         "05-data.html#migration-out-of-date", "Entities and the latest migration disagree";
     MIGRATION_RECORD_INVALID: "migration.record_invalid", area 5, Error, Human,
         "05-data.html#migration-record-invalid", "Migration folder cannot be read";
+    MIGRATION_STORE_DIVERGED: "migration.store_diverged", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Database does not match the project's migrations";
     MIGRATION_UNFINISHED: "migration.unfinished", area 5, Error, Agent,
         "05-data.html#migration-unfinished", "Latest migration is not finished";
     NAMING_FOLDED_COLLISION: "naming.folded_collision", area 1, Error, Agent,

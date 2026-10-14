@@ -322,6 +322,27 @@ pub enum Block {
         changes: Vec<Change>,
         plain: String,
     },
+    /// A status line (`✓ Wrote <path>`), its symbol in the outcome's
+    /// colour, then indented rows: a name and what it is.
+    Status {
+        outcome: Outcome,
+        text: String,
+        rows: Vec<(String, String)>,
+    },
+    /// An indented change list grouped under bold headings, each line a
+    /// `+ ~ -` mark and columns (`+ priority   Priority   new field`),
+    /// after a muted note saying what was compared.
+    Changes {
+        note: Option<String>,
+        groups: Vec<(String, Vec<(ChangeMark, Vec<String>)>)>,
+    },
+    /// Something for a person to decide: `◆ decision  <subject>` in the
+    /// decision colour, where it is, and the next step with its owner.
+    Decision {
+        subject: String,
+        location: Option<String>,
+        next: String,
+    },
     /// A live line saying what a session is waiting for and the keys that
     /// work: a muted label and facts, then each key in bold and its action
     /// muted (`watching 41 files  ctrl-c quit`). Plain output reads
@@ -650,6 +671,108 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             plain,
         } => rule_lines(long, short, changes, plain, style),
         Block::KeyBar { label, facts, keys } => vec![key_bar(label, facts, keys, style)],
+        Block::Status {
+            outcome,
+            text,
+            rows,
+        } => {
+            let mut lines = Vec::new();
+            if rich(style) {
+                let (symbol, token) = match outcome {
+                    Outcome::Success => (Symbol::Success, Token::Success),
+                    Outcome::Failure => (Symbol::Failure, Token::Failure),
+                };
+                lines.push(vec![
+                    paint(token, symbol.text(style.symbols)),
+                    raw(format!(" {text}")),
+                ]);
+            } else {
+                lines.push(vec![raw(text.as_str())]);
+            }
+            let name = rows.iter().map(|(n, _)| width(n)).max().unwrap_or(0) + 2;
+            for (row, what) in rows {
+                lines.push(vec![
+                    raw(format!("    {row:<name$}")),
+                    paint(Token::Muted, what.as_str()),
+                ]);
+            }
+            lines
+        }
+        Block::Changes { note, groups } => {
+            let mut lines = Vec::new();
+            if let Some(note) = note {
+                lines.push(vec![raw("  "), paint(Token::Muted, note.as_str())]);
+                lines.push(Vec::new());
+            }
+            let columns = groups
+                .iter()
+                .flat_map(|(_, rows)| rows.iter().map(|(_, cells)| cells.len()))
+                .max()
+                .unwrap_or(0);
+            let widths: Vec<usize> = (0..columns)
+                .map(|i| {
+                    groups
+                        .iter()
+                        .flat_map(|(_, rows)| rows.iter().filter_map(|(_, cells)| cells.get(i)))
+                        .map(|cell| width(cell))
+                        .max()
+                        .unwrap_or(0)
+                })
+                .collect();
+            for (i, (heading, rows)) in groups.iter().enumerate() {
+                if i > 0 {
+                    lines.push(Vec::new());
+                }
+                lines.push(vec![raw("  "), bold(heading.as_str())]);
+                for (mark, cells) in rows {
+                    let mut line = vec![raw("    "), paint(mark.token(), mark.text()), raw(" ")];
+                    for (j, cell) in cells.iter().enumerate() {
+                        let last = j + 1 == cells.len();
+                        let text = if last {
+                            cell.clone()
+                        } else {
+                            format!("{cell:<w$}  ", w = widths[j])
+                        };
+                        line.push(if last && j > 0 {
+                            paint(Token::Muted, text)
+                        } else {
+                            raw(text)
+                        });
+                    }
+                    lines.push(line);
+                }
+            }
+            lines
+        }
+        Block::Decision {
+            subject,
+            location,
+            next,
+        } => {
+            let mut lines = Vec::new();
+            if rich(style) {
+                let word = format!("{} decision", Symbol::Decision.text(style.symbols));
+                lines.push(vec![
+                    strong(Token::Decision, word),
+                    raw("  "),
+                    bold(subject.as_str()),
+                ]);
+                if let Some(location) = location {
+                    lines.push(vec![raw(format!("  {location}"))]);
+                }
+            } else {
+                lines.push(vec![raw(format!("decision: {subject}"))]);
+                if let Some(location) = location {
+                    lines.push(vec![raw(format!(" --> {location}"))]);
+                }
+            }
+            lines.extend(field(
+                "next",
+                vec![raw(next.as_str()), decider(Decider::Human)],
+                style,
+            ));
+            lines
+        }
         Block::Hint { command, reason } => {
             if rich(style) {
                 let arrow = Symbol::Next.text(style.symbols);

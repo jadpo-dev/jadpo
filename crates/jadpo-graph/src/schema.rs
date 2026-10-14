@@ -688,7 +688,16 @@ impl Change {
                 store,
                 table,
                 column,
-            } => format!("{} changed", field(store, table, column)),
+            } => {
+                let retired = self::table(after, store, table)
+                    .and_then(|t| t.columns.get(column))
+                    .is_some_and(|c| c.retired);
+                if retired {
+                    format!("{} removed", field(store, table, column))
+                } else {
+                    format!("{} changed", field(store, table, column))
+                }
+            }
             Change::AddUnique { store, table, name }
             | Change::DropUnique { store, table, name } => {
                 let rule = self::table(after, store, table)
@@ -721,13 +730,16 @@ impl Change {
                         self::table(before, store, table)
                             .and_then(|t| t.indexes.get(name).map(|i| i.reason.clone()))
                     })
-                    .unwrap_or_else(|| format!("index `{name}`"));
+                    .unwrap_or_else(|| format!("index {name}"));
                 let verb = if matches!(self, Change::AddIndex { .. }) {
                     "new"
                 } else {
                     "removed"
                 };
-                format!("{verb} {reason}")
+                match reason.split_once(' ') {
+                    Some((kind, what)) => format!("{verb} {kind} `{what}`"),
+                    None => format!("{verb} {reason}"),
+                }
             }
         }
     }
