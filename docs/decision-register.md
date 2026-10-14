@@ -1,6 +1,6 @@
 # Decision register
 
-**Updated:** 2026-10-13. Decisions that are not about the language itself.
+**Updated:** 2026-10-14. Decisions that are not about the language itself.
 Every language decision is recorded on its area page in
 [docs/language](language/README.md), and the rendered decision log collects
 them. Decisions made before the language review, most of them now superseded
@@ -32,3 +32,17 @@ implemented.
 Richard decided all eighteen areas of the language review between 12 and 13
 October 2026. The area pages in [docs/language](language/README.md) are the
 specification; where an archived document disagrees, the area page wins.
+
+### Examples teach every feature — 2026-10-14
+
+Richard: some people learn better by example, so `examples/` holds carefully
+written Jadpo projects in real project layout that together use every
+feature the compiler has built, with inline comments throughout explaining
+what each part does and why. They are teaching material first and the test
+corpus second: each has its own `.test.jadpo` tests, the gate runs `jadpo
+test` over all of them, and Phase 8 runs them interpreted and compiled. They
+add to the area pages, which stay the specification, and are not copies of
+the golden todo. A gate check fails when a built feature (syntax, declaration
+setting, standard-library operation, graph node kind) appears in no example.
+Every chunk adds or extends examples for what it builds; chunk 2.4 covers
+Phases 1 and 2.
