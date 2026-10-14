@@ -308,6 +308,16 @@ pub fn serve_to(
     };
     let mut poller = Poller::new(watcher.watch().root(), watcher.watch().is_project());
     write(&frame, out, err);
+    // A save while the first run was running happened before the poller's
+    // first look: comparing every file's text with the database's catches
+    // it, and prints nothing when nothing changed.
+    let every = poller
+        .paths()
+        .map(|path| Edit::new(path, EditKind::Saved))
+        .collect();
+    if let Some(frame) = watcher.update(every, &clock()) {
+        write(&frame, out, err);
+    }
     while let Some(edits) = poller.wait(stop) {
         if let Some(frame) = watcher.update(edits, &clock()) {
             write(&frame, out, err);

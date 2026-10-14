@@ -1197,6 +1197,7 @@ Each row says how it was checked: compiled with `jadpo check`, run with
 | Database | **Conflicts with area 5 (read from generated code):** each test gets an in-memory SQLite database with tables created from the entities, not migrations; PostgreSQL is refused. Tests run one at a time. |
 | Caller | Direct calls in tests run with no caller, and a test cannot set one (read from generated code). |
 | Placement | Tests can sit in any file; `<name>.test.jadpo` is not checked (compiled). |
+| Watch mode | Works (run, chunk 2.3): `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run. A save shows its results in about 0.1 s on a 230-file project. The keys in the decided screen (`enter`, `a`, `f`) wait for `--interactive`; ctrl-c quits. |
 | `test.no_tests` | Raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none (run, chunk 2.2). |
 
 ### Consistency with the rest of the language

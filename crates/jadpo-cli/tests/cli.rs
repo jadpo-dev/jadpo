@@ -333,6 +333,7 @@ fn help_json_is_the_whole_command_reference() {
             ("--kind", &serde_json::json!("kind")),
             ("--failed", &serde_json::Value::Null),
             ("--seed", &serde_json::json!("n")),
+            ("--watch", &serde_json::Value::Null),
         ]
     );
 }

@@ -62,6 +62,11 @@ impl Poller {
         self.stamps.is_empty()
     }
 
+    /// Every file it watches, project-relative, in path order.
+    pub fn paths(&self) -> impl Iterator<Item = &str> {
+        self.stamps.keys().map(String::as_str)
+    }
+
     fn look(&mut self) -> BTreeMap<String, Stamp> {
         let started = Instant::now();
         let stamps = jadpo_db::files_under(&self.root, self.project)

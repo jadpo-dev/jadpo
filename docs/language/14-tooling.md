@@ -35,8 +35,8 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo fmt` | Formats; `--check` only reports; `--layout` also applies promotion moves | Exists; `--layout` decided in area 1 |
 | `jadpo test` | Runs every test | Built (chunk 2.2): pure and action tests, in the interpreter |
 | `jadpo test <file>` / `<file>:<line>` | Runs one test file, or the test at that line | Built (chunk 2.2); a folder runs the tests under it |
-| `jadpo test --name <text>` / `--kind route` / `--failed` / `--affected` | Runs tests whose names match, one kind, last run's failures, or the tests a change reaches | `--name`, `--kind pure` and `--kind action`, and `--failed` built (chunk 2.2); route and schedule kinds come with areas 7 and 12; `--affected` decided in question 7 |
-| `jadpo test --watch` | Reruns the affected tests on every save | Decided in area 13, not built |
+| `jadpo test --name <text>` / `--kind route` / `--failed` / `--affected` | Runs tests whose names match, one kind, last run's failures, or the tests a change reaches | `--name`, `--kind pure` and `--kind action`, and `--failed` built (chunk 2.2); route and schedule kinds come with areas 7 and 12; `--affected` decided in question 7, not built: what a change is measured against (the last run, the last `check`, a git base) is not decided yet |
+| `jadpo test --watch` | Reruns the affected tests on every save | Built (chunk 2.3): each save reruns the tests that reach a node whose digest changed since the last run, within the path, name and kind given; a broken build shows its errors and runs nothing; `--json` writes one envelope per line; ctrl-c quits |
 | `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built |
 | `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | `--seed` built (chunk 2.2); `--keep-failed` comes with the test database |
 | `jadpo build` | Writes the runnable app into `build/target/` | Exists |
