@@ -40,7 +40,7 @@ use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, Stmt};
 use super::decl::Decls;
 use super::table::TypeView;
 use super::ty::{Prim, Ty, TypeNode, TypeRef};
-use crate::lookups::{FailureView, Lookup, NameView, SigView};
+use crate::lookups::{FailureView, Lookup, NameView, SigView, WriteView};
 use crate::resolve::{Names, Walk, Want};
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
@@ -148,6 +148,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         calls: &lookup,
         symbols: &lookup,
         failures: &lookup,
+        writes: &lookup,
         scopes: Vec::new(),
         result: Ty::Prim(Prim::Unit),
         context: Context::Action,
@@ -168,6 +169,8 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         undeclared: false,
         resolved: Vec::new(),
         loops: 0,
+        pending_block: None,
+        stored: None,
     };
     let Some(target) = checker.target(&decl, callable.function(db)) else {
         return Checked::default();
@@ -359,6 +362,7 @@ struct Body<'a> {
     calls: &'a dyn SigView,
     symbols: &'a dyn NameView,
     failures: &'a dyn FailureView,
+    writes: &'a dyn WriteView,
     scopes: Vec<Vec<Local>>,
     /// The result type of the callable being checked.
     result: Ty,
@@ -402,6 +406,12 @@ struct Body<'a> {
     /// How many `for` loops the code being checked is inside: a read there
     /// reads once per item (area 6).
     loops: u32,
+    /// The block after an `update` or `delete` being checked, which an
+    /// `attempt` or a block-built value hands it (area 6).
+    pending_block: Option<ast::MemberList>,
+    /// While an update by `id` of this entity checks its values: the
+    /// entity whose stored fields they may read (area 6, "Counters").
+    stored: Option<String>,
 }
 
 /// One callable to check.

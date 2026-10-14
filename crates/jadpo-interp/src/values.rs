@@ -16,6 +16,9 @@ pub(crate) struct Shape {
     variant: Option<(Rc<str>, u32)>,
     /// Each field's name and what a value built without it holds.
     fields: Vec<(Rc<str>, Option<Value>)>,
+    /// The places of the optional `Input` fields without a default: a
+    /// value built without one remembers it was left out (area 6, patch).
+    omittable: Vec<u32>,
 }
 
 impl Shape {
@@ -36,6 +39,13 @@ impl Shape {
                     )
                 })
                 .collect(),
+            omittable: plan
+                .fields
+                .iter()
+                .enumerate()
+                .filter(|(_, field)| field.omittable)
+                .map(|(at, _)| at as u32)
+                .collect(),
         }
     }
 
@@ -51,6 +61,12 @@ impl Shape {
                 *place = Some(value);
             }
         }
+        let omitted: Vec<u32> = self
+            .omittable
+            .iter()
+            .copied()
+            .filter(|at| values.get(*at as usize).is_some_and(Option::is_none))
+            .collect();
         let fields = self
             .fields
             .iter()
@@ -69,6 +85,7 @@ impl Shape {
             None => Value::Record(Rc::new(Record {
                 ty: Rc::clone(&self.ty),
                 fields,
+                omitted: (!omitted.is_empty()).then(|| Rc::from(omitted)),
             })),
         })
     }

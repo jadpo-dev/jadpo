@@ -54,6 +54,9 @@ pub struct Ctx<'p> {
     pub(crate) boundary: Option<Boundary>,
     /// How many boundaries it has opened.
     pub(crate) actions: u32,
+    /// How many actions running inside the open boundary were called by
+    /// another action, which joined its transaction (area 1).
+    pub(crate) nesting: u32,
     /// How many identities it has made.
     ids: u64,
 }
@@ -82,6 +85,7 @@ impl<'p> Ctx<'p> {
             recording: None,
             boundary: None,
             actions: 0,
+            nesting: 0,
             ids: 0,
         }
     }
@@ -251,6 +255,20 @@ impl<'p> Ctx<'p> {
     /// Whether an action is running: its boundary is open.
     pub fn in_action(&self) -> bool {
         self.boundary.is_some()
+    }
+
+    /// Whether the running action was called by another action, whose
+    /// transaction it joined: a failure it raises may be handled there, and
+    /// the transaction carry on (area 6).
+    pub fn nested(&self) -> bool {
+        self.nesting > 0
+    }
+
+    /// `clock.now`: the time the invocation's clock reads, in milliseconds
+    /// since 1970-01-01T00:00:00Z. A test's clock is fixed (area 13); the
+    /// same source fills generated fields and a query's `clock.now`.
+    pub fn now(&self) -> i64 {
+        self.env.clock.now()
     }
 
     /// The running action's transaction in `store`, begun at the first

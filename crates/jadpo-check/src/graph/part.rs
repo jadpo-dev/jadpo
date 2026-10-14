@@ -301,9 +301,12 @@ impl Part<'_> {
                 _ => None,
             })
             .collect();
+        // Its `create`, `update` and `delete` write the entity (area 6).
+        let writes: BTreeSet<Key> = body.writes().map(|(_, entity, _)| entity.clone()).collect();
         self.edges(key, EdgeKind::Uses, uses);
         self.edges(key, EdgeKind::Calls, calls);
         self.edges(key, EdgeKind::Reads, reads);
+        self.edges(key, EdgeKind::Writes, writes);
         if let Some((_, set)) = &checked.set {
             let raises: BTreeSet<Key> = set
                 .failures
@@ -481,6 +484,40 @@ impl Part<'_> {
         if let Some(entity) = entity {
             self.entity_data(decl, &key, entity);
         }
+        self.provided_failure(decl, &name);
+    }
+
+    /// The not-found failure the compiler provides for an entity whose
+    /// project declares none (area 6, question 6): a failure type with
+    /// kind `not_found` and no fields, placed at the entity.
+    fn provided_failure(&mut self, decl: &ast::EntityDecl, entity: &str) {
+        let name = format!("{entity}NotFound");
+        let provided = self
+            .lookup
+            .declared(&name)
+            .iter()
+            .any(|symbol| symbol.provided.as_deref() == Some(entity) && symbol.path == *self.path);
+        if !provided {
+            return;
+        }
+        let key = self.lookup.registry().key(Kind::Type, &name, None);
+        let mut node = self.node(key, Kind::Type, name.clone(), decl.syntax().clone());
+        node.public = true;
+        node.doc = Some(format!(
+            "No `{entity}` has that `id`: provided by the compiler, since the project declares no `{name}`."
+        ));
+        let kind = "not_found".to_string();
+        node.detail = Detail::Type {
+            base: Base::Failure,
+            rules: Rules::default(),
+            failure: Some(FailureDetail {
+                status: status_of(&kind),
+                kind: Some(kind),
+                code: crate::case::to_snake(&name),
+                message: None,
+            }),
+        };
+        self.out.nodes.push(node);
     }
 
     /// An entity's data nodes (area 5): where it is stored, its compound

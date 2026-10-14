@@ -41,6 +41,7 @@ use jadpo_graph::body::{
     UnaryOp,
 };
 use jadpo_graph::{Base, Detail, EdgeKind, Kind, Status, TypeRef};
+use jadpo_std::write::WriteOp;
 use jadpo_std::{Builtin, FieldChange, Generated, OPERATIONS, OnDelete, Rules};
 use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode};
@@ -392,6 +393,16 @@ const BODY: &[&str] = &[
     "call construct named collection",
     "call construct named set from a list",
     "call entity operation",
+    "write create",
+    "write update",
+    "write update by id",
+    "write update with patch",
+    "write update with when_supplied",
+    "write delete",
+    "write delete by id",
+    "write conflict arm",
+    "write conflict arm with fields",
+    "expr stored",
     "build object",
     "build variant with fields",
     "build plain variant",
@@ -788,6 +799,41 @@ fn body_features(
                 }
                 Expr::Inline { .. } => {
                     out.insert("inline function");
+                }
+                Expr::Write {
+                    op,
+                    by_id,
+                    patch,
+                    when_supplied,
+                    conflicts,
+                    fallible: can_fail,
+                    ..
+                } => {
+                    if let Some(name) = fallible(can_fail) {
+                        out.insert(name);
+                    }
+                    out.insert(match (op, by_id) {
+                        (WriteOp::Create, _) => "write create",
+                        (WriteOp::Update, false) => "write update",
+                        (WriteOp::Update, true) => "write update by id",
+                        (WriteOp::Delete, false) => "write delete",
+                        (WriteOp::Delete, true) => "write delete by id",
+                    });
+                    if patch.is_some() {
+                        out.insert("write update with patch");
+                    }
+                    if !when_supplied.is_empty() {
+                        out.insert("write update with when_supplied");
+                    }
+                    if !conflicts.is_empty() {
+                        out.insert("write conflict arm");
+                    }
+                    if conflicts.iter().any(|arm| !arm.fields.is_empty()) {
+                        out.insert("write conflict arm with fields");
+                    }
+                }
+                Expr::Stored { .. } => {
+                    out.insert("expr stored");
                 }
                 Expr::Unchecked => {}
             },

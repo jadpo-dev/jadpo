@@ -10,7 +10,7 @@ mod decl;
 mod table;
 
 pub use decl::failure_problems;
-pub use table::{FailureInfo, FailureTable, failure_table};
+pub use table::{FailureInfo, FailureTable, failure_table, provided_failures};
 
 /// The kinds an application may declare (area 4, question 3); the runtime
 /// raises the others itself.

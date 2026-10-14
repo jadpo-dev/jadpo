@@ -20,6 +20,7 @@ use jadpo_syntax::{SyntaxKind, SyntaxNode};
 use super::super::rules::Const;
 use super::super::ty::{Prim, Ty};
 use super::facts::{BuildFact, Facts, NodeKey, PatternFact, Reach, node_key};
+use super::writes::{Breach, WriteFact};
 use super::{Body, Fallible, LocalKind};
 use crate::graph::paths::Resolver;
 use crate::graph::{
@@ -49,6 +50,7 @@ pub(super) fn lower(
         branches: Vec::new(),
         refers: Vec::new(),
         at: BTreeMap::new(),
+        write_block: None,
     };
     let mut body = typed::Body::default();
     for (id, local) in checker.facts.locals.iter().enumerate() {
@@ -184,6 +186,8 @@ struct Lower<'a> {
     refers: Vec<typed::Name>,
     /// The site each expression became.
     at: BTreeMap<NodeKey, SiteId>,
+    /// The block an `attempt` hands the write it is lowering.
+    write_block: Option<ast::MemberList>,
 }
 
 impl Lower<'_> {
@@ -289,11 +293,8 @@ impl Lower<'_> {
                 callee,
                 Callee::Action(_) | Callee::Fixture(_) | Callee::Query(_) | Callee::Entity { .. }
             ),
-            // `Entity.create { ... }` writes a record.
-            typed::Node::Expr(typed::Expr::Build {
-                callee: Callee::Entity { .. },
-                ..
-            }) => true,
+            // `create`, `update` and `delete` write a record.
+            typed::Node::Expr(typed::Expr::Write { .. }) => true,
             typed::Node::Expr(typed::Expr::Unchecked) => {
                 self.facts.effects.contains(&node_key(node))
             }
@@ -535,6 +536,18 @@ impl Lower<'_> {
             }
             Expr::MatchExpr(subject) => self.match_expr(subject),
             Expr::AttemptExpr(attempt) => {
+                let write = matches!(attempt.expr(), Some(Expr::CallExpr(call))
+                    if self.facts.writes.contains_key(&node_key(call.syntax())));
+                if write {
+                    // The block is the write's, lowered with it.
+                    self.write_block = attempt.member_list();
+                    let inner = attempt.expr().map(|inner| self.expr(&inner));
+                    self.write_block = None;
+                    return typed::Expr::Attempt {
+                        inner,
+                        arms: Vec::new(),
+                    };
+                }
                 let inner = attempt.expr().map(|inner| self.expr(&inner));
                 // The arms follow the call, so their sites do too.
                 let mapped = self.facts.mapped.get(&key).cloned().unwrap_or_default();
@@ -608,6 +621,18 @@ impl Lower<'_> {
     /// `value.field`, a variant's data's field, or `Enum.variant`.
     fn field(&mut self, expr: &Expr, field: &ast::FieldExpr) -> typed::Expr {
         let key = node_key(expr.syntax());
+        if self.facts.stored.contains(&key)
+            && let Some((first, rest)) = dotted(expr)
+        {
+            let refs: Vec<ast::NameRef> = std::iter::once(first).chain(rest).collect();
+            let names: Vec<String> = refs.iter().filter_map(tree::name_ref_text).collect();
+            self.path_names(&refs);
+            if let [entity, name] = names.as_slice() {
+                return typed::Expr::Stored {
+                    field: field_key(self.names.registry(), entity, std::slice::from_ref(name)),
+                };
+            }
+        }
         if let Some((host, variant)) = self.facts.variants.get(&key).cloned() {
             if let Some((first, rest)) = dotted(expr) {
                 let refs: Vec<ast::NameRef> = std::iter::once(first).chain(rest).collect();
@@ -638,6 +663,10 @@ impl Lower<'_> {
 
     fn call(&mut self, call: &ast::CallExpr) -> typed::Expr {
         let key = node_key(call.syntax());
+        if let Some(fact) = self.facts.writes.get(&key) {
+            let block = self.write_block.take().or_else(|| fact.block.clone());
+            return self.write(fact, call.expr(), Some(call), block);
+        }
         let reach = self
             .facts
             .reaches
@@ -780,6 +809,14 @@ impl Lower<'_> {
     /// `Type { ... }` or `Enum.variant { ... }`.
     fn record(&mut self, record: &ast::RecordExpr) -> typed::Expr {
         let key = node_key(record.syntax());
+        if let Some(fact) = self.facts.writes.get(&key) {
+            return self.write(fact, record.expr(), None, record.member_list());
+        }
+        if let Some(Expr::CallExpr(call)) = record.expr()
+            && let Some(fact) = self.facts.writes.get(&node_key(call.syntax()))
+        {
+            return self.write(fact, call.expr(), Some(&call), record.member_list());
+        }
         let Some(build) = self.facts.builds.get(&key).cloned() else {
             self.scan(record.syntax());
             return typed::Expr::Unchecked;
@@ -801,25 +838,8 @@ impl Lower<'_> {
                 host.clone(),
                 vec![variant.clone()],
             ),
-            BuildFact::Create(entity) => (
-                self.type_key(entity)
-                    .map_or(Callee::Unknown, |key| Callee::Entity {
-                        entity: key,
-                        operation: "create".to_string(),
-                    }),
-                entity.clone(),
-                Vec::new(),
-            ),
         };
-        // A create's fields are in its `set:` block.
-        let list = match &build {
-            BuildFact::Create(_) => tree::members(record.member_list())
-                .into_iter()
-                .find(|(name, _)| tree::name_text(name).as_deref() == Some("set"))
-                .and_then(|(_, member)| member.block()),
-            _ => record.member_list(),
-        };
-        let fields = self.fields_given(list, &host, &prefix);
+        let fields = self.fields_given(record.member_list(), &host, &prefix);
         let fallible = match self.facts.constructions.get(&key) {
             Some(verdict) => self.fallible(Some(verdict)),
             None => typed::Fallible::Never,
@@ -828,6 +848,171 @@ impl Lower<'_> {
             callee,
             fields,
             fallible,
+        }
+    }
+
+    /// An entity's write (area 6): its record, then its block's sections
+    /// in the order they are written.
+    fn write(
+        &mut self,
+        fact: &WriteFact,
+        head: Option<Expr>,
+        call: Option<&ast::CallExpr>,
+        block: Option<ast::MemberList>,
+    ) -> typed::Expr {
+        let Some(entity) = self.type_key(&fact.entity) else {
+            if let Some(call) = call {
+                self.scan(call.syntax());
+            }
+            return typed::Expr::Unchecked;
+        };
+        if let Some(head) = &head
+            && let Some((first, rest)) = dotted(head)
+        {
+            let refs: Vec<ast::NameRef> = std::iter::once(first).chain(rest).collect();
+            self.path_names(&refs);
+        }
+        let target = call
+            .and_then(|call| call.arg_list())
+            .and_then(|list| list.args().next())
+            .and_then(|arg| arg.expr())
+            .map(|value| self.expr(&value));
+        let mut set = Vec::new();
+        let mut patch = None;
+        let mut patch_input: Option<String> = None;
+        let mut when_supplied = Vec::new();
+        let mut conflicts = Vec::new();
+        for (name, member) in tree::members(block) {
+            match tree::name_text(&name).as_deref() {
+                Some("set") => set.extend(self.fields_given(member.block(), &fact.entity, &[])),
+                Some("patch") => {
+                    if let Some(value) = member.value() {
+                        if let Some(Ty::Named(input)) = self.facts.types.get(&node_key(value.syntax())) {
+                            patch_input = Some(input.clone());
+                        }
+                        patch = Some(self.expr(&value));
+                    }
+                }
+                Some("when_supplied") => {
+                    for (supplied, fields) in tree::members(member.block()) {
+                        let Some(supplied_name) = tree::name_text(&supplied) else {
+                            continue;
+                        };
+                        let input_field = patch_input.as_ref().map(|input| {
+                            field_key(self.names.registry(), input, std::slice::from_ref(&supplied_name))
+                        });
+                        self.node(supplied.syntax(), input_field.clone(), false);
+                        let given = self.fields_given(fields.block(), &fact.entity, &[]);
+                        if let Some(input_field) = input_field {
+                            when_supplied.push((input_field, given));
+                        }
+                    }
+                }
+                Some("conflict") => {
+                    let arms: Vec<ast::Member> = member
+                        .block()
+                        .into_iter()
+                        .flat_map(|list| list.member_items())
+                        .filter_map(|item| match item {
+                            ast::MemberItem::Member(arm) => Some(arm),
+                            _ => None,
+                        })
+                        .collect();
+                    for arm in arms {
+                        let Some((_, breach, failure)) =
+                            fact.arms.iter().find(|(written, _, _)| written.syntax() == arm.syntax())
+                        else {
+                            self.scan(arm.syntax());
+                            continue;
+                        };
+                        let rule = match breach {
+                            Breach::Unique {
+                                entity: holder,
+                                name,
+                                field: true,
+                            } => field_key(self.names.registry(), holder, std::slice::from_ref(name)),
+                            Breach::Unique { entity: holder, name, .. } => {
+                                let born = self.names.registry().born(jadpo_graph::Kind::Entity, holder, None);
+                                self.names.registry().key(
+                                    jadpo_graph::Kind::UniqueRule,
+                                    &format!("{holder}.{name}"),
+                                    Some((holder, &born)),
+                                )
+                            }
+                            Breach::Reference { entity: holder, field } => {
+                                let born = self.names.registry().born(jadpo_graph::Kind::Entity, holder, None);
+                                self.names.registry().key(
+                                    jadpo_graph::Kind::Reference,
+                                    &format!("{holder}.{field}"),
+                                    Some((holder, &born)),
+                                )
+                            }
+                        };
+                        if let Some(key) = arm.member_key() {
+                            let names: Vec<ast::Name> = key.names().collect();
+                            if let Some(first) = names.first() {
+                                let holder = match breach {
+                                    Breach::Unique { entity: holder, .. }
+                                    | Breach::Reference { entity: holder, .. } => holder.clone(),
+                                };
+                                let holder_key = self.type_key(&holder);
+                                self.node(first.syntax(), holder_key, false);
+                            }
+                            if let Some(last) = names.get(1) {
+                                self.node(last.syntax(), Some(rule.clone()), false);
+                            }
+                        }
+                        let fields = match arm.value() {
+                            Some(Expr::RecordExpr(record)) => {
+                                if let Some(Expr::NameRef(name)) = record.expr() {
+                                    self.path_names(&[name]);
+                                }
+                                self.fields_given(record.member_list(), failure, &[])
+                            }
+                            Some(Expr::NameRef(name)) => {
+                                self.path_names(&[name]);
+                                Vec::new()
+                            }
+                            Some(other) => {
+                                self.scan(other.syntax());
+                                Vec::new()
+                            }
+                            None => Vec::new(),
+                        };
+                        if let Some(failure) = self.type_key(failure) {
+                            conflicts.push(typed::ConflictArm {
+                                rule,
+                                failure,
+                                fields,
+                            });
+                        }
+                    }
+                }
+                _ => self.scan(member.syntax()),
+            }
+        }
+        let missing = fact
+            .missing
+            .iter()
+            .filter_map(|(field, failure)| {
+                Some((
+                    field_key(self.names.registry(), &fact.entity, std::slice::from_ref(field)),
+                    self.type_key(failure)?,
+                ))
+            })
+            .collect();
+        typed::Expr::Write {
+            entity,
+            op: fact.op,
+            target,
+            by_id: fact.by_id,
+            set,
+            patch,
+            when_supplied,
+            conflicts,
+            missing,
+            not_found: fact.not_found.as_deref().and_then(|failure| self.type_key(failure)),
+            fallible: self.fallible(Some(&fact.fallible)),
         }
     }
 

@@ -41,11 +41,11 @@ pub enum Fallible {
 
 /// One arm of an `attempt`'s block: its key, where it is written, and the
 /// failure it names.
-struct Arm {
-    key: String,
-    key_span: Span,
-    member: ast::Member,
-    value: Option<Expr>,
+pub(super) struct Arm {
+    pub key: String,
+    pub key_span: Span,
+    pub member: ast::Member,
+    pub value: Option<Expr>,
 }
 
 /// "`max`", or "`min` and `max`".
@@ -82,6 +82,9 @@ impl Body<'_> {
         if let Some(verdict) = self.facts.constructions.get(&key) {
             return verdict.clone();
         }
+        if let Some(write) = self.facts.writes.get(&key) {
+            return write.fallible.clone();
+        }
         match self.facts.reaches.get(&key) {
             Some(Reach::Callable { fails, .. } | Reach::Library { fails, .. }) => {
                 self.fails_fallible(fails)
@@ -111,10 +114,9 @@ impl Body<'_> {
         Fallible::Fails(names)
     }
 
-    /// An entity's operations (area 6): `get` fails with the entity's
-    /// not-found failure when the project declares it; the compiler
-    /// provides one otherwise, and the writes' failures come from their
-    /// blocks, both built with area 6.
+    /// An entity's `get` (area 6) fails with the entity's not-found
+    /// failure: the project's, or the one the compiler provides. A write's
+    /// failures come from what it writes, recorded where it is checked.
     fn entity_fallible(&self, entity: &str, operation: &str) -> Fallible {
         let missing = format!("{entity}NotFound");
         if operation == "get" && self.failures.is_declared_failure(&missing) {
@@ -122,6 +124,34 @@ impl Body<'_> {
         } else {
             Fallible::Unknown
         }
+    }
+
+    /// A write that can fail, written as a block-built value with nothing
+    /// handling it: `Project.create { ... }` without `attempt`.
+    pub(super) fn unhandled_write(&mut self, node: &jadpo_syntax::SyntaxNode, written: &str) {
+        let key = node_key(node);
+        if self.handled.contains(&key) {
+            return;
+        }
+        let Some(Fallible::Fails(names)) = self.facts.writes.get(&key).map(|w| w.fallible.clone())
+        else {
+            return;
+        };
+        let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
+        let span = crate::tree::node_span(self.path, node);
+        self.flow.open = true;
+        self.out.push(
+            Diagnostic::new(
+                &rule::FAILURE_ATTEMPT_REQUIRED,
+                format!("`{written}` can fail, and nothing handles it"),
+            )
+            .at(span, format!("can fail with {}", crate::and_list(&listed)))
+            .reason("A call that can fail says so where it is made: `attempt` passes its failures on to the caller's `fails` list.")
+            .next(format!(
+                "Start the statement with `attempt`, and list {} after `fails`",
+                crate::and_list(&listed)
+            )),
+        );
     }
 
     /// A call nothing handles: one that can fail needs `attempt` or an
@@ -428,7 +458,10 @@ impl Body<'_> {
     /// `attempt call(...)`, with any block of mappings after it; the call's
     /// result.
     pub(super) fn attempt(&mut self, attempt: &ast::AttemptExpr, expected: Option<&Ty>) -> Ty {
-        let arms = self.arms(attempt);
+        // `attempt Todo.update(todo) { ... }`: the block is the write's
+        // own (area 6), not mappings.
+        let write = matches!(attempt.expr(), Some(Expr::CallExpr(call)) if self.write_call(&call).is_some());
+        let arms = if write { Vec::new() } else { self.arms(attempt) };
         let span = line_span(self.path, attempt.syntax());
         let Some(inner) = attempt.expr() else {
             return Ty::Error;
@@ -436,7 +469,11 @@ impl Body<'_> {
         let (ty, fallible) = match &inner {
             Expr::CallExpr(call) => {
                 self.handled.push(node_key(call.syntax()));
+                if write {
+                    self.pending_block = attempt.member_list();
+                }
                 let ty = self.call(call, expected);
+                self.pending_block = None;
                 self.handled.pop();
                 (ty, self.call_fallible(call))
             }
@@ -553,6 +590,9 @@ impl Body<'_> {
         if let Some(verdict) = self.facts.constructions.get(&node_key(record.syntax())) {
             return verdict.clone();
         }
+        if let Some(write) = self.facts.writes.get(&node_key(record.syntax())) {
+            return write.fallible.clone();
+        }
         match record.expr() {
             Some(Expr::CallExpr(_)) => Fallible::Unknown,
             Some(head) => match dotted(&head) {
@@ -597,7 +637,15 @@ impl Body<'_> {
                 .collect(),
             _ => Vec::new(),
         };
+        let writes = match inner {
+            Expr::CallExpr(call) => self.facts.writes.contains_key(&node_key(call.syntax())),
+            Expr::RecordExpr(record) => self.facts.writes.contains_key(&node_key(record.syntax())),
+            _ => false,
+        };
         let reason = match inner {
+            _ if writes => format!(
+                "Nothing `{written}` writes can break a unique rule, be refused by a reference or name a record that isn't there, so it never fails; `attempt` marks only what can."
+            ),
             Expr::CallExpr(_) if !by.is_empty() => format!(
                 "The declared ranges and {} prove `{written}` always follows its type's rules, so building it never fails; `attempt` marks only what can.",
                 conditions_named(&by)
@@ -633,7 +681,8 @@ impl Body<'_> {
             .reason(reason)
             .next("Remove `attempt`")
             .edit(Span::new(self.path, start, inner_start), "");
-        if end > inner_end {
+        // A write's block stays: without `attempt` it is the write's.
+        if end > inner_end && !writes {
             problem = problem.edit(Span::new(self.path, inner_end, end), "");
         }
         self.flow.open = true;
@@ -880,7 +929,7 @@ impl Body<'_> {
         );
     }
 
-    fn duplicate_mapping(&mut self, arm: &Arm, first: Span) {
+    pub(super) fn duplicate_mapping(&mut self, arm: &Arm, first: Span) {
         let key = &arm.key;
         let removal = self.arm_removal(arm);
         self.flow.open = true;
@@ -938,7 +987,7 @@ impl Body<'_> {
 
     /// The failure a mapping names must have the kind its condition needs
     /// (area 4, question 7).
-    fn mapping_kind(&mut self, arm: &Arm, failure: &str, kind: &str) {
+    pub(super) fn mapping_kind(&mut self, arm: &Arm, failure: &str, kind: &str) {
         let condition = arm.key.as_str();
         let Some(info) = self.failures.failure_info(failure) else {
             return;
@@ -953,17 +1002,27 @@ impl Body<'_> {
             .value
             .as_ref()
             .map_or_else(|| arm.key_span.clone(), |value| self.span(value));
+        let a = if kind.starts_with(['a', 'e', 'i', 'o', 'u']) {
+            "an"
+        } else {
+            "a"
+        };
+        let meaning = match kind {
+            "conflict" => "a write the store refuses because of the records already there",
+            "not_found" => "a read that finds nothing",
+            _ => "a value that breaks a type's rules",
+        };
         self.out.push(
             Diagnostic::new(
                 &rule::FAILURE_MAPPING_KIND,
-                format!("`{condition}:` needs an `{kind}` failure, and `{failure}` is `{actual}`"),
+                format!("`{condition}:` needs {a} `{kind}` failure, and `{failure}` is `{actual}`"),
             )
             .at(span, format!("kind `{actual}`"))
             .reason(format!(
-                "Each mapping's condition fixes the kind of failure it becomes: a value that breaks a type's rules is `{kind}`, so the client gets the status that means."
+                "Each mapping's condition fixes the kind of failure it becomes: {meaning} is `{kind}`, so the client gets the status that means."
             ))
             .next(format!(
-                "Name an `{kind}` failure here, or make `{failure}`'s kind `FailureKind.{kind}`"
+                "Name {a} `{kind}` failure here, or make `{failure}`'s kind `FailureKind.{kind}`"
             )),
         );
     }

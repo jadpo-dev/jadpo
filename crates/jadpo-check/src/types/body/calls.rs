@@ -233,18 +233,28 @@ impl Body<'_> {
                     self.args_only(call);
                     return (Ty::Error, CallKind::Effect(written), reach);
                 }
+                let block = self.pending_block.take();
                 if self.context.is_pure() {
                     self.persistence(span, &written);
                     self.args_only(call);
+                    self.walk(|walk| walk.member_values(block));
                     return (Ty::Error, CallKind::Effect(written), reach);
                 }
                 if rest[0] == "get" {
                     let ty = self.entity_get(&head, call, span);
                     return (ty, CallKind::Effect(written), reach);
                 }
-                // The writes after `create`, and the lifecycle's
-                // transitions, come with chunks 3.3 and 3.4; a name that
-                // is neither is reported where it is resolved.
+                let op = match rest[0].as_str() {
+                    "update" => Some(jadpo_std::write::WriteOp::Update),
+                    "delete" => Some(jadpo_std::write::WriteOp::Delete),
+                    _ => None,
+                };
+                if let Some(op) = op {
+                    let ty = self.write(&head, op, call.syntax(), Some(call), block, span);
+                    return (ty, CallKind::Effect(written), reach);
+                }
+                // The lifecycle's transitions come with chunk 3.4; a name
+                // that is no operation is reported where it is resolved.
                 self.args_only(call);
                 let known = crate::resolve::ENTITY_OPERATIONS.contains(&rest[0].as_str())
                     || self
@@ -256,6 +266,15 @@ impl Body<'_> {
                     self.not_built_yet(span, &written);
                 }
                 return (Ty::Error, CallKind::Effect(written), reach);
+            }
+            if let Some((_, op)) = self.write_call(call) {
+                // A write to a type that isn't an entity (area 6).
+                let span = self.span(callee);
+                let block = self.pending_block.take();
+                self.write_not_entity(&head, op, span);
+                self.args_only(call);
+                self.walk(|walk| walk.member_values(block));
+                return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
             }
             if self.symbols.is_package(&head) {
                 // A package's operations come with area 11.

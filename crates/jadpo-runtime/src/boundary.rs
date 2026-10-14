@@ -51,7 +51,10 @@ enum Ended {
 /// emitted after it commits.
 pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     if ctx.in_action() {
-        return body.run(ctx).await;
+        ctx.nesting += 1;
+        let outcome = body.run(ctx).await;
+        ctx.nesting -= 1;
+        return outcome;
     }
     ctx.actions += 1;
     let mut attempt = 1;

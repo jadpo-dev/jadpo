@@ -231,7 +231,7 @@ macro_rules! edges {
 edges! {
     Calls: "calls", Built, "A callable calls a function, action, query, fixture or library function";
     Reads: "reads", Built, "A query or an entity's `get` reads an entity";
-    Writes: "writes", Reserved, "Writes an entity, fields or an operation";
+    Writes: "writes", Built, "An action or fixture creates, updates or deletes an entity's records";
     Emits: "emits", Reserved, "Emits an event";
     Subscribes: "subscribes", Reserved, "A subscriber listens for an event";
     Runs: "runs", Reserved, "A trigger runs an action or query";

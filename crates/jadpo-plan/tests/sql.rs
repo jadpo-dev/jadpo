@@ -1,18 +1,18 @@
-//! The SQL each query shape, `get` and `create` runs on PostgreSQL, held
-//! in golden files so every change to it is reviewed (area 6;
+//! The SQL each query shape, `get` and write runs on PostgreSQL, held in
+//! golden files so every change to it is reviewed (area 6;
 //! docs/compiler-runtime.md §2.1). `tests/sql/project.jadpo` declares one
-//! query per shape; each plan is written to `tests/sql/<name>.sql` with its
-//! parameters and includes, and compared byte for byte.
+//! query per shape and one action per write shape; each plan is written to
+//! `tests/sql/<name>.sql` with its parameters, includes and refusals, and
+//! compared byte for byte.
 //!
 //! `JADPO_BLESS=1 cargo test -p jadpo-plan --test sql` rewrites them.
 
 use std::path::{Path, PathBuf};
 
 use jadpo_db::{Database, File, Layout, Project};
-use jadpo_plan::Plan;
-use jadpo_std::read::{
-    Cardinality, Column, CreatePlan, Field, Given, IncludeShape, ReadPlan, Select, Size, Source,
-};
+use jadpo_plan::{Decoded, Plan, Refusal, WriteSitePlan};
+use jadpo_std::read::{Cardinality, Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
+use jadpo_std::write::WriteSource;
 
 fn folder() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/sql")
@@ -124,18 +124,42 @@ fn read(name: &str, read: &ReadPlan) -> String {
     out
 }
 
-fn create(name: &str, create: &CreatePlan) -> String {
+fn write(name: &str, write: &WriteSitePlan) -> String {
+    let plan = &write.plan;
     let mut out = format!(
-        "-- {name}: create, store {}\n{}\n",
-        create.store, create.sql
+        "-- {name}: {}{}, store {}\n{}\n",
+        plan.op.word(),
+        if plan.by_id { " by id" } else { "" },
+        plan.store,
+        plan.sql
     );
-    for (i, (given, ty)) in create.params.iter().enumerate() {
-        let given = match given {
-            Given::Set(at) => format!("field given {at}"),
-            Given::NewId => "a new identity".to_string(),
-            Given::Now => "clock.now".to_string(),
+    for (i, param) in plan.params.iter().enumerate() {
+        let source = match &param.source {
+            WriteSource::Input(at) => format!("input {at}"),
+            WriteSource::Field { input, field } => format!("input {input}.{field}"),
+            WriteSource::Supplied { input, field } => format!("whether input {input} supplied {field}"),
+            WriteSource::AnySupplied { input, fields } => {
+                format!("whether input {input} supplied any of {}", fields.join(", "))
+            }
+            WriteSource::NewId => "a new identity".to_string(),
+            WriteSource::Now => "clock.now".to_string(),
         };
-        out.push_str(&format!("-- ${}: {given} as {ty:?}\n", i + 1));
+        out.push_str(&format!("-- ${}: {source} as {:?}\n", i + 1, param.ty));
+    }
+    if let Some(returned) = &plan.returns {
+        let columns: Vec<String> = returned.columns.iter().map(column).collect();
+        out.push_str(&format!("-- returns: {}\n", columns.join(", ")));
+    }
+    for (constraint, refusal) in plan.refusals.iter().zip(&write.refusals) {
+        let raises = match refusal {
+            Refusal::Arm(at) => format!("conflict arm {at}"),
+            Refusal::NotFound(missing) => format!("not found, failure {}", missing.failure.0),
+            Refusal::Gone(what) => format!("fault: {what}"),
+        };
+        out.push_str(&format!("-- refused by {constraint}: {raises}\n"));
+    }
+    if write.missing.is_some() {
+        out.push_str("-- no row: the entity's not-found failure\n");
     }
     out
 }
@@ -157,12 +181,18 @@ fn every_query_shape_matches_its_golden_sql() {
             format!("{name}_get"),
             read(&format!("{}.get", entity.name), &entity.get),
         ));
-        written.push((
-            format!("{name}_create"),
-            create(&format!("{}.create", entity.name), &entity.create),
-        ));
     }
-    assert!(written.len() >= 6 + 8, "every query and entity is planned");
+    for callable in plan.callables() {
+        for site in &callable.sites {
+            if let Decoded::Write { plan: Some(id), .. } = &site.decoded
+                && let Some(found) = plan.write(*id)
+            {
+                let name = callable.key.name().to_string();
+                written.push((name.clone(), write(&format!("action {name}"), found)));
+            }
+        }
+    }
+    assert!(written.len() >= 6 + 5 + 7, "every query, entity and write is planned");
     let mut different = Vec::new();
     for (name, text) in &written {
         let path = folder().join(format!("{name}.sql"));

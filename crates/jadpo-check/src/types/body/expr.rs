@@ -21,6 +21,17 @@ use crate::tree::{self, dotted};
 /// The generated namespace whose one member is the time (area 10).
 const CLOCK: &str = "clock";
 
+/// Which fields a block must give.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Required {
+    /// Every field: an object, a variant's data, a created record.
+    All,
+    /// Every field an `Input` can't leave out.
+    Input,
+    /// None: an update's `set:` gives the fields it changes.
+    None,
+}
+
 impl Body<'_> {
     // --- checking against an expected type -------------------------------
 
@@ -389,6 +400,9 @@ impl Body<'_> {
         let head = text(&first);
         if starts_upper(&head) {
             self.resolved_by(|names, out| names.value_name(expr, out));
+            if let Some(ty) = self.stored_field(&head, &rest, expr) {
+                return ty;
+            }
             return self.type_member(&head, &rest, expr);
         }
         if StdNames::get().namespace(&head) == Some(Namespace::Generated) {
@@ -679,6 +693,16 @@ impl Body<'_> {
             self.walk(|walk| walk.member_values(record.member_list()));
             return Ty::Error;
         };
+        // `Todo.update(todo) { ... }`: an update with its block, written
+        // without `attempt` (area 6).
+        if let Expr::CallExpr(call) = &head
+            && self.write_call(call).is_some()
+        {
+            self.pending_block = record.member_list();
+            let ty = self.call(call, None);
+            self.pending_block = None;
+            return ty;
+        }
         let Some((first, rest)) = dotted(&head) else {
             self.infer(&head);
             self.failure_value(&Expr::RecordExpr(record.clone()));
@@ -701,13 +725,17 @@ impl Body<'_> {
                     node_key(record.syntax()),
                     super::facts::BuildFact::Object(name.clone()),
                 );
-                let input = *base == FieldsBase::Input;
+                let required = if *base == FieldsBase::Input {
+                    Required::Input
+                } else {
+                    Required::All
+                };
                 self.fields_given(
                     record.member_list(),
                     &name,
                     &[],
                     &fields,
-                    input,
+                    required,
                     head_span,
                     &[],
                 );
@@ -730,13 +758,30 @@ impl Body<'_> {
                 [operation],
                 Some(Def::Fields {
                     base: FieldsBase::Entity,
-                    fields,
                     ..
                 }),
             ) if text(operation) == "create" => {
-                let fields = fields.clone();
-                self.create(record, &name, &fields, head_span);
-                Ty::Named(name)
+                let written = format!("{name}.create");
+                if self.context.is_pure() {
+                    self.persistence(head_span.clone(), &written);
+                    self.walk(|walk| walk.member_values(record.member_list()));
+                    return Ty::Error;
+                }
+                let ty = self.write(
+                    &name,
+                    jadpo_std::write::WriteOp::Create,
+                    record.syntax(),
+                    None,
+                    record.member_list(),
+                    head_span,
+                );
+                self.unhandled_write(record.syntax(), &written);
+                ty
+            }
+            ([operation], Some(_)) if text(operation) == "create" => {
+                self.write_not_entity(&name, jadpo_std::write::WriteOp::Create, head_span);
+                self.walk(|walk| walk.member_values(record.member_list()));
+                Ty::Error
             }
             ([variant], Some(Def::Enum { variants })) => {
                 let variant_name = text(variant);
@@ -757,7 +802,7 @@ impl Body<'_> {
                             &name,
                             &[variant_name],
                             &fields,
-                            false,
+                            Required::All,
                             head_span,
                             &[],
                         );
@@ -826,13 +871,14 @@ impl Body<'_> {
     /// follow them: an object literal never fails (area 2, "Construction
     /// failures by rule").
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn fields_given(
         &mut self,
         list: Option<ast::MemberList>,
         host: &str,
         variant: &[String],
         fields: &[FieldDef],
-        input: bool,
+        required: Required,
         head_span: Span,
         skip: &[&str],
     ) {
@@ -941,7 +987,11 @@ impl Body<'_> {
         let missing: Vec<String> = fields
             .iter()
             .filter(|f| !given.contains_key(&f.name))
-            .filter(|f| !(input && (f.optional || f.default.is_some())))
+            .filter(|f| match required {
+                Required::All => true,
+                Required::Input => !(f.optional || f.default.is_some()),
+                Required::None => false,
+            })
             .map(|f| format!("`{}`", f.name))
             .collect();
         if missing.is_empty() {

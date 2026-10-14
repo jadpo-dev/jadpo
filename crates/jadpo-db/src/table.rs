@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::items::{Item, ItemKind, item_tree};
+use crate::items::{Base, Item, ItemKind, item_tree};
 use crate::places::{Ownership, Place};
 use crate::{Db, Project, location};
 
@@ -25,9 +25,18 @@ pub struct Symbol {
     pub test: bool,
     /// For an entity: its lifecycle's transitions (see [`Item::transitions`]).
     pub transitions: Vec<String>,
+    /// For the not-found failure the compiler provides for an entity whose
+    /// project declares none (area 6, question 6): that entity. It has no
+    /// declaration of its own: its path is the entity's file and its index
+    /// [`Symbol::PROVIDED`], which no declaration has.
+    pub provided: Option<String>,
 }
 
 impl Symbol {
+    /// The index of a provided declaration, which no file's declaration
+    /// has.
+    pub const PROVIDED: u32 = u32::MAX;
+
     /// Whether code owned by `from` may use this declaration: always within
     /// its own domain, from the root and loose files, and for `shared/` and
     /// root declarations; otherwise only when it is `public`.
@@ -102,6 +111,7 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
             place: location.place.clone(),
             test: location.test,
             transitions: item.transitions.clone(),
+            provided: None,
         };
         for item in &item_tree(db, file).items {
             match &item.kind {
@@ -144,6 +154,38 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
                     .push(symbol(item, None, item.index)),
             }
         }
+    }
+    // Every entity's not-found failure, `<Entity>NotFound`, is the one the
+    // project declares, or else one the compiler provides with kind
+    // `not_found`, public so any domain's callers can name it (area 6,
+    // question 6).
+    let entities: Vec<Symbol> = table
+        .declarations
+        .values()
+        .filter_map(|found| found.iter().find(|symbol| symbol.kind == ItemKind::Entity))
+        .cloned()
+        .collect();
+    for entity in entities {
+        let name = format!("{}NotFound", entity.name);
+        if table.declarations.contains_key(&name) {
+            continue;
+        }
+        table.declarations.insert(
+            name.clone(),
+            vec![Symbol {
+                name,
+                kind: ItemKind::Type(Base::Failure),
+                public: true,
+                path: entity.path.clone(),
+                index: Symbol::PROVIDED,
+                library: None,
+                ownership: entity.ownership.clone(),
+                place: entity.place.clone(),
+                test: false,
+                transitions: Vec::new(),
+                provided: Some(entity.name.clone()),
+            }],
+        );
     }
     table
 }

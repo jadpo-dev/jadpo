@@ -1,5 +1,6 @@
 // The project every golden SQL file in this folder is planned from: one
-// query per shape area 6 decides, and the entities' operations.
+// query per shape area 6 decides, the entities' `get`, and one action per
+// write shape.
 
 type UserName = Text {
     max_length: 80
@@ -26,6 +27,14 @@ type TodoStatus = Enum {
 type Score = Int {
     min: 0
     max: 1000
+}
+
+type ViewCount = Int {
+    min: 0
+}
+
+type CommentBody = Text {
+    max_length: 400
 }
 
 type UserView = Output {
@@ -105,6 +114,7 @@ entity Project {
         on_delete: OnDelete.cascade
     }
     name: ProjectName
+    views: ViewCount
 }
 
 entity Todo {
@@ -122,6 +132,17 @@ entity Todo {
     created_at: Instant {
         generated: Generated.on_create
     }
+    updated_at: Instant {
+        generated: Generated.on_change
+    }
+}
+
+entity Comment {
+    id: Uuid
+    todo_id: Todo.id {
+        on_delete: OnDelete.restricted
+    }
+    body: CommentBody
 }
 
 /// Exactly one record, or the `missing:` failure with its fields.
@@ -200,4 +221,88 @@ query project_board(project_id: Project.id) fails ProjectNotFound -> ProjectBoar
             }
         }
     }
+}
+
+type EditTodo = Input {
+    pick: [Todo.title, Todo.due_at, Todo.project_id]
+    optional: all
+}
+
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+}
+
+type UserHasComments = Failure {
+    kind: FailureKind.conflict
+}
+
+/// A create mapping a unique field.
+action sign_up(email: User.email, name: User.name) fails EmailTaken -> User {
+    return attempt User.create {
+        set: {
+            email: email
+            name: name
+        }
+        conflict: {
+            User.email: EmailTaken
+        }
+    }
+}
+
+/// A create whose reference may name a user that isn't there.
+action add_todo(owner_id: User.id, title: Todo.title) fails UserNotFound -> Todo {
+    return attempt Todo.create {
+        set: {
+            owner_id: owner_id
+            project_id: none
+            title: title
+            status: TodoStatus.open
+            score: 0
+            due_at: none
+        }
+    }
+}
+
+/// An update of a record loaded earlier.
+action finish(todo: Todo) -> Todo {
+    return Todo.update(todo) {
+        set: {
+            status: TodoStatus.done
+        }
+    }
+}
+
+/// A patch, with a field set when another is supplied.
+action edit(todo: Todo, changes: EditTodo) fails ProjectNotFound -> Todo {
+    return attempt Todo.update(todo) {
+        patch: changes
+        when_supplied: {
+            title: {
+                status: TodoStatus.open
+            }
+        }
+    }
+}
+
+/// A counter, worked out by the database, by `id`.
+action viewed(project_id: Project.id) fails ProjectNotFound -> Project {
+    return attempt Project.update(project_id) {
+        set: {
+            views: ViewCount(Project.views + 1)
+        }
+    }
+}
+
+/// A delete by `id`, refused by a reference its cascade reaches.
+action leave(user_id: User.id) fails UserNotFound, UserHasComments -> Unit {
+    attempt User.delete(user_id) {
+        conflict: {
+            Comment.todo_id: UserHasComments
+        }
+    }
+}
+
+/// A delete of a record loaded earlier.
+action drop_profile(profile: Profile) -> Unit {
+    Profile.delete(profile)
 }
