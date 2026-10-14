@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-13. This page is the only list of outstanding work: the
+**Updated:** 2026-10-14. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -112,7 +112,7 @@ reference only).
 
 ## Phase 2 — Interpreter and tests (area 13)
 
-- [ ] **2.1 Interpreter** `opus · xhigh` for pure logic, with errors at `.jadpo` lines.
+- [x] **2.1 Interpreter** `opus · xhigh` for pure logic, with errors at `.jadpo` lines.
   It walks 1.8's typed bodies. Also fold `resolve.rs`'s separate body walk
   into the typed-body query (left over from 1.9), so name errors and
   unused-variable errors come from one walk.
