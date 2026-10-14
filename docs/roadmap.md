@@ -147,10 +147,6 @@ reference only).
 - [ ] **4.3 Sign-in:** `opus · high` sessions, API tokens, service keys.
 - [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
   report.
-- [ ] **4.5 Early performance spike.** `opus · high` One route compiled to native and to
-  WebAssembly and measured against an equivalent hand-written Bun and
-  TypeScript app, so a Wasm gap is found now, not at the end. **Needs
-  Richard** if Wasm is more than 25% behind Bun.
 
 ## Phase 5 — Configuration, time and translations (area 10)
 
@@ -180,6 +176,12 @@ reference only).
   compiled.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling.
+- [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
+  WebAssembly and measured against an equivalent hand-written Bun and
+  TypeScript app, comparing Wasm with native and Bun with native as well
+  as Wasm with Bun. Moved from 4.5, which needed Phase 8's compiled code
+  (Richard, 2026-10-14). **Needs Richard** if Wasm is more than 25% behind
+  Bun.
 
 ## Phase 9 — Performance
 
