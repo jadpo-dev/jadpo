@@ -441,8 +441,8 @@ impl Planner<'_> {
     /// named unique rule's key, or a reference's foreign key.
     fn constraint(&self, rule: &Key) -> Option<String> {
         let name = self.types.name(rule).to_string();
-        let (owner, part) = name.split_once('.')?;
-        let entity = self.model.entity(owner)?;
+        let (holder, part) = name.split_once('.')?;
+        let entity = self.model.entity(holder)?;
         match rule.kind()? {
             Kind::Field => {
                 let field = field(entity, part)?;

@@ -1235,7 +1235,7 @@ impl Body<'_> {
                 let failure = value.as_ref().and_then(|v| self.failure_given(v));
                 let names: Vec<String> = key.names().filter_map(|n| tree::name_text(&n)).collect();
                 let rule = match names.as_slice() {
-                    [owner, name] => self.breach(owner, name),
+                    [holder, name] => self.breach(holder, name),
                     _ => None,
                 };
                 let Some(rule) = rule else {
@@ -1299,18 +1299,18 @@ impl Body<'_> {
     }
 
     /// The rule a `conflict:` arm's key names: a unique rule or field of
-    /// `owner`, or one of its references.
-    fn breach(&self, owner: &str, name: &str) -> Option<Breach> {
-        let rules = self.writes.write_rules(owner)?;
+    /// `holder`, or one of its references.
+    fn breach(&self, holder: &str, name: &str) -> Option<Breach> {
+        let rules = self.writes.write_rules(holder)?;
         if let Some(rule) = rules.unique(name) {
             return Some(Breach::Unique {
-                entity: owner.to_string(),
+                entity: holder.to_string(),
                 name: name.to_string(),
                 field: rule.field,
             });
         }
         rules.reference(name).map(|_| Breach::Reference {
-            entity: owner.to_string(),
+            entity: holder.to_string(),
             field: name.to_string(),
         })
     }
@@ -1350,7 +1350,7 @@ impl Body<'_> {
         )
         .at(arm.key_span.clone(), "not a rule")
         .reason(format!(
-            "A `conflict:` arm is keyed by the rule the store refuses: a unique field (`User.email`), a named unique rule (`Project.name_per_owner`) or a reference that refuses a delete (`Todo.project_id`). {rules_line}{}",
+            "A `conflict:` arm is keyed by the rule the store refuses, written `Entity.name`: a field with `unique: true`, a rule named in `unique:`, or a `restricted` reference that refuses a delete. {rules_line}{}",
             did_you_mean(near.as_deref())
         ));
         self.out.push(match near {

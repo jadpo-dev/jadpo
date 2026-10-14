@@ -167,7 +167,7 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 )
                 .at(Span::new(path, start, end), format!("store `{store}`"))
                 .reason(format!(
-                    "An action's writes, and those of the actions it calls, commit together in one store's transaction; `{name}` writes `{first_entity}` (store `{first_store}`), and here it {what}."
+                    "An action's writes, and those of the actions it calls, commit as one, in one store's transaction; `{name}` writes `{first_entity}` (store `{first_store}`), and here it {what}."
                 ))
                 .next(format!(
                     "Write `{entity}` in a subscriber to an event `{name}` emits, or keep `{entity}` in store `{first_store}`"

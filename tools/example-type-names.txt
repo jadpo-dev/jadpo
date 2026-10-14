@@ -12,6 +12,7 @@ Day
 Difference
 Dimensions
 Doubled
+Draft
 Flag
 Health
 Item

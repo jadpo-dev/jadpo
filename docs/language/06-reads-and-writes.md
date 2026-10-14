@@ -706,9 +706,9 @@ type TodoChanges = Input {
     optional: all
 }
 
-action edit_todo(todo: Todo, changes: TodoChanges) -> Todo {
+action edit_todo(todo: Todo, amendment: TodoChanges) -> Todo {
     return Todo.update(todo) {
-        patch: changes
+        patch: amendment
         when_supplied: {
             due_at: {
                 reminder_sent_at: none
@@ -973,37 +973,37 @@ consistency: atomic
 
 When a new value depends only on the stored one, the database works it out
 in one step and nothing needs checking. On the right of `set:`,
-`Post.view_count` means the value stored at the moment of the write, while
-`post.view_count` would be the copy loaded earlier. Such an update takes the
+`Video.view_count` means the value stored at the moment of the write, while
+`video.view_count` would be the copy loaded earlier. Such an update takes the
 record's `id` instead of a loaded record, and its values may use only
 parameters, constants, `clock.now` and the record's stored fields, so it
 never reruns the action.
 
-```jadpo check project=counter file=post.jadpo hidden
+```jadpo check project=counter file=video.jadpo hidden
 type ViewCount = Int {
     min: 0
 }
 
-entity Post {
+entity Video {
     id: Uuid
     view_count: ViewCount
     last_viewed_at: Instant?
 }
 ```
 
-```jadpo check project=counter file=view_post.jadpo
-action view_post(post_id: Post.id) fails PostNotFound -> Post {
-    return attempt Post.update(post_id) {
+```jadpo check project=counter file=view_video.jadpo
+action view_video(video_id: Video.id) fails VideoNotFound -> Video {
+    return attempt Video.update(video_id) {
         set: {
-            view_count: ViewCount(Post.view_count + 1)
+            view_count: ViewCount(Video.view_count + 1)
             last_viewed_at: clock.now
         }
     }
 }
 ```
 
-Built in chunk 3.3: the statement is `UPDATE "post" SET "view_count" =
-("view_count" + $1), ...`, and no row is `PostNotFound`. The database works
+Built in chunk 3.3: the statement is `UPDATE "video" SET "view_count" =
+("view_count" + $1), ...`, and no row is `VideoNotFound`. The database works
 a stored field out with `+` and `-`, which give the same result in SQL as
 in Jadpo, under constructions the declared ranges prove (`ViewCount(...)`
 here, since a count of at least 0 plus 1 is at least 0); anything else needs
@@ -2400,7 +2400,7 @@ error: `Customer.mail` names no unique rule or reference
    |
 18 |             Customer.mail: EmailTaken
    |             ^^^^^^^^^^^^^ not a rule
-  reason: A `conflict:` arm is keyed by the rule the store refuses: a unique field (`User.email`), a named unique rule (`Project.name_per_owner`) or a reference that refuses a delete (`Todo.project_id`). `Customer.create` can break `Customer.email`. Did you mean `Customer.email`?
+  reason: A `conflict:` arm is keyed by the rule the store refuses, written `Entity.name`: a field with `unique: true`, a rule named in `unique:`, or a `restricted` reference that refuses a delete. `Customer.create` can break `Customer.email`. Did you mean `Customer.email`?
   next: Use `Customer.email` instead of `Customer.mail` (agent)
   rule: data.conflict_unknown
   help: docs/language/06-reads-and-writes.html#data-conflict-unknown
@@ -2515,9 +2515,9 @@ type ItemChanges = Input {
     }
 }
 
-action edit(item: Item, changes: ItemChanges) -> Item {
+action edit(item: Item, amendment: ItemChanges) -> Item {
     return Item.update(item) {
-        patch: changes
+        patch: amendment
     }
 }
 ```
@@ -2526,8 +2526,8 @@ action edit(item: Item, changes: ItemChanges) -> Item {
 error: `ItemChanges` has `title`, which `Item` doesn't
  --> main.jadpo:18:16
    |
-18 |         patch: changes
-   |                ^^^^^^^ `ItemChanges`
+18 |         patch: amendment
+   |                ^^^^^^^^^ `ItemChanges`
   reason: A patch sets each field its input supplies on the field of `Item` with the same name, so every field of `ItemChanges` is one of `Item`'s.
   next: Remove `title` from `ItemChanges` (agent)
   rule: data.patch_field_unknown
@@ -2552,9 +2552,9 @@ type ItemChanges = Input {
     pick: [Item.name]
 }
 
-action edit(item: Item, changes: ItemChanges) -> Item {
+action edit(item: Item, amendment: ItemChanges) -> Item {
     return Item.update(item) {
-        patch: changes
+        patch: amendment
     }
 }
 ```
@@ -2563,8 +2563,8 @@ action edit(item: Item, changes: ItemChanges) -> Item {
 error: `ItemChanges.name` isn't optional, so a patch can't leave it out
  --> main.jadpo:16:16
    |
-16 |         patch: changes
-   |                ^^^^^^^ `ItemChanges`
+16 |         patch: amendment
+   |                ^^^^^^^^^ `ItemChanges`
   reason: A patch changes only the fields a request supplied, so each field of its input is optional: one left out keeps its value. A required `name` would have to be sent every time.
   next: Make `name` optional in `ItemChanges` (`optional: true`, or `optional: all`), or set it with `set:` (agent)
   rule: data.patch_field_required
@@ -2591,9 +2591,9 @@ type ItemChanges = Input {
     optional: all
 }
 
-action edit(item: Item, changes: ItemChanges) -> Item {
+action edit(item: Item, amendment: ItemChanges) -> Item {
     return Item.update(item) {
-        patch: changes
+        patch: amendment
         when_supplied: {
             name: {
                 nickname: none
@@ -2673,7 +2673,7 @@ error: `checkout` writes two stores
   |
 5 |     clear_cart(cart)
   |     ^^^^^^^^^^^^^^^^ store `carts`
-  reason: An action's writes, and those of the actions it calls, commit together in one store's transaction; `checkout` writes `Order` (store `main`), and here it calls `clear_cart`, which writes `Cart` (store `carts`).
+  reason: An action's writes, and those of the actions it calls, commit as one, in one store's transaction; `checkout` writes `Order` (store `main`), and here it calls `clear_cart`, which writes `Cart` (store `carts`).
   next: Write `Cart` in a subscriber to an event `checkout` emits, or keep `Cart` in store `main` (human)
   rule: store.action_spans_stores
   help: docs/language/06-reads-and-writes.html#store-action-spans-stores
