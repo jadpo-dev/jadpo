@@ -153,9 +153,12 @@ pub fn what(table: &dyn TypeView, ty: &Ty) -> String {
         Ty::Named(name) => match table.def(name) {
             Some(Def::Enum { .. }) => "an enum".to_string(),
             Some(Def::Fields { .. }) => "an object with fields".to_string(),
-            _ => match table.base_prim(ty) {
-                Some(prim) => format!("built on `{}`", prim.name()),
-                None => "a named type".to_string(),
+            _ => match (table.base_prim(ty), table.structure(ty)) {
+                (Some(prim), _) => format!("built on `{}`", prim.name()),
+                (None, Ty::List(_)) => "a list".to_string(),
+                (None, Ty::Set(_)) => "a set".to_string(),
+                (None, Ty::Map(..)) => "a map".to_string(),
+                (None, _) => "a named type".to_string(),
             },
         },
         _ => match table.base_prim(ty) {
