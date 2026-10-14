@@ -34,6 +34,8 @@ struct Recording {
 pub(crate) struct Boundary {
     /// Begun at the first store operation.
     pub transaction: Option<Box<dyn Transaction>>,
+    /// The store it was begun in.
+    pub store: Option<String>,
     /// What the action emitted, for after it commits.
     pub outbox: Vec<Event>,
     /// A store operation found another transaction had changed what this
@@ -248,18 +250,31 @@ impl<'p> Ctx<'p> {
         self.boundary.is_some()
     }
 
-    /// The running action's transaction, begun at the first store
-    /// operation (area 6): every action it calls joins it. Outside an
-    /// action there is none.
-    pub async fn transaction(&mut self) -> Result<&mut dyn Transaction, StoreError> {
+    /// The running action's transaction in `store`, begun at the first
+    /// store operation (area 6): every action it calls joins it. Outside
+    /// an action there is none, and an action writes one store (area 5),
+    /// so asking for a second is a fault.
+    pub async fn transaction(&mut self, store: &str) -> Result<&mut dyn Transaction, StoreError> {
         let host = self.host;
         let Some(boundary) = &mut self.boundary else {
             return Err(StoreError::Fault(
                 "a store operation outside an action".into(),
             ));
         };
-        if boundary.transaction.is_none() {
-            boundary.transaction = Some(host.database().begin().await?);
+        match &boundary.store {
+            Some(open) if open != store => {
+                return Err(StoreError::Fault(format!(
+                    "an action writes one store, and this one already uses `{open}`, not `{store}`"
+                )));
+            }
+            Some(_) => {}
+            None => {
+                let Some(database) = host.database(store) else {
+                    return Err(StoreError::Fault(format!("no store called `{store}`")));
+                };
+                boundary.transaction = Some(database.begin().await?);
+                boundary.store = Some(store.to_string());
+            }
         }
         match &mut boundary.transaction {
             Some(transaction) => Ok(transaction.as_mut()),

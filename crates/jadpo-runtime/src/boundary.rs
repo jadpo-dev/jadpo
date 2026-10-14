@@ -108,7 +108,9 @@ mod tests {
     use jadpo_value::Value;
 
     use super::*;
-    use crate::{Database, Env, Event, Fault, FaultKind, Host, Places, Transaction, block_on};
+    use crate::{
+        Database, Env, Event, Fault, FaultKind, Host, Places, Row, SqlValue, Transaction, block_on,
+    };
 
     /// A store that writes down what happens to it, and reports a
     /// concurrent change at the first `changes` commits.
@@ -121,6 +123,26 @@ mod tests {
     struct Tx(Rc<Log>);
 
     impl Transaction for Tx {
+        fn query<'a>(
+            &'a mut self,
+            _sql: &'a str,
+            _params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+            Box::pin(async { Ok(Vec::new()) })
+        }
+
+        fn execute<'a>(
+            &'a mut self,
+            _sql: &'a str,
+            _params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<u64, StoreError>> {
+            Box::pin(async { Ok(0) })
+        }
+
+        fn batch<'a>(&'a mut self, _sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>> {
+            Box::pin(async { Ok(()) })
+        }
+
         fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
             let log = Rc::clone(&self.0);
             Box::pin(async move {
@@ -177,8 +199,8 @@ mod tests {
     }
 
     impl Host for Recorded {
-        fn database(&self) -> &dyn Database {
-            &self.store
+        fn database(&self, _store: &str) -> Option<&dyn Database> {
+            Some(&self.store)
         }
 
         fn deliver(&self, events: Vec<Event>) -> LocalFuture<'_, ()> {
@@ -205,7 +227,7 @@ mod tests {
         fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
             Box::pin(async move {
                 self.runs += 1;
-                if self.writes && ctx.transaction().await.is_err() {
+                if self.writes && ctx.transaction("main").await.is_err() {
                     return Outcome::Value(Value::Unit);
                 }
                 ctx.emit(Event {

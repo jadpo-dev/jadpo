@@ -3,11 +3,12 @@
 //! compiled code, native hosts, Workers and test fakes all reach a store
 //! the same way, and drivers classify their own errors into one fixed set.
 //!
-//! Built so far (chunk 2.10): the seams the action boundary needs, a
-//! store's transactions and delivering an action's events after it
-//! commits, with [`MemoryHost`], which holds no store: every transaction
-//! begins, commits and rolls back at once. PostgreSQL comes with chunk
-//! 3.1, delivery to subscribers with area 12.
+//! Built so far: the seams the action boundary needs, a store's
+//! transactions and delivering an action's events after it commits, with
+//! [`MemoryHost`], which holds no store (chunk 2.10); since chunk 3.1 a
+//! transaction runs SQL with [`SqlValue`] parameters and rows, and a host
+//! gives each store by its connection's name, so the PostgreSQL driver in
+//! `jadpo-drivers` plugs in. Delivery to subscribers comes with area 12.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -33,8 +34,95 @@ pub enum StoreError {
     Fault(String),
 }
 
-/// A store's open transaction.
+/// The type of a SQL parameter or column, as the runtime knows it: one per
+/// column type area 5 maps a field to ("Storage types"), plus the widths of
+/// whole numbers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SqlType {
+    Bool,
+    Int2,
+    Int4,
+    Int8,
+    Numeric,
+    Text,
+    Bytes,
+    Uuid,
+    /// `timestamptz`.
+    Timestamp,
+    Date,
+    /// `jsonb`.
+    Json,
+}
+
+/// A value sent to a store or read back from one. Drivers turn these into
+/// their wire formats; the plan's codecs (chunk 3.2) turn them into Jadpo
+/// values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SqlValue {
+    /// `NULL`, with the type a parameter needs.
+    Null(SqlType),
+    Bool(bool),
+    Int2(i16),
+    Int4(i32),
+    Int8(i64),
+    /// An exact decimal in its canonical text (`-12.50`).
+    Numeric(String),
+    Text(String),
+    Bytes(Vec<u8>),
+    Uuid([u8; 16]),
+    /// Microseconds since 1970-01-01T00:00:00Z.
+    Timestamp(i64),
+    /// Days since 1970-01-01.
+    Date(i32),
+    /// JSON text.
+    Json(String),
+}
+
+impl SqlValue {
+    /// The type the value is sent as.
+    pub fn ty(&self) -> SqlType {
+        match self {
+            SqlValue::Null(ty) => *ty,
+            SqlValue::Bool(_) => SqlType::Bool,
+            SqlValue::Int2(_) => SqlType::Int2,
+            SqlValue::Int4(_) => SqlType::Int4,
+            SqlValue::Int8(_) => SqlType::Int8,
+            SqlValue::Numeric(_) => SqlType::Numeric,
+            SqlValue::Text(_) => SqlType::Text,
+            SqlValue::Bytes(_) => SqlType::Bytes,
+            SqlValue::Uuid(_) => SqlType::Uuid,
+            SqlValue::Timestamp(_) => SqlType::Timestamp,
+            SqlValue::Date(_) => SqlType::Date,
+            SqlValue::Json(_) => SqlType::Json,
+        }
+    }
+}
+
+/// One row a query gave, its columns in the query's order.
+pub type Row = Vec<SqlValue>;
+
+/// A store's open transaction. Statements are unnamed, so nothing outlives
+/// the transaction on the server (§2.6: Hyperdrive pools by transaction).
 pub trait Transaction {
+    /// Runs one statement with `params` bound to `$1`, `$2`…, giving its
+    /// rows.
+    fn query<'a>(
+        &'a mut self,
+        sql: &'a str,
+        params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>>;
+
+    /// Runs one statement with `params`, giving how many rows it changed.
+    fn execute<'a>(
+        &'a mut self,
+        sql: &'a str,
+        params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<u64, StoreError>>;
+
+    /// Runs statements without parameters, one after another, as a
+    /// migration's SQL is written.
+    fn batch<'a>(&'a mut self, sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>>;
+
     fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>>;
     fn rollback(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>>;
 }
@@ -56,8 +144,9 @@ pub struct Event {
 
 /// The platform: the capabilities one invocation runs against.
 pub trait Host {
-    /// The store actions write to.
-    fn database(&self) -> &dyn Database;
+    /// The store named `store` (a connection in `app.jadpo`, area 11), or
+    /// `None` when the host has none by that name.
+    fn database(&self, store: &str) -> Option<&dyn Database>;
 
     /// Delivers what a committed action emitted, in the order it emitted
     /// it. Never called for an action that rolled back.
@@ -72,6 +161,26 @@ pub struct NoStore;
 struct NoTransaction;
 
 impl Transaction for NoTransaction {
+    fn query<'a>(
+        &'a mut self,
+        _sql: &'a str,
+        _params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+        Box::pin(async { Err(StoreError::Fault("no store holds any data".into())) })
+    }
+
+    fn execute<'a>(
+        &'a mut self,
+        _sql: &'a str,
+        _params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<u64, StoreError>> {
+        Box::pin(async { Err(StoreError::Fault("no store holds any data".into())) })
+    }
+
+    fn batch<'a>(&'a mut self, _sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>> {
+        Box::pin(async { Err(StoreError::Fault("no store holds any data".into())) })
+    }
+
     fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
         Box::pin(async { Ok(()) })
     }
@@ -102,8 +211,8 @@ impl MemoryHost {
 }
 
 impl Host for MemoryHost {
-    fn database(&self) -> &dyn Database {
-        &self.store
+    fn database(&self, _store: &str) -> Option<&dyn Database> {
+        Some(&self.store)
     }
 
     fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
