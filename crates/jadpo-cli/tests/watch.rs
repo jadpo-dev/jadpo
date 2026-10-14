@@ -968,6 +968,99 @@ fn json_streams_one_envelope_per_line_and_nothing_on_stderr() {
     assert_eq!(broken["diagnostics"][1]["rule"], "semantic.unknown_callee");
 }
 
+#[test]
+fn clearing_errors_is_confirmed_and_a_removal_is_a_change() {
+    let root = small("cleared");
+    let env = Environment::empty();
+    let args = args(&root, false);
+    let (mut watcher, _) = Watcher::start(&args, &env, Database::default()).expect("starts");
+    let mut save = |path: &str, from: &str, to: &str| {
+        edit(&root, path, from, to);
+        let mut frame = watcher.update(saved(path), "14:02:31").expect("a change");
+        frame.stdout = support::without_run_time(&frame.stdout);
+        frame
+    };
+    save(SMALL_LIBRARY, "north_step_0(a, b)", "north_stp_0(a, b)");
+    // Saved back to exactly what last ran: nothing reruns, but the screen
+    // says the errors are gone.
+    let fixed = save(SMALL_LIBRARY, "north_stp_0(a, b)", "north_step_0(a, b)");
+    assert_eq!(
+        fixed.stdout,
+        "
+watch: 14:02:31, saved domains/north/libraries/north_maths.jadpo, errors fixed
+
+errors fixed: no test reaches what changed since the last run
+"
+    );
+    // A file added with an error and removed again: the removal is the
+    // save that happened, and it clears the error.
+    let extra = "domains/north/actions/north_extra.jadpo";
+    write(
+        &root,
+        extra,
+        "action north_extra() -> Count {\n    return nothing\n}\n",
+    );
+    let mut broken = watcher
+        .update(vec![Edit::new(extra, EditKind::Added)], "14:03:00")
+        .expect("a change");
+    broken.stdout = support::without_run_time(&broken.stdout);
+    assert!(
+        broken
+            .stdout
+            .starts_with(&format!("\nwatch: 14:03:00, added {extra}\n")),
+        "{}",
+        broken.stdout
+    );
+    fs::remove_file(root.join(extra)).expect("remove");
+    let removed = watcher
+        .update(vec![Edit::new(extra, EditKind::Removed)], "14:03:10")
+        .expect("a change");
+    assert_eq!(
+        removed.stdout,
+        format!(
+            "
+watch: 14:03:10, removed {extra}, errors fixed
+
+errors fixed: no test reaches what changed since the last run
+"
+        )
+    );
+}
+
+/// A stream whose reader has gone, as `| head` leaves stdout.
+struct Closed;
+
+impl Write for Closed {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+    }
+}
+
+#[test]
+fn the_session_ends_when_its_output_closes() {
+    let root = small("closed");
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let code = serve_to(
+            &args(&root, false),
+            &Environment::empty(),
+            &mut Closed,
+            &mut Capture::default(),
+            &|| "12:00:00".to_string(),
+            &|| false,
+        );
+        let _ = done.send(code);
+    });
+    let code = finished
+        .recv_timeout(Duration::from_secs(30))
+        .expect("the session ends once nothing reads its output");
+    assert_eq!(code, 0);
+}
+
 fn jadpo(cwd: &Path, args: &[&str]) -> jadpo_cli::Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
     let mut output = run(&args, &Environment::empty().with_cwd(cwd));

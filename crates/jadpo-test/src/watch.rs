@@ -86,6 +86,9 @@ pub struct Event {
     pub failing: usize,
     /// The files the project holds now.
     pub files: usize,
+    /// The build had errors before this look and checks now, so the
+    /// screen confirms they are gone even when no test reaches the change.
+    pub fixed: bool,
 }
 
 /// The edges a test reaches what it depends on through (§2.4).
@@ -113,6 +116,8 @@ pub struct Watch {
     pending: Vec<Edit>,
     /// The keys of the tests failing now.
     failing: BTreeSet<String>,
+    /// The last look found errors, so nothing ran.
+    refused: bool,
 }
 
 impl Watch {
@@ -139,6 +144,7 @@ impl Watch {
             baseline: None,
             pending: Vec::new(),
             failing: BTreeSet::new(),
+            refused: false,
         };
         let event = watch.step(Vec::new());
         Ok((watch, event))
@@ -147,6 +153,12 @@ impl Watch {
     /// The folder every path is relative to.
     pub fn root(&self) -> &Path {
         &self.loaded.root
+    }
+
+    /// The root as the command line spelt it, when the session runs from
+    /// outside it (`jadpo_db::shown_root`), for the paths it prints.
+    pub fn shown_root(&self) -> Option<String> {
+        jadpo_db::shown_root(&self.options.cwd, &self.loaded.root)
     }
 
     /// Whether the session watches a project, rather than loose files.
@@ -221,17 +233,30 @@ impl Watch {
                 false,
             ),
         };
-        // A save that checks shows everything changed since the last run;
-        // one that doesn't, only itself.
+        // A save that checks shows everything changed since the last run,
+        // and always the saves that just happened: a file added while the
+        // build was broken and removed again merges away from what
+        // changed since, but its removal is what this look saw. One that
+        // doesn't check shows only itself.
         let edits = if good {
-            std::mem::take(&mut self.pending)
+            let mut all = std::mem::take(&mut self.pending);
+            for edit in these {
+                if !all.iter().any(|seen| seen.path == edit.path) {
+                    all.push(edit);
+                }
+            }
+            all.sort();
+            all
         } else {
             these
         };
+        let fixed = self.refused && good;
+        self.refused = !good;
         Event {
             edits,
             reached,
             ran,
+            fixed,
             failing: self.failing.len(),
             files: self.loaded.project.files(&self.loaded.db).len()
                 + self.loaded.project.other_files(&self.loaded.db).len()
