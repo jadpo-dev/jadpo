@@ -128,8 +128,8 @@ impl Server {
             Kind::External { url } => with_database(url, database),
             Kind::Disposable { root, .. } => format!(
                 "host={} port={PORT} user={USER} dbname={}",
-                quote(&root.to_string_lossy()),
-                quote(database)
+                literal(&root.to_string_lossy()),
+                literal(database)
             ),
         }
     }
@@ -214,12 +214,12 @@ fn with_database(url: &str, database: &str) -> String {
         let joiner = if url.contains('?') { '&' } else { '?' };
         format!("{url}{joiner}dbname={encoded}")
     } else {
-        format!("{url} dbname={}", quote(database))
+        format!("{url} dbname={}", literal(database))
     }
 }
 
 /// A value in libpq's key=value form.
-fn quote(value: &str) -> String {
+fn literal(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('\'', "\\'");
     format!("'{escaped}'")
 }

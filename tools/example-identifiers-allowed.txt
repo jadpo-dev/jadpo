@@ -14,6 +14,8 @@ both
 bounds
 blank
 body
+# a statement batch: tokio-postgres's batch_execute and the runtime's Transaction::batch
+batch
 boxes
 broken
 calculate

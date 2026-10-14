@@ -28,7 +28,7 @@ pub(crate) mod oid {
 
 /// PostgreSQL counts time from 2000-01-01; the runtime from 1970-01-01.
 const EPOCH_MICROS: i64 = 946_684_800_000_000;
-const EPOCH_DAYS: i32 = 10_957;
+const EPOCH_DATE: i32 = 10_957;
 
 /// JSONB's binary format: a version byte, then the text.
 const JSONB_VERSION: u8 = 1;
@@ -94,10 +94,10 @@ pub(crate) fn encode(value: &SqlValue, out: &mut Vec<u8>) -> Result<bool, String
                 .ok_or_else(|| format!("the timestamp {micros} is out of PostgreSQL's range"))?;
             out.extend_from_slice(&wire.to_be_bytes());
         }
-        SqlValue::Date(days) => {
-            let wire = days
-                .checked_sub(EPOCH_DAYS)
-                .ok_or_else(|| format!("the date {days} is out of PostgreSQL's range"))?;
+        SqlValue::Date(date) => {
+            let wire = date
+                .checked_sub(EPOCH_DATE)
+                .ok_or_else(|| format!("the date {date} is out of PostgreSQL's range"))?;
             out.extend_from_slice(&wire.to_be_bytes());
         }
         SqlValue::Json(text) => {
@@ -146,7 +146,7 @@ pub(crate) fn decode(oid: u32, raw: &[u8]) -> Result<SqlValue, String> {
                 return Err("the runtime holds no infinite date".into());
             }
             SqlValue::Date(
-                wire.checked_add(EPOCH_DAYS)
+                wire.checked_add(EPOCH_DATE)
                     .ok_or_else(|| "a date is out of the runtime's range".to_string())?,
             )
         }
@@ -170,7 +170,8 @@ fn length(name: &str, raw: &[u8]) -> String {
 }
 
 /// A decimal's canonical text (`-12.50`) in NUMERIC's binary format:
-/// base-10000 digits around the decimal point, with the scale kept.
+/// base-10000 digits, the first at a power of 10000, with the scale
+/// (places after the point) kept.
 fn numeric_to_wire(text: &str, out: &mut Vec<u8>) -> Result<(), String> {
     let invalid = || format!("`{text}` isn't a decimal in canonical form");
     let (negative, body) = match text.strip_prefix('-') {
@@ -203,25 +204,25 @@ fn numeric_to_wire(text: &str, out: &mut Vec<u8>) -> Result<(), String> {
             .fold(0i16, |acc, b| acc * 10 + i16::from(b - b'0'));
         groups.push(group);
     }
-    let mut weight = i64::try_from(int_groups).map_err(|_| invalid())? - 1;
+    let mut power = i64::try_from(int_groups).map_err(|_| invalid())? - 1;
     let leading = groups.iter().take_while(|g| **g == 0).count();
     groups.drain(..leading);
-    weight -= i64::try_from(leading).map_err(|_| invalid())?;
+    power -= i64::try_from(leading).map_err(|_| invalid())?;
     while groups.last() == Some(&0) {
         groups.pop();
     }
     if groups.is_empty() {
-        weight = 0;
+        power = 0;
     }
     let count = i16::try_from(groups.len()).map_err(|_| invalid())?;
-    let weight = i16::try_from(weight).map_err(|_| invalid())?;
+    let power = i16::try_from(power).map_err(|_| invalid())?;
     let sign = if negative && !groups.is_empty() {
         NUMERIC_NEGATIVE
     } else {
         NUMERIC_POSITIVE
     };
     out.extend_from_slice(&count.to_be_bytes());
-    out.extend_from_slice(&weight.to_be_bytes());
+    out.extend_from_slice(&power.to_be_bytes());
     out.extend_from_slice(&sign.to_be_bytes());
     out.extend_from_slice(&scale.to_be_bytes());
     for group in groups {
@@ -240,7 +241,7 @@ fn numeric_from_wire(raw: &[u8]) -> Result<String, String> {
             .ok_or_else(malformed)
     };
     let count = usize::from(u16::from_be_bytes(header(0)?));
-    let weight = i64::from(i16::from_be_bytes(header(2)?));
+    let power = i64::from(i16::from_be_bytes(header(2)?));
     let sign = u16::from_be_bytes(header(4)?);
     let scale = usize::from(u16::from_be_bytes(header(6)?));
     match sign {
@@ -273,14 +274,14 @@ fn numeric_from_wire(raw: &[u8]) -> Result<String, String> {
         text.push('-');
     }
     let mut int = String::new();
-    for index in 0..=weight {
+    for index in 0..=power {
         let _ = write!(int, "{:04}", digit(index));
     }
     let int = int.trim_start_matches('0');
     text.push_str(if int.is_empty() { "0" } else { int });
     if scale > 0 {
         let mut frac = String::with_capacity(scale + 4);
-        let mut index = weight + 1;
+        let mut index = power + 1;
         while frac.len() < scale {
             let _ = write!(frac, "{:04}", digit(index));
             index += 1;
@@ -330,7 +331,7 @@ mod tests {
 
     #[test]
     fn numeric_matches_postgresqls_own_bytes() {
-        // SELECT numeric_send('-12.50'): 2 digits, weight 0, negative, scale 2.
+        // SELECT numeric_send('-12.50'): 2 digits, power 0, negative, scale 2.
         let mut out = Vec::new();
         numeric_to_wire("-12.50", &mut out).unwrap();
         assert_eq!(out, [0, 2, 0, 0, 0x40, 0, 0, 2, 0, 12, 0x13, 0x88]);
@@ -381,7 +382,7 @@ mod tests {
         encode(&SqlValue::Timestamp(EPOCH_MICROS), &mut out).unwrap();
         assert_eq!(out, [0; 8]);
         let mut out = Vec::new();
-        encode(&SqlValue::Date(EPOCH_DAYS), &mut out).unwrap();
+        encode(&SqlValue::Date(EPOCH_DATE), &mut out).unwrap();
         assert_eq!(out, [0; 4]);
         assert!(decode(oid::TIMESTAMPTZ, &i64::MAX.to_be_bytes()).is_err());
         assert!(decode(oid::DATE, &i32::MIN.to_be_bytes()).is_err());

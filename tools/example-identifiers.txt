@@ -45,7 +45,6 @@ balance
 basket
 basket_empty
 basket_line
-batch
 batch_code
 batches
 best_before
