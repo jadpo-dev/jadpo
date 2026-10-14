@@ -1,0 +1,10 @@
+// Only seven kinds can be declared: `invalid_value`, `not_found`,
+// `not_permitted`, `conflict`, `rejected`, `rate_limited` and
+// `unavailable`. The rest (`internal_fault`, `timed_out` ...) are faults
+// the runtime raises by itself; they are never declared, listed or
+// matched.
+
+/// The ovens are off, so nothing can be baked for now.
+type OvenDown = Failure {
+    kind: FailureKind.unavailable
+}

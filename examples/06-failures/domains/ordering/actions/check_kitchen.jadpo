@@ -1,0 +1,15 @@
+// An action that returns nothing returns `Unit`. A failure with no fields
+// is rejected by its name alone, and a bare `return` leaves a `Unit`
+// action early.
+
+/// Whether the kitchen can take another order now.
+action check_kitchen(load: HourlyLoad, ovens: OvensOn) fails KitchenBusy, OvenDown -> Unit {
+    if (not ovens) {
+        reject OvenDown
+    }
+    if (load < 20) {
+        // A quiet hour needs no more checks.
+        return
+    }
+    reject KitchenBusy
+}

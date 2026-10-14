@@ -1,0 +1,12 @@
+test "a small order doubles" {
+    var doubled: CakeCount = attempt double_order(6)
+    assert doubled == 12
+}
+
+test "an order of more than 12 can't double" {
+    assert double_order(13) fails OrderTooLarge
+}
+
+test "the kitchen count can't fail" {
+    assert kitchen_count(24, 24) == 576
+}

@@ -1,0 +1,10 @@
+test "an order the kitchen and the shelf can meet is placed" {
+    var placed: CakeCount = attempt place_order(10, 2, 5, true)
+    assert placed == 2
+}
+
+test "each check passes its own failure on" {
+    assert place_order(10, 2, 5, false) fails OvenDown
+    assert place_order(10, 2, 30, true) fails KitchenBusy
+    assert place_order(1, 2, 5, true) fails CakeSoldOut
+}

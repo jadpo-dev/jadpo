@@ -1,0 +1,20 @@
+// Passing failures on. `attempt` can start a `var`, a `return`, or a line
+// of its own when the result isn't needed. Each passes the call's
+// failures on, so this action's `fails` list holds every failure of
+// `check_kitchen` and `reserve_cakes`.
+//
+// Actions call other actions in their domain by bare name. Functions
+// can't call actions: a function is pure, while an action is an
+// operation that, in later areas, reads and writes data.
+
+/// Takes an order for `wanted` cakes, if the kitchen can bake them and
+/// the shelf has them.
+action place_order(
+    left: Stock,
+    wanted: CakeCount,
+    load: HourlyLoad,
+    ovens: OvensOn
+) fails CakeSoldOut, KitchenBusy, OvenDown -> CakeCount {
+    attempt check_kitchen(load, ovens)
+    return attempt reserve_cakes(left, wanted)
+}

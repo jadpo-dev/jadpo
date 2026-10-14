@@ -1,0 +1,4 @@
+/// The caller may not change someone else's order.
+type NotYourOrder = Failure {
+    kind: FailureKind.not_permitted
+}

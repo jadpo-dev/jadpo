@@ -1,0 +1,5 @@
+/// How many of a cake are left on the shelf.
+type Stock = Int {
+    min: 0
+    max: 500
+}

@@ -1,0 +1,4 @@
+/// A customer's number on the bakery's books.
+type CustomerNumber = Int {
+    min: 1
+}

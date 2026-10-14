@@ -1,0 +1,13 @@
+// `assert call(...) fails Failure` checks that a call fails with exactly
+// that failure. A call under `attempt` in a test passes its value on, and
+// if it fails instead, the test ends there and reports the failure.
+
+test "a shelf with enough cakes reserves them" {
+    var reserved: CakeCount = attempt reserve_cakes(10, 4)
+    assert reserved == 4
+}
+
+test "asking for more than the shelf holds fails" {
+    assert reserve_cakes(3, 4) fails CakeSoldOut
+    assert check_shelf(0, 1) fails CakeSoldOut
+}

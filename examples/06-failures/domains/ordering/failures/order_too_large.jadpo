@@ -1,0 +1,7 @@
+// A failure with no fields is the simplest kind: a kind, and the name.
+// `invalid_value` means a well-formed value breaks a rule.
+
+/// An order would hold more cakes than one order may.
+type OrderTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}

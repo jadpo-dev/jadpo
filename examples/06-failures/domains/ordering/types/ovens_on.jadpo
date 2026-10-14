@@ -1,0 +1,2 @@
+/// Whether the ovens are lit.
+type OvensOn = Bool {}

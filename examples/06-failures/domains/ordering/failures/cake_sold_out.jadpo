@@ -1,0 +1,21 @@
+// A failure is a type with the base `Failure`, one per file in the
+// domain's `failures/` folder. Its `kind` says what sort of failure it is,
+// which decides how it reaches a client (here as 409 Conflict) and how
+// background work treats it; a failure never picks a status itself.
+//
+// Its public code is its name in lower_snake_case, `cake_sold_out`.
+// `message` is fixed, safe text for developers and logs; clients
+// translate by code. `client` fields are sent to the caller; `internal`
+// fields never leave the server, and only reach the log.
+
+/// There aren't enough cakes left for the order.
+type CakeSoldOut = Failure {
+    kind: FailureKind.conflict
+    message: "Not enough of that cake is left."
+    client: {
+        left: Stock
+    }
+    internal: {
+        wanted: CakeCount
+    }
+}

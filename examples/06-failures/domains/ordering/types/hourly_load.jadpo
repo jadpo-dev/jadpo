@@ -1,0 +1,4 @@
+/// How many orders the kitchen has taken this hour.
+type HourlyLoad = Int {
+    min: 0
+}
