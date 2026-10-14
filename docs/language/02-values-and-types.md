@@ -182,6 +182,8 @@ Arithmetic works on the representation, so `price * quantity` is a plain `Int`
 and has to be turned back into `Pence`. A plain `Int` can never be returned
 where `Pence` is expected.
 
+> **Changing.** Decided on 2026-10-14: the failure moves into a block keyed by the rule that can break, `attempt CakeCount(n) { max: OrderTooLarge }`, with `invalid:` covering any rule without its own arm; `if` conditions count as proof; object literals never fail. See the Decisions table ("Construction failures by rule"). The examples on this page show the current form until chunk 2.5 builds the new one.
+
 When the declared ranges don't prove a computed value follows the target's
 rules, building it can fail and is written `attempt Type(value) invalid:
 SomeFailure` (question 1; area 4). Here `price` and `quantity` are never
@@ -2710,8 +2712,9 @@ Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is liste
 
 | Topic | Decision | Date |
 |---|---|---|
-| Runtime construction failure | A runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literal construction is checked while compiling and never fails at runtime | 2026-10-12 |
-| Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point | 2026-10-12 |
+| Runtime construction failure | A runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literal construction is checked while compiling and never fails at runtime. The mapping's form was revised on 2026-10-14 (below) | 2026-10-12 |
+| Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point. Since 2026-10-14 an object literal never fails: a field whose value might break its rules is built first | 2026-10-12 |
+| Construction failures by rule | A runtime construction maps its failures in a block, the form writes and integration calls use: `attempt CakeCount(n) { max: OrderTooLarge }`. Keys are the rules of the type and the types it builds on that the declared ranges can't prove hold; each needs an arm, or `invalid:` covers every rule without its own; an arm for a rule that can't break, or an `invalid:` covering nothing, is an error; every failure is `invalid_value`; a rule the compiler can't reason about (`pattern`) can always break. An `if` condition counts as proof, so after `if (n > 12) { reject OrderTooLarge }` `CakeCount(n)` is plain. Object literals never fail: a field that might break its rules is built first, on its own line. Replaces the trailing `invalid:` clause (Richard) | 2026-10-14 |
 | `optional` and `default` | Only on `Input` fields; reading an optional field gives `T?`; only the update `patch:` form keeps omitted and `none` apart | 2026-10-12 |
 | Collection operations | List literals, `for item in items`, `collection.count` and `collection.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
 | `Set` and `Map` encoding | A `Set` is a JSON array rejected if it has duplicates; a `Map` is a JSON object with text- or UUID-based keys only | 2026-10-12 |

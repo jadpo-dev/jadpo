@@ -35,6 +35,8 @@ const DOMAINS: [&str; 12] = [
 ];
 
 /// A fresh folder for one test under cargo's temporary directory.
+mod support;
+
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("watch-{name}"));
     let _ = fs::remove_dir_all(&dir);
@@ -524,7 +526,7 @@ fn strip_ansi(text: &str) -> String {
 fn stripped(frame: Frame) -> Frame {
     Frame {
         erase: frame.erase,
-        stdout: strip_ansi(&frame.stdout),
+        stdout: support::without_run_time(&strip_ansi(&frame.stdout)),
         stderr: strip_ansi(&frame.stderr),
     }
 }
@@ -731,7 +733,10 @@ tested: 4 passed, 4 of 8 tests
             "",
         ),
     ];
-    let frames = states(Environment::empty(), &root);
+    let mut frames = states(Environment::empty(), &root);
+    for frame in &mut frames {
+        frame.stdout = support::without_run_time(&frame.stdout);
+    }
     assert_eq!(frames.len(), expected.len());
     for (i, (got, want)) in frames.into_iter().zip(expected).enumerate() {
         assert_eq!(got, want, "frame {i}:\n{}", got.stdout);
@@ -965,7 +970,9 @@ fn json_streams_one_envelope_per_line_and_nothing_on_stderr() {
 
 fn jadpo(cwd: &Path, args: &[&str]) -> jadpo_cli::Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
-    run(&args, &Environment::empty().with_cwd(cwd))
+    let mut output = run(&args, &Environment::empty().with_cwd(cwd));
+    output.stdout = support::without_run_time(&output.stdout);
+    output
 }
 
 #[test]

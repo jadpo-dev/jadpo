@@ -25,6 +25,8 @@ const PRICED: &str = "test \"a large order is priced\" {\n    var price: Pence =
 const ACTS: &str = "test \"a size is checked\" {\n    var size: Count = attempt check_size(5)\n    assert size == 5\n}\n";
 
 /// A fresh folder for one test under cargo's temporary directory.
+mod support;
+
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("test-{name}"));
     let _ = fs::remove_dir_all(&dir);
@@ -50,7 +52,9 @@ fn loose(name: &str, tests: &[&str]) -> PathBuf {
 
 fn jadpo_in(env: Environment, cwd: &Path, args: &[&str]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
-    run(&args, &env.with_cwd(cwd))
+    let mut output = run(&args, &env.with_cwd(cwd));
+    output.stdout = support::without_run_time(&output.stdout);
+    output
 }
 
 fn jadpo(cwd: &Path, args: &[&str]) -> Output {

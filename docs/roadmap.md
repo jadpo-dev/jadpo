@@ -128,6 +128,14 @@ reference only).
   ([decision](decision-register.md#examples-teach-every-feature--2026-10-14)).
   Design the examples' order and commenting style first, as a reader
   learning the language would meet them.
+- [ ] **2.5 Construction failures by rule** `opus · high`: the block form
+  `attempt CakeCount(n) { max: OrderTooLarge }` with `invalid:` as the
+  catch-all, required and unreachable arms, object literals that never fail,
+  and every page example and teaching example moved to it (area 2,
+  "Construction failures by rule", 2026-10-14).
+- [ ] **2.6 Conditions as proof** `opus · xhigh`: an `if` condition narrows
+  the ranges the checker knows, so a construction it makes safe needs no
+  `attempt`, and the compiler reports the call sites that flip.
 
 ## Phase 3 — Data (areas 5, 6)
 
@@ -147,10 +155,6 @@ reference only).
 - [ ] **4.3 Sign-in:** `opus · high` sessions, API tokens, service keys.
 - [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
   report.
-- [ ] **4.5 Early performance spike.** `opus · high` One route compiled to native and to
-  WebAssembly and measured against an equivalent hand-written Bun and
-  TypeScript app, so a Wasm gap is found now, not at the end. **Needs
-  Richard** if Wasm is more than 25% behind Bun.
 
 ## Phase 5 — Configuration, time and translations (area 10)
 
@@ -180,6 +184,12 @@ reference only).
   compiled.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling.
+- [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
+  WebAssembly and measured against an equivalent hand-written Bun and
+  TypeScript app, comparing Wasm with native and Bun with native as well
+  as Wasm with Bun. Moved from 4.5, which needed Phase 8's compiled code
+  (Richard, 2026-10-14). **Needs Richard** if Wasm is more than 25% behind
+  Bun.
 
 ## Phase 9 — Performance
 
@@ -199,6 +209,16 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [ ] **10.1 The golden todo end to end** `opus · high` on both targets, rewritten in the
   decided language, its contract cases passing. One independent review of
   the whole first build.
+- [ ] **10.2 How easily agents write Jadpo** `opus · high`: the same 10–20
+  realistic changes to one app (the golden todo, with its TypeScript
+  baseline and adversarial changes) done by fresh agent sessions in Jadpo
+  and in TypeScript, several runs each, with hidden acceptance tests.
+  Measures correctness, attempts and tokens to green, where each mistake
+  was caught (check, test or escaped), how easily a person reviews the
+  diff, and how often a tempting unsafe shortcut gets through. The agent
+  gets the language pages, since no model has seen Jadpo (Richard,
+  2026-10-14). The method is designed at the start of the chunk; its
+  results steer the order of the work after the first build.
 
 ## After the first build, in order
 

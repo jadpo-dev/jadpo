@@ -413,6 +413,8 @@ action reorder(order_id: Order.id) fails OrderNotFound, QuantityUnavailable -> R
 }
 ```
 
+> **Changing.** Decided on 2026-10-14: the failure moves into a block keyed by the rule that can break, `attempt CakeCount(n) { max: OrderTooLarge }`, with `invalid:` covering any rule without its own arm; `if` conditions count as proof; object literals never fail. See the Decisions table ("Construction failures by rule"). The examples on this page show the current form until chunk 2.5 builds the new one.
+
 Decided in area 2: a runtime construction can fail and is written
 `attempt Type(value) invalid: SomeFailure`. When the declared ranges prove a
 construction cannot break the target's rules, it is not fallible, so it takes
@@ -506,7 +508,7 @@ var receipt: Receipt = match payments.charge(order) {
 | `missing:` | `not_found` |
 | `conflict:` | `conflict` |
 | `empty:` (a patch that changes nothing) | `invalid_value` |
-| `invalid:` (a construction) | `invalid_value` |
+| `invalid:` (a construction; from chunk 2.5 also each rule key, such as `max:`) | `invalid_value` |
 
 The failure that was mapped is kept as the internal cause of the new one, so
 the log shows both (question 8):
@@ -1596,7 +1598,7 @@ Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (
 | Invalid input detail | Each problem as `{ field, rule }` under `details`, never the value | 2026-10-12 |
 | Faults in `fails` | Never; `fails` lists domain failures; integrations map provider problems to declared failures | 2026-10-12 |
 | Construction proven safe | No `attempt` when declared ranges prove a construction cannot fail; the compiler decides and reports call sites that flip | 2026-10-12 |
-| Mapping form | One form everywhere: `condition: Failure` inside the operation's block, kind checked | 2026-10-12 |
+| Mapping form | One form everywhere: `condition: Failure` inside the operation's block, kind checked. Constructions join it on 2026-10-14, keyed by rule (area 2, "Construction failures by rule") | 2026-10-12 |
 | Cause on mapping | The original failure is always kept as an internal-only cause | 2026-10-12 |
 | Overflow and recursion limit | Defects: 500 `internal_fault`, writes rolled back, cause named in the log; not declarable or catchable | 2026-10-12 |
 | Concealment | A record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |

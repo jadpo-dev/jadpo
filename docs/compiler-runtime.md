@@ -717,7 +717,7 @@ the same traits.
   JavaScript values, which should remove the conversion that held the
   experiments to about 79% of Bun
   ([optimisation results](experiments/wasm-optimization-results.md)): an
-  inference until the Phase 4 spike measures it.
+  inference until the performance spike (chunk 8.3) measures it.
 - Six connections at once per request
   ([limits](https://developers.cloudflare.com/workers/platform/limits/)),
   counted by the runtime across database, providers and SMTP.
@@ -836,7 +836,7 @@ a PostgreSQL service, the pinned toolchain and a cargo cache. Benchmarks
 | The runtime grows without seams | Components behind traits; capability features per deployable |
 | salsa's breaking releases and advisories | Exact pin, two crates, upgraded in its own change |
 | workers-rs is 0.x | Only `jadpo-host-workers` touches it; our own JavaScript glue where it falls short |
-| PostgreSQL from Workers, Wasm slower than Bun | Hyperdrive with caching off, unnamed statements and repeatable read, and typed codecs, measured in the Phase 4 spike rather than Phase 8 |
+| PostgreSQL from Workers, Wasm slower than Bun | Hyperdrive with caching off, unnamed statements and repeatable read, and typed codecs, measured in the performance spike (chunk 8.3), before the Phase 9 benchmarks |
 | Graph shape fixed too early | Kinds for later areas reserved now; `format` changes only on removals or changed meaning |
 
 **1.1 Workspace and CLI shell.** `rust-toolchain.toml`, the root
