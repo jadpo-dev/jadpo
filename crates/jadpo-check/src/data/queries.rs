@@ -533,6 +533,11 @@ impl<'a> Reader<'a> {
             sections.first.get("include"),
             &result_span,
         );
+        // The includes with their own records' fields filled in.
+        let (element, includes) = match element {
+            Some((element, filled)) => (Some(element), filled),
+            None => (None, includes),
+        };
 
         // `missing:` and the `fails` list.
         let missing = match (cardinality, sections.first.get("missing")) {
@@ -2390,7 +2395,7 @@ impl<'a> Reader<'a> {
         includes: &[Include],
         include_member: Option<&ast::Member>,
         span: &Span,
-    ) -> Option<Element> {
+    ) -> Option<(Element, Vec<Include>)> {
         let written: Vec<String> = include_member
             .and_then(|m| m.block())
             .map(|b| {
@@ -2401,7 +2406,6 @@ impl<'a> Reader<'a> {
             })
             .unwrap_or_default();
         self.element_with(path, ty, entity, includes, &written, include_member, span)
-            .map(|(element, _)| element)
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -22,6 +22,8 @@
 //!   drives one invocation on its thread.
 //! - [`Failure`], [`Fault`] and [`MAX_DEPTH`]: declared failures, what
 //!   the runtime raises itself, and its limits.
+//! - [`read`] and [`create`]: a query's or an entity's read, and a new
+//!   record, run from their plans in the action's transaction (chunk 3.2).
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
@@ -45,6 +47,7 @@ mod limits;
 mod migrate;
 mod outcome;
 mod places;
+mod read;
 mod report;
 
 pub use boundary::{ActionBody, RERUN_ATTEMPTS, action, unavailable};
@@ -61,4 +64,7 @@ pub use limits::MAX_DEPTH;
 pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, standing};
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
+pub use read::{
+    Found, Interrupt, PAGE, create, cursor, from_sql, invalid_cursor, read, to_sql, uuid_text,
+};
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};

@@ -253,6 +253,7 @@ impl Report {
             FaultKind::RecursionLimit => format!("{MAX_DEPTH} calls deep"),
             FaultKind::NotBuiltYet(_) => "not built yet".to_string(),
             FaultKind::Defect(_) => "here".to_string(),
+            FaultKind::Store(_) => "the store refused".to_string(),
         };
         let text = site.map(|frame| site_text(places, sources, frame, &caret));
         let written = text.as_ref().map_or("", |text| text.written.as_str());
@@ -293,6 +294,13 @@ impl Report {
                     "The program reached {what}: a mistake in Jadpo, not in this program, since the checker should have ruled it out."
                 ),
                 "Report it to Jadpo's maintainers with this report".to_string(),
+                "human",
+            ),
+            FaultKind::Store(what) => (
+                format!(
+                    "The store refused `{written}` in a way the runtime can't classify: {what}."
+                ),
+                "Check the database it runs against, then run it again".to_string(),
                 "human",
             ),
         };

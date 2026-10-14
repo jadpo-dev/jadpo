@@ -289,6 +289,11 @@ impl Lower<'_> {
                 callee,
                 Callee::Action(_) | Callee::Fixture(_) | Callee::Query(_) | Callee::Entity { .. }
             ),
+            // `Entity.create { ... }` writes a record.
+            typed::Node::Expr(typed::Expr::Build {
+                callee: Callee::Entity { .. },
+                ..
+            }) => true,
             typed::Node::Expr(typed::Expr::Unchecked) => {
                 self.facts.effects.contains(&node_key(node))
             }

@@ -600,7 +600,20 @@ pub fn purpose(changes: &[Change], after: &Schema) -> String {
                     format!("change_{column}")
                 };
             }
-            Change::AddIndex { name, .. } | Change::AddUnique { name, .. } => {
+            Change::AddIndex { store, table, name } => {
+                // An index a query needs is named after the query.
+                let reason = after
+                    .stores
+                    .get(store)
+                    .and_then(|s| s.tables.get(table))
+                    .and_then(|t| t.indexes.get(name))
+                    .map(|i| i.reason.as_str());
+                return match reason.and_then(|r| r.strip_prefix("query ")) {
+                    Some(query) => format!("index_{query}"),
+                    None => format!("add_{name}"),
+                };
+            }
+            Change::AddUnique { name, .. } => {
                 return format!("add_{name}");
             }
             _ => {}

@@ -1,6 +1,6 @@
 [package]
 name = "jadpo-plan"
-description = "What both executors need besides control flow: type plans, failure shapes, constants and the frame table"
+description = "What both executors need besides control flow: type plans, failure shapes, constants, the frame table and the SQL of reads and writes"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,6 +11,7 @@ publish.workspace = true
 # generator in Phase 8. It reaches no runtime crate, so it describes values
 # with its own constants and the shared leaf's rules.
 [dependencies]
+blake3.workspace = true
 jadpo-check.workspace = true
 jadpo-db.workspace = true
 jadpo-graph.workspace = true

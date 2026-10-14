@@ -72,6 +72,18 @@ pub enum Decoded {
     Match { arms: Vec<ArmPattern> },
     /// `assert … fails Failure`: the failure's name now.
     AssertFails { expected: String },
+    /// A call to a query, by the number of its plan; `None` when it has
+    /// none, which the checker rules out.
+    Query(Option<u32>),
+    /// `Entity.get(id)`, by the number of the entity's plan.
+    Get(Option<u32>),
+    /// `Entity.create { set: { ... } }`: the entity's plan, and each field
+    /// given, in the order written, its slot its place among the fields a
+    /// create gives.
+    Create {
+        entity: Option<u32>,
+        fields: Vec<Given>,
+    },
     /// Something a later area builds, as written up to its arguments or
     /// block: `clock.now`, `query open_todos`, `Todo.update`.
     Written(String),
@@ -112,6 +124,11 @@ pub(crate) struct Decoder<'a> {
     pub constants: &'a mut Vec<Constant>,
     /// The number of the callable with each key.
     pub callable: &'a dyn Fn(&Key) -> Option<u32>,
+    /// The number of each query's plan, by its key.
+    pub query: &'a dyn Fn(&Key) -> Option<u32>,
+    /// The number of each entity's plan, by its key, with the keys of the
+    /// fields its create gives, in order.
+    pub entity: &'a dyn Fn(&Key) -> Option<(u32, &'a [Key])>,
 }
 
 impl Decoder<'_> {
@@ -163,7 +180,10 @@ impl Decoder<'_> {
                     fallible: matches!(fallible, Fallible::Construction { .. }),
                     set: self.types.is_set(ty),
                 },
-                Callee::Query(key) => Decoded::Written(format!("query {}", self.types.name(key))),
+                Callee::Query(key) => Decoded::Query((self.query)(key)),
+                Callee::Entity { entity, operation } if operation == "get" => {
+                    Decoded::Get((self.entity)(entity).map(|(id, _)| id))
+                }
                 Callee::Entity { entity, operation } => {
                     Decoded::Written(format!("{}.{operation}", self.types.name(entity)))
                 }
@@ -191,6 +211,30 @@ impl Decoder<'_> {
                     shape,
                     fields: given,
                     fallible: matches!(fallible, Fallible::Construction { .. }),
+                }
+            }
+            Node::Expr(Expr::Build {
+                callee: Callee::Entity { entity, .. },
+                fields,
+                ..
+            }) => {
+                let found = (self.entity)(entity);
+                let given = fields
+                    .iter()
+                    .map(|(field, _)| Given {
+                        slot: found.and_then(|(_, settable)| {
+                            settable
+                                .iter()
+                                .position(|key| key == field)
+                                .map(|at| at as u32)
+                        }),
+                        name: self.types.field_name(field).to_string(),
+                        validator: self.types.validator_id(&TypeRef::Field(field.clone())),
+                    })
+                    .collect();
+                Decoded::Create {
+                    entity: found.map(|(id, _)| id),
+                    fields: given,
                 }
             }
             Node::Expr(Expr::List { .. }) => Decoded::List {

@@ -487,6 +487,7 @@ dependencies = [
 name = "jadpo-plan"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "jadpo-check",
  "jadpo-db",
  "jadpo-graph",

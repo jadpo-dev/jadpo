@@ -205,12 +205,38 @@ impl Part<'_> {
         self.out.nodes.push(node);
         if kind == Kind::Query {
             // A query is a declarative node, not a body (§2.3): what its
-            // block names is read from the block.
+            // block names is read from the block, and what it reads,
+            // includes and raises from its model (area 6).
             let uses = self.resolver.uses(syntax, &|_| false);
             self.edges(&key, EdgeKind::Uses, uses);
+            self.query(&key);
         } else {
             self.body(&key, item.index, None);
         }
+    }
+
+    /// A query's `reads`, `includes` and `raises` edges, from its model.
+    fn query(&mut self, key: &Key) {
+        let queries = crate::data::queries::query_models(self.db, self.project);
+        let Some(query) = queries.by_key(key) else {
+            return;
+        };
+        let entity = |name: &str| declaration_key(self.lookup, name);
+        let reads: BTreeSet<Key> = entity(&query.entity).into_iter().collect();
+        let mut includes = BTreeSet::new();
+        let mut stack: Vec<&crate::data::queries::Include> = query.includes.iter().collect();
+        while let Some(include) = stack.pop() {
+            includes.extend(entity(&include.entity));
+            stack.extend(include.includes.iter());
+        }
+        let raises: BTreeSet<Key> = query
+            .missing
+            .iter()
+            .filter_map(|missing| declaration_key(self.lookup, &missing.failure))
+            .collect();
+        self.edges(key, EdgeKind::Reads, reads);
+        self.edges(key, EdgeKind::Includes, includes);
+        self.edges(key, EdgeKind::Raises, raises);
     }
 
     fn library(&mut self, decl: &ast::LibraryDecl, item: &Item) {
@@ -265,8 +291,19 @@ impl Part<'_> {
             .filter(|(_, callee)| callee.is_callable())
             .filter_map(|(_, callee)| callee.key().cloned())
             .collect();
+        // An entity's `get` reads it (area 6).
+        let reads: BTreeSet<Key> = body
+            .calls()
+            .filter_map(|(_, callee)| match callee {
+                jadpo_graph::body::Callee::Entity { entity, operation } if operation == "get" => {
+                    Some(entity.clone())
+                }
+                _ => None,
+            })
+            .collect();
         self.edges(key, EdgeKind::Uses, uses);
         self.edges(key, EdgeKind::Calls, calls);
+        self.edges(key, EdgeKind::Reads, reads);
         if let Some((_, set)) = &checked.set {
             let raises: BTreeSet<Key> = set
                 .failures

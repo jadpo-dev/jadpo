@@ -34,30 +34,12 @@ pub enum StoreError {
     Fault(String),
 }
 
-/// The type of a SQL parameter or column, as the runtime knows it: one per
-/// column type area 5 maps a field to ("Storage types"), plus the widths of
-/// whole numbers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SqlType {
-    Bool,
-    Int2,
-    Int4,
-    Int8,
-    Numeric,
-    Text,
-    Bytes,
-    Uuid,
-    /// `timestamptz`.
-    Timestamp,
-    Date,
-    /// `jsonb`.
-    Json,
-}
+pub use jadpo_std::SqlType;
 
 /// A value sent to a store or read back from one. Drivers turn these into
-/// their wire formats; the plan's codecs (chunk 3.2) turn them into Jadpo
-/// values.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// their wire formats; the read plans' codecs ([`crate::read`]) turn them
+/// into Jadpo values. Ordered, so an include's rows group by their key.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SqlValue {
     /// `NULL`, with the type a parameter needs.
     Null(SqlType),
@@ -74,8 +56,13 @@ pub enum SqlValue {
     Timestamp(i64),
     /// Days since 1970-01-01.
     Date(i32),
+    /// Microseconds since midnight.
+    Time(i64),
     /// JSON text.
     Json(String),
+    /// An array of values of one type, none of them `NULL`: a list a field
+    /// is tested `in`, or an include's keys.
+    Array(SqlType, Vec<SqlValue>),
 }
 
 impl SqlValue {
@@ -93,7 +80,9 @@ impl SqlValue {
             SqlValue::Uuid(_) => SqlType::Uuid,
             SqlValue::Timestamp(_) => SqlType::Timestamp,
             SqlValue::Date(_) => SqlType::Date,
+            SqlValue::Time(_) => SqlType::Time,
             SqlValue::Json(_) => SqlType::Json,
+            SqlValue::Array(element, _) => element.array(),
         }
     }
 }

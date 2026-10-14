@@ -127,7 +127,7 @@ kinds! {
 
     Function: "function", Behaviour, Built, 3;
     Action: "action", Behaviour, Built, 3;
-    Query: "query", Behaviour, Declared, 6;
+    Query: "query", Behaviour, Built, 6;
     Fixture: "fixture", Behaviour, Declared, 13;
     Seed: "seed", Behaviour, Declared, 5;
     Test: "test", Behaviour, Declared, 13;
@@ -230,7 +230,7 @@ macro_rules! edges {
 
 edges! {
     Calls: "calls", Built, "A callable calls a function, action, query, fixture or library function";
-    Reads: "reads", Reserved, "Reads an entity, fields or an operation";
+    Reads: "reads", Built, "A query or an entity's `get` reads an entity";
     Writes: "writes", Reserved, "Writes an entity, fields or an operation";
     Emits: "emits", Reserved, "Emits an event";
     Subscribes: "subscribes", Reserved, "A subscriber listens for an event";
@@ -238,7 +238,7 @@ edges! {
     Raises: "raises", Built, "A failure can leave the callable";
     Maps: "maps", Reserved, "One failure becomes another";
     References: "references", Built, "An entity refers to another";
-    Includes: "includes", Reserved, "A query includes related records";
+    Includes: "includes", Built, "A query includes related records of an entity";
     Grants: "grants", Reserved, "Policy grants an effect";
     Scopes: "scopes", Reserved, "Tenancy scopes an entity";
     Invalidates: "invalidates", Reserved, "A write invalidates a cache";
