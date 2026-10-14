@@ -374,3 +374,25 @@ fn uuids_are_normalised_to_lowercase() {
         Value::uuid("0192f0c4-3b5e-4c1a-9d2e-4f6a8b0c1d2e")
     );
 }
+
+#[test]
+fn a_text_literal_compared_with_a_value_takes_its_type() {
+    // `==` gives a literal the other side's type (area 3), so text written
+    // for a UUID, an instant or a date is read as one, not compared as text.
+    let program = main(
+        "type Ref = Uuid {}\n\ntype When = Instant {}\n\ntype Day = CalendarDate {}\n\ntype Same = Bool {}\n\nfunction known_ref(id: Ref) -> Same {\n    return Same(id == \"6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d\")\n}\n\nfunction new_year(at: When) -> Same {\n    return Same(\"2026-01-01T00:00:00Z\" == at)\n}\n\nfunction not_today(day: Day?) -> Same {\n    return Same(day != \"2026-01-14\")\n}\n",
+    );
+    let at = |name: &str, ty: &str, text: &str| {
+        let given = program.text_value(ty, text).expect("a value");
+        value(&program, name, vec![given])
+    };
+    assert_eq!(
+        at("known_ref", "Ref", "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        at("new_year", "When", "2026-01-01T00:00:00Z"),
+        Value::Bool(true)
+    );
+    assert_eq!(at("not_today", "Day", "2026-01-14"), Value::Bool(false));
+}

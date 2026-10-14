@@ -13,7 +13,7 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 use super::super::literal;
 use super::super::rules::Const;
 use super::super::ty::{Prim, Ty};
-use super::{Body, capital, is_literal};
+use super::{Body, capital, is_literal, node_key};
 use crate::tree;
 
 /// One side of an operator.
@@ -324,6 +324,16 @@ impl Body<'_> {
             }
         }
         if self.same_type(a, b) {
+            // A literal takes the other side's type, so text written for a
+            // UUID, an instant or a date is read as one (area 3).
+            for (literal, other, literal_expr) in [(a, b, lhs), (b, a, rhs)] {
+                if let (Operand::Literal(_), Operand::Value(ty)) = (literal, other) {
+                    self.facts
+                        .types
+                        .entry(node_key(literal_expr.syntax()))
+                        .or_insert_with(|| ty.strip_nullable().clone());
+                }
+            }
             return;
         }
         let (sa, sb) = (a.shown(), b.shown());
