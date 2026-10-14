@@ -128,6 +128,14 @@ reference only).
   ([decision](decision-register.md#examples-teach-every-feature--2026-10-14)).
   Design the examples' order and commenting style first, as a reader
   learning the language would meet them.
+- [ ] **2.5 Construction failures by rule** `opus · high`: the block form
+  `attempt CakeCount(n) { max: OrderTooLarge }` with `invalid:` as the
+  catch-all, required and unreachable arms, object literals that never fail,
+  and every page example and teaching example moved to it (area 2,
+  "Construction failures by rule", 2026-10-14).
+- [ ] **2.6 Conditions as proof** `opus · xhigh`: an `if` condition narrows
+  the ranges the checker knows, so a construction it makes safe needs no
+  `attempt`, and the compiler reports the call sites that flip.
 
 ## Phase 3 — Data (areas 5, 6)
 
