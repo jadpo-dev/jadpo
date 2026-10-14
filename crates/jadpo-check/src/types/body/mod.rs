@@ -21,6 +21,7 @@ mod calls;
 mod expr;
 pub(crate) mod facts;
 mod failing;
+mod known;
 mod lower;
 mod matching;
 mod ops;
@@ -151,6 +152,8 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         handled: Vec::new(),
         arm: Arm::None,
         facts: Facts::default(),
+        known: known::Known::default(),
+        assigned: Vec::new(),
         set: None,
         out: Vec::new(),
         resolved: Vec::new(),
@@ -327,6 +330,12 @@ struct Body<'a> {
     arm: Arm,
     /// What the walk decided, for the typed body.
     facts: Facts,
+    /// What the conditions around the code being checked say about the
+    /// numbers they compare (area 2, "Conditions as proof").
+    known: known::Known,
+    /// Each `var mut` assigned so far, in order, so a block forgets what
+    /// it knew of the ones assigned inside it.
+    assigned: Vec<usize>,
     /// The callable's name and failure set, once checked.
     set: Option<(String, FailureSet)>,
     out: Vec<Diagnostic>,
@@ -752,13 +761,35 @@ impl Body<'_> {
     // --- statements -----------------------------------------------------------
 
     /// Checks a block in a scope of its own; whether the code after it can
-    /// run.
+    /// run. What it finds out ends with it, and what was known before it
+    /// of a `var mut` it assigns is forgotten.
     fn block(&mut self, block: Option<ast::Block>) -> bool {
         let Some(block) = block else { return true };
+        let entry = self.known.clone();
+        let mark = self.assigned.len();
         self.scopes.push(Vec::new());
         let completes = self.statements(&block);
         self.pop_scope();
+        let mut known = entry;
+        for local in &self.assigned[mark..] {
+            known.forget(*local);
+        }
+        self.known = known;
         completes
+    }
+
+    /// One way through an `if`, checked knowing `entry`; whether the code
+    /// after it can run, and what is known at its end.
+    fn branch(&mut self, block: Option<ast::Block>, entry: known::Known) -> (bool, known::Known) {
+        self.known = entry;
+        let Some(block) = block else {
+            return (true, self.known.clone());
+        };
+        self.scopes.push(Vec::new());
+        let completes = self.statements(&block);
+        let end = self.known.clone();
+        self.pop_scope();
+        (completes, end)
     }
 
     fn statements(&mut self, block: &ast::Block) -> bool {
@@ -880,6 +911,14 @@ impl Body<'_> {
                     Some(expr) => self.loop_item(&expr),
                     None => Ty::Error,
                 };
+                // A later pass through the loop sees what an earlier one
+                // assigned: every `var mut` it assigns loses its bounds
+                // before it, and so after it.
+                if let Some(block) = each.block() {
+                    for local in self.assigned_in(&block) {
+                        self.forget(local);
+                    }
+                }
                 self.scopes.push(Vec::new());
                 self.declare(each.name(), item, LocalKind::Item, None, "variable");
                 self.block(each.block());
@@ -945,23 +984,54 @@ impl Body<'_> {
     }
 
     /// An `if` with its `else if` branches, one after another, and its
-    /// `else`; whether the code after it can run.
+    /// `else`; whether the code after it can run. Each branch knows its
+    /// condition holds and every earlier one doesn't; the code after it
+    /// knows what holds at the end of every branch that reaches it, and,
+    /// with no `else`, that every condition is false.
     fn if_stmt(&mut self, branch: &ast::IfStmt) -> bool {
-        if let Some(condition) = branch.condition().and_then(|c| c.expr()) {
-            self.condition(&condition);
-        }
-        let mut completes = self.block(branch.block());
-        for next in branch.else_ifs() {
-            if let Some(condition) = next.condition().and_then(|c| c.expr()) {
-                self.condition(&condition);
+        let before = self.known.clone();
+        let arms = std::iter::once((branch.condition(), branch.block())).chain(
+            branch
+                .else_ifs()
+                .map(|next| (next.condition(), next.block())),
+        );
+        // What holds where every condition so far is false.
+        let mut rest = before.clone();
+        let mut ends = Vec::new();
+        let mut completes = false;
+        for (condition, block) in arms {
+            self.known = rest.clone();
+            let (holds, fails) = match condition.and_then(|c| c.expr()) {
+                Some(condition) => {
+                    self.condition(&condition);
+                    self.split(&condition)
+                }
+                None => Default::default(),
+            };
+            let (goes_on, end) = self.branch(block, rest.and(&holds));
+            if goes_on {
+                ends.push(end);
             }
-            completes |= self.block(next.block());
+            completes |= goes_on;
+            rest = rest.and(&fails);
         }
+        match branch.else_branch() {
+            Some(otherwise) => {
+                let (goes_on, end) = self.branch(otherwise.block(), rest);
+                if goes_on {
+                    ends.push(end);
+                }
+                completes |= goes_on;
+            }
+            None => {
+                ends.push(rest);
+                completes = true;
+            }
+        }
+        let mut after = known::Known::any(ends).unwrap_or(before);
+        after.keep_within(&self.in_scope());
+        self.known = after;
         completes
-            | match branch.else_branch() {
-                Some(otherwise) => self.block(otherwise.block()),
-                None => true,
-            }
     }
 
     /// A condition: a `Bool`, or a type built on `Bool`, never `none`.
@@ -1033,6 +1103,18 @@ impl Body<'_> {
     }
 
     fn assign(&mut self, assign: &ast::AssignStmt) {
+        self.assign_checked(assign);
+        // The local now holds a new value: what was known of the old one
+        // no longer holds (area 2, "Conditions as proof").
+        if let Some(Expr::NameRef(name)) = assign.target()
+            && let Some(local) = self.find(&text(&name))
+        {
+            let id = local.id;
+            self.forget(id);
+        }
+    }
+
+    fn assign_checked(&mut self, assign: &ast::AssignStmt) {
         let value = assign.value();
         if let Some(target) = assign.target().filter(is_type_name) {
             self.resolved_by(|names, out| names.value_name(&target, out));

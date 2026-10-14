@@ -16,6 +16,7 @@ use super::super::shape::FieldsBase;
 use super::super::table::{Def, FieldDef};
 use super::super::ty::Ty;
 use super::facts::Reach;
+use super::known::Origin;
 use super::{Arm as MatchArm, Body, did_you_mean, is_literal, line_span, node_key, text};
 use crate::tree::{self, dotted};
 
@@ -30,8 +31,9 @@ pub enum Fallible {
     /// It can fail with these declared failures, in the order its `fails`
     /// list names them.
     Fails(Vec<String>),
-    /// A construction whose value is only known at runtime and which the
-    /// declared ranges don't prove safe: it fails when the value breaks
+    /// A construction whose value is only known at runtime and which
+    /// neither the declared ranges nor the conditions around it prove
+    /// safe: it fails when the value breaks
     /// one of these rules, by their keys (`max`), with the failure its
     /// `attempt` maps that rule to.
     Construction(Vec<String>),
@@ -50,6 +52,24 @@ struct Arm {
 fn keys_list(keys: &[String]) -> String {
     let listed: Vec<String> = keys.iter().map(|k| format!("`{k}`")).collect();
     crate::and_list(&listed)
+}
+
+/// "the condition `n > 12`", or "the conditions `n < 1` and `n > 12`",
+/// in source order.
+fn conditions_named(by: &[Origin]) -> String {
+    let mut sorted: Vec<&Origin> = by.iter().collect();
+    sorted.sort_by_key(|origin| origin.key);
+    sorted.dedup_by_key(|origin| origin.key);
+    let listed: Vec<String> = sorted
+        .iter()
+        .map(|origin| format!("`{}`", origin.written))
+        .collect();
+    let word = if listed.len() == 1 {
+        "condition"
+    } else {
+        "conditions"
+    };
+    format!("the {word} {}", crate::and_list(&listed))
 }
 
 impl Body<'_> {
@@ -139,7 +159,7 @@ impl Body<'_> {
                 )
                 .at(span, "checked when it runs")
                 .reason(format!(
-                    "The value is only known when the program runs, and the declared ranges don't prove it follows {rules}, so building it can fail."
+                    "The value is only known when the program runs, and neither the declared ranges nor a condition before it prove it follows {rules}, so building it can fail."
                 ))
                 .next(format!(
                     "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each rule that can break to an `invalid_value` failure, or `invalid:` for all of them"
@@ -485,8 +505,17 @@ impl Body<'_> {
                     Expr::CallExpr(call) => self.construction_rules(call),
                     _ => Vec::new(),
                 };
-                let mapped =
-                    self.construction_arms(attempt, &arms, breakable, &rules, &written, span);
+                let proofs = match &inner {
+                    Expr::CallExpr(call) => self
+                        .facts
+                        .proofs
+                        .get(&node_key(call.syntax()))
+                        .cloned()
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
+                };
+                let mapped = self
+                    .construction_arms(attempt, &arms, breakable, &rules, &proofs, &written, span);
                 if !mapped.is_empty() {
                     self.facts.mapped.insert(node_key(attempt.syntax()), mapped);
                 }
@@ -555,7 +584,24 @@ impl Body<'_> {
         let inner_start = u32::from(inner.syntax().text_range().start());
         let inner_end = u32::from(inner.syntax().text_range().end());
         let end = u32::from(attempt.syntax().text_range().end());
+        // The comparisons that prove a construction, when ranges alone
+        // don't (area 2, "Conditions as proof").
+        let by: Vec<Origin> = match inner {
+            Expr::CallExpr(call) => self
+                .facts
+                .proofs
+                .get(&node_key(call.syntax()))
+                .into_iter()
+                .flatten()
+                .flat_map(|(_, by)| by.iter().cloned())
+                .collect(),
+            _ => Vec::new(),
+        };
         let reason = match inner {
+            Expr::CallExpr(_) if !by.is_empty() => format!(
+                "The declared ranges and {} prove `{written}` always follows its type's rules, so building it never fails; `attempt` marks only what can.",
+                conditions_named(&by)
+            ),
             Expr::CallExpr(call)
                 if self
                     .facts
@@ -581,15 +627,28 @@ impl Body<'_> {
             &rule::FAILURE_ATTEMPT_INFALLIBLE,
             format!("`{written}` can't fail, so it takes no `attempt`"),
         )
-        .at(span.clone(), "nothing to pass on")
-        .reason(reason)
-        .next("Remove `attempt`")
-        .edit(Span::new(self.path, start, inner_start), "");
+        .at(span.clone(), "nothing to pass on");
+        problem = self.checked_here(problem, &by);
+        problem = problem
+            .reason(reason)
+            .next("Remove `attempt`")
+            .edit(Span::new(self.path, start, inner_start), "");
         if end > inner_end {
             problem = problem.edit(Span::new(self.path, inner_end, end), "");
         }
         self.flow.open = true;
         self.out.push(problem);
+    }
+
+    /// Points at each comparison that proves a construction.
+    fn checked_here(&self, mut problem: Diagnostic, by: &[Origin]) -> Diagnostic {
+        let mut keys: Vec<_> = by.iter().map(|origin| origin.key).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        for (start, end, _) in keys {
+            problem = problem.also(Span::new(self.path, start, end), "checked here");
+        }
+        problem
     }
 
     /// Whether a call is to a standard-library operation.
@@ -605,13 +664,16 @@ impl Body<'_> {
     /// covers every rule without its own; an arm for a rule that can't
     /// break, or an `invalid:` left covering nothing, is a mistake. Each
     /// failure is `invalid_value`. The failure each rule maps to, by key,
-    /// `None` for `invalid:`.
+    /// `None` for `invalid:`. `proofs` are the rules only a condition
+    /// proves, with the comparisons that do.
+    #[allow(clippy::too_many_arguments)]
     fn construction_arms(
         &mut self,
         attempt: &ast::AttemptExpr,
         arms: &[Arm],
         breakable: &[String],
         rules: &[(&'static str, String)],
+        proofs: &[(String, Vec<Origin>)],
         written: &str,
         span: Span,
     ) -> Vec<(Option<String>, String)> {
@@ -639,7 +701,12 @@ impl Body<'_> {
                 invalid = Some(arm);
             } else if let Some((_, rule)) = rules.iter().find(|(k, _)| *k == arm.key) {
                 if !breakable.contains(&arm.key) {
-                    self.rule_cannot_break(arm, rule, written);
+                    let by = proofs
+                        .iter()
+                        .find(|(key, _)| *key == arm.key)
+                        .map(|(_, by)| by.as_slice())
+                        .unwrap_or_default();
+                    self.rule_cannot_break(arm, rule, written, by);
                     continue;
                 }
             } else {
@@ -734,18 +801,25 @@ impl Body<'_> {
             )
             .at(span, "can fail at runtime")
             .reason(format!(
-                "The value is only known when the program runs, and the declared ranges don't prove it follows {}; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.",
+                "The value is only known when the program runs, and neither the declared ranges nor a condition before it prove it follows {}; {it} needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.",
                 crate::and_list(&as_written)
             ))
             .next(next),
         );
     }
 
-    fn rule_cannot_break(&mut self, arm: &Arm, rule: &str, written: &str) {
+    /// An arm for a rule that can't break: `by` are the comparisons that
+    /// prove it, when the declared ranges alone don't.
+    fn rule_cannot_break(&mut self, arm: &Arm, rule: &str, written: &str, by: &[Origin]) {
         let key = &arm.key;
         let reason = if key == "scale" {
             format!(
                 "`{rule}` decides how a value is kept, rounding it half to even, so it never breaks and this arm could never run."
+            )
+        } else if !by.is_empty() {
+            format!(
+                "The declared ranges and {} prove the value always follows `{rule}`, so this arm could never run.",
+                conditions_named(by)
             )
         } else {
             format!(
@@ -753,15 +827,17 @@ impl Body<'_> {
             )
         };
         let removal = self.arm_removal(arm);
+        let problem = Diagnostic::new(
+            &rule::FAILURE_RULE_CANNOT_BREAK,
+            format!("`{written}` can't break `{key}`, so it takes no arm"),
+        )
+        .at(arm.key_span.clone(), "never runs");
+        let problem = self.checked_here(problem, by);
         self.out.push(
-            Diagnostic::new(
-                &rule::FAILURE_RULE_CANNOT_BREAK,
-                format!("`{written}` can't break `{key}`, so it takes no arm"),
-            )
-            .at(arm.key_span.clone(), "never runs")
-            .reason(reason)
-            .next(format!("Remove `{key}: ...`"))
-            .edit(removal, ""),
+            problem
+                .reason(reason)
+                .next(format!("Remove `{key}: ...`"))
+                .edit(removal, ""),
         );
     }
 

@@ -1,15 +1,21 @@
 //! Proving a construction safe (area 4, question 6): when the declared
-//! ranges show a computed value always follows the target type's rules,
+//! ranges, and the conditions it sits under (area 2, "Conditions as
+//! proof"), show a computed value always follows the target type's rules,
 //! `Type(value)` cannot fail and takes no `attempt`. The proof is made rule
 //! by rule, because an `attempt` maps each rule that can break (area 2,
 //! "Construction failures by rule").
 //!
 //! Numbers are followed through arithmetic as intervals, from literals and
-//! the `min` and `max` of each operand's type. Text, bytes and collections
-//! are proved by their own type's rules implying the target's: a length
-//! range inside the target's, and the same pattern, format or version.
+//! the `min` and `max` of each operand's type, each narrowed by what the
+//! conditions it sits under say about it ([`super::known`]). A target with
+//! a fixed `scale` keeps the value rounded half to even, so the interval is
+//! rounded the same way before its bounds are compared. Text, bytes and
+//! collections are proved by their own type's rules implying the target's:
+//! a length range inside the target's, a list's narrowed by what is known
+//! of `collection.count` on it, and the same pattern, format or version.
 
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
 
 use jadpo_std::Op;
 use jadpo_syntax::SyntaxKind;
@@ -17,6 +23,7 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::rules::{Const, Num, Rules};
 use super::super::ty::Ty;
+use super::known::{Origin, Term};
 use super::{Body, node_key};
 
 /// Dividing `a` by `b`, or taking the remainder: a value that is never
@@ -48,14 +55,14 @@ fn divided(a: Interval, b: Interval, remainder: bool) -> Interval {
 
 /// One end of a range: unbounded below, a number, or unbounded above.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum End {
+pub(super) enum End {
     Below,
     At(Num),
     Above,
 }
 
 impl End {
-    fn cmp(self, other: End) -> Ordering {
+    pub(super) fn cmp(self, other: End) -> Ordering {
         match (self, other) {
             (End::Below, End::Below) | (End::Above, End::Above) => Ordering::Equal,
             (End::Below, _) | (_, End::Above) => Ordering::Less,
@@ -82,27 +89,146 @@ impl End {
             }),
         }
     }
+
+    /// The next whole number past this end, `by` 1 or -1, when the end is
+    /// a whole number: what `n > 12` means for a whole `n`. Any other end
+    /// is kept, which is still true, only less exact.
+    pub(super) fn step(self, by: i128) -> End {
+        match self {
+            End::At(n) if n.significant_places() == 0 => {
+                let whole = 10i128
+                    .checked_pow(n.scale)
+                    .map(|factor| n.mantissa / factor)
+                    .and_then(|whole| whole.checked_add(by));
+                whole.map_or(self, |whole| End::At(Num::whole(whole)))
+            }
+            other => other,
+        }
+    }
+
+    /// Rounded half to even to `scale` places, as a type with a fixed
+    /// `scale` keeps a value; a number too large to round is unbounded on
+    /// its side, `low` for a lower end.
+    fn rounded(self, scale: u32, low: bool) -> End {
+        let End::At(n) = self else { return self };
+        if n.scale <= scale {
+            return self;
+        }
+        let Some(factor) = 10i128.checked_pow(n.scale - scale) else {
+            return if low { End::Below } else { End::Above };
+        };
+        let quotient = n.mantissa / factor;
+        let twice = (n.mantissa % factor).unsigned_abs() * 2;
+        let whole = factor.unsigned_abs();
+        let away = twice > whole || (twice == whole && quotient % 2 != 0);
+        let mantissa = if away {
+            quotient + n.mantissa.signum()
+        } else {
+            quotient
+        };
+        End::At(Num { mantissa, scale })
+    }
 }
 
-/// The values an expression can take; `None` when nothing is known.
-#[derive(Clone, Copy, Debug)]
-struct Interval {
-    low: End,
-    high: End,
+/// The values an expression can take, both ends included.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Interval {
+    pub low: End,
+    pub high: End,
 }
 
 impl Interval {
-    const ANY: Interval = Interval {
+    pub(super) const ANY: Interval = Interval {
         low: End::Below,
         high: End::Above,
     };
 
-    fn exact(n: Num) -> Interval {
+    pub(super) fn exact(n: Num) -> Interval {
         Interval {
             low: End::At(n),
             high: End::At(n),
         }
     }
+
+    /// No value fits: the code that knows it can't run.
+    pub(super) fn is_empty(self) -> bool {
+        self.low.cmp(self.high).is_gt()
+    }
+
+    pub(super) fn is_any(self) -> bool {
+        self.low == End::Below && self.high == End::Above
+    }
+
+    /// The values in both.
+    pub(super) fn meet(self, other: Interval) -> Interval {
+        Interval {
+            low: if other.low.cmp(self.low).is_gt() {
+                other.low
+            } else {
+                self.low
+            },
+            high: if other.high.cmp(self.high).is_lt() {
+                other.high
+            } else {
+                self.high
+            },
+        }
+    }
+
+    /// Every value either can take, and those between.
+    pub(super) fn hull(self, other: Interval) -> Interval {
+        if self.is_empty() {
+            return other;
+        }
+        if other.is_empty() {
+            return self;
+        }
+        hull(&[self.low, self.high, other.low, other.high])
+    }
+
+    /// As a type with a fixed `scale` keeps its values.
+    fn rounded(self, scale: Option<u32>) -> Interval {
+        match scale {
+            Some(scale) => Interval {
+                low: self.low.rounded(scale, true),
+                high: self.high.rounded(scale, false),
+            },
+            None => self,
+        }
+    }
+}
+
+/// How an interval is read: with what the conditions around it say, or
+/// from the declared ranges alone, and which conditions it used.
+pub(super) struct Reading {
+    pub conditions: bool,
+    /// The comparisons whose bounds narrowed it.
+    pub used: BTreeSet<Origin>,
+}
+
+impl Reading {
+    pub(super) fn with_conditions() -> Reading {
+        Reading {
+            conditions: true,
+            used: BTreeSet::new(),
+        }
+    }
+
+    fn ranges_only() -> Reading {
+        Reading {
+            conditions: false,
+            used: BTreeSet::new(),
+        }
+    }
+}
+
+/// Which of a target's rules a value can break, and which the conditions
+/// it sits under prove: rules the declared ranges alone don't, each with
+/// the comparisons that prove it.
+#[derive(Debug, Default)]
+pub(super) struct Verdict {
+    pub breakable: Vec<String>,
+    pub proved: Vec<(String, Vec<Origin>)>,
 }
 
 fn lift(a: Num, b: Num) -> Option<(i128, i128, u32)> {
@@ -172,6 +298,13 @@ fn hull(ends: &[End]) -> Interval {
         }
     }
     Interval { low, high }
+}
+
+/// What is known of how many items a list holds, and from which
+/// comparisons.
+struct Counted {
+    interval: Interval,
+    by: Vec<Origin>,
 }
 
 fn at_least(interval: &Interval, n: Num) -> bool {
@@ -319,22 +452,41 @@ impl Body<'_> {
         }
     }
 
-    /// The rules of `target` the declared ranges can't prove `value`, of
-    /// type `actual`, follows, by their keys, in the order the reader
-    /// learns them. A rule the compiler can't reason about, such as a
-    /// pattern other than the value's own, can always break; `scale` never
-    /// does, because it rounds the value as it is kept.
-    pub(super) fn breakable(&self, value: &Expr, actual: &Ty, target: &Ty) -> Vec<String> {
+    /// The rules of `target` that neither the declared ranges nor the
+    /// conditions around it prove `value`, of type `actual`, follows, by
+    /// their keys, in the order the reader learns them, with the rules
+    /// only the conditions prove. A rule the compiler can't reason about,
+    /// such as a pattern other than the value's own, can always break;
+    /// `scale` never does, because it rounds the value as it is kept.
+    pub(super) fn verdict(&self, value: &Expr, actual: &Ty, target: &Ty) -> Verdict {
         let needs = combine(self.table.rule_chain(target).into_iter().map(|(_, r)| r));
         let has = combine(self.table.rule_chain(actual).into_iter().map(|(_, r)| r));
-        let mut out = Vec::new();
+        let mut verdict = Verdict::default();
+        let out = &mut verdict.breakable;
+        let proved = &mut verdict.proved;
         if needs.min.is_some() || needs.max.is_some() {
-            let interval = self.interval(value);
-            if needs.min.is_some_and(|min| !at_least(&interval, min)) {
-                out.push("min".to_string());
+            let mut reading = Reading::with_conditions();
+            let interval = self.interval(value, &mut reading).rounded(needs.scale);
+            // Read again without the conditions only when one narrowed it,
+            // to tell the rules they prove from those the ranges do.
+            let plain = (!reading.used.is_empty()).then(|| {
+                self.interval(value, &mut Reading::ranges_only())
+                    .rounded(needs.scale)
+            });
+            let by: Vec<Origin> = reading.used.iter().cloned().collect();
+            if let Some(min) = needs.min {
+                if !at_least(&interval, min) {
+                    out.push("min".to_string());
+                } else if plain.is_some_and(|plain| !at_least(&plain, min)) {
+                    proved.push(("min".to_string(), by.clone()));
+                }
             }
-            if needs.max.is_some_and(|max| !at_most(&interval, max)) {
-                out.push("max".to_string());
+            if let Some(max) = needs.max {
+                if !at_most(&interval, max) {
+                    out.push("max".to_string());
+                } else if plain.is_some_and(|plain| !at_most(&plain, max)) {
+                    proved.push(("max".to_string(), by.clone()));
+                }
             }
         }
         if needs
@@ -349,17 +501,35 @@ impl Body<'_> {
         {
             out.push("max".to_string());
         }
-        if needs
-            .min_length
-            .is_some_and(|n| has.min_length.is_none_or(|m| m < n))
-        {
-            out.push("min_length".to_string());
-        }
-        if needs
-            .max_length
-            .is_some_and(|n| has.max_length.is_none_or(|m| m > n))
-        {
-            out.push("max_length".to_string());
+        if needs.min_length.is_some() || needs.max_length.is_some() {
+            let counted = self.counted(value, actual);
+            let (low, high) = (has.min_length, has.max_length);
+            let at_least_length = |n: u64, low: Option<u64>, counted: Option<&Counted>| {
+                low.is_some_and(|m| m >= n)
+                    || counted
+                        .is_some_and(|c| c.interval.low.cmp(End::At(Num::whole(n.into()))).is_ge())
+            };
+            let at_most_length = |n: u64, high: Option<u64>, counted: Option<&Counted>| {
+                high.is_some_and(|m| m <= n)
+                    || counted
+                        .is_some_and(|c| c.interval.high.cmp(End::At(Num::whole(n.into()))).is_le())
+            };
+            if let Some(n) = needs.min_length {
+                if !at_least_length(n, low, counted.as_ref()) {
+                    out.push("min_length".to_string());
+                } else if !at_least_length(n, low, None) {
+                    let by = counted.as_ref().map(|c| c.by.clone()).unwrap_or_default();
+                    proved.push(("min_length".to_string(), by));
+                }
+            }
+            if let Some(n) = needs.max_length {
+                if !at_most_length(n, high, counted.as_ref()) {
+                    out.push("max_length".to_string());
+                } else if !at_most_length(n, high, None) {
+                    let by = counted.as_ref().map(|c| c.by.clone()).unwrap_or_default();
+                    proved.push(("max_length".to_string(), by));
+                }
+            }
         }
         if needs.patterns.iter().any(|p| !has.patterns.contains(p)) {
             out.push("pattern".to_string());
@@ -371,15 +541,51 @@ impl Body<'_> {
         if needs.version.is_some() && needs.version != has.version {
             out.push("version".to_string());
         }
-        out
+        verdict
     }
 
-    /// The values a numeric expression can take.
-    fn interval(&self, expr: &Expr) -> Interval {
+    /// What the conditions around a list say about how many items it
+    /// holds: the bounds known for `collection.count` on it, which counts
+    /// exactly the items `min_length` and `max_length` count.
+    fn counted(&self, value: &Expr, actual: &Ty) -> Option<Counted> {
+        if self.known.is_empty()
+            || self.table.is_nullable(actual)
+            || !matches!(self.table.structure(actual), Ty::List(_))
+        {
+            return None;
+        }
+        let term = Term::Std(Op::CollectionCount, vec![self.term(value)?]);
+        let fact = self.known.get(&term)?;
+        Some(Counted {
+            interval: fact.interval,
+            by: fact.from.iter().cloned().collect(),
+        })
+    }
+
+    /// The values a numeric expression can take: from its parts and the
+    /// declared ranges, narrowed by what the conditions around it say
+    /// about it as written, when `reading` asks for them.
+    pub(super) fn interval(&self, expr: &Expr, reading: &mut Reading) -> Interval {
+        let base = self.structural(expr, reading);
+        if !reading.conditions || self.known.is_empty() {
+            return base;
+        }
+        let Some(fact) = self.term(expr).and_then(|term| self.known.get(&term)) else {
+            return base;
+        };
+        let narrowed = base.meet(fact.interval);
+        if narrowed != base {
+            reading.used.extend(fact.from.iter().cloned());
+        }
+        narrowed
+    }
+
+    /// The values a numeric expression can take, from its parts.
+    fn structural(&self, expr: &Expr, reading: &mut Reading) -> Interval {
         match expr {
             Expr::ParenExpr(paren) => paren
                 .expr()
-                .map_or(Interval::ANY, |inner| self.interval(&inner)),
+                .map_or(Interval::ANY, |inner| self.interval(&inner, reading)),
             Expr::Literal(_) => match Const::from_expr(expr) {
                 Const::Number { value, .. } => Interval::exact(value),
                 _ => Interval::ANY,
@@ -389,7 +595,7 @@ impl Body<'_> {
                     prefix.syntax().first_token().map(|t| t.kind()) == Some(SyntaxKind::MINUS);
                 match (minus, prefix.expr()) {
                     (true, Some(inner)) => {
-                        let inner = self.interval(&inner);
+                        let inner = self.interval(&inner, reading);
                         Interval {
                             low: inner.high.neg(),
                             high: inner.low.neg(),
@@ -398,7 +604,7 @@ impl Body<'_> {
                     _ => Interval::ANY,
                 }
             }
-            Expr::BinExpr(binary) => self.binary_interval(binary),
+            Expr::BinExpr(binary) => self.binary_interval(binary, reading),
             // A standard-library operation whose result has a floor its
             // type can't say, as `collection.count`'s is 0 (the operation
             // table's `at_least`).
@@ -409,9 +615,11 @@ impl Body<'_> {
             // `integer.divide` and `decimal.divide` are bounded as `/` is,
             // whichever way they round: rounding away from zero never
             // passes the dividend while the divisor is at least 1.
-            Expr::CallExpr(call) if let Some((dividend, divisor)) = self.division(call) => {
-                divided(self.interval(&dividend), self.interval(&divisor), false)
-            }
+            Expr::CallExpr(call) if let Some((dividend, divisor)) = self.division(call) => divided(
+                self.interval(&dividend, reading),
+                self.interval(&divisor, reading),
+                false,
+            ),
             other => match self.facts.types.get(&node_key(other.syntax())) {
                 Some(ty) => self.type_interval(ty),
                 None => Interval::ANY,
@@ -430,7 +638,7 @@ impl Body<'_> {
         }
     }
 
-    fn binary_interval(&self, binary: &ast::BinExpr) -> Interval {
+    fn binary_interval(&self, binary: &ast::BinExpr, reading: &mut Reading) -> Interval {
         let (Some(lhs), Some(rhs)) = (binary.lhs(), binary.rhs()) else {
             return Interval::ANY;
         };
@@ -438,8 +646,8 @@ impl Body<'_> {
             .op()
             .map(|token| token.text().to_string())
             .unwrap_or_default();
-        let a = self.interval(&lhs);
-        let b = self.interval(&rhs);
+        let a = self.interval(&lhs, reading);
+        let b = self.interval(&rhs, reading);
         match op.as_str() {
             "+" => Interval {
                 low: add(a.low, b.low, true),

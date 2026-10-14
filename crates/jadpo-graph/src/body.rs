@@ -12,7 +12,8 @@
 //! which rules they can break and the failure each rule maps to. Locals
 //! are numbered too, parameters first. Branches (an `if`'s two ways, each
 //! arm of a `match`) are numbered in source order for path numbers and
-//! coverage (area 16).
+//! coverage (area 16). A construction an `if` condition proves records the
+//! comparisons that prove it.
 
 use jadpo_std::{Num, Op};
 
@@ -50,6 +51,9 @@ pub struct Body {
     /// What each name written in it refers to, by byte range, in source
     /// order.
     pub names: Vec<Name>,
+    /// Each construction whose rules an `if` condition proves, in source
+    /// order (area 2, "Conditions as proof").
+    pub proofs: Vec<Proof>,
 }
 
 impl Body {
@@ -473,6 +477,17 @@ pub enum ArmBody {
     Value(SiteId),
     Block(Vec<SiteId>),
     Empty,
+}
+
+/// A construction an `if` condition proves at least one rule of (area 2,
+/// "Conditions as proof"): the construction, and the comparisons whose
+/// bounds prove it, in source order. A rule they prove takes no arm, and
+/// a construction they prove entirely takes no `attempt` and runs no
+/// check.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Proof {
+    pub site: SiteId,
+    pub by: Vec<SiteId>,
 }
 
 /// One condition of an `if` chain and the block it runs.

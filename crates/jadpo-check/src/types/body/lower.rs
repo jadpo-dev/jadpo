@@ -6,6 +6,8 @@
 //! name means what the check found it to mean, so the typed body, the
 //! diagnostics and everything that reads the body agree.
 
+use std::collections::BTreeMap;
+
 use jadpo_graph::body::{
     self as typed, ArmBody, BinaryOp, Branch, BranchId, Callee, Literal, LocalId, Pattern, Refers,
     SiteId, Stmt as TypedStmt, UnaryOp,
@@ -16,7 +18,7 @@ use jadpo_syntax::{SyntaxKind, SyntaxNode};
 
 use super::super::rules::Const;
 use super::super::ty::{Prim, Ty};
-use super::facts::{BuildFact, Facts, PatternFact, Reach, node_key};
+use super::facts::{BuildFact, Facts, NodeKey, PatternFact, Reach, node_key};
 use super::{Body, Fallible, LocalKind};
 use crate::graph::paths::Resolver;
 use crate::graph::{
@@ -45,6 +47,7 @@ pub(super) fn lower(
         sites: Vec::new(),
         branches: Vec::new(),
         refers: Vec::new(),
+        at: BTreeMap::new(),
     };
     let mut body = typed::Body::default();
     for (id, local) in checker.facts.locals.iter().enumerate() {
@@ -75,6 +78,7 @@ pub(super) fn lower(
         lower.type_names(ty.syntax());
     }
     body.block = lower.block(block);
+    body.proofs = lower.proofs();
     body.sites = lower.sites.into_iter().flatten().collect();
     body.branches = lower.branches;
     lower.refers.sort_by_key(|name| (name.start, name.end));
@@ -176,6 +180,8 @@ struct Lower<'a> {
     sites: Vec<Option<typed::Site>>,
     branches: Vec<Branch>,
     refers: Vec<typed::Name>,
+    /// The site each expression became.
+    at: BTreeMap<NodeKey, SiteId>,
 }
 
 impl Lower<'_> {
@@ -420,11 +426,35 @@ impl Lower<'_> {
             return self.expr(&inner);
         }
         let id = self.alloc();
+        self.at.insert(node_key(expr.syntax()), SiteId(id as u32));
         let ty = self.type_of(expr);
         let lowered = self.expr_node(expr);
         let ty = self.ty(&ty);
         self.fill(id, expr.syntax(), ty, typed::Node::Expr(lowered));
         SiteId(id as u32)
+    }
+
+    /// Each construction a condition proves a rule of, with the
+    /// comparisons that prove it, in source order.
+    fn proofs(&self) -> Vec<typed::Proof> {
+        let mut out: Vec<typed::Proof> = self
+            .facts
+            .proofs
+            .iter()
+            .filter_map(|(key, proved)| {
+                let site = *self.at.get(key)?;
+                let mut by: Vec<SiteId> = proved
+                    .iter()
+                    .flat_map(|(_, by)| by.iter())
+                    .filter_map(|origin| self.at.get(&origin.key).copied())
+                    .collect();
+                by.sort_unstable();
+                by.dedup();
+                Some(typed::Proof { site, by })
+            })
+            .collect();
+        out.sort_by_key(|proof| proof.site);
+        out
     }
 
     fn expr_node(&mut self, expr: &Expr) -> typed::Expr {

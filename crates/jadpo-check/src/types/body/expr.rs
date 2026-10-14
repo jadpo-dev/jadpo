@@ -831,9 +831,9 @@ impl Body<'_> {
                     && self.out.len() == before
                     && !actual.has_error()
                 {
-                    let breakable = self.breakable(&value, &actual, &field_ty);
-                    if !breakable.is_empty() {
-                        self.field_unproved(&value, &field_ty, &breakable);
+                    let verdict = self.verdict(&value, &actual, &field_ty);
+                    if !verdict.breakable.is_empty() {
+                        self.field_unproved(&value, &field_ty, &verdict.breakable);
                     }
                 }
             }
@@ -872,8 +872,8 @@ impl Body<'_> {
             .insert(node_key(record.syntax()), super::Fallible::Never);
     }
 
-    /// A field value the declared ranges don't prove follows the rules its
-    /// field adds: it is built first, on its own line, where its failures
+    /// A field value neither the declared ranges nor the conditions around
+    /// it prove follows the rules its field adds: it is built first, on its own line, where its failures
     /// are mapped.
     fn field_unproved(&mut self, value: &Expr, field_ty: &Ty, breakable: &[String]) {
         let field = name_of(field_ty);
@@ -902,7 +902,7 @@ impl Body<'_> {
             )
             .at(span, format!("can break {}", crate::and_list(&written_rules)))
             .reason(format!(
-                "An object literal never fails, so each field gets a value already known to fit; the declared ranges don't prove this one follows {}, which `{field}` adds.",
+                "An object literal never fails, so each field gets a value already known to fit; neither the declared ranges nor a condition before it prove this one follows {}, which `{field}` adds.",
                 crate::and_list(&written_rules)
             ))
             .next(format!(
