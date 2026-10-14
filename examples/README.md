@@ -44,8 +44,9 @@ example.
 - `//` comments are the lesson: what a part is for and why it is written
   that way, said once, where a reader first meets it. Later examples
   don't repeat what earlier ones taught.
-- Each project's README says what the project is about and lists its
-  files in reading order. `app.jadpo` comments only on `application`
+- Each project's README says what the project is about, and its "What
+  it teaches" list names the files in the order to read them, each
+  beside the idea it shows; a file's tests sit beside it. `app.jadpo` comments only on `application`
   itself, where there is something to say, and each file opens with what
   it shows.
 

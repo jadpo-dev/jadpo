@@ -12,7 +12,7 @@ test "pastry is turned down above the middle, meringue never" {
 
 test "the lowest and highest shelves change the crust" {
     assert crust_on(-2) == Crust.pale
-    assert crust_on(2) == Crust.dark
+    assert crust_on(2) == Crust.browned
     assert crust_on(0) == Crust.golden
 }
 

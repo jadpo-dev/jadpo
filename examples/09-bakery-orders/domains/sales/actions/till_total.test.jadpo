@@ -1,0 +1,17 @@
+test "the till charges full price when a code is unknown" {
+    var charged: Pence = attempt till_total(family_basket("OLDCODE"))
+    assert charged == 3860
+}
+
+test "the till still refuses a code worth more than the basket" {
+    var coffee: Basket = Basket {
+        lines: [
+            BasketLine {
+                item: MenuItem.coffee
+                count: 1
+            }
+        ]
+        code: "FIVEPOUNDS"
+    }
+    assert till_total(coffee) fails DiscountTooLarge
+}

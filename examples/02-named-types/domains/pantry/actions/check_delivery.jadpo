@@ -86,14 +86,14 @@ action check_delivery(
 // text.
 
 /// Whether a delivery is the one the bakery is waiting for.
-type Expected = Bool {}
+type AwaitedDelivery = Bool {}
 
 /// Whether a delivery note gives the supplier's usual contacts.
 type UsualContacts = Bool {}
 
 /// Whether `id` is the delivery the bakery is waiting for.
-function expected_delivery(id: DeliveryId) -> Expected {
-    return Expected(id == "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
+function expected_delivery(id: DeliveryId) -> AwaitedDelivery {
+    return AwaitedDelivery(id == "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
 }
 
 /// Whether a delivery note names the supplier's usual contacts.

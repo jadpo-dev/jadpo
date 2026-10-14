@@ -18,7 +18,7 @@ expects.
 4. **Asserting failures.** `assert call(...) fails Failure`, and `attempt` in a test. Same file; [area 13, Assertions](../../docs/language/13-testing.md#assertions).
 5. **Reading a failed test, and a pure test.** What `jadpo test` reports and how to rerun one test, beside a test that calls only the function `stamps_to_go`. See `actions/redeem_card.test.jadpo`, `actions/redeem_card.jadpo` and [area 13, What a failed test reports](../../docs/language/13-testing.md#what-a-failed-test-reports).
 
-Example 08 shows a fixture another domain's tests can call.
+The types and failures in `domains/loyalty/types/` and `failures/` are short; read them as the actions mention them. Example 08 shows a fixture another domain's tests can call.
 
 ## Run it
 

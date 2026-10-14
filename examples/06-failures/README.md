@@ -14,14 +14,14 @@ fail says at the call site what happens when it does.
 1. **Declaring failures.** One per file in `failures/`: `kind`, `message`, `code`, and `client` and `internal` fields, across all seven kinds an application declares. See `domains/sales/failures/` and [area 4, Declaring a failure](../../docs/language/04-failures.md#declaring-a-failure).
 2. **`fails` and `reject`.** A function that fails, and a failure raised with its fields. See `actions/reserve_cakes.jadpo` and [area 4, Raising a failure](../../docs/language/04-failures.md#raising-a-failure-reject).
 3. **Checks that can fail.** `attempt CakeCount(n) { max: OrderTooLarge }`: an arm for each rule that can break, and a check the compiler proves can't fail. See `actions/double_order.jadpo` and [area 4, Passing a failure on](../../docs/language/04-failures.md#passing-a-failure-on-attempt).
-4. **One failure for every rule.** `invalid:` alone covers every rule that can break, for a count keyed in at the till, and only a construction's rules. See `actions/key_in_order.jadpo` and [area 2, Construction failures by rule](../../docs/language/02-values-and-types.md#construction-failures-by-rule).
+4. **One failure for many rules.** `invalid:` alone covers every rule that can break, for a count keyed in at the till, and only a construction's rules; beside an arm of its own for one rule, it covers the rest. See `actions/key_in_order.jadpo`, then `actions/check_icing.jadpo`, and [area 2, Construction failures by rule](../../docs/language/02-values-and-types.md#construction-failures-by-rule).
 5. **A condition as proof.** An `if` tells the compiler the range inside it, so `CakeCount(count * 2)` takes no `attempt`. See `actions/double_if_room.jadpo` and [area 2, Conditions as proof](../../docs/language/02-values-and-types.md#conditions-as-proof).
 6. **Business rules beside type rules.** An empty shelf is raised with `reject` as a `conflict`, not as a broken rule, and that check leaves only `max` able to break. See `actions/order_shelf.jadpo`.
 7. **`Unit` actions.** A failure rejected by name alone and an early `return`. See `actions/check_kitchen.jadpo`.
 8. **Passing failures on.** `attempt` starting a `var`, a `return` or a line of its own. See `actions/place_order.jadpo` and [area 3, Attempt](../../docs/language/03-logic.md#attempt).
 9. **Handling failures.** An outcome `match` that recovers, maps with `reject` and passes on with `propagate`, and hides someone else's order. See `actions/change_order.jadpo` and [area 4, Handling a failure in match](../../docs/language/04-failures.md#handling-a-failure-in-match).
 
-Each action's tests sit beside it, in `<file>.test.jadpo`.
+The types in `domains/sales/types/` are short; read them as the actions mention them. Each action's tests sit beside it, in `<file>.test.jadpo`.
 
 ## Run it
 

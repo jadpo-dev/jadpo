@@ -40,14 +40,12 @@ test "an empty basket and an unknown code fail" {
     assert price_basket(family_basket("NOSUCHCODE")) fails CodeUnknown
 }
 
-test "the till charges full price when a code is unknown" {
-    // A test handles a failure with `match` like any other code: each
-    // failure the call can give needs an arm.
-    var charged: Pence = match price_basket(family_basket("OLDCODE")) {
-        success(receipt) -> receipt.total
-        CodeUnknown -> 3860
-        BasketEmpty -> 0
-        DiscountTooLarge -> 0
+test "a percentage off rounds to the nearest penny" {
+    // A pure test: `amount_off` is a function. 10% of 3865 is 386.5, and
+    // a half penny goes to the even penny.
+    var tenth: Discount = Discount.percent {
+        off: 10
     }
-    assert charged == 3860
+    assert amount_off(tenth, 3865) == 386
+    assert amount_off(tenth, 3875) == 388
 }

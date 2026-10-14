@@ -27,15 +27,19 @@ arrived_at
 article
 article_conflict
 article_not_found
+asked_words
 attachment
 auth_config
 avatar
 avoid
+awaited_delivery
 badge
 badge_name_too_long
 badges
 bake
+bake_for
 bake_loaves
+bakery_day
 baking
 balance
 basket
@@ -54,6 +58,7 @@ book_collection
 booking
 bookings
 bread
+browned
 browser_origin
 browser_session
 budget
@@ -74,6 +79,7 @@ cake_request
 cake_size
 cake_sold_out
 cake_stand
+can_take
 cancel_unpaid_orders
 candle_count
 candles
@@ -97,6 +103,7 @@ charged
 check_allergens
 check_delivery
 check_due
+check_icing
 check_kitchen
 check_note
 check_shelf
@@ -122,6 +129,7 @@ contact_address
 contact_email
 contact_text
 count_ingredients
+count_out_of_range
 count_refused
 count_tiers
 count_todos
@@ -179,7 +187,7 @@ discount_for
 discount_too_large
 display_name
 display_word
-double_checked
+double_if_room
 double_order
 double_quantity
 doubled_checked
@@ -205,6 +213,7 @@ emptied
 empty_customer_patch
 empty_note_patch
 empty_patch
+entered
 entry_count
 entry_id
 eur
@@ -224,7 +233,6 @@ finish_magic_link
 first_conflict
 first_quantity
 flapjack
-flipped
 flour
 flour_for
 flour_short
@@ -235,10 +243,12 @@ from_count
 gbp
 get_patch_item_reviewer
 gluten
+golden
 grain
 grams
 grams_in
 group_name
+half_price
 handle_tenant
 handover
 handover_charge
@@ -251,6 +261,8 @@ home_zone
 hourly_load
 http_status
 icing
+icing_too_long
+icing_unreadable
 illegal_write
 import_reference
 in_group
@@ -276,6 +288,11 @@ item_not_found
 jar_label
 jar_name
 job_run_at
+key_in_order
+keyed_count
+keyed_in
+keypad_entry
+kilograms
 kilos
 kitchen
 kitchen_busy
@@ -358,7 +375,6 @@ notify
 notify_owner
 nut_free
 nuts
-odd_weight
 oidc_audience
 oidc_issuer
 on_payment_succeeded
@@ -387,7 +403,7 @@ outcome_label
 oven_down
 oven_temperature
 ovens
-ovens_on
+ovens_lit
 over_maximum
 overdue
 overdue_reminders
@@ -398,6 +414,7 @@ owner_profile
 owners
 page_todos
 paid
+pale
 pantry
 partner_ref
 party_id
@@ -436,6 +453,7 @@ price_basket
 price_flour
 price_item
 price_line
+price_lines
 price_loaves
 price_per_kilo
 price_text
@@ -509,6 +527,7 @@ reserve_for_cart
 reserve_for_order
 reserve_item
 reserve_stock
+rested
 restock
 retag_todo
 retention_configuration
@@ -548,11 +567,11 @@ set_oven
 severe
 shelf
 shelf_empty
-shelf_for
 shelf_name
 shelvable
 shipment
 shipped
+shop_time
 short_date
 short_product_name
 shout
@@ -573,7 +592,6 @@ split_evenly
 sponge
 stamp_card
 stamp_count
-stamped
 stamped_once
 stamps_to_go
 standard_wait
@@ -603,6 +621,7 @@ temperature_for
 tenant_email
 tenant_handle
 tenant_owner
+tenth
 test_configuration
 ticket_status
 tidy
@@ -612,6 +631,7 @@ tier_count
 tier_name
 tiers_above
 till_share
+till_total
 title
 title_blank
 title_taken
@@ -678,7 +698,6 @@ wet_enough
 white
 wholemeal
 wildcard_failure
-with_count
 with_delivery
 with_todos
 work_address

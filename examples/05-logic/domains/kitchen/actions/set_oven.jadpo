@@ -19,7 +19,7 @@ type OvenTemperature = Int {
 type Crust = Enum {
     pale
     golden
-    dark
+    browned
 }
 
 /// A shelf in the oven, counted from the middle: below it is negative.
@@ -47,7 +47,7 @@ function crust_on(shelf: Shelf) -> Crust {
     // rest, and is only allowed where cases can't be listed.
     return match shelf {
         -2 -> Crust.pale
-        2 -> Crust.dark
+        2 -> Crust.browned
         _ -> Crust.golden
     }
 }
@@ -60,10 +60,10 @@ type KeypadEntry = Text {
 
 /// The bake a keypad entry calls up, or `none` when the oven doesn't
 /// know it.
-function bake_for(entry: KeypadEntry) -> Bake? {
+function bake_for(keyed_in: KeypadEntry) -> Bake? {
     // Text patterns match exact text. Text can't all be listed either, so
     // `_` catches every entry the oven doesn't know.
-    return match entry {
+    return match keyed_in {
         "BREAD" -> Bake.bread
         "PASTRY" -> Bake.pastry
         "MERINGUE" -> Bake.meringue
