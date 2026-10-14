@@ -19,6 +19,7 @@ mod std_lib;
 mod tree;
 pub mod types;
 mod usage;
+mod visibility;
 
 pub use failures::{
     DECLARABLE_KINDS, FailureInfo, FailureTable, MEMBERS as FAILURE_MEMBERS, failure_problems,
@@ -70,6 +71,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(naming_problems(db, project, file).iter().cloned());
             out.extend(resolve_file(db, project, file).iter().cloned());
             out.extend(usage_problems(db, project, file).iter().cloned());
+            out.extend(
+                visibility::public_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(types::type_problems(db, project, file).iter().cloned());
             out.extend(failure_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());

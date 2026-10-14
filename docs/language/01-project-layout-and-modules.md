@@ -477,6 +477,12 @@ public fixture two_open_todos() -> TodoCount {
 }
 ```
 
+```jadpo check project=e-fixture-from-action file=tests/open_todos.test.jadpo hidden
+test "planning starts with two open todos" {
+    assert planning.two_open_todos() == 2
+}
+```
+
 ```jadpo check project=e-fixture-from-action file=domains/planning/actions/count_todos.jadpo expect=semantic.not_callable
 action count_todos() -> TodoCount {
     return two_open_todos()
@@ -494,7 +500,7 @@ error: An action can't call fixture `two_open_todos`
   rule: semantic.not_callable
   help: docs/language/01-project-layout-and-modules.html#semantic-not-callable
 
-check failed: 1 error, 4 files
+check failed: 1 error, 5 files
 ```
 
 ### `semantic.wrong_name_kind`
@@ -635,6 +641,50 @@ error: A route group can't be `public`
   help: docs/language/01-project-layout-and-modules.html#visibility-public-not-allowed
 
 check failed: 1 error, 2 files
+```
+
+### `visibility.public_unused`
+
+`public` offers a declaration to the rest of the project, so it marks only
+what something outside the domain uses: another domain's code or tests, a
+root `tests/` scenario, or the signature of a public declaration one of them
+uses. The domain's own tests don't count, and a package's public members are
+its interface to other projects, so they are exempt (area 11):
+
+```jadpo check project=e-public-unused file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-public-unused file=domains/planning/types/todo_count.jadpo hidden
+type TodoCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-public-unused file=domains/planning/actions/count_todos.test.jadpo
+test "two todos are open" {
+    assert count_todos() == 2
+}
+```
+
+```jadpo check project=e-public-unused file=domains/planning/actions/count_todos.jadpo expect=visibility.public_unused
+public action count_todos() -> TodoCount {
+    return 2
+}
+```
+
+```text output
+error: `count_todos` is `public`, but nothing outside `planning` uses it
+ --> domains/planning/actions/count_todos.jadpo:1:1
+  |
+1 | public action count_todos() -> TodoCount {
+  | ^^^^^^ offered to no one
+  reason: `public` offers a declaration to other domains, and no other domain's code or tests, no root `tests/` scenario and no public declaration they use names `count_todos`; `planning`'s own tests don't count.
+  next: Remove `public` (agent)
+  rule: visibility.public_unused
+  help: docs/language/01-project-layout-and-modules.html#visibility-public-unused
+
+check failed: 1 error, 4 files
 ```
 
 ### `semantic.own_domain_qualification`
@@ -1320,7 +1370,11 @@ build/
   tests, fixtures and seeds: another domain's tests call a public fixture
   through its domain, `planning.alice_with_todos()` (area 13). `public` on
   anything else (a function, a route group, a schedule, a subscriber, a
-  test or a seed) is `visibility.public_not_allowed`, and an own-domain action or query called
+  test or a seed) is `visibility.public_not_allowed`, and `public` on a
+  declaration nothing outside its domain uses is `visibility.public_unused`
+  (another domain's code or tests, a root `tests/` scenario, or the
+  signature of a public declaration one of them uses; the domain's own
+  tests don't count). An own-domain action or query called
   as `planning.snooze_todo()` from inside `planning` is
   `semantic.own_domain_qualification`. A public action is the domain's write interface: checkout in
   `ordering` can call `inventory.reserve_stock(...)` and both changes commit

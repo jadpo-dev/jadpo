@@ -199,6 +199,12 @@ fn in_project(path: &str, text: &str) -> Vec<String> {
                 "domains/pantry/actions/weigh.jadpo",
                 "public action weigh(count: SackCount) -> Grams {\n    return sacks.grams_in(count)\n}\n",
             ),
+            // What makes the pantry's declarations public: another part
+            // of the project uses them (area 1, "Unused `public`").
+            (
+                "tests/the_pantry_weighs.test.jadpo",
+                "test \"the pantry weighs a sack\" {\n    assert pantry.weigh(1) == 16000\n}\n",
+            ),
             (path, text),
         ],
     )

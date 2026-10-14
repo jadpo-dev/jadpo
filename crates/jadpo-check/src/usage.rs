@@ -23,11 +23,11 @@ use crate::types::{callables_of, typed_body};
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Mentions {
     /// Types, entities and failures it names, and callables it calls.
-    names: BTreeSet<String>,
+    pub(crate) names: BTreeSet<String>,
     /// The library functions it calls.
-    library_calls: BTreeSet<(String, String)>,
+    pub(crate) library_calls: BTreeSet<(String, String)>,
     /// Failures it raises with `reject` or maps a construction's rules to.
-    raised: BTreeSet<String>,
+    pub(crate) raised: BTreeSet<String>,
 }
 
 /// What one file mentions: in its declarations, every upper-case name

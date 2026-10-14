@@ -435,6 +435,8 @@ rules! {
         "01-project-layout-and-modules.html#visibility-private-cross-domain", "Another domain uses a private declaration";
     VISIBILITY_PUBLIC_NOT_ALLOWED: "visibility.public_not_allowed", area 1, Error, Agent,
         "01-project-layout-and-modules.html#visibility-public-not-allowed", "Declaration can't be public";
+    VISIBILITY_PUBLIC_UNUSED: "visibility.public_unused", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#visibility-public-unused", "Public declaration no other domain uses";
 }
 
 /// Looks a rule up by id, for tools that read ids back from JSON.
