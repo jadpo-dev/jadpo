@@ -194,7 +194,7 @@ reference only).
   the test database template.
 - [x] **3.2 Queries:** `opus · high` filters, order, pages, includes, selected columns,
   `jadpo sql`.
-- [ ] **3.3 Writes:** `opus · xhigh` entity operations, conflicts, concurrent-change rerun,
+- [x] **3.3 Writes:** `opus · xhigh` entity operations, conflicts, concurrent-change rerun,
   counters.
 - [ ] **3.4 Lifecycle and purge.** `opus · high`
 - [ ] **3.5 Imports** `opus · xhigh` (area 1, "Imports", 2026-10-14):
