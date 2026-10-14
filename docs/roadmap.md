@@ -192,7 +192,7 @@ reference only).
 
 - [x] **3.1 Entities, migrations and PostgreSQL:** `opus · high` snapshots, system tables,
   the test database template.
-- [ ] **3.2 Queries:** `opus · high` filters, order, pages, includes, selected columns,
+- [x] **3.2 Queries:** `opus · high` filters, order, pages, includes, selected columns,
   `jadpo sql`.
 - [ ] **3.3 Writes:** `opus · xhigh` entity operations, conflicts, concurrent-change rerun,
   counters.
