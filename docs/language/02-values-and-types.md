@@ -1063,7 +1063,9 @@ output Basket {
 :::
 
 A collection keeps its element type: a `List<Customer.email>` is not a
-`List<Email>`. Collections are written as types today, but there are no list
+`List<Email>`, and nothing converts one collection into another:
+`List<Tag>(names)` is `type.constructor_input`, since only a named type is
+built from a value (built in chunk 2.7). Collections are written as types today, but there are no list
 literals, no iteration and no collection functions yet; lists come from
 queries and request bodies (Review, question 4).
 

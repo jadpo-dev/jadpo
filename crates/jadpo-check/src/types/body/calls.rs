@@ -50,9 +50,57 @@ impl Body<'_> {
         call: &ast::CallExpr,
         expected: Option<&Ty>,
     ) -> (Ty, CallKind) {
+        let before = self.out.len() + self.resolved.len();
         let (ty, kind, reach) = self.resolve_call(call, expected);
+        // Nothing reaches a call no one has explained: it would check clean
+        // and then fault as something that can't be called.
+        if matches!(reach, Reach::Unknown) && self.out.len() + self.resolved.len() == before {
+            self.uncallable(call);
+        }
         self.facts.reaches.insert(node_key(call.syntax()), reach);
         (ty, kind)
+    }
+
+    /// A call that reaches nothing, when nothing more specific was said.
+    fn uncallable(&mut self, call: &ast::CallExpr) {
+        let written = call
+            .expr()
+            .map(|callee| tree::written(callee.syntax()))
+            .unwrap_or_default();
+        let span = call
+            .expr()
+            .map_or_else(|| self.span(call), |callee| self.span(&callee));
+        self.out.push(
+            Diagnostic::new(
+                &rule::SEMANTIC_UNKNOWN_CALLEE,
+                format!("`{written}` isn't something Jadpo can call"),
+            )
+            .at(span, "reaches nothing")
+            .reason("A call reaches a function, action, query or fixture, a library's function, a standard-library operation, an entity's operation, or a named type being built; this names none of them.")
+            .next("Call a declared function, action or query by its owner and its name"),
+        );
+    }
+
+    /// `List<Tag>(xs)`: a collection type isn't a constructor. Only a named
+    /// type is built from a value (area 2), and a collection keeps its
+    /// element type, so there is no conversion from one to another.
+    fn collection_constructor(&mut self, callee: &Expr, call: &ast::CallExpr) {
+        self.args_only(call);
+        let written = tree::written(callee.syntax());
+        let span = self.span(callee);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_CONSTRUCTOR_INPUT,
+                format!("`{written}` isn't built from a value"),
+            )
+            .at(span, "a collection type")
+            .reason(format!(
+                "Only a named type is built from a value, re-checking its rules. A collection keeps its element type, so nothing converts another collection into a `{written}`, even where each item would fit."
+            ))
+            .next(format!(
+                "Make each item the element type where it is made, then write the `{written}` as `[a, b]`"
+            )),
+        );
     }
 
     /// The one place a call is resolved: what it reaches, checked, with its
@@ -125,6 +173,10 @@ impl Body<'_> {
                 (sig.result, call_kind, reach)
             }
             Some(callee @ Expr::FieldExpr(_)) => self.dotted_call(&callee, call, expected),
+            Some(callee @ Expr::GenericExpr(_)) => {
+                self.collection_constructor(&callee, call);
+                (Ty::Error, CallKind::Other, Reach::Unknown)
+            }
             Some(other) => {
                 self.infer(&other);
                 self.args_only(call);
@@ -155,7 +207,7 @@ impl Body<'_> {
                 let reach = Reach::Construct(Ty::Field(head.clone(), rest.clone()));
                 return (ty, CallKind::Pure(format!("{written}(...)")), reach);
             }
-            if self.callable_kind(&head) == Some(ItemKind::Entity) {
+            if self.callable_kind(&head) == Some(ItemKind::Entity) && rest.len() == 1 {
                 // An entity's operations read and write stored data
                 // (areas 5 and 6).
                 if self.context.is_pure() {
@@ -173,10 +225,30 @@ impl Body<'_> {
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
         if self.is_local(&head) {
-            // Values have no methods; resolution and area 2 own `x.f(...)`.
+            // Values have no methods.
             self.read(&first);
             self.args_only(call);
+            let span = self.span(callee);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_NOT_CALLABLE,
+                    format!("`{written}` is a value's member and can't be called"),
+                )
+                .at(span, "not callable")
+                .reason(format!(
+                    "`{head}` is a variable, and a value has no operations of its own: Jadpo calls functions, actions, queries, library functions and the standard library's operations, never a value's methods."
+                ))
+                .next(format!("Pass `{head}` to a function or an operation instead")),
+            );
             return (Ty::Error, CallKind::Other, Reach::Unknown);
+        }
+        if self.symbols.is_connection(&head) {
+            // A connection's operations, `connection.resource.operation`,
+            // come with area 11.
+            let span = self.span(callee);
+            self.not_built_yet(span, &written);
+            self.args_only(call);
+            return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
         }
         let [member] = rest.as_slice() else {
             self.args_only(call);

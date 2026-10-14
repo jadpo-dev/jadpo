@@ -214,8 +214,13 @@ impl Body<'_> {
                 .next(format!("Convert it with `{target}({written})`"))
                 .edit(Span::new(self.path, span.start, span.start), format!("{target}("))
                 .edit(Span::new(self.path, span.end, span.end), ")")
-        } else if !actual.has_error() && self.table.assignable(expected, actual) {
-            // A general value where a refinement of it is required.
+        } else if !actual.has_error()
+            && !expected.has_unknown()
+            && matches!(expected.strip_nullable(), Ty::Named(_) | Ty::Field(..))
+            && self.table.assignable(expected, actual)
+        {
+            // A general value where a refinement of it is required: only a
+            // named type or a field type is built from a value.
             let target = expected.strip_nullable().to_string();
             problem
                 .reason(format!(

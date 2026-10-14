@@ -150,7 +150,7 @@ fn a_collection_type_is_not_a_constructor() {
     );
     assert_eq!(
         check(&format!(
-            "{LISTS}function names(xs: List<Name>) -> Pair {{\n    var s: Set<Name> = Set<Name>(xs)\n    return s\n}}\n"
+            "{LISTS}function names(xs: List<Name>) -> List<Name> {{\n    return List<Name>(xs)\n}}\n"
         )),
         ["type.constructor_input"]
     );
@@ -243,6 +243,13 @@ fn a_member_of_a_type_that_is_not_a_field_is_reported() {
             "{LISTS}function f(n: Count) -> Count {{\n    return Count.nothing(n)\n}}\n"
         )),
         ["semantic.unknown_callee"]
+    );
+    // A value has no operations of its own.
+    assert_eq!(
+        check(&format!(
+            "{LISTS}function f(n: Count) -> Count {{\n    return n.nothing(1)\n}}\n"
+        )),
+        ["semantic.not_callable"]
     );
 }
 
