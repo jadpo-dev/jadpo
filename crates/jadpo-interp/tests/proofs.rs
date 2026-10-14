@@ -162,3 +162,37 @@ fn lists_and_sets_are_probed_at_the_edges_of_their_lengths() {
     })
     .expect("a thread");
 }
+
+#[test]
+fn named_collection_constructions_are_probed_and_checked_again() {
+    // `NameSet(pair)` is proved from `Pair`'s `min_length: 2`, which
+    // proves one distinct item, never two: the probes give lists of one
+    // name over and over, and a value `Pair` refuses breaks the proof.
+    on_large_stack(|| {
+        let files = vec![(
+            "main.jadpo".to_string(),
+            "type Name = Text {\n    max_length: 3\n}\n\ntype Pair = List<Name> {\n    min_length: 2\n}\n\ntype NameSet = Set<Name> {\n    min_length: 1\n}\n\nfunction distinct(pair: Pair) -> NameSet {\n    return NameSet(pair)\n}\n"
+                .to_string(),
+        )];
+        let program = load(&files).expect("it checks").with_proof_checks();
+        let probes = program.probe_arguments("distinct", PROBES).expect("probed");
+        assert!(
+            probes.iter().any(|args| args.first().and_then(Value::items).is_some_and(
+                |items| items.len() > 1 && items.iter().all(|item| *item == items[0])
+            )),
+            "{probes:?}"
+        );
+        let (none, calls) = defects("distinct", &program);
+        assert!(none.is_empty(), "{none:?}");
+        assert!(calls > 3, "probed with lists `Pair` allows: {calls}");
+        let outcome = program
+            .call("distinct", vec![Value::list(Vec::new())])
+            .expect("a call");
+        let found = defect(&program, &outcome).unwrap_or_default();
+        assert!(
+            found.contains("proved follows its type's rules, breaking `min_length: 1`"),
+            "{outcome:?}"
+        );
+    })
+    .expect("a thread");
+}
