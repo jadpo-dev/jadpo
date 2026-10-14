@@ -68,6 +68,23 @@ fn fails_lists_exactly_what_can_leave() {
     );
 }
 
+/// `reserve` passes `SoldOut` on, but its `fails` list forgot it: callers
+/// that `attempt` it or match its outcome are right, so the one error is
+/// the missing declaration, not a `next` step telling them to undo
+/// correct code.
+#[test]
+fn an_undeclared_failure_is_one_error_not_one_per_caller() {
+    let shelf = "type Stock = Int {\n    min: 0\n}\n\ntype SoldOut = Failure {\n    kind: FailureKind.conflict\n}\n\nfunction check_shelf(left: Stock) fails SoldOut -> Stock {\n    if (left == 0) {\n        reject SoldOut\n    }\n    return left\n}\n\naction reserve(left: Stock) -> Stock {\n    return attempt check_shelf(left)\n}\n\naction order(left: Stock) fails SoldOut -> Stock {\n    return attempt reserve(left)\n}\n\naction change(left: Stock) -> Stock {\n    var kept: Stock = match reserve(left) {\n        success(n) -> n\n        SoldOut -> left\n    }\n    return kept\n}\n\ntest \"reserving\" {\n    var n: Stock = attempt reserve(3)\n    assert n == 3\n}\n";
+    assert_eq!(one(shelf), ["failure.undeclared_propagation"]);
+    // A callable that really can't fail still has its callers told.
+    assert_eq!(
+        one(
+            "type Stock = Int {\n    min: 0\n}\n\naction reserve(left: Stock) -> Stock {\n    return left\n}\n\naction order(left: Stock) -> Stock {\n    return attempt reserve(left)\n}\n"
+        ),
+        ["failure.attempt_infallible"]
+    );
+}
+
 #[test]
 fn outcome_match_recovers_maps_and_passes_on() {
     assert_eq!(

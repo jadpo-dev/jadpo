@@ -76,6 +76,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(types::recursion_problems(db, project, file).iter().cloned());
             out.extend(graph::similar_problems(db, project, file).iter().cloned());
         }
+        out.extend(types::call_problems(db, project).iter().cloned());
     }
     sort(&mut out);
     out

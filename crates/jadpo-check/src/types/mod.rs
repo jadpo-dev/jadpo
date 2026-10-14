@@ -20,8 +20,8 @@ mod table;
 mod ty;
 
 pub use body::{
-    Callable, Checked, FailureSet, FailureSets, Fallible, body_problems, callables_of, failure_set,
-    failure_sets, typed_body,
+    Callable, Checked, FailureSet, FailureSets, Fallible, body_problems, call_problems,
+    callables_of, failure_set, failure_sets, typed_body,
 };
 pub use decl::type_problems;
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};

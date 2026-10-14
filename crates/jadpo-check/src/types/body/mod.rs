@@ -86,6 +86,13 @@ pub struct Callable<'db> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Checked {
     pub problems: Vec<Diagnostic>,
+    /// Errors saying a call to another callable can't fail, by that
+    /// callable's name as [`FailureSets`] names it. They hold only when
+    /// the callee's body lets out nothing its `fails` list leaves out, so
+    /// [`call_problems`] reports them after reading every callee.
+    pub deferred: Vec<(String, Diagnostic)>,
+    /// Its body lets out a failure its `fails` list doesn't name.
+    pub undeclared: bool,
     /// For a function, action or library function: its name
     /// (`library.function` for a library's) and the failures that can
     /// leave it.
@@ -156,6 +163,8 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         assigned: Vec::new(),
         set: None,
         out: Vec::new(),
+        deferred: Vec::new(),
+        undeclared: false,
         resolved: Vec::new(),
     };
     let Some(target) = checker.target(&decl, callable.function(db)) else {
@@ -165,10 +174,19 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
     let syntax = target.syntax.clone();
     checker.callable(target);
     let body = lower::lower(&checker, &lookup, file.text(db), &syntax);
-    let mut problems = checker.out;
+    let mut problems = Vec::with_capacity(checker.out.len());
+    let mut deferred = Vec::new();
+    for (index, problem) in checker.out.into_iter().enumerate() {
+        match checker.deferred.iter().find(|(at, _)| *at == index) {
+            Some((_, callee)) => deferred.push((callee.clone(), problem)),
+            None => problems.push(problem),
+        }
+    }
     problems.append(&mut checker.resolved);
     Checked {
         problems,
+        deferred,
+        undeclared: checker.undeclared,
         set: checker.set,
         key,
         body,
@@ -181,6 +199,33 @@ pub fn body_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
     callables_of(db, file)
         .into_iter()
         .flat_map(|callable| typed_body(db, project, callable).problems.iter().cloned())
+        .collect()
+}
+
+/// The errors saying a call can't fail, across the project, leaving out
+/// the calls to a callable whose body lets out a failure its `fails` list
+/// misses: that callable's own `failure.undeclared_propagation` is the one
+/// mistake, and its callers' `attempt`s and outcome `match`es are right
+/// for what it really does. Callees are named as [`FailureSets`] names
+/// them, so a name two domains share counts as one.
+#[salsa::tracked(returns(ref))]
+pub fn call_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let checked: Vec<&Checked> = project
+        .files(db)
+        .iter()
+        .flat_map(|file| callables_of(db, *file))
+        .map(|callable| typed_body(db, project, callable))
+        .collect();
+    let undeclared: std::collections::BTreeSet<&str> = checked
+        .iter()
+        .filter(|checked| checked.undeclared)
+        .filter_map(|checked| checked.set.as_ref().map(|(name, _)| name.as_str()))
+        .collect();
+    checked
+        .iter()
+        .flat_map(|checked| checked.deferred.iter())
+        .filter(|(callee, _)| !undeclared.contains(callee.as_str()))
+        .map(|(_, problem)| problem.clone())
         .collect()
 }
 
@@ -343,6 +388,11 @@ struct Body<'a> {
     /// The callable's name and failure set, once checked.
     set: Option<(String, FailureSet)>,
     out: Vec<Diagnostic>,
+    /// Which of `out` say a call can't fail, with the callee's name: see
+    /// [`Checked::deferred`].
+    deferred: Vec<(usize, String)>,
+    /// See [`Checked::undeclared`].
+    undeclared: bool,
     /// What resolving the body's names finds (area 1), kept apart from
     /// `out`, whose length tells the checks what is already reported, so
     /// a name error never changes what the type checks decide.
