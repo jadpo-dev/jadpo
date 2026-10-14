@@ -121,7 +121,7 @@ reference only).
 - [x] **2.2 Test runner:** `opus · high` file, line, name, seed, failure reports as decided,
   `--json`.
 - [x] **2.3 Watch mode** `opus · high` under the 1-second target on a fixture project.
-- [ ] **2.4 Teaching examples** `opus · high`: commented example projects in
+- [x] **2.4 Teaching examples** `opus · high`: commented example projects in
   `examples/` covering every feature of areas 1–4 and 13 built so far, each
   with its own tests run by `jadpo test` in the gate, and the coverage check
   that fails when a built feature appears in no example
