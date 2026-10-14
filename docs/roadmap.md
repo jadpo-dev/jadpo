@@ -180,7 +180,7 @@ reference only).
   splits into shared data and per-thread caches. Watch keeps the previous
   graph and classifies every edge kind, so later edges can't be missed.
   Bodies and the graph shared behind `Arc`; the duplicated report code
-  merged. A set's canonical order is **needs Richard**.
+  merged. Sets use the canonical order area 2 decides ("Set order"), from one shared comparator.
 
 ## Phase 3 — Data (areas 5, 6)
 
