@@ -1,0 +1,7 @@
+test "members are found by name" {
+    var ada: Borrower = ada_borrows_two()
+    var bob: Member = attempt enrol("bob@example.test", "Bob")
+    assert members_named("Ada") == [ada.member]
+    assert members_named("Bob") == [bob]
+    assert members_named("Cy") == []
+}

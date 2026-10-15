@@ -73,3 +73,15 @@ fn the_reviews_reproducers_format_safely() {
         "type Count = Int {}\n\nfunction f(x: Count) -> Count {\n    return x +  // the base\n    1  // plus one\n}\n"
     );
 }
+
+/// A comment alone inside empty brackets, which a mutation of an example
+/// found: it goes on its own line, and formatting again keeps it there.
+#[test]
+fn a_comment_alone_in_empty_brackets_formats_safely() {
+    let text = "action f(\n/// why\n) -> Unit {\n    return\n}\n";
+    assert_eq!(holds(text), Ok(()), "{text}");
+    assert_eq!(
+        format_file("action f(\n// none yet\n) -> Unit {}\n").expect("formats"),
+        "action f(\n    // none yet\n) -> Unit {}\n"
+    );
+}

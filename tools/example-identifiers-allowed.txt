@@ -16,6 +16,7 @@ blank
 body
 # a statement batch: tokio-postgres's batch_execute and the runtime's Transaction::batch
 batch
+batches
 boxes
 broken
 calculate
@@ -257,13 +258,17 @@ double
 each
 full
 large
+leave
+lost
 medium
 minutes
 needed
 nothing
+out
 over
 percent
 reserved
+returned
 used
 whole
 # ordinary words the test database harness and decimal rounding use

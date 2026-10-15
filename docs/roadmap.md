@@ -196,7 +196,7 @@ reference only).
   `jadpo sql`.
 - [x] **3.3 Writes:** `opus · xhigh` entity operations, conflicts, concurrent-change rerun,
   counters.
-- [ ] **3.4 Lifecycle and purge.** `opus · high`
+- [x] **3.4 Lifecycle and purge.** `opus · high`
 - [ ] **3.5 Imports** `opus · xhigh` (area 1, "Imports", 2026-10-14):
   `use <folder> { Names }` and `use <domain>`, every name not declared in
   the file imported, built-ins never, a test file seeing its subject's

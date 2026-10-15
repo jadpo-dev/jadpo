@@ -624,6 +624,89 @@ impl Part<'_> {
                 .edges
                 .push((key.clone(), EdgeKind::References, target));
         }
+        self.lifecycle(&sections, key, entity);
+    }
+
+    /// An entity's lifecycle node and a node for each of its transitions
+    /// (area 5), keyed under the entity.
+    fn lifecycle(
+        &mut self,
+        sections: &BTreeMap<String, ast::Member>,
+        key: &Key,
+        entity: &crate::data::EntityModel,
+    ) {
+        let (Some(lifecycle), Some(member)) = (&entity.lifecycle, sections.get("lifecycle")) else {
+            return;
+        };
+        let registry = self.lookup.registry();
+        let born = registry.born(Kind::Entity, &entity.name, None);
+        let parts: BTreeMap<String, ast::Member> = tree::members(member.block())
+            .into_iter()
+            .filter_map(|(name, member)| Some((tree::name_text(&name)?, member)))
+            .collect();
+        let shown = |member: Option<&ast::Member>| {
+            member.and_then(|m| m.value()).map(|value| {
+                value
+                    .syntax()
+                    .text()
+                    .to_string()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+        };
+        let lifecycle_key =
+            registry.key(Kind::Lifecycle, &entity.name, Some((&entity.name, &born)));
+        let mut node = self.node(
+            lifecycle_key.clone(),
+            Kind::Lifecycle,
+            entity.name.clone(),
+            member.syntax().clone(),
+        );
+        node.parent = Some(key.clone());
+        node.doc = None;
+        node.detail = Detail::Lifecycle {
+            visible: lifecycle.visible.as_ref().and(shown(parts.get("visible"))),
+            purge: lifecycle
+                .purge
+                .as_ref()
+                .map(|purge| format!("after {} since {}", purge.after_written, purge.since)),
+        };
+        self.out.nodes.push(node);
+        let transitions: BTreeMap<String, ast::Member> = parts
+            .get("transitions")
+            .map(|m| tree::members(m.block()))
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(name, member)| Some((tree::name_text(&name)?, member)))
+            .collect();
+        for transition in &lifecycle.transitions {
+            let Some(member) = transitions.get(&transition.name) else {
+                continue;
+            };
+            let when = tree::members(member.block())
+                .into_iter()
+                .find(|(name, _)| tree::name_text(name).as_deref() == Some("when"))
+                .map(|(_, member)| member);
+            let mut node = self.node(
+                crate::types::transition_key(registry, &entity.name, &transition.name),
+                Kind::Transition,
+                format!("{}.{}", entity.name, transition.name),
+                member.syntax().clone(),
+            );
+            node.parent = Some(lifecycle_key.clone());
+            node.doc = None;
+            node.detail = Detail::Transition {
+                when: transition.when.as_ref().and(shown(when.as_ref())),
+                guarded: transition.guarded,
+                sets: transition
+                    .set
+                    .iter()
+                    .map(|(field, _)| field.clone())
+                    .collect(),
+            };
+            self.out.nodes.push(node);
+        }
     }
 
     /// The written fields of an object or entity, and a node for each

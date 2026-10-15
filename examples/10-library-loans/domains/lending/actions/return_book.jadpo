@@ -1,7 +1,13 @@
-// `Loan.delete(loan)` removes the record. Nothing refers to a loan, so
-// nothing can refuse it and it can't fail.
+// A lifecycle's transition is an operation of its entity, run on a record
+// read earlier or by its `id`. `check_in` is allowed only while the loan
+// is out, so it can be refused, and `conflict:` maps that refusal, keyed
+// by the transition, as it maps a unique rule.
 
 /// Takes a copy back.
-action return_book(loan: Loan) -> Unit {
-    Loan.delete(loan)
+action return_book(loan: Loan) fails LoanNotOut -> Loan {
+    return attempt Loan.check_in(loan) {
+        conflict: {
+            Loan.check_in: LoanNotOut
+        }
+    }
 }

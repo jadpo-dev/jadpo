@@ -16,4 +16,29 @@ entity Member {
     joined_at: Instant {
         generated: Generated.on_create
     }
+    // Set when the member leaves, by the lifecycle's `delete` below.
+    left_at: Instant?
+
+    // A lifecycle says when a record drops out of view. `visible:` is a
+    // condition on the record's own fields: a member who has left is in no
+    // query, and reading or writing one by `id` finds nothing. `delete` is
+    // a transition, so `Member.delete(member_id)` sets `left_at` rather
+    // than removing the row, and only transitions change `left_at`. Purge
+    // removes a member for good 30 days after they left, with their card
+    // and loans, which `cascade` from them.
+    lifecycle: {
+        visible: left_at == none
+        transitions: {
+            delete: {
+                when: left_at == none
+                set: {
+                    left_at: clock.now
+                }
+            }
+        }
+        purge: {
+            after: 30d
+            since: left_at
+        }
+    }
 }

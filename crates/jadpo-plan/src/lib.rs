@@ -16,7 +16,9 @@
 //! - [`QueryPlan`]s and [`EntityPlan`]s: the SQL each query and `get`
 //!   runs, with its parameters and row codecs (chunk 3.2, `queries`), and
 //!   [`WriteSitePlan`]s: what each `create`, `update` and `delete` runs and
-//!   what its refusals raise (chunk 3.3, `writes`).
+//!   what its refusals raise (chunk 3.3, `writes`), with a lifecycle's
+//!   transitions, and the [`PurgePlan`] of each lifecycle's `purge:`
+//!   (chunk 3.4, `purge`).
 //!
 //! Built in chunk 2.10 from the checker's graph and typed bodies; the SQL
 //! of reads and creates joined in chunk 3.2; policy, the other writes,
@@ -25,6 +27,7 @@
 //! by every thread that runs the project.
 
 mod constant;
+mod purge;
 mod queries;
 mod sites;
 mod types;
@@ -39,6 +42,7 @@ use jadpo_graph::body::Body;
 use jadpo_graph::{Key, Kind};
 
 pub use constant::Constant;
+pub use jadpo_std::write::PurgePlan;
 pub use queries::{EntityPlan, MissingPlan, MissingValue, QueryPlan, quoted};
 pub use sites::{ArmPattern, ConstId, Decoded, Given, Raise, SitePlan};
 pub use types::{
@@ -89,6 +93,8 @@ pub struct Plan {
     entities: Vec<EntityPlan>,
     /// Every write site's plan, in the order the callables are numbered.
     writes: Vec<WriteSitePlan>,
+    /// Every lifecycle's purge, by entity name.
+    purges: Vec<PurgePlan>,
 }
 
 impl Plan {
@@ -137,6 +143,12 @@ impl Plan {
             .map(|(key, _, _, body)| (key.clone(), body.as_ref()))
             .collect();
         let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies);
+        let model = jadpo_check::data::data_model(db, project);
+        let purges: Vec<PurgePlan> = model
+            .entities
+            .iter()
+            .filter_map(|entity| purge::plan(model, entity))
+            .collect();
         let mut constants = Vec::new();
         let mut callables = Vec::with_capacity(found.len());
         for (key, kind, file, body) in found {
@@ -182,6 +194,7 @@ impl Plan {
             queries,
             entities,
             writes,
+            purges,
         }
     }
 
@@ -263,5 +276,16 @@ impl Plan {
 
     pub fn write(&self, id: u32) -> Option<&WriteSitePlan> {
         self.writes.get(id as usize)
+    }
+
+    /// Every lifecycle's purge, by entity name (area 5): what the built-in
+    /// purge schedule runs (area 12).
+    pub fn purges(&self) -> &[PurgePlan] {
+        &self.purges
+    }
+
+    /// The purge of the entity called `entity`, when its lifecycle has one.
+    pub fn purge(&self, entity: &str) -> Option<&PurgePlan> {
+        self.purges.iter().find(|plan| plan.entity == entity)
     }
 }

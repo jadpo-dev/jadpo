@@ -226,6 +226,21 @@ pub enum Detail {
         store: String,
         table: String,
     },
+    /// An entity's lifecycle (area 5): which records normal reads see, as
+    /// written, and when hidden ones are purged (`after 30d since
+    /// deleted_at`).
+    Lifecycle {
+        visible: Option<String>,
+        purge: Option<String>,
+    },
+    /// A lifecycle transition (area 5): when it is allowed, as written,
+    /// whether that can refuse a visible record (a conflict its callers
+    /// map), and the fields it sets.
+    Transition {
+        when: Option<String>,
+        guarded: bool,
+        sets: Vec<String>,
+    },
 }
 
 /// What an input field's `default:` fills in when the field is left out

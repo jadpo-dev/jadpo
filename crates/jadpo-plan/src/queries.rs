@@ -22,12 +22,13 @@
 //!   [`Planner::access`], which adds none yet.
 
 use jadpo_check::data::queries::{
-    self as model, Bound, Compare, Condition, Include, IncludeKind, OrderField, QueryModel,
-    Source as From, Value,
+    self as model, Bound, Condition, Include, IncludeKind, OrderField, QueryModel, Source as From,
+    Value,
 };
+use jadpo_check::data::sql::{self, Bind};
 use jadpo_check::data::{DataModel, EntityModel, FieldModel};
 use jadpo_check::lookups::Lookup;
-use jadpo_check::types::{Const, Def, Prim, Ty, TypeView};
+use jadpo_check::types::{Def, Prim, Ty, TypeView};
 use jadpo_graph::{Key, Kind};
 use jadpo_std::read::{
     Cardinality, Column, Field, IncludeRead, IncludeShape, PageRead, Param, ReadPlan, Record,
@@ -80,6 +81,18 @@ pub struct EntityPlan {
     pub not_found: Option<MissingPlan>,
 }
 
+/// How a statement reaches an entity, which decides what [`Planner::access`]
+/// adds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Reach {
+    /// A query, `get`, or the children an include reads.
+    Read,
+    /// The record a reference points at, through an include.
+    Parent,
+    /// An update, a delete or a transition.
+    Write,
+}
+
 /// Builds the plans of a project's queries and entities.
 pub(crate) struct Planner<'a> {
     pub model: &'a DataModel,
@@ -106,6 +119,20 @@ impl Statement {
             }
         };
         format!("${}", at + 1)
+    }
+}
+
+impl Bind for Statement {
+    fn bind(&mut self, value: &Value, ty: SqlType) -> Option<String> {
+        let source = match value {
+            Value::Param { index, path } => Source::Arg {
+                index: *index,
+                path: path.clone(),
+            },
+            Value::Now => Source::Now,
+            _ => return None,
+        };
+        Some(self.param(source, ty))
     }
 }
 
@@ -161,7 +188,7 @@ impl Planner<'_> {
         for line in &query.filter {
             conditions.push(self.condition(&mut statement, entity, line, false)?);
         }
-        conditions.extend(self.access(entity));
+        conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
         let size = match &query.limit {
             Some(Bound::Value(value)) => Some(self.source(value)?),
             _ => None,
@@ -323,7 +350,12 @@ impl Planner<'_> {
                     for line in &include.filter {
                         conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
-                    conditions.extend(self.access(target));
+                    let reach = if include.kind == IncludeKind::Parent {
+                        Reach::Parent
+                    } else {
+                        Reach::Read
+                    };
+                    conditions.extend(self.access(&mut statement, target, reach)?);
                     let mut sql = format!(
                         "SELECT {}\nFROM {}",
                         columns
@@ -348,7 +380,7 @@ impl Planner<'_> {
                     for line in &include.filter {
                         conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
-                    conditions.extend(self.access(target));
+                    conditions.extend(self.access(&mut statement, target, Reach::Read)?);
                     let inner_columns: Vec<String> = columns
                         .names
                         .iter()
@@ -408,11 +440,24 @@ impl Planner<'_> {
     }
 
     /// The conditions an entity's lifecycle and policy add to every
-    /// statement that reads it. Lifecycles (`visible:`) come with chunk
-    /// 3.4 and policy grants with chunk 4.4, which compile them here, so
-    /// every query, include and `get` gets them at once.
-    pub(crate) fn access(&self, _entity: &EntityModel) -> Vec<String> {
-        Vec::new()
+    /// statement that reads or writes it, at this one place: the
+    /// lifecycle's `visible:` (area 5), so a hidden record is in no query,
+    /// `get`, update or delete, and policy grants with chunk 4.4. A parent
+    /// a record refers to is read even when its lifecycle hides it, since
+    /// the reference still holds (area 6, question 10).
+    pub(crate) fn access(
+        &self,
+        bind: &mut dyn Bind,
+        entity: &EntityModel,
+        reach: Reach,
+    ) -> Option<Vec<String>> {
+        let mut out = Vec::new();
+        if reach != Reach::Parent
+            && let Some(visible) = entity.lifecycle.as_ref().and_then(|l| l.visible.as_ref())
+        {
+            out.push(sql::condition(bind, entity, visible, false)?);
+        }
+        Some(out)
     }
 
     // --- conditions ----------------------------------------------------------------
@@ -426,116 +471,7 @@ impl Planner<'_> {
         condition: &Condition,
         negated: bool,
     ) -> Option<String> {
-        Some(match condition {
-            Condition::Compare {
-                field: name,
-                op,
-                value,
-            } => {
-                let field = field(entity, name)?;
-                let column = quoted(&field.born);
-                let ty = column_type(field)?.param();
-                let rendered = self.value(statement, value, ty)?;
-                // Jadpo's meaning when the field is `none`: it meets no
-                // comparison but `!=`, and so meets the negation of every
-                // other.
-                let none_meets = (*op == Compare::NotEqual) != negated;
-                let op = if negated { op.negated() } else { *op };
-                let text = format!("{column} {} {rendered}", op.sql());
-                if field.nullable && none_meets {
-                    format!("({text} OR {column} IS NULL)")
-                } else {
-                    text
-                }
-            }
-            Condition::IsNone {
-                field: name,
-                negated: written,
-            } => {
-                let field = field(entity, name)?;
-                let is_not = *written != negated;
-                format!(
-                    "{} IS {}NULL",
-                    quoted(&field.born),
-                    if is_not { "NOT " } else { "" }
-                )
-            }
-            Condition::In { field: name, value } => {
-                let field = field(entity, name)?;
-                let column = quoted(&field.born);
-                let ty = column_type(field)?.param();
-                let text = match value {
-                    Value::List(items) => {
-                        if items.is_empty() {
-                            return Some(if negated { "TRUE" } else { "FALSE" }.to_string());
-                        }
-                        let mut rendered = Vec::new();
-                        for item in items {
-                            rendered.push(self.value(statement, item, ty)?);
-                        }
-                        format!(
-                            "{column} {}IN ({})",
-                            if negated { "NOT " } else { "" },
-                            rendered.join(", ")
-                        )
-                    }
-                    other => {
-                        let source = self.source(other)?;
-                        let n = statement.param(source, ty.array());
-                        if negated {
-                            format!("{column} <> ALL({n})")
-                        } else {
-                            format!("{column} = ANY({n})")
-                        }
-                    }
-                };
-                if negated && field.nullable {
-                    format!("({text} OR {column} IS NULL)")
-                } else {
-                    text
-                }
-            }
-            Condition::And(parts) | Condition::Or(parts) => {
-                let and = matches!(condition, Condition::And(_)) != negated;
-                let mut rendered = Vec::new();
-                for part in parts {
-                    rendered.push(self.condition(statement, entity, part, negated)?);
-                }
-                format!("({})", rendered.join(if and { " AND " } else { " OR " }))
-            }
-            Condition::Not(inner) => {
-                return self.condition(statement, entity, inner, !negated);
-            }
-            Condition::Present { value, condition } => {
-                let ty = match condition.as_ref() {
-                    Condition::Compare { field: name, .. } => {
-                        column_type(field(entity, name)?)?.param()
-                    }
-                    Condition::In { field: name, .. } => {
-                        column_type(field(entity, name)?)?.param().array()
-                    }
-                    _ => return None,
-                };
-                let source = self.source(value)?;
-                let n = statement.param(source, ty);
-                let inner = self.condition(statement, entity, condition, negated)?;
-                format!("({n} IS NULL OR {inner})")
-            }
-        })
-    }
-
-    /// A value as SQL: a literal written into the text, anything else a
-    /// parameter.
-    fn value(&mut self, statement: &mut Statement, value: &Value, ty: SqlType) -> Option<String> {
-        Some(match value {
-            Value::Literal(constant) => literal(constant, ty)?,
-            Value::Variant { variant, .. } => text_literal(variant),
-            Value::List(_) => return None,
-            other => {
-                let source = self.source(other)?;
-                statement.param(source, ty)
-            }
-        })
+        sql::condition(statement, entity, condition, negated)
     }
 
     /// Where a value that isn't written into the text comes from.
@@ -742,7 +678,7 @@ impl Planner<'_> {
             SqlType::Uuid,
         );
         let mut conditions = vec![format!("\"id\" = {id}")];
-        conditions.extend(self.access(entity));
+        conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
         let mut sql = format!(
             "SELECT {}\nFROM {}",
             columns
@@ -807,41 +743,12 @@ impl Planner<'_> {
 
 // --- text -----------------------------------------------------------------------
 
-pub(crate) fn field<'e>(entity: &'e EntityModel, name: &str) -> Option<&'e FieldModel> {
-    entity.fields.iter().find(|f| f.name == name)
-}
+pub use sql::quoted;
+pub(crate) use sql::{column_type, field};
 
 /// A field's column name: its born name, which survives a rename.
 fn born(entity: &EntityModel, name: &str) -> String {
     field(entity, name).map_or_else(|| name.to_string(), |f| f.born.clone())
-}
-
-pub(crate) fn column_type(field: &FieldModel) -> Option<SqlType> {
-    SqlType::of_column(field.sql_type.as_deref()?)
-}
-
-/// An identifier, always quoted: a table called `user` or `order` is a
-/// keyword unquoted.
-pub fn quoted(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
-}
-
-fn text_literal(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "''"))
-}
-
-/// A literal written into a statement for a column of type `ty`.
-fn literal(constant: &Const, ty: SqlType) -> Option<String> {
-    Some(match constant {
-        Const::Str(text) => text_literal(text),
-        Const::Number { value, .. } => value.to_string(),
-        Const::Bool(true) => "TRUE".to_string(),
-        Const::Bool(false) => "FALSE".to_string(),
-        Const::Duration(written) if ty == SqlType::Int8 => {
-            jadpo_std::Dur::parse(written)?.millis.to_string()
-        }
-        _ => return None,
-    })
 }
 
 pub(crate) fn where_clause(sql: &mut String, conditions: &[String], indent: &str) {

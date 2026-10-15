@@ -1,0 +1,8 @@
+test "a revoked card makes way for a new one" {
+    var ada: Member = attempt enrol("ada@example.test", "Ada")
+    var card: Card = attempt issue_card(ada.id, "00012345")
+    assert issue_card(ada.id, "00067890") fails CardAlreadyIssued
+    revoke_card(card)
+    var renewed: Card = attempt issue_card(ada.id, "00067890")
+    assert renewed.number == "00067890"
+}

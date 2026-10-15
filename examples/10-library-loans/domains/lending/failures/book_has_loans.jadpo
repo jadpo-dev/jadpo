@@ -1,0 +1,4 @@
+/// The copy has loans on record, so it can't leave the catalogue.
+type BookHasLoans = Failure {
+    kind: FailureKind.conflict
+}

@@ -48,6 +48,7 @@ use crate::tree::{self, node_span};
 use facts::{Facts, LocalFact};
 pub(crate) use facts::{NodeKey, node_key};
 pub use failing::Fallible;
+pub(crate) use lower::transition_key;
 
 /// Which failures can leave one callable (area 4).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]

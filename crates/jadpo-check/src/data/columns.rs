@@ -150,6 +150,7 @@ pub fn system_table(name: &str) -> Table {
                 jadpo_graph::schema::Index {
                     columns: vec!["emitted_at".into()],
                     reason: "system outbox".into(),
+                    predicate: None,
                 },
             );
         }
@@ -182,6 +183,7 @@ pub fn system_table(name: &str) -> Table {
                 jadpo_graph::schema::Index {
                     columns: vec!["status".into(), "next_attempt_at".into()],
                     reason: "system deliveries".into(),
+                    predicate: None,
                 },
             );
         }
@@ -200,6 +202,7 @@ pub fn system_table(name: &str) -> Table {
                 jadpo_graph::schema::Index {
                     columns: vec!["kept_until".into()],
                     reason: "system idempotency keys".into(),
+                    predicate: None,
                 },
             );
         }

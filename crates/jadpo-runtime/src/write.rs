@@ -15,11 +15,11 @@
 //! carries on in a transaction the refusal didn't end.
 
 use jadpo_std::read::Field;
-use jadpo_std::write::{WritePlan, WriteSource};
+use jadpo_std::write::{WriteParam, WritePlan, WriteSource};
 use jadpo_value::Value;
 
 use crate::read::{Interrupt, defect, from_sql, refused, to_sql, uuid_text};
-use crate::{Ctx, Failure, FaultKind, StoreError};
+use crate::{Ctx, Failure, FaultKind, SqlValue, StoreError};
 
 /// What a write did.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,35 +44,7 @@ pub async fn write(
     site: u32,
 ) -> Result<Written, Interrupt> {
     let now = ctx.now();
-    let mut params = Vec::with_capacity(plan.params.len());
-    for param in &plan.params {
-        let value = match &param.source {
-            WriteSource::Input(at) => match inputs.get(*at as usize) {
-                Some(value) => value.clone(),
-                None => return Err(defect(ctx, "a write without one of its inputs", site)),
-            },
-            WriteSource::Field { input, field } => match inputs.get(*input as usize) {
-                Some(Value::Record(record)) => record.get(field).cloned().unwrap_or(Value::None),
-                _ => return Err(defect(ctx, "a write without the record it names", site)),
-            },
-            WriteSource::Supplied { input, field } => match inputs.get(*input as usize) {
-                Some(Value::Record(record)) => Value::Bool(record.supplied(field)),
-                _ => return Err(defect(ctx, "a patch that isn't a record", site)),
-            },
-            WriteSource::AnySupplied { input, fields } => match inputs.get(*input as usize) {
-                Some(Value::Record(record)) => {
-                    Value::Bool(fields.iter().any(|field| record.supplied(field)))
-                }
-                _ => return Err(defect(ctx, "a patch that isn't a record", site)),
-            },
-            WriteSource::NewId => Value::uuid(&uuid_text(&ctx.new_id())),
-            WriteSource::Now => Value::Instant(now),
-        };
-        match to_sql(&value, param.ty) {
-            Ok(sql) => params.push(sql),
-            Err(what) => return Err(defect(ctx, &what, site)),
-        }
-    }
+    let params = params_of(ctx, &plan.params, inputs, site, now)?;
     // A refusal ends a PostgreSQL transaction; a savepoint keeps it going
     // for a caller that handles the failure. Only an action called inside
     // another can have such a caller: the outermost one rolls back.
@@ -133,6 +105,31 @@ pub async fn write(
         Err(error) => return Err(refused(ctx, error, site)),
     };
     let Some(row) = rows.first() else {
+        // A transition whose `when:` can refuse a visible record asks
+        // whether the record is there: then the condition refused it.
+        if let Some(guard) = &plan.guard {
+            let params = params_of(ctx, &guard.params, inputs, site, now)?;
+            let found = match ctx.transaction(&plan.store).await {
+                Ok(transaction) => transaction.query(&guard.sql, &params).await,
+                Err(error) => Err(error),
+            };
+            match found {
+                Ok(rows) if !rows.is_empty() => {
+                    let mut cause =
+                        Failure::new("runtime refused", "TransitionRefused", "transition_refused");
+                    cause.kind = Some("conflict".to_string());
+                    cause.status = Some(409);
+                    let at = guard.refusal;
+                    if let Some(rule) = plan.refusals.get(at as usize) {
+                        cause.internal.push(("rule".to_string(), Value::text(rule)));
+                    }
+                    let cause = ctx.fail(cause, site);
+                    return Ok(Written::Refused { at, cause });
+                }
+                Ok(_) => {}
+                Err(error) => return Err(refused(ctx, error, site)),
+            }
+        }
         if plan.by_id {
             return Ok(Written::Missing);
         }
@@ -169,4 +166,44 @@ pub async fn write(
         }
     }
     Ok(Written::Value(Value::record(&returns.record.ty, fields)))
+}
+
+/// The values of a statement's parameters, from the write's inputs.
+fn params_of(
+    ctx: &mut Ctx<'_>,
+    written: &[WriteParam],
+    inputs: &[Value],
+    site: u32,
+    now: i64,
+) -> Result<Vec<SqlValue>, Interrupt> {
+    let mut params = Vec::with_capacity(written.len());
+    for param in written {
+        let value = match &param.source {
+            WriteSource::Input(at) => match inputs.get(*at as usize) {
+                Some(value) => value.clone(),
+                None => return Err(defect(ctx, "a write without one of its inputs", site)),
+            },
+            WriteSource::Field { input, field } => match inputs.get(*input as usize) {
+                Some(Value::Record(record)) => record.get(field).cloned().unwrap_or(Value::None),
+                _ => return Err(defect(ctx, "a write without the record it names", site)),
+            },
+            WriteSource::Supplied { input, field } => match inputs.get(*input as usize) {
+                Some(Value::Record(record)) => Value::Bool(record.supplied(field)),
+                _ => return Err(defect(ctx, "a patch that isn't a record", site)),
+            },
+            WriteSource::AnySupplied { input, fields } => match inputs.get(*input as usize) {
+                Some(Value::Record(record)) => {
+                    Value::Bool(fields.iter().any(|field| record.supplied(field)))
+                }
+                _ => return Err(defect(ctx, "a patch that isn't a record", site)),
+            },
+            WriteSource::NewId => Value::uuid(&uuid_text(&ctx.new_id())),
+            WriteSource::Now => Value::Instant(now),
+        };
+        match to_sql(&value, param.ty) {
+            Ok(sql) => params.push(sql),
+            Err(what) => return Err(defect(ctx, &what, site)),
+        }
+    }
+    Ok(params)
 }

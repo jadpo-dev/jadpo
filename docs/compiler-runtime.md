@@ -271,8 +271,9 @@ Built so far: every crate above but `jadpo-codegen` and
 failure shapes, constants and the frame table (§2.5), and `jadpo-drivers`
 (PostgreSQL only) and `jadpo-host-native` in chunk 3.1 (§2.6). Since chunk
 3.2 `jadpo-plan` also holds the SQL each query and `get` runs
-(`QueryPlan`, `EntityPlan`), and since chunk 3.3 each write site's
-(`WriteSitePlan`), as the read and write plans `jadpo_std::read` and
+(`QueryPlan`, `EntityPlan`), since chunk 3.3 each write site's
+(`WriteSitePlan`), and since chunk 3.4 each lifecycle's purge
+(`PurgePlan`), as the read and write plans `jadpo_std::read` and
 `jadpo_std::write` define: plain data (statement text, where each
 parameter comes from, how each column becomes a value and a row a
 record) that `jadpo-plan` decides and `jadpo-runtime` runs, so both
@@ -296,7 +297,14 @@ for each query, and each list it includes, the fields it always tests with
 `==` or `in`, in the order its lines name them, then its order's fields,
 unless an index or unique key the table already has serves them; a
 reference's own index goes once a query's index starts with its column.
-Their columns are ascending, which PostgreSQL also reads backwards. What
+Their columns are ascending, which PostgreSQL also reads backwards. Since
+chunk 3.4 an index of an entity with a lifecycle holds only the records
+its `visible:` lets through (`Index::predicate`, a partial index's `WHERE`
+in the snapshot and the migration), unless `visible:` reads `clock.now`,
+and a reference's own index then stays. Conditions become SQL in one
+place, `jadpo_check::data::sql`, which the plans' statements and the
+indexes' predicates both use, through a `Bind` that says where a
+parameter goes. What
 each write can break (`data::write_rules`: an entity's unique rules, its
 references, and the restricting references a delete reaches through every
 `cascade`) is a per-entity query the checker and the plan both read, so a
@@ -510,6 +518,20 @@ edge from the entity to the one it points at. The project's
 its `snapshot.json`, come from no source file and are added when the graph
 is assembled (`graph::records`).
 
+Since chunk 3.4 an entity's lifecycle is read once into a
+`LifecycleModel` on its `EntityModel` (`jadpo_check::data::lifecycle`):
+`visible:` and each transition's `when:` as the queries' `Condition`s on
+the record's own fields, `initial:` and each transition's `set:` as fixed
+values, whether a `when:` can refuse a visible record, the fields the
+lifecycle owns, and `purge:`'s period and field. Under the entity sit a
+`lifecycle Todo` node (its `visible:` and purge, as written) and a
+`transition Todo.delete` node for each transition (its `when:`, whether
+it is guarded, and the fields it sets), which a `conflict:` arm mapping a
+transition's refusal names. `data::write_rules` adds what a body's writes
+need: whether the entity has a lifecycle, the fields it owns, its
+transitions, and a reference through which removing a record would
+cascade to an entity with a lifecycle.
+
 Since chunk 3.2 a query is a built node (area 6): `jadpo_check::data::queries`
 reads each declaration once into a `QueryModel` (its entity, parameters,
 how many records it returns, the record's fields from the entity's fields
@@ -710,8 +732,9 @@ check, such as `Email`'s, is the `format` rule); an object literal never
 fails. An outcome `match` and `assert … fails` work out their call's
 arguments first, so only the call's own failures reach their arms. Effects later areas build (`emit`)
 end in the `not_built_yet` fault where they are reached; since chunk 3.2
-queries and `get` run, and since chunk 3.3 `create`, `update` and `delete`
-(below), and `clock.now` in an action reads the invocation's clock
+queries and `get` run, since chunk 3.3 `create`, `update` and `delete`
+(below), since chunk 3.4 a lifecycle's transitions, which lower to the
+same `Write` node with the transition's key, and `clock.now` in an action reads the invocation's clock
 (`Ctx::now`), the one generated fields and a query's `clock.now` read. A call walks the Rust stack a few frames per
 Jadpo frame, so recursion to the depth limit runs inside
 `on_large_stack`; hosts, `async` frames and codecs come with their areas.
@@ -922,6 +945,29 @@ an advisory one) and refusing a store that applied a migration the project
 doesn't have, one that changed since, or one out of order; `jadpo migrate
 apply` and the test database both run them.
 
+Built in chunk 3.4: `jadpo-plan`'s `Planner::access` adds an entity's
+`visible:` to every query, `get`, child include, update, delete and
+transition, never to the parent an include reads, which stays readable
+while hidden (area 6, question 10); `clock.now` in it is the operation's
+clock, sent as a parameter. A transition's statement is an `UPDATE` of the
+fields its `set:` gives (fixed values written into the text, `clock.now`
+a parameter) and every `on_change` field, with its `when:` in the `WHERE`
+when it can refuse a visible record; a create fills each owned field from
+`initial:`, or `NULL`. A guarded transition's plan carries a `Guard`: when
+the update changes no row, `jadpo_runtime::write` asks with its `SELECT 1`
+whether the record is there and visible, and a row is the refusal its
+`conflict:` arm maps (listed among the plan's refusals as `when:
+Entity.transition`), otherwise the not-found failure or the fault as for
+any write. `jadpo_runtime::purge(host, plan, now)` is purge's entry point,
+outside every action: batch after batch, each its own transaction, one
+`DELETE ... WHERE "id" IN (SELECT ... LIMIT 500 FOR UPDATE SKIP LOCKED)
+RETURNING "id"` of hidden records whose `since:` field is older than `now`
+less `after:`, oldest first, leaving out with `NOT EXISTS` any a
+`restricted` reference holds, directly or through a cascade, until a batch
+comes back short; it returns each batch's count (`Purged`). Area 12's
+hourly purge schedule will call it (chunk 6.2); a live test calls it
+directly (`crates/jadpo-cli/tests/lifecycle.rs`).
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own
@@ -1104,7 +1150,7 @@ it), may use them.
 |---|---|
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
-| 3 | Live PostgreSQL (`--profile quick` skips it): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
+| 3 | Live PostgreSQL (`--profile quick` skips it): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3); lifecycles and their transitions through `jadpo test`, and purge through its entry point (chunk 3.4). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |
 

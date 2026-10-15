@@ -1,0 +1,6 @@
+/// Where a loan's book is.
+type LoanStatus = Enum {
+    out
+    returned
+    lost
+}

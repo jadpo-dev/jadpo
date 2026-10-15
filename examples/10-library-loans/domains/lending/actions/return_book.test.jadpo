@@ -1,0 +1,11 @@
+test "a loan is checked in once" {
+    var ada: Member = attempt enrol("ada@example.test", "Ada")
+    var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)
+    var loan: Loan = attempt lend(dune.id, ada, "2026-11-01")
+    assert loan.status == LoanStatus.out
+    assert loan.returned_at == none
+    var returned: Loan = attempt return_book(loan)
+    assert returned.status == LoanStatus.returned
+    assert returned.returned_at != none
+    assert return_book(returned) fails LoanNotOut
+}

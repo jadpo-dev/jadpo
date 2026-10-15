@@ -28,6 +28,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use jadpo_check::data::lifecycle::SECTIONS as LIFECYCLE_SECTIONS;
 use jadpo_check::data::migrations::DecisionValue;
 use jadpo_check::data::queries::{Condition, Include, SECTIONS};
 use jadpo_check::graph::graph;
@@ -296,6 +297,15 @@ fn built() -> BTreeSet<String> {
             .map(|v| format!("data on_delete {v}")),
     );
     out.insert("data field unique".to_string());
+    // Area 5's lifecycle: its sections, a guarded transition and a
+    // partial index.
+    out.extend(
+        LIFECYCLE_SECTIONS
+            .iter()
+            .map(|section| format!("data lifecycle {section}")),
+    );
+    out.insert("data lifecycle transition when".to_string());
+    out.insert("data lifecycle partial index".to_string());
     // Area 6: a query's sections, how many records it returns, its
     // includes and the shapes of its conditions.
     out.extend(
@@ -395,6 +405,10 @@ const BODY: &[&str] = &[
     "write update with when_supplied",
     "write delete",
     "write delete by id",
+    "write transition",
+    "write transition by id",
+    "write delete runs a transition",
+    "write transition conflict arm",
     "write conflict arm",
     "write conflict arm with fields",
     "expr stored",
@@ -797,6 +811,7 @@ fn body_features(
                 }
                 Expr::Write {
                     op,
+                    transition,
                     by_id,
                     patch,
                     when_supplied,
@@ -807,13 +822,22 @@ fn body_features(
                     if let Some(name) = fallible(can_fail) {
                         out.insert(name);
                     }
-                    out.insert(match (op, by_id) {
-                        (WriteOp::Create, _) => "write create",
-                        (WriteOp::Update, false) => "write update",
-                        (WriteOp::Update, true) => "write update by id",
-                        (WriteOp::Delete, false) => "write delete",
-                        (WriteOp::Delete, true) => "write delete by id",
+                    out.insert(match (op, by_id, transition.is_some()) {
+                        (WriteOp::Create, _, _) => "write create",
+                        (WriteOp::Delete, _, true) => "write delete runs a transition",
+                        (_, false, true) => "write transition",
+                        (_, true, true) => "write transition by id",
+                        (WriteOp::Update, false, false) => "write update",
+                        (WriteOp::Update, true, false) => "write update by id",
+                        (WriteOp::Delete, false, false) => "write delete",
+                        (WriteOp::Delete, true, false) => "write delete by id",
                     });
+                    if conflicts
+                        .iter()
+                        .any(|arm| arm.rule.kind() == Some(Kind::Transition))
+                    {
+                        out.insert("write transition conflict arm");
+                    }
                     if patch.is_some() {
                         out.insert("write update with patch");
                     }
@@ -1014,7 +1038,9 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             | Detail::Columns { .. }
             | Detail::Reference { .. }
             | Detail::Placement { .. }
-            | Detail::SystemTable { .. } => {}
+            | Detail::SystemTable { .. }
+            | Detail::Lifecycle { .. }
+            | Detail::Transition { .. } => {}
         }
     }
     // Area 5's settings and decisions, as the checker read them.
@@ -1031,6 +1057,34 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 used.insert(format!("data on_delete {}", on_delete.name()));
             }
         }
+        if let Some(lifecycle) = &entity.lifecycle {
+            if lifecycle.visible.is_some() {
+                used.insert("data lifecycle visible".to_string());
+            }
+            if !lifecycle.initial.is_empty() {
+                used.insert("data lifecycle initial".to_string());
+            }
+            if !lifecycle.transitions.is_empty() {
+                used.insert("data lifecycle transitions".to_string());
+            }
+            if lifecycle.transitions.iter().any(|t| t.when.is_some()) {
+                used.insert("data lifecycle transition when".to_string());
+            }
+            if lifecycle.purge.is_some() {
+                used.insert("data lifecycle purge".to_string());
+            }
+        }
+    }
+    let schema = jadpo_check::data::schema(db, project);
+    if schema.stores.values().any(|store| {
+        store.tables.values().any(|table| {
+            table
+                .indexes
+                .values()
+                .any(|index| index.predicate.is_some())
+        })
+    }) {
+        used.insert("data lifecycle partial index".to_string());
     }
     // Area 6's queries, as the checker read them.
     let queries = jadpo_check::data::queries::query_models(db, project);

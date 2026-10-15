@@ -122,6 +122,13 @@ def main() -> int:
             checks.append(('live PostgreSQL: writes and concurrent changes',
                            ['cargo', 'test', '--locked', '-p', 'jadpo-cli',
                             '--test', 'writes']))
+            # Lifecycles through `jadpo test`: hidden records, transitions
+            # and their guards; then purge through the runtime's entry
+            # point, with cascades, restricted references and batches
+            # (area 5).
+            checks.append(('live PostgreSQL: lifecycles and purge',
+                           ['cargo', 'test', '--locked', '-p', 'jadpo-cli',
+                            '--test', 'lifecycle']))
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
         # have, so tokio-postgres is proven to build for wasm32 too.

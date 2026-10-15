@@ -1,0 +1,10 @@
+test "a lost copy can't come back, and nothing is lost twice" {
+    var ada: Member = attempt enrol("ada@example.test", "Ada")
+    var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)
+    var loan: Loan = attempt lend(dune.id, ada, "2026-11-01")
+    var lost: Loan = attempt declare_lost(loan.id)
+    assert lost.status == LoanStatus.lost
+    assert return_book(lost) fails LoanNotOut
+    assert declare_lost(loan.id) fails LoanNotOut
+    assert declare_lost("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e") fails LoanNotFound
+}

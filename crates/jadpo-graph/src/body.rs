@@ -285,6 +285,11 @@ pub enum Expr {
     Write {
         entity: Key,
         op: WriteOp,
+        /// The lifecycle transition it runs (area 5): a transition's own
+        /// operation, or a `delete` of an entity whose lifecycle has a
+        /// `delete` transition, which changes the record rather than
+        /// removing it.
+        transition: Option<Key>,
         /// `update` and `delete`: the record loaded earlier, or its `id`.
         target: Option<SiteId>,
         /// Whether `target` is the record's `id`: an update by `id` may read

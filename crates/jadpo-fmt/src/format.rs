@@ -447,6 +447,7 @@ impl Formatter {
         let children = significant_children(node);
         let mut open = nil();
         let mut close = nil();
+        let mut closing: Option<SyntaxToken> = None;
         let mut items: Vec<Doc> = Vec::new();
         let mut i = 0;
         while i < children.len() {
@@ -459,7 +460,7 @@ impl Formatter {
                 NodeOrToken::Token(token)
                     if matches!(token.kind(), R_PAREN | R_BRACK) && i == children.len() - 1 =>
                 {
-                    close = self.token(token);
+                    closing = Some(token.clone());
                 }
                 NodeOrToken::Token(token) if token.kind() == COMMA => {
                     let last_item = !children[i + 1..].iter().any(|c| c.as_node().is_some());
@@ -478,7 +479,35 @@ impl Formatter {
             i += 1;
         }
         if items.is_empty() {
+            // Comments alone inside empty brackets go on their own lines,
+            // indented, with the closing bracket on the line after them.
+            if let Some(token) = &closing
+                && !leading_comments(token).is_empty()
+            {
+                let mut inner = Vec::new();
+                for comment in leading_comments(token) {
+                    if self.printed.contains(&comment.token.text_range().start()) {
+                        continue;
+                    }
+                    inner.push(Doc::HardLine);
+                    inner.push(self.comment(&comment.token));
+                }
+                let trailing = self.trailing(token);
+                return concat([
+                    open,
+                    indent(concat(inner)),
+                    Doc::HardLine,
+                    text(token.text()),
+                    trailing,
+                ]);
+            }
+            if let Some(token) = &closing {
+                close = self.token(token);
+            }
             return concat([open, close]);
+        }
+        if let Some(token) = &closing {
+            close = self.token(token);
         }
         let mut inner = vec![Doc::SoftLine];
         let count = items.len();

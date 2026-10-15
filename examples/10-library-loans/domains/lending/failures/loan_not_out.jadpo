@@ -1,0 +1,4 @@
+/// The loan isn't out: its book came back, or was declared lost.
+type LoanNotOut = Failure {
+    kind: FailureKind.conflict
+}

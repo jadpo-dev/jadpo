@@ -1,12 +1,12 @@
-test "a copy on loan stays in the catalogue until it comes back" {
+test "a copy with loans on record stays in the catalogue" {
     var ada: Member = attempt enrol("ada@example.test", "Ada")
     var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)
     var emma: Book = add_copy("9780141439587", "Emma", Wear.pristine)
     var loan: Loan = attempt lend(dune.id, ada, "2026-11-01")
-    assert withdraw_copy(dune.id) fails BookOnLoan
+    assert withdraw_copy(dune.id) fails BookHasLoans
     attempt withdraw_copy(emma.id)
     assert withdraw_copy(emma.id) fails BookNotFound
-    return_book(loan)
-    attempt withdraw_copy(dune.id)
-    assert withdraw_copy(dune.id) fails BookNotFound
+    var returned: Loan = attempt return_book(loan)
+    assert returned.status == LoanStatus.returned
+    assert withdraw_copy(dune.id) fails BookHasLoans
 }
