@@ -32,7 +32,7 @@ const AHEAD: usize = 4;
 
 /// How many databases wait to be dropped before they are: drops that run at
 /// once share the checkpoint each waits for.
-const DROP_TOGETHER: usize = 16;
+const DROP_BATCH: usize = 16;
 
 /// How many threads make, empty and drop copies at once: PostgreSQL makes
 /// a copy in tens of milliseconds, a few at a time.
@@ -538,7 +538,7 @@ fn work(shared: &Shared, server: &Server, templates: &BTreeMap<String, Template>
                 // Every drop waits for a checkpoint of the whole server,
                 // so drops wait until there are several, or the run is
                 // over, and go together.
-                if (state.done || state.drop.len() >= DROP_TOGETHER)
+                if (state.done || state.drop.len() >= DROP_BATCH)
                     && let Some(name) = state.drop.pop()
                 {
                     break Job::Drop(name);
