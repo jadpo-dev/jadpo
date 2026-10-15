@@ -662,12 +662,17 @@ fn callable(p: &mut Parser<'_>, m: crate::parser::Marker, kind: SyntaxKind, memb
     } else if p.at(COLON) && !p.on_new_line() && (p.nth(1) == IDENT || p.nth(1).is_keyword()) {
         // TypeScript's and Kotlin's `): Type {`.
         let (start, end) = p.range();
+        let spaced = p.prev_end() < start;
         habits::report(
             p,
             &crate::habits::COLON_RESULT,
             (":", "->"),
             (start, end),
-            vec![TextEdit::replace(start, end, "->")],
+            vec![TextEdit::replace(
+                start,
+                end,
+                if spaced { "->" } else { " ->" },
+            )],
             true,
         );
         let m = p.start();

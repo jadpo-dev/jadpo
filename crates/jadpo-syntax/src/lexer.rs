@@ -391,8 +391,19 @@ impl Lexer<'_> {
             self.push(ERROR, start);
             match symbol {
                 Some((written, jadpo, habit)) => {
-                    // `!a` becomes `not a`, with the space a word needs.
-                    let replacement = if written == "!" { "not " } else { jadpo };
+                    // A word needs spaces around it: `a&&b` becomes `a and b`
+                    // and `!a` becomes `not a`.
+                    let spaced = |c: Option<char>| c.is_none_or(char::is_whitespace);
+                    let before = self.text[..start].chars().next_back();
+                    let after = self.peek();
+                    let mut replacement = String::new();
+                    if written != "!" && !spaced(before) {
+                        replacement.push(' ');
+                    }
+                    replacement.push_str(jadpo);
+                    if !spaced(after) {
+                        replacement.push(' ');
+                    }
                     self.habit(
                         start,
                         self.pos,
@@ -537,6 +548,9 @@ impl Lexer<'_> {
                 body.join(&format!("\n{indent}")),
             ));
         }
+        // Without an edit (an unclosed comment, or code after it on its
+        // line) the file doesn't read as its Jadpo form.
+        let clean = !edits.is_empty();
         let next = edits.is_empty().then(|| {
             format!(
                 "Write the comment after `{marker}` at the end of the line, or on lines of its own"
@@ -550,7 +564,7 @@ impl Lexer<'_> {
                 written: if doc { "/** */" } else { "/* */" }.into(),
                 jadpo: marker.into(),
                 edits,
-                clean: true,
+                clean,
                 next,
             },
         );
