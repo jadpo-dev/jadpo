@@ -197,7 +197,7 @@ reference only).
 - [x] **3.3 Writes:** `opus · xhigh` entity operations, conflicts, concurrent-change rerun,
   counters.
 - [x] **3.4 Lifecycle and purge.** `opus · high`
-- [ ] **3.5 Imports** `opus · xhigh` (area 1, "Imports", 2026-10-14):
+- [x] **3.5 Imports** `opus · xhigh` (area 1, "Imports", 2026-10-14):
   `use <folder> { Names }` and `use <domain>`, every name not declared in
   the file imported, built-ins never, a test file seeing its subject's
   declarations; a declaration another file uses moved to a file of its own,
