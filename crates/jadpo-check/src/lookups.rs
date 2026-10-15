@@ -15,7 +15,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 
-use jadpo_db::{Db, ItemKind, Project, Symbol, Symbols, symbols};
+use jadpo_db::{Db, File, ItemKind, Project, Symbol, Symbols, symbols};
 use jadpo_graph::Registry;
 
 use crate::case::to_snake;
@@ -111,6 +111,23 @@ pub fn tests_called<'db>(
         .unwrap_or_default();
     found.sort();
     found
+}
+
+/// Every file by its project-relative path.
+#[salsa::tracked(returns(ref))]
+pub fn files_by_path(db: &dyn Db, project: Project) -> BTreeMap<String, File> {
+    project
+        .files(db)
+        .iter()
+        .map(|file| (file.path(db).clone(), *file))
+        .collect()
+}
+
+/// The file at the project-relative path `path`: what a check that reads
+/// one declaration's file depends on, rather than the list of every file.
+#[salsa::tracked(returns(copy))]
+pub fn file_at<'db>(db: &'db dyn Db, project: Project, path: Name<'db>) -> Option<File> {
+    files_by_path(db, project).get(path.text(db)).copied()
 }
 
 /// Every declared name by the file name it folds to (`TodoList` and

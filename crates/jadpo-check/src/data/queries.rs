@@ -13,21 +13,24 @@
 //! fills. Values in a query are parameters and their fields, literals,
 //! enum values, lists of those and `clock.now`: a query computes nothing.
 //!
-//! [`query_models`] reads every query once, since a query's checks read
-//! entities, types and failures across files; [`query_problems`] gives one
-//! file's share.
+//! Each query is read by name ([`query_read`]) into a model without
+//! positions ([`query_model`]) and the problems found in it, reading the
+//! entities, types and failures it names by name too, so an edit reads
+//! again only the query it is in, or a query that names what changed;
+//! [`query_problems`] gives one file's share, and [`query_models`] every
+//! model, for the indexes and the plan.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use jadpo_db::{Db, File, ItemKind, Ownership, Project, Symbol, symbols};
+use jadpo_db::{Db, File, ItemKind, Ownership, Project, Symbol, item_tree, symbols};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_graph::{Key, Kind};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 
-use super::{DataModel, EntityModel, FieldModel, data_model};
+use super::{Entities, EntityModel, FieldModel};
 use crate::case::starts_upper;
-use crate::lookups::{FailureView, Lookup, NameView, SigView};
+use crate::lookups::{FailureView, Lookup, Name, NameView, SigView, file_at};
 use crate::tree::{self, dotted, node_span};
 use crate::types::{Const, Def, FieldsBase, Prim, Ty, TypeView};
 
@@ -286,13 +289,12 @@ pub struct Missing {
     pub fields: Vec<(String, Value)>,
 }
 
-/// One query, as its SQL and codecs are made from it.
+/// One query, as its SQL and codecs are made from it, without positions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueryModel {
     pub name: String,
     pub key: Key,
     pub path: String,
-    pub span: Span,
     /// The entity it reads.
     pub entity: String,
     pub params: Vec<(String, Ty)>,
@@ -310,15 +312,11 @@ pub struct QueryModel {
     pub missing: Option<Missing>,
 }
 
-/// Every query of a project, with the problems area 6 finds in them.
+/// Every query of a project, without positions: for what reads them all,
+/// the indexes the queries need and the plan.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Queries {
     pub queries: Vec<QueryModel>,
-    pub problems: Vec<Diagnostic>,
-    /// Whether a query has no model: its error is reported, here or by
-    /// resolution (a type that names nothing), so the indexes the queries
-    /// ask for aren't all known.
-    pub incomplete: bool,
 }
 
 impl Queries {
@@ -331,76 +329,124 @@ impl Queries {
     }
 }
 
-/// The project's queries, read once.
+/// One query read from its file: its model, and the problems found in it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueryRead {
+    /// The file it is declared in.
+    pub path: String,
+    /// `None` when a problem leaves it without one: reported here, or by
+    /// resolution (a type that names nothing).
+    pub model: Option<Arc<QueryModel>>,
+    pub problems: Vec<Diagnostic>,
+}
+
+/// The names of the project's queries, in name order.
 #[salsa::tracked(returns(ref))]
-pub fn query_models(db: &dyn Db, project: Project) -> Arc<Queries> {
-    let table = symbols(db, project);
-    let lookup = Lookup::new(db, project);
-    let model = data_model(db, project);
-    let files: BTreeMap<&str, File> = project
-        .files(db)
+pub fn query_names(db: &dyn Db, project: Project) -> Vec<String> {
+    symbols(db, project)
+        .declarations
         .iter()
-        .map(|file| (file.path(db).as_str(), *file))
-        .collect();
+        .filter(|(_, found)| found.iter().any(|s| s.kind == ItemKind::Query))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
+/// The query called `name`, read from the first file that declares one: a
+/// query of its own, which reads that file and the names and entities the
+/// query uses, so an edit elsewhere never reads it again.
+#[salsa::tracked(returns(ref))]
+pub fn query_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Option<QueryRead> {
+    let lookup = Lookup::new(db, project);
+    let symbol = lookup
+        .declared(name.text(db))
+        .iter()
+        .find(|s| s.kind == ItemKind::Query)?;
+    let file = file_at(db, project, Name::new(db, symbol.path.clone()))?;
+    let source = tree::source(db, file)?;
+    let Some(Decl::QueryDecl(decl)) = tree::decl_at(&source, symbol.index) else {
+        return None;
+    };
     let mut reader = Reader {
         lookup: &lookup,
-        model,
+        entities: Entities::new(db, project),
         out: Vec::new(),
     };
-    let mut queries = Vec::new();
-    let mut incomplete = false;
-    let mut seen = BTreeSet::new();
-    for symbols in table.declarations.values() {
-        let Some(symbol) = symbols.iter().find(|s| s.kind == ItemKind::Query) else {
-            continue;
-        };
-        if !seen.insert(symbol.name.clone()) {
-            continue;
-        }
-        let Some(source) = files
-            .get(symbol.path.as_str())
-            .and_then(|f| tree::source(db, *f))
-        else {
-            continue;
-        };
-        let Some(Decl::QueryDecl(decl)) = tree::decl_at(&source, symbol.index) else {
-            continue;
-        };
-        match reader.query(symbol, &decl) {
-            Some(query) => queries.push(query),
-            None => incomplete = true,
-        }
-    }
-    queries.sort_by(|a, b| a.name.cmp(&b.name));
-    Arc::new(Queries {
-        queries,
+    let model = reader.query(symbol, &decl).map(Arc::new);
+    Some(QueryRead {
+        path: symbol.path.clone(),
+        model,
         problems: reader.out,
-        incomplete,
     })
 }
 
-/// Area 6's query problems in one file.
+/// The query called `name`, without positions: what every check that
+/// reads a query depends on.
+#[salsa::tracked(returns(ref))]
+pub fn query_model<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    name: Name<'db>,
+) -> Option<Arc<QueryModel>> {
+    query_read(db, project, name).as_ref()?.model.clone()
+}
+
+/// Whether the query called `name` read without a problem and has a model.
+#[salsa::tracked(returns(copy))]
+fn query_clean<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> bool {
+    query_read(db, project, name)
+        .as_ref()
+        .is_none_or(|read| read.problems.is_empty() && read.model.is_some())
+}
+
+/// Whether every query read without a problem, so the indexes the queries
+/// ask for are all known.
+pub(super) fn queries_clean(db: &dyn Db, project: Project) -> bool {
+    query_names(db, project)
+        .iter()
+        .all(|name| query_clean(db, project, Name::new(db, name.clone())))
+}
+
+/// The project's queries, without positions, in name order.
+#[salsa::tracked(returns(ref))]
+pub fn query_models(db: &dyn Db, project: Project) -> Arc<Queries> {
+    Arc::new(Queries {
+        queries: query_names(db, project)
+            .iter()
+            .filter_map(|name| {
+                query_model(db, project, Name::new(db, name.clone()))
+                    .as_deref()
+                    .cloned()
+            })
+            .collect(),
+    })
+}
+
+/// Area 6's query problems in one file: those of the queries it declares.
 #[salsa::tracked(returns(ref))]
 pub fn query_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let path = file.path(db);
-    query_models(db, project)
-        .problems
-        .iter()
-        .filter(|problem| {
-            problem
-                .primary
-                .as_ref()
-                .is_some_and(|label| &label.span.path == path)
-        })
-        .cloned()
-        .collect()
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    for item in &item_tree(db, file).items {
+        if item.kind != ItemKind::Query || !seen.insert(item.name.as_str()) {
+            continue;
+        }
+        let Some(read) = query_read(db, project, Name::new(db, item.name.clone())) else {
+            continue;
+        };
+        if read.path != *path {
+            continue;
+        }
+        out.extend(read.problems.iter().cloned());
+    }
+    out
 }
 
 // --- reading a query ---------------------------------------------------------
 
 struct Reader<'a> {
     lookup: &'a Lookup<'a>,
-    model: &'a DataModel,
+    entities: Entities<'a>,
     out: Vec<Diagnostic>,
 }
 
@@ -554,7 +600,6 @@ impl<'a> Reader<'a> {
             name,
             key,
             path: path.to_string(),
-            span,
             entity: entity.name.clone(),
             params: sig.params.clone(),
             cardinality,
@@ -662,7 +707,6 @@ impl<'a> Reader<'a> {
         member: &ast::Member,
         query: &Symbol,
     ) -> Option<&'a EntityModel> {
-        let model = self.model;
         let value = member.value();
         let span = value.as_ref().map_or_else(
             || {
@@ -687,7 +731,6 @@ impl<'a> Reader<'a> {
                 .find(|symbol| symbol.library.is_none())
                 .cloned()
         });
-        let entities: Vec<&str> = model.entities.iter().map(|e| e.name.as_str()).collect();
         match symbol {
             Some(symbol) if symbol.kind == ItemKind::Entity => {
                 if let (Ownership::Domain(theirs), Ownership::Domain(ours)) =
@@ -710,7 +753,7 @@ impl<'a> Reader<'a> {
                     );
                     return None;
                 }
-                model.entity(&symbol.name)
+                self.entities.get(&symbol.name)
             }
             found => {
                 let what = match found.as_ref().map(|s| &s.kind) {
@@ -719,9 +762,10 @@ impl<'a> Reader<'a> {
                     None if named.is_some() => format!("Nothing called `{written}` is declared"),
                     None => format!("`{written}` isn't a name"),
                 };
+                let all = self.entities.all();
                 let near = named
                     .as_deref()
-                    .and_then(|n| nearest(n, entities.iter().copied()))
+                    .and_then(|n| nearest(n, all.entities.iter().map(|e| e.name.as_str())))
                     .map(str::to_string);
                 let problem = Diagnostic::new(
                     &rule::QUERY_FROM_NOT_ENTITY,
@@ -1195,7 +1239,7 @@ impl<'a> Reader<'a> {
         let field = tree::name_ref_text(field_node)?;
         let span = Self::span(path, expr);
         if qualifier != entity.name {
-            let other = self.model.entity(&qualifier).is_some();
+            let other = self.entities.get(&qualifier).is_some();
             let problem = Diagnostic::new(
                 &rule::QUERY_UNKNOWN_FIELD,
                 format!("`{qualifier}.{field}` isn't a field of `{}`", entity.name),
@@ -1423,7 +1467,7 @@ impl<'a> Reader<'a> {
                 );
                 return None;
             }
-            if self.model.entity(&head).is_some() {
+            if self.entities.get(&head).is_some() {
                 self.out.push(
                     Diagnostic::new(
                         &rule::QUERY_CONDITION_UNSUPPORTED,
@@ -2149,16 +2193,16 @@ impl<'a> Reader<'a> {
             ),
             _ => (String::new(), String::new()),
         };
-        let model = self.model;
+        let entities = self.entities;
         let mut found: Option<(IncludeKind, &EntityModel, &FieldModel)> = None;
         if qualifier == entity.name {
             if let Some(f) = entity.fields.iter().find(|f| f.name == field)
                 && let Some(reference) = &f.reference
-                && let Some(target) = model.entity(&reference.target)
+                && let Some(target) = entities.get(&reference.target)
             {
                 found = Some((IncludeKind::Parent, target, f));
             }
-        } else if let Some(other) = model.entity(&qualifier)
+        } else if let Some(other) = entities.get(&qualifier)
             && let Some(f) = other.fields.iter().find(|f| f.name == field)
             && f.reference
                 .as_ref()
@@ -2173,8 +2217,8 @@ impl<'a> Reader<'a> {
         }
         let Some((kind, target, via)) = found else {
             // A reference whose type names nothing is resolution's error.
-            if model
-                .entity(&qualifier)
+            if entities
+                .get(&qualifier)
                 .and_then(|e| e.fields.iter().find(|f| f.name == field))
                 .is_some_and(|f| f.ty.has_error())
             {
@@ -2187,7 +2231,7 @@ impl<'a> Reader<'a> {
                 .filter(|f| f.reference.is_some())
                 .map(|f| format!("`{}.{}`", entity.name, f.name))
                 .collect();
-            for other in &model.entities {
+            for other in &entities.all().entities {
                 for f in &other.fields {
                     if f.reference
                         .as_ref()
@@ -2613,7 +2657,7 @@ impl<'a> Reader<'a> {
         include: &Include,
         span: &Span,
     ) -> Option<Include> {
-        let target = self.model.entity(&include.entity)?;
+        let target = self.entities.get(&include.entity)?;
         let declared = &field.declared;
         if declared.has_error() {
             return None;
