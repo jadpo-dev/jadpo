@@ -237,7 +237,7 @@ fn the_graph_and_the_manifest_carry_each_actions_and_fixtures_level() {
         "a query begins no transaction"
     );
     let written = manifest(
-        &graph,
+        graph,
         &Stamp {
             compiler: "test".into(),
             errors: 0,

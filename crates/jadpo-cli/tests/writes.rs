@@ -488,6 +488,8 @@ struct Race {
     watcher: Postgres,
     /// The first request's update has run, so it holds the row's lock.
     updated: Cell<bool>,
+    /// The first request has ended, whether or not it updated.
+    ended: Cell<bool>,
     /// The first request has committed once; it holds nothing more.
     released: Cell<bool>,
     /// The first request saw the second waiting for the row before it
@@ -546,7 +548,7 @@ struct Raced {
 impl Raced {
     /// The second request sends nothing before the first has updated.
     async fn turn(&self) {
-        while !self.first && !self.race.updated.get() {
+        while !self.first && !self.race.updated.get() && !self.race.ended.get() {
             pause().await;
         }
     }
@@ -641,6 +643,7 @@ async fn race(
     let shared = Rc::new(Race {
         watcher: postgres(url).expect("store"),
         updated: Cell::new(false),
+        ended: Cell::new(false),
         released: Cell::new(false),
         saw_waiting: Cell::new(false),
     });
@@ -653,7 +656,11 @@ async fn race(
     };
     let (first, second) = (racer(true), racer(false));
     let outcomes = both(
-        call(program, &first, action, vec![Value::uuid(shelf_id)]),
+        async {
+            let outcome = call(program, &first, action, vec![Value::uuid(shelf_id)]).await;
+            shared.ended.set(true);
+            outcome
+        },
         call(program, &second, action, vec![Value::uuid(shelf_id)]),
     )
     .await;
