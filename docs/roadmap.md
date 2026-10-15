@@ -210,7 +210,7 @@ reference only).
   `jadpo lsp`, with highlighting, so errors, hover and go to definition work
   in the editor (area 14, "Editor support"). The archived extension is
   reference only.
-- [ ] **3.7 Isolation by what an action does** `opus · xhigh` (area 6,
+- [x] **3.7 Isolation by what an action does** `opus · xhigh` (area 6,
   "Counters and other one-step updates", 2026-10-15): an action that loads
   no record, itself or through any action it calls, runs at read committed;
   every other action at repeatable read. Done when two concurrent counters
