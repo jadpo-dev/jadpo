@@ -1009,11 +1009,9 @@ Built in chunk 3.3: the statement is `UPDATE "video" SET "view_count" =
 a stored field out with `+` and `-`, which give the same result in SQL as
 in Jadpo, under constructions the declared ranges prove (`ViewCount(...)`
 here, since a count of at least 0 plus 1 is at least 0); anything else needs
-the record loaded first. One correction to the paragraph above: at
-repeatable read, PostgreSQL refuses to write a row another transaction
-changed after this action's first statement, so a counter inside an action
-that read first does rerun when two requests race; no increment is lost
-either way, and one that is the action's first statement never reruns.
+the record loaded first. A decimal added to a stored field may not have more
+decimal places than the field's `scale`, since PostgreSQL would round the
+sum its own way (half away from zero) rather than Jadpo's (chunk 3.4).
 
 ## Reading in a loop
 
@@ -3150,3 +3148,4 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | References that hold | Chosen in chunk 3.3: a reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure | 2026-10-14 |
 | Stored values | Chosen in chunk 3.3: an update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove | 2026-10-14 |
 | Refusals in a called action | Chosen in chunk 3.3: a write that can be refused, run by an action another action called, runs inside a savepoint, so a caller handling the failure carries on | 2026-10-14 |
+| Counters and reruns | A counter never loses an increment; it reruns its action only when an earlier read in the same action races another request on the row, as any concurrent change does (corrects the earlier "never reruns") (Richard) | 2026-10-15 |

@@ -621,6 +621,7 @@ what other areas carried here and where this page answers it.
 | Seeds | Carried from area 5: `jadpo seed <name>` runs a seed through the application's actions and refuses production | 2026-10-12 |
 | Route listing | Carried from area 7: hover shows a route's full path; `jadpo routes` lists every route | 2026-10-12 |
 | Query SQL | Carried from area 6: `jadpo sql <query>` (with `--explain`) and an editor hover show a query's generated SQL; never written into source | 2026-10-12 |
+| Write SQL | `jadpo sql <action>` also shows the statements an action's writes send, each with its parameters and the conflict arm each constraint maps to (Richard) | 2026-10-15 |
 | Permissions report | Carried from area 9: the build writes `build/report/permissions.md` and a `.json` twin, a matrix of who can do what to every entity and field; changes to it appear in the approval review | 2026-10-12 |
 | Optional project path | Found by walking up to `app.jadpo`; a path accepted on every command | 2026-10-13 |
 | `--json` | One `--json` on every non-interactive command; plain when piped, colour otherwise | 2026-10-13 |
