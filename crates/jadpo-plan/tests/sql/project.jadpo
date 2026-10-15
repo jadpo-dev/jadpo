@@ -306,3 +306,182 @@ action leave(user_id: User.id) fails UserNotFound, UserHasComments -> Unit {
 action drop_profile(profile: Profile) -> Unit {
     Profile.delete(profile)
 }
+
+// Lifecycles (area 5): records hidden from every read, update and delete,
+// transitions, and purge.
+
+type BoardName = Text {
+    max_length: 80
+}
+
+type Stage = Enum {
+    draft
+    live
+    archived
+}
+
+type BoardView = Output {
+    pick: [Board.id, Board.name]
+}
+
+type CardView = Output {
+    pick: [Card.id, Card.stage]
+}
+
+type BoardWithCards = Output {
+    pick: [Board.id, Board.name]
+    cards: List<CardView>
+}
+
+type CardWithBoard = Output {
+    pick: [Card.id, Card.stage]
+    board: BoardView
+}
+
+type CardArchived = Failure {
+    kind: FailureKind.conflict
+}
+
+type BoardNamed = Failure {
+    kind: FailureKind.conflict
+}
+
+/// A soft delete, purged a month after.
+entity Board {
+    id: Uuid
+    name: BoardName
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none
+        transitions: {
+            delete: {
+                set: {
+                    deleted_at: clock.now
+                }
+            }
+        }
+        purge: {
+            after: 30d
+            since: deleted_at
+        }
+    }
+}
+
+/// Scheduled publishing, and a guarded transition.
+entity Card {
+    id: Uuid
+    board_id: Board.id {
+        on_delete: OnDelete.cascade
+    }
+    stage: Stage
+    published_at: Instant?
+    archived_at: Instant?
+    changed_at: Instant {
+        generated: Generated.on_change
+    }
+
+    lifecycle: {
+        visible: published_at != none and published_at <= clock.now
+        initial: {
+            stage: Stage.draft
+        }
+        transitions: {
+            archive: {
+                when: stage == Stage.live
+                set: {
+                    stage: Stage.archived
+                    archived_at: clock.now
+                }
+            }
+        }
+    }
+}
+
+/// Holds a card, which keeps its board from being purged.
+entity Pin {
+    id: Uuid
+    card_id: Card.id {
+        on_delete: OnDelete.restricted
+    }
+}
+
+/// Holds a board directly.
+entity Banner {
+    id: Uuid
+    board_id: Board.id {
+        on_delete: OnDelete.restricted
+    }
+}
+
+/// Visible records only, with a partial index.
+query boards_named(name: Board.name) -> List<BoardView> {
+    from: Board
+    where: Board.name == name
+    order: [Board.id asc]
+    limit: 10
+}
+
+/// Children through their lifecycle, which reads the clock.
+query board_cards(board_id: Board.id) -> BoardWithCards? {
+    from: Board
+    where: Board.id == board_id
+    include: {
+        cards: {
+            via: Card.board_id
+            order: [Card.published_at desc]
+            limit: 20
+        }
+    }
+}
+
+/// A parent is included even when its lifecycle hides it.
+query card_with_board(card_id: Card.id) -> CardWithBoard? {
+    from: Card
+    where: Card.id == card_id
+    include: {
+        board: Card.board_id
+    }
+}
+
+/// A create filling what the lifecycle owns from `initial:`.
+action add_card(board: Board) -> Card {
+    return Card.create {
+        set: {
+            board_id: board.id
+            published_at: none
+        }
+    }
+}
+
+/// An update of a visible record.
+action rename_board(board: Board, name: Board.name) -> Board {
+    return Board.update(board) {
+        set: {
+            name: name
+        }
+    }
+}
+
+/// A delete that runs the lifecycle's `delete` transition, by `id`.
+action close_board(board_id: Board.id) fails BoardNotFound -> Unit {
+    attempt Board.delete(board_id)
+}
+
+/// A transition whose `when:` can refuse a visible record.
+action archive_card(card: Card) fails CardArchived -> Card {
+    return attempt Card.archive(card) {
+        conflict: {
+            Card.archive: CardArchived
+        }
+    }
+}
+
+/// The same, by `id`.
+action archive_card_by_id(card_id: Card.id) fails CardNotFound, CardArchived -> Card {
+    return attempt Card.archive(card_id) {
+        conflict: {
+            Card.archive: CardArchived
+        }
+    }
+}

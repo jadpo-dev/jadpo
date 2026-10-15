@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 
 use jadpo_db::{Database, File, Layout, Project};
-use jadpo_plan::{Decoded, Plan, Refusal, WriteSitePlan};
+use jadpo_plan::{Decoded, Plan, PurgePlan, Refusal, WriteSitePlan};
 use jadpo_std::read::{Cardinality, Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
 use jadpo_std::write::WriteSource;
 
@@ -163,8 +163,41 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
         };
         out.push_str(&format!("-- refused by {constraint}: {raises}\n"));
     }
+    if let Some(guard) = &plan.guard {
+        out.push_str(&format!(
+            "-- no row: asks, refused by {} when the record is there\n",
+            plan.refusals[guard.refusal as usize]
+        ));
+        for line in guard.sql.lines() {
+            out.push_str(&format!("--   {line}\n"));
+        }
+        for (i, param) in guard.params.iter().enumerate() {
+            out.push_str(&format!(
+                "--   ${}: {:?} as {:?}\n",
+                i + 1,
+                param.source,
+                param.ty
+            ));
+        }
+    }
     if write.missing.is_some() {
         out.push_str("-- no row: the entity's not-found failure\n");
+    }
+    out
+}
+
+fn purge(plan: &PurgePlan) -> String {
+    let mut out = format!(
+        "-- purge {}: after {}ms, store {}\n{}\n",
+        plan.entity, plan.after, plan.store, plan.sql
+    );
+    for (i, param) in plan.params.iter().enumerate() {
+        out.push_str(&format!(
+            "-- ${}: {:?} as {:?}\n",
+            i + 1,
+            param.source,
+            param.ty
+        ));
     }
     out
 }
@@ -196,6 +229,9 @@ fn every_query_shape_matches_its_golden_sql() {
                 written.push((name.clone(), write(&format!("action {name}"), found)));
             }
         }
+    }
+    for plan in plan.purges() {
+        written.push((format!("{}_purge", plan.entity.to_lowercase()), purge(plan)));
     }
     assert!(
         written.len() >= 6 + 5 + 7,
