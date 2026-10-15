@@ -1150,6 +1150,182 @@ impl Here<'_> {
     }
 }
 
+/// The edits that move declaration `decl` of `file`, called `name`, to a
+/// new file at `target` (area 1, "Sharing and promotion"): taken out of
+/// its file with the comments attached to it, written into the new file
+/// below the `use` lines it needs, and imported back into its old file
+/// when that still uses it. Files that import it from its old folder are
+/// `jadpo fmt`'s to update, as for any name imported from the wrong
+/// folder.
+pub(crate) fn move_edits(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    decl: &SyntaxNode,
+    name: &str,
+    target: &str,
+) -> Vec<(Span, String)> {
+    let Some(source) = tree::source(db, file) else {
+        return Vec::new();
+    };
+    let path = file.path(db);
+    let text = file.text(db);
+    let tokens: Vec<SyntaxToken> = decl
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| !token.kind().is_trivia())
+        .collect();
+    let (Some(first), Some(last)) = (tokens.first(), tokens.last()) else {
+        return Vec::new();
+    };
+    let start = attached_start(first);
+    let end = u32::from(last.text_range().end());
+    let moved = &text[start as usize..end as usize];
+    // Up to whatever follows, or, for the last declaration, back to the
+    // end of the line before it.
+    let removal = match last
+        .next_token()
+        .into_iter()
+        .flat_map(|token| std::iter::successors(Some(token), SyntaxToken::next_token))
+        .find(|token| !token.kind().is_trivia())
+    {
+        Some(next) => (start, attached_start(&next)),
+        None => {
+            let before = first
+                .prev_token()
+                .into_iter()
+                .flat_map(|token| std::iter::successors(Some(token), SyntaxToken::prev_token))
+                .find(|token| !token.kind().is_trivia());
+            match before {
+                Some(before) => {
+                    let after = u32::from(before.text_range().end()) as usize;
+                    let line_end = text[after..]
+                        .find('\n')
+                        .map_or(text.len(), |i| after + i + 1);
+                    ((line_end as u32).min(start), text.len() as u32)
+                }
+                None => (start, text.len() as u32),
+            }
+        }
+    };
+    let lookup = Lookup::new(db, project);
+    let new_location = jadpo_db::locate(target, Layout::Project);
+    let new_here = Here {
+        path: target,
+        text: "",
+        location: &new_location,
+        subject: None,
+        table: &lookup,
+        std: StdNames::get(),
+        lines: Vec::new(),
+        top: 0,
+    };
+    let mut wanted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut domains: BTreeSet<String> = BTreeSet::new();
+    for written in written(decl) {
+        match new_here.need(&written) {
+            Some(Need::Name(symbol)) if symbol.name != name && new_here.may_use(&symbol) => {
+                if let Some(folder) = folder_of(&symbol) {
+                    wanted
+                        .entry(folder)
+                        .or_default()
+                        .insert(symbol.name.clone());
+                }
+            }
+            Some(Need::Connection(connection)) => {
+                wanted
+                    .entry("app".to_string())
+                    .or_default()
+                    .insert(connection);
+            }
+            Some(Need::Domain(domain)) if new_here.own_domain() != Some(domain.as_str()) => {
+                domains.insert(domain);
+            }
+            _ => {}
+        }
+    }
+    let mut lines: Vec<String> = wanted
+        .iter()
+        .map(|(folder, names)| {
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+            format!("use {folder} {{ {} }}", names.join(", "))
+        })
+        .collect();
+    lines.extend(domains.iter().map(|domain| format!("use {domain}")));
+    let mut created = String::new();
+    if !lines.is_empty() {
+        created.push_str(&lines.join("\n"));
+        created.push_str("\n\n");
+    }
+    created.push_str(moved);
+    created.push('\n');
+    let created = jadpo_fmt::format_file(&created).unwrap_or(created);
+    let mut edits = vec![(Span::new(target, 0, 0), created)];
+    // The old file keeps using it: import it from where it now lives.
+    let still_used = source.syntax().descendants().any(|node| {
+        node.kind() == NAME_REF && !node.ancestors().any(|a| a.kind() == USE_DECL) && {
+            let range = node.text_range();
+            let (s, e) = (u32::from(range.start()), u32::from(range.end()));
+            (e <= start || s >= end) && named(&node).is_some_and(|(n, _, _)| n == name)
+        }
+    });
+    let folder = match (&new_location.ownership, &new_location.place) {
+        (Ownership::Domain(domain), Place::Folder(inner)) => {
+            Some(format!("{domain}/{}", inner.name()))
+        }
+        (Ownership::Shared, Place::Folder(inner)) => Some(format!("shared/{}", inner.name())),
+        _ => None,
+    };
+    let old_location = location(db, project, file);
+    let old_here = Here {
+        path,
+        text,
+        location: old_location,
+        subject: None,
+        table: &lookup,
+        std: StdNames::get(),
+        lines: use_lines(source.syntax()),
+        top: top(source.syntax()),
+    };
+    if still_used && let Some(folder) = folder {
+        let ((at, until), insert) = old_here.add(&folder, Some(name));
+        if at == removal.0 && at == until {
+            edits.push((Span::new(path, removal.0, removal.1), insert));
+            return edits;
+        }
+        edits.push((Span::new(path, at, until), insert));
+    }
+    edits.push((Span::new(path, removal.0, removal.1), String::new()));
+    edits
+}
+
+/// Where the comments attached to `token` start: those directly above
+/// it, with no blank line between.
+fn attached_start(token: &SyntaxToken) -> u32 {
+    let mut at = u32::from(token.text_range().start());
+    let mut current = token.prev_token();
+    while let Some(trivia) = current {
+        match trivia.kind() {
+            WHITESPACE if trivia.text().matches('\n').count() >= 2 => break,
+            WHITESPACE => {}
+            COMMENT | DOC_COMMENT => {
+                // A comment trailing the previous token's line is that
+                // token's.
+                let own_line = trivia.prev_token().is_none_or(|before| {
+                    before.kind() == WHITESPACE && before.text().contains('\n')
+                });
+                if !own_line {
+                    break;
+                }
+                at = u32::from(trivia.text_range().start());
+            }
+            _ => break,
+        }
+        current = trivia.prev_token();
+    }
+    at
+}
+
 #[cfg(test)]
 mod tests {
     use jadpo_db::{Folder, RootFile};

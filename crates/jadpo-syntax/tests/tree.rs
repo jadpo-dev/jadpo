@@ -134,7 +134,10 @@ fn use_lines_name_a_folder_and_what_they_bring_in() {
     assert_eq!(
         lines,
         [
-            ("shared/types".to_string(), vec!["Pence".to_string(), "Percent".to_string()]),
+            (
+                "shared/types".to_string(),
+                vec!["Pence".to_string(), "Percent".to_string()]
+            ),
             ("menu".to_string(), Vec::new()),
         ]
     );
