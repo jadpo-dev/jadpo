@@ -58,3 +58,7 @@ merged and anything that needs Richard.
   - One independent review per phase, by two reviewers: soundness, and
     architecture for the phases ahead.
   - Building subagents report in a few short lines.
+  - Wait for a long command by running it in the background and waiting
+    for its own completion; never poll for a process by name (`pgrep -f`
+    matches the loop itself and never ends). Stop anything you started
+    before you report.
