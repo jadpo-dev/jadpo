@@ -31,42 +31,20 @@ use jadpo_check::lookups::Lookup;
 use jadpo_check::types::{Def, Prim, Ty, TypeView};
 use jadpo_graph::{Key, Kind};
 use jadpo_std::read::{
-    Cardinality, Column, Field, IncludeRead, IncludeShape, PageRead, Param, ReadPlan, Record,
-    Select, Size, Source, SqlType,
+    Cardinality, Column, Field, IncludeRead, IncludeShape, MissingPlan, MissingValue, PageRead,
+    Param, ReadPlan, Record, Select, Size, Source, SqlType,
 };
 
 use crate::constant::Constant;
-use crate::types::{FailureId, Types};
+use crate::types::Types;
 
-/// A query's plan.
+/// A query's plan: its read, with the failure when a query for exactly
+/// one record finds none (`ReadPlan::missing`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueryPlan {
     pub key: Key,
     pub name: String,
     pub read: ReadPlan,
-    /// For a query returning exactly one record: the failure when nothing
-    /// matches.
-    pub missing: Option<MissingPlan>,
-}
-
-/// The failure a read raises when nothing matches, with its fields.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MissingPlan {
-    pub failure: FailureId,
-    /// Each field given: its place in the failure's fields, and its value.
-    pub fields: Vec<(Option<u32>, MissingValue)>,
-}
-
-/// Where a `missing:` failure's field gets its value.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum MissingValue {
-    /// The read's argument, or a field inside it.
-    Arg {
-        index: u32,
-        path: Vec<String>,
-    },
-    Constant(Constant),
-    Now,
 }
 
 /// What an entity's operations run.
@@ -74,11 +52,10 @@ pub enum MissingValue {
 pub struct EntityPlan {
     pub key: Key,
     pub name: String,
-    /// `Entity.get(id)`.
+    /// `Entity.get(id)`, with the not-found failure it raises, each of its
+    /// fields given the `id` it looked for: the domain's, or the one the
+    /// compiler provides.
     pub get: ReadPlan,
-    /// The not-found failure `get` raises, each of its fields given the
-    /// `id` it looked for: the domain's, or the one the compiler provides.
-    pub not_found: Option<MissingPlan>,
 }
 
 /// How a statement reaches an entity, which decides what [`Planner::access`]
@@ -261,8 +238,8 @@ impl Planner<'_> {
                 cardinality,
                 select,
                 page,
+                missing,
             },
-            missing,
         })
     }
 
@@ -618,7 +595,7 @@ impl Planner<'_> {
             let slot = self
                 .types
                 .failure(failure)
-                .and_then(|plan| plan.slot(&field_key));
+                .and_then(|plan| plan.slot(field_key.as_str()));
             let value = match value {
                 Value::Param { index, path } => MissingValue::Arg {
                     index: *index,
@@ -685,6 +662,13 @@ impl Planner<'_> {
             quoted(&entity.table)
         );
         where_clause(&mut sql, &conditions, "");
+        let not_found = self.not_found(
+            entity,
+            MissingValue::Arg {
+                index: 0,
+                path: Vec::new(),
+            },
+        );
         let get = ReadPlan {
             store: store.clone(),
             cardinality: Cardinality::One,
@@ -699,19 +683,12 @@ impl Planner<'_> {
                 includes: Vec::new(),
             },
             page: None,
+            missing: not_found,
         };
-        let not_found = self.not_found(
-            entity,
-            MissingValue::Arg {
-                index: 0,
-                path: Vec::new(),
-            },
-        );
         Some(EntityPlan {
             key,
             name: entity.name.clone(),
             get,
-            not_found,
         })
     }
 

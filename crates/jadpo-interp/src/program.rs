@@ -12,7 +12,6 @@ use std::sync::Arc;
 use jadpo_db::{Db, Project};
 use jadpo_diag::{Diagnostic, Severity};
 use jadpo_graph::Key;
-use jadpo_graph::Section;
 use jadpo_plan::{ConstId, FailureId, Plan, ShapeId, ValidatorId};
 use jadpo_runtime::{
     CallablePlace, Ctx, Env, Executor, Failure, FaultKind, Frame, LocalFuture, MemoryHost, Outcome,
@@ -21,7 +20,7 @@ use jadpo_runtime::{
 use jadpo_value::{Validator, Value};
 
 use crate::drive;
-use crate::values::{Codec, Shape, value};
+use crate::values::{Codec, Shape};
 
 /// A checked project, shared by every thread that runs it.
 #[derive(Debug)]
@@ -136,7 +135,12 @@ impl Program {
     /// This thread's view of `prepared`.
     pub fn new(prepared: Arc<Prepared>) -> Program {
         let types = prepared.plan.types();
-        let constants = prepared.plan.constants().iter().map(value).collect();
+        let constants = prepared
+            .plan
+            .constants()
+            .iter()
+            .map(Value::constant)
+            .collect();
         let shapes = types.shapes().iter().map(Shape::new).collect();
         Program {
             prepared,
@@ -282,27 +286,7 @@ impl Program {
         slots: &[Option<u32>],
         values: Vec<Value>,
     ) -> Option<Failure> {
-        let plan = self.plan().types().failure(id)?;
-        let mut given: Vec<Option<Value>> = vec![None; plan.fields.len()];
-        for (slot, value) in slots.iter().zip(values) {
-            if let Some(place) = slot.and_then(|slot| given.get_mut(slot as usize))
-                && place.is_none()
-            {
-                *place = Some(value);
-            }
-        }
-        let mut failure = Failure::new(plan.key.as_str(), plan.name.as_str(), plan.code.as_str());
-        failure.kind = plan.kind.clone();
-        failure.status = plan.status;
-        failure.message = plan.message.clone();
-        for (field, value) in plan.fields.iter().zip(given) {
-            let entry = (field.name.clone(), value?);
-            match field.section {
-                Some(Section::Client) => failure.client.push(entry),
-                _ => failure.internal.push(entry),
-            }
-        }
-        Some(failure)
+        Failure::of(self.plan().types().failure(id)?, slots, values)
     }
 }
 

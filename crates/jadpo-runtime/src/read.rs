@@ -21,16 +21,16 @@ use crate::{
 
 /// What a read found.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Found {
+pub(crate) enum Found {
     Value(Value),
-    /// A read for exactly one record found none: the executor raises the
-    /// read's not-found failure, which its plan names.
+    /// A read for exactly one record found none: [`crate::store`] raises
+    /// the read's not-found failure, which its plan names.
     Missing,
 }
 
 /// What stops a read or a write before it gives a value.
 #[derive(Debug)]
-pub enum Interrupt {
+pub(crate) enum Interrupt {
     Failed(Box<Failure>),
     Fault(Box<Fault>),
 }
@@ -40,7 +40,7 @@ pub const PAGE: &str = "Page";
 
 /// Runs `plan` with `args`, called from site `site` of the frame on top of
 /// `ctx`.
-pub async fn read(
+pub(crate) async fn read(
     ctx: &mut Ctx<'_>,
     plan: &ReadPlan,
     args: &[Value],

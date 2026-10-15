@@ -24,7 +24,7 @@ use jadpo_check::data::queries::{Include, IncludeKind, QueryModel, query_models}
 use jadpo_diag::{Diagnostic, Severity, rule};
 use jadpo_graph::Kind;
 use jadpo_graph::body::{Body, Expr, Node, SiteId};
-use jadpo_plan::{CallablePlan, Decoded, Plan, QueryPlan, Refusal, WriteSitePlan};
+use jadpo_plan::{CallablePlan, Decoded, Plan, QueryPlan, Raises, WriteSitePlan};
 use jadpo_std::read::{IncludeRead, Select, Source, SqlType};
 use jadpo_std::write::{WriteOp, WriteSource};
 use jadpo_term::{Block, Json, Screen};
@@ -223,17 +223,18 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             params.push(param_json(n, &source, &ty));
         }
         let mut refusals = Vec::new();
-        for (constraint, refusal) in write.plan.refusals.iter().zip(&write.refusals) {
-            let raises = match refusal {
-                Refusal::Arm(at) => conflicts.get(*at as usize).map_or_else(
+        for refusal in &write.plan.refusals {
+            let constraint = &refusal.constraint;
+            let raises = match &refusal.raises {
+                Raises::Arm(at) => conflicts.get(*at as usize).map_or_else(
                     || "the failure its arm names".to_string(),
                     |arm| format!("{}, mapped in conflict:", arm.failure.name()),
                 ),
-                Refusal::NotFound(missing) => plan
+                Raises::NotFound(missing) => plan
                     .types()
                     .failure(missing.failure)
                     .map_or_else(|| "not found".to_string(), |f| f.name.clone()),
-                Refusal::Gone(what) => format!("a fault: {what}"),
+                Raises::Gone(what) => format!("a fault: {what}"),
             };
             let shown = match constraint.strip_prefix("when: ") {
                 Some(rule) => format!("when: of {rule} → {raises}"),
@@ -246,6 +247,7 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             ]));
         }
         let not_found = write
+            .plan
             .missing
             .as_ref()
             .and_then(|missing| plan.types().failure(missing.failure))
@@ -271,10 +273,9 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                 .plan
                 .refusals
                 .iter()
-                .zip(&write.refusals)
-                .find(|(constraint, _)| constraint.starts_with("when: "))
-                .and_then(|(_, refusal)| match refusal {
-                    Refusal::Arm(at) => conflicts.get(*at as usize),
+                .find(|refusal| refusal.constraint.starts_with("when: "))
+                .and_then(|refusal| match refusal.raises {
+                    Raises::Arm(at) => conflicts.get(at as usize),
                     _ => None,
                 })
                 .map_or_else(String::new, |arm| format!(" → {}", arm.failure.name()));

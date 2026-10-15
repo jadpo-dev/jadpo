@@ -23,9 +23,11 @@
 //!   drives one invocation on its thread.
 //! - [`Failure`], [`Fault`] and [`MAX_DEPTH`]: declared failures, what
 //!   the runtime raises itself, and its limits.
-//! - [`read`] and [`write`]: a query's or an entity's read (chunk 3.2),
-//!   and a `create`, `update` or `delete` (chunk 3.3), run from their
-//!   plans in the action's transaction; [`purge`], a lifecycle's
+//! - [`store`]: the one entry point for a query's or an entity's read
+//!   (chunk 3.2) and a `create`, `update` or `delete` (chunk 3.3), run from
+//!   their plans in the action's transaction or a boundary of its own, and
+//!   giving the value, the failure its plan names, or the `conflict:` arm
+//!   its site maps a refusal to (chunk 3.12); [`purge`], a lifecycle's
 //!   permanent deletion of hidden records (chunk 3.4), outside any action.
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
@@ -60,6 +62,7 @@ mod places;
 mod purge;
 mod read;
 mod report;
+mod store;
 mod write;
 
 pub use boundary::{ActionBody, RERUN_ATTEMPTS, action, unavailable};
@@ -78,6 +81,6 @@ pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, 
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
 pub use purge::{PURGE_BATCHES, Purged, purge};
-pub use read::{Found, Interrupt, PAGE, cursor, from_sql, invalid_cursor, read, to_sql, uuid_text};
+pub use read::{PAGE, cursor, from_sql, invalid_cursor, to_sql, uuid_text};
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};
-pub use write::{Written, write};
+pub use store::{StoreOp, Stored, store};

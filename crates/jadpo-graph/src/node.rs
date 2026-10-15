@@ -103,21 +103,9 @@ pub struct FailureDetail {
     pub message: Option<String>,
 }
 
-/// A failure's fields are sent to the caller or kept for the log.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Section {
-    Client,
-    Internal,
-}
-
-impl Section {
-    pub fn word(self) -> &'static str {
-        match self {
-            Section::Client => "client",
-            Section::Internal => "internal",
-        }
-    }
-}
+/// A failure's fields are sent to the caller or kept for the log: the
+/// failure plans' own, decided once in `jadpo-std`.
+pub use jadpo_std::types::Section;
 
 /// A callable's signature.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

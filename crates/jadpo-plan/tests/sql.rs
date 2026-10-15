@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 
 use jadpo_db::{Database, File, Layout, Project};
-use jadpo_plan::{Decoded, Plan, PurgePlan, Refusal, WriteSitePlan};
+use jadpo_plan::{Decoded, Plan, PurgePlan, Raises, WriteSitePlan};
 use jadpo_std::read::{Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
 use jadpo_std::write::WriteSource;
 
@@ -150,18 +150,18 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
         let columns: Vec<String> = returned.columns.iter().map(column).collect();
         out.push_str(&format!("-- returns: {}\n", columns.join(", ")));
     }
-    for (constraint, refusal) in plan.refusals.iter().zip(&write.refusals) {
-        let raises = match refusal {
-            Refusal::Arm(at) => format!("conflict arm {at}"),
-            Refusal::NotFound(missing) => format!("not found, failure {}", missing.failure.0),
-            Refusal::Gone(what) => format!("fault: {what}"),
+    for refusal in &plan.refusals {
+        let raises = match &refusal.raises {
+            Raises::Arm(at) => format!("conflict arm {at}"),
+            Raises::NotFound(missing) => format!("not found, failure {}", missing.failure.0),
+            Raises::Gone(what) => format!("fault: {what}"),
         };
-        out.push_str(&format!("-- refused by {constraint}: {raises}\n"));
+        out.push_str(&format!("-- refused by {}: {raises}\n", refusal.constraint));
     }
     if let Some(guard) = &plan.guard {
         out.push_str(&format!(
             "-- no row: asks, refused by {} when the record is there\n",
-            plan.refusals[guard.refusal as usize]
+            plan.refusals[guard.refusal as usize].constraint
         ));
         for line in guard.sql.lines() {
             out.push_str(&format!("--   {line}\n"));
@@ -175,7 +175,7 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             ));
         }
     }
-    if write.missing.is_some() {
+    if plan.missing.is_some() {
         out.push_str("-- no row: the entity's not-found failure\n");
     }
     out

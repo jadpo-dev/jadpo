@@ -25,15 +25,17 @@ use jadpo_check::data::{DataModel, EntityModel, foreign_key, unique_constraint};
 use jadpo_graph::body::{BinaryOp, Body, Callee, Expr, Node, SiteId, UnaryOp};
 use jadpo_graph::schema::object_name;
 use jadpo_graph::{Key, Kind, TypeRef};
+use jadpo_std::read::MissingValue;
 use jadpo_std::read::{Field, Record, SqlType};
-use jadpo_std::write::{Guard, Returned, WriteOp, WriteParam, WritePlan, WriteSource};
-
-use crate::queries::{
-    MissingPlan, MissingValue, Planner, Reach, column_type, field, quoted, where_clause,
+use jadpo_std::write::{
+    Guard, Raises, Refusal, Returned, WriteOp, WriteParam, WritePlan, WriteSource,
 };
+
+use crate::queries::{Planner, Reach, column_type, field, quoted, where_clause};
 use crate::types::{Types, ValidatorId};
 
-/// What one write site runs, and what its refusals raise.
+/// What one write site runs: its plan, which says what its refusals and
+/// a missing record raise, and the sites the executor works out first.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteSitePlan {
     pub plan: WritePlan,
@@ -42,24 +44,6 @@ pub struct WriteSitePlan {
     /// its field's type keeps it (a decimal at its scale), with that
     /// field's validator.
     pub inputs: Vec<(SiteId, Option<ValidatorId>)>,
-    /// What each of the plan's refusals raises, in the same order.
-    pub refusals: Vec<Refusal>,
-    /// A write by `id` that finds no record: the entity's not-found
-    /// failure, given the `id`.
-    pub missing: Option<MissingPlan>,
-}
-
-/// What a refused write raises.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Refusal {
-    /// The failure the `conflict:` arm at this position names.
-    Arm(u32),
-    /// A reference naming a record that isn't there: that entity's
-    /// not-found failure.
-    NotFound(MissingPlan),
-    /// A reference read from a record loaded earlier, whose record was
-    /// deleted since: a fault saying so.
-    Gone(String),
 }
 
 /// One write's statement as it is built.
@@ -390,22 +374,25 @@ impl Planner<'_> {
         };
         // What each refusal raises: an arm's failure, a missing record's
         // not-found failure, or a record deleted since it was loaded.
-        let mut refusals: Vec<String> = Vec::new();
-        let mut raises: Vec<Refusal> = Vec::new();
+        let mut refusals: Vec<Refusal> = Vec::new();
         let mut guarded_at = None;
         for (at, arm) in conflicts.iter().enumerate() {
             if arm.rule.kind() == Some(Kind::Transition) {
                 // The transition's `when:` refusing the record.
                 guarded_at = Some(refusals.len() as u32);
-                refusals.push(format!("when: {}", self.types.name(&arm.rule)));
-                raises.push(Refusal::Arm(at as u32));
+                refusals.push(Refusal {
+                    constraint: format!("when: {}", self.types.name(&arm.rule)),
+                    raises: Raises::Arm(at as u32),
+                });
                 continue;
             }
             let Some(constraint) = self.constraint(&arm.rule) else {
                 continue;
             };
-            refusals.push(constraint);
-            raises.push(Refusal::Arm(at as u32));
+            refusals.push(Refusal {
+                constraint,
+                raises: Raises::Arm(at as u32),
+            });
         }
         for (field_name, value) in written_refs {
             let Some(field) = field(entity_model, &field_name) else {
@@ -415,24 +402,26 @@ impl Planner<'_> {
                 continue;
             };
             let constraint = foreign_key(entity_model, field);
-            if refusals.contains(&constraint) {
+            if refusals
+                .iter()
+                .any(|refusal| refusal.constraint == constraint)
+            {
                 continue;
             }
             let may_be_missing = missing
                 .iter()
                 .any(|(key, _)| self.types.field_name(key) == field_name);
-            let raise = if may_be_missing {
+            let raises = if may_be_missing {
                 let target = model.entity(&reference.target)?;
-                Refusal::NotFound(self.not_found(target, value)?)
+                Raises::NotFound(self.not_found(target, value)?)
             } else {
-                Refusal::Gone(format!(
+                Raises::Gone(format!(
                     "the `{}` this {} refers to was deleted after it was loaded",
                     reference.target,
                     op.word()
                 ))
             };
-            refusals.push(constraint);
-            raises.push(raise);
+            refusals.push(Refusal { constraint, raises });
         }
         let missing = match not_found {
             Some(_) => Some(self.not_found(
@@ -466,10 +455,9 @@ impl Planner<'_> {
                 returns,
                 by_id: *by_id,
                 refusals,
+                missing,
             },
             inputs: writing.inputs,
-            refusals: raises,
-            missing,
         })
     }
 

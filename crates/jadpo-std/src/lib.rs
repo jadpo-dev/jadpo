@@ -13,7 +13,11 @@
 //! - [`Rounding`], [`TextFormat`], [`UuidVersion`] and [`Weekday`], and
 //!   the `Zone` and `Locale` tables ([`ZONES`], [`LOCALES`]): the standard
 //!   library's enums that Rust code interprets, declared once.
+//! - [`types`]: type plans, what a value of each type is made of and what
+//!   a declared failure holds, and [`Constant`], a value known while
+//!   compiling, as plain data `jadpo-plan` decides and the runtime reads.
 //! - [`read`] and [`write`]: what a read and a write run, SQL and codecs,
+//!   and the failures they raise when nothing matches or the store refuses,
 //!   decided by `jadpo-plan` and run by `jadpo-runtime` for both executors
 //!   (area 6), the [`Isolation`] an action's transaction runs at, and
 //!   each store's share of a [`Migration`].
@@ -41,6 +45,7 @@
 )]
 
 mod builtin;
+mod constant;
 mod enums;
 mod isolation;
 mod literal;
@@ -50,10 +55,12 @@ mod operations;
 pub mod read;
 mod rules;
 mod time;
+pub mod types;
 pub mod write;
 mod zones;
 
 pub use builtin::Builtin;
+pub use constant::Constant;
 pub use enums::{
     Driver, FieldChange, Generated, LOCALE, OnDelete, Rounding, TextFormat, UuidVersion, Weekday,
     ZONE, enums, variant_ordinal,
