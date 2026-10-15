@@ -152,7 +152,7 @@ pub enum ArgRoot {
 pub enum Authentication {
     /// Every route's unless it says otherwise.
     #[default]
-    SignedIn,
+    Required,
     /// `RouteAuthentication.none`: no credential is read.
     Public,
     /// `RouteAuthentication.fresh`: the caller's record is read now, even
@@ -162,7 +162,7 @@ pub enum Authentication {
 
 impl Authentication {
     /// Whether a caller must be signed in.
-    pub fn signed_in(self) -> bool {
+    pub fn needs_caller(self) -> bool {
         !matches!(self, Authentication::Public)
     }
 }

@@ -92,7 +92,6 @@ bread
 browned
 browse_books
 browser_origin
-browser_session
 budget
 build_product
 bumped
@@ -292,7 +291,6 @@ follow_up
 forget_memos
 formatted_price
 fragile
-fresh
 from_count
 from_flag
 gbp
@@ -808,7 +806,6 @@ update_profile
 update_statistics
 updated_at
 use_count
-user_disabled
 user_id
 user_missing
 user_name

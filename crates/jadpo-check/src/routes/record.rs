@@ -131,6 +131,11 @@ fn write(
             path
         };
         out.push_str(&format!("{} {path}\n", route.method.word()));
+        // A route anyone may call says so: opening one is a change a
+        // reviewer must see (area 8).
+        if !route.authentication.needs_caller() {
+            out.push_str("    authentication: none\n");
+        }
         if let Some(input) = &route.input {
             if let Some(key) = declaration_key(lookup, input) {
                 refs.insert(key);

@@ -67,7 +67,7 @@ pub(crate) const AUTHENTICATION_UNAVAILABLE: (u16, &str, &str) = (
 );
 
 /// Keeps a new session.
-pub(crate) const START: &str = "INSERT INTO \"jadpo_sessions\" (\"id\", \"user_id\", \"verifier\", \"csrf_verifier\", \"started_at\", \"expires_at\") VALUES ($1, $2, $3, $4, $5, $6)";
+pub(crate) const START: &str = "INSERT INTO \"jadpo_sessions\" (\"id\", \"principal_id\", \"verifier\", \"csrf_verifier\", \"started_at\", \"ends_at\") VALUES ($1, $2, $3, $4, $5, $6)";
 
 /// Ends one.
 pub(crate) const END: &str = "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1";

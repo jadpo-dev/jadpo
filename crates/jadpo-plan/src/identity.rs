@@ -53,7 +53,7 @@ impl Planner<'_> {
             }
             None => "TRUE".to_string(),
         };
-        let mut wheres = vec![format!("{} = s.{}", ident("id"), ident("user_id"))];
+        let mut wheres = vec![format!("{} = s.{}", ident("id"), ident("principal_id"))];
         wheres.extend(self.access(&mut bind, entity, Reach::Read)?);
         let session = format!(
             "SELECT s.{id}, s.{csrf}, u.{id}, u.{subject}, u.{active} FROM {sessions} AS s CROSS JOIN LATERAL (SELECT {id}, {column} AS {subject}, {active_sql} AS {active} FROM {table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{expires} > $2",
@@ -67,7 +67,7 @@ impl Planner<'_> {
             table = ident(&entity.table),
             wheres = wheres.join(" AND "),
             verifier = ident("verifier"),
-            expires = ident("expires_at"),
+            expires = ident("ends_at"),
         );
         Some(PrincipalPlan {
             entity: entity.name.clone(),

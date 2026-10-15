@@ -413,6 +413,7 @@ fn query_values(query: &str) -> Option<BTreeMap<String, Vec<String>>> {
     Some(out)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_route(
     app: &App<'_>,
     executor: &dyn Executor,
@@ -427,7 +428,7 @@ async fn run_route(
     let host = ctx.host();
     let mut deadline = host.sleep(u64::from(route.deadline_ms));
     // Who is calling, before the input is read or anything runs (area 8).
-    let caller = if route.authentication.signed_in() {
+    let caller = if route.authentication.needs_caller() {
         let checked = identity::authenticate(app.table, ctx, request, route);
         match race(checked, &mut deadline).await {
             First::Left(Ok(caller)) => Some(caller),
@@ -446,16 +447,16 @@ async fn run_route(
     } else {
         None
     };
-    if let (Some(caller), Some(limits)) = (&caller, limits) {
-        if let Allowed::No { retry_after } = limits.allow_caller(&caller.key, ctx.now()) {
-            return rate_limited(request_id, retry_after);
-        }
+    if let (Some(caller), Some(limits)) = (&caller, limits)
+        && let Allowed::No { retry_after } = limits.allow_caller(&caller.key, ctx.now())
+    {
+        return rate_limited(request_id, retry_after);
     }
     let scope = caller.as_ref().map_or_else(
         || idempotency::ANONYMOUS.to_string(),
         |caller| caller.key.clone(),
     );
-    let mut response = run_signed_in(
+    let mut response = run_with_caller(
         app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
     )
     .await;
@@ -467,7 +468,7 @@ async fn run_route(
 /// The rest of a route's run, once its caller is known: `deadline` is the
 /// route's timer, already running.
 #[allow(clippy::too_many_arguments)]
-async fn run_signed_in(
+async fn run_with_caller(
     app: &App<'_>,
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,

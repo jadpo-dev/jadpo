@@ -381,7 +381,7 @@ impl Reader<'_> {
                     "The principal declares no kind of caller",
                 )
                 .at(found.keyword.clone(), "no `user:` or `service:`")
-                .reason("A principal says which entity a signed-in caller is: `user:` for people, `service:` for other systems, or both.")
+                .reason("A principal says which entity a signed-in caller is: `user:` for a person, `service:` for another system, or both.")
                 .next("Add `user: { subject: <Entity>.<field> }`"),
             );
         }
@@ -811,8 +811,8 @@ impl Reader<'_> {
                                 "`cookie:` isn't a cookie's name",
                             )
                             .at(value_span, "not a cookie name")
-                            .reason("A browser session's cookie is named in text: 1 to 64 letters, digits, `_` and `-`, starting with a letter, such as `\"todo_session\"`.")
-                            .next("Write the cookie's name in quotes, such as `cookie: \"todo_session\"`"),
+                            .reason("A browser session's cookie is named in text: 1 to 64 letters, digits, `_` and `-`, starting with a letter, such as `\"session\"`.")
+                            .next("Write the cookie's name in quotes, such as `cookie: \"session\"`"),
                         );
                     }
                 },
@@ -868,7 +868,7 @@ impl Reader<'_> {
                 )
                 .at(span.clone(), "no `cookie:`")
                 .reason("A browser session travels in a cookie the application names, so two applications on one domain never share one.")
-                .next("Add `cookie: \"<name>\"`, such as `cookie: \"todo_session\"`"),
+                .next("Add `cookie: \"<name>\"`, such as `cookie: \"session\"`"),
             );
             return None;
         }
@@ -1013,7 +1013,7 @@ impl ActiveReader<'_, '_> {
                     &expr,
                     "not a comparison",
                     format!(
-                        "`active:` is a condition on `{entity}`'s own fields, such as `{entity}.status == UserStatus.active`; a field alone says nothing to compare it with."
+                        "`active:` is a condition on `{entity}`'s own fields, such as `{entity}.<field> == <value>`; a field alone says nothing to compare it with."
                     ),
                     format!("Compare a field of `{entity}` with a value"),
                 );

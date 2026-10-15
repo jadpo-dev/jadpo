@@ -258,7 +258,7 @@ pub fn group_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         lookup: &lookup,
         names: &names,
         caller: None,
-        authentication: Authentication::SignedIn,
+        authentication: Authentication::Required,
         apis: api_table(db, project),
         path: &symbol.path,
         out: Vec::new(),
@@ -435,7 +435,7 @@ pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         };
         let Some(model) = &read.model else { continue };
         for route in &model.routes {
-            if !route.authentication.signed_in() {
+            if !route.authentication.needs_caller() {
                 continue;
             }
             if let Some((label, span)) =
@@ -1002,7 +1002,7 @@ impl Reader<'_> {
         self.caller = None;
         self.authentication = match items.get("authentication") {
             Some(member) => self.authentication(member)?,
-            None => Authentication::SignedIn,
+            None => Authentication::Required,
         };
         // `input:`.
         let input = items

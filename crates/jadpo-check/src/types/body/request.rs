@@ -250,7 +250,7 @@ impl Body<'_> {
             let ty = self.infer(&value);
             match super::identity::caller_kind(&ty) {
                 _ if ty.has_error() => ok = false,
-                _ if !route.authentication.signed_in() => {
+                _ if !route.authentication.needs_caller() => {
                     ok = false;
                     self.request_problem(
                         key_span,

@@ -243,6 +243,10 @@ signing_key
 database_url
 page_size
 sign_out
+# area 8's sign-in methods, route authentication and runtime failure codes
+browser_session
+fresh
+user_disabled
 
 # Generic names the language rejects for a domain or library (area 1)
 helpers

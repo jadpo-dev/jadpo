@@ -411,6 +411,8 @@ const BODY: &[&str] = &[
     "call construct named collection",
     "call construct named set from a list",
     "call entity operation",
+    "call caller from a record",
+    "call session",
     "write create",
     "write update",
     "write update by id",
@@ -723,6 +725,8 @@ fn body_features(
                         Callee::Construct(TypeRef::Field(_)) => "call construct field type",
                         Callee::Construct(_) => "call construct",
                         Callee::Entity { .. } => "call entity operation",
+                        Callee::Caller(_) => "call caller from a record",
+                        Callee::Session(_) => "call session",
                         // Objects and variants are built, below; an
                         // unknown callee is a mistake already reported.
                         Callee::Object(_) | Callee::Variant(_) | Callee::Unknown => continue,

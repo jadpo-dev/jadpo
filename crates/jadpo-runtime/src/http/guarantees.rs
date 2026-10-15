@@ -342,6 +342,7 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             } else {
                 Idempotency::Optional
             },
+            methods: Vec::new(),
         }],
         routes: vec![RoutePlan {
             key: "route POST /notes".into(),
@@ -355,6 +356,8 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             run: Run::Action(0),
             keys: keys.map(str::to_string),
             args: Vec::new(),
+            authentication: jadpo_std::http::Authentication::Public,
+            caller: None,
             file: "domains/notes/routes/notes.jadpo".into(),
             line: 1,
         }],

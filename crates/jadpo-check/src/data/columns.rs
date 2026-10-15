@@ -226,11 +226,11 @@ pub fn system_table(name: &str) -> Table {
             // Browser sessions (area 8): each found by its token's
             // verifier, never the token itself, with its CSRF token's.
             add("id", "uuid", false);
-            add("user_id", "uuid", false);
+            add("principal_id", "uuid", false);
             add("verifier", "text", false);
             add("csrf_verifier", "text", false);
             add("started_at", "timestamptz(3)", false);
-            add("expires_at", "timestamptz(3)", false);
+            add("ends_at", "timestamptz(3)", false);
             unique.insert(
                 object_name(&[&table, "verifier"], "key"),
                 jadpo_graph::schema::Unique {
@@ -239,18 +239,18 @@ pub fn system_table(name: &str) -> Table {
                 },
             );
             indexes.insert(
-                object_name(&[&table, "user_id"], "idx"),
+                object_name(&[&table, "principal_id"], "idx"),
                 jadpo_graph::schema::Index {
-                    columns: vec!["user_id".into()],
+                    columns: vec!["principal_id".into()],
                     reason: "system sessions".into(),
                     predicate: None,
                     collate: Vec::new(),
                 },
             );
             indexes.insert(
-                object_name(&[&table, "expires_at"], "idx"),
+                object_name(&[&table, "ends_at"], "idx"),
                 jadpo_graph::schema::Index {
-                    columns: vec!["expires_at".into()],
+                    columns: vec!["ends_at".into()],
                     reason: "system sessions".into(),
                     predicate: None,
                     collate: Vec::new(),
