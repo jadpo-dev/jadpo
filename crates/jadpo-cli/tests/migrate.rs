@@ -388,12 +388,18 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
-    let url = server.create_database("migrate_narrowing").expect("database");
+    let url = server
+        .create_database("migrate_narrowing")
+        .expect("database");
     let root = folder("narrowing");
     write(&root, "app.jadpo", APP);
     let size = "domains/planning/types/size.jadpo";
     let label = "domains/planning/types/label.jadpo";
-    write(&root, size, "type Size = Enum {\n    small\n    medium\n    large\n}\n");
+    write(
+        &root,
+        size,
+        "type Size = Enum {\n    small\n    medium\n    large\n}\n",
+    );
     write(&root, label, "type Label = Text {\n    max_length: 20\n}\n");
     write(
         &root,
@@ -410,19 +416,33 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
     );
 
     // A variant added allows more: a migration with nothing to run.
-    write(&root, size, "type Size = Enum {\n    small\n    medium\n    large\n    huge\n}\n");
+    write(
+        &root,
+        size,
+        "type Size = Enum {\n    small\n    medium\n    large\n    huge\n}\n",
+    );
     let drift = jadpo(&root, &["check"]);
-    assert!(drift.stdout.contains("migration.out_of_date"), "{}", drift.stdout);
+    assert!(
+        drift.stdout.contains("migration.out_of_date"),
+        "{}",
+        drift.stdout
+    );
     let grown = jadpo(&root, &["migrate", "new", "add_huge"]);
     assert!(
-        grown.stdout.contains("no statements: nothing in the database changes"),
+        grown
+            .stdout
+            .contains("no statements: nothing in the database changes"),
         "{}",
         grown.stdout
     );
 
     // A variant gone and a shorter label allow less: each needs a value
     // for what is stored.
-    write(&root, size, "type Size = Enum {\n    small\n    medium\n    huge\n}\n");
+    write(
+        &root,
+        size,
+        "type Size = Enum {\n    small\n    medium\n    huge\n}\n",
+    );
     write(&root, label, "type Label = Text {\n    max_length: 10\n}\n");
     let waiting = jadpo(&root, &["migrate", "new", "shrink"]);
     assert!(waiting.stdout.contains("allows less"), "{}", waiting.stdout);
@@ -445,7 +465,10 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
     let applied = jadpo(&root, &["migrate", "apply", "--url", &url]);
     assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
     assert_eq!(
-        rows(&url, "SELECT \"size\", \"label\" FROM \"parcel\" ORDER BY \"id\""),
+        rows(
+            &url,
+            "SELECT \"size\", \"label\" FROM \"parcel\" ORDER BY \"id\""
+        ),
         [vec!["medium", "relabel"], vec!["small", "short"]]
     );
 }
@@ -454,7 +477,11 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
 fn a_decision_that_doesnt_fit_says_why_and_stays_open() {
     let root = project("misfit");
     assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
-    write(&root, "domains/planning/types/initials.jadpo", "type Initials = Text {\n    max_length: 3\n}\n");
+    write(
+        &root,
+        "domains/planning/types/initials.jadpo",
+        "type Initials = Text {\n    max_length: 3\n}\n",
+    );
     write(
         &root,
         TODO,
@@ -468,7 +495,11 @@ fn a_decision_that_doesnt_fit_says_why_and_stays_open() {
         "/// Adds an owner.\nmigration {\n    Todo.owner: {\n        backfill: \"nobody\"\n    }\n}\n",
     );
     let again = jadpo(&root, &["migrate", "new", "add_owner"]);
-    assert!(again.stdout.contains("changes.jadpo  1 decision to make"), "{}", again.stdout);
+    assert!(
+        again.stdout.contains("changes.jadpo  1 decision to make"),
+        "{}",
+        again.stdout
+    );
     assert!(
         again.stdout.contains(
             "decision: this value can't fill `Todo.owner`: it is longer than the field's `max_length`"
@@ -488,7 +519,11 @@ fn a_query_sorted_by_text_reads_its_index() {
     let url = server.create_database("migrate_sorted").expect("database");
     let root = folder("sorted");
     write(&root, "app.jadpo", APP);
-    write(&root, "domains/planning/types/title.jadpo", "type Title = Text {\n    max_length: 80\n}\n");
+    write(
+        &root,
+        "domains/planning/types/title.jadpo",
+        "type Title = Text {\n    max_length: 80\n}\n",
+    );
     write(
         &root,
         TODO,
@@ -528,6 +563,9 @@ fn a_query_sorted_by_text_reads_its_index() {
             .collect::<Vec<_>>()
             .join("\n")
     });
-    assert!(plan.contains("Scan using todo_title_id_sorted_idx"), "{plan}");
+    assert!(
+        plan.contains("Scan using todo_title_id_sorted_idx"),
+        "{plan}"
+    );
     assert!(!plan.contains("Sort"), "{plan}");
 }

@@ -423,7 +423,9 @@ pub fn migration_sql(
                     }
                 }
                 let new_pattern = match (&was.allows, &now.allows) {
-                    (Some(was), Some(now)) => now.patterns.iter().any(|p| !was.patterns.contains(p)),
+                    (Some(was), Some(now)) => {
+                        now.patterns.iter().any(|p| !was.patterns.contains(p))
+                    }
                     _ => false,
                 };
                 if !now.retired && new_pattern {
@@ -445,8 +447,13 @@ pub fn migration_sql(
                     .find(|n| &n.table == table && &n.column == column);
                 match need {
                     Some(need) => {
-                        plan.columns
-                            .extend(backfill(table, column, &refit(was, now, &ident(column)), need, decided));
+                        plan.columns.extend(backfill(
+                            table,
+                            column,
+                            &refit(was, now, &ident(column)),
+                            need,
+                            decided,
+                        ));
                     }
                     None if !was.nullable && now.nullable => plan.columns.push(Statement {
                         sql: format!(

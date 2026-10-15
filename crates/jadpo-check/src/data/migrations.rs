@@ -829,7 +829,9 @@ fn required(
             ),
             match example {
                 Some(example) => {
-                    format!("Set `backfill:` for `{key}`, the value those records get, such as `backfill: {example}`")
+                    format!(
+                        "Set `backfill:` for `{key}`, the value those records get, such as `backfill: {example}`"
+                    )
                 }
                 None => format!("Set `backfill:` for `{key}`, the value those records get"),
             },

@@ -109,12 +109,7 @@ pub fn used_stores(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeMap<S
 
 /// The store `reach` uses directly, with the entity it uses there: a
 /// write's, or with `reads`, a `get`'s or a query's.
-fn store_of(
-    db: &dyn Db,
-    project: Project,
-    reach: &Reach,
-    reads: bool,
-) -> Option<(String, String)> {
+fn store_of(db: &dyn Db, project: Project, reach: &Reach, reads: bool) -> Option<(String, String)> {
     let model = crate::data::data_model(db, project);
     let entity = match reach {
         Reach::Writes(entity) => entity.clone(),
@@ -179,7 +174,9 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     for (name, found) in reaches(db, project, file) {
         let writes = written.get(&name).map_or(0, BTreeMap::len);
         if writes <= 1 && used.get(&name).is_some_and(|stores| stores.len() > 1) {
-            out.extend(second_store_read(db, project, path, &name, &found, written, used));
+            out.extend(second_store_read(
+                db, project, path, &name, &found, written, used,
+            ));
         }
     }
     for (name, found) in reaches(db, project, file) {

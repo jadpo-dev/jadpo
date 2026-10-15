@@ -216,7 +216,16 @@ fn new(call: &Call) -> Reply {
             decision_misfit(&lookup, model, &decisions, need).map(|why| (need.key(), why))
         })
         .collect();
-    let written = match write(&folder, &name, &after, &sql, &needed, pending.len(), model, &lookup) {
+    let written = match write(
+        &folder,
+        &name,
+        &after,
+        &sql,
+        &needed,
+        pending.len(),
+        model,
+        &lookup,
+    ) {
         Ok(written) => written,
         Err(error) => {
             return Reply::failed(

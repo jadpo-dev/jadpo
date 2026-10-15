@@ -106,8 +106,7 @@ fn held_by(model: &DataModel, entity: &str) -> Option<Vec<Vec<(String, String)>>
             match on_delete {
                 Some(OnDelete::Restricted) | None => out.push(next),
                 Some(OnDelete::Cascade) => {
-                    let looped =
-                        child == entity || path.iter().any(|(holder, _)| *holder == child);
+                    let looped = child == entity || path.iter().any(|(holder, _)| *holder == child);
                     if looped {
                         return None;
                     }

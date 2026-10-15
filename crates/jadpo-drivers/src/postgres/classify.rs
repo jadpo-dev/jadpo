@@ -109,7 +109,9 @@ mod tests {
         // Other integrity errors are not conflicts: a not-null or check
         // violation is a bug in the plan, not a race; so are a missing
         // operator and a negative `LIMIT`.
-        for code in ["23502", "23514", "42883", "42601", "2201W", "22P02", "0A000"] {
+        for code in [
+            "23502", "23514", "42883", "42601", "2201W", "22P02", "0A000",
+        ] {
             assert_eq!(
                 server(code, Some("c")),
                 StoreError::Statement(format!("{code}: the message"))
