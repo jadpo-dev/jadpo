@@ -2826,7 +2826,7 @@ impl<'a> Reader<'a> {
 
 // --- helpers -------------------------------------------------------------------
 
-pub(super) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
+pub(crate) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
     matches!(
         lookup.representation(ty),
         Some(
@@ -2843,7 +2843,7 @@ pub(super) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
 /// Whether a value of type `a` can be compared with field type `b`:
 /// the same type after widening, or two named types with a common
 /// ancestor, as `==` allows in a body (area 3).
-pub(super) fn comparable(lookup: &dyn TypeView, a: &Ty, b: &Ty) -> bool {
+pub(crate) fn comparable(lookup: &dyn TypeView, a: &Ty, b: &Ty) -> bool {
     let (a, b) = (a.strip_nullable(), b.strip_nullable());
     if a.has_error() || b.has_error() {
         return true;

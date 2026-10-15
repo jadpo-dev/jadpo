@@ -92,6 +92,10 @@ impl Body<'_> {
             // The standard library computes its results; nothing in it
             // fails with a domain failure.
             Some(Reach::Std(_)) => Fallible::Never,
+            // A caller made from a record, or a session started or ended,
+            // never fails with a declared failure; a store that can't be
+            // reached is the runtime's `unavailable`.
+            Some(Reach::Caller(_) | Reach::Session(_)) => Fallible::Never,
             Some(Reach::Entity { entity, operation }) => self.entity_fallible(entity, operation),
             Some(Reach::Construct(_) | Reach::Unknown) | None => Fallible::Unknown,
         }

@@ -13,7 +13,7 @@ Page
 File Principal Response Access
 TimeFormat LocalGap LocalOverlap
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
-AuthenticationMethod RouteAuthentication FieldAccess OnDelete Generated FieldChange
+FieldAccess OnDelete Generated FieldChange
 ApiChange PersonalData Erasure FileType SearchLanguage RateLimitKey
 ComponentStyle
 

@@ -71,8 +71,11 @@ pub(crate) enum Target {
     Get(u32),
     /// `create`, `update` or `delete`, by the number of the write's plan.
     Write(u32),
-    /// A route test's request, by the route's place in the route table.
-    Request(u32),
+    /// A route test's request, by the route's place in the route table;
+    /// `signed` when its last value is the caller it signs in as.
+    Request { route: u32, signed: bool },
+    /// `sessions.start` or `sessions.end` (area 8).
+    Session(jadpo_std::http::SessionOp),
 }
 
 /// Where a run of the machine stopped.
@@ -163,6 +166,12 @@ enum Task<'p> {
         at: SiteId,
     },
     Field(SiteId),
+    /// `Principal.user(record)` (area 8): the caller made from the record
+    /// on top.
+    Caller {
+        kind: jadpo_std::http::PrincipalKind,
+        at: SiteId,
+    },
     Apply {
         op: BinaryOp,
         at: SiteId,
@@ -645,6 +654,29 @@ impl<'p> Machine<'p> {
                     });
                 }
             }
+            Task::Caller { kind, at } => {
+                let record = self.pop();
+                let made = self
+                    .program
+                    .plan()
+                    .routes()
+                    .identity
+                    .as_ref()
+                    .and_then(|identity| identity.principal(kind))
+                    .and_then(|plan| {
+                        jadpo_runtime::http::identity::caller_from_record(plan, kind, &record)
+                    });
+                match made {
+                    Some(value) => self.values.push(value),
+                    None => {
+                        return Err(self.defect(
+                            ctx,
+                            "a caller made from something that isn't its record",
+                            at,
+                        ));
+                    }
+                }
+            }
             Task::Field(at) => {
                 let receiver = self.pop();
                 let name = match self.decoded(at) {
@@ -737,7 +769,11 @@ impl<'p> Machine<'p> {
                     }
                     // A read or a write always waits on the store, and a
                     // request on the HTTP component.
-                    Target::Query(_) | Target::Get(_) | Target::Write(_) | Target::Request(_) => {
+                    Target::Query(_)
+                    | Target::Get(_)
+                    | Target::Write(_)
+                    | Target::Request { .. }
+                    | Target::Session(_) => {
                         return Ok(Flow::Pause { target, args, at });
                     }
                 }
@@ -1292,6 +1328,7 @@ impl<'p> Machine<'p> {
                 route,
                 params,
                 input,
+                caller,
             } => {
                 let Some(index) = self
                     .program
@@ -1303,9 +1340,17 @@ impl<'p> Machine<'p> {
                 else {
                     return Err(self.defect(ctx, "a request to a route with no plan", id));
                 };
-                let parts: Vec<SiteId> = params.iter().copied().chain(*input).collect();
+                let parts: Vec<SiteId> = params
+                    .iter()
+                    .copied()
+                    .chain(*input)
+                    .chain(*caller)
+                    .collect();
                 self.tasks.push(Task::Invoke {
-                    target: Target::Request(index as u32),
+                    target: Target::Request {
+                        route: index as u32,
+                        signed: caller.is_some(),
+                    },
                     count: parts.len(),
                     at: id,
                     then: None,
@@ -1549,6 +1594,27 @@ impl<'p> Machine<'p> {
                 };
                 self.tasks.push(Task::Construct(id));
                 self.tasks.push(Task::Expr(*arg));
+            }
+            // A caller made from a record, in a test (area 8).
+            Callee::Caller(kind) => {
+                let [Some(arg)] = args else {
+                    return Err(self.defect(ctx, "a caller made without its record", id));
+                };
+                self.tasks.push(Task::Caller {
+                    kind: *kind,
+                    at: id,
+                });
+                self.tasks.push(Task::Expr(*arg));
+            }
+            // A session started or ended, in the action's transaction.
+            Callee::Session(op) => {
+                self.tasks.push(Task::Invoke {
+                    target: Target::Session(*op),
+                    count: args.len(),
+                    at: id,
+                    then: None,
+                });
+                self.arguments(args, id);
             }
             Callee::Object(_) | Callee::Variant(_) | Callee::Unknown => {
                 return Err(self.defect(ctx, "a call to something that can't be called", id));

@@ -156,8 +156,8 @@ fn column(position: u32, sql_type: &str, nullable: bool) -> Column {
 
 /// A system table's columns and keys (area 5, "System tables"): the event
 /// outbox, the delivery records of each event to each subscriber, and the
-/// stored responses of idempotent requests. Areas 7 and 12 give them their
-/// behaviour.
+/// stored responses of idempotent requests, and browser sessions. Areas 7,
+/// 8 and 12 give them their behaviour.
 pub fn system_table(name: &str) -> Table {
     let table = format!("jadpo_{name}");
     let mut columns = BTreeMap::new();
@@ -217,6 +217,41 @@ pub fn system_table(name: &str) -> Table {
                 jadpo_graph::schema::Index {
                     columns: vec!["status".into(), "next_attempt_at".into()],
                     reason: "system deliveries".into(),
+                    predicate: None,
+                    collate: Vec::new(),
+                },
+            );
+        }
+        "sessions" => {
+            // Browser sessions (area 8): each found by its token's
+            // verifier, never the token itself, with its CSRF token's.
+            add("id", "uuid", false);
+            add("user_id", "uuid", false);
+            add("verifier", "text", false);
+            add("csrf_verifier", "text", false);
+            add("started_at", "timestamptz(3)", false);
+            add("expires_at", "timestamptz(3)", false);
+            unique.insert(
+                object_name(&[&table, "verifier"], "key"),
+                jadpo_graph::schema::Unique {
+                    columns: vec!["verifier".into()],
+                    rule: "system sessions".into(),
+                },
+            );
+            indexes.insert(
+                object_name(&[&table, "user_id"], "idx"),
+                jadpo_graph::schema::Index {
+                    columns: vec!["user_id".into()],
+                    reason: "system sessions".into(),
+                    predicate: None,
+                    collate: Vec::new(),
+                },
+            );
+            indexes.insert(
+                object_name(&[&table, "expires_at"], "idx"),
+                jadpo_graph::schema::Index {
+                    columns: vec!["expires_at".into()],
+                    reason: "system sessions".into(),
                     predicate: None,
                     collate: Vec::new(),
                 },

@@ -36,6 +36,9 @@ pub enum Reach {
     Reads(String),
     /// A query, by name.
     Queries(String),
+    /// `sessions.start` or `sessions.end` (area 8): a write to the store
+    /// sessions are kept in.
+    Sessions,
 }
 
 /// One action's or fixture's name and what it reaches, each with its
@@ -71,6 +74,10 @@ fn reaches(db: &dyn Db, project: Project, file: File) -> Vec<Reaches> {
                     callee: Callee::Query(query),
                     ..
                 }) => Reach::Queries(query.name().to_string()),
+                Node::Expr(jadpo_graph::body::Expr::Call {
+                    callee: Callee::Session(_),
+                    ..
+                }) => Reach::Sessions,
                 _ => continue,
             };
             found.push((reach, (site.start, site.end)));
@@ -129,6 +136,11 @@ fn query_entity<'db>(db: &'db dyn Db, project: Project, query: Name<'db>) -> Opt
 /// write's, or with `reads`, a `get`'s or a query's.
 fn store_of(db: &dyn Db, project: Project, reach: &Reach, reads: bool) -> Option<(String, String)> {
     let name = |text: &str| Name::new(db, text.to_string());
+    if *reach == Reach::Sessions {
+        let identity = crate::identity::identity(db, project);
+        let store = identity.sessions_store()?.to_string();
+        return Some((store, "jadpo_sessions".to_string()));
+    }
     let entity = match reach {
         Reach::Writes(entity) => entity.clone(),
         Reach::Reads(entity) if reads => entity.clone(),
@@ -243,6 +255,10 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                     reached(callee).written.clone(),
                     format!("calls `{callee}`, which writes"),
                 ),
+                Reach::Sessions => (
+                    store_of(db, project, &reach, false).into_iter().collect(),
+                    "writes".to_string(),
+                ),
                 Reach::Reads(_) | Reach::Queries(_) => continue,
             };
             let Some((store, entity)) = stores
@@ -305,7 +321,7 @@ fn second_store_read(
                     .collect(),
                 format!("calls `{callee}`, which uses"),
             ),
-            Reach::Writes(_) => (
+            Reach::Writes(_) | Reach::Sessions => (
                 store_of(db, project, reach, true).into_iter().collect(),
                 "writes".to_string(),
             ),

@@ -204,6 +204,12 @@ impl Body<'_> {
         let rest: Vec<String> = rest.iter().map(text).collect();
         let written = format!("{head}.{}", rest.join("."));
         if starts_upper(&head) {
+            if head == crate::identity::PRINCIPAL
+                && let [kind] = rest.as_slice()
+                && let Some(kind) = jadpo_std::http::PrincipalKind::from_name(kind)
+            {
+                return self.caller_call(kind, call, callee, &written);
+            }
             if self.table.field(&head, &rest).is_some() {
                 let target = self.table.field_type(&head, &rest);
                 let ty = self.construct(&written, Some(target.clone()), call);
@@ -329,8 +335,13 @@ impl Body<'_> {
         };
         let names = StdNames::get();
         if names.namespace(&head) == Some(Namespace::Generated) {
-            // Nothing a generated namespace holds is called: `clock.now` is
-            // a value, and the rest wait for their areas.
+            if head == "sessions"
+                && let Some(op) = jadpo_std::http::SessionOp::from_name(member)
+            {
+                return self.session_call(op, call, callee, &written);
+            }
+            // Nothing else a generated namespace holds is called: `clock.now`
+            // is a value, and the rest wait for their areas.
             let span = self.span(callee);
             self.not_built_yet(span, &written);
             self.args_only(call);

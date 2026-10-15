@@ -74,7 +74,7 @@ mod store;
 mod write;
 
 pub use boundary::{ActionBody, RERUN_ATTEMPTS, action, commit_held, unavailable};
-pub use ctx::{Ctx, Held};
+pub use ctx::{Caller, Ctx, Held, SessionEffect};
 pub use env::{Clock, Env};
 pub use executor::{Executor, Stalled, block_on};
 pub use failure::Failure;

@@ -45,6 +45,31 @@ pub(crate) struct Boundary {
     /// A store operation found another transaction had changed what this
     /// one read, so the body is run again.
     pub concurrent_change: bool,
+    /// What the body did to the request's session, for its response once
+    /// it commits (area 8).
+    pub session: Option<SessionEffect>,
+}
+
+/// What an action did to the session of the request a route answers
+/// (area 8, "Starting and ending a session"): the cookies its response
+/// sets once the action commits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SessionEffect {
+    /// `sessions.start`: the new session's token and CSRF token.
+    Start { token: String, csrf: String },
+    /// `sessions.end`.
+    End,
+}
+
+/// The signed-in caller of the request being answered (area 8).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Caller {
+    /// The caller value code receives: a `Principal.user` record.
+    pub value: Value,
+    /// Whose it is, for rate limits and idempotency keys: `user <id>`.
+    pub key: String,
+    /// The browser session it came with, when it did, by `id`.
+    pub session: Option<[u8; 16]>,
 }
 
 /// An action's transaction and outbox, kept open after its body succeeded
@@ -57,6 +82,8 @@ pub struct Held {
     /// `None` when the body did no store operation.
     pub transaction: Option<Box<dyn Transaction>>,
     pub outbox: Vec<Event>,
+    /// What the body did to the request's session.
+    pub session: Option<SessionEffect>,
 }
 
 impl fmt::Debug for Held {
@@ -64,6 +91,7 @@ impl fmt::Debug for Held {
         f.debug_struct("Held")
             .field("transaction", &self.transaction.is_some())
             .field("outbox", &self.outbox)
+            .field("session", &self.session)
             .finish()
     }
 }
@@ -85,6 +113,10 @@ pub struct Ctx<'p> {
     pub(crate) hold: bool,
     /// What a held boundary left open.
     pub(crate) held: Option<Held>,
+    /// The signed-in caller of the request being answered (area 8).
+    pub(crate) caller: Option<Caller>,
+    /// How many random values it has made from its seed.
+    draws: u64,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -114,6 +146,57 @@ impl<'p> Ctx<'p> {
             ids: 0,
             hold: false,
             held: None,
+            caller: None,
+            draws: 0,
+        }
+    }
+
+    /// The signed-in caller of the request being answered, when there is
+    /// one (area 8).
+    pub fn caller(&self) -> Option<&Caller> {
+        self.caller.as_ref()
+    }
+
+    /// Sets the request's signed-in caller, for what a route runs.
+    pub fn set_caller(&mut self, caller: Option<Caller>) {
+        self.caller = caller;
+    }
+
+    /// Fills `out` with random bytes: the host's, or under a seed (a
+    /// test's) from a generator the seed starts, so a test reproduces.
+    /// `false` when there is neither.
+    pub fn random_bytes(&mut self, out: &mut [u8]) -> bool {
+        if self.host.random(out) {
+            return true;
+        }
+        let Some(seed) = self.env.seed else {
+            return false;
+        };
+        for chunk in out.chunks_mut(8) {
+            self.draws += 1;
+            let mut z = seed
+                .wrapping_add(self.draws.wrapping_mul(0xD1B5_4A32_D192_ED03))
+                .wrapping_add(0x9E37_79B9_7F4A_7C15);
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^= z >> 31;
+            let bytes = z.to_be_bytes();
+            for (to, from) in chunk.iter_mut().zip(bytes) {
+                *to = from;
+            }
+        }
+        true
+    }
+
+    /// Records what the running action did to the request's session;
+    /// `false` outside an action.
+    pub fn session(&mut self, effect: SessionEffect) -> bool {
+        match &mut self.boundary {
+            Some(boundary) => {
+                boundary.session = Some(effect);
+                true
+            }
+            None => false,
         }
     }
 

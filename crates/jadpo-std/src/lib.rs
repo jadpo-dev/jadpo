@@ -63,8 +63,9 @@ mod zones;
 pub use builtin::Builtin;
 pub use constant::Constant;
 pub use enums::{
-    Driver, FieldChange, Generated, HttpMethod, Idempotency, LOCALE, OnDelete, Rounding,
-    SuccessStatus, TextFormat, UuidVersion, Weekday, ZONE, enums, variant_ordinal,
+    AuthenticationMethod, AuthenticationStrength, Driver, FieldChange, Generated, HttpMethod,
+    Idempotency, LOCALE, OnDelete, Rounding, RouteAuthentication, SuccessStatus, TextFormat,
+    UuidVersion, Weekday, ZONE, enums, variant_ordinal,
 };
 pub use isolation::Isolation;
 pub use literal::Literal;

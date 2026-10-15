@@ -21,6 +21,7 @@ mod calls;
 mod expr;
 pub(crate) mod facts;
 mod failing;
+mod identity;
 mod known;
 mod lower;
 mod matching;
@@ -144,6 +145,8 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
     };
     let lookup = Lookup::new(db, project);
     let mut checker = Body {
+        db,
+        project,
         path: file.path(db),
         ownership: &location(db, project, file).ownership,
         table: &lookup,
@@ -360,6 +363,10 @@ enum CallKind {
 }
 
 struct Body<'a> {
+    /// The project, for what a body reads only when it needs it: the
+    /// identity declarations (area 8).
+    db: &'a dyn Db,
+    project: Project,
     path: &'a str,
     /// Who owns the file: what it may use (area 1).
     ownership: &'a Ownership,
@@ -526,6 +533,12 @@ fn line_span(path: &str, node: &jadpo_syntax::SyntaxNode) -> Span {
 impl Body<'_> {
     fn span(&self, node: &impl AstNode) -> Span {
         node_span(self.path, node.syntax())
+    }
+
+    /// The identity declarations (area 8), read only by a body that names
+    /// a caller or a session, so an edit to them checks only those again.
+    fn identity(&self) -> std::sync::Arc<crate::identity::Identity> {
+        std::sync::Arc::clone(crate::identity::identity(self.db, self.project))
     }
 
     fn resolve(&self, ty: Option<ast::Type>) -> Ty {
@@ -952,6 +965,7 @@ impl Body<'_> {
                         table: self.table,
                         out: Vec::new(),
                         headers: Vec::new(),
+                        failure: false,
                     };
                     let ok = decls.type_node(&TypeNode::Type(ty.clone()), false);
                     self.out.append(&mut decls.out);

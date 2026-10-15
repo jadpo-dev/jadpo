@@ -20,12 +20,17 @@
 //! - `GET /health/live` and `GET /health/ready` ([`health`]);
 //! - `Idempotency-Key` on every route but a `GET` ([`idempotency`]).
 //!
-//! Sign-in comes with 4.3 and policy with 4.4.
+//! Sign-in (chunk 4.3, [`identity`]): a route that needs a signed-in
+//! caller authenticates the request before its input is read, and what it
+//! runs gets the caller; a signed-in caller's requests count against its
+//! own rate limit and keep their idempotency keys apart. Policy comes with
+//! 4.4.
 
 #[cfg(test)]
 mod guarantees;
 mod health;
 pub mod idempotency;
+pub mod identity;
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -84,6 +89,9 @@ pub struct Response {
     /// The fault behind a 500, for the host's log and a route test's
     /// report; never sent.
     pub fault: Option<Box<crate::Fault>>,
+    /// Set while the component answers when the request has been counted
+    /// against a rate limit; never sent.
+    pub counted: bool,
 }
 
 impl Response {
@@ -227,19 +235,60 @@ async fn respond(
     {
         return response;
     }
-    if let Some(limits) = limits {
-        let key = format!(
-            "address {}",
-            request.address.as_deref().unwrap_or("unknown")
-        );
-        if let Allowed::No { retry_after } = limits.allow(&key, ctx.now()) {
-            let mut response = runtime_failure(RATE_LIMITED, request_id, None);
-            response
-                .headers
-                .push(("retry-after".to_string(), retry_after.to_string()));
-            return response;
-        }
+    // A request with a credential counts against its caller once signed
+    // in, or against its address if it isn't; every other request against
+    // its address, here.
+    let deferred = identity::carries_credential(app.table, request);
+    if !deferred && let Some(response) = by_address(limits, ctx, request, request_id) {
+        return response;
     }
+    let mut response = route_request(app, executor, ctx, request, request_id, limits).await;
+    if deferred
+        && !response.counted
+        && let Some(limited) = by_address(limits, ctx, request, request_id)
+    {
+        response = limited;
+    }
+    response.counted = false;
+    response
+}
+
+/// 429 when `request`'s address has used its allowance.
+fn by_address(
+    limits: Option<&RateLimits>,
+    ctx: &Ctx<'_>,
+    request: &Request,
+    request_id: &str,
+) -> Option<Response> {
+    let limits = limits?;
+    let key = format!(
+        "address {}",
+        request.address.as_deref().unwrap_or("unknown")
+    );
+    match limits.allow(&key, ctx.now()) {
+        Allowed::Yes => None,
+        Allowed::No { retry_after } => Some(rate_limited(request_id, retry_after)),
+    }
+}
+
+fn rate_limited(request_id: &str, retry_after: u64) -> Response {
+    let mut response = runtime_failure(RATE_LIMITED, request_id, None);
+    response
+        .headers
+        .push(("retry-after".to_string(), retry_after.to_string()));
+    response.counted = true;
+    response
+}
+
+async fn route_request(
+    app: &App<'_>,
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    request: &Request,
+    request_id: &str,
+    limits: Option<&RateLimits>,
+) -> Response {
+    let segments = split_path(&request.path);
     let Some(segments) = segments else {
         return runtime_failure(INVALID_REQUEST, request_id, None);
     };
@@ -288,7 +337,10 @@ async fn respond(
         response.headers.push(("allow".to_string(), allow));
         return response;
     };
-    let mut response = run_route(app, executor, ctx, request, request_id, route, &segments).await;
+    let mut response = run_route(
+        app, executor, ctx, request, request_id, route, &segments, limits,
+    )
+    .await;
     response.route = Some(route.label());
     response
 }
@@ -369,10 +421,66 @@ async fn run_route(
     request_id: &str,
     route: &RoutePlan,
     segments: &[String],
+    limits: Option<&RateLimits>,
 ) -> Response {
     // The deadline counts from here; the timer is made at once.
     let host = ctx.host();
-    let deadline = host.sleep(u64::from(route.deadline_ms));
+    let mut deadline = host.sleep(u64::from(route.deadline_ms));
+    // Who is calling, before the input is read or anything runs (area 8).
+    let caller = if route.authentication.signed_in() {
+        let checked = identity::authenticate(app.table, ctx, request, route);
+        match race(checked, &mut deadline).await {
+            First::Left(Ok(caller)) => Some(caller),
+            First::Left(Err(refused)) => {
+                if refused.credential
+                    && let Some(limited) = by_address(limits, ctx, request, request_id)
+                {
+                    return limited;
+                }
+                let mut response = identity::refusal(app.table, &refused, request_id);
+                response.counted = refused.credential;
+                return response;
+            }
+            First::Right(()) => return runtime_failure(DEADLINE_EXCEEDED, request_id, None),
+        }
+    } else {
+        None
+    };
+    if let (Some(caller), Some(limits)) = (&caller, limits) {
+        if let Allowed::No { retry_after } = limits.allow_caller(&caller.key, ctx.now()) {
+            return rate_limited(request_id, retry_after);
+        }
+    }
+    let scope = caller.as_ref().map_or_else(
+        || idempotency::ANONYMOUS.to_string(),
+        |caller| caller.key.clone(),
+    );
+    let mut response = run_signed_in(
+        app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
+    )
+    .await;
+    response.counted = response.counted || ctx.caller().is_some();
+    ctx.set_caller(None);
+    response
+}
+
+/// The rest of a route's run, once its caller is known: `deadline` is the
+/// route's timer, already running.
+#[allow(clippy::too_many_arguments)]
+async fn run_signed_in(
+    app: &App<'_>,
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    request: &Request,
+    request_id: &str,
+    route: &RoutePlan,
+    segments: &[String],
+    deadline: crate::LocalFuture<'_, ()>,
+    caller: Option<crate::Caller>,
+    scope: String,
+) -> Response {
+    let caller_value = caller.as_ref().map(|caller| caller.value.clone());
+    ctx.set_caller(caller);
     let codecs = &app.codecs;
     let mut problems: Vec<Problem> = Vec::new();
     // Placeholders, each decoded once and checked.
@@ -457,6 +565,7 @@ async fn run_route(
         let mut value = match &arg.root {
             ArgRoot::Param(at) => params.get(*at as usize).cloned().flatten(),
             ArgRoot::Input => input.clone(),
+            ArgRoot::Caller => caller_value.clone(),
         }
         .unwrap_or(Value::None);
         for name in &arg.path {
@@ -485,7 +594,7 @@ async fn run_route(
         if let (Some(key), Some(store)) = (key, &route.keys) {
             guard = Some(Guard {
                 store: store.clone(),
-                scope: idempotency::ANONYMOUS.to_string(),
+                scope,
                 key,
                 digest: idempotency::digest(request, route),
                 at: ctx.now(),
@@ -536,14 +645,19 @@ async fn run_route(
         }
     };
     let held = ctx.take_held();
+    // A session the action started or ended sets its cookies once it
+    // commits; such a response isn't kept for a repeat, so a retry signs
+    // in again rather than getting an answer without its cookies.
+    let session = held.as_ref().and_then(|held| held.session.clone());
     // Successes and the failures the action returns are kept for a
     // repeat; `unavailable` and faults are not, so a retry runs again.
-    let storable = match &outcome {
-        Outcome::Value(_) => true,
-        Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
-        Outcome::Fault(_) | Outcome::Assertion(_) => false,
-    };
-    let response = answer(app, route, request_id, outcome);
+    let storable = session.is_none()
+        && match &outcome {
+            Outcome::Value(_) => true,
+            Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
+            Outcome::Fault(_) | Outcome::Assertion(_) => false,
+        };
+    let mut response = answer(app, route, request_id, outcome);
     let guard = guard.filter(|_| claimed.get());
     let keep = guard.as_ref().filter(|_| storable);
     let params = keep.map(|guard| idempotency::store_params(guard, &response));
@@ -563,6 +677,9 @@ async fn run_route(
             idempotency::release(ctx, guard).await;
         }
         return runtime_failure(UNAVAILABLE, request_id, None);
+    }
+    if let (Some(effect), Some(plan)) = (&session, &app.table.identity) {
+        response.headers.extend(identity::set_cookies(plan, effect));
     }
     if keep.is_none()
         && let Some(guard) = &guard
@@ -653,6 +770,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         code: Some(code.to_string()),
         route: None,
         fault: None,
+        counted: false,
     }
 }
 

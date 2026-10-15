@@ -13,6 +13,7 @@ mod case;
 pub mod data;
 mod failures;
 pub mod graph;
+pub mod identity;
 pub mod imports;
 mod layout;
 pub mod lookups;
@@ -101,8 +102,10 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(routes::route_problems(db, project, file).iter().cloned());
         }
+        out.extend(identity::identity_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
+        out.extend(routes::signin_problems(db, project).iter().cloned());
         out.extend(routes::record::record_problems(db, project).iter().cloned());
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(

@@ -601,6 +601,10 @@ impl Body<'_> {
                 }
             };
         }
+        // A caller (area 8).
+        if let Some(ty) = self.caller_field(receiver, name, node) {
+            return ty;
+        }
         // A type a later area defines has fields this check doesn't know yet.
         if receiver.has_error() || matches!(receiver.strip_nullable(), Ty::Opaque(..) | Ty::Var(_))
         {

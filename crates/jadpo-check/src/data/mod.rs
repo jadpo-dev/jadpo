@@ -1456,6 +1456,10 @@ fn holds_entity(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
 /// areas 7 and 12; their schema is here so migrations create them.
 pub const SYSTEM_TABLES: [&str; 3] = ["outbox", "deliveries", "idempotency_keys"];
 
+/// The browser sessions' table, in the store the principal's users live in
+/// when anything signs in (area 8).
+pub const SESSIONS: &str = "jadpo_sessions";
+
 /// The physical schema the source asks for: every entity's table in its
 /// store, and the system tables. Fields that can't be stored and entities
 /// in a wrong store are left out; their errors stop the build anyway.
@@ -1489,6 +1493,15 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 .tables
                 .insert(format!("jadpo_{name}"), columns::system_table(name));
         }
+    }
+    // Sessions live beside the users they sign in, so one statement reads
+    // a session with its user's record (area 8).
+    if let Some(store) = crate::identity::identity(db, project).sessions_store()
+        && let Some(found) = schema.stores.get_mut(store)
+    {
+        found
+            .tables
+            .insert(SESSIONS.to_string(), columns::system_table("sessions"));
     }
     Arc::new(schema)
 }

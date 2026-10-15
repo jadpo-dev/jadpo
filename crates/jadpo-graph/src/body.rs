@@ -341,6 +341,8 @@ pub enum Expr {
         route: Key,
         params: Vec<SiteId>,
         input: Option<SiteId>,
+        /// `as:`: the caller it signs in as (area 8).
+        caller: Option<SiteId>,
     },
     /// `item -> expression`, given to a collection operation.
     Inline {
@@ -437,6 +439,11 @@ pub enum Callee {
         entity: Key,
         operation: String,
     },
+    /// `Principal.user(record)` in a test, fixture or seed (area 8): a
+    /// caller of this kind made from its entity's record.
+    Caller(jadpo_std::http::PrincipalKind),
+    /// `sessions.start(user_id)` or `sessions.end()` in an action (area 8).
+    Session(jadpo_std::http::SessionOp),
     /// Nothing that can be called: already reported.
     Unknown,
 }
@@ -453,7 +460,11 @@ impl Callee {
             | Callee::Object(key)
             | Callee::Variant(key) => Some(key),
             Callee::Entity { entity, .. } => Some(entity),
-            Callee::Std(_) | Callee::Construct(_) | Callee::Unknown => None,
+            Callee::Std(_)
+            | Callee::Construct(_)
+            | Callee::Caller(_)
+            | Callee::Session(_)
+            | Callee::Unknown => None,
         }
     }
 

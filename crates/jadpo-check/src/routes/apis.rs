@@ -2,14 +2,15 @@
 //! `apis: { }` block in `application { }`, each API with its prefix. With
 //! nothing declared there is one API, `main`, at `/`. Each API has its own
 //! OpenAPI document and record, and may require an `Idempotency-Key` on its
-//! writes (`idempotency: Idempotency.required`); its authentication and
-//! rate limits come with their chunks.
+//! writes (`idempotency: Idempotency.required`) and list the sign-in
+//! methods it accepts (`authentication: [AuthenticationMethod.browser_session]`,
+//! area 8); its rate limits come with area 16.
 
 use std::collections::BTreeMap;
 
 use jadpo_db::{Db, Project};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
-use jadpo_std::Idempotency;
+use jadpo_std::{AuthenticationMethod, Idempotency};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr};
 
 use crate::tree::{self, node_span};
@@ -28,6 +29,9 @@ pub struct Api {
     pub prefix: Vec<String>,
     /// Whether its writes need an `Idempotency-Key`.
     pub idempotency: Idempotency,
+    /// The sign-in methods it accepts, in written order; empty when it
+    /// names none, and accepts every declared method.
+    pub methods: Vec<AuthenticationMethod>,
 }
 
 impl Api {
@@ -85,9 +89,15 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
                         continue;
                     };
                     let span = node_span(path, name.syntax());
-                    if let Some((prefix, idempotency)) =
-                        read_api(path, &api, span, entry.block(), &mut out.problems)
-                    {
+                    if let Some((prefix, idempotency, methods)) = read_api(
+                        db,
+                        project,
+                        path,
+                        &api,
+                        span,
+                        entry.block(),
+                        &mut out.problems,
+                    ) {
                         let overlap = declared
                             .values()
                             .find(|other| other.prefix == prefix)
@@ -96,6 +106,7 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
                             name: api.clone(),
                             prefix,
                             idempotency,
+                            methods,
                         };
                         if let Some(other) = overlap {
                             out.problems.push(
@@ -121,6 +132,7 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
             name: MAIN.to_string(),
             prefix: Vec::new(),
             idempotency: Idempotency::Optional,
+            methods: Vec::new(),
         }]
     };
     out
@@ -132,14 +144,17 @@ pub fn api_problems(db: &dyn Db, project: Project) -> &[Diagnostic] {
 }
 
 fn read_api(
+    db: &dyn Db,
+    project: Project,
     path: &str,
     api: &str,
     span: Span,
     list: Option<ast::MemberList>,
     out: &mut Vec<Diagnostic>,
-) -> Option<(Vec<String>, Idempotency)> {
+) -> Option<(Vec<String>, Idempotency, Vec<AuthenticationMethod>)> {
     let mut prefix = None;
     let mut idempotency = Idempotency::Optional;
+    let mut methods = Vec::new();
     for (key, member) in tree::members(list) {
         let Some(setting) = tree::name_text(&key) else {
             continue;
@@ -189,16 +204,16 @@ fn read_api(
                     );
                 }
             },
-            "authentication" | "rate_limit" => out.push(
+            "authentication" => {
+                methods = read_methods(db, project, path, api, &member, out);
+            }
+            "rate_limit" => out.push(
                 Diagnostic::new(
                     &rule::TOOLCHAIN_NOT_BUILT_YET,
                     format!("An API's `{setting}:` isn't built yet"),
                 )
                 .at(key_span, "decided, not built")
-                .reason(match setting.as_str() {
-                    "authentication" => "An API's authentication methods come with sign-in (area 8, roadmap chunk 4.3).",
-                    _ => "An API's own `rate_limit:` comes with the rest of area 16's rate limits; every API already has the default limits.",
-                })
+                .reason("An API's own `rate_limit:` comes with the rest of area 16's rate limits; every API already has the default limits.")
                 .next(format!("Leave `{setting}:` out for now")),
             ),
             other => {
@@ -209,7 +224,7 @@ fn read_api(
                 )
                 .at(key_span.clone(), "unknown setting")
                 .reason(format!(
-                    "An API in `apis:` holds its `prefix:` and `idempotency:`, and later its `authentication:` and `rate_limit:`.{}",
+                    "An API in `apis:` holds its `prefix:`, `idempotency:` and `authentication:`, and later its `rate_limit:`.{}",
                     near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
                 ));
                 problem = match near {
@@ -230,7 +245,99 @@ fn read_api(
                 .next(format!("Add `prefix: /{api}` to `{api}`")),
         );
     }
-    prefix.map(|prefix| (prefix, idempotency))
+    prefix.map(|prefix| (prefix, idempotency, methods))
+}
+
+/// An API's `authentication:`: a list of the sign-in methods
+/// `authentication.jadpo` declares, each once.
+fn read_methods(
+    db: &dyn Db,
+    project: Project,
+    path: &str,
+    api: &str,
+    member: &ast::Member,
+    out: &mut Vec<Diagnostic>,
+) -> Vec<AuthenticationMethod> {
+    let identity = crate::identity::identity(db, project);
+    let declared: Vec<String> = identity
+        .methods
+        .iter()
+        .map(|method| format!("`AuthenticationMethod.{}`", method.method.name()))
+        .collect();
+    let declared_line = if declared.is_empty() {
+        "`authentication.jadpo` declares no way to sign in yet".to_string()
+    } else {
+        format!(
+            "`authentication.jadpo` declares {}",
+            crate::and_list(&declared)
+        )
+    };
+    let value = member.value();
+    let invalid = |at: Span, message: String, label: &str, reason: String| {
+        Diagnostic::new(&rule::API_AUTHENTICATION_INVALID, message)
+            .at(at, label.to_string())
+            .reason(reason)
+            .next(
+                "List the methods the API accepts, each one `authentication.jadpo` declares"
+                    .to_string(),
+            )
+    };
+    let Some(Expr::ListExpr(list)) = &value else {
+        let span = value.as_ref().map_or_else(
+            || node_span(path, member.syntax()),
+            |v| node_span(path, v.syntax()),
+        );
+        out.push(invalid(
+            span,
+            format!("API `{api}`'s `authentication:` isn't a list"),
+            "not a list",
+            format!(
+                "An API lists the sign-in methods it accepts, such as `[AuthenticationMethod.browser_session]`; {declared_line}."
+            ),
+        ));
+        return Vec::new();
+    };
+    let mut methods = Vec::new();
+    for item in list.exprs() {
+        let span = node_span(path, item.syntax());
+        let written = tree::written(item.syntax());
+        let read = tree::dotted(&item).and_then(|(first, rest)| {
+            let [variant] = rest.as_slice() else {
+                return None;
+            };
+            (tree::name_ref_text(&first)? == AuthenticationMethod::NAME).then_some(())?;
+            AuthenticationMethod::from_name(&tree::name_ref_text(variant)?)
+        });
+        let Some(method) = read else {
+            out.push(invalid(
+                span,
+                format!("`{written}` isn't an `AuthenticationMethod`"),
+                "not a sign-in method",
+                format!("An API lists sign-in methods as `AuthenticationMethod.<method>`; {declared_line}."),
+            ));
+            continue;
+        };
+        if methods.contains(&method) {
+            out.push(invalid(
+                span,
+                format!("`{written}` is listed twice"),
+                "listed again",
+                "An API lists each method it accepts once.".to_string(),
+            ));
+            continue;
+        }
+        if identity.method(method).is_none() {
+            out.push(invalid(
+                span,
+                format!("API `{api}` accepts `{}`, which isn't declared", method.name()),
+                "not declared",
+                format!("An API accepts only the ways to sign in the application declares; {declared_line}."),
+            ));
+            continue;
+        }
+        methods.push(method);
+    }
+    methods
 }
 
 /// An `idempotency:` value: `Idempotency.required` or `.optional`, or
