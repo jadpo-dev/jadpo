@@ -32,7 +32,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 |---|---|---|
 | `jadpo new <name>` | Creates a project that passes `check`, `fmt --check` and `test` | Decided (question 9), not built: `jadpo new` is `cli.unknown_command` |
 | `jadpo check` | Checks everything and writes the derived files in `build/` | Built (chunks 1.1–1.8): writes `build/manifest.json` and the catalogues in `build/catalogue/`; writing files is question 3 |
-| `jadpo fmt` | Formats; `--check` only reports; `--layout` also applies promotion moves | Built (chunk 1.2): formats, and `--check` only reports; since chunk 3.5 it fixes each file's imports first, and `--layout` makes promotion moves |
+| `jadpo fmt` | Formats; `--check` only reports; `--layout` also applies promotion moves | Built (chunk 1.2): formats, and `--check` only reports; since chunk 3.5 it fixes each file's imports first, and `--layout` makes promotion moves; since chunk 3.9 it puts each file's primary declaration first |
 | `jadpo test` | Runs every test | Built (chunk 2.2): pure and action tests, in the interpreter |
 | `jadpo test <file>` / `<file>:<line>` | Runs one test file, or the test at that line | Built (chunk 2.2); a folder runs the tests under it |
 | `jadpo test --name <text>` / `--kind route` / `--failed` / `--affected` | Runs tests whose names match, one kind, last run's failures, or the tests a change reaches | `--name`, `--kind pure` and `--kind action`, and `--failed` built (chunk 2.2); route and schedule kinds come with areas 7 and 12; `--affected` decided in question 7, not built: a change is measured against the merge-base with `main` (Richard, 2026-10-14) |
@@ -99,6 +99,13 @@ one and moves a name imported from the wrong folder, by applying the edits
 project's names resolved, so it waits until every file parses. `jadpo fmt
 --check` fails on a file whose imports it would change, as on one it would
 lay out differently. Built in chunk 3.5.
+
+Inside a project, `jadpo fmt` also puts each file's primary declaration
+first, below its opening comments and `use` lines, with the comments
+written above it and after it on its line; everything else keeps the
+order it was written in (area 1, Files and names). Test files and loose
+files have no primary declaration and keep their order. Built in chunk
+3.9.
 
 Promotion is the one layout change that moves code between files: when a
 second file uses a type or helper, the compiler reports
@@ -466,7 +473,7 @@ is decided but not built yet.
 | Command help | Built (chunk 1.1): every command has `--help` with examples, `jadpo help [command]` explains one, and `jadpo help --json` describes them all. |
 | Project path | Built (chunk 1.1): every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed (chunk 2.8). |
 | Scaffold | Decided (question 9), not built: `jadpo new` is `cli.unknown_command`. |
-| Formatter | Built (chunk 1.2): one member per line, one blank line between declarations, and `fmt --check` counts the files it read; since chunk 3.5 it keeps `use` lines at the top, sorted, fixes imports inside a project, and `--layout` makes promotion moves. |
+| Formatter | Built (chunk 1.2): one member per line, one blank line between declarations, and `fmt --check` counts the files it read; since chunk 3.5 it keeps `use` lines at the top, sorted, fixes imports inside a project, and `--layout` makes promotion moves; since chunk 3.9 it puts each file's primary declaration first. |
 | Error messages | Built (chunks 1.1 on): one error per mistake in area 14's field order, `impact` only when it says something, edits on the next step where one exists, and help links to the language pages. |
 | JSON output | Built (chunk 1.1 on): every command takes `--json` and prints one envelope (`schemaVersion` 2 since chunk 2.8) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. |
 | `build/` | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. |

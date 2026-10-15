@@ -415,7 +415,14 @@ form sorts them the same way, so the self-check and the digests take their
 order for layout. Adding or removing an import needs the project's names,
 which the formatter doesn't have, so `jadpo fmt` (in `jadpo-cli`) first
 applies the edits of the file's import problems against a loaded project,
-round by round until none is left, then formats.
+round by round until none is left, then formats. Since chunk 3.9 it puts
+a file's primary declaration first (area 1, "Files and names"): `jadpo
+fmt` reads which declaration that is from the file's path and item tree
+(`jadpo_db::primary`, the same answer the layout rules use) and passes its
+name to `format_file_led_by`, which moves it, with the comments the
+formatter prints with it, below the opening comments and `use` lines
+before formatting, so the self-check compares the moved text with its
+formatted form.
 
 **Item trees.** Each file is summarised into its declarations and
 signatures without bodies (rust-analyzer's `ItemTree`), so editing a body
@@ -450,6 +457,11 @@ resolution reports (an unknown name, a private one, domain code in
 `shared/`, a bare call into another domain) is never asked for as an
 import, so one mistake gives one error. Each problem carries its edit;
 `import_edits` gathers the ones that don't overlap for `jadpo fmt`.
+Since chunk 3.9 `usage_problems` also reports each type or helper
+function beside a file's primary declaration that the primary doesn't
+reach through the names its declarations write, `layout.unused_declaration`;
+it reads the file's own tree and, per supporting declaration, the per-name
+users, so one another file uses is left to `layout.promotion_required`.
 `layout.promotion_required` on a type carries the edits that move it
 (`imports::move_edits`): out of its file with its attached comments, into
 a new file below the `use` lines it needs, and imported back into the old
