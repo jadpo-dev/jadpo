@@ -1276,54 +1276,11 @@ impl<'a> Reader<'a> {
     /// Whether `<` and the rest order values of `ty`, as they do in a body
     /// (area 3): numbers, times, dates and durations.
     fn ordered(&self, ty: &Ty) -> bool {
-        matches!(
-            self.lookup.representation(ty),
-            Some(
-                Prim::Int
-                    | Prim::Decimal
-                    | Prim::Instant
-                    | Prim::CalendarDate
-                    | Prim::Time
-                    | Prim::Duration
-            )
-        )
+        ordered(self.lookup, ty)
     }
 
-    /// Whether a value of type `a` can be compared with field type `b`:
-    /// the same type after widening, or two named types with a common
-    /// ancestor, as `==` allows in a body (area 3).
     fn comparable(&self, a: &Ty, b: &Ty) -> bool {
-        let (a, b) = (a.strip_nullable(), b.strip_nullable());
-        if a.has_error() || b.has_error() {
-            return true;
-        }
-        if self.lookup.assignable(a, b) || self.lookup.assignable(b, a) {
-            return true;
-        }
-        if matches!(a, Ty::Prim(_)) || matches!(b, Ty::Prim(_)) {
-            return match (self.lookup.representation(a), self.lookup.representation(b)) {
-                (Some(x), Some(y)) => x == y || (x.is_number() && y.is_number()),
-                _ => false,
-            };
-        }
-        // A common ancestor: a named type, or a built-in type other than
-        // `Uuid`, since two entities' identities are different things
-        // (area 2, "sibling mismatch") while two instants are not.
-        let ancestors = |ty: &Ty| {
-            let mut found = Vec::new();
-            let mut current = Some(ty.clone());
-            for _ in 0..64 {
-                let Some(next) = current else { break };
-                let next = next.strip_nullable().clone();
-                if !matches!(next, Ty::Prim(Prim::Uuid)) {
-                    found.push(next.clone());
-                }
-                current = self.lookup.parent(&next);
-            }
-            found
-        };
-        let mine = ancestors(a);
-        ancestors(b).iter().any(|t| mine.contains(t))
+        comparable(self.lookup, a, b)
     }
 
     fn unsupported(&mut self, scope: &Scope<'_>, expr: &Expr, reason: String, next: String) {
@@ -2910,6 +2867,57 @@ impl<'a> Reader<'a> {
 }
 
 // --- helpers -------------------------------------------------------------------
+
+pub(super) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
+    matches!(
+        lookup.representation(ty),
+        Some(
+            Prim::Int
+                | Prim::Decimal
+                | Prim::Instant
+                | Prim::CalendarDate
+                | Prim::Time
+                | Prim::Duration
+        )
+    )
+}
+
+/// Whether a value of type `a` can be compared with field type `b`:
+/// the same type after widening, or two named types with a common
+/// ancestor, as `==` allows in a body (area 3).
+pub(super) fn comparable(lookup: &dyn TypeView, a: &Ty, b: &Ty) -> bool {
+    let (a, b) = (a.strip_nullable(), b.strip_nullable());
+    if a.has_error() || b.has_error() {
+        return true;
+    }
+    if lookup.assignable(a, b) || lookup.assignable(b, a) {
+        return true;
+    }
+    if matches!(a, Ty::Prim(_)) || matches!(b, Ty::Prim(_)) {
+        return match (lookup.representation(a), lookup.representation(b)) {
+            (Some(x), Some(y)) => x == y || (x.is_number() && y.is_number()),
+            _ => false,
+        };
+    }
+    // A common ancestor: a named type, or a built-in type other than
+    // `Uuid`, since two entities' identities are different things
+    // (area 2, "sibling mismatch") while two instants are not.
+    let ancestors = |ty: &Ty| {
+        let mut found = Vec::new();
+        let mut current = Some(ty.clone());
+        for _ in 0..64 {
+            let Some(next) = current else { break };
+            let next = next.strip_nullable().clone();
+            if !matches!(next, Ty::Prim(Prim::Uuid)) {
+                found.push(next.clone());
+            }
+            current = lookup.parent(&next);
+        }
+        found
+    };
+    let mine = ancestors(a);
+    ancestors(b).iter().any(|t| mine.contains(t))
+}
 
 /// Adds `id` as the last field of an order whose fields could tie: records
 /// equal on every written field never swap places between pages (area 6,

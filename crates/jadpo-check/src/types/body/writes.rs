@@ -26,7 +26,7 @@ use super::super::ty::{Prim, Ty};
 use super::facts::Reach;
 use super::failing::Arm;
 use super::{Body, Fallible, LocalKind, did_you_mean, node_key, text};
-use crate::data::WriteRules;
+use crate::data::{TransitionRule, WriteRules};
 use crate::tree::{self, dotted};
 
 /// What the walk decided about one write, for its typed form.
@@ -34,6 +34,9 @@ use crate::tree::{self, dotted};
 pub(crate) struct WriteFact {
     pub entity: String,
     pub op: WriteOp,
+    /// The lifecycle transition it runs: a transition's own operation, or
+    /// a `delete` of an entity whose lifecycle has a `delete` transition.
+    pub transition: Option<String>,
     /// An `update` or `delete` naming its record by `id`.
     pub by_id: bool,
     /// The block after the write.
@@ -61,6 +64,9 @@ pub(crate) enum Breach {
     },
     /// A reference that refuses a delete: `Todo.project_id`.
     Reference { entity: String, field: String },
+    /// A lifecycle transition whose `when:` doesn't hold: `Loan.check_in`
+    /// (area 5, "Lifecycle"; chosen in chunk 3.4).
+    Transition { entity: String, name: String },
 }
 
 impl Breach {
@@ -69,13 +75,26 @@ impl Breach {
         match self {
             Breach::Unique { entity, name, .. } => format!("{entity}.{name}"),
             Breach::Reference { entity, field } => format!("{entity}.{field}"),
+            Breach::Transition { entity, name } => format!("{entity}.{name}"),
+        }
+    }
+
+    /// The entity whose rule it is.
+    pub fn holder(&self) -> &str {
+        match self {
+            Breach::Unique { entity, .. }
+            | Breach::Reference { entity, .. }
+            | Breach::Transition { entity, .. } => entity,
         }
     }
 }
 
-/// The sections each write takes, in the order a reader meets them.
-fn sections(op: WriteOp) -> &'static [&'static str] {
+/// The sections each write takes, in the order a reader meets them: a
+/// lifecycle transition's changes are fixed in the lifecycle, so it takes
+/// only `conflict:`.
+fn sections(op: WriteOp, transition: bool) -> &'static [&'static str] {
     match op {
+        _ if transition => &["conflict"],
         WriteOp::Create => &["set", "conflict"],
         WriteOp::Update => &["set", "patch", "when_supplied", "conflict"],
         WriteOp::Delete => &["conflict"],
@@ -83,8 +102,11 @@ fn sections(op: WriteOp) -> &'static [&'static str] {
 }
 
 /// "`set:` and `conflict:`".
-fn sections_list(op: WriteOp) -> String {
-    let listed: Vec<String> = sections(op).iter().map(|s| format!("`{s}:`")).collect();
+fn sections_list(op: WriteOp, transition: bool) -> String {
+    let listed: Vec<String> = sections(op, transition)
+        .iter()
+        .map(|s| format!("`{s}:`"))
+        .collect();
     crate::and_list(&listed)
 }
 
@@ -203,15 +225,24 @@ impl Body<'_> {
         let [operation] = rest.as_slice() else {
             return None;
         };
-        let op = match text(operation).as_str() {
-            "update" => WriteOp::Update,
-            "delete" => WriteOp::Delete,
-            _ => return None,
-        };
         let head = text(&first);
         if !crate::case::starts_upper(&head) || self.is_local(&head) {
             return None;
         }
+        let op = match text(operation).as_str() {
+            "update" => WriteOp::Update,
+            "delete" => WriteOp::Delete,
+            // A lifecycle transition is an update of the fields it sets.
+            name if self.callable_kind(&head) == Some(ItemKind::Entity)
+                && self
+                    .writes
+                    .write_rules(&head)
+                    .is_some_and(|rules| rules.transition(name).is_some()) =>
+            {
+                WriteOp::Update
+            }
+            _ => return None,
+        };
         // `Todo.update(value)` builds a field called `update`.
         if self
             .table
@@ -272,8 +303,23 @@ impl Body<'_> {
         call: Option<&ast::CallExpr>,
         block: Option<ast::MemberList>,
         head_span: Span,
+        transition: Option<&str>,
     ) -> Ty {
-        let written = format!("{entity}.{}", op.word());
+        let rules = self.writes.write_rules(entity).cloned().unwrap_or_default();
+        // A delete runs the lifecycle's `delete` transition; with none, code
+        // can't remove a record whose lifecycle keeps it (area 5).
+        let mut transition = transition.map(str::to_string);
+        if op == WriteOp::Delete && transition.is_none() {
+            if rules.transition("delete").is_some() {
+                transition = Some("delete".to_string());
+            } else {
+                self.hard_delete(entity, &rules, head_span.clone());
+            }
+        }
+        let written = match &transition {
+            Some(name) => format!("{entity}.{name}"),
+            None => format!("{entity}.{}", op.word()),
+        };
         let result = match op {
             WriteOp::Delete => Ty::Prim(Prim::Unit),
             _ => Ty::Named(entity.to_string()),
@@ -283,7 +329,6 @@ impl Body<'_> {
             .fields(entity)
             .map(<[_]>::to_vec)
             .unwrap_or_default();
-        let rules = self.writes.write_rules(entity).cloned().unwrap_or_default();
         // The record it writes, loaded earlier or named by `id`.
         let mut by_id = false;
         if let Some(call) = call {
@@ -300,20 +345,36 @@ impl Body<'_> {
                 }
             }
         }
-        let members = self.write_sections(entity, op, block.as_ref(), &head_span, &written);
+        let members = self.write_sections(
+            entity,
+            op,
+            block.as_ref(),
+            &head_span,
+            &written,
+            transition.is_some(),
+        );
         let mut sets = Sets {
             fields: BTreeSet::new(),
         };
+        if let Some(rule) = transition
+            .as_deref()
+            .and_then(|name| rules.transition(name))
+        {
+            sets.fields.extend(rule.sets.iter().cloned());
+        }
         let mut missing: Vec<(String, String)> = Vec::new();
+        // The fields a write gives: not the store's own, and not those only
+        // the lifecycle's transitions change.
         let settable: Vec<FieldDef> = fields
             .iter()
             .filter(|field| field.name != "id" && !field.generated)
+            .filter(|field| !rules.owned.contains(&field.name))
             .cloned()
             .collect();
         // `set:`.
         if let Some(set) = members.get("set") {
             self.write_set(
-                entity, op, by_id, set, &fields, &settable, &head_span, &written,
+                entity, op, by_id, set, &fields, &settable, &head_span, &written, &rules,
             );
             for (name, member) in tree::members(set.block()) {
                 let Some(field) = tree::name_text(&name) else {
@@ -333,7 +394,7 @@ impl Body<'_> {
         // `patch:` and `when_supplied:`.
         let patch_input = members
             .get("patch")
-            .and_then(|patch| self.write_patch(entity, by_id, patch, &settable, &written));
+            .and_then(|patch| self.write_patch(entity, by_id, patch, &settable, &written, &rules));
         if let Some((_, input_fields)) = &patch_input {
             for field in input_fields {
                 if settable.iter().any(|f| f.name == *field) {
@@ -348,7 +409,9 @@ impl Body<'_> {
             let input = patch_input
                 .as_ref()
                 .map(|(input, fields)| (input.as_str(), fields.as_slice()));
-            for (field, value) in self.when_supplied(entity, by_id, supplied, input, &settable) {
+            for (field, value) in
+                self.when_supplied(entity, by_id, supplied, input, &settable, &rules)
+            {
                 if let Some(target) = rules.reference(&field)
                     && !self.holds(&value, target)
                 {
@@ -369,7 +432,7 @@ impl Body<'_> {
                 (field, failure)
             })
             .collect();
-        let breakable = breakable(entity, op, &rules, &sets.fields);
+        let breakable = breakable(entity, op, &rules, &sets.fields, transition.as_deref());
         let before = self.out.len();
         let arms = self.conflicts(
             entity,
@@ -407,6 +470,7 @@ impl Body<'_> {
             WriteFact {
                 entity: entity.to_string(),
                 op,
+                transition,
                 by_id,
                 block,
                 arms,
@@ -458,6 +522,7 @@ impl Body<'_> {
         block: Option<&ast::MemberList>,
         head_span: &Span,
         written: &str,
+        transition: bool,
     ) -> BTreeMap<String, ast::Member> {
         let mut found: BTreeMap<String, ast::Member> = BTreeMap::new();
         for item in block.iter().flat_map(|list| list.member_items()) {
@@ -486,7 +551,7 @@ impl Body<'_> {
                 );
                 continue;
             }
-            let known = sections(op).contains(&word.as_str());
+            let known = sections(op, transition).contains(&word.as_str());
             let reason = if let Some(first) = found.get(&word) {
                 let first = self.span(first);
                 self.walk(|walk| walk.member(&member));
@@ -504,6 +569,13 @@ impl Body<'_> {
                     .edit(removal, ""),
                 );
                 continue;
+            } else if !known
+                && transition
+                && matches!(word.as_str(), "set" | "patch" | "when_supplied")
+            {
+                format!(
+                    "`{written}` is a lifecycle transition: the fields it changes are fixed in the lifecycle's `set:`, so it takes only `conflict:`."
+                )
             } else if !known {
                 match word.as_str() {
                     "missing" => format!(
@@ -515,9 +587,9 @@ impl Body<'_> {
                     "empty" => "A patch that supplies no fields changes nothing and succeeds, as JSON Merge Patch does, so nothing maps it.".to_string(),
                     "set" | "patch" | "when_supplied" => format!(
                         "`{written}` takes {}.",
-                        sections_list(op)
+                        sections_list(op, transition)
                     ),
-                    _ => format!("`{written}` takes {}.", sections_list(op)),
+                    _ => format!("`{written}` takes {}.", sections_list(op, transition)),
                 }
             } else if word == "patch" && found.contains_key("set")
                 || word == "set" && found.contains_key("patch")
@@ -557,6 +629,7 @@ impl Body<'_> {
             found.remove("when_supplied");
         }
         let required = match op {
+            _ if transition => None,
             WriteOp::Create if !found.contains_key("set") => Some((
                 format!("`{written}` gives no fields"),
                 format!(
@@ -599,6 +672,7 @@ impl Body<'_> {
         settable: &[FieldDef],
         head_span: &Span,
         written: &str,
+        rules: &WriteRules,
     ) {
         let generated: BTreeSet<&str> = fields
             .iter()
@@ -631,7 +705,19 @@ impl Body<'_> {
                 self.set_generated(entity, &field, span, written);
             }
         }
-        let skip: Vec<&str> = generated.iter().copied().collect();
+        let mut skip: Vec<&str> = generated.iter().copied().collect();
+        for (name, _) in &given {
+            let Some(field) = tree::name_text(name) else {
+                continue;
+            };
+            if rules.owned.contains(&field) {
+                let span = self.span(name);
+                self.owned_field(entity, &field, span, written, rules);
+                if let Some(owned) = rules.owned.iter().find(|owned| **owned == field) {
+                    skip.push(owned.as_str());
+                }
+            }
+        }
         let required = if op == WriteOp::Create {
             super::expr::Required::All
         } else {
@@ -656,6 +742,92 @@ impl Body<'_> {
                 }
             }
         }
+    }
+
+    /// A write giving a field only the lifecycle's transitions change
+    /// (area 5, "Lifecycle").
+    fn owned_field(
+        &mut self,
+        entity: &str,
+        field: &str,
+        span: Span,
+        written: &str,
+        rules: &WriteRules,
+    ) {
+        let by: Vec<&TransitionRule> = rules
+            .transitions
+            .iter()
+            .filter(|t| t.sets.iter().any(|set| set == field))
+            .collect();
+        let listed: Vec<String> = by.iter().map(|t| format!("`{}`", t.name)).collect();
+        let changed_by = match listed.as_slice() {
+            [] => format!("`{field}` keeps the value `initial:` gives it"),
+            [one] => format!("only its transition {one} changes it"),
+            _ => format!(
+                "only its transitions {} change it",
+                crate::and_list(&listed)
+            ),
+        };
+        let start = if written.ends_with(".create") {
+            " A new record gets it from `initial:`, or `none` when the lifecycle gives none."
+        } else {
+            ""
+        };
+        let snake = crate::case::to_snake(entity);
+        self.out.push(
+            Diagnostic::new(
+                &rule::DATA_LIFECYCLE_OWNED_FIELD,
+                format!("`{written}` sets `{field}`, which only `{entity}`'s lifecycle changes"),
+            )
+            .at(span, "owned by the lifecycle")
+            .reason(format!(
+                "`{entity}`'s lifecycle owns `{field}`: {changed_by}, so the record's stages always move as the lifecycle says.{start}"
+            ))
+            .next(match by.first() {
+                Some(t) if !written.ends_with(".create") => format!(
+                    "Remove `{field}`, and call `{entity}.{}({snake})` to change it",
+                    t.name
+                ),
+                _ => format!("Remove `{field}` here"),
+            }),
+        );
+    }
+
+    /// A delete that would remove a record whose lifecycle keeps it: the
+    /// entity has a lifecycle with no `delete` transition, or removing the
+    /// record cascades to one that has a lifecycle (area 5: code cannot
+    /// hard-delete a record that has a lifecycle).
+    fn hard_delete(&mut self, entity: &str, rules: &WriteRules, span: Span) {
+        let written = format!("{entity}.delete");
+        let (message, reason, next) = if rules.lifecycle {
+            (
+                format!("`{written}` would remove a record `{entity}`'s lifecycle keeps"),
+                format!(
+                    "Code never removes a record that has a lifecycle: `delete` runs its `delete` transition, and `{entity}`'s lifecycle has none. Only purge, the compiler's own, removes such records, once they have been hidden long enough."
+                ),
+                format!(
+                    "Add a `delete` transition to `{entity}`'s lifecycle, saying what deleting one changes"
+                ),
+            )
+        } else if let Some((holder, field)) = &rules.cascades_to_lifecycle {
+            (
+                format!("`{written}` would remove `{holder}` records their lifecycle keeps"),
+                format!(
+                    "Removing a `{entity}` removes the `{holder}` records whose `{field}` points at it (`on_delete: OnDelete.cascade`), and `{holder}` has a lifecycle; code never removes a record that has one."
+                ),
+                format!(
+                    "Give `{entity}` a lifecycle with a `delete` transition, or change `{holder}.{field}`'s `on_delete:`"
+                ),
+            )
+        } else {
+            return;
+        };
+        self.out.push(
+            Diagnostic::new(&rule::DATA_LIFECYCLE_HARD_DELETE, message)
+                .at(span, "a lifecycle keeps it")
+                .reason(reason)
+                .next(next),
+        );
     }
 
     fn set_generated(&mut self, entity: &str, field: &str, span: Span, written: &str) {
@@ -688,6 +860,7 @@ impl Body<'_> {
         patch: &ast::Member,
         settable: &[FieldDef],
         written: &str,
+        rules: &WriteRules,
     ) -> Option<(String, Vec<String>)> {
         let value = patch.value()?;
         let actual = self.infer(&value);
@@ -746,6 +919,10 @@ impl Body<'_> {
                     .any(|f| f.name == field.name && (f.generated || f.name == "id"));
                 if generated {
                     self.set_generated(entity, &field.name, span.clone(), written);
+                    continue;
+                }
+                if rules.owned.contains(&field.name) {
+                    self.owned_field(entity, &field.name, span.clone(), written, rules);
                     continue;
                 }
                 let names: Vec<&str> = settable.iter().map(|f| f.name.as_str()).collect();
@@ -821,6 +998,7 @@ impl Body<'_> {
         supplied: &ast::Member,
         input: Option<(&str, &[String])>,
         settable: &[FieldDef],
+        rules: &WriteRules,
     ) -> Vec<(String, Expr)> {
         let written = format!("{entity}.update");
         let mut out: Vec<(String, Expr)> = Vec::new();
@@ -919,7 +1097,16 @@ impl Body<'_> {
                     self.set_generated(entity, &field, span, &written);
                 }
             }
-            let skip: Vec<String> = generated.iter().map(|f| f.name.clone()).collect();
+            let mut skip: Vec<String> = generated.iter().map(|f| f.name.clone()).collect();
+            for (field_name, _) in tree::members(member.block()) {
+                if let Some(field) = tree::name_text(&field_name)
+                    && rules.owned.contains(&field)
+                {
+                    let span = self.span(&field_name);
+                    self.owned_field(entity, &field, span, &written, rules);
+                    skip.push(field);
+                }
+            }
             let skip: Vec<&str> = skip.iter().map(String::as_str).collect();
             let head = self.span(&key);
             self.fields_given(
@@ -1240,7 +1427,7 @@ impl Body<'_> {
                     _ => None,
                 };
                 let Some(rule) = rule else {
-                    self.conflict_unknown(&arm, entity, op, breakable, rules);
+                    self.conflict_unknown(&arm, entity, written, breakable, rules);
                     unknown = true;
                     continue;
                 };
@@ -1278,8 +1465,15 @@ impl Body<'_> {
             } else {
                 ("them", "each needs")
             };
-            let why = match op {
-                WriteOp::Delete => "A delete is refused while a `restricted` reference points at the record, or at one its delete cascades to".to_string(),
+            let transition = breakable.iter().find(|rule| {
+                matches!(rule, Breach::Transition { .. }) && !first.contains_key(rule)
+            });
+            let why = match (transition, op) {
+                (Some(rule), _) => format!(
+                    "`{}` is refused when its `when:` doesn't hold for the record, which is still there and visible",
+                    rule.written()
+                ),
+                (None, WriteOp::Delete) => "A delete is refused while a `restricted` reference points at the record, or at one its delete cascades to".to_string(),
                 _ => "A write is refused when it would give two records the same values a unique rule covers".to_string(),
             };
             self.out.push(
@@ -1312,6 +1506,12 @@ impl Body<'_> {
                 field: rule.field,
             });
         }
+        if rules.transition(name).is_some() {
+            return Some(Breach::Transition {
+                entity: holder.to_string(),
+                name: name.to_string(),
+            });
+        }
         rules.reference(name).map(|_| Breach::Reference {
             entity: holder.to_string(),
             field: name.to_string(),
@@ -1322,7 +1522,7 @@ impl Body<'_> {
         &mut self,
         arm: &Arm,
         entity: &str,
-        op: WriteOp,
+        written: &str,
         breakable: &[Breach],
         rules: &WriteRules,
     ) {
@@ -1335,17 +1535,13 @@ impl Body<'_> {
         }
         let near = nearest(&arm.key, known.iter().map(String::as_str)).map(str::to_string);
         let rules_line = if breakable.is_empty() {
-            format!("`{entity}.{}` can break no rule.", op.word())
+            format!("`{written}` can break no rule.")
         } else {
             let listed: Vec<String> = breakable
                 .iter()
                 .map(|b| format!("`{}`", b.written()))
                 .collect();
-            format!(
-                "`{entity}.{}` can break {}.",
-                op.word(),
-                crate::and_list(&listed)
-            )
+            format!("`{written}` can break {}.", crate::and_list(&listed))
         };
         let problem = Diagnostic::new(
             &rule::DATA_CONFLICT_UNKNOWN,
@@ -1353,7 +1549,7 @@ impl Body<'_> {
         )
         .at(arm.key_span.clone(), "not a rule")
         .reason(format!(
-            "A `conflict:` arm is keyed by the rule the store refuses, written `Entity.name`: a field with `unique: true`, a rule named in `unique:`, or a `restricted` reference that refuses a delete. {rules_line}{}",
+            "A `conflict:` arm is keyed by the rule the store refuses, written `Entity.name`: a field with `unique: true`, a rule named in `unique:`, a `restricted` reference that refuses a delete, or a lifecycle transition whose `when:` can refuse it. {rules_line}{}",
             did_you_mean(near.as_deref())
         ));
         self.out.push(match near {
@@ -1374,6 +1570,28 @@ impl Body<'_> {
         meant: Option<&String>,
     ) {
         let reason = match (rule, op) {
+            (
+                Breach::Transition {
+                    entity: holder,
+                    name,
+                },
+                _,
+            ) => {
+                let guarded = self
+                    .writes
+                    .write_rules(holder)
+                    .and_then(|rules| rules.transition(name))
+                    .is_some_and(|t| t.guarded);
+                if holder == entity && written == format!("{holder}.{name}") && !guarded {
+                    format!(
+                        "`{holder}.{name}`'s `when:` asks only what `visible:` says already: a record it doesn't hold for is hidden, which is `{holder}NotFound`, never a conflict."
+                    )
+                } else {
+                    format!(
+                        "Only `{holder}.{name}` itself is refused by that transition's `when:`; `{written}` doesn't run it."
+                    )
+                }
+            }
             (
                 Breach::Reference {
                     entity: holder,
@@ -1443,7 +1661,20 @@ pub(crate) fn breakable(
     op: WriteOp,
     rules: &WriteRules,
     sets: &BTreeSet<String>,
+    transition: Option<&str>,
 ) -> Vec<Breach> {
+    if let Some(name) = transition {
+        // A transition is an update of the fields it sets, refused when
+        // its `when:` doesn't hold; even `delete` keeps the row.
+        let mut out = breakable(entity, WriteOp::Update, rules, sets, None);
+        if rules.transition(name).is_some_and(|rule| rule.guarded) {
+            out.push(Breach::Transition {
+                entity: entity.to_string(),
+                name: name.to_string(),
+            });
+        }
+        return out;
+    }
     match op {
         WriteOp::Create | WriteOp::Update => rules
             .unique

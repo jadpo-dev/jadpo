@@ -178,6 +178,19 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set("constraint", constraint.as_str());
         }
         Detail::Placement { store } => out.set("store", store.as_str()),
+        Detail::Lifecycle { visible, purge } => {
+            out.set_some("visible", visible.as_deref());
+            out.set_some("purge", purge.as_deref());
+        }
+        Detail::Transition {
+            when,
+            guarded,
+            sets,
+        } => {
+            out.set_some("when", when.as_deref());
+            out.set_some("guarded", *guarded);
+            out.set("sets", sets.iter().map(Value::from).collect::<Vec<_>>());
+        }
     }
 }
 
@@ -238,6 +251,20 @@ const NODE_FIELDS: &[(&str, &str)] = &[
         "onDelete",
         "What deleting a referenced record does: restricted, cascade or cleared",
     ),
+    (
+        "visible",
+        "A lifecycle's condition for the records normal reads see, as written",
+    ),
+    (
+        "purge",
+        "When a lifecycle deletes hidden records for good: after how long, since which field",
+    ),
+    ("when", "When a lifecycle transition is allowed, as written"),
+    (
+        "guarded",
+        "A transition whose `when:` can refuse a visible record, a conflict its callers map",
+    ),
+    ("sets", "The fields a lifecycle transition sets"),
 ];
 
 /// The manifest's schema, for `jadpo help --json`.

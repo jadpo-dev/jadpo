@@ -24,7 +24,8 @@
 //!   the runtime raises itself, and its limits.
 //! - [`read`] and [`write`]: a query's or an entity's read (chunk 3.2),
 //!   and a `create`, `update` or `delete` (chunk 3.3), run from their
-//!   plans in the action's transaction.
+//!   plans in the action's transaction; [`purge`], a lifecycle's
+//!   permanent deletion of hidden records (chunk 3.4), outside any action.
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
@@ -48,6 +49,7 @@ mod limits;
 mod migrate;
 mod outcome;
 mod places;
+mod purge;
 mod read;
 mod report;
 mod write;
@@ -66,6 +68,7 @@ pub use limits::MAX_DEPTH;
 pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, standing};
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
+pub use purge::{Purged, purge};
 pub use read::{Found, Interrupt, PAGE, cursor, from_sql, invalid_cursor, read, to_sql, uuid_text};
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};
 pub use write::{Written, write};

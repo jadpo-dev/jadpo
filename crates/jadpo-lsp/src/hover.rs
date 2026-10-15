@@ -161,6 +161,31 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
         ),
         Detail::Placement { store } => format!("{} lives in `{store}`", node.name),
         Detail::SystemTable { store, table } => format!("system table `{table}` in `{store}`"),
+        Detail::Lifecycle { visible, purge } => {
+            let mut lines = Vec::new();
+            if let Some(visible) = visible {
+                lines.push(format!("visible: {visible}"));
+            }
+            if let Some(purge) = purge {
+                lines.push(format!("// purged {purge}"));
+            }
+            format!(
+                "{}'s lifecycle {{\n    {}\n}}",
+                node.name,
+                lines.join("\n    ")
+            )
+        }
+        Detail::Transition { when, sets, .. } => {
+            let when = when
+                .as_ref()
+                .map(|when| format!(" when {when}"))
+                .unwrap_or_default();
+            format!(
+                "transition {}{when}  // sets {}",
+                node.name,
+                sets.join(", ")
+            )
+        }
         Detail::None => match node.kind {
             Kind::Entity => {
                 let fields = fields_of(graph, id, true);

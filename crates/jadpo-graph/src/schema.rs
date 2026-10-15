@@ -167,6 +167,9 @@ impl OnDelete {
 pub struct Index {
     pub columns: Vec<String>,
     pub reason: String,
+    /// A partial index's condition, as SQL: the records a lifecycle's
+    /// `visible:` lets normal reads see (area 5, "Indexes").
+    pub predicate: Option<String>,
 }
 
 /// A name the database keeps whole: `table_part1_suffix`, cut to fit
@@ -294,6 +297,9 @@ impl Table {
             let mut entry = Value::object();
             entry.set("columns", strings(&index.columns));
             entry.set("reason", &index.reason);
+            if let Some(predicate) = &index.predicate {
+                entry.set("where", predicate);
+            }
             indexes.set(name, entry);
         }
         value.set_some("indexes", indexes);
@@ -358,6 +364,7 @@ impl Table {
                 Index {
                     columns: list_of(entry, "columns")?,
                     reason: text_of(entry, "reason")?,
+                    predicate: entry.get("where").and_then(Value::as_str).map(String::from),
                 },
             );
         }

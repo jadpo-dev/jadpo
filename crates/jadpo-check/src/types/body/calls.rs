@@ -252,21 +252,32 @@ impl Body<'_> {
                     _ => None,
                 };
                 if let Some(op) = op {
-                    let ty = self.write(&head, op, call.syntax(), Some(call), block, span);
+                    let ty = self.write(&head, op, call.syntax(), Some(call), block, span, None);
                     return (ty, CallKind::Effect(written), reach);
                 }
-                // The lifecycle's transitions come with chunk 3.4; a name
-                // that is no operation is reported where it is resolved.
-                self.args_only(call);
-                let known = crate::resolve::ENTITY_OPERATIONS.contains(&rest[0].as_str())
-                    || self
-                        .symbols
-                        .declared(&head)
-                        .iter()
-                        .any(|symbol| symbol.transitions.contains(&rest[0]));
-                if known {
-                    self.not_built_yet(span, &written);
+                // A lifecycle transition is an update of the fields it sets
+                // (area 6, "The operations every entity gets").
+                let transition = self
+                    .writes
+                    .write_rules(&head)
+                    .and_then(|rules| rules.transition(&rest[0]))
+                    .is_some();
+                if transition && rest[0] != "delete" {
+                    let ty = self.write(
+                        &head,
+                        jadpo_std::write::WriteOp::Update,
+                        call.syntax(),
+                        Some(call),
+                        block,
+                        span,
+                        Some(&rest[0]),
+                    );
+                    return (ty, CallKind::Effect(written), reach);
                 }
+                // A name that is no operation is reported where it is
+                // resolved; `create` is written with its block.
+                self.args_only(call);
+                self.walk(|walk| walk.member_values(block));
                 return (Ty::Error, CallKind::Effect(written), reach);
             }
             if let Some((_, op)) = self.write_call(call) {

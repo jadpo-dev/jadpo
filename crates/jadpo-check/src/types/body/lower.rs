@@ -972,14 +972,15 @@ impl Lower<'_> {
                                     Some((holder, &born)),
                                 )
                             }
+                            Breach::Transition {
+                                entity: holder,
+                                name,
+                            } => transition_key(self.names.registry(), holder, name),
                         };
                         if let Some(key) = arm.member_key() {
                             let names: Vec<ast::Name> = key.names().collect();
                             if let Some(first) = names.first() {
-                                let holder = match breach {
-                                    Breach::Unique { entity: holder, .. }
-                                    | Breach::Reference { entity: holder, .. } => holder.clone(),
-                                };
+                                let holder = breach.holder().to_string();
                                 let holder_key = self.type_key(&holder);
                                 self.node(first.syntax(), holder_key, false);
                             }
@@ -1030,9 +1031,14 @@ impl Lower<'_> {
                 ))
             })
             .collect();
+        let transition = fact
+            .transition
+            .as_deref()
+            .map(|name| transition_key(self.names.registry(), &fact.entity, name));
         typed::Expr::Write {
             entity,
             op: fact.op,
+            transition,
             target,
             by_id: fact.by_id,
             set,
@@ -1178,4 +1184,15 @@ impl Lower<'_> {
             }
         }
     }
+}
+
+/// The key of `entity`'s transition `name`: `transition Loan.check_in`,
+/// under the entity so a rename of the entity carries it.
+pub(crate) fn transition_key(registry: &jadpo_graph::Registry, entity: &str, name: &str) -> Key {
+    let born = registry.born(jadpo_graph::Kind::Entity, entity, None);
+    registry.key(
+        jadpo_graph::Kind::Transition,
+        &format!("{entity}.{name}"),
+        Some((entity, &born)),
+    )
 }

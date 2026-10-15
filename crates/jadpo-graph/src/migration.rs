@@ -511,14 +511,15 @@ fn add_foreign_key(table: &str, name: &str, def: &Table) -> Statement {
 }
 
 fn create_index(table: &str, name: &str, def: &Table) -> Statement {
-    let columns = def
-        .indexes
-        .get(name)
-        .map(|i| idents(&i.columns))
+    let index = def.indexes.get(name);
+    let columns = index.map(|i| idents(&i.columns)).unwrap_or_default();
+    let partial = index
+        .and_then(|i| i.predicate.as_ref())
+        .map(|predicate| format!(" WHERE {predicate}"))
         .unwrap_or_default();
     Statement {
         sql: format!(
-            "CREATE INDEX {} ON {} ({columns})",
+            "CREATE INDEX {} ON {} ({columns}){partial}",
             ident(name),
             ident(table)
         ),
@@ -644,6 +645,7 @@ mod tests {
                 Index {
                     columns: vec!["old".into()],
                     reason: "index Todo.by_old".into(),
+                    predicate: None,
                 },
             );
         }

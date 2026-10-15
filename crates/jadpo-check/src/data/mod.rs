@@ -10,8 +10,10 @@
 //! ([`migrations`]).
 
 mod columns;
+pub mod lifecycle;
 pub mod migrations;
 pub mod queries;
+pub mod sql;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -176,6 +178,8 @@ pub struct EntityModel {
     pub fields: Vec<FieldModel>,
     pub unique: Vec<ListRule>,
     pub indexes: Vec<ListRule>,
+    /// Its `lifecycle:` (chunk 3.4), when it has one.
+    pub lifecycle: Option<lifecycle::LifecycleModel>,
 }
 
 /// One field of an entity.
@@ -312,8 +316,10 @@ impl Reader<'_> {
             fields: Vec::new(),
             unique: Vec::new(),
             indexes: Vec::new(),
+            lifecycle: None,
         };
         let mut store: Option<(String, Span)> = None;
+        let mut lifecycle = None;
         let mut unique = None;
         let mut indexes = None;
         let items: Vec<MemberItem> = decl
@@ -354,10 +360,11 @@ impl Reader<'_> {
                 "store" => store = Some(self.store_value(path, member, &key_span)),
                 "unique" => unique = Some(member.clone()),
                 "indexes" => indexes = Some(member.clone()),
-                // Decided, and checked by the chunks that build them: the
-                // lifecycle (3.4) and policy (4.4). A record cache needs the
-                // Redis driver, which no chunk builds yet.
-                "lifecycle" | "policy" => {}
+                "lifecycle" => lifecycle = Some(member.clone()),
+                // Decided, and checked by the chunk that builds it (4.4). A
+                // record cache needs the Redis driver, which no chunk
+                // builds yet.
+                "policy" => {}
                 "caches" => self.out.push(
                     Diagnostic::new(
                         &rule::TOOLCHAIN_NOT_BUILT_YET,
@@ -421,6 +428,9 @@ impl Reader<'_> {
             entity.indexes = self.rules(path, &entity, &member, false);
         }
         entity.store = self.placement(store, &name, &name_span);
+        if let Some(member) = lifecycle {
+            entity.lifecycle = lifecycle::read(self.lookup, path, &entity, &member, &mut self.out);
+        }
         // Names the database keeps (area 5, "Storage types").
         if table.starts_with("jadpo_") {
             self.out.push(
@@ -1175,7 +1185,8 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
 /// in the order its lines name them, then its order's fields, unless an
 /// index the table has already starts with those columns. The columns are
 /// ascending: PostgreSQL reads an index backwards for a descending order.
-/// Partial indexes for a lifecycle's `visible:` come with chunk 3.4.
+/// The records of an entity with a lifecycle are indexed only as far as
+/// its `visible:` lets queries see them.
 fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mut Schema) {
     use queries::{Condition, Include, IncludeKind, OrderField};
     let queries = queries::query_models(db, project);
@@ -1274,14 +1285,27 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         if covered {
             continue;
         }
+        // Every query of an entity with a lifecycle reads only the
+        // records its `visible:` lets through, so its index holds only
+        // those: a partial index, unless `visible:` reads `clock.now`,
+        // which changes as time passes (area 5, "Indexes").
+        let predicate = entity
+            .lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.visible.as_ref())
+            .filter(|visible| !lifecycle::reads_now(visible))
+            .and_then(|visible| sql::condition(&mut sql::Fixed, entity, visible, false));
         // A reference's own index is no longer needed once this one
-        // starts with its column (area 5).
-        table.indexes.retain(|_, index| {
-            !(index.reason.starts_with("reference ")
-                && index.columns.len() == 1
-                && born.first() == index.columns.first()
-                && born.len() > 1)
-        });
+        // starts with its column (area 5), unless this one is partial: a
+        // delete of the record it points at still finds hidden records.
+        if predicate.is_none() {
+            table.indexes.retain(|_, index| {
+                !(index.reason.starts_with("reference ")
+                    && index.columns.len() == 1
+                    && born.first() == index.columns.first()
+                    && born.len() > 1)
+            });
+        }
         let mut parts: Vec<&str> = vec![entity.table.as_str()];
         parts.extend(born.iter().map(String::as_str));
         table.indexes.insert(
@@ -1289,6 +1313,7 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
             physical::Index {
                 columns: born,
                 reason: format!("query {query}"),
+                predicate,
             },
         );
     }
@@ -1366,6 +1391,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                     physical::Index {
                         columns: vec![field.born.clone()],
                         reason: format!("reference {}.{}", entity.born, field.born),
+                        predicate: None,
                     },
                 );
             }
@@ -1386,6 +1412,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
             physical::Index {
                 columns: index.fields.iter().map(|f| column(f)).collect(),
                 reason: format!("index {}.{}", entity.born, index.name),
+                predicate: None,
             },
         );
     }
@@ -1430,12 +1457,38 @@ pub struct WriteRules {
     /// it, or to a record its delete cascades to, as the entity holding
     /// the reference and the field, in name order.
     pub restricting: Vec<(String, String)>,
+    /// Whether the entity has a lifecycle, so code never removes its
+    /// records (area 5): `delete` runs its `delete` transition.
+    pub lifecycle: bool,
+    /// The fields only the lifecycle's transitions change.
+    pub owned: Vec<String>,
+    /// The lifecycle's transitions, each an operation of the entity.
+    pub transitions: Vec<TransitionRule>,
+    /// A reference through which removing a record would cascade to an
+    /// entity with a lifecycle: the entity holding it and the field.
+    pub cascades_to_lifecycle: Option<(String, String)>,
+}
+
+/// What one transition writes (area 5, "Lifecycle").
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct TransitionRule {
+    pub name: String,
+    /// Whether its `when:` can refuse a visible record: a rule it can
+    /// break, keyed `Entity.transition` in `conflict:`.
+    pub guarded: bool,
+    /// The fields it sets.
+    pub sets: Vec<String>,
 }
 
 impl WriteRules {
     /// The unique rule called `name`: a field's own or a named one.
     pub fn unique(&self, name: &str) -> Option<&UniqueRule> {
         self.unique.iter().find(|rule| rule.name == name)
+    }
+
+    /// The transition called `name`.
+    pub fn transition(&self, name: &str) -> Option<&TransitionRule> {
+        self.transitions.iter().find(|t| t.name == name)
     }
 
     /// The entity the reference field `field` points at.
@@ -1472,6 +1525,19 @@ pub fn write_rules_of(model: &DataModel, entity: &str) -> Option<WriteRules> {
             fields: rule.fields.clone(),
         });
     }
+    if let Some(lifecycle) = &found.lifecycle {
+        rules.lifecycle = true;
+        rules.owned = lifecycle.owned.clone();
+        rules.transitions = lifecycle
+            .transitions
+            .iter()
+            .map(|t| TransitionRule {
+                name: t.name.clone(),
+                guarded: t.guarded,
+                sets: t.set.iter().map(|(field, _)| field.clone()).collect(),
+            })
+            .collect();
+    }
     // A delete cascades through every `cascade` reference to what it
     // deletes, and any `restricted` reference on the way refuses it.
     let mut seen: BTreeSet<&str> = BTreeSet::from([entity]);
@@ -1494,6 +1560,10 @@ pub fn write_rules_of(model: &DataModel, entity: &str) -> Option<WriteRules> {
                         restricting.insert((child.name.clone(), field.name.clone()));
                     }
                     Some(OnDelete::Cascade) => {
+                        if child.lifecycle.is_some() && rules.cascades_to_lifecycle.is_none() {
+                            rules.cascades_to_lifecycle =
+                                Some((child.name.clone(), field.name.clone()));
+                        }
                         if seen.insert(child.name.as_str()) {
                             queue.push(child.name.as_str());
                         }

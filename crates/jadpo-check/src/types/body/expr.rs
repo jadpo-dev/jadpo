@@ -774,6 +774,7 @@ impl Body<'_> {
                     None,
                     record.member_list(),
                     head_span,
+                    None,
                 );
                 self.unhandled_write(record.syntax(), &written);
                 ty

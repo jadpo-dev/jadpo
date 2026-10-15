@@ -143,6 +143,28 @@ rules! {
         "05-data.html#data-identity-missing", "Entity has no `id` field";
     DATA_IDENTITY_TYPE: "data.identity_type", area 5, Error, Agent,
         "05-data.html#data-identity-type", "Entity's `id` is not a required `Uuid`";
+    DATA_LIFECYCLE_CONDITION: "data.lifecycle_condition", area 5, Error, Agent,
+        "05-data.html#data-lifecycle-condition", "Lifecycle condition isn't a test of the record's own fields";
+    DATA_LIFECYCLE_HARD_DELETE: "data.lifecycle_hard_delete", area 6, Error, Human,
+        "06-reads-and-writes.html#data-lifecycle-hard-delete", "Delete would remove a record its lifecycle keeps";
+    DATA_LIFECYCLE_INITIAL_REQUIRED: "data.lifecycle_initial_required", area 5, Error, Agent,
+        "05-data.html#data-lifecycle-initial-required", "Required field a transition sets has no starting value";
+    DATA_LIFECYCLE_OWNED_FIELD: "data.lifecycle_owned_field", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-lifecycle-owned-field", "Write sets a field only the lifecycle changes";
+    DATA_LIFECYCLE_PURGE_AFTER: "data.lifecycle_purge_after", area 5, Error, Agent,
+        "05-data.html#data-lifecycle-purge-after", "Purge's `after:` isn't a positive duration";
+    DATA_LIFECYCLE_PURGE_SINCE: "data.lifecycle_purge_since", area 5, Error, Agent,
+        "05-data.html#data-lifecycle-purge-since", "Purge's `since:` isn't a time field of the record";
+    DATA_LIFECYCLE_PURGE_VISIBLE: "data.lifecycle_purge_visible", area 5, Error, Agent,
+        "05-data.html#data-lifecycle-purge-visible", "Lifecycle purges records but hides none";
+    DATA_LIFECYCLE_SECTION: "data.lifecycle_section", area 5, Error, Agent,
+        "05-data.html#data-lifecycle-section", "Lifecycle has a section it doesn't take, or lacks one it needs";
+    DATA_LIFECYCLE_TRANSITION_NAME: "data.lifecycle_transition_name", area 5, Error, Agent,
+        "05-data.html#data-lifecycle-transition-name", "Transition is named like another operation or a field";
+    DATA_LIFECYCLE_UNKNOWN_FIELD: "data.lifecycle_unknown_field", area 5, Error, Agent,
+        "05-data.html#data-lifecycle-unknown-field", "Lifecycle names a field the entity doesn't have";
+    DATA_LIFECYCLE_VALUE: "data.lifecycle_value", area 5, Error, Agent,
+        "05-data.html#data-lifecycle-value", "Lifecycle sets a value that isn't fixed";
     DATA_NAME_TOO_LONG: "data.name_too_long", area 5, Error, Agent,
         "05-data.html#data-name-too-long", "Name is too long for a table or column";
     DATA_ON_DELETE_NOT_REFERENCE: "data.on_delete_not_reference", area 5, Error, Agent,
@@ -173,6 +195,8 @@ rules! {
         "05-data.html#data-store-required", "Entity names no store and there is no `main`";
     DATA_STORE_UNKNOWN: "data.store_unknown", area 5, Error, Agent,
         "05-data.html#data-store-unknown", "Entity's store is not a database connection";
+    DATA_STORED_DECIMAL_SCALE: "data.stored_decimal_scale", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-stored-decimal-scale", "Update by `id` adds a decimal with more places than its field keeps";
     DATA_STORED_VALUE_OUTSIDE_UPDATE: "data.stored_value_outside_update", area 6, Error, Agent,
         "06-reads-and-writes.html#data-stored-value-outside-update", "Stored field read outside an update by `id`";
     DATA_STORED_VALUE_UNPROVEN: "data.stored_value_unproven", area 6, Error, Human,

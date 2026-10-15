@@ -20,6 +20,7 @@ mod stores;
 mod table;
 mod ty;
 
+pub(crate) use body::transition_key;
 pub use body::{
     Callable, Checked, FailureSet, FailureSets, Fallible, body_problems, call_problems,
     callables_of, failure_set, failure_sets, typed_body,

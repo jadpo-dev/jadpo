@@ -83,6 +83,62 @@ pub struct WritePlan {
     /// gone since.
     pub by_id: bool,
     /// The constraints a refusal can name that the write maps, in order:
-    /// the executor raises what its site maps each one to.
+    /// the executor raises what its site maps each one to. A lifecycle
+    /// transition's `when:` is one too, written `when: Loan.check_in`.
     pub refusals: Vec<String>,
+    /// For a transition whose `when:` can refuse a visible record: what
+    /// to ask when the write changed no row.
+    pub guard: Option<Guard>,
+}
+
+/// What a guarded transition asks when it changed no row (area 5,
+/// "Lifecycle"): whether the record is there and visible, in which case
+/// its `when:` refused it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Guard {
+    /// `SELECT 1` of the record by `id`, under the lifecycle's `visible:`.
+    pub sql: String,
+    /// Its parameters, from the write's inputs.
+    pub params: Vec<WriteParam>,
+    /// The position in `refusals` its refusal takes.
+    pub refusal: u32,
+}
+
+/// How many records one purge batch deletes at most (area 5: "in small
+/// audited batches"), each batch its own transaction.
+pub const PURGE_BATCH: u32 = 500;
+
+/// Where a purge statement's parameter comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PurgeSource {
+    /// The run's time less the lifecycle's `after:`: a record hidden since
+    /// before it goes.
+    Cutoff,
+    /// The run's time, for a `visible:` that reads `clock.now`.
+    Now,
+}
+
+/// One purge parameter: `$1` is the first.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PurgeParam {
+    pub source: PurgeSource,
+    pub ty: SqlType,
+}
+
+/// The permanent deletion of an entity's hidden records once they have
+/// been hidden for its lifecycle's `after:` (area 5, "Lifecycle"): the
+/// compiler's own operation, outside every action and policy (area 9),
+/// which the built-in hourly purge schedule runs (area 12).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PurgePlan {
+    /// The entity's name.
+    pub entity: String,
+    pub store: String,
+    /// One batch: `DELETE ... RETURNING "id"` of at most [`PURGE_BATCH`]
+    /// records that are hidden, hidden since before the cutoff, and that
+    /// no `restricted` reference holds, oldest first.
+    pub sql: String,
+    pub params: Vec<PurgeParam>,
+    /// The lifecycle's `after:`, in milliseconds.
+    pub after: i64,
 }
