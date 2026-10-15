@@ -46,6 +46,11 @@ setting, standard-library operation, graph node kind) appears in no example.
 Every chunk adds or extends examples for what it builds; chunk 2.4 covers
 Phases 1 and 2.
 
+Revised 2026-10-15 (Richard): examples are brought up to date once per
+phase, in an examples chunk at the phase's end, and the coverage check
+blocks only there (`tools/verify.py --require-examples`); every chunk still
+keeps every example passing.
+
 ### Errors for habits from other languages — 2026-10-15
 
 Richard: people and agents learning Jadpo will write constructs from other
