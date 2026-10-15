@@ -13,7 +13,8 @@ use jadpo_value::Value;
 
 use crate::outcome::{Assertion, AssertionDetail, Part};
 use crate::{
-    Env, Event, Failure, Fault, FaultKind, Frame, Host, MAX_DEPTH, Places, StoreError, Transaction,
+    Env, Event, Failure, Fault, FaultKind, Frame, Host, Isolation, MAX_DEPTH, Places, StoreError,
+    Transaction,
 };
 
 /// The values an `assert`'s condition gave, site by site, while it runs.
@@ -32,6 +33,8 @@ struct Recording {
 /// action starts, joined by every action it calls (area 6).
 #[derive(Default)]
 pub(crate) struct Boundary {
+    /// The level its transaction begins at: the outermost action's.
+    pub isolation: Isolation,
     /// Begun at the first store operation.
     pub transaction: Option<Box<dyn Transaction>>,
     /// The store it was begun in.
@@ -257,6 +260,12 @@ impl<'p> Ctx<'p> {
         self.boundary.is_some()
     }
 
+    /// The level the running action's transaction begins, or began, at;
+    /// `None` outside an action.
+    pub fn isolation(&self) -> Option<Isolation> {
+        self.boundary.as_ref().map(|boundary| boundary.isolation)
+    }
+
     /// Whether the running action was called by another action, whose
     /// transaction it joined: a failure it raises may be handled there, and
     /// the transaction carry on (area 6).
@@ -272,9 +281,10 @@ impl<'p> Ctx<'p> {
     }
 
     /// The running action's transaction in `store`, begun at the first
-    /// store operation (area 6): every action it calls joins it. Outside
-    /// an action there is none, and an action writes one store (area 5),
-    /// so asking for a second is a fault.
+    /// store operation at the action's isolation level (area 6): every
+    /// action it calls joins it. Outside an action there is none, and an
+    /// action writes one store (area 5), so asking for a second is a
+    /// fault.
     pub async fn transaction(&mut self, store: &str) -> Result<&mut dyn Transaction, StoreError> {
         let host = self.host;
         let Some(boundary) = &mut self.boundary else {
@@ -293,7 +303,7 @@ impl<'p> Ctx<'p> {
                 let Some(database) = host.database(store) else {
                     return Err(StoreError::Fault(format!("no store called `{store}`")));
                 };
-                boundary.transaction = Some(database.begin().await?);
+                boundary.transaction = Some(database.begin_at(boundary.isolation).await?);
                 boundary.store = Some(store.to_string());
             }
         }

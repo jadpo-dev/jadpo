@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use jadpo_std::{Builtin, Rules};
+use jadpo_std::{Builtin, Isolation, Rules};
 
 use crate::body::Literal;
 use crate::{Key, Kind, TypeRef};
@@ -197,12 +197,17 @@ pub enum Detail {
         /// Whether it carries data.
         payload: bool,
     },
-    Callable(Signature),
-    /// An entity's store and the table its records live in (area 5).
-    Entity {
-        store: String,
-        table: String,
+    Callable {
+        signature: Signature,
+        /// An action's or fixture's: the level its transaction runs at,
+        /// read committed when it loads no record, itself or through any
+        /// action it calls, otherwise repeatable read (area 6, "Counters
+        /// and other one-step updates"). `None` for other callables, which
+        /// never begin a transaction of their own.
+        isolation: Option<Isolation>,
     },
+    /// An entity's store and the table its records live in (area 5).
+    Entity { store: String, table: String },
     /// A compound unique rule's or a declared index's fields, in order,
     /// and the name the database knows it by (area 5).
     Columns {
@@ -218,14 +223,9 @@ pub enum Detail {
         constraint: String,
     },
     /// The store an entity lives in (area 5).
-    Placement {
-        store: String,
-    },
+    Placement { store: String },
     /// A system table (area 5): its store and table.
-    SystemTable {
-        store: String,
-        table: String,
-    },
+    SystemTable { store: String, table: String },
     /// An entity's lifecycle (area 5): which records normal reads see, as
     /// written, and when hidden ones are purged (`after 30d since
     /// deleted_at`).
@@ -301,7 +301,15 @@ impl Node {
 
     pub fn signature(&self) -> Option<&Signature> {
         match &self.detail {
-            Detail::Callable(signature) => Some(signature),
+            Detail::Callable { signature, .. } => Some(signature),
+            _ => None,
+        }
+    }
+
+    /// An action's or fixture's isolation level (area 6).
+    pub fn isolation(&self) -> Option<Isolation> {
+        match &self.detail {
+            Detail::Callable { isolation, .. } => *isolation,
             _ => None,
         }
     }

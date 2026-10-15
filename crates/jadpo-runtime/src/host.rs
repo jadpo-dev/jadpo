@@ -13,6 +13,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use jadpo_std::Isolation;
 use jadpo_value::Value;
 
 /// A future that stays on the thread that made it: the runtime is
@@ -144,8 +145,20 @@ pub trait Transaction {
 
 /// A store that runs transactions: PostgreSQL from chunk 3.1.
 pub trait Database {
-    /// Begins a transaction, at repeatable read (area 6).
-    fn begin(&self) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>>;
+    /// Begins a transaction at `isolation`: an action's own, decided from
+    /// what it does (area 6, "Counters and other one-step updates"). The
+    /// level is set by the transaction's own `BEGIN`, never for the
+    /// session, so nothing outlives the transaction (§2.6).
+    fn begin_at(
+        &self,
+        isolation: Isolation,
+    ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>>;
+
+    /// Begins a transaction at repeatable read: what runs outside an
+    /// action, such as migrations, purge and tools.
+    fn begin(&self) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+        self.begin_at(Isolation::RepeatableRead)
+    }
 }
 
 /// An event an action emitted, waiting in its outbox until the action
@@ -206,7 +219,10 @@ impl Transaction for NoTransaction {
 }
 
 impl Database for NoStore {
-    fn begin(&self) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+    fn begin_at(
+        &self,
+        _isolation: Isolation,
+    ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
         Box::pin(async { Ok(Box::new(NoTransaction) as Box<dyn Transaction>) })
     }
 }

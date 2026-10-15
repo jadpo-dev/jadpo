@@ -12,7 +12,7 @@
 use jadpo_graph::body::SiteId;
 use jadpo_plan::{MissingPlan, MissingValue, Refusal};
 use jadpo_runtime::{
-    ActionBody, Ctx, Fault, FaultKind, Found, Interrupt, LocalFuture, Outcome, Written,
+    ActionBody, Ctx, Fault, FaultKind, Found, Interrupt, Isolation, LocalFuture, Outcome, Written,
 };
 use jadpo_value::Value;
 
@@ -104,6 +104,13 @@ struct Effect<'a> {
 }
 
 impl<'p> ActionBody<'p> for Effect<'_> {
+    /// A read run on its own loads what it reads, and its includes need
+    /// the first statement's snapshot; so does anything else run outside
+    /// an action.
+    fn isolation(&self) -> Isolation {
+        Isolation::RepeatableRead
+    }
+
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
             outcome(effect(self.program, ctx, self.target, &self.args, self.at).await)
@@ -233,6 +240,14 @@ struct Action<'a> {
 }
 
 impl<'p> ActionBody<'p> for Action<'_> {
+    /// The level its plan decided from the graph (area 6).
+    fn isolation(&self) -> Isolation {
+        self.program
+            .plan()
+            .callable(self.callee)
+            .map_or(Isolation::RepeatableRead, |callable| callable.isolation)
+    }
+
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
             outcome(body(self.program, ctx, self.callee, self.args.clone(), self.at).await)

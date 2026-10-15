@@ -1026,7 +1026,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                     used.insert("copy line written field replaces a copied one".to_string());
                 }
             }
-            Detail::Callable(signature) => {
+            Detail::Callable { signature, .. } => {
                 for (_, ty) in &signature.params {
                     shapes(ty, &mut used);
                 }

@@ -134,7 +134,11 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set("order", i64::from(*order));
             out.set_some("payload", *payload);
         }
-        Detail::Callable(signature) => {
+        Detail::Callable {
+            signature,
+            isolation,
+        } => {
+            out.set_some("isolation", isolation.map(|level| level.word()));
             let mut entry = Value::object();
             entry.set(
                 "params",
@@ -232,6 +236,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     (
         "signature",
         "A callable's parameters, result and fails list",
+    ),
+    (
+        "isolation",
+        "The level an action's or fixture's transaction runs at: read_committed when it loads no record, itself or through any action it calls, otherwise repeatable_read",
     ),
     (
         "store",
