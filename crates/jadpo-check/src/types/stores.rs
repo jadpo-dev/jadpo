@@ -8,7 +8,7 @@
 //! name and without positions: the entities each writes and reads, the
 //! queries and the actions it calls. The stores each one writes, and those
 //! it uses at all, through every call, are worked out once for the
-//! project.
+//! project, and each file reads its own actions' share by name.
 //!
 //! An action may read another store outside its transaction (area 6), but
 //! that isn't built yet: the runtime runs all of an action's store
@@ -215,17 +215,17 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     if !any_spans_stores(db, project) {
         return Vec::new();
     }
-    let stores = |name: &str| stores_of(db, project, Name::new(db, name.to_string()));
+    let reached = |name: &str| stores_of(db, project, Name::new(db, name.to_string()));
     let path = file.path(db);
     let mut out = Vec::new();
     for (name, found) in reaches(db, project, file) {
-        let own = stores(&name);
+        let own = reached(&name);
         if own.written.len() <= 1 && own.used.len() > 1 {
             out.extend(second_store_read(db, project, path, &name, &found));
         }
     }
     for (name, found) in reaches(db, project, file) {
-        if stores(&name).written.len() <= 1 {
+        if reached(&name).written.len() <= 1 {
             continue;
         }
         // The first store it reaches, and the first reach into another.
@@ -240,7 +240,7 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                     )
                 }
                 Reach::Calls(callee) => (
-                    stores(callee).written.clone(),
+                    reached(callee).written.clone(),
                     format!("calls `{callee}`, which writes"),
                 ),
                 Reach::Reads(_) | Reach::Queries(_) => continue,
@@ -289,8 +289,8 @@ fn second_store_read(
     name: &str,
     found: &[(Reach, (u32, u32))],
 ) -> Option<Diagnostic> {
-    let stores = |name: &str| stores_of(db, project, Name::new(db, name.to_string()));
-    let mut own: Option<(String, String)> = stores(name)
+    let reached = |name: &str| stores_of(db, project, Name::new(db, name.to_string()));
+    let mut own: Option<(String, String)> = reached(name)
         .written
         .iter()
         .next()
@@ -298,7 +298,7 @@ fn second_store_read(
     for (reach, (start, end)) in found {
         let (stores, how): (Vec<(String, String)>, String) = match reach {
             Reach::Calls(callee) => (
-                stores(callee)
+                reached(callee)
                     .used
                     .iter()
                     .map(|(s, e)| (s.clone(), e.clone()))

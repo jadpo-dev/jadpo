@@ -361,8 +361,8 @@ pub fn data_model(db: &dyn Db, project: Project) -> Arc<DataModel> {
 }
 
 /// Whether every entity and every query read without a problem, so the
-/// schema they ask for is whole: without positions, so a comment doesn't
-/// make the migrations be compared again.
+/// schema they ask for is whole. It holds no positions, so a comment
+/// doesn't compare the migrations again.
 #[salsa::tracked(returns(copy))]
 pub fn data_clean(db: &dyn Db, project: Project) -> bool {
     let entities = entity_names(db, project)
@@ -568,7 +568,8 @@ impl Reader<'_> {
         } else if table.len() > MAX_NAME {
             self.too_long(&name_span, &name, &table, "table");
         }
-        for (field, span) in entity.fields.iter().zip(&self.spans.fields.clone()) {
+        let spans = self.spans.fields.clone();
+        for (field, span) in entity.fields.iter().zip(&spans) {
             if field.born.len() > MAX_NAME {
                 self.too_long(
                     span,

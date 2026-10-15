@@ -669,8 +669,15 @@ and invalidation is where hand-rolled caches go wrong.
 | `typed_body` (resolved, typed, diagnostics) | callable | its file's text, or a name it reads, changes |
 | `import_problems` | file | its text, or the entry of a name it writes or imports, changes |
 | `effects` | callable | its body or a callee's effects change |
-| `plan` (SQL, codecs, policy) | query, write site, type | its inputs, entity or policy change |
+| `entity_read`, `query_read` (model, positions, problems) | entity, query | its file's text, or a name it reads, changes |
+| `entity_model`, `query_model`, `write_rules` (no positions) | entity, query | that model, or a model it reads, changes; never for a comment |
+| `data_problems`, `query_problems` | file | a read of what the file declares changes |
+| `schema`, `migration_problems` | project | any entity's or query's model changes |
 | `graph`, `diagnostics` | project, file | anything above; assembly only |
+
+The plan (SQL, codecs, sites; `Plan::build` in `jadpo-plan`) is not a
+query: it is built whole from these results each time a run needs it
+(see "The plan is built whole" below).
 
 **Per-name lookups (chunk 1.8).** The project tables (symbols, types,
 signatures, failures, who uses what) are rebuilt whenever any declaration
@@ -694,6 +701,55 @@ file each recheck one file's imports, and a rule on the type all 2,001
 files import rechecks the imports of its own file only, since its entry
 in the name table doesn't change (release build: cold 128 ms, a body edit
 8 ms, that rule 39 ms with its 2,001 bodies).
+
+**Entities and queries by name (chunk 3.13).** Areas 5 and 6 are read
+the same way. `entity_read` and `query_read` read one declaration, by
+name, into its model and its problems; `entity_model` and `query_model`
+copy the model out, and the model holds no positions (where each part is
+written is kept beside it, for the problems), so a comment or a blank
+line changes the read but not the model, and early cut-off stops there.
+Each file's `data_problems` and `query_problems` collect the problems of
+what it declares. What crosses entities (references to another store,
+cycles of required references, the references a delete reaches) is
+worked out from the models (`entity_links`, read per entity through
+`links_of`), and the graph's parts, the one-store rule, the write rules
+and the migration check read the models by name too. The schema, the
+migration check and the plan read every model, so only a change to a
+model reruns them. The scale test now has 2,303 files: beside the
+actions, 100 entities, each with a query reading it and an action
+creating its records. Before and after, in a release build (checking,
+then building the graph): a comment above an entity reran every file's
+`data_problems` (2,303), 100 graph parts and 100 entities' write rules,
+with the query models, the schema and the migration check, in 16 + 10 ms,
+and now rechecks its own file only, in 10 + 6 ms; a comment above a query
+reran every file's `query_problems` and 100 graph parts in 13 + 10 ms,
+and now rechecks its own file, in 10 + 7 ms; a rule on one of an entity's
+fields reran every file's `data_problems`, 101 graph parts and 100 write
+rules in 18 + 12 ms, and now rechecks the three files that name the
+entity (it, its query and the action that creates it, whose signatures
+read its fields), the one body that writes it, its write rules and the
+schema, in 14 + 7 ms; a body edit in an action that writes rechecks its
+own file, as before (11 + 7 ms). A new file nothing reads also reran
+every file's one-store check, which read the whole table of what each
+action writes; each file now reads its own actions' entries, and the new
+file is the only one checked (39 ms to check before, 25 ms now). The test
+asserts the counts.
+
+**The plan is built whole.** `Plan::build` is not incremental: each run
+that executes the project (`jadpo test`, and each good save under
+`--watch`) builds the plan again from the checker's memoised results
+(the typed bodies, the graph, the models), numbering callables,
+constants and type plans and decoding every site in one pass. Reusing an
+unchanged callable's or entity's piece would need those numbers to stay
+the same from one build to the next, since a decoded site names its
+callee, constants and type plans by number: a plan relinked from
+memoised pieces, in `jadpo-plan` and the interpreter that reads it. For
+the scale test's project, after a body edit, it takes 5 ms against 11 ms
+to check and 6 ms to build the graph (release, measured once, not
+asserted), spread evenly across collecting the bodies, the query and
+entity SQL, the write sites and the sites' decoding, so no one part is
+worth memoising alone. It is worth revisiting if watch-mode timings
+show it.
 
 Inputs carry durability: standard library and packages high, root files
 medium, domain files low, so a keystroke never revalidates packages.
