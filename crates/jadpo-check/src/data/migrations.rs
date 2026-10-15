@@ -400,7 +400,7 @@ pub fn decided(
 ) -> Option<Decided> {
     let decision = decisions.iter().find(|d| d.key == need.key())?;
     match (&decision.value, need.kind) {
-        (DecisionValue::Backfill(value, _), NeededKind::Backfill) => {
+        (DecisionValue::Backfill(value, _), NeededKind::Backfill | NeededKind::Refit) => {
             let ty = field_type(model, &need.entity, &need.field)?;
             if backfill_problem(lookup, ty, value).is_some() {
                 return None;
@@ -686,7 +686,7 @@ fn decision_problems(
                 .at(span, "doesn't fit")
                 .reason(reason)
                 .next(match need.kind {
-                    NeededKind::Backfill => {
+                    NeededKind::Backfill | NeededKind::Refit => {
                         format!("Write `{key}: {{ backfill: <value> }}` with a value of its type")
                     }
                     NeededKind::Retire => format!("Write `{key}: FieldChange.retired`"),
@@ -717,7 +717,7 @@ fn decision_problems(
             )
             .at(decision.span.clone(), "no such change")
             .reason(format!(
-                "A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `{}` changes about `{}` does: a decision is a value for existing rows of a required field, or retiring a field that is gone.",
+                "A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `{}` changes about `{}` does: a decision is a value for existing rows of a required field or for rows a field no longer allows, or retiring a field that is gone.",
                 migration.name, decision.key
             ))
             .next(format!("Remove `{}`", decision.key)),
@@ -758,7 +758,7 @@ fn misfit(
 ) -> Option<(Span, String)> {
     let key = need.key();
     match (&decision.value, need.kind) {
-        (DecisionValue::Backfill(value, span), NeededKind::Backfill) => {
+        (DecisionValue::Backfill(value, span), NeededKind::Backfill | NeededKind::Refit) => {
             field_type(model, &need.entity, &need.field)
                 .and_then(|ty| backfill_problem(lookup, ty, value))
                 .map(|why| (span.clone(), format!("This value can't fill `{key}`: {why}.")))
@@ -779,6 +779,10 @@ fn misfit(
         (_, NeededKind::Retire) => Some((
             decision.span.clone(),
             format!("`{key}` is gone, so its decision is `FieldChange.retired`."),
+        )),
+        (_, NeededKind::Refit) => Some((
+            decision.span.clone(),
+            format!("`{key}` allows less than it did, so its decision is `{{ backfill: <value> }}`, the value stored records it no longer allows get."),
         )),
     }
 }
@@ -801,6 +805,18 @@ fn required(
                     format!("Set `backfill:` for `{key}`, such as `backfill: {example}`")
                 }
                 None => format!("Set `backfill:` for `{key}`"),
+            },
+        ),
+        NeededKind::Refit => (
+            format!(
+                "`{key}` allows less than it did (a variant gone, or a tighter rule), and `{}` records already stored may hold a value it no longer allows; they need one it does.",
+                need.entity
+            ),
+            match example {
+                Some(example) => {
+                    format!("Set `backfill:` for `{key}`, the value those records get, such as `backfill: {example}`")
+                }
+                None => format!("Set `backfill:` for `{key}`, the value those records get"),
             },
         ),
         NeededKind::Retire => (

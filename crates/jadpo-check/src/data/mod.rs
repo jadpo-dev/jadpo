@@ -195,6 +195,9 @@ pub struct FieldModel {
     pub unique: bool,
     pub generated: Option<Generated>,
     pub reference: Option<Reference>,
+    /// What its type allows beyond its column type, which a migration
+    /// snapshot records.
+    pub allows: physical::Allows,
 }
 
 /// A reference: the entity a field typed `X.id` points at.
@@ -613,6 +616,7 @@ impl Reader<'_> {
             unique: false,
             generated: None,
             reference: None,
+            allows: physical::Allows::default(),
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -647,6 +651,10 @@ impl Reader<'_> {
             );
             return Some(field);
         }
+        field.allows = columns::allows(
+            self.lookup,
+            &Ty::Field(entity.to_string(), vec![name.to_string()]),
+        );
         match column_type(self.lookup, &ty) {
             // A structured field is stored as `jsonb` in the API's JSON
             // (area 5), whose codec comes with area 7.
@@ -1387,6 +1395,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 sql_type: sql_type.clone(),
                 nullable: field.nullable,
                 retired: false,
+                allows: Some(field.allows.clone()),
             },
         );
         if field.unique && field.name != "id" {

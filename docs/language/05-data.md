@@ -424,6 +424,60 @@ hold too. The database enforces types, required fields, keys and references;
 the application checks each field's own rules. Renaming an enum variant
 changes stored values, so it needs a migration.
 
+Built in chunk 3.10: each migration's snapshot records what every field
+allows beyond its column type, an enum's variants and the field's bounds,
+lengths and patterns, so changing them is drift `jadpo check` reports like
+any other. A change that allows more (a variant added, a longer
+`max_length`) is a migration with nothing to run. One that allows less (a
+variant renamed or removed, a shorter `max_length`, a narrower range)
+needs a decision: `backfill:` gives the records already stored with a
+value the field no longer allows one it does, and the migration's SQL
+replaces exactly those. A new `pattern:` isn't built yet, since
+PostgreSQL's regular expressions aren't Jadpo's; `jadpo migrate new` says
+so. A snapshot written before chunk 3.10 didn't record these, so the next
+migration records them with nothing to decide.
+
+```jadpo check project=narrowing file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=narrowing file=domains/shipping/types/box_size.jadpo hidden
+type BoxSize = Enum {
+    small
+    medium
+    large
+}
+```
+
+```jadpo check project=narrowing file=domains/shipping/entities/parcel.jadpo hidden migrate=initial
+use shipping/types { BoxSize }
+
+entity Parcel {
+    id: Uuid
+    size: BoxSize
+}
+```
+
+```jadpo check project=narrowing file=domains/shipping/types/box_size.jadpo migrate=drop_large
+type BoxSize = Enum {
+    small
+    medium
+}
+```
+
+```jadpo check project=narrowing file=database/migrations/20261020T1401_drop_large/changes.jadpo migrate=finish
+// changes.jadpo
+/// Stops sending large boxes.
+migration {
+    Parcel.size: {
+        backfill: BoxSize.medium  // parcels stored as large become medium
+    }
+}
+```
+
+The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
+"size" NOT IN ('medium', 'small')`.
+
 | Field type | PostgreSQL |
 |---|---|
 | `Uuid` and types based on it | `uuid` |
@@ -1725,7 +1779,7 @@ error: Nothing about `Note.body` needs a decision
   |
 5 |     Note.body: FieldChange.retired
   |     ^^^^^^^^^ no such change
-  reason: A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `20261020T1401_add_stars` changes about `Note.body` does: a decision is a value for existing rows of a required field, or retiring a field that is gone.
+  reason: A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `20261020T1401_add_stars` changes about `Note.body` does: a decision is a value for existing rows of a required field or for rows a field no longer allows, or retiring a field that is gone.
   next: Remove `Note.body` (agent)
   rule: migration.decision_unknown
   help: docs/language/05-data.html#migration-decision-unknown

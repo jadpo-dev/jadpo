@@ -1,0 +1,1 @@
+-- 20261124T0900_record_what_fields_allow: written by `jadpo migrate new` from the snapshots; never edit it by hand.

@@ -403,14 +403,21 @@ fn write(
         ),
         (
             "postgres.sql".to_string(),
-            format!(
-                "{count} {}: {summary}",
-                if count == 1 {
-                    "statement"
-                } else {
-                    "statements"
-                }
-            ),
+            if count == 0 {
+                // Only what the application checks changed, such as a
+                // variant added: the snapshot records it, and the store
+                // has nothing to do.
+                "no statements: nothing in the database changes".to_string()
+            } else {
+                format!(
+                    "{count} {}: {summary}",
+                    if count == 1 {
+                        "statement"
+                    } else {
+                        "statements"
+                    }
+                )
+            },
         ),
     ];
     let mut lines = BTreeMap::new();
@@ -480,6 +487,15 @@ fn changes_file(
             NeededKind::Retire => format!(
                 "    // `{key}` is gone. `FieldChange.retired` keeps its column\n    // and data while code stops using it.\n    {key}: {{}}\n"
             ),
+            NeededKind::Refit => {
+                let example = field_type(model, &need.entity, &need.field)
+                    .and_then(|ty| example_backfill(lookup, ty))
+                    .map_or_else(String::new, |e| format!(", such as `backfill: {e}`"));
+                format!(
+                    "    // `{key}` allows less than it did: give the `{}` records\n    // already stored with a value it no longer allows one it does\n    // with `backfill:`{example}.\n    {key}: {{}}\n",
+                    need.entity
+                )
+            }
         };
         added.push_str(&advice);
     }
@@ -557,6 +573,22 @@ fn screen_for_new(
                 format!("`{key}` is gone: retire its column"),
                 format!("Write `{key}: FieldChange.retired`"),
             ),
+            NeededKind::Refit => {
+                let example = field_type(model, &need.entity, &need.field)
+                    .and_then(|ty| example_backfill(lookup, ty));
+                (
+                    format!(
+                        "existing `{}` records may hold a `{}` it no longer allows",
+                        need.entity, need.field
+                    ),
+                    match example {
+                        Some(example) => {
+                            format!("Set `backfill:` for `{key}`, such as `{example}`")
+                        }
+                        None => format!("Set `backfill:` for `{key}`"),
+                    },
+                )
+            }
         };
         let line = written.lines.get(&key).copied();
         screen.push(Block::Decision {
@@ -574,6 +606,7 @@ fn screen_for_new(
                 match need.kind {
                     NeededKind::Backfill => "backfill",
                     NeededKind::Retire => "retire",
+                    NeededKind::Refit => "refit",
                 }
                 .into(),
             ),
@@ -683,6 +716,15 @@ fn change_groups(
                     }
                     (Some(was), Some(now)) if was.nullable && !now.nullable => {
                         "now required".into()
+                    }
+                    (Some(was), Some(now)) if was.nullable == now.nullable => {
+                        if was.allows.is_none() {
+                            "what it allows, recorded".into()
+                        } else if jadpo_graph::migration::narrowed(was, now) {
+                            "allows less".into()
+                        } else {
+                            "allows more".into()
+                        }
                     }
                     (Some(_), Some(_)) => "can be none".into(),
                     _ => "changed".into(),
