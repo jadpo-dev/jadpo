@@ -388,3 +388,85 @@ fn other_languages_operators_are_one_error_each() {
     );
     assert_eq!(error.message, "Jadpo compares with `==`, not `===`");
 }
+
+/// Habits from other languages whose edit rewrites more than a word
+/// (decision register, 2026-10-15): the edit writes the Jadpo form.
+#[test]
+fn habit_edits_write_the_jadpo_form() {
+    let cases = [
+        (
+            "function f(l: Listing) -> Name {\n    return l.subtitle ?? l.name\n}\n",
+            "function f(l: Listing) -> Name {\n    return match l.subtitle {\n        some(subtitle) -> subtitle\n        none -> l.name\n    }\n}\n",
+        ),
+        (
+            "function f(c: Customer) -> Code? {\n    return c.address?.code\n}\n",
+            "function f(c: Customer) -> Code? {\n    return match c.address {\n        some(address) -> address.code\n        none -> none\n    }\n}\n",
+        ),
+        (
+            "function f(n: Count) -> Size {\n    return n > 10 ? \"large\" : \"small\"\n}\n",
+            "function f(n: Count) -> Size {\n    return match (n > 10) {\n        true -> \"large\"\n        false -> \"small\"\n    }\n}\n",
+        ),
+        (
+            "function f(s: Status) -> Rank {\n    match s {\n        case Status.open:\n            return 1\n            break\n        Status.done -> {\n            return 2\n        }\n    }\n}\n",
+            "function f(s: Status) -> Rank {\n    match s {\n        Status.open -> {\n            return 1\n        }\n        Status.done -> {\n            return 2\n        }\n    }\n}\n",
+        ),
+        (
+            "import { Pence, Quantity } from \"../shared/types.ts\"\n\ntype A = Int {}\n",
+            "use shared/types { Pence, Quantity }\n\ntype A = Int {}\n",
+        ),
+        (
+            "use shared::types::{Pence, Quantity}\n\ntype A = Int {}\n",
+            "use shared/types { Pence, Quantity }\n\ntype A = Int {}\n",
+        ),
+        ("import \"fmt\"\n\ntype A = Int {}\n", "\ntype A = Int {}\n"),
+        (
+            "test \"t\" {\n    assertEquals(3, total(lines))\n}\n",
+            "test \"t\" {\n    assert total(lines) == 3\n}\n",
+        ),
+        (
+            "test \"t\" {\n    expect(total(lines)).not.toBe(3)\n}\n",
+            "test \"t\" {\n    assert total(lines) != 3\n}\n",
+        ),
+        (
+            "/**\n * Totals a basket.\n *\n * In pence.\n */\ntype A = Int {}\n",
+            "/// Totals a basket.\n///\n/// In pence.\ntype A = Int {}\n",
+        ),
+        (
+            "type S = Enum { open, done }\n",
+            "type S = Enum { open\n    done }\n",
+        ),
+        (
+            "function f(n: Count) -> Count {\n    n += 2 * 3\n    return n\n}\n",
+            "function f(n: Count) -> Count {\n    n = n + (2 * 3)\n    return n\n}\n",
+        ),
+        (
+            "function f(xs: List<Line>) -> Count {\n    for (Line line : xs) {\n        return 1\n    }\n    return 0\n}\n",
+            "function f(xs: List<Line>) -> Count {\n    for line in xs {\n        return 1\n    }\n    return 0\n}\n",
+        ),
+        (
+            "function f(t: Title) fails Missing -> Title {\n    throw new Missing()\n}\n",
+            "function f(t: Title) fails Missing -> Title {\n    reject Missing\n}\n",
+        ),
+        (
+            "type B = Object {\n    tags: Tag[][]\n}\n",
+            "type B = Object {\n    tags: List<List<Tag>>\n}\n",
+        ),
+        (
+            "type B = Object {\n    name: Name | undefined\n}\n",
+            "type B = Object {\n    name: Name?\n}\n",
+        ),
+        (
+            "function f(xs: []Tag) -> Count {\n    return 0\n}\n",
+            "function f(xs: List<Tag>) -> Count {\n    return 0\n}\n",
+        ),
+        (
+            "type L = Text {\n    pattern: 'it\\'s \"x\"'\n}\n",
+            "type L = Text {\n    pattern: \"it's \\\"x\\\"\"\n}\n",
+        ),
+    ];
+    for (written, meant) in cases {
+        let (error, _) = one_error(written);
+        assert!(error.rule.id.starts_with("syntax."), "{written}");
+        assert_eq!(fixed_by_edits(written, &error), meant, "{}", error.message);
+    }
+}

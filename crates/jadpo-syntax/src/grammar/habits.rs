@@ -1720,9 +1720,28 @@ pub(super) fn switch_arm(p: &mut Parser<'_>) -> bool {
     true
 }
 
+/// A line that starts another arm: `case`, `default`, or a Jadpo arm,
+/// whose `->` stands outside any brackets.
 fn at_arm_start(p: &Parser<'_>) -> bool {
-    p.on_new_line()
-        && ((p.at_word("case") && !p.nth_on_new_line(1))
-            || ((p.at_word("default") || p.at(ELSE_KW))
-                && matches!(p.nth(1), COLON | THIN_ARROW | FAT_ARROW)))
+    if !p.on_new_line() {
+        return false;
+    }
+    if (p.at_word("case") && !p.nth_on_new_line(1))
+        || ((p.at_word("default") || p.at(ELSE_KW))
+            && matches!(p.nth(1), COLON | THIN_ARROW | FAT_ARROW))
+    {
+        return true;
+    }
+    let mut depth = 0;
+    let mut i = 0;
+    while (i == 0 || !p.nth_on_new_line(i)) && p.nth(i) != EOF {
+        match p.nth(i) {
+            L_PAREN | L_BRACK | L_BRACE => depth += 1,
+            R_PAREN | R_BRACK | R_BRACE => depth -= 1,
+            THIN_ARROW | FAT_ARROW if depth == 0 => return true,
+            _ => {}
+        }
+        i += 1;
+    }
+    false
 }
