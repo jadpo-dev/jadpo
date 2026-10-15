@@ -8,10 +8,15 @@
 //! build one template database, named after their digest, so a server that
 //! already has it (one `JADPO_TEST_DATABASE_URL` names, across runs) builds
 //! it once. Each test gets a copy (`CREATE DATABASE … TEMPLATE`), and
-//! copies are prepared in the background, a few ahead of the tests that
-//! will take them, so a test seldom waits for one. A test's copy is dropped
-//! when it ends, also in the background, unless it failed and the run
-//! keeps failed tests' databases.
+//! copies are prepared in the background by a few workers, a few ahead of
+//! the tests that will take them, so a test seldom waits for one. A test's
+//! copy is emptied when it ends (its tables truncated and its sequences
+//! started again) and used for a later test, also in the background, unless
+//! it failed and the run keeps failed tests' databases. A template whose
+//! migrations left rows or moved a sequence can't be put back that way, so
+//! its copies are dropped instead. Every name a process creates carries a
+//! tag of its own ([`crate::postgres::process_tag`]), so processes sharing
+//! one server never collide.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -24,6 +29,10 @@ use crate::postgres::{Server, ServerError};
 
 /// How many copies are kept ready beyond the ones tests hold.
 const AHEAD: usize = 4;
+
+/// How many threads make, empty and drop copies at once: PostgreSQL makes
+/// a copy in tens of milliseconds, a few at a time.
+const WORKERS: usize = 4;
 
 /// The server tests in this process use, started the first time one is
 /// needed and kept until the process ends.
@@ -91,7 +100,7 @@ fn build_template(server: &Server, name: &str, steps: &[Step]) -> Result<String,
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let building = format!(
         "jadpo_build_{}_{}",
-        std::process::id(),
+        crate::postgres::process_tag(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     );
     server
@@ -206,6 +215,12 @@ pub struct Copy {
     pub stores: BTreeMap<String, (String, String)>,
 }
 
+impl Copy {
+    fn names(self) -> impl Iterator<Item = String> {
+        self.stores.into_values().map(|(name, _)| name)
+    }
+}
+
 /// The test databases of one run.
 pub struct TestDatabases {
     shared: Arc<Shared>,
@@ -225,8 +240,16 @@ struct Shared {
     changed: Condvar,
 }
 
+/// One store's template, and how to empty a copy of it again, when one
+/// can be: the statements that put it back as the template has it.
+#[derive(Clone)]
+struct Template {
+    name: String,
+    reset: Option<String>,
+}
+
 /// The server and each store's template, by store.
-type Started = (Arc<Server>, BTreeMap<String, String>);
+type Started = (Arc<Server>, BTreeMap<String, Template>);
 
 #[derive(Default)]
 struct State {
@@ -236,10 +259,22 @@ struct State {
     pool: VecDeque<Copy>,
     /// How many copies tests want ready.
     wanted: usize,
+    /// How many copies workers are making or emptying for the pool.
+    making: usize,
+    /// Copies tests gave back, to empty and use again.
+    used: VecDeque<Copy>,
     /// Databases to drop.
     drop: Vec<String>,
-    /// The run is over: the worker drops what is left and stops.
+    /// The run is over: the workers drop what is left and stop.
     done: bool,
+}
+
+impl State {
+    /// Whether the pool, with what is on its way, has fewer copies than
+    /// the tests waiting and the few kept ahead of them.
+    fn short(&self) -> bool {
+        !self.done && self.pool.len() + self.making < self.wanted + AHEAD
+    }
 }
 
 impl TestDatabases {
@@ -266,7 +301,7 @@ impl TestDatabases {
     /// background where it can be. It waits, the first time, for the
     /// server and the templates.
     pub fn acquire(&self) -> Result<Copy, String> {
-        self.start_worker();
+        self.start_workers();
         let shared = &self.shared;
         let mut state = shared.state.lock().map_err(|_| poisoned())?;
         state.wanted += 1;
@@ -284,22 +319,28 @@ impl TestDatabases {
         }
     }
 
-    /// Gives a test's copy back: dropped in the background, unless the
-    /// test failed and the run keeps failed tests' databases, when its
-    /// names are given back to report.
+    /// Gives a test's copy back: emptied in the background and used again
+    /// where its templates allow, otherwise dropped; unless the test
+    /// failed and the run keeps failed tests' databases, when its names
+    /// are given back to report.
     pub fn release(&self, copy: Copy, failed: bool) -> Vec<String> {
-        let names: Vec<String> = copy.stores.values().map(|(name, _)| name.clone()).collect();
         if failed && self.shared.keep_failed {
-            return names;
+            return copy.names().collect();
         }
         if let Ok(mut state) = self.shared.state.lock() {
-            state.drop.extend(names);
+            let reusable = matches!(&state.ready, Some(Ok((_, templates)))
+                if templates.values().all(|template| template.reset.is_some()));
+            if reusable && !state.done {
+                state.used.push_back(copy);
+            } else {
+                state.drop.extend(copy.names());
+            }
             self.shared.changed.notify_all();
         }
         Vec::new()
     }
 
-    fn start_worker(&self) {
+    fn start_workers(&self) {
         let Ok(mut worker) = self.worker.lock() else {
             return;
         };
@@ -332,111 +373,285 @@ fn poisoned() -> String {
     "the test databases' lock was poisoned".to_string()
 }
 
-/// The background worker: starts the server and builds the templates,
-/// then keeps copies ready and drops the ones tests gave back, until the
-/// run is over.
-fn prepare(shared: &Shared) {
+/// The first worker: starts the server and builds the templates, then
+/// starts the other workers and works beside them until the run is over.
+fn prepare(shared: &Arc<Shared>) {
     let ready = (|| -> Result<Started, String> {
         let server = server()?;
         let mut templates = BTreeMap::new();
         for (store, steps) in &shared.steps {
-            templates.insert(store.clone(), template(&server, store, steps)?);
+            let name = template(&server, store, steps)?;
+            templates.insert(store.clone(), Template { name, reset: None });
         }
         Ok((server, templates))
     })();
-    let (server, templates) = match &ready {
-        Ok((server, templates)) => (Arc::clone(server), templates.clone()),
-        Err(_) => {
+    let (server, mut templates) = match ready {
+        Ok(started) => started,
+        Err(error) => {
             if let Ok(mut state) = shared.state.lock() {
-                state.ready = Some(ready);
+                state.ready = Some(Err(error));
                 shared.changed.notify_all();
             }
             return;
         }
     };
-    if let Ok(mut state) = shared.state.lock() {
-        state.ready = Some(ready);
-        shared.changed.notify_all();
+    // The first copy tells how to empty one again: a copy is the template
+    // as it was migrated, so it is read before any test writes to it.
+    let first = make_copy(&server, &templates).and_then(|copy| {
+        for (store, (_, url)) in &copy.stores {
+            if let Some(template) = templates.get_mut(store) {
+                template.reset = how_to_reset(url)?;
+            }
+        }
+        Ok(copy)
+    });
+    let Ok(mut state) = shared.state.lock() else {
+        return;
+    };
+    match first {
+        Ok(copy) => {
+            state.pool.push_back(copy);
+            state.ready = Some(Ok((Arc::clone(&server), templates.clone())));
+        }
+        Err(error) => {
+            state.ready = Some(Err(format!("copying a template failed: {error}")));
+            shared.changed.notify_all();
+            return;
+        }
     }
-    static NEXT: AtomicU64 = AtomicU64::new(0);
+    shared.changed.notify_all();
+    drop(state);
+    let others: Vec<JoinHandle<()>> = (1..WORKERS)
+        .filter_map(|_| {
+            let shared = Arc::clone(shared);
+            let server = Arc::clone(&server);
+            let templates = templates.clone();
+            std::thread::Builder::new()
+                .name("jadpo-test-databases".into())
+                .spawn(move || work(&shared, &server, &templates))
+                .ok()
+        })
+        .collect();
+    work(shared, &server, &templates);
+    for other in others {
+        let _ = other.join();
+    }
+}
+
+/// What a worker does next.
+enum Job {
+    Drop(String),
+    Make,
+    Empty(Copy),
+    Stop,
+}
+
+/// One worker: keeps copies ready, emptying the ones tests gave back
+/// before making new ones, and drops what is no longer wanted; once the
+/// run is over, drops everything left and stops.
+fn work(shared: &Shared, server: &Server, templates: &BTreeMap<String, Template>) {
+    // Emptying a copy runs on this worker's own runtime.
+    let runtime = jadpo_host_native::Runtime::new().ok();
     loop {
-        let (work, done) = {
+        let job = {
             let Ok(mut state) = shared.state.lock() else {
                 return;
             };
             loop {
-                let short = state.pool.len() < state.wanted + AHEAD && !state.done;
-                if short || !state.drop.is_empty() || state.done {
-                    break;
+                if let Some(name) = state.drop.pop() {
+                    break Job::Drop(name);
+                }
+                if state.done {
+                    let state = &mut *state;
+                    let left = state.pool.drain(..).chain(state.used.drain(..));
+                    state.drop.extend(left.flat_map(Copy::names));
+                    match state.drop.pop() {
+                        Some(name) => break Job::Drop(name),
+                        None => break Job::Stop,
+                    }
+                }
+                if state.short() {
+                    state.making += 1;
+                    match state.used.pop_front() {
+                        Some(copy) if runtime.is_some() => break Job::Empty(copy),
+                        Some(copy) => {
+                            state.drop.extend(copy.names());
+                            break Job::Make;
+                        }
+                        None => break Job::Make,
+                    }
                 }
                 state = match shared.changed.wait(state) {
                     Ok(state) => state,
                     Err(_) => return,
                 };
             }
-            let drop = std::mem::take(&mut state.drop);
-            let make = state.pool.len() < state.wanted + AHEAD && !state.done;
-            ((drop, make), state.done)
         };
-        let (drop, make) = work;
-        if make {
-            let mut stores = BTreeMap::new();
-            let mut failed = None;
-            for (store, template) in &templates {
-                let name = format!(
-                    "jadpo_test_{}_{}",
-                    std::process::id(),
-                    NEXT.fetch_add(1, Ordering::Relaxed)
-                );
-                match admin_retrying(
-                    &server,
-                    &format!("CREATE DATABASE \"{name}\" TEMPLATE \"{template}\""),
-                ) {
-                    Ok(()) => {
-                        stores.insert(store.clone(), (name.clone(), server.url(&name)));
+        let made = match job {
+            Job::Stop => return,
+            Job::Drop(name) => {
+                let _ = drop_database(server, &name);
+                continue;
+            }
+            Job::Make => make_copy(server, templates)
+                .map_err(|error| format!("copying a template failed: {error}")),
+            Job::Empty(copy) => match runtime
+                .as_ref()
+                .map(|runtime| empty(runtime, &copy, templates))
+            {
+                Some(Ok(())) => Ok(copy),
+                // A copy that won't empty is dropped, and a new one made
+                // in its place.
+                _ => {
+                    let made = make_copy(server, templates)
+                        .map_err(|error| format!("copying a template failed: {error}"));
+                    if let Ok(mut state) = shared.state.lock() {
+                        state.drop.extend(copy.names());
                     }
-                    Err(error) => {
-                        failed = Some(error);
-                        break;
-                    }
+                    made
                 }
-            }
-            let Ok(mut state) = shared.state.lock() else {
-                return;
-            };
-            match failed {
-                None => state.pool.push_back(Copy { stores }),
-                Some(error) => {
-                    state
-                        .drop
-                        .extend(stores.into_values().map(|(name, _)| name));
-                    state.ready = Some(Err(format!("copying a template failed: {error}")));
-                }
-            }
-            shared.changed.notify_all();
-        }
-        for name in drop {
-            let _ = drop_database(&server, &name);
-        }
-        if done {
-            let left: Vec<String> = match shared.state.lock() {
-                Ok(mut state) => {
-                    let mut left: Vec<String> = state
-                        .pool
-                        .drain(..)
-                        .flat_map(|copy| copy.stores.into_values().map(|(name, _)| name))
-                        .collect();
-                    left.append(&mut state.drop);
-                    left
-                }
-                Err(_) => Vec::new(),
-            };
-            for name in left {
-                let _ = drop_database(&server, &name);
-            }
+            },
+        };
+        let Ok(mut state) = shared.state.lock() else {
             return;
+        };
+        state.making = state.making.saturating_sub(1);
+        match made {
+            Ok(copy) if state.done => state.drop.extend(copy.names()),
+            Ok(copy) => state.pool.push_back(copy),
+            Err(error) => state.ready = Some(Err(error)),
         }
+        shared.changed.notify_all();
     }
+}
+
+/// A new copy of each store's template, under names no other process
+/// sharing the server uses.
+fn make_copy(server: &Server, templates: &BTreeMap<String, Template>) -> Result<Copy, String> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let mut stores: BTreeMap<String, (String, String)> = BTreeMap::new();
+    for (store, template) in templates {
+        let name = format!(
+            "jadpo_test_{}_{}",
+            crate::postgres::process_tag(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        );
+        if let Err(error) = admin_retrying(
+            server,
+            &format!("CREATE DATABASE \"{name}\" TEMPLATE \"{}\"", template.name),
+        ) {
+            for (made, _) in stores.into_values() {
+                let _ = drop_database(server, &made);
+            }
+            return Err(error);
+        }
+        stores.insert(store.clone(), (name.clone(), server.url(&name)));
+    }
+    Ok(Copy { stores })
+}
+
+/// Puts a used copy back as its templates have it.
+fn empty(
+    runtime: &jadpo_host_native::Runtime,
+    copy: &Copy,
+    templates: &BTreeMap<String, Template>,
+) -> Result<(), String> {
+    for (store, (_, url)) in &copy.stores {
+        let Some(reset) = templates.get(store).and_then(|t| t.reset.as_ref()) else {
+            return Err(format!("`{store}` can't be emptied"));
+        };
+        if reset.is_empty() {
+            continue;
+        }
+        let database = jadpo_host_native::postgres(url).map_err(|e| format!("{e:?}"))?;
+        runtime.block_on(async {
+            use jadpo_runtime::Database;
+            let mut transaction = database.begin().await.map_err(|e| format!("{e:?}"))?;
+            transaction
+                .batch(reset)
+                .await
+                .map_err(|e| format!("{e:?}"))?;
+            transaction.commit().await.map_err(|e| format!("{e:?}"))
+        })?;
+    }
+    Ok(())
+}
+
+/// How to put a used copy back as the fresh copy at `url` is: empty its
+/// tables (all but the migrations' record) and start its sequences again.
+/// `None` when that wouldn't give the template back: a table the
+/// migrations put rows in, a sequence they moved on, or a materialized
+/// view; such copies are dropped after each test instead.
+fn how_to_reset(url: &str) -> Result<Option<String>, String> {
+    let url = url.to_string();
+    std::thread::spawn(move || -> Result<Option<String>, String> {
+        let runtime = jadpo_host_native::Runtime::new().map_err(|e| e.to_string())?;
+        let store = jadpo_host_native::postgres(&url).map_err(|e| format!("{e:?}"))?;
+        runtime.block_on(async {
+            use jadpo_runtime::{Database, SqlValue};
+            let mut transaction = store.begin().await.map_err(|e| format!("{e:?}"))?;
+            let mut read = async |sql: &str| -> Result<Vec<Vec<SqlValue>>, String> {
+                transaction
+                    .query(sql, &[])
+                    .await
+                    .map_err(|e| format!("{e:?}"))
+            };
+            let user = "schemaname NOT IN ('pg_catalog', 'information_schema')";
+            let tables = read(&format!(
+                "SELECT format('%I.%I', schemaname, tablename) FROM pg_tables \
+                 WHERE {user} AND tablename <> '{}' ORDER BY 1",
+                jadpo_runtime::MIGRATIONS_TABLE
+            ))
+            .await?;
+            let sequences = read(&format!(
+                "SELECT format('%I.%I', schemaname, sequencename), last_value IS NULL \
+                 FROM pg_sequences WHERE {user} ORDER BY 1"
+            ))
+            .await?;
+            let views = read(&format!(
+                "SELECT count(*)::int4 FROM pg_matviews WHERE {user}"
+            ))
+            .await?;
+            let text = |row: &Vec<SqlValue>| match row.first() {
+                Some(SqlValue::Text(name)) => Ok(name.clone()),
+                other => Err(format!("a catalogue query gave {other:?}")),
+            };
+            let tables = tables
+                .iter()
+                .map(text)
+                .collect::<Result<Vec<String>, String>>()?;
+            if !matches!(
+                views.first().and_then(|row| row.first()),
+                Some(SqlValue::Int4(0))
+            ) {
+                return Ok(None);
+            }
+            for table in &tables {
+                let rows = read(&format!("SELECT 1 FROM {table} LIMIT 1")).await?;
+                if !rows.is_empty() {
+                    return Ok(None);
+                }
+            }
+            let mut reset = Vec::new();
+            if !tables.is_empty() {
+                reset.push(format!(
+                    "TRUNCATE {} RESTART IDENTITY CASCADE",
+                    tables.join(", ")
+                ));
+            }
+            for row in &sequences {
+                if !matches!(row.get(1), Some(SqlValue::Bool(true))) {
+                    return Ok(None);
+                }
+                reset.push(format!("ALTER SEQUENCE {} RESTART", text(row)?));
+            }
+            drop(read);
+            let _ = transaction.rollback().await;
+            Ok(Some(reset.join(";\n")))
+        })
+    })
+    .join()
+    .map_err(|_| "a server query's thread panicked".to_string())?
 }
 
 /// The host an action test runs on when the project has tables: its own

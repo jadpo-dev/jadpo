@@ -169,12 +169,29 @@ impl Server {
             .collect();
         let name = format!(
             "jadpo_{}_{}_{stem}",
-            std::process::id(),
+            process_tag(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         );
         self.admin(&format!("CREATE DATABASE \"{name}\""))?;
         Ok(self.url(&name))
     }
+}
+
+/// A tag for the names of the databases this process creates: its id and
+/// the moment it first asked, so processes sharing a server, one after
+/// another or at once, never give two databases the same name.
+pub fn process_tag() -> &'static str {
+    static TAG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TAG.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or_default();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&std::process::id().to_le_bytes());
+        hasher.update(&nanos.to_le_bytes());
+        hasher.finalize().to_hex()[..10].to_string()
+    })
 }
 
 impl Drop for Server {
