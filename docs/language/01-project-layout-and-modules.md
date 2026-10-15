@@ -972,19 +972,19 @@ action postpone_all(days: SnoozeDays) -> Unit {}
 ```
 
 ```jadpo check project=e-promotion file=domains/planning/actions/snooze_todo.jadpo expect=layout.promotion_required
+action snooze_todo(days: SnoozeDays) -> Unit {}
+
 type SnoozeDays = Int {
     min: 1
     max: 30
 }
-
-action snooze_todo(days: SnoozeDays) -> Unit {}
 ```
 
 ```text output
 error: `SnoozeDays` is used beyond this file
- --> domains/planning/actions/snooze_todo.jadpo:1:6
+ --> domains/planning/actions/snooze_todo.jadpo:3:6
   |
-1 | type SnoozeDays = Int {
+3 | type SnoozeDays = Int {
   |      ^^^^^^^^^^ used by another file
   reason: A type used by one file lives in it; once another file uses it, it moves to a file of its own in `domains/planning/types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
   next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
@@ -1057,6 +1057,60 @@ error: `DueWindow` isn't used
   help: docs/language/01-project-layout-and-modules.html#layout-unused-declaration
 
 check failed: 1 error, 2 files
+```
+
+Beside a file's primary declaration, a supporting type or helper is there
+for it: the primary uses it, directly or through another supporting
+declaration it uses. One only the file's tests use is dead code too:
+
+```jadpo check project=e-unused-beside file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-unused-beside file=domains/kitchen/actions/set_oven.jadpo expect=layout.unused_declaration
+/// The temperature for a bake on `shelf`: a high shelf runs hot.
+action set_oven(shelf: Shelf) -> OvenTemperature {
+    if (shelf > 0) {
+        return 190
+    }
+    return 200
+}
+
+type Shelf = Int {
+    min: -2
+    max: 2
+}
+
+type OvenTemperature = Int {
+    min: 0
+    max: 300
+}
+
+function top_shelf() -> Shelf {
+    return 2
+}
+```
+
+```text output
+error: `top_shelf` isn't used by `set_oven`
+ --> domains/kitchen/actions/set_oven.jadpo:19:10
+   |
+19 | function top_shelf() -> Shelf {
+   |          ^^^^^^^^^ `set_oven` doesn't use this
+  reason: Everything in a file besides the declaration it is named after is there for that declaration, used by it directly or through one another; anything else is dead code. Tests don't count as users.
+  next: Remove `top_shelf` (agent)
+  rule: layout.unused_declaration
+  help: docs/language/01-project-layout-and-modules.html#layout-unused-declaration
+
+check failed: 1 error, 3 files
+```
+
+The file's test calls `top_shelf`, which doesn't count:
+
+```jadpo check project=e-unused-beside file=domains/kitchen/actions/set_oven.test.jadpo
+test "the top shelf is turned down" {
+    assert set_oven(top_shelf()) == 190
+}
 ```
 
 ### `layout.test_without_subject`
@@ -1430,7 +1484,7 @@ rule's real output under [Errors](#errors).
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built (chunk 1.7): the `library.similar_exists` warning. |
 | Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
-| A file holds only what its primary declaration uses, primary first | Decided, not built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, and `jadpo fmt` moving the primary declaration to the top. |
+| A file holds only what its primary declaration uses, primary first | Built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another, and `jadpo fmt` moving the primary declaration to the top. |
 | Referenced assets | Decided, not built: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
 
 ### Consistency with the rest of the language
@@ -1610,11 +1664,12 @@ build/
   primary declaration, directly or through one another. One that only the
   file's tests use, or nothing uses, is dead code, reported as
   `layout.unused_declaration` like an unused shared declaration, so a file
-  never collects helpers for something else (2026-10-15, Richard).
+  never collects helpers for something else (2026-10-15, Richard; built in
+  chunk 3.9).
 - The primary declaration comes first in its file, after any opening
   comment. `jadpo fmt` moves it there and leaves everything else in the
   order it was written, so opening a file shows what it is for
-  (2026-10-15, Richard).
+  (2026-10-15, Richard; built in chunk 3.9).
 - A name must convert to its file name and back unchanged, so consecutive
   capitals are not allowed: `VatRate`, not `VATRate` (Rust's guideline too).
 - Names are unique across the whole project and across kinds, so every file
@@ -2003,3 +2058,5 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Imports: fixing | `jadpo fmt` applies the import edits once every file parses, then formats; `--check` fails on a file whose imports would change; `--layout` makes the moves `layout.promotion_required` asks for (chunk 3.5) | 2026-10-15 |
 | Imports: before a promotion, provided failures, loose files, migrations, generated namespaces | A declaration beside another file's main one is imported from that file's folder until promoted; an entity's provided not-found failure comes from the entity's folder; loose files have no imports, and a `use` line there is `import.unknown`; a migration's `changes.jadpo`, which `jadpo migrate new` writes and which names what changed (`Todo.rank:`), imports nothing; `clock` and `config` need no import; while a name the file writes names nothing, no import is called unused (chunk 3.5) | 2026-10-15 |
 | A file per shared name: where it applies | A second declaration in any domain or `shared/` file, `types/` and `libraries/` included, moves to a file of its own once another file uses it; one only its own file uses stays; the edit makes the move, and `jadpo fmt --layout` makes it and updates the imports (chunk 3.5) | 2026-10-15 |
+| A file holds only what its primary declaration uses | The primary declaration is the one of the folder's kind named after the file (the first of that kind when the file is misnamed), or the seed in `database/seeds/`; every type or helper function beside it is used by it, directly or through one another, or is `layout.unused_declaration`. Tests never count. One another file uses is moved by `layout.promotion_required`, not reported unused. While the primary, or a declaration it uses, writes a name that names nothing, perhaps a misspelling of the one it meant, nothing beside it is called unused, as with imports. Test files, root files and loose files have no primary declaration, and a library's functions keep their own rule: one nothing calls is unused (chunk 3.9) | 2026-10-15 |
+| The primary declaration first | `jadpo fmt` moves the primary declaration below the file's opening comments, up to their last blank line, and its `use` lines; it takes the comments written above it and the one after it on its line, and everything else keeps its written order. `jadpo fmt --check` fails on a file whose primary declaration isn't first; loose files keep their order (chunk 3.9) | 2026-10-15 |

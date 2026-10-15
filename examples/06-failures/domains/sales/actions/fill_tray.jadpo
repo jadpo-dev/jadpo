@@ -3,13 +3,6 @@
 use sales/types { CakeCount }
 use sales/failures { NothingToBake, TrayFull }
 
-/// The orders baked together on one tray: at least one, and no more than
-/// the oven takes.
-type Tray = List<CakeCount> {
-    min_length: 1
-    max_length: 4
-}
-
 /// The orders waiting to be baked, put on one tray.
 action fill_tray(waiting: List<CakeCount>) fails NothingToBake, TrayFull -> Tray {
     // `waiting` already holds `CakeCount`s, so building a `Tray` from it
@@ -22,4 +15,11 @@ action fill_tray(waiting: List<CakeCount>) fails NothingToBake, TrayFull -> Tray
         max_length: TrayFull
     }
     return tray
+}
+
+/// The orders baked together on one tray: at least one, and no more than
+/// the oven takes.
+type Tray = List<CakeCount> {
+    min_length: 1
+    max_length: 4
 }

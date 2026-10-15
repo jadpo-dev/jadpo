@@ -12,32 +12,3 @@ test "a receipt line multiplies the price by the count" {
         total: 6000
     }
 }
-
-test "the menu shows only the cake and its price" {
-    var line: CakeLine = CakeLine {
-        cake: "Battenberg"
-        count: 1
-        each: 1500
-    }
-    assert menu_entry(line) == MenuEntry {
-        cake: "Battenberg"
-        each: 1500
-    }
-}
-
-test "a change keeps every field it leaves out" {
-    var line: CakeLine = CakeLine {
-        cake: "Battenberg"
-        count: 1
-        each: 1500
-    }
-    var changed: CakeLine = apply_change(
-        line,
-        ChangeLine {
-            count: 4
-        }
-    )
-    assert changed.count == 4
-    assert changed.cake == "Battenberg"
-    assert apply_change(line, ChangeLine {}) == line
-}

@@ -8,6 +8,27 @@
 // zero (a literal divisor must not be 0), so the compiler rules it out
 // before the program runs.
 
+/// How `buns` buns go onto trays, `per_tray` to a tray.
+action fill_trays(buns: BunCount, per_tray: TrayCapacity) -> TrayPlan {
+    // Standard-library operations are the only calls that take named
+    // arguments: `rounding:` says which way, and makes the call read
+    // plainly. `Rounding.up` rounds away from zero, so a part-filled tray
+    // still counts. The compiler knows a division of a count never below
+    // zero by a divisor of at least 1 is from zero up to the count, so
+    // `TrayCount(...)` can't fail.
+    return TrayPlan {
+        trays: TrayCount(integer.divide(buns, per_tray, rounding: Rounding.up))
+        last_tray: left_over(buns, per_tray)
+    }
+}
+
+/// How many trays a bake needs, and how many buns sit on the last tray
+/// when it isn't full: 0 when every tray is.
+type TrayPlan = Output {
+    trays: TrayCount
+    last_tray: BunCount
+}
+
 /// How many buns are baked.
 type BunCount = Int {
     min: 0
@@ -26,42 +47,9 @@ type TrayCount = Int {
     max: 5000
 }
 
-/// How many trays `buns` buns need, `per_tray` to a tray: a part-filled
-/// tray still counts, so the division rounds up.
-action fill_trays(buns: BunCount, per_tray: TrayCapacity) -> TrayCount {
-    // Standard-library operations are the only calls that take named
-    // arguments: `rounding:` says which way, and makes the call read
-    // plainly. `Rounding.up` rounds away from zero. The compiler knows a
-    // division of a count never below zero by a divisor of at least 1 is
-    // from zero up to the count, so `TrayCount(...)` can't fail.
-    return TrayCount(integer.divide(buns, per_tray, rounding: Rounding.up))
-}
-
 /// How many buns are left over after filling only whole trays.
 function left_over(buns: BunCount, per_tray: TrayCapacity) -> BunCount {
+    // `%` is the remainder of a whole-number division. It is never more
+    // than the count it divides, so `BunCount(...)` can't fail.
     return BunCount(buns % per_tray)
-}
-
-/// A price in pounds and pence.
-type Price = Decimal {
-    scale: 2
-    min: 0.00
-}
-
-/// How many people share a bill.
-type Diners = Int {
-    min: 1
-    max: 20
-}
-
-/// Each person's share of `bill`. The share keeps the bill's two places,
-/// and a half penny goes to the even penny (banker's rounding), so
-/// rounding errors don't all lean one way.
-function share(bill: Price, diners: Diners) -> Price {
-    return Price(decimal.divide(bill, diners, rounding: Rounding.half_even))
-}
-
-/// The same share, with a half penny always rounded up, as a till does.
-function till_share(bill: Price, diners: Diners) -> Price {
-    return Price(decimal.divide(bill, diners, rounding: Rounding.half_up))
 }

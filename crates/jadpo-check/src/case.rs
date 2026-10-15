@@ -24,41 +24,8 @@ pub fn starts_upper(name: &str) -> bool {
     name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
 }
 
-/// The words of a name in any style: `HTTPStatus` and `http_status` are
-/// `http status`.
-fn words(name: &str) -> Vec<String> {
-    let chars: Vec<char> = name.chars().collect();
-    let mut words: Vec<String> = Vec::new();
-    let mut current = String::new();
-    for (i, &c) in chars.iter().enumerate() {
-        if c == '_' || c == '-' {
-            if !current.is_empty() {
-                words.push(std::mem::take(&mut current));
-            }
-            continue;
-        }
-        let previous = i.checked_sub(1).map(|j| chars[j]);
-        let next = chars.get(i + 1).copied();
-        let boundary = c.is_ascii_uppercase()
-            && !current.is_empty()
-            && (previous.is_some_and(|p| p.is_ascii_lowercase() || p.is_ascii_digit())
-                || (previous.is_some_and(|p| p.is_ascii_uppercase())
-                    && next.is_some_and(|n| n.is_ascii_lowercase())));
-        if boundary {
-            words.push(std::mem::take(&mut current));
-        }
-        current.push(c.to_ascii_lowercase());
-    }
-    if !current.is_empty() {
-        words.push(current);
-    }
-    words
-}
-
-/// The `lower_snake_case` form: a file name, or the spelling of a value.
-pub fn to_snake(name: &str) -> String {
-    words(name).join("_")
-}
+use jadpo_db::name_words as words;
+pub use jadpo_db::to_snake;
 
 /// The `UpperCamelCase` form.
 pub fn to_camel(name: &str) -> String {

@@ -8,6 +8,17 @@
 use sales/types { CakeCount, Stock }
 use sales/failures { CakeSoldOut }
 
+/// Sets `asked` cakes aside from the `left` on the shelf.
+action reserve_cakes(left: Stock, asked: CakeCount) fails CakeSoldOut -> CakeCount {
+    // A call that can fail must say so where it is made. `attempt` passes
+    // the call's failures on to this action's caller, so `CakeSoldOut` is
+    // in this action's `fails` list too. `attempt` always starts a
+    // statement, so every place a callable can stop early is at the start
+    // of a line.
+    var reserved: CakeCount = attempt check_shelf(left, asked)
+    return reserved
+}
+
 /// `asked`, if the shelf has that many left. Functions can fail too:
 /// they declare `fails` and `reject` exactly as actions do.
 function check_shelf(left: Stock, asked: CakeCount) fails CakeSoldOut -> CakeCount {
@@ -26,15 +37,4 @@ function check_shelf(left: Stock, asked: CakeCount) fails CakeSoldOut -> CakeCou
         }
     }
     return asked
-}
-
-/// Sets `asked` cakes aside from the `left` on the shelf.
-action reserve_cakes(left: Stock, asked: CakeCount) fails CakeSoldOut -> CakeCount {
-    // A call that can fail must say so where it is made. `attempt` passes
-    // the call's failures on to this action's caller, so `CakeSoldOut` is
-    // in this action's `fails` list too. `attempt` always starts a
-    // statement, so every place a callable can stop early is at the start
-    // of a line.
-    var reserved: CakeCount = attempt check_shelf(left, asked)
-    return reserved
 }

@@ -6,7 +6,7 @@
 use jadpo_syntax::SyntaxNode;
 use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
-use crate::{Db, File, parse};
+use crate::{Db, File, Location, Place, parse};
 
 /// What a declaration is.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -167,12 +167,46 @@ pub fn item_tree(db: &dyn Db, file: File) -> ItemTree {
     let Some(source) = ast::SourceFile::cast(parse(db, file).syntax()) else {
         return ItemTree::default();
     };
-    let items = source
+    ItemTree {
+        items: items_of(&source),
+    }
+}
+
+/// A file's declarations, in source order: what [`item_tree`] holds, for a
+/// caller with a syntax tree and no database, such as `jadpo fmt`.
+pub fn items_of(source: &ast::SourceFile) -> Vec<Item> {
+    source
         .decls()
         .enumerate()
         .filter_map(|(index, decl)| lower(&decl, index as u32))
-        .collect();
-    ItemTree { items }
+        .collect()
+}
+
+/// The declaration a file is named after and exists for (area 1, "Files
+/// and names"): in a fixed folder, the one of the folder's kind whose name
+/// gives the file name, or the first of that kind when the file is
+/// misnamed; in `database/seeds/`, the seed. Everything else in the file
+/// supports it. Test files, root files, loose files and files the layout
+/// has no place for have none.
+pub fn primary<'a>(location: &Location, items: &'a [Item]) -> Option<&'a Item> {
+    if location.test {
+        return None;
+    }
+    let main: Vec<&Item> = match location.place {
+        Place::Folder(folder) => items
+            .iter()
+            .filter(|item| folder.holds(&item.kind))
+            .collect(),
+        Place::Seeds => items
+            .iter()
+            .filter(|item| item.kind == ItemKind::Seed)
+            .collect(),
+        _ => return None,
+    };
+    main.iter()
+        .find(|item| crate::places::to_snake(&item.name) == location.stem)
+        .or(main.first())
+        .copied()
 }
 
 /// A node's tokens without trivia: `List<Tag>`, `Todo.id`, `Name?`.

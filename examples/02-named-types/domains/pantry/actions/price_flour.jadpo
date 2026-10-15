@@ -3,6 +3,23 @@
 
 use pantry/types { Grams }
 
+/// What `weight` grams of flour cost at `per_kilo`, for whole kilograms
+/// only: the mill doesn't charge for part of a kilogram.
+action price_flour(weight: Grams, per_kilo: PricePerKilo) -> DeliveryCost {
+    // `/` divides two values of the same named type. Between two `Int`
+    // values it drops the remainder, so 2500 grams is 2 whole kilograms.
+    // (Example 05 shows `integer.divide`, which rounds other ways.)
+    //
+    // The result is a count of kilograms, so it becomes `Kilograms`, not
+    // `Grams`: both are whole numbers, but 2 grams and 2 kilograms are not
+    // the same weight, and a type that says which one it holds means the
+    // two can never be mixed up.
+    var kilos: Kilograms = Kilograms(weight / 1000)
+    // A decimal times a whole number keeps the decimal's two places, and
+    // both are at least zero, so `DeliveryCost(...)` can't fail.
+    return DeliveryCost(per_kilo * kilos)
+}
+
 /// A price per kilogram. `scale: 2` says a value has at most two decimal
 /// places; it also decides how the value is stored and sent. A decimal
 /// literal for it is written with a point: `0.00`, never `0`.
@@ -20,21 +37,4 @@ type DeliveryCost = Decimal {
 /// A weight in whole kilograms.
 type Kilograms = Int {
     min: 0
-}
-
-/// What `weight` grams of flour cost at `per_kilo`, for whole kilograms
-/// only: the mill doesn't charge for part of a kilogram.
-action price_flour(weight: Grams, per_kilo: PricePerKilo) -> DeliveryCost {
-    // `/` divides two values of the same named type. Between two `Int`
-    // values it drops the remainder, so 2500 grams is 2 whole kilograms.
-    // (Example 05 shows `integer.divide`, which rounds other ways.)
-    //
-    // The result is a count of kilograms, so it becomes `Kilograms`, not
-    // `Grams`: both are whole numbers, but 2 grams and 2 kilograms are not
-    // the same weight, and a type that says which one it holds means the
-    // two can never be mixed up.
-    var kilos: Kilograms = Kilograms(weight / 1000)
-    // A decimal times a whole number keeps the decimal's two places, and
-    // both are at least zero, so `DeliveryCost(...)` can't fail.
-    return DeliveryCost(per_kilo * kilos)
 }

@@ -3,10 +3,6 @@
 use sales/types { CakeCount }
 use sales/failures { CountOutOfRange }
 
-/// A number of cakes as a counter assistant keys it in at the till: any
-/// whole number at all, until it is checked.
-type KeyedCount = Int {}
-
 /// An order for the number of cakes keyed in at the till.
 action key_in_order(entered: KeyedCount) fails CountOutOfRange -> CakeCount {
     // A keyed number can break both `min: 1` and `max: 24`, but the till
@@ -19,3 +15,7 @@ action key_in_order(entered: KeyedCount) fails CountOutOfRange -> CakeCount {
     }
     return count
 }
+
+/// A number of cakes as a counter assistant keys it in at the till: any
+/// whole number at all, until it is checked.
+type KeyedCount = Int {}

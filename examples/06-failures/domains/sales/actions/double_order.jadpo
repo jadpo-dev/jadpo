@@ -10,26 +10,37 @@
 use sales/types { CakeCount }
 use sales/failures { OrderTooLarge }
 
-/// A number of cakes counted for the kitchen, never negative.
-type KitchenCount = Int {
-    min: 0
-}
-
-/// The same order twice over, as a party often asks.
-action double_order(count: CakeCount) fails OrderTooLarge -> CakeCount {
+/// The same order twice over, as a party often asks, and the slices it
+/// cuts into.
+action double_order(count: CakeCount) fails OrderTooLarge -> DoubledOrder {
     // `count * 2` is at least 2, so `min: 1` always holds, but it can
     // reach 48, past `max: 24`. Only `max` can break, so it has the one
     // arm. An arm for `min` would be an error: it could never run.
     var doubled: CakeCount = attempt CakeCount(count * 2) {
         max: OrderTooLarge
     }
-    return doubled
+    return DoubledOrder {
+        cakes: doubled
+        slices: slices_in(doubled)
+    }
 }
 
-/// How many cakes the kitchen bakes for `count` orders of `each`.
-function kitchen_count(each: CakeCount, count: CakeCount) -> KitchenCount {
-    // Both sides are at least 1, so the product is at least 0, and
-    // `KitchenCount` has no maximum: the compiler proves this can't fail,
+/// A doubled order: its cakes, and the slices they cut into, which a
+/// party plans by.
+type DoubledOrder = Output {
+    cakes: CakeCount
+    slices: SliceCount
+}
+
+/// A number of slices, never negative.
+type SliceCount = Int {
+    min: 0
+}
+
+/// How many slices `cakes` cakes cut into, at 12 a cake.
+function slices_in(cakes: CakeCount) -> SliceCount {
+    // `cakes` is at least 1, so the product is at least 12, and
+    // `SliceCount` has no maximum: the compiler proves this can't fail,
     // so it takes no `attempt`. (Writing one would be an error.)
-    return KitchenCount(each * count)
+    return SliceCount(cakes * 12)
 }

@@ -1,0 +1,9 @@
+test "a half penny goes to the even penny in the books, and up on the label" {
+    // 10.05 shared by 2 is 5.025: half-even gives 5.02, half-up 5.03.
+    assert cost_bun(10.05, 2) == BunCost {
+        booked: 5.02
+        labelled: 5.03
+    }
+    // 10.15 shared by 2 is 5.075: both give 5.08, the even penny.
+    assert cost_bun(10.15, 2).booked == 5.08
+}

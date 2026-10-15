@@ -2,6 +2,14 @@
 
 use pantry/types { Grams }
 
+/// Weighs a delivery of flour and says whether it needs cooling.
+action weigh_flour(each: Grams, sacks: SackCount, temperature: Celsius) -> NeedsCooling {
+    var weight: Grams = total_weight(each, sacks)
+    // A literal takes the type it goes into: here `100000` is a `Grams`.
+    var heavy: Bool = weight > 100000
+    return NeedsCooling(heavy or needs_cooling(temperature))
+}
+
 /// How many sacks of flour arrived. `min` and `max` are inclusive, so a
 /// delivery holds from 1 to 40 sacks.
 type SackCount = Int {
@@ -36,12 +44,4 @@ function needs_cooling(temperature: Celsius) -> NeedsCooling {
     // A comparison gives a plain `Bool`; wrapping it in `NeedsCooling`
     // says what the answer means.
     return NeedsCooling(temperature > 25)
-}
-
-/// Weighs a delivery of flour and says whether it needs cooling.
-action weigh_flour(each: Grams, sacks: SackCount, temperature: Celsius) -> NeedsCooling {
-    var weight: Grams = total_weight(each, sacks)
-    // A literal takes the type it goes into: here `100000` is a `Grams`.
-    var heavy: Bool = weight > 100000
-    return NeedsCooling(heavy or needs_cooling(temperature))
 }

@@ -5,8 +5,8 @@
 //!
 //! The project has one shared type, `Count`, used by 2,001 action files,
 //! each importing it (area 1, Imports);
-//! `act_0` also declares `Special`, which only it uses, and `act_1` an
-//! uncalled helper. Each edit is checked twice: by which per-file and
+//! `act_0` also declares `Special`, which only it uses, and `act_1` a
+//! helper only it calls. Each edit is checked twice: by which per-file and
 //! per-callable checks ran again, and by how long the whole check took
 //! (printed with `--nocapture`; the time is not asserted, the counts are).
 
@@ -37,7 +37,7 @@ const CHECKS: &[&str] = &[
 fn action(k: usize) -> String {
     match k {
         0 => "type Special = Int {\n    min: 0\n}\n\naction act_0(x: Special) -> Special {\n    var y: Special = x\n    return y\n}\n".to_string(),
-        1 => "use bench/types { Count }\n\naction act_1(x: Count) -> Count {\n    var y: Count = x\n    return y\n}\n\nfunction helper(x: Count) -> Count {\n    return x\n}\n".to_string(),
+        1 => "use bench/types { Count }\n\naction act_1(x: Count) -> Count {\n    var y: Count = helper(x)\n    return y\n}\n\nfunction helper(x: Count) -> Count {\n    return x\n}\n".to_string(),
         k => format!(
             "use bench/types {{ Count }}\n\naction act_{k}(x: Count) -> Count {{\n    var y: Count = x\n    return y\n}}\n"
         ),
@@ -171,13 +171,14 @@ fn an_edit_rechecks_only_what_reads_it() {
     let rule = bench.check("rule on a type one file uses");
     assert_eq!((most(&rule), bodies(&rule)), (1, 1), "{rule:?}");
 
-    // An uncalled function's signature: only its own file.
+    // The signature of a helper only its own file calls, with that call:
+    // only its own file.
     bench.edit(
         "domains/bench/actions/act_1.jadpo",
-        "function helper(x: Count) -> Count {\n    return x\n}",
-        "function helper(x: Count, y: Count) -> Count {\n    return y\n}",
+        "helper(x)\n    return y\n}\n\nfunction helper(x: Count) -> Count {\n    return x\n}",
+        "helper(x, x)\n    return y\n}\n\nfunction helper(x: Count, y: Count) -> Count {\n    return y\n}",
     );
-    let signature = bench.check("uncalled function's signature");
+    let signature = bench.check("signature of a helper one file calls");
     // Its file holds `act_1` and the helper.
     assert_eq!(
         (most(&signature), bodies(&signature)),

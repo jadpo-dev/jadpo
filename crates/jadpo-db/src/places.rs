@@ -3,6 +3,7 @@
 //! alone, so it never needs the file's text.
 
 use crate::Layout;
+use crate::items::{Base, ItemKind};
 
 /// Who owns the code in a file, for visibility.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -112,6 +113,28 @@ impl Folder {
 
     pub fn from_name(name: &str) -> Option<Folder> {
         Folder::ALL.into_iter().find(|folder| folder.name() == name)
+    }
+
+    /// Whether the folder is named after declarations of this kind: the
+    /// kind of each file's primary declaration there.
+    pub fn holds(self, kind: &ItemKind) -> bool {
+        match self {
+            Folder::Entities => *kind == ItemKind::Entity,
+            Folder::Types => matches!(
+                kind,
+                ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage)
+            ),
+            Folder::Failures => *kind == ItemKind::Type(Base::Failure),
+            Folder::Actions => *kind == ItemKind::Action,
+            Folder::Queries => *kind == ItemKind::Query,
+            Folder::Libraries => *kind == ItemKind::Library,
+            Folder::Routes => *kind == ItemKind::Routes,
+            Folder::Schedules => *kind == ItemKind::Schedule,
+            Folder::Events => *kind == ItemKind::Type(Base::Event),
+            Folder::Subscribers => *kind == ItemKind::Subscriber,
+            Folder::Emails => *kind == ItemKind::Type(Base::EmailMessage),
+            Folder::Fixtures => *kind == ItemKind::Fixture,
+        }
     }
 }
 
@@ -270,6 +293,42 @@ pub fn locate(path: &str, layout: Layout) -> Location {
             Place::Stray(Stray::RootFolder(folders.join("/"))),
         ),
     }
+}
+
+/// The words of a name in any style: `HTTPStatus` and `http_status` are
+/// `http status`.
+pub fn name_words(name: &str) -> Vec<String> {
+    let chars: Vec<char> = name.chars().collect();
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for (i, &c) in chars.iter().enumerate() {
+        if c == '_' || c == '-' {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        let previous = i.checked_sub(1).map(|j| chars[j]);
+        let next = chars.get(i + 1).copied();
+        let boundary = c.is_ascii_uppercase()
+            && !current.is_empty()
+            && (previous.is_some_and(|p| p.is_ascii_lowercase() || p.is_ascii_digit())
+                || (previous.is_some_and(|p| p.is_ascii_uppercase())
+                    && next.is_some_and(|n| n.is_ascii_lowercase())));
+        if boundary {
+            words.push(std::mem::take(&mut current));
+        }
+        current.push(c.to_ascii_lowercase());
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
+/// The `lower_snake_case` form: a file name, or the spelling of a value.
+pub fn to_snake(name: &str) -> String {
+    name_words(name).join("_")
 }
 
 #[cfg(test)]

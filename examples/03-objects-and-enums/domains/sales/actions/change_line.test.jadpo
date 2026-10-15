@@ -1,0 +1,18 @@
+use sales/types { CakeLine }
+
+test "a change keeps every field it leaves out" {
+    var line: CakeLine = CakeLine {
+        cake: "Battenberg"
+        count: 1
+        each: 1500
+    }
+    var changed: CakeLine = change_line(
+        line,
+        ChangeLine {
+            count: 4
+        }
+    )
+    assert changed.count == 4
+    assert changed.cake == "Battenberg"
+    assert change_line(line, ChangeLine {}) == line
+}

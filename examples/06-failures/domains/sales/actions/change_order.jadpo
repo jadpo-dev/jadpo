@@ -8,34 +8,6 @@ use sales/types { CakeCount, CustomerNumber, Stock }
 use sales/failures { CakeSoldOut, NotYourOrder, OrderLocked, OrderNotFound }
 use sales/actions { reserve_cakes }
 
-/// Where an order is in the kitchen.
-type OrderState = Enum {
-    waiting
-    baking
-}
-
-/// An order on the books.
-type Order = Object {
-    owner: CustomerNumber
-    state: OrderState
-    count: CakeCount
-}
-
-/// `order`, if `caller` may still change it.
-function may_change(order: Order, caller: CustomerNumber) fails NotYourOrder, OrderLocked -> Order {
-    if (order.owner != caller) {
-        reject NotYourOrder
-    }
-    // `reject` can end a block arm of a `match` statement too.
-    match order.state {
-        OrderState.waiting -> {}
-        OrderState.baking -> {
-            reject OrderLocked
-        }
-    }
-    return order
-}
-
 /// `order` changed to `asked` cakes for `caller`, taken from the `left`
 /// on the shelf. When the shelf is short, the order keeps its old count.
 action change_order(
@@ -65,4 +37,32 @@ action change_order(
         state: allowed.state
         count: count
     }
+}
+
+/// Where an order is in the kitchen.
+type OrderState = Enum {
+    waiting
+    baking
+}
+
+/// An order on the books.
+type Order = Object {
+    owner: CustomerNumber
+    state: OrderState
+    count: CakeCount
+}
+
+/// `order`, if `caller` may still change it.
+function may_change(order: Order, caller: CustomerNumber) fails NotYourOrder, OrderLocked -> Order {
+    if (order.owner != caller) {
+        reject NotYourOrder
+    }
+    // `reject` can end a block arm of a `match` statement too.
+    match order.state {
+        OrderState.waiting -> {}
+        OrderState.baking -> {
+            reject OrderLocked
+        }
+    }
+    return order
 }

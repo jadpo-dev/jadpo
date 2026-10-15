@@ -2,6 +2,29 @@
 // `else if`s and one `else`. `match` chooses between the cases of a value,
 // must cover every case, and works both as a statement and as a value.
 
+/// The oven's setting for a bake keyed in at its keypad, on `shelf`, with
+/// or without `steam`, or `none` when the oven doesn't know the bake.
+action set_oven(keyed_in: KeypadEntry, shelf: Shelf, steam: Steam) -> OvenSetting? {
+    // A `match` that gives a value has one expression per arm: `pattern ->
+    // value`. `bake_for` may find no bake, and matching its answer is the
+    // only way to reach the bake inside: `some(bake)` binds it.
+    return match bake_for(keyed_in) {
+        some(bake) -> OvenSetting {
+            temperature: turned_down(bake, shelf)
+            crust: crust_on(shelf)
+            steam: steam_word(steam)
+        }
+        none -> none
+    }
+}
+
+/// What the oven is set to, and what it shows.
+type OvenSetting = Output {
+    temperature: OvenTemperature
+    crust: Crust
+    steam: DisplayWord
+}
+
 /// What goes in the oven.
 type Bake = Enum {
     bread
@@ -28,47 +51,10 @@ type Shelf = Int {
     max: 2
 }
 
-/// The oven's temperature for a bake.
-function temperature_for(bake: Bake) -> OvenTemperature {
-    // A `match` that gives a value has one expression per arm: `pattern ->
-    // value`. Covering every variant means no `_` is needed, and adding a
-    // variant later makes every `match` that misses it a compile error.
-    return match bake {
-        Bake.bread -> 230
-        Bake.pastry -> 200
-        Bake.meringue -> 100
-    }
-}
-
-/// What a shelf does to a bake's top.
-function crust_on(shelf: Shelf) -> Crust {
-    // Literal patterns match exact values; a negative number is written
-    // with its sign. Numbers can't all be listed, so a `_` arm catches the
-    // rest, and is only allowed where cases can't be listed.
-    return match shelf {
-        -2 -> Crust.pale
-        2 -> Crust.browned
-        _ -> Crust.golden
-    }
-}
-
 /// What a baker types on the oven's keypad to call up a bake, such as
 /// `BREAD`. Anyone can type anything, so it is open text, not an enum.
 type KeypadEntry = Text {
     max_length: 12
-}
-
-/// The bake a keypad entry calls up, or `none` when the oven doesn't
-/// know it.
-function bake_for(keyed_in: KeypadEntry) -> Bake? {
-    // Text patterns match exact text. Text can't all be listed either, so
-    // `_` catches every entry the oven doesn't know.
-    return match keyed_in {
-        "BREAD" -> Bake.bread
-        "PASTRY" -> Bake.pastry
-        "MERINGUE" -> Bake.meringue
-        _ -> none
-    }
 }
 
 /// Whether the oven fills with steam.
@@ -79,19 +65,22 @@ type DisplayWord = Text {
     max_length: 12
 }
 
-/// The steam setting as a word for the oven's display.
-function steam_word(steam: Steam) -> DisplayWord {
-    // `true` and `false` are patterns too, and together cover anything
-    // built on `Bool`.
-    return match steam {
-        true -> "steam on"
-        false -> "steam off"
+/// The bake a keypad entry calls up, or `none` when the oven doesn't
+/// know it.
+function bake_for(keyed_in: KeypadEntry) -> Bake? {
+    // Text patterns match exact text. Text can't all be listed, so `_`
+    // catches every entry the oven doesn't know.
+    return match keyed_in {
+        "BREAD" -> Bake.bread
+        "PASTRY" -> Bake.pastry
+        "MERINGUE" -> Bake.meringue
+        _ -> none
     }
 }
 
 /// The temperature to set for `bake` on `shelf`: a high shelf runs hot,
 /// so the oven is turned down for it.
-action set_oven(bake: Bake, shelf: Shelf) -> OvenTemperature {
+function turned_down(bake: Bake, shelf: Shelf) -> OvenTemperature {
     var base: OvenTemperature = temperature_for(bake)
     var mut setting: OvenTemperature = base
     // A `match` used as a statement: each arm is a block, `{ ... }`, and an
@@ -114,4 +103,37 @@ action set_oven(bake: Bake, shelf: Shelf) -> OvenTemperature {
         }
     }
     return setting
+}
+
+/// The oven's temperature for a bake.
+function temperature_for(bake: Bake) -> OvenTemperature {
+    // Covering every variant means no `_` is needed, and adding a variant
+    // later makes every `match` that misses it a compile error.
+    return match bake {
+        Bake.bread -> 230
+        Bake.pastry -> 200
+        Bake.meringue -> 100
+    }
+}
+
+/// What a shelf does to a bake's top.
+function crust_on(shelf: Shelf) -> Crust {
+    // Literal patterns match exact values; a negative number is written
+    // with its sign. Numbers can't all be listed either, so a `_` arm
+    // catches the rest, and is only allowed where cases can't be listed.
+    return match shelf {
+        -2 -> Crust.pale
+        2 -> Crust.browned
+        _ -> Crust.golden
+    }
+}
+
+/// The steam setting as a word for the oven's display.
+function steam_word(steam: Steam) -> DisplayWord {
+    // `true` and `false` are patterns too, and together cover anything
+    // built on `Bool`.
+    return match steam {
+        true -> "steam on"
+        false -> "steam off"
+    }
 }

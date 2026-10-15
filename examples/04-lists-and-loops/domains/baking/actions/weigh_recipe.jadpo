@@ -2,13 +2,8 @@
 
 use baking/types { Grams, IngredientName, Recipe }
 
-/// How many ingredients a recipe has.
-type IngredientCount = Int {
-    min: 0
-}
-
-/// The total weight of everything in `recipe`.
-action weigh_recipe(recipe: Recipe) -> Grams {
+/// The label for a weighed `recipe`.
+action weigh_recipe(recipe: Recipe) -> RecipeLabel {
     // `var mut` names a value that can be pointed at a new value of the
     // same type. Only a `var mut` local can be assigned; parameters and
     // fields never can.
@@ -19,7 +14,25 @@ action weigh_recipe(recipe: Recipe) -> Grams {
     for ingredient in recipe.ingredients {
         total = Grams(total + ingredient.weight)
     }
-    return total
+    return RecipeLabel {
+        total: total
+        ingredients: count_ingredients(recipe)
+        flour: weight_of(recipe, "Flour")
+    }
+}
+
+/// What the label on a weighed recipe says: the total weight, how many
+/// ingredients went in, and the flour's weight, which bakers work every
+/// other amount out from. A recipe with no flour has `none`.
+type RecipeLabel = Output {
+    total: Grams
+    ingredients: IngredientCount
+    flour: Grams?
+}
+
+/// How many ingredients a recipe has.
+type IngredientCount = Int {
+    min: 0
 }
 
 /// How many ingredients `recipe` has.

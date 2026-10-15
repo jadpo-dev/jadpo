@@ -641,3 +641,72 @@ fn loose_files_have_no_layout_rules() {
         Vec::<String>::new()
     );
 }
+
+#[test]
+fn a_file_holds_only_what_its_primary_declaration_uses() {
+    // Area 1, "Files and names": everything beside the primary declaration
+    // is used by it, directly or through one another. The file's tests
+    // don't count as users.
+    assert_eq!(
+        with(&[
+            (
+                "domains/ordering/actions/quote.jadpo",
+                "use shared/types { Price }\n\naction quote(subtotal: Price) -> Price {\n    return doubled(subtotal)\n}\n\nfunction doubled(amount: Price) -> Price {\n    return summed(amount, amount)\n}\n\nfunction summed(a: Price, b: Price) -> Price {\n    return Price(a + b)\n}\n\ntype Note = Text {}\n\nfunction noted(note: Note) -> Note {\n    return note\n}\n"
+            ),
+            (
+                "domains/ordering/actions/quote.test.jadpo",
+                "test \"noting\" {\n    assert noted(\"hi\") == \"hi\"\n}\n"
+            ),
+        ]),
+        [
+            "domains/ordering/actions/quote.jadpo layout.unused_declaration: `Note` isn't used by `quote`",
+            "domains/ordering/actions/quote.jadpo layout.unused_declaration: `noted` isn't used by `quote`",
+        ]
+    );
+    // The same in `types/`, beside a shared type, which is itself unused
+    // when no other file uses it.
+    assert_eq!(
+        with(&[(
+            "shared/types/parcel.jadpo",
+            "type Parcel = Object {\n    weight: Grams\n}\n\ntype Grams = Int {\n    min: 0\n}\n\ntype Ounces = Int {}\n"
+        )]),
+        [
+            "shared/types/parcel.jadpo layout.unused_declaration: `Parcel` isn't used",
+            "shared/types/parcel.jadpo layout.unused_declaration: `Ounces` isn't used by `Parcel`",
+        ]
+    );
+    // While the primary writes a name that names nothing, perhaps a
+    // misspelling of the helper it meant, only that is reported.
+    assert_eq!(
+        with(&[(
+            "domains/ordering/actions/quote.jadpo",
+            "use shared/types { Price }\n\naction quote(subtotal: Price) -> Price {\n    return dobuled(subtotal)\n}\n\nfunction doubled(amount: Price) -> Price {\n    return Price(amount + amount)\n}\n"
+        )]),
+        [
+            "domains/ordering/actions/quote.jadpo semantic.unknown_callee: `dobuled` isn't a function, action or query"
+        ]
+    );
+    assert_eq!(
+        with(&[(
+            "domains/ordering/actions/quote.jadpo",
+            "action quote(note: Ntoe) -> Unit {}\n\ntype Note = Text {}\n"
+        )]),
+        ["domains/ordering/actions/quote.jadpo semantic.unknown_name: `Ntoe` isn't declared"]
+    );
+    // One that another file uses is moved, not removed.
+    assert_eq!(
+        with(&[
+            (
+                "domains/ordering/actions/quote.jadpo",
+                "use shared/types { Price }\n\naction quote(subtotal: Price) -> Price {\n    return subtotal\n}\n\ntype Note = Text {}\n"
+            ),
+            (
+                "domains/ordering/actions/annotate.jadpo",
+                "use ordering/actions { Note }\n\naction annotate(note: Note) -> Note {\n    return note\n}\n"
+            ),
+        ]),
+        [
+            "domains/ordering/actions/quote.jadpo layout.promotion_required: `Note` is used beyond this file"
+        ]
+    );
+}

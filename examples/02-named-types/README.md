@@ -16,8 +16,9 @@ checked against that type's rules.
 2. **Whole numbers and `Bool`.** `min`, `max`, negative values, a meaning given to a yes-or-no answer, and a construction the compiler proves safe. See `actions/weigh_flour.jadpo` and [area 2, Constraints](../../docs/language/02-values-and-types.md#constraints).
 3. **Exact decimals.** `scale`, decimal literals, and `/` between whole numbers giving a count in another unit, which gets a type of its own. See `actions/price_flour.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
 4. **Text.** Lengths, a whole-text `pattern`, refinements and widening, joining with `+`, and string escapes. See `actions/label_jar.jadpo` and [area 2, Named types](../../docs/language/02-values-and-types.md#named-types).
-5. **Identities, contacts, links and time.** `Uuid` with a `version`, `Email`, `Url`, `IpAddress`, `format: TextFormat.email`, `Instant`, `CalendarDate` and `Duration` with bounds, and two moments with different meanings compared through the type both are built on. See `actions/check_delivery.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
-6. **Signatures use named types.** No parameter or result is a bare `Int` or `Bool`, and each yes-or-no answer has a type saying what it means. Every file; [area 2, Signatures use named types](../../docs/language/02-values-and-types.md#signatures-use-named-types).
+5. **Time.** `Instant`, `CalendarDate` and `Duration` with bounds, and two moments with different meanings compared through the type both are built on. See `actions/check_delivery.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
+6. **Identities, contacts and links.** `Uuid` with a `version`, `Email`, `Url`, `IpAddress` and `format: TextFormat.email`, each answer about them a yes or no of its own type. See `actions/check_note.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
+7. **Signatures use named types.** No parameter or result is a bare `Int` or `Bool`, and each yes-or-no answer has a type saying what it means. Every file; [area 2, Signatures use named types](../../docs/language/02-values-and-types.md#signatures-use-named-types).
 
 Each action's tests sit beside it, in `<file>.test.jadpo`.
 
