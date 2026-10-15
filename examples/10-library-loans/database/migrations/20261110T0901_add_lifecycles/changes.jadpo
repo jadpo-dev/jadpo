@@ -1,6 +1,3 @@
-use lending/entities { Loan }
-use lending/types { LoanStatus }
-
 /// Gives members and loans their lifecycles: until now a returned loan was
 /// deleted, so every loan already stored is still out.
 migration {

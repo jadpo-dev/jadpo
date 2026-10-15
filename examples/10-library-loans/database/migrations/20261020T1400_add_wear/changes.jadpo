@@ -2,9 +2,6 @@
 // for each change it couldn't make alone, and `jadpo check` failed until
 // they were written. Run again, it wrote them into `postgres.sql`.
 
-use lending/entities { Book }
-use lending/types { Wear }
-
 /// Gives every copy its wear and retires the shelf codes.
 migration {
     // `Book.wear` is required, and the copies already stored have none:

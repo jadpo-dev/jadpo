@@ -263,7 +263,7 @@ fn root_name(root: RootFile) -> &'static str {
 #[derive(Clone, Debug)]
 enum Need {
     /// A declaration, by its symbol.
-    Name(Symbol),
+    Name(Box<Symbol>),
     /// A domain, for calls through it.
     Domain(String),
     /// A connection declared in `app.jadpo` (area 11).
@@ -468,7 +468,7 @@ impl Here<'_> {
                     .declared(name)
                     .iter()
                     .find(|symbol| symbol.library.is_none())?;
-                Some(Need::Name(symbol.clone()))
+                Some(Need::Name(Box::new(symbol.clone())))
             }
             // A bare call reaches only the file's own domain; one into
             // another domain is resolution's to report.
@@ -484,7 +484,7 @@ impl Here<'_> {
                                 | ItemKind::Fixture
                         )
                 })?;
-                Some(Need::Name(symbol.clone()))
+                Some(Need::Name(Box::new(symbol.clone())))
             }
             Role::Owner => {
                 if self.std.reserved(name) {
@@ -494,7 +494,7 @@ impl Here<'_> {
                     return Some(Need::Domain(name.to_string()));
                 }
                 if let Some(library) = self.table.library(name) {
-                    return Some(Need::Name(library.clone()));
+                    return Some(Need::Name(Box::new(library.clone())));
                 }
                 if self.table.is_connection(name) {
                     return Some(Need::Connection(name.to_string()));

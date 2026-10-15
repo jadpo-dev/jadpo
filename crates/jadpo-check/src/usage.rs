@@ -305,9 +305,16 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 let all = named(&item.name);
                 let others: Vec<&User> = all.iter().filter(|user| user.path != *path).collect();
                 let elsewhere = others.iter().copied().find(|user| !ours(user));
-                // A file is named after its main declaration; the others
-                // in it support that one (area 1, "A file per shared name").
-                let main = to_snake(&item.name) == location.stem;
+                // A file is named after its main declaration, or meant to
+                // be when it is misnamed (the first type, as the layout
+                // reads it); the others support that one (area 1, "A file
+                // per shared name").
+                let items = &item_tree(db, file).items;
+                let primary = items
+                    .iter()
+                    .find(|other| to_snake(&other.name) == location.stem)
+                    .or_else(|| items.iter().find(|other| is_plain_type(&other.kind)));
+                let main = primary.is_some_and(|primary| primary.index == item.index);
                 if others.is_empty() {
                     if main || !all.iter().any(|user| user.path == *path) {
                         out.push(unused(path, &source, item, None));

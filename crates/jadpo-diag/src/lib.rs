@@ -419,6 +419,8 @@ rules! {
         "03-logic.html#syntax-colon-required", "Member has no colon before its value";
     SYNTAX_CONDITION_BRACKETS: "syntax.condition_brackets", area 3, Error, Agent,
         "03-logic.html#syntax-condition-brackets", "Condition is not in brackets";
+    SYNTAX_EQUALITY_OPERATOR: "syntax.equality_operator", area 3, Error, Agent,
+        "03-logic.html#syntax-equality-operator", "Comparison written with `===` or `!==`";
     SYNTAX_EXPECTED_DECLARATION: "syntax.expected_declaration", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-expected-declaration", "Expected a declaration";
     SYNTAX_EXPECTED_EXPRESSION: "syntax.expected_expression", area 3, Error, Agent,

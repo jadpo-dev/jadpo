@@ -43,7 +43,7 @@ fn fixed(files: &[(&str, &str)], path: &str) -> String {
         .filter(|edit| edit.span.path == path)
         .map(|edit| (edit.span.start, edit.span.end, edit.replacement.clone()))
         .collect();
-    edits.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
+    edits.sort_by_key(|a| std::cmp::Reverse((a.0, a.1)));
     for (start, end, replacement) in edits {
         text.replace_range(start as usize..end as usize, &replacement);
     }
@@ -393,7 +393,7 @@ fn applied(files: &[(&str, &str)]) -> Vec<(String, String)> {
             )
         })
         .collect();
-    edits.sort_by(|a, b| (b.1, b.2).cmp(&(a.1, a.2)));
+    edits.sort_by_key(|a| std::cmp::Reverse((a.1, a.2)));
     let mut changed = std::collections::BTreeSet::new();
     for (path, start, end, replacement) in edits {
         let text = texts.entry(path.clone()).or_default();

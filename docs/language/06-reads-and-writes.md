@@ -1459,9 +1459,9 @@ query shelf() -> List<Book> {
 
 ```text output
 error: `shelf` reads `Book`, an entity of domain `catalogue`
- --> domains/lending/queries/shelf.jadpo:3:11
+ --> domains/lending/queries/shelf.jadpo:5:11
   |
-3 |     from: Book
+5 |     from: Book
   |           ^^^^ domain `catalogue`
   reason: A query reads its own domain's entities only; another domain's data comes from that domain's public queries, so `catalogue` decides what it shares.
   next: Call a public query of `catalogue`, or move `shelf` into `catalogue` (human)
@@ -2896,9 +2896,9 @@ action checkout(cart: Cart) -> Order {
 
 ```text output
 error: `checkout` writes two stores
- --> domains/ordering/actions/checkout.jadpo:5:5
+ --> domains/ordering/actions/checkout.jadpo:8:5
   |
-5 |     clear_cart(cart)
+8 |     clear_cart(cart)
   |     ^^^^^^^^^^^^^^^^ store `carts`
   reason: An action's writes, and those of the actions it calls, commit as one, in one store's transaction; `checkout` writes `Order` (store `main`), and here it calls `clear_cart`, which writes `Cart` (store `carts`).
   next: Write `Cart` in a subscriber to an event `checkout` emits, or keep `Cart` in store `main` (human)

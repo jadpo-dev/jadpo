@@ -195,7 +195,7 @@ fn fixed_imports(root: &Path, files: &[PathBuf]) -> BTreeMap<String, String> {
 /// `text` with each `(start, end, replacement)` applied, from the end
 /// back so earlier offsets stay right.
 fn apply(text: &str, mut edits: Vec<(u32, u32, String)>) -> String {
-    edits.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
+    edits.sort_by_key(|a| std::cmp::Reverse((a.0, a.1)));
     let mut out = text.to_string();
     for (start, end, replacement) in edits {
         let (start, end) = (start as usize, end as usize);

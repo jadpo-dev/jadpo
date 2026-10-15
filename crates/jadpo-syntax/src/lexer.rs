@@ -24,6 +24,8 @@ pub(crate) struct LexToken {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum LexErrorKind {
     UnexpectedCharacter(String),
+    /// `===` or `!==`, read as `==` or `!=` so the rest parses.
+    StrictEquality(&'static str),
     /// A carriage return not followed by a line feed.
     LoneCarriageReturn,
     UnterminatedString,
@@ -264,6 +266,16 @@ impl Lexer<'_> {
             self.push(R_DBRACE, start);
             self.in_template_code = false;
             return;
+        }
+        // `===` and `!==` from other languages: one mistake each, read as
+        // `==` and `!=` so the rest of the line parses as meant.
+        for (text, kind) in [("===", EQ2), ("!==", NEQ)] {
+            if self.rest().starts_with(text) {
+                self.pos += text.len();
+                self.push(kind, start);
+                self.error(start, self.pos, LexErrorKind::StrictEquality(text));
+                return;
+            }
         }
         for (text, kind) in MULTI {
             if self.rest().starts_with(text) {

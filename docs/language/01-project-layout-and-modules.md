@@ -418,9 +418,9 @@ action count_todos() -> TodoCount {
 
 ```text output
 error: An action can't call fixture `two_open_todos`
- --> domains/planning/actions/count_todos.jadpo:2:12
+ --> domains/planning/actions/count_todos.jadpo:5:12
   |
-2 |     return two_open_todos()
+5 |     return two_open_todos()
   |            ^^^^^^^^^^^^^^ test data
   reason: A fixture builds test data: only tests, other fixtures and seeds call it, and it is never compiled into a deployable.
   next: Call the actions `two_open_todos` calls, or move this call into a test, fixture or seed (agent)
@@ -489,9 +489,9 @@ action checkout(quantity: Quantity) -> Unit {
 
 ```text output
 error: `reserve_stock` is private to domain `inventory`
- --> domains/ordering/actions/checkout.jadpo:2:15
+ --> domains/ordering/actions/checkout.jadpo:5:15
   |
-2 |     inventory.reserve_stock(quantity)
+5 |     inventory.reserve_stock(quantity)
   |               ^^^^^^^^^^^^^ private
   reason: Another domain may use only what a domain marks `public`; `reserve_stock` is an action in `domains/inventory/actions/reserve_stock.jadpo`.
   next: Mark `reserve_stock` `public` if `inventory` should offer it to other domains (human)
@@ -537,9 +537,9 @@ test "reminders start from planning's open todos" {
 
 ```text output
 error: `two_open_todos` is private to domain `planning`
- --> domains/reminders/actions/send_reminders.test.jadpo:3:21
+ --> domains/reminders/actions/send_reminders.test.jadpo:5:21
   |
-3 |     assert planning.two_open_todos() == 2
+5 |     assert planning.two_open_todos() == 2
   |                     ^^^^^^^^^^^^^^ private
   reason: Another domain may use only what a domain marks `public`; `two_open_todos` is a fixture in `domains/planning/fixtures/two_open_todos.jadpo`.
   next: Mark `two_open_todos` `public` if `planning` should offer it to other domains' tests (human)
@@ -613,9 +613,9 @@ public action count_todos() -> TodoCount {
 
 ```text output
 error: `count_todos` is `public`, but nothing outside `planning` uses it
- --> domains/planning/actions/count_todos.jadpo:1:1
+ --> domains/planning/actions/count_todos.jadpo:3:1
   |
-1 | public action count_todos() -> TodoCount {
+3 | public action count_todos() -> TodoCount {
   | ^^^^^^ offered to no one
   reason: `public` offers a declaration to other domains, and no other domain's code or tests, no root `tests/` scenario and no public declaration they use names `count_todos`; `planning`'s own tests don't count.
   next: Remove `public` (agent)
@@ -680,6 +680,20 @@ action price_loaf(each: Pence) -> Pence {
 }
 ```
 
+```text output
+error: `Pence` isn't imported
+ --> domains/bakery/actions/price_loaf.jadpo:1:25
+  |
+1 | action price_loaf(each: Pence) -> Pence {
+  |                         ^^^^^ not imported
+  reason: Every name a file uses that it doesn't declare comes in on a `use` line, so a reader sees where it lives; `Pence` is a type in `shared/types/pence.jadpo`.
+  next: Add `use shared/types { Pence }`, or run `jadpo fmt`, which adds every missing import (agent)
+  rule: import.missing
+  help: docs/language/01-project-layout-and-modules.html#import-missing
+
+check failed: 1 error, 3 files
+```
+
 ### `import.unknown`
 
 A `use` line names a domain, a folder of a domain or of `shared/`, or a
@@ -702,6 +716,20 @@ use shared/failures { Pence }
 action price_loaf(each: Pence) -> Pence {
     return each
 }
+```
+
+```text output
+error: `Pence` isn't in `shared/failures`
+ --> domains/bakery/actions/price_loaf.jadpo:1:23
+  |
+1 | use shared/failures { Pence }
+  |                       ^^^^^ not in this folder
+  reason: A `use` line brings in names from the folder it names; `Pence` is a type in `shared/types/pence.jadpo`, so it comes in from `shared/types`.
+  next: Import `Pence` from `shared/types` (agent)
+  rule: import.unknown
+  help: docs/language/01-project-layout-and-modules.html#import-unknown
+
+check failed: 1 error, 3 files
 ```
 
 ### `import.unused`
@@ -735,6 +763,20 @@ use shared/types { Pence, Percent }
 action price_loaf(each: Pence) -> Pence {
     return each
 }
+```
+
+```text output
+error: `Percent` is imported but not used
+ --> domains/bakery/actions/price_loaf.jadpo:1:27
+  |
+1 | use shared/types { Pence, Percent }
+  |                           ^^^^^^^ not used
+  reason: A `use` line lists only the names its file uses, so each says where it comes from; nothing here uses `Percent`.
+  next: Remove `Percent` from this line (agent)
+  rule: import.unused
+  help: docs/language/01-project-layout-and-modules.html#import-unused
+
+check failed: 1 error, 5 files
 ```
 
 ### `import.unneeded`
@@ -773,6 +815,20 @@ test "a loaf costs 250 pence" {
 }
 ```
 
+```text output
+error: `loaf_price` is declared in this test's subject
+ --> domains/menu/actions/price_item.test.jadpo:1:20
+  |
+1 | use menu/actions { loaf_price }
+  |                    ^^^^^^^^^^ needs no import
+  reason: A test file sees everything its subject declares without importing it, and `loaf_price` is in `price_item.jadpo`.
+  next: Remove this line (agent)
+  rule: import.unneeded
+  help: docs/language/01-project-layout-and-modules.html#import-unneeded
+
+check failed: 1 error, 4 files
+```
+
 ### `import.duplicate`
 
 ```jadpo check project=e-import-duplicate file=app.jadpo hidden
@@ -799,6 +855,22 @@ use shared/types { Percent }
 action price_loaf(each: Pence, off: Percent) -> Pence {
     return each
 }
+```
+
+```text output
+error: `shared/types` has two `use` lines
+ --> domains/bakery/actions/price_loaf.jadpo:2:5
+  |
+1 | use shared/types { Pence }
+  |     ------------ first line
+2 | use shared/types { Percent }
+  |     ^^^^^^^^^^^^ a second line
+  reason: Each folder has one `use` line, listing every name the file takes from it; `use shared/types` is written twice.
+  next: Move its names onto the first `shared/types` line (agent)
+  rule: import.duplicate
+  help: docs/language/01-project-layout-and-modules.html#import-duplicate
+
+check failed: 1 error, 4 files
 ```
 
 ### `layout.unknown_location`
@@ -911,8 +983,8 @@ error: `SnoozeDays` is used beyond this file
   |
 1 | type SnoozeDays = Int {
   |      ^^^^^^^^^^ used by another file
-  reason: A type used by one file lives in it; once another file uses it, it moves to `domains/planning/types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
-  next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo` (agent)
+  reason: A type used by one file lives in it; once another file uses it, it moves to a file of its own in `domains/planning/types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
+  next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
   rule: layout.promotion_required
   help: docs/language/01-project-layout-and-modules.html#layout-promotion-required
 
@@ -936,6 +1008,20 @@ type Basket = Object {
 type DiscountCode = Text {
     max_length: 12
 }
+```
+
+```text output
+error: `DiscountCode` is used beyond this file
+ --> domains/sales/types/basket.jadpo:5:6
+  |
+5 | type DiscountCode = Text {
+  |      ^^^^^^^^^^^^ used by another file
+  reason: A declaration another file uses has a file of its own named after it, so its `use` line says where it is; `DiscountCode` is in `basket.jadpo`, named after another declaration, and moves to `domains/sales/types/`. `domains/sales/actions/apply_code.jadpo` uses it too.
+  next: Move `DiscountCode` to `domains/sales/types/discount_code.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
+  rule: layout.promotion_required
+  help: docs/language/01-project-layout-and-modules.html#layout-promotion-required
+
+check failed: 1 error, 3 files
 ```
 
 ```jadpo check project=e-promotion-file file=domains/sales/actions/apply_code.jadpo
@@ -1614,7 +1700,12 @@ Built in chunk 3.5, with these readings (each on the
   entity's folder: `use planning/entities { Todo, TodoNotFound }`.
 - **Loose files** have no layout, so no folders to import from: every name
   in them is seen without a `use` line, and a `use` line there is
-  `import.unknown`.
+  `import.unknown`. A migration's `changes.jadpo`, which `jadpo migrate
+  new` writes and which names what changed (`Todo.rank: { ... }`), imports
+  nothing either.
+- **A misspelling is one error.** While a name the file writes names
+  nothing, no import is called unused, since the name may be a misspelt
+  import; `jadpo fmt` removes none either.
 - **The generated namespaces** (`clock`, `config`) are called through
   their names, as the standard library is, and need no import.
 
@@ -1808,5 +1899,5 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Imports: where and in what order | `use` lines open the file, below its opening comments up to a blank line; sorted names before domains, root files, then `shared/`, then each domain's folders by domain name, folders in the layout's order, then `use <domain>` lines; names in the braces sorted; one name per line past 100 columns; `use` is reserved (chunk 3.5) | 2026-10-15 |
 | Imports: errors | Five rules, each with its edit: `import.missing`, `import.unknown` (folder, domain or name not there, or the wrong folder), `import.unused`, `import.unneeded` (built-in, own declaration, test subject's, own domain) and `import.duplicate`; privacy stays `visibility.private_cross_domain` at the use, and nothing the file can't use is asked to be imported (chunk 3.5) | 2026-10-15 |
 | Imports: fixing | `jadpo fmt` applies the import edits once every file parses, then formats; `--check` fails on a file whose imports would change; `--layout` makes the moves `layout.promotion_required` asks for (chunk 3.5) | 2026-10-15 |
-| Imports: before a promotion, provided failures, loose files, generated namespaces | A declaration beside another file's main one is imported from that file's folder until promoted; an entity's provided not-found failure comes from the entity's folder; loose files have no imports, and a `use` line there is `import.unknown`; `clock` and `config` need no import (chunk 3.5) | 2026-10-15 |
+| Imports: before a promotion, provided failures, loose files, migrations, generated namespaces | A declaration beside another file's main one is imported from that file's folder until promoted; an entity's provided not-found failure comes from the entity's folder; loose files have no imports, and a `use` line there is `import.unknown`; a migration's `changes.jadpo`, which `jadpo migrate new` writes and which names what changed (`Todo.rank:`), imports nothing; `clock` and `config` need no import; while a name the file writes names nothing, no import is called unused (chunk 3.5) | 2026-10-15 |
 | A file per shared name: where it applies | A second declaration in any domain or `shared/` file, `types/` and `libraries/` included, moves to a file of its own once another file uses it; one only its own file uses stays; the edit makes the move, and `jadpo fmt --layout` makes it and updates the imports (chunk 3.5) | 2026-10-15 |

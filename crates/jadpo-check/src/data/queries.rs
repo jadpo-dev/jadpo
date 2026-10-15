@@ -1535,7 +1535,7 @@ impl<'a> Reader<'a> {
                 );
                 return None;
             };
-            let next = self.lookup.field_type(&host, std::slice::from_ref(&field));
+            let next = self.lookup.field_type(&host, std::slice::from_ref(field));
             ty = if found.optional {
                 next.nullable()
             } else {

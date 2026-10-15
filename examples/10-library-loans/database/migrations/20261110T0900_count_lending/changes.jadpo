@@ -1,5 +1,3 @@
-use lending/entities { Book }
-
 /// Starts counting loans: the copies already on the shelves have been lent
 /// no times yet.
 migration {

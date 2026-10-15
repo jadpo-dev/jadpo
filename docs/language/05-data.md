@@ -481,9 +481,6 @@ entity Todo {
 
 ```jadpo check project=migrations file=database/migrations/20261020T1401_add_priority/changes.jadpo migrate=finish
 // changes.jadpo
-use planning/entities { Todo }
-use planning/types { Priority }
-
 /// Adds a priority to every todo and retires the legacy flag.
 migration {
     Todo.priority: {
@@ -896,9 +893,9 @@ entity OldTodo {
 
 ```text output
 error: `OldTodo.owner_id` refers to a `User` in another store
- --> domains/planning/entities/old_todo.jadpo:3:5
+ --> domains/planning/entities/old_todo.jadpo:5:5
   |
-3 |     owner_id: User.id {
+5 |     owner_id: User.id {
   |     ^^^^^^^^ `OldTodo` is in `archive`
   reason: A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber.
   next: Keep `OldTodo` and `User` in one store, or store the id as a plain `Uuid` (human)
@@ -1614,8 +1611,6 @@ entity Note {
 ```
 
 ```jadpo check project=e-decision-required file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_required
-use notes/entities { Note }
-
 migration {
     Note.stars: {}
 }
@@ -1664,8 +1659,6 @@ entity Note {
 ```
 
 ```jadpo check project=e-decision-invalid file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_invalid
-use notes/entities { Note }
-
 migration {
     Note.stars: {
         backfill: 9
@@ -1716,8 +1709,6 @@ entity Note {
 ```
 
 ```jadpo check project=e-decision-unknown file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_unknown
-use notes/entities { Note }
-
 migration {
     Note.stars: {
         backfill: 3
@@ -1771,8 +1762,6 @@ entity Note {
 ```
 
 ```jadpo check project=e-unfinished file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.unfinished
-use notes/entities { Note }
-
 migration {
     Note.stars: {
         backfill: 3

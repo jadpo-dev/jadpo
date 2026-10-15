@@ -172,6 +172,19 @@ fn lex_error(text: &str, error: &LexError) -> SyntaxError {
                 None => error,
             }
         }
+        LexErrorKind::StrictEquality(written) => {
+            let meant = if *written == "===" { "==" } else { "!=" };
+            SyntaxError::new(
+                &rule::SYNTAX_EQUALITY_OPERATOR,
+                format!("Jadpo compares with `{meant}`, not `{written}`"),
+                start,
+                end,
+            )
+            .label(format!("write `{meant}`"))
+            .reason("`==` and `!=` already compare two values of the same type, with no conversion between types, so there is no stricter form to ask for.")
+            .next(format!("Use `{meant}` instead of `{written}`"))
+            .edit(TextEdit::replace(start, end, meant))
+        }
         LexErrorKind::LoneCarriageReturn => SyntaxError::new(
             &rule::SYNTAX_UNEXPECTED_CHARACTER,
             "This line ends with a carriage return alone",
