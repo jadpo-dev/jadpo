@@ -2,7 +2,7 @@
 //! caught on its own mistake, one mistake gives one error, and a body edit
 //! re-checks only its own file's bodies.
 
-mod support;
+use crate::support;
 
 use jadpo_db::{Database, Layout};
 use salsa::Setter;

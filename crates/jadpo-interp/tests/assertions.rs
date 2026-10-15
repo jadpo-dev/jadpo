@@ -6,7 +6,7 @@
 //! its start. Literals are left out, and so is anything inside a callee or
 //! an inline function, which has no single value.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::{AssertionDetail, Got, Outcome, Program};
 use support::{program, run};

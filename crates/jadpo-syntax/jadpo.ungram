@@ -4,8 +4,8 @@
 // the shapes every other area's examples use: declarations whose bodies are
 // `name: value` members, route entries keyed by method and path, and
 // statement blocks. The typed AST in src/generated/ is generated from this
-// file by `cargo test -p jadpo-syntax --test sourcegen`, which fails when the
-// two drift.
+// file by `cargo test -p jadpo-syntax --test integration sourcegen::`,
+// which fails when the two drift.
 //
 // Conventions (ungrammar): 'x' is a token, Name is a node, label:Rule names
 // an accessor, `?` is optional and `*` repeats. Trivia (whitespace, `//`

@@ -10,7 +10,7 @@
 //! per-callable checks ran again, and by how long the whole check took
 //! (printed with `--nocapture`; the time is not asserted, the counts are).
 
-mod support;
+use crate::support;
 
 use std::time::Instant;
 

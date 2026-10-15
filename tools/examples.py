@@ -31,7 +31,7 @@ since they need PostgreSQL.
 `--export-corpus` writes each project and its `jadpo test --json` document
 to build/spec-corpus/examples/<project>/, beside the language pages'
 projects, for the differential run. Which built features the examples
-cover is checked by `cargo test -p jadpo-check --test examples`.
+cover is checked by `cargo test -p jadpo-check --test integration examples::`.
 
   python3 tools/examples.py                    # check
   python3 tools/examples.py --export-corpus    # check and export

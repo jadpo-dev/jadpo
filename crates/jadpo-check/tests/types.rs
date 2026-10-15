@@ -2,7 +2,7 @@
 //! its errors is caught on its own mistake, one mistake gives one error,
 //! and the widening table holds.
 
-mod support;
+use crate::support;
 
 use jadpo_check::StubSignature;
 use jadpo_db::Layout;

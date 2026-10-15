@@ -1,7 +1,7 @@
 //! A project laid out as area 1 decides checks cleanly, and each layout,
 //! naming, visibility and resolution rule catches the mistake it names.
 
-mod support;
+use crate::support;
 
 use jadpo_db::Layout;
 use support::{APP, problems, rules};

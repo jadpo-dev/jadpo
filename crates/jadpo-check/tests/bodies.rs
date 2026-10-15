@@ -1,7 +1,7 @@
 //! Typed bodies (docs/compiler-runtime.md §2.3): what the check decided,
 //! in the form both executors walk.
 
-mod support;
+use crate::support;
 
 use jadpo_check::types::{callables_of, typed_body};
 use jadpo_db::{Database, Layout};

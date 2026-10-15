@@ -4,7 +4,7 @@
 //! runs it in a boundary of its own, or inside the caller's when an action
 //! calls it (areas 1, 6 and 13); everything else runs without pausing.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::{Executor, Outcome, Program, Value, on_large_stack};
 use jadpo_runtime::{Ctx, Env, FaultKind, MAX_DEPTH, MemoryHost, block_on};

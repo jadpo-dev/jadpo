@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -40,6 +41,9 @@ GROUPS = ('lint', 'docs', 'tests', 'wasm32')
 # Each test binary is a process of its own and runs its tests on threads;
 # this many run at once.
 JOBS = os.cpu_count() or 4
+# Each crate's integration tests are one binary, each test file a module of
+# it (crates/*/tests/main.rs).
+INTEGRATION = 'integration'
 
 
 def wasm_crates() -> list[str]:
@@ -60,8 +64,8 @@ def wasm_crates() -> list[str]:
 class Step:
     """One check. It runs `command`, or, when `tests` is set, the test
     binaries that selection names from the workspace build: a list of
-    (package, test target) pairs, `everything` for every binary, with
-    `args` passed to each."""
+    (package, test name filter) pairs, run from the package's integration
+    binary, or `everything` for every binary, with `args` passed to each."""
     name: str
     group: str
     command: list[str] | None = None
@@ -80,7 +84,8 @@ class Step:
     # Prints its output even when it passes (timings), or only the lines
     # that start with this text.
     show: bool | str = False
-    # For `everything`: the binaries other steps run.
+    # For `everything`: the (package, filter) pairs other steps run, which
+    # it skips.
     owned: set[tuple[str, str]] = field(default_factory=set)
     # Filled in as it runs.
     ok: bool | None = None
@@ -124,6 +129,8 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         Step('editor grammar in step with the lexer', 'lint',
              [python, 'tools/editor_grammar.py', '--check']),
     ]
+    # Each named step runs test files (modules) of a crate's integration
+    # binary: (name, [(package, module)], args).
     postgres = [
         # The driver, the test database's template and copies.
         ('live PostgreSQL', [('jadpo-test', 'postgres')], ['--nocapture']),
@@ -164,16 +171,16 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         Step('clippy', 'lint',
              ['cargo', 'clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings'],
              lane='cargo'),
-        *[Step(name, 'tests', tests=tests) for name, tests in own_steps],
-        # Every other test binary in the workspace: the crate-graph test
+        *[Step(name, 'tests', tests=modules(tests)) for name, tests in own_steps],
+        # Every other test in the workspace: the crate-graph test
         # (crates/jadpo-cli/tests/crate_graph.rs), the parser's
         # documentation, error and fuzz tests, the generated AST's drift
         # test, and the rest. The steps above and the live PostgreSQL steps
-        # run their own binaries; under --profile quick the PostgreSQL
-        # binaries run here, their live tests skipped. The watch tests run
-        # here but for the timing test, which runs last, alone.
+        # run their own test files, which it skips; under --profile quick
+        # the PostgreSQL files run here, their live tests skipped. The watch
+        # tests run here but for the timing test, which runs last, alone.
         Step('compiler tests', 'tests', tests='everything',
-             args=['--exact', '--skip', latency_test], env={'JADPO_SKIP_POSTGRES': '1'}),
+             args=['--skip', f'watch::{latency_test}'], env={'JADPO_SKIP_POSTGRES': '1'}),
         # Examples in the crates' documentation comments.
         Step('documentation tests', 'tests',
              ['cargo', 'test', '--locked', '--workspace', '--doc'], lane='cargo'),
@@ -181,15 +188,16 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # 230-file project shows the tests it reaches, through the real
         # watch loop, within the 1-second target plus a CI allowance; the
         # times are printed.
-        Step('watch-mode latency', 'tests', tests=[('jadpo-cli', 'watch')],
-             args=['--exact', latency_test, '--nocapture'], alone=True, show=True),
+        Step('watch-mode latency', 'tests', tests=[('jadpo-cli', f'watch::{latency_test}')],
+             args=['--exact', '--nocapture'], alone=True, show=True),
     ]
     # Phase 3 (docs/compiler-runtime.md §2.7): the PostgreSQL driver against
     # the run's server, all at once: each process names its databases with
     # a tag of its own, and templates are built under a name of their own
     # and renamed.
     if full:
-        checks += [Step(name, 'tests', tests=tests, args=args, show='--nocapture' in args, postgres=True)
+        checks += [Step(name, 'tests', tests=modules(tests), args=args, show='--nocapture' in args,
+                        postgres=True)
                    for name, tests, args in postgres]
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
@@ -205,14 +213,20 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
     coverage.args, coverage.show = ['--nocapture'], 'note:'
     if require_examples:
         coverage.env['JADPO_REQUIRE_EXAMPLES'] = '1'
-    # Binaries another step runs whole are left out of `compiler tests`.
-    owned = {test for _, tests in own_steps for test in tests}
+    # Test files another step runs are left out of `compiler tests`.
+    owned = {test for _, tests in own_steps for test in modules(tests)}
     if full:
-        owned |= {test for _, tests, _ in postgres for test in tests}
+        owned |= {test for _, tests, _ in postgres for test in modules(tests)}
     for step in checks:
         if step.tests == 'everything':
             step.owned = owned
     return checks
+
+
+def modules(tests: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """(package, module) pairs as (package, filter): every test in that
+    test file, whose names start `<module>::`."""
+    return [(package, f'{module}::') for package, module in tests]
 
 
 def run(command: list[str], env: dict[str, str] | None = None, cwd: Path | str = ROOT) -> tuple[bool, str]:
@@ -302,18 +316,26 @@ def test_jobs(step: Step, binaries: list[TestBinary]):
     """The (label, command, cwd, env) of each binary `step` runs, as `cargo
     test` would run it: from its package's folder."""
     if step.tests == 'everything':
-        chosen = [b for b in binaries if (b.package, b.target) not in step.owned or b.kind != 'test']
+        chosen = [(b, [arg for package, filter in sorted(step.owned) if package == b.package
+                       and b.kind == 'test' for arg in ('--skip', filter)]) for b in binaries]
     else:
-        chosen = [b for b in binaries if b.kind == 'test' and (b.package, b.target) in step.tests]
-        missing = set(step.tests) - {(b.package, b.target) for b in chosen}
+        packages = sorted({package for package, _ in step.tests})
+        integration = {b.package: b for b in binaries if b.kind == 'test' and b.target == INTEGRATION}
+        missing = [package for package in packages if package not in integration]
         if missing:
-            raise LookupError(f'no test binary for {sorted(missing)}')
-    for binary in chosen:
+            raise LookupError(f'no integration test binary for {missing}')
+        chosen = [(integration[package], [filter for p, filter in step.tests if p == package])
+                  for package in packages]
+    for binary, filters in chosen:
         # How to run it again on its own.
         selector = {'lib': '--lib', 'bin': f'--bin {binary.target}'}.get(binary.kind, f'--test {binary.target}')
-        label = f'cargo test -p {binary.package} {selector}'
+        label = ' '.join([f'cargo test -p {binary.package} {selector}',
+                          *(filters if step.tests != 'everything' else [])])
         env = {**step.env, 'CARGO_MANIFEST_DIR': binary.manifest_dir, 'CARGO_PKG_NAME': binary.package}
-        yield label, [binary.executable, *step.args], binary.manifest_dir, env
+        yield label, [binary.executable, *filters, *step.args], binary.manifest_dir, env
+
+
+NOTHING_RAN = re.compile(r'^running 0 tests$', re.MULTILINE)
 
 
 class Report:
@@ -361,6 +383,11 @@ def run_step(step: Step, binaries: list[TestBinary], pool: ThreadPoolExecutor | 
                 results = [(label, *future.result()) for label, future in futures]
             else:
                 results = [(label, *run(command, env, cwd)) for label, command, cwd, env in jobs]
+            if step.tests != 'everything':
+                # A step whose filter matches nothing would pass on nothing.
+                results = [(label, ok and not NOTHING_RAN.search(output),
+                            output if not NOTHING_RAN.search(output) else f'no test matches: {label}\n{output}')
+                           for label, ok, output in results]
             failed = [(label, output) for label, ok, output in results if not ok]
             step.ok = not failed
             if failed:

@@ -5,7 +5,7 @@
 //! keeps the canonical order; a proven construction holds with its proof
 //! checked again.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::Value;
 use support::{failure, list, main, text, value};

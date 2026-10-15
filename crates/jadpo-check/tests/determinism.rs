@@ -7,9 +7,8 @@
 //! changes is the order they were read in. Each project is also formatted and checked
 //! again: formatting may move lines but must change no key and no digest.
 
-#[path = "../../jadpo-syntax/tests/support/examples.rs"]
-mod examples;
-mod support;
+use crate::support;
+use crate::syntax_examples as examples;
 
 use jadpo_check::graph::graph;
 use jadpo_db::{Database, Layout};

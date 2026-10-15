@@ -1,6 +1,6 @@
 //! Area 2, values and types: the page's examples, run.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::Value;
 use support::{decimal, failure, int, list, main, program, text, value};

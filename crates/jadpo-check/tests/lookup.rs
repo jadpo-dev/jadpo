@@ -2,7 +2,7 @@
 //! declarations where they are written and where they are used, fields and
 //! variants, library functions, and parameters and variables.
 
-mod support;
+use crate::support;
 
 use jadpo_check::graph::{Found, lookup};
 use jadpo_db::{Database, Layout};

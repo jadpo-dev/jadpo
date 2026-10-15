@@ -13,7 +13,7 @@ use jadpo_term::Environment;
 const APP: &str = "application {}\n";
 const TODO: &str = "domains/planning/entities/todo.jadpo";
 
-mod support;
+use crate::support;
 
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("migrate-{name}"));

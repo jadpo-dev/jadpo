@@ -10,8 +10,7 @@
 //! breaks a rule is a defect, and so is anything else the checker should
 //! have ruled out, so any defect fails the gate.
 
-#[path = "../../jadpo-syntax/tests/support/examples.rs"]
-mod examples;
+use crate::syntax_examples as examples;
 
 use jadpo_db::{Database, File, Layout, Project};
 use jadpo_graph::Kind;

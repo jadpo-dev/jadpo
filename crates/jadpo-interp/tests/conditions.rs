@@ -6,7 +6,7 @@
 //! is held to `CakeCount`'s rules here, so a proof the checker got wrong
 //! shows up as a value out of range.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::{Outcome, Program, Value};
 use support::{decimal, failure, int, list, main, run, text, value};

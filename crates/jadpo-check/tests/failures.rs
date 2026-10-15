@@ -3,7 +3,7 @@
 //! gives one error, each callable's failure set is a query of its own, and
 //! a body edit reruns only the failure sets that depend on it.
 
-mod support;
+use crate::support;
 
 use jadpo_db::{Database, Layout};
 use salsa::Setter;

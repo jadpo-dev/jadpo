@@ -25,7 +25,7 @@ const PRICED: &str = "test \"a large order is priced\" {\n    var price: Pence =
 const ACTS: &str = "test \"a size is checked\" {\n    var size: Count = attempt check_size(5)\n    assert size == 5\n}\n";
 
 /// A fresh folder for one test under cargo's temporary directory.
-mod support;
+use crate::support;
 
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("test-{name}"));
