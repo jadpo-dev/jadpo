@@ -6,7 +6,9 @@
 //! A record a `restricted` reference holds, or one that removing would
 //! cascade to a record a `restricted` reference holds, stays: the batch
 //! leaves it out with `NOT EXISTS`, so one held record never stops the
-//! rest going. References that `cascade` and those `cleared` do what the
+//! rest going. Each chain of cascades is a chain of joins; when one leads
+//! back to an entity already on it (a folder inside a folder), a recursive
+//! query follows the cascades as deep as the data goes. References that `cascade` and those `cleared` do what the
 //! database's foreign keys say, as for any delete. The rows are locked
 //! `FOR UPDATE SKIP LOCKED`, so a purge never waits on, or undoes, a
 //! request changing one of them.
@@ -65,8 +67,13 @@ pub(crate) fn plan(model: &DataModel, entity: &EntityModel) -> Option<PurgePlan>
         sql::condition(&mut purging, entity, visible, true)?,
         format!("{since_column} <= {cutoff}"),
     ];
-    for path in held_by(model, &entity.name) {
-        conditions.push(not_held(model, entity, &path)?);
+    match held_by(model, &entity.name) {
+        Some(paths) => {
+            for path in paths {
+                conditions.push(not_held(model, entity, &path)?);
+            }
+        }
+        None => conditions.push(not_held_anywhere(model, entity)?),
     }
     let mut inner = format!("  SELECT \"id\"\n  FROM {table}");
     crate::queries::where_clause(&mut inner, &conditions, "  ");
@@ -85,37 +92,101 @@ pub(crate) fn plan(model: &DataModel, entity: &EntityModel) -> Option<PurgePlan>
 
 /// Each way a `restricted` reference can hold a record of `entity`: the
 /// references followed from it, each `(holder, field)`, through
-/// references that cascade, ending at one that is restricted.
-fn held_by(model: &DataModel, entity: &str) -> Vec<Vec<(String, String)>> {
+/// references that cascade, ending at one that is restricted. Every path
+/// is kept, so a record reached two ways is checked both ways; `None` when
+/// a cascade leads back to an entity already on its path (a folder inside
+/// a folder), which no fixed number of joins follows.
+fn held_by(model: &DataModel, entity: &str) -> Option<Vec<Vec<(String, String)>>> {
     let mut out = Vec::new();
-    let mut seen: Vec<String> = vec![entity.to_string()];
-    let mut queue: Vec<(String, Vec<(String, String)>)> = vec![(entity.to_string(), Vec::new())];
-    while !queue.is_empty() {
-        let (current, path) = queue.remove(0);
-        for child in &model.entities {
-            for reference_field in &child.fields {
-                let Some(reference) = &reference_field.reference else {
-                    continue;
-                };
-                if reference.target != current {
-                    continue;
-                }
-                let mut next = path.clone();
-                next.push((child.name.clone(), reference_field.name.clone()));
-                match reference.on_delete {
-                    Some(OnDelete::Restricted) | None => out.push(next),
-                    Some(OnDelete::Cascade) => {
-                        if !seen.contains(&child.name) {
-                            seen.push(child.name.clone());
-                            queue.push((child.name.clone(), next));
-                        }
+    let mut stack: Vec<(String, Vec<(String, String)>)> = vec![(entity.to_string(), Vec::new())];
+    while let Some((current, path)) = stack.pop() {
+        for (child, field_name, on_delete) in referring(model, &current) {
+            let mut next = path.clone();
+            next.push((child.clone(), field_name));
+            match on_delete {
+                Some(OnDelete::Restricted) | None => out.push(next),
+                Some(OnDelete::Cascade) => {
+                    let looped =
+                        child == entity || path.iter().any(|(holder, _)| *holder == child);
+                    if looped {
+                        return None;
                     }
-                    Some(OnDelete::Cleared) => {}
+                    stack.push((child, next));
                 }
+                Some(OnDelete::Cleared) => {}
+            }
+        }
+    }
+    Some(out)
+}
+
+/// Each reference to `target`: its entity, its field and what deleting
+/// the target does to it.
+fn referring(model: &DataModel, target: &str) -> Vec<(String, String, Option<OnDelete>)> {
+    let mut out = Vec::new();
+    for child in &model.entities {
+        for field in &child.fields {
+            if let Some(reference) = &field.reference
+                && reference.target == target
+            {
+                out.push((child.name.clone(), field.name.clone(), reference.on_delete));
             }
         }
     }
     out
+}
+
+/// `NOT EXISTS` a record a `restricted` reference holds among those
+/// deleting this one would cascade to, however deep and wherever the
+/// cascades lead back: a recursive query walks every cascading reference
+/// from the record (each record once, so a loop in the data ends too),
+/// tagging each record it reaches with its entity's number, then asks
+/// whether any restricted reference holds one.
+fn not_held_anywhere(model: &DataModel, entity: &EntityModel) -> Option<String> {
+    // The entities deleting one cascades to, the record's own first.
+    let mut reached: Vec<String> = vec![entity.name.clone()];
+    let mut edges: Vec<String> = Vec::new();
+    let mut holds: Vec<String> = Vec::new();
+    let mut at = 0;
+    while let Some(current) = reached.get(at).cloned() {
+        for (child, field_name, on_delete) in referring(model, &current) {
+            let holder = model.entity(&child)?;
+            let column = quoted(&field(holder, &field_name)?.born);
+            let table = quoted(&holder.table);
+            match on_delete {
+                Some(OnDelete::Cascade) => {
+                    let number = match reached.iter().position(|name| *name == child) {
+                        Some(number) => number,
+                        None => {
+                            reached.push(child.clone());
+                            reached.len() - 1
+                        }
+                    };
+                    let alias = format!("\"edge{}\"", edges.len() + 1);
+                    edges.push(format!(
+                        "SELECT {at} AS \"parent\", {alias}.{column} AS \"parent_id\", {number} AS \"entity\", {alias}.\"id\" AS \"id\" FROM {table} AS {alias}"
+                    ));
+                }
+                Some(OnDelete::Restricted) | None => {
+                    let alias = format!("\"held{}\"", holds.len() + 1);
+                    holds.push(format!(
+                        "(\"reach\".\"entity\" = {at} AND EXISTS (SELECT 1 FROM {table} AS {alias} WHERE {alias}.{column} = \"reach\".\"id\"))"
+                    ));
+                }
+                Some(OnDelete::Cleared) => {}
+            }
+        }
+        at += 1;
+    }
+    if holds.is_empty() {
+        return Some("TRUE".to_string());
+    }
+    Some(format!(
+        "NOT EXISTS (\n      WITH RECURSIVE \"reach\" (\"entity\", \"id\") AS (\n        SELECT 0, {}.\"id\"\n        UNION\n        SELECT \"edge\".\"entity\", \"edge\".\"id\"\n        FROM \"reach\"\n        JOIN (\n          {}\n        ) AS \"edge\" ON \"edge\".\"parent\" = \"reach\".\"entity\" AND \"edge\".\"parent_id\" = \"reach\".\"id\"\n      )\n      SELECT 1\n      FROM \"reach\"\n      WHERE {}\n    )",
+        quoted(&entity.table),
+        edges.join("\n          UNION ALL\n          "),
+        holds.join("\n        OR "),
+    ))
 }
 
 /// `NOT EXISTS` a record holding this one through `path`.

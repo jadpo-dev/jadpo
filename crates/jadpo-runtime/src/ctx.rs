@@ -57,9 +57,6 @@ pub struct Ctx<'p> {
     pub(crate) boundary: Option<Boundary>,
     /// How many boundaries it has opened.
     pub(crate) actions: u32,
-    /// How many actions running inside the open boundary were called by
-    /// another action, which joined its transaction (area 1).
-    pub(crate) nesting: u32,
     /// How many identities it has made.
     ids: u64,
 }
@@ -88,7 +85,6 @@ impl<'p> Ctx<'p> {
             recording: None,
             boundary: None,
             actions: 0,
-            nesting: 0,
             ids: 0,
         }
     }
@@ -264,13 +260,6 @@ impl<'p> Ctx<'p> {
     /// `None` outside an action.
     pub fn isolation(&self) -> Option<Isolation> {
         self.boundary.as_ref().map(|boundary| boundary.isolation)
-    }
-
-    /// Whether the running action was called by another action, whose
-    /// transaction it joined: a failure it raises may be handled there, and
-    /// the transaction carry on (area 6).
-    pub fn nested(&self) -> bool {
-        self.nesting > 0
     }
 
     /// `clock.now`: the time the invocation's clock reads, in milliseconds

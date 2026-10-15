@@ -5,10 +5,11 @@
 //! arms name, a reference to a record that isn't there as its not-found
 //! failure, an update and a delete by `id`, a patch keeping what it leaves
 //! out, a counter, and an action that handles a refusal from an action it
-//! calls and carries on. Then, through the interpreter with a second
-//! connection changing a record mid-action, the whole action rerun after a
-//! concurrent change, its first attempt's rows gone and its second's
-//! there once, and concurrent counters losing no increment. Last, two
+//! calls and carries on, keeping none of what the failed action wrote
+//! (a savepoint per called action whose failure is handled). Then,
+//! through the interpreter with a second connection changing a record
+//! mid-action, the whole action rerun after a concurrent change, its
+//! first attempt's rows gone and its second's there once, and concurrent counters losing no increment. Last, two
 //! requests counting one row at once, each on its own connection (area 6,
 //! "Counters and other one-step updates", chunk 3.7): a counter that is
 //! its action's first statement runs at read committed, so both commit at
@@ -115,6 +116,18 @@ const FILES: &[(&str, &str)] = &[
         "use shop/entities { Shelf }\nuse shop/failures { ShelfTaken }\nuse shop/actions { add_shelf }\n\n/// A new shelf with a name, or one with the other name when the first is taken.\naction shelf_named(name: Shelf.name, other: Shelf.name) fails ShelfTaken -> Shelf {\n    var taken: Bool = match add_shelf(name) {\n        success -> false\n        ShelfTaken -> true\n    }\n    if (taken) {\n        var second: Shelf = attempt add_shelf(other)\n        return second\n    }\n    var first: Shelf = attempt Shelf.create {\n        set: {\n            name: other\n            visits: 0\n        }\n        conflict: {\n            Shelf.name: ShelfTaken\n        }\n    }\n    return first\n}\n",
     ),
     (
+        "domains/shop/failures/too_many.jadpo",
+        "/// Too many shelves.\ntype TooMany = Failure {\n    kind: FailureKind.conflict\n}\n",
+    ),
+    (
+        "domains/shop/actions/add_then_refuse.jadpo",
+        "use shop/entities { Shelf }\nuse shop/failures { ShelfTaken, TooMany }\n\n/// Adds a shelf, then refuses.\naction add_then_refuse(name: Shelf.name) fails ShelfTaken, TooMany -> Shelf {\n    var made: Shelf = attempt Shelf.create {\n        set: {\n            name: name\n            visits: 0\n        }\n        conflict: {\n            Shelf.name: ShelfTaken\n        }\n    }\n    if (made.visits == 0) {\n        reject TooMany\n    }\n    return made\n}\n",
+    ),
+    (
+        "domains/shop/actions/keep_then_try.jadpo",
+        "use shop/entities { Shelf }\nuse shop/failures { ShelfTaken, TooMany }\nuse shop/actions { add_shelf, add_then_refuse }\n\n/// Adds a shelf, then handles a called action that writes and fails, and one the store refuses.\naction keep_then_try(kept: Shelf.name, tried: Shelf.name) fails ShelfTaken -> Shelf {\n    var first: Shelf = attempt add_shelf(kept)\n    var refused: Bool = match add_then_refuse(tried) {\n        success -> false\n        TooMany -> true\n        ShelfTaken -> false\n    }\n    var taken: Bool = match add_shelf(kept) {\n        success -> false\n        ShelfTaken -> true\n    }\n    if (refused and taken) {\n        return first\n    }\n    reject ShelfTaken\n}\n",
+    ),
+    (
         "domains/shop/actions/tally.jadpo",
         "use shop/entities { Shelf, ShelfNotFound }\nuse shop/types { Count }\n\n/// Counts a visit to a shelf it reads first.\naction tally(shelf_id: Shelf.id) fails ShelfNotFound -> Shelf {\n    var shelf: Shelf = attempt Shelf.get(shelf_id)\n    return attempt Shelf.update(shelf.id) {\n        set: {\n            visits: Count(Shelf.visits + 1)\n        }\n    }\n}\n",
     ),
@@ -135,7 +148,7 @@ const FILES: &[(&str, &str)] = &[
 const TESTS: &str = "use shop/entities { Item, Shelf, ShelfNotFound }
 use shop/types { ItemChanges }
 use shop/failures { ShelfInUse, ShelfTaken }
-use shop/actions { add_item, edit_item, remove_shelf, rename_shelf, shelf_named, visit }
+use shop/actions { add_item, edit_item, keep_then_try, remove_shelf, rename_shelf, shelf_named, visit }
 
 test \"a unique rule is a conflict\" {
     var a: Shelf = attempt add_shelf(\"A\")
@@ -189,6 +202,14 @@ test \"an action handles a refusal from one it calls and carries on\" {
     assert b.name == \"A2\"
     assert a.name == \"A\"
 }
+
+test \"a called action that fails and is handled keeps none of its writes\" {
+    var kept: Shelf = attempt keep_then_try(\"K\", \"T\")
+    assert kept.name == \"K\"
+    var tried: Shelf = attempt add_shelf(\"T\")
+    assert tried.name == \"T\"
+    assert add_shelf(\"K\") fails ShelfTaken
+}
 ";
 
 fn project(name: &str) -> PathBuf {
@@ -211,7 +232,7 @@ fn writes_do_what_area_6_says() {
     write(&root, "domains/shop/actions/add_shelf.test.jadpo", TESTS);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("6 passed"), "{}", tested.stdout);
+    assert!(tested.stdout.contains("7 passed"), "{}", tested.stdout);
 }
 
 // --- a concurrent change, forced -----------------------------------------------

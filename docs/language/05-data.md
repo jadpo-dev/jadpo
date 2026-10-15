@@ -321,7 +321,9 @@ below):
   deletes at most 500 records, oldest first, in its own transaction.
   References that `cascade` and those `cleared` do what they do for any
   delete; a record a `restricted` reference holds, directly or through
-  a cascade, stays until nothing holds it, and never stops the rest going.
+  any chain of cascades (one that comes back to its own entity, a folder
+  inside a folder, followed as deep as the data goes, since chunk 3.10),
+  stays until nothing holds it, and never stops the rest going.
   Purge is the compiler's own operation, outside every action and policy:
   the runtime's purge entry point runs it, and area 12's built-in hourly
   purge schedule will call it (chunk 6.2); until then nothing runs it on a

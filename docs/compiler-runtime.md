@@ -767,9 +767,14 @@ body again, up to `RERUN_ATTEMPTS` (3) times, then fails `unavailable`; a
 body that fails rolls back; and what it emitted is delivered only after it
 commits. The second of area 6's budget waits for the host's clock (no host
 reads one yet; chunk 5.2 brings time), and caches come with area 5. Since
-chunk 3.3 the context counts the actions joined inside the open boundary
-(`Ctx::nested`), so a write that can be refused, run by a called action,
-runs inside a savepoint its caller can carry on from.
+chunk 3.10 an action called inside another whose failure the caller
+handles (`ActionBody::caught`: the call is an outcome `match`'s subject or
+an `assert … fails`'s) runs inside a savepoint: when it fails, the
+transaction returns to it, undoing its writes, a refused statement among
+them, and its events; when it began the transaction itself, the
+transaction is rolled back and the caller's next store operation begins
+another. (Chunk 3.3 savepointed only each refusable write, which kept a
+failed action's earlier writes.)
 
 Since chunk 3.7 the boundary begins its transaction at the isolation level
 the body names (`ActionBody::isolation`), which both executors take from
@@ -1071,7 +1076,10 @@ outside every action: batch after batch, each its own transaction, one
 RETURNING "id"` of hidden records whose `since:` field is older than `now`
 less `after:`, oldest first, leaving out with `NOT EXISTS` any a
 `restricted` reference holds, directly or through a cascade, until a batch
-comes back short; it returns each batch's count (`Purged`). Area 12's
+comes back short (since chunk 3.10 through every chain of cascades, and,
+when one leads back to an entity already on it, such as a folder inside a
+folder, through a recursive query that follows the cascades as deep as
+the data goes); it returns each batch's count (`Purged`). Area 12's
 hourly purge schedule will call it (chunk 6.2); a live test calls it
 directly (`crates/jadpo-cli/tests/lifecycle.rs`).
 

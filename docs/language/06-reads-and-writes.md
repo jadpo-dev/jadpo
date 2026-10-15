@@ -943,9 +943,13 @@ that entity's not-found failure, which `attempt` passes on (chosen in chunk
 3.3: the transaction's snapshot holds a record loaded in it, and a
 concurrent delete of it is a concurrent change). The runtime maps the
 store's constraint name back to the rule (area 5 names every constraint).
-A write that can be refused, run by an action another action called, runs
-inside a savepoint, so a caller that handles the failure with `match`
-carries on in a transaction the refusal didn't end.
+An action whose failure its caller handles with `match` runs inside a
+savepoint (chosen in chunk 3.10): when it fails, everything it wrote is
+undone, a refused write among them, and the caller carries on in a
+transaction the failure didn't end, since an action is all-or-nothing
+whoever calls it. One that passes its failure on with `attempt` needs none:
+the failure ends its caller too, up to a `match` that undoes both or the
+outermost action, which rolls back.
 
 ## All-or-nothing actions and concurrent changes
 
@@ -3406,7 +3410,7 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Provided not-found failure | Chosen in chunk 3.3: kind `not_found`, public, no fields, placed at its entity | 2026-10-14 |
 | References that hold | Chosen in chunk 3.3: a reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure | 2026-10-14 |
 | Stored values | Chosen in chunk 3.3: an update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove | 2026-10-14 |
-| Refusals in a called action | Chosen in chunk 3.3: a write that can be refused, run by an action another action called, runs inside a savepoint, so a caller handling the failure carries on | 2026-10-14 |
+| Refusals in a called action | Chosen in chunk 3.3, widened in chunk 3.10: an action whose failure its caller handles with `match` runs inside a savepoint, so its failure undoes all it wrote, a refusal among it, and the caller carries on | 2026-10-15 |
 | Transitions as operations | Chosen in chunk 3.4: `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records | 2026-10-15 |
 | A transition's `when:` refusing | Chosen in chunk 3.4: a `when:` that asks more than `visible:` can refuse a record that is there, a conflict mapped in `conflict:` keyed by the transition (`User.disable: UserDisabled`), with no catch-all; one that asks only what `visible:` asks can't, since a hidden record is not found | 2026-10-15 |
 | Counter decimals | A decimal added to or subtracted from a stored field in a counter update may not have more decimal places than the field's `scale`; built in chunk 3.4 as `data.stored_decimal_scale`, a value whose type sets no `scale` counting as too many (Richard) | 2026-10-15 |

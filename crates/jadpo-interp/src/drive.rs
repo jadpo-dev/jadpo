@@ -35,7 +35,10 @@ async fn body(
             Step::Done(result) => return result,
             Step::Pause { target, args, at } => {
                 let result = match target {
-                    Target::Callable(callee) => invoke(program, ctx, callee, args, at.0).await,
+                    Target::Callable(callee) => {
+                        let caught = machine.catching();
+                        invoke(program, ctx, callee, args, at.0, caught).await
+                    }
                     effect => store(program, ctx, effect, args, at.0).await,
                 };
                 step = machine.resume(ctx, result);
@@ -46,12 +49,14 @@ async fn body(
 
 /// Calls callable `callee` with `args` from site `at`: an action or a
 /// fixture through the runtime's action boundary, anything else as it is.
+/// `caught` says the caller handles its failure.
 pub(crate) fn invoke<'a, 'p: 'a>(
     program: &'a Program,
     ctx: &'a mut Ctx<'p>,
     callee: u32,
     args: Vec<Value>,
     at: u32,
+    caught: bool,
 ) -> LocalFuture<'a, Result<Value, Stop>> {
     Box::pin(async move {
         let is_action = program
@@ -66,6 +71,7 @@ pub(crate) fn invoke<'a, 'p: 'a>(
             callee,
             args,
             at,
+            caught,
         };
         result(jadpo_runtime::action(ctx, &mut action).await)
     })
@@ -237,6 +243,7 @@ struct Action<'a> {
     callee: u32,
     args: Vec<Value>,
     at: u32,
+    caught: bool,
 }
 
 impl<'p> ActionBody<'p> for Action<'_> {
@@ -246,6 +253,10 @@ impl<'p> ActionBody<'p> for Action<'_> {
             .plan()
             .callable(self.callee)
             .map_or(Isolation::RepeatableRead, |callable| callable.isolation)
+    }
+
+    fn caught(&self) -> bool {
+        self.caught
     }
 
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {

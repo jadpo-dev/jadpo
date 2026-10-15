@@ -91,13 +91,15 @@ impl SqlValue {
 /// One row a query gave, its columns in the query's order.
 pub type Row = Vec<SqlValue>;
 
-/// The savepoint a write that can be refused runs after (area 6).
-pub const SAVEPOINT: &str = "SAVEPOINT \"jadpo_write\"";
-/// Forgets it once the write went through.
-pub const RELEASE_SAVEPOINT: &str = "RELEASE SAVEPOINT \"jadpo_write\"";
-/// Returns to it, and forgets it, once the store refused the write.
+/// The savepoint a called action whose failure its caller handles runs
+/// after (area 6). Savepoints of one name stack, so actions called inside
+/// such an action take their own.
+pub const SAVEPOINT: &str = "SAVEPOINT \"jadpo_call\"";
+/// Forgets it once the action succeeded.
+pub const RELEASE_SAVEPOINT: &str = "RELEASE SAVEPOINT \"jadpo_call\"";
+/// Returns to it, and forgets it, once the action failed.
 pub const ROLLBACK_TO_SAVEPOINT: &str =
-    "ROLLBACK TO SAVEPOINT \"jadpo_write\"; RELEASE SAVEPOINT \"jadpo_write\"";
+    "ROLLBACK TO SAVEPOINT \"jadpo_call\"; RELEASE SAVEPOINT \"jadpo_call\"";
 
 /// A store's open transaction. Statements are unnamed, so nothing outlives
 /// the transaction on the server (§2.6: Hyperdrive pools by transaction).
@@ -121,20 +123,21 @@ pub trait Transaction {
     /// migration's SQL is written.
     fn batch<'a>(&'a mut self, sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>>;
 
-    /// Marks where the transaction returns to if the store refuses the
-    /// next statement: a write whose refusal a calling action may handle
-    /// and carry on from (area 6).
+    /// Marks where the transaction returns to if the action about to run
+    /// fails: one whose failure its caller handles and carries on from
+    /// (area 6).
     fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
         self.batch(SAVEPOINT)
     }
 
-    /// Forgets the latest savepoint: the statement after it went through.
+    /// Forgets the latest savepoint: what ran after it stands.
     fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
         self.batch(RELEASE_SAVEPOINT)
     }
 
-    /// Returns to the latest savepoint and forgets it: the refused
-    /// statement is undone, and the transaction carries on.
+    /// Returns to the latest savepoint and forgets it: everything after
+    /// it, a refused statement among them, is undone, and the transaction
+    /// carries on.
     fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
         self.batch(ROLLBACK_TO_SAVEPOINT)
     }

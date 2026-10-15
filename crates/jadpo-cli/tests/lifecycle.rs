@@ -9,7 +9,8 @@
 //! runtime's purge entry point, hidden records go once they have been
 //! hidden for `after:`, with what cascades from them, while visible
 //! records, records hidden too recently and records a `restricted`
-//! reference holds stay.
+//! reference holds stay, directly or through any chain of cascades, one
+//! that comes back to the entity itself among them.
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
@@ -346,6 +347,17 @@ async fn names(store: &Postgres, table: &str) -> Vec<String> {
         .collect()
 }
 
+async fn folders(store: &Postgres) -> Vec<String> {
+    rows(store, "SELECT \"name\" FROM \"folder\" ORDER BY \"name\"")
+        .await
+        .into_iter()
+        .map(|row| match &row[0] {
+            SqlValue::Text(text) => text.clone(),
+            other => panic!("not text: {other:?}"),
+        })
+        .collect()
+}
+
 const DAY: i64 = 86_400_000;
 
 #[test]
@@ -488,6 +500,125 @@ fn purge_works_in_batches() {
             .expect("purge");
         assert_eq!(purged.batches, vec![500, 500, 201]);
         assert!(names(&check, "member").await.is_empty());
+    });
+    drop(host);
+    drop(check);
+    databases.release(copy, false);
+}
+
+/// Folders inside folders: deleting one cascades to those inside it, so a
+/// document anywhere below holds the top one (a reference that cascades
+/// back to its own entity).
+const FOLDERS: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "domains/files/types/label.jadpo",
+        "/// A label.\ntype Label = Text {\n    max_length: 80\n}\n",
+    ),
+    (
+        "domains/files/entities/folder.jadpo",
+        "use files/types { Label }
+
+/// A folder, inside another or at the top.
+entity Folder {
+    id: Uuid
+    parent_id: Folder.id? {
+        on_delete: OnDelete.cascade
+    }
+    name: Label
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none
+        transitions: {
+            delete: {
+                when: deleted_at == none
+                set: {
+                    deleted_at: clock.now
+                }
+            }
+        }
+        purge: {
+            after: 30d
+            since: deleted_at
+        }
+    }
+}
+",
+    ),
+    (
+        "domains/files/entities/doc.jadpo",
+        "use files/entities { Folder }\nuse files/types { Label }\n\n/// A document, which keeps its folder from going.\nentity Doc {\n    id: Uuid\n    folder_id: Folder.id {\n        on_delete: OnDelete.restricted\n    }\n    name: Label\n}\n",
+    ),
+];
+
+#[test]
+fn purge_follows_a_cascade_back_to_its_own_entity() {
+    if skipped() {
+        return;
+    }
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("lifecycle-folders");
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in FOLDERS {
+        write(&root, path, text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let plan = program
+        .plan()
+        .purge("Folder")
+        .expect("Folder's purge")
+        .clone();
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store(postgres(&url).expect("store"), std::cell::Cell::new(0));
+    let check = postgres(&url).expect("store");
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        // Deleted a year ago: "a" holds "a/b", whose document holds both;
+        // "c" holds "c/d" and "c/d/e", which hold nothing. "f" is a
+        // folder inside itself, which a purge still finishes with.
+        let mut transaction = check.begin().await.expect("begin");
+        transaction
+            .batch(
+                "INSERT INTO \"folder\" (\"id\", \"parent_id\", \"name\", \"deleted_at\") VALUES \
+                 ('00000000-0000-7000-8000-00000000000a', NULL, 'a', TIMESTAMPTZ '1999-01-01'), \
+                 ('00000000-0000-7000-8000-00000000000b', '00000000-0000-7000-8000-00000000000a', 'a/b', NULL), \
+                 ('00000000-0000-7000-8000-00000000000c', NULL, 'c', TIMESTAMPTZ '1999-01-01'), \
+                 ('00000000-0000-7000-8000-00000000000d', '00000000-0000-7000-8000-00000000000c', 'c/d', NULL), \
+                 ('00000000-0000-7000-8000-00000000000e', '00000000-0000-7000-8000-00000000000d', 'c/d/e', NULL), \
+                 ('00000000-0000-7000-8000-00000000000f', '00000000-0000-7000-8000-00000000000f', 'f', TIMESTAMPTZ '1999-01-01'); \
+                 INSERT INTO \"doc\" (\"id\", \"folder_id\", \"name\") VALUES \
+                 ('00000000-0000-7000-8000-0000000000d0', '00000000-0000-7000-8000-00000000000b', 'kept');",
+            )
+            .await
+            .expect("insert");
+        transaction.commit().await.expect("commit");
+
+        let purged = jadpo_runtime::purge(&host, &plan, Clock::TEST.now())
+            .await
+            .expect("a held folder never stops the batch");
+        assert_eq!(purged.removed(), 2, "{purged:?}");
+        assert_eq!(folders(&check).await, ["a", "a/b"]);
+
+        // Once the document goes, so do "a" and "a/b".
+        let mut transaction = check.begin().await.expect("begin");
+        transaction
+            .batch("DELETE FROM \"doc\"")
+            .await
+            .expect("delete");
+        transaction.commit().await.expect("commit");
+        let last = jadpo_runtime::purge(&host, &plan, Clock::TEST.now())
+            .await
+            .expect("purge");
+        assert_eq!(last.removed(), 1);
+        assert!(folders(&check).await.is_empty());
     });
     drop(host);
     drop(check);
