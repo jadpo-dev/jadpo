@@ -9,15 +9,13 @@
 //! habit (`Parse::checkable`), applying the edits gives, round by round, a
 //! file with none.
 
-#[path = "support/examples.rs"]
-mod examples;
+use crate::syntax_examples as examples;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use jadpo_syntax::{Parse, parse_file, parse_snippet, parse_template};
 
-#[path = "support/mutate.rs"]
-mod mutate;
+use crate::syntax_mutate as mutate;
 
 use mutate::{Rng, mutate};
 

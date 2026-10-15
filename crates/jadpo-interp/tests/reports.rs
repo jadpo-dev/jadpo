@@ -4,7 +4,7 @@
 //! on the grid every Jadpo error shares (CLI design language). These are
 //! the plain forms, exactly.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::{Value, on_large_stack};
 use support::{int, main, program, report, text};

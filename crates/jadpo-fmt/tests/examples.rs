@@ -3,8 +3,7 @@
 //! formatting twice changes nothing, the result parses to the same tree,
 //! and every comment survives.
 
-#[path = "../../jadpo-syntax/tests/support/examples.rs"]
-mod examples;
+use crate::syntax_examples as examples;
 
 use jadpo_fmt::format_snippet;
 use jadpo_syntax::SyntaxKind::{COMMA, COMMENT, DOC_COMMENT, R_BRACK, R_PAREN};

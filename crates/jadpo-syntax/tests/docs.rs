@@ -3,8 +3,7 @@
 //! syntax error, and every example of any age parses into a tree that holds
 //! its text exactly.
 
-#[path = "support/examples.rs"]
-mod examples;
+use crate::syntax_examples as examples;
 
 use jadpo_syntax::{parse_file, parse_snippet};
 

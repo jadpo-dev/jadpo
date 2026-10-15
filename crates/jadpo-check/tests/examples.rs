@@ -29,7 +29,7 @@
 //! which fails on it. The other problems below fail either way: they are
 //! this test's own lists falling out of step with the compiler's.
 //!
-//! `JADPO_SHOW_COVERAGE=1 cargo test -p jadpo-check --test examples`
+//! `JADPO_SHOW_COVERAGE=1 cargo test -p jadpo-check --test integration examples::`
 //! prints every built feature with the examples that use it.
 
 use std::collections::{BTreeMap, BTreeSet};

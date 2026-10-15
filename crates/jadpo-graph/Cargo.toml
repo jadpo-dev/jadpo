@@ -6,6 +6,8 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+# One integration-test binary: tests/main.rs.
+autotests = false
 
 # The model only (docs/compiler-runtime.md §2.3): jadpo-check builds it from
 # its queries, and everything after reads it. No I/O, no salsa.
@@ -18,3 +20,7 @@ jadpo-std.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

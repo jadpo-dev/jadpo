@@ -4,7 +4,7 @@
 //! in; a diff of two versions names what changed; and an edit rebuilds
 //! only its own file's part.
 
-mod support;
+use crate::support;
 
 use std::collections::BTreeMap;
 

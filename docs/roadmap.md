@@ -249,7 +249,7 @@ reference only).
   changing them needs a migration; a query limit or page size can't be
   below 1; misleading messages (a backfill's reason, faults blamed on the
   database) fixed; text-order indexes `COLLATE "C"`.
-- [ ] **3.11 Test databases that scale** `opus · high`: several copy
+- [x] **3.11 Test databases that scale** `opus · high`: several copy
   workers or reused copies; one PostgreSQL server per gate run shared
   through `JADPO_TEST_DATABASE_URL`; the language pages run `jadpo test`
   once; the CI PostgreSQL steps no longer take turns; `--profile quick`

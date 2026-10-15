@@ -1160,7 +1160,9 @@ exactly the rules whose catalogue entry names its area, and each needs a
 `build/spec-corpus/` for the differential run (since chunk 2.2: a `check`
 project with tests must pass them, one marked `expect=test.<code>` must
 fail exactly one test with that code and show `jadpo test`'s plain output,
-both with `--seed 1`; `language_docs.py --export-corpus` writes each
+both with `--seed 1`; since chunk 3.11 each project runs `jadpo test
+--json` once, and only one that shows a failure also runs the plain
+command for its output block; `language_docs.py --export-corpus` writes each
 project and its `test.json`, and `build/` is not committed).
 
 **Teaching examples** (chunk 2.4; decision "Examples teach every feature",
@@ -1217,25 +1219,53 @@ temporary folder (user `jadpo`, trust authentication, UTF-8, C locale),
 listening only on a socket in that folder with durability off and 300
 connections, and stops it and removes the folder when dropped or, failing
 that, once the process that started it ends. The driver's live tests
-(`crates/jadpo-test/tests/postgres.rs`) share one server per test binary
-and create a database each; `JADPO_SKIP_POSTGRES=1` skips them, as the
+(`crates/jadpo-test/tests/postgres.rs`) share one server per process and
+create a database each; `JADPO_SKIP_POSTGRES=1` skips them, as the
 gate's `compiler tests` step does, and the `live PostgreSQL` step runs
-them. CI runs them against a `postgres:16` service named by
-`JADPO_TEST_DATABASE_URL`. Migrations build one template per migration digest; per-test copies
+them. Migrations build one template per migration digest; per-test copies
 (`CREATE DATABASE … TEMPLATE`) are prepared in the background (area 13).
-Built in chunk 3.1 (`jadpo_test::database`): the server is started the
-first time a test uses a store and kept for the process; each store's
-template is named after the digest of its migrations' names and digests
-(`jadpo_tpl_<store>_<digest>`), built under a name of its own and renamed,
-so a server shared across runs reuses it and never holds half of one; a
-worker thread keeps four copies ready beyond those tests hold and drops
-the ones they give back; a test whose database couldn't be made faults at
-the store operation with the reason. `--keep-failed` keeps a failed test's
-copy and names it in the report (`data: kept as …`). On this machine the
-server, the template and the first two copies take about 1.5 s, and each
-later copy, connected and used, about 0.1 s. Copies are made only for
-action tests in a project with tables, and a test that never uses a store
-starts nothing.
+Built in chunk 3.1 (`jadpo_test::database`), made to scale in chunk 3.11:
+the server is started the first time a test uses a store and kept for the
+process; each store's template is named after the digest of its
+migrations' names and digests (`jadpo_tpl_<store>_<digest>`), built under
+a name of its own and renamed, so processes sharing a server, at once or
+one after another, build it once and never see half of one. Four worker
+threads keep copies ready, four beyond those tests hold but never more
+than the run's action tests can use. A copy a test gives back is put back
+as the template has it, with its tables truncated (all but
+`jadpo_migrations`) and its sequences restarted, and used again; a
+template whose migrations left rows in a table or moved a sequence can't
+be put back that way, so its used copies are dropped instead, sixteen at
+a time or when the run ends, since every drop waits for a checkpoint of
+the whole server. When a run ends its copies are not dropped but left,
+emptied, under `jadpo_free_<template hash>_…` names, and a later run on
+the same server (a later `jadpo test`, or the next test binary) takes one
+by renaming it to a name of its own before it makes a new one. Every
+database a process creates is named with a tag of its own (its id and
+start time), so names never collide. A test whose database couldn't be
+made faults at the store operation with the reason. `--keep-failed` keeps
+a failed test's copy and names it in the report (`data: kept as …`). On
+this machine (ten cores, alone on a fresh server) the server, the template
+and the first two copies take about 1.5 s; eight more copies, each used,
+about 0.05 s in all (3.7 s before chunk 3.11); and sixty tests that each
+write, on ten threads, about 1 s (8.4 s). Copies are made only for action
+tests in a project with tables, and a test that never uses a store starts
+nothing.
+
+**One server per gate run** (chunk 3.11). `tools/verify.py` starts
+`jadpo-test-server` (a binary of `jadpo-test` that starts the disposable
+server above, prints its admin URL and keeps it until its input closes),
+beside the steps that don't need it, and gives every step that uses
+PostgreSQL that URL as `JADPO_TEST_DATABASE_URL`: the live steps and, in
+the full profile, the language pages and the teaching examples. So no test
+binary and no `jadpo test` call starts a server of its own, and the live
+steps run at once rather than taking turns. When `JADPO_TEST_DATABASE_URL`
+is already set (CI) that server is used instead. Under `--profile quick`
+nothing starts PostgreSQL: the pages and `tools/examples.py` get
+`JADPO_SKIP_POSTGRES=1`, check and format a project with migrations as
+usual, and print `skipped: jadpo test for …` instead of running its
+tests (today only `examples/10-library-loans`), which the gate shows under
+the step.
 
 **Teaching examples and pages with migrations.** A teaching example
 commits its migrations like any project. A language page's `check`
@@ -1265,25 +1295,35 @@ it), may use them.
 |---|---|
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
-| 3 | Live PostgreSQL (`--profile quick` skips it): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3); lifecycles and their transitions through `jadpo test`, and purge through its entry point (chunk 3.4). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
+| 3 | Live PostgreSQL (`--profile quick` skips it, and starts no server): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3); lifecycles and their transitions through `jadpo test`, and purge through its entry point (chunk 3.4). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |
 
 **How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
 and every test binary once (`cargo test --workspace --no-run`, which also
-builds `jadpo`), then runs the steps concurrently: each test binary
+builds `jadpo` and `jadpo-test-server`), starts the run's PostgreSQL
+server (above), then runs the steps concurrently: each test binary
 straight from that build, from its package's folder, a processor's worth
 at a time; the Python checks beside them, given that `jadpo` through
 `JADPO_BIN` and checking their projects concurrently; cargo's own steps
 (clippy, the documentation tests, the wasm32 build) one after another; and
-the watch-mode latency test last, alone, since it measures time. A binary
-a named step runs whole is left out of `compiler tests`, so no test runs
-twice. Each step prints `ok` or `FAILED` as it finishes, then the
-failures' output with a command that reruns each failing binary. `--profile
-quick` leaves out the live PostgreSQL steps and the wasm32 build, so it
-needs no PostgreSQL. On a ten-core Mac with nothing to rebuild, the full
-gate takes about 16 s and quick about 13 s; a change to a crate low in the
-graph adds about 20 s of building to either. `--group lint|docs|tests|wasm32` runs one
+the watch-mode latency test last, alone, since it measures time. Each
+crate's integration tests are one binary (since chunk 3.11: `autotests =
+false`, one `[[test]]` called `integration`, and `tests/main.rs` declaring
+each test file as a module, which the crate-graph test checks, so no file
+is left out), so the workspace links eleven integration binaries rather
+than fifty-odd; a named step runs its test files by name
+filter (`proofs::`), fails if a filter matches no test, and `compiler
+tests` skips those files, so no test runs twice. Each step prints `ok` or
+`FAILED` as it finishes, then the failures' output with a command that
+reruns each failing binary or file (`cargo test -p jadpo-cli --test
+integration queries::`). `--profile quick` leaves out the live PostgreSQL
+steps and the wasm32 build and skips `jadpo test` for projects with
+migrations, so it starts no PostgreSQL. On a ten-core Mac with nothing to
+rebuild, the full gate takes about 14 s and quick about 11 s (15 s and
+12 s before chunk 3.11, measured alternately on a machine busy with other
+builds); touching a crate low in the graph costs about 8 s of building
+(12 to 15 s before), and that full gate about 27 s (31 to 35 s). `--group lint|docs|tests|wasm32` runs one
 CI job's share, and `--require-examples` makes the coverage test fail on a
 feature no example uses (above).
 
@@ -1291,7 +1331,9 @@ feature no example uses (above).
 jobs, each with the pinned toolchain and its own cargo cache: `lint`
 (formatting, clippy, the name ban, the editor grammar), `docs` (the pages
 and the teaching examples), `tests` (every test, with the live PostgreSQL
-steps taking turns on a `postgres:16` service) and `wasm32`. The
+steps running at once on a `postgres:16` container named by
+`JADPO_TEST_DATABASE_URL`) and `wasm32`; `docs` and `tests` each start
+their own container. The
 `supported-language` job needs all four and passes only when each did; it
 is the check branch protection requires. Benchmarks (Phase 9) are a
 separate command, not the gate.

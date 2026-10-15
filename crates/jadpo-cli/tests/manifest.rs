@@ -36,7 +36,7 @@ const DERIVED: &[&str] = &[
     "build/catalogue/failures.json",
 ];
 
-mod support;
+use crate::support;
 
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("manifest-{name}"));

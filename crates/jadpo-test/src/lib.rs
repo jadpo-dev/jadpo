@@ -380,8 +380,13 @@ pub(crate) fn choose_and_run(
         root: root.clone(),
         seed,
     };
-    let databases = (!steps.is_empty())
-        .then(|| database::TestDatabases::new(steps.clone(), options.keep_failed));
+    // Only tests that call actions, queries or fixtures use a store.
+    let users = ordered
+        .iter()
+        .filter(|test| test.kind != TestKind::Pure)
+        .count();
+    let databases = (!steps.is_empty() && users > 0)
+        .then(|| database::TestDatabases::new(steps.clone(), options.keep_failed).for_tests(users));
     let failures = run::run_all(prepared, &ordered, seed, &rerun, databases.as_ref());
     drop(databases);
     let results: Vec<TestResult> = ordered

@@ -6,6 +6,8 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+# One integration-test binary: tests/main.rs.
+autotests = false
 
 [dependencies]
 blake3.workspace = true
@@ -22,3 +24,12 @@ serde_json.workspace = true
 
 [lints]
 workspace = true
+
+# One disposable server for a run of the gate (tools/verify.py).
+[[bin]]
+name = "jadpo-test-server"
+test = false
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

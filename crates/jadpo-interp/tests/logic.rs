@@ -1,6 +1,6 @@
 //! Area 3, logic: the page's examples, run.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::{FaultKind, MAX_DEPTH, Outcome, Value, on_large_stack};
 use support::{decimal, fault, int, list, main, program, text, value, where_fault};

@@ -6,7 +6,7 @@
 //! manifest; and every action and fixture of the teaching examples that
 //! keep records, against a golden list (`JADPO_BLESS=1` rewrites it).
 
-mod support;
+use crate::support;
 
 use std::collections::BTreeMap;
 use std::path::Path;

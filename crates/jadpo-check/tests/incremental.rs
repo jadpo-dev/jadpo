@@ -8,7 +8,7 @@
 //! it reads changes, so a renamed query or a dependency that was never
 //! there can't make the test pass.
 
-mod support;
+use crate::support;
 
 use jadpo_db::{Database, File, Layout, Project};
 use salsa::Setter;
