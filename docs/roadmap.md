@@ -264,7 +264,7 @@ reference only).
   purge given a time budget; the panic lints cover `indexing_slicing`,
   `unreachable` and `unimplemented`; the duplicated migration and import
   code merged; stale crate docs corrected.
-- [ ] **3.13 Incremental data checking** `opus · xhigh`, before 4.4:
+- [x] **3.13 Incremental data checking** `opus · xhigh`, before 4.4:
   per-name entity and query models without positions, diagnostics per
   file, so an edit rechecks only what reads the changed name; the plan
   built incrementally per callable and entity (or §2.4 corrected to what is

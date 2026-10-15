@@ -15,7 +15,7 @@ use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 use super::paths::Resolver;
 use super::text::{LineIndex, digest, doc, place};
 use super::{declaration_key, field_key, library_function_key, type_ref, variant_key};
-use crate::lookups::{FailureView, Lookup, NameView, SigView};
+use crate::lookups::{FailureView, Lookup, Name, NameView, SigView};
 use crate::tree;
 use crate::types::{
     Callable, Const, Def, FieldDef, FieldsBase, Rules, Sig, Ty, TypeView, typed_body,
@@ -211,16 +211,19 @@ impl Part<'_> {
             // includes and raises from its model (area 6).
             let uses = self.resolver.uses(syntax, &|_| false);
             self.edges(&key, EdgeKind::Uses, uses);
-            self.query(&key);
+            self.query(&key, &item.name);
         } else {
             self.body(&key, item.index, None);
         }
     }
 
     /// A query's `reads`, `includes` and `raises` edges, from its model.
-    fn query(&mut self, key: &Key) {
-        let queries = crate::data::queries::query_models(self.db, self.project);
-        let Some(query) = queries.by_key(key) else {
+    fn query(&mut self, key: &Key, name: &str) {
+        let name = Name::new(self.db, name.to_string());
+        let Some(query) = crate::data::queries::query_model(self.db, self.project, name)
+            .as_deref()
+            .filter(|query| query.key == *key)
+        else {
             return;
         };
         let entity = |name: &str| declaration_key(self.lookup, name);
@@ -470,8 +473,9 @@ impl Part<'_> {
             decl.syntax().clone(),
         );
         node.public = decl.visibility().is_some();
-        let model = crate::data::data_model(self.db, self.project);
-        let entity = model.entity(&name).filter(|e| &e.path == self.path);
+        let entity = crate::data::Entities::new(self.db, self.project)
+            .get(&name)
+            .filter(|e| &e.path == self.path);
         if let Some(entity) = entity
             && let Some(store) = &entity.store
         {
