@@ -447,6 +447,7 @@ name = "jadpo-graph"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "jadpo-sql",
  "jadpo-std",
 ]
 
@@ -503,6 +504,13 @@ version = "0.1.0"
 dependencies = [
  "jadpo-std",
  "jadpo-value",
+]
+
+[[package]]
+name = "jadpo-sql"
+version = "0.1.0"
+dependencies = [
+ "jadpo-std",
 ]
 
 [[package]]

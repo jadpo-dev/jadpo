@@ -23,7 +23,7 @@
 //! at these sites; a body pauses when one of its sites does.
 
 use jadpo_std::write::WriteOp;
-use jadpo_std::{Num, Op, RuleKey};
+use jadpo_std::{Op, RuleKey};
 
 use crate::{Key, TypeRef};
 
@@ -331,31 +331,9 @@ pub enum Expr {
     Unchecked,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Literal {
-    Number {
-        value: Num,
-        decimal: bool,
-    },
-    /// A duration as written: `15m`.
-    Duration(String),
-    Text(String),
-    Bool(bool),
-    None,
-}
-
-impl Literal {
-    /// As Jadpo writes it: `25`, `1.50`, `"text"`, `15m`, `none`.
-    pub fn written(&self) -> String {
-        match self {
-            Literal::Number { value, .. } => value.to_string(),
-            Literal::Duration(written) => written.clone(),
-            Literal::Text(text) => format!("{text:?}"),
-            Literal::Bool(value) => value.to_string(),
-            Literal::None => "none".to_string(),
-        }
-    }
-}
+/// A literal as written, shared with the queries' conditions, which the
+/// SQL renderer reads: `jadpo-std`'s.
+pub use jadpo_std::Literal;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {

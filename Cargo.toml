@@ -12,6 +12,7 @@ compiler = [
     "jadpo-diag",
     "jadpo-syntax",
     "jadpo-fmt",
+    "jadpo-sql",
     "jadpo-graph",
     "jadpo-db",
     "jadpo-check",
@@ -53,6 +54,7 @@ jadpo-interp = { path = "crates/jadpo-interp" }
 jadpo-plan = { path = "crates/jadpo-plan" }
 jadpo-std = { path = "crates/jadpo-std" }
 jadpo-graph = { path = "crates/jadpo-graph" }
+jadpo-sql = { path = "crates/jadpo-sql" }
 jadpo-lsp = { path = "crates/jadpo-lsp" }
 jadpo-test = { path = "crates/jadpo-test" }
 jadpo-drivers = { path = "crates/jadpo-drivers" }

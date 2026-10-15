@@ -1,0 +1,16 @@
+[package]
+name = "jadpo-sql"
+description = "PostgreSQL text: the conditions, statements and table definitions the compiler writes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# A leaf (docs/compiler-runtime.md §2.1): it renders what the checker, the
+# graph's migrations and the plan decide, and reads nothing else.
+[dependencies]
+jadpo-std.workspace = true
+
+[lints]
+workspace = true

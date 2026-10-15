@@ -5,7 +5,8 @@
 //!
 //! - [`Builtin`]: the types built into the language, which no Jadpo
 //!   declaration can say what they are made of.
-//! - [`Num`]: an exact number as written, for literals and rules.
+//! - [`Num`]: an exact number as written, for literals and rules, and
+//!   [`Literal`], a literal as written.
 //! - [`Rules`]: the rules a valid value follows (area 2), and the
 //!   validators that check text, numbers and lengths against them and
 //!   against the validated built-in types (email, URL, UUID, IP address).
@@ -42,6 +43,7 @@
 mod builtin;
 mod enums;
 mod isolation;
+mod literal;
 mod migration;
 mod num;
 mod operations;
@@ -57,6 +59,7 @@ pub use enums::{
     ZONE, enums, variant_ordinal,
 };
 pub use isolation::Isolation;
+pub use literal::Literal;
 pub use migration::Migration;
 pub use num::{Num, compare_exact};
 pub use operations::{Kind, OPERATIONS, Op, Operation, Param, operation};

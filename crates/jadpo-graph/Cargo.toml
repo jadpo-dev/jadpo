@@ -10,8 +10,10 @@ license.workspace = true
 autotests = false
 
 # The model only (docs/compiler-runtime.md §2.3): jadpo-check builds it from
-# its queries, and everything after reads it. No I/O, no salsa.
+# its queries, and everything after reads it. No I/O, no salsa; a
+# migration's SQL is written by jadpo-sql.
 [dependencies]
+jadpo-sql.workspace = true
 jadpo-std.workspace = true
 blake3.workspace = true
 
