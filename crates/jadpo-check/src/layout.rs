@@ -5,8 +5,8 @@
 use std::collections::BTreeSet;
 
 use jadpo_db::{
-    Base, Db, File, Folder, Item, ItemKind, Layout, Location, Ownership, Place, Project, RootFile,
-    Stray, item_tree, location,
+    Db, File, Folder, Item, ItemKind, Layout, Location, Ownership, Place, Project, RootFile, Stray,
+    item_tree, location,
 };
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_syntax::ast::{self, AstNode, Decl};
@@ -16,23 +16,7 @@ use crate::tree::{self, file_span, name_span, node_span};
 
 /// The declaration kind a fixed folder is named after.
 fn holds(folder: Folder, kind: &ItemKind) -> bool {
-    match folder {
-        Folder::Entities => *kind == ItemKind::Entity,
-        Folder::Types => matches!(
-            kind,
-            ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage)
-        ),
-        Folder::Failures => *kind == ItemKind::Type(Base::Failure),
-        Folder::Actions => *kind == ItemKind::Action,
-        Folder::Queries => *kind == ItemKind::Query,
-        Folder::Libraries => *kind == ItemKind::Library,
-        Folder::Routes => *kind == ItemKind::Routes,
-        Folder::Schedules => *kind == ItemKind::Schedule,
-        Folder::Events => *kind == ItemKind::Type(Base::Event),
-        Folder::Subscribers => *kind == ItemKind::Subscriber,
-        Folder::Emails => *kind == ItemKind::Type(Base::EmailMessage),
-        Folder::Fixtures => *kind == ItemKind::Fixture,
-    }
+    folder.holds(kind)
 }
 
 /// What a folder holds, in the reader's words.
@@ -173,15 +157,7 @@ fn folder_rules(
     items: &[Item],
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    let main: Vec<&Item> = items
-        .iter()
-        .filter(|item| holds(folder, &item.kind))
-        .collect();
-    let primary = main
-        .iter()
-        .find(|item| to_snake(&item.name) == location.stem)
-        .or(main.first())
-        .copied();
+    let primary = jadpo_db::primary(location, items);
     let place = match &location.ownership {
         Ownership::Domain(domain) => format!("domains/{domain}/{}", folder.name()),
         _ => format!("shared/{}", folder.name()),

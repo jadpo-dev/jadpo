@@ -3,7 +3,7 @@
 //! line, whole signatures on one line until they are too long, and every
 //! comment kept where it was written.
 
-use jadpo_fmt::{format_file, format_snippet};
+use jadpo_fmt::{format_file, format_file_led_by, format_snippet};
 
 fn fmt(text: &str) -> String {
     let out = format_file(text).unwrap_or_else(|errors| panic!("{errors:#?}"));
@@ -252,5 +252,60 @@ fn a_long_use_line_puts_one_name_per_line() {
             "use shared/types {{\n    {}\n}}\n\ntype A = Int {{}}\n",
             names.join(",\n    ")
         )
+    );
+}
+
+fn led_by(text: &str, primary: &str) -> String {
+    let out =
+        format_file_led_by(text, Some(primary)).unwrap_or_else(|errors| panic!("{errors:#?}"));
+    assert_eq!(
+        format_file_led_by(&out, Some(primary)).expect("formatted output parses"),
+        out,
+        "formatting is idempotent"
+    );
+    out
+}
+
+#[test]
+fn the_primary_declaration_goes_first_and_the_rest_keep_their_order() {
+    // Area 1, "Files and names": after the opening comments and `use`
+    // lines, with the comments written above it and after it.
+    assert_eq!(
+        led_by(
+            "// Sets the oven.\n\nuse kitchen/types { Bake }\n\n/// A shelf.\ntype Shelf = Int {}\n\ntype Steam = Bool {}\n\n// The action.\n/// Sets it.\naction set_oven(shelf: Shelf) -> Unit {}  // done\n\nfunction helper() -> Unit {}\n",
+            "set_oven"
+        ),
+        "// Sets the oven.\n\nuse kitchen/types { Bake }\n\n// The action.\n/// Sets it.\naction set_oven(shelf: Shelf) -> Unit {}  // done\n\n/// A shelf.\ntype Shelf = Int {}\n\ntype Steam = Bool {}\n\nfunction helper() -> Unit {}\n"
+    );
+    // With no `use` lines, the opening comments stay above it; a comment
+    // with no blank line below it belongs to the declaration it is on.
+    assert_eq!(
+        led_by(
+            "// Opens the file.\n\n/// A shelf.\ntype Shelf = Int {}\n\naction set_oven(shelf: Shelf) -> Unit {}\n",
+            "set_oven"
+        ),
+        "// Opens the file.\n\naction set_oven(shelf: Shelf) -> Unit {}\n\n/// A shelf.\ntype Shelf = Int {}\n"
+    );
+    assert_eq!(
+        led_by(
+            "type Shelf = Int {}\naction set_oven(shelf: Shelf) -> Unit {}",
+            "set_oven"
+        ),
+        "action set_oven(shelf: Shelf) -> Unit {}\n\ntype Shelf = Int {}\n"
+    );
+    // Already first, or not there: the written order stays.
+    let first = "action set_oven() -> Unit {}\n\ntype Shelf = Int {}\n";
+    assert_eq!(led_by(first, "set_oven"), first);
+    assert_eq!(
+        led_by("type Shelf = Int {}\n", "set_oven"),
+        "type Shelf = Int {}\n"
+    );
+    assert_eq!(
+        format_file_led_by(
+            "type Shelf = Int {}\n\naction set_oven() -> Unit {}\n",
+            None
+        )
+        .expect("formats"),
+        "type Shelf = Int {}\n\naction set_oven() -> Unit {}\n"
     );
 }

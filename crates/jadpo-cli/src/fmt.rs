@@ -79,6 +79,7 @@ pub fn fmt(call: &Call) -> Reply {
     let mut sources = BTreeMap::new();
     let mut results = Vec::new();
     let fixed = fixed_imports(&root, &files);
+    let project = root.join(jadpo_db::PROJECT_FILE).is_file();
     for file in files {
         let shown = display(&root, &file);
         let imports = fixed.get(&shown).map(String::as_str);
@@ -86,6 +87,7 @@ pub fn fmt(call: &Call) -> Reply {
             &file,
             &shown,
             imports,
+            project,
             check,
             &mut diagnostics,
             &mut sources,
@@ -287,6 +289,7 @@ fn format_one(
     file: &Path,
     shown: &str,
     imports: Option<&str>,
+    project: bool,
     check: bool,
     diagnostics: &mut Vec<Diagnostic>,
     sources: &mut BTreeMap<String, String>,
@@ -318,7 +321,9 @@ fn format_one(
         }
     };
     sources.insert(shown.to_string(), text.clone());
-    let formatted = match jadpo_fmt::format_file(imports.unwrap_or(&text)) {
+    let input = imports.unwrap_or(&text);
+    let primary = project.then(|| primary_name(shown, input)).flatten();
+    let formatted = match jadpo_fmt::format_file_led_by(input, primary.as_deref()) {
         Ok(formatted) => formatted,
         Err(errors) => {
             let refused = errors
@@ -354,6 +359,18 @@ fn format_one(
             Status::Unwritable
         }
     }
+}
+
+/// The name of the declaration a project file is named after, which
+/// `jadpo fmt` puts first (area 1, "Files and names"); none for a test,
+/// root or loose file.
+fn primary_name(shown: &str, text: &str) -> Option<String> {
+    use jadpo_syntax::ast::AstNode;
+    let parse = jadpo_syntax::parse_file(text);
+    let source = jadpo_syntax::ast::SourceFile::cast(parse.syntax())?;
+    let items = jadpo_db::items_of(&source);
+    let location = jadpo_db::locate(shown, jadpo_db::Layout::Project);
+    jadpo_db::primary(&location, &items).map(|item| item.name.clone())
 }
 
 /// `format.changes_required`, pointing at the first character the

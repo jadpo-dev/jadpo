@@ -22,9 +22,9 @@ pub(crate) struct Formatter {
 }
 
 /// One comment before a token, and whether a blank line follows it.
-struct Leading {
-    token: SyntaxToken,
-    blank_after: bool,
+pub(crate) struct Leading {
+    pub(crate) token: SyntaxToken,
+    pub(crate) blank_after: bool,
 }
 
 fn newlines(token: &SyntaxToken) -> usize {
@@ -35,7 +35,7 @@ fn newlines(token: &SyntaxToken) -> usize {
     }
 }
 
-fn is_comment(kind: SyntaxKind) -> bool {
+pub(crate) fn is_comment(kind: SyntaxKind) -> bool {
     matches!(kind, COMMENT | DOC_COMMENT)
 }
 
@@ -70,7 +70,7 @@ fn trivia_after(token: &SyntaxToken) -> Vec<SyntaxToken> {
 }
 
 /// The comment on the same line after `token`, if any.
-fn trailing_comment(token: &SyntaxToken) -> Option<SyntaxToken> {
+pub(crate) fn trailing_comment(token: &SyntaxToken) -> Option<SyntaxToken> {
     let after = trivia_after(token);
     let mut iter = after.into_iter();
     match iter.next() {
@@ -84,7 +84,7 @@ fn trailing_comment(token: &SyntaxToken) -> Option<SyntaxToken> {
 
 /// The trivia before `token` that belongs to it: everything after the
 /// previous token's trailing comment.
-fn own_trivia(token: &SyntaxToken) -> Vec<SyntaxToken> {
+pub(crate) fn own_trivia(token: &SyntaxToken) -> Vec<SyntaxToken> {
     let (run, has_previous) = trivia_before(token);
     if !has_previous {
         return run;
@@ -115,7 +115,7 @@ pub(crate) fn blank_before(token: &SyntaxToken) -> bool {
         >= 2
 }
 
-fn leading_comments(token: &SyntaxToken) -> Vec<Leading> {
+pub(crate) fn leading_comments(token: &SyntaxToken) -> Vec<Leading> {
     let run = own_trivia(token);
     let mut out: Vec<Leading> = Vec::new();
     for (i, t) in run.iter().enumerate() {

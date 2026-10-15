@@ -7,7 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{
-    Base, Db, File, Folder, Item, ItemKind, Layout, Ownership, Place, Project, item_tree, location,
+    Base, Db, File, Folder, Item, ItemKind, Layout, Location, Ownership, Place, Project, item_tree,
+    location,
 };
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_graph::body::{Callee, Expr, Node, Refers};
@@ -218,17 +219,17 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     if location.test {
         return Vec::new();
     }
-    let Place::Folder(folder) = location.place else {
-        return Vec::new();
-    };
     let Some(source) = tree::source(db, file) else {
         return Vec::new();
+    };
+    let mut out = unused_beside_primary(db, project, file, location, &source);
+    let Place::Folder(folder) = location.place else {
+        return out;
     };
     let path = file.path(db);
     let lookup = Lookup::new(db, project);
     let named = |name: &str| name_users(db, project, Name::new(db, name.to_string()));
     let ours = |user: &&User| user.ownership == location.ownership;
-    let mut out = Vec::new();
     for item in &item_tree(db, file).items {
         match (&location.ownership, folder, &item.kind) {
             (Ownership::Domain(domain), folder, kind)
@@ -302,21 +303,20 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 }
             }
             (ownership, Folder::Types, kind) if is_plain_type(kind) => {
-                let all = named(&item.name);
-                let others: Vec<&User> = all.iter().filter(|user| user.path != *path).collect();
+                let others: Vec<&User> = named(&item.name)
+                    .iter()
+                    .filter(|user| user.path != *path)
+                    .collect();
                 let elsewhere = others.iter().copied().find(|user| !ours(user));
                 // A file is named after its main declaration, or meant to
                 // be when it is misnamed (the first type, as the layout
                 // reads it); the others support that one (area 1, "A file
-                // per shared name").
-                let items = &item_tree(db, file).items;
-                let primary = items
-                    .iter()
-                    .find(|other| to_snake(&other.name) == location.stem)
-                    .or_else(|| items.iter().find(|other| is_plain_type(&other.kind)));
-                let main = primary.is_some_and(|primary| primary.index == item.index);
+                // per shared name"), and `unused_beside_primary` checks
+                // that it uses them.
+                let main = jadpo_db::primary(location, &item_tree(db, file).items)
+                    .is_some_and(|primary| primary.index == item.index);
                 if others.is_empty() {
-                    if main || !all.iter().any(|user| user.path == *path) {
+                    if main {
                         out.push(unused(path, &source, item, None));
                     }
                 } else if let (Ownership::Domain(_), Some(user)) = (ownership, elsewhere)
@@ -379,6 +379,81 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
         }
     }
     out
+}
+
+/// `layout.unused_declaration` for each declaration beside the file's
+/// primary one that the primary doesn't use, directly or through one
+/// another (area 1, "Files and names"), so a file never collects code for
+/// something else. It reads the file's own tree and, per supporting
+/// declaration, who else uses it: one another file uses counts as used,
+/// since `layout.promotion_required` moves it out instead. Tests never
+/// count.
+fn unused_beside_primary(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    location: &Location,
+    source: &ast::SourceFile,
+) -> Vec<Diagnostic> {
+    let items = &item_tree(db, file).items;
+    let Some(primary) = jadpo_db::primary(location, items) else {
+        return Vec::new();
+    };
+    let path = file.path(db);
+    let supporting: Vec<&Item> = items
+        .iter()
+        .filter(|item| {
+            item.index != primary.index
+                && (item.kind == ItemKind::Function || is_plain_type(&item.kind))
+        })
+        .collect();
+    if supporting.is_empty() {
+        return Vec::new();
+    }
+    let mut used = BTreeSet::from([primary.index]);
+    let mut pending = vec![primary.index];
+    for item in &supporting {
+        let elsewhere = name_users(db, project, Name::new(db, item.name.clone()))
+            .iter()
+            .any(|user| user.path != *path);
+        if elsewhere && used.insert(item.index) {
+            pending.push(item.index);
+        }
+    }
+    while let Some(index) = pending.pop() {
+        let names = named_in(source, index);
+        for item in &supporting {
+            if names.contains(&item.name) && used.insert(item.index) {
+                pending.push(item.index);
+            }
+        }
+    }
+    supporting
+        .into_iter()
+        .filter(|item| !used.contains(&item.index))
+        .map(|item| unused_beside(path, source, item, primary))
+        .collect()
+}
+
+/// Every name declaration `index` reads: types, calls and values, but not
+/// a field after a dot, which names no declaration.
+fn named_in(source: &ast::SourceFile, index: u32) -> BTreeSet<String> {
+    let Some(decl) = tree::decl_at(source, index) else {
+        return BTreeSet::new();
+    };
+    decl.syntax()
+        .descendants()
+        .filter_map(ast::NameRef::cast)
+        .filter(|name| {
+            !name
+                .syntax()
+                .parent()
+                .and_then(ast::FieldExpr::cast)
+                .and_then(|field| field.name_ref())
+                .is_some_and(|field| field == *name)
+        })
+        .filter_map(|name| tree::name_ref_text(&name))
+        .collect()
 }
 
 /// Whether declaration `index` depends on no domain's code: nothing it
@@ -531,4 +606,20 @@ fn unused(path: &str, source: &ast::SourceFile, item: &Item, library: Option<u32
         "A {what} exists to be used by several files; one that nothing uses is dead code. Tests don't count as users."
     ))
     .next(format!("Remove `{}`", item.name))
+}
+
+fn unused_beside(path: &str, source: &ast::SourceFile, item: &Item, primary: &Item) -> Diagnostic {
+    let (name, owner) = (&item.name, &primary.name);
+    Diagnostic::new(
+        &rule::LAYOUT_UNUSED_DECLARATION,
+        format!("`{name}` isn't used by `{owner}`"),
+    )
+    .at(
+        name_span(source, path, item.index, None),
+        format!("`{owner}` doesn't use this"),
+    )
+    .reason(
+        "Everything in a file besides the declaration it is named after is there for that declaration, used by it directly or through one another; anything else is dead code. Tests don't count as users.",
+    )
+    .next(format!("Remove `{name}`"))
 }
