@@ -272,7 +272,7 @@ reference only).
 
 ## Phase 4 — HTTP, identity and policy (areas 7–9)
 
-- [ ] **4.1 Routes:** `opus · high` groups, inputs, outputs, statuses, OpenAPI, the API
+- [x] **4.1 Routes:** `opus · high` groups, inputs, outputs, statuses, OpenAPI, the API
   record, default rate limits.
 - [ ] **4.2 Request guarantees:** `opus · high` idempotency (a lookup ignores
   keys past 24 hours; deleting them comes with 6.2), deadlines, body limits,
