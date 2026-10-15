@@ -23,6 +23,11 @@ manifest `jadpo check` writes never lands in the repository, and must:
   `test` the codes the failed tests of `jadpo test --json --seed 1` have,
   with `failed` the number of failed tests when the bullet counts them.
 
+Under JADPO_SKIP_POSTGRES=1 (`tools/verify.py --profile quick`) a project
+with migrations is checked and formatted, but its `jadpo test` runs, and
+the "Try next" edits that name test outcomes, are reported as skipped,
+since they need PostgreSQL.
+
 `--export-corpus` writes each project and its `jadpo test --json` document
 to build/spec-corpus/examples/<project>/, beside the language pages'
 projects, for the differential run. Which built features the examples
@@ -42,7 +47,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from language_docs import CORPUS, ROOT, TEST_SEED, WORKERS, ensure_jadpo, jadpo
+from language_docs import CORPUS, ROOT, SKIP_POSTGRES, TEST_SEED, WORKERS, ensure_jadpo, jadpo
 
 EXAMPLES = ROOT / 'examples'
 EXPORT = CORPUS / 'examples'
@@ -50,6 +55,11 @@ EXPORT = CORPUS / 'examples'
 
 def projects() -> list[Path]:
     return sorted(p for p in EXAMPLES.iterdir() if (p / 'app.jadpo').is_file())
+
+
+def needs_postgres(project: Path) -> bool:
+    """Whether the project's tests need PostgreSQL: it has migrations."""
+    return any((project / 'database/migrations').glob('*/*.sql'))
 
 
 def source_files(project: Path) -> list[Path]:
@@ -81,6 +91,8 @@ def check(project: Path) -> tuple[list[str], str | None]:
         code, out = jadpo(['fmt', '--check', '.'], cwd=copy)
         if code:
             problems.append(f'{name}: not canonically formatted (run jadpo fmt in it)')
+        if SKIP_POSTGRES and needs_postgres(project):
+            return problems, None
         code, document = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
         try:
             tests = (json.loads(document).get('data') or {}).get('tests') or []
@@ -171,7 +183,7 @@ def try_edit(project: Path, edit: dict) -> list[str]:
                 return problems
             if rules != sorted(edit['check']):
                 problems.append(f'{label}: the README says {", ".join(edit["check"])}, but jadpo check reports {", ".join(rules) or "nothing"}')
-        if 'test' in edit:
+        if 'test' in edit and not (SKIP_POSTGRES and needs_postgres(project)):
             _, out = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
             try:
                 document = json.loads(out)
@@ -232,6 +244,10 @@ def main() -> int:
         for project, document in documents.items():
             export(project, document)
         print(f'wrote {len(documents)} example project(s) to {EXPORT.relative_to(ROOT)}')
+    skipped = [p.name for p in found if SKIP_POSTGRES and needs_postgres(p)]
+    if skipped:
+        print(f'skipped: jadpo test for {", ".join(skipped)}, whose migrations need PostgreSQL '
+              f'(JADPO_SKIP_POSTGRES is set)')
     for problem in problems:
         print(f'  FAIL {problem}')
     print(f'{len(found)} example project(s) checked, formatted and tested')

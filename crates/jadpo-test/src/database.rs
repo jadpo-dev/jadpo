@@ -174,6 +174,37 @@ fn exists(server: &Server, name: &str) -> Result<bool, String> {
     .map_err(|_| "a server query's thread panicked".to_string())?
 }
 
+/// The names of the server's databases that start with `prefix`.
+fn databases_starting(server: &Server, prefix: &str) -> Result<Vec<String>, String> {
+    let url = server.url(crate::postgres::ADMIN_DATABASE);
+    let prefix = prefix.to_string();
+    std::thread::spawn(move || -> Result<Vec<String>, String> {
+        let runtime = jadpo_host_native::Runtime::new().map_err(|e| e.to_string())?;
+        let store = jadpo_host_native::postgres(&url).map_err(|e| format!("{e:?}"))?;
+        runtime.block_on(async {
+            use jadpo_runtime::{Database, SqlValue};
+            let mut transaction = store.begin().await.map_err(|e| format!("{e:?}"))?;
+            let rows = transaction
+                .query(
+                    "SELECT datname::text FROM pg_database WHERE starts_with(datname, $1) ORDER BY 1",
+                    &[SqlValue::Text(prefix)],
+                )
+                .await
+                .map_err(|e| format!("{e:?}"))?;
+            let _ = transaction.rollback().await;
+            Ok(rows
+                .into_iter()
+                .filter_map(|row| match row.into_iter().next() {
+                    Some(SqlValue::Text(name)) => Some(name),
+                    _ => None,
+                })
+                .collect())
+        })
+    })
+    .join()
+    .map_err(|_| "a server query's thread panicked".to_string())?
+}
+
 /// Runs an admin statement, waiting out a template another session is
 /// still leaving: PostgreSQL refuses to copy a database anyone is
 /// connected to, and a connection just closed can take a moment to go.
@@ -248,6 +279,15 @@ struct Template {
     reset: Option<String>,
 }
 
+impl Template {
+    /// The start of the names of the emptied copies of this template that
+    /// runs leave on the server for later runs to take.
+    fn free(&self) -> String {
+        let hash = blake3::hash(self.name.as_bytes()).to_hex();
+        format!("jadpo_free_{}_", &hash[..12])
+    }
+}
+
 /// The server and each store's template, by store.
 type Started = (Arc<Server>, BTreeMap<String, Template>);
 
@@ -265,7 +305,15 @@ struct State {
     used: VecDeque<Copy>,
     /// Databases to drop.
     drop: Vec<String>,
-    /// The run is over: the workers drop what is left and stop.
+    /// How many tests may still ask for a copy: no more are prepared.
+    remaining: usize,
+    /// How many copies this run has made or taken from earlier runs.
+    copies: usize,
+    /// Whether copies can be emptied and used again: every template's
+    /// migrations left its tables empty.
+    reusable: bool,
+    /// The run is over: the workers leave what is left for later runs, or
+    /// drop it, and stop.
     done: bool,
 }
 
@@ -273,7 +321,8 @@ impl State {
     /// Whether the pool, with what is on its way, has fewer copies than
     /// the tests waiting and the few kept ahead of them.
     fn short(&self) -> bool {
-        !self.done && self.pool.len() + self.making < self.wanted + AHEAD
+        let target = (self.wanted + AHEAD).min(self.remaining).max(self.wanted);
+        !self.done && self.pool.len() + self.making < target
     }
 }
 
@@ -285,11 +334,29 @@ impl TestDatabases {
             shared: Arc::new(Shared {
                 steps,
                 keep_failed,
-                state: Mutex::new(State::default()),
+                state: Mutex::new(State {
+                    remaining: usize::MAX,
+                    ..State::default()
+                }),
                 changed: Condvar::new(),
             }),
             worker: Mutex::new(None),
         }
+    }
+
+    /// The databases for a run of `tests` tests that may use a store: no
+    /// copies are prepared beyond what they can use.
+    pub fn for_tests(self, tests: usize) -> TestDatabases {
+        if let Ok(mut state) = self.shared.state.lock() {
+            state.remaining = tests;
+        }
+        self
+    }
+
+    /// How many copies the run has made, or taken from earlier runs, so
+    /// far.
+    pub fn copies(&self) -> usize {
+        self.shared.state.lock().map_or(0, |state| state.copies)
     }
 
     /// The stores the databases are for.
@@ -312,6 +379,7 @@ impl TestDatabases {
             }
             if let Some(copy) = state.pool.pop_front() {
                 state.wanted = state.wanted.saturating_sub(1);
+                state.remaining = state.remaining.saturating_sub(1);
                 shared.changed.notify_all();
                 return Ok(copy);
             }
@@ -328,9 +396,7 @@ impl TestDatabases {
             return copy.names().collect();
         }
         if let Ok(mut state) = self.shared.state.lock() {
-            let reusable = matches!(&state.ready, Some(Ok((_, templates)))
-                if templates.values().all(|template| template.reset.is_some()));
-            if reusable && !state.done {
+            if state.reusable {
                 state.used.push_back(copy);
             } else {
                 state.drop.extend(copy.names());
@@ -396,7 +462,9 @@ fn prepare(shared: &Arc<Shared>) {
         }
     };
     // The first copy tells how to empty one again: a copy is the template
-    // as it was migrated, so it is read before any test writes to it.
+    // as it was migrated (or one a run left emptied, as only copies of
+    // templates that empty that way are left), so it is read before any
+    // test writes to it.
     let first = make_copy(&server, &templates).and_then(|copy| {
         for (store, (_, url)) in &copy.stores {
             if let Some(template) = templates.get_mut(store) {
@@ -411,6 +479,8 @@ fn prepare(shared: &Arc<Shared>) {
     match first {
         Ok(copy) => {
             state.pool.push_back(copy);
+            state.copies += 1;
+            state.reusable = templates.values().all(|template| template.reset.is_some());
             state.ready = Some(Ok((Arc::clone(&server), templates.clone())));
         }
         Err(error) => {
@@ -443,12 +513,15 @@ enum Job {
     Drop(String),
     Make,
     Empty(Copy),
+    /// Leaves a copy for later runs, emptying it first if a test used it.
+    Leave(Copy, bool),
     Stop,
 }
 
 /// One worker: keeps copies ready, emptying the ones tests gave back
 /// before making new ones, and drops what is no longer wanted; once the
-/// run is over, drops everything left and stops.
+/// run is over, leaves the copies left, emptied, for later runs (or drops
+/// them, where they can't be emptied) and stops.
 fn work(shared: &Shared, server: &Server, templates: &BTreeMap<String, Template>) {
     // Emptying a copy runs on this worker's own runtime.
     let runtime = jadpo_host_native::Runtime::new().ok();
@@ -462,13 +535,13 @@ fn work(shared: &Shared, server: &Server, templates: &BTreeMap<String, Template>
                     break Job::Drop(name);
                 }
                 if state.done {
-                    let state = &mut *state;
-                    let left = state.pool.drain(..).chain(state.used.drain(..));
-                    state.drop.extend(left.flat_map(Copy::names));
-                    match state.drop.pop() {
-                        Some(name) => break Job::Drop(name),
-                        None => break Job::Stop,
+                    if let Some(copy) = state.pool.pop_front() {
+                        break Job::Leave(copy, false);
                     }
+                    if let Some(copy) = state.used.pop_front() {
+                        break Job::Leave(copy, true);
+                    }
+                    break Job::Stop;
                 }
                 if state.short() {
                     state.making += 1;
@@ -487,19 +560,37 @@ fn work(shared: &Shared, server: &Server, templates: &BTreeMap<String, Template>
                 };
             }
         };
-        let made = match job {
+        // The copy for the pool, and whether it is a new one.
+        let (made, new) = match job {
             Job::Stop => return,
             Job::Drop(name) => {
                 let _ = drop_database(server, &name);
                 continue;
             }
-            Job::Make => make_copy(server, templates)
-                .map_err(|error| format!("copying a template failed: {error}")),
+            Job::Leave(copy, used) => {
+                let clean = !used
+                    || runtime
+                        .as_ref()
+                        .is_some_and(|runtime| empty(runtime, &copy, templates).is_ok());
+                if clean && state_reusable(shared) {
+                    leave(server, copy, templates);
+                } else {
+                    for name in copy.names() {
+                        let _ = drop_database(server, &name);
+                    }
+                }
+                continue;
+            }
+            Job::Make => (
+                make_copy(server, templates)
+                    .map_err(|error| format!("copying a template failed: {error}")),
+                true,
+            ),
             Job::Empty(copy) => match runtime
                 .as_ref()
                 .map(|runtime| empty(runtime, &copy, templates))
             {
-                Some(Ok(())) => Ok(copy),
+                Some(Ok(())) => (Ok(copy), false),
                 // A copy that won't empty is dropped, and a new one made
                 // in its place.
                 _ => {
@@ -508,7 +599,7 @@ fn work(shared: &Shared, server: &Server, templates: &BTreeMap<String, Template>
                     if let Ok(mut state) = shared.state.lock() {
                         state.drop.extend(copy.names());
                     }
-                    made
+                    (made, true)
                 }
             },
         };
@@ -517,25 +608,81 @@ fn work(shared: &Shared, server: &Server, templates: &BTreeMap<String, Template>
         };
         state.making = state.making.saturating_sub(1);
         match made {
-            Ok(copy) if state.done => state.drop.extend(copy.names()),
-            Ok(copy) => state.pool.push_back(copy),
+            Ok(copy) => {
+                state.copies += usize::from(new);
+                state.pool.push_back(copy);
+            }
             Err(error) => state.ready = Some(Err(error)),
         }
         shared.changed.notify_all();
     }
 }
 
-/// A new copy of each store's template, under names no other process
-/// sharing the server uses.
-fn make_copy(server: &Server, templates: &BTreeMap<String, Template>) -> Result<Copy, String> {
+fn state_reusable(shared: &Shared) -> bool {
+    shared.state.lock().is_ok_and(|state| state.reusable)
+}
+
+/// A name for a database this process creates or takes, which no other
+/// process sharing the server uses.
+fn own_name(stem: &str) -> String {
     static NEXT: AtomicU64 = AtomicU64::new(0);
+    format!(
+        "jadpo_{stem}_{}_{}",
+        crate::postgres::process_tag(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+/// A statement ending every other session connected to `database` (an
+/// SQL expression giving its name).
+fn others_ended(database: &str) -> String {
+    format!(
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
+         WHERE datname = {database} AND pid <> pg_backend_pid()"
+    )
+}
+
+/// Leaves an emptied copy on the server for a later run to take, renamed
+/// as its template's free copies are; one that can't be renamed is
+/// dropped. Renaming waits for every session on it to end, and the run is
+/// over, so any still connected is ended.
+fn leave(server: &Server, copy: Copy, templates: &BTreeMap<String, Template>) {
+    for (store, (name, _)) in copy.stores {
+        let left = templates.get(&store).is_some_and(|template| {
+            let free = format!("{}{}", template.free(), own_name("left"));
+            let _ = server.admin(&others_ended(&format!("'{name}'")));
+            rename(server, &name, &free).is_ok()
+        });
+        if !left {
+            let _ = drop_database(server, &name);
+        }
+    }
+}
+
+/// One of `template`'s free copies, taken under a name of this process's
+/// own: renaming it succeeds for one process only.
+fn take_free(server: &Server, template: &Template, name: &str) -> bool {
+    let Ok(free) = databases_starting(server, &template.free()) else {
+        return false;
+    };
+    free.iter().any(|left| {
+        server
+            .admin(&format!("ALTER DATABASE \"{left}\" RENAME TO \"{name}\""))
+            .is_ok()
+    })
+}
+
+/// A copy of each store's template, under names no other process sharing
+/// the server uses: one an earlier run left emptied where there is one,
+/// else a new one.
+fn make_copy(server: &Server, templates: &BTreeMap<String, Template>) -> Result<Copy, String> {
     let mut stores: BTreeMap<String, (String, String)> = BTreeMap::new();
     for (store, template) in templates {
-        let name = format!(
-            "jadpo_test_{}_{}",
-            crate::postgres::process_tag(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        );
+        let name = own_name("test");
+        if take_free(server, template, &name) {
+            stores.insert(store.clone(), (name.clone(), server.url(&name)));
+            continue;
+        }
         if let Err(error) = admin_retrying(
             server,
             &format!("CREATE DATABASE \"{name}\" TEMPLATE \"{}\"", template.name),
@@ -558,17 +705,21 @@ fn empty(
 ) -> Result<(), String> {
     for (store, (_, url)) in &copy.stores {
         let Some(reset) = templates.get(store).and_then(|t| t.reset.as_ref()) else {
-            return Err(format!("`{store}` can't be emptied"));
+            return Err(format!("no way to reset `{store}`"));
         };
-        if reset.is_empty() {
-            continue;
-        }
+        // A connection the test left open (its runtime no longer drives
+        // it, say) is ended first, so nothing holds a lock the reset needs;
+        // a lock still held after a while gives the copy up.
+        let sql = format!(
+            "SET LOCAL lock_timeout = '10s';\n{};\n{reset}",
+            others_ended("current_database()")
+        );
         let database = jadpo_host_native::postgres(url).map_err(|e| format!("{e:?}"))?;
         runtime.block_on(async {
             use jadpo_runtime::Database;
             let mut transaction = database.begin().await.map_err(|e| format!("{e:?}"))?;
             transaction
-                .batch(reset)
+                .batch(&sql)
                 .await
                 .map_err(|e| format!("{e:?}"))?;
             transaction.commit().await.map_err(|e| format!("{e:?}"))

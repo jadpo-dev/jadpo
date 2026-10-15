@@ -13,8 +13,11 @@ here, so this script stays the single gate that CI and every session run
 It builds the workspace and its tests once, then runs every step that
 needs nothing else concurrently: each test binary straight from that build,
 cargo's own steps (clippy, documentation tests, wasm32) one after another
-beside them, and the timing test last, alone. Each step prints `ok` or
-`FAILED` as it finishes; failures' output follows, then a summary.
+beside them, and the timing test last, alone. The steps that use
+PostgreSQL share one server: the one JADPO_TEST_DATABASE_URL names, or a
+disposable one started for the run (jadpo-test-server) and named to every
+step through that variable. Each step prints `ok` or `FAILED` as it
+finishes; failures' output follows, then a summary.
 """
 from __future__ import annotations
 
@@ -66,9 +69,10 @@ class Step:
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     # Steps in the same lane run one after another, beside the rest:
-    # `cargo` for those that take cargo's lock on the build folder,
-    # `postgres` for the live tests when they share one server.
+    # `cargo` for those that take cargo's lock on the build folder.
     lane: str | None = None
+    # Uses the run's PostgreSQL server (JADPO_TEST_DATABASE_URL).
+    postgres: bool = False
     # Runs `jadpo`, built from this checkout (JADPO_BIN).
     jadpo: bool = False
     # Measures time, so runs after everything else, by itself.
@@ -95,18 +99,25 @@ class TestBinary:
 
 def steps(profile: str, require_examples: bool = False) -> list[Step]:
     python = sys.executable
+    full = profile == 'full'
+    # Under --profile quick nothing starts PostgreSQL: the pages' and the
+    # examples' projects with migrations are checked and formatted, and
+    # their `jadpo test` runs are reported as skipped.
+    no_postgres = {} if full else {'JADPO_SKIP_POSTGRES': '1'}
     checks = [
         # Runs jadpo over the `check` blocks; projects that declare tests
         # also run under `jadpo test` (Phase 2) and are exported to
         # build/spec-corpus/ (docs/compiler-runtime.md §2.7).
         Step('language specification and jadpo test over the spec corpus', 'docs',
-             [python, 'tools/language_docs.py', '--check', '--export-corpus'], jadpo=True),
+             [python, 'tools/language_docs.py', '--check', '--export-corpus'], jadpo=True,
+             postgres=full, env=no_postgres, show='skipped:'),
         # Every teaching example in examples/ checks with no diagnostics,
         # is formatted, passes its own tests under `jadpo test`, has its
         # README, and is exported beside the pages' projects
         # (docs/compiler-runtime.md §2.7).
         Step('teaching examples: check, format and jadpo test', 'docs',
-             [python, 'tools/examples.py', '--export-corpus'], jadpo=True),
+             [python, 'tools/examples.py', '--export-corpus'], jadpo=True,
+             postgres=full, env=no_postgres, show='skipped:'),
         Step('example names', 'lint', [python, 'tools/example_names.py', '--check']),
         # The VS Code extension's highlighting names every word the lexer
         # reserves and no other (editors/vscode; needs no Node).
@@ -174,13 +185,11 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
              args=['--exact', latency_test, '--nocapture'], alone=True, show=True),
     ]
     # Phase 3 (docs/compiler-runtime.md §2.7): the PostgreSQL driver against
-    # the server JADPO_TEST_DATABASE_URL names, or a disposable one from the
-    # machine's PostgreSQL tools.
-    if profile == 'full':
-        # Locally each binary starts a disposable server of its own; on the
-        # one server JADPO_TEST_DATABASE_URL names (CI's), they take turns.
-        shared = 'postgres' if os.environ.get('JADPO_TEST_DATABASE_URL') else None
-        checks += [Step(name, 'tests', tests=tests, args=args, show='--nocapture' in args, lane=shared)
+    # the run's server, all at once: each process names its databases with
+    # a tag of its own, and templates are built under a name of their own
+    # and renamed.
+    if full:
+        checks += [Step(name, 'tests', tests=tests, args=args, show='--nocapture' in args, postgres=True)
                    for name, tests, args in postgres]
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
@@ -198,7 +207,7 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         coverage.env['JADPO_REQUIRE_EXAMPLES'] = '1'
     # Binaries another step runs whole are left out of `compiler tests`.
     owned = {test for _, tests in own_steps for test in tests}
-    if profile == 'full':
+    if full:
         owned |= {test for _, tests, _ in postgres for test in tests}
     for step in checks:
         if step.tests == 'everything':
@@ -213,14 +222,19 @@ def run(command: list[str], env: dict[str, str] | None = None, cwd: Path | str =
     return result.returncode == 0, result.stdout
 
 
-def build_tests() -> tuple[bool, str, list[TestBinary], str | None]:
+# The binary that starts the run's PostgreSQL server (crates/jadpo-test).
+SERVER_BIN = 'jadpo-test-server'
+
+
+def build_tests() -> tuple[bool, str, list[TestBinary], dict[str, str]]:
     """`cargo test --no-run` over the workspace: every test binary, and
-    `jadpo` beside them, built once with one set of features."""
+    `jadpo` and jadpo-test-server beside them, built once with one set of
+    features."""
     process = subprocess.run(
         ['cargo', 'test', '--locked', '--workspace', '--no-run',
          '--message-format=json-render-diagnostics'],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace')
-    binaries, jadpo = [], None
+    binaries, tools = [], {}
     for line in process.stdout.splitlines():
         try:
             message = json.loads(line)
@@ -234,15 +248,54 @@ def build_tests() -> tuple[bool, str, list[TestBinary], str | None]:
         if message['profile']['test']:
             binaries.append(TestBinary(package, target['name'], target['kind'][0],
                                        message['executable'], manifest_dir))
-        elif package == 'jadpo-cli' and target['name'] == 'jadpo':
-            jadpo = message['executable']
-    return process.returncode == 0, process.stderr, binaries, jadpo
+        elif target['kind'] == ['bin'] and target['name'] in ('jadpo', SERVER_BIN):
+            tools[target['name']] = message['executable']
+    return process.returncode == 0, process.stderr, binaries, tools
 
 
-def build_jadpo() -> tuple[bool, str, str | None]:
-    """Only `jadpo`, for a run that needs no test binaries (CI's docs job)."""
-    ok, output = run(['cargo', 'build', '--locked', '-p', 'jadpo-cli'])
-    return ok, output, str(ROOT / 'target/debug/jadpo') if ok else None
+def build_tools() -> tuple[bool, str, dict[str, str]]:
+    """Only `jadpo` and jadpo-test-server, for a run that needs no test
+    binaries (CI's docs job)."""
+    ok, output = run(['cargo', 'build', '--locked', '-p', 'jadpo-cli', '-p', 'jadpo-test', '--bins'])
+    names = ('jadpo', SERVER_BIN) if ok else ()
+    return ok, output, {name: str(ROOT / 'target/debug' / name) for name in names}
+
+
+class PostgresServer:
+    """The run's PostgreSQL server: jadpo-test-server, started on a thread
+    of its own beside the steps that don't need it, its admin URL read,
+    then stopped, with its folder removed, when the run ends."""
+
+    def __init__(self, executable: str, report: 'Report') -> None:
+        self.step = Step('start a PostgreSQL server for the run', 'tests')
+        self.process: subprocess.Popen | None = None
+        self.url = ''
+        self.thread = threading.Thread(target=self.start, args=(executable, report))
+        self.thread.start()
+
+    def start(self, executable: str, report: 'Report') -> None:
+        begun = time.monotonic()
+        self.process = subprocess.Popen([executable], cwd=ROOT, stdin=subprocess.PIPE,
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.url = self.process.stdout.readline().strip()
+        self.step.ok = bool(self.url)
+        self.step.output = '' if self.url else self.process.communicate()[1]
+        self.step.seconds = time.monotonic() - begun
+        report.finished(self.step)
+
+    def ready(self) -> str:
+        """The server's admin URL once it has started, or '' if it couldn't."""
+        self.thread.join()
+        return self.url
+
+    def stop(self) -> None:
+        self.thread.join()
+        if self.process and self.process.poll() is None:
+            self.process.stdin.close()
+            try:
+                self.process.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
 
 
 def test_jobs(step: Step, binaries: list[TestBinary]):
@@ -285,7 +338,14 @@ def indent(text: str) -> str:
 
 
 def run_step(step: Step, binaries: list[TestBinary], pool: ThreadPoolExecutor | None,
-             report: Report, jadpo: str | None) -> None:
+             report: Report, jadpo: str | None, server: PostgresServer | None) -> None:
+    if step.postgres and server:
+        url = server.ready()
+        if not url:
+            step.ok, step.output = False, f'no PostgreSQL server: see "{server.step.name}"'
+            report.finished(step)
+            return
+        step.env = {**step.env, 'JADPO_TEST_DATABASE_URL': url}
     start = time.monotonic()
     if step.tests is None:
         env = {**step.env, **({'JADPO_BIN': jadpo} if step.jadpo and jadpo else {})}
@@ -327,28 +387,45 @@ def main() -> int:
     groups = set(args.group or GROUPS)
     chosen = [step for step in steps(args.profile, args.require_examples) if step.group in groups]
     report = Report()
-    started = time.monotonic()
+    started_at = time.monotonic()
 
     # One build first: every test binary and `jadpo` (or `jadpo` alone if no
     # test binary is needed), so no later step builds and none waits on
     # cargo's lock.
     binaries: list[TestBinary] = []
-    jadpo = None
+    tools: dict[str, str] = {}
     built: Step | None = None
     begun = time.monotonic()
     if any(step.tests for step in chosen):
         built = Step('build the workspace and its tests', 'tests')
-        built.ok, built.output, binaries, jadpo = build_tests()
-        if not built.ok and not jadpo and any(step.jadpo for step in chosen):
+        built.ok, built.output, binaries, tools = build_tests()
+        if not built.ok and 'jadpo' not in tools and any(step.jadpo for step in chosen):
             # The tests don't build, but the pages and examples may still
             # check with jadpo itself.
-            jadpo = build_jadpo()[2]
+            tools = build_tools()[2]
     elif any(step.jadpo for step in chosen):
         built = Step('build jadpo', 'docs')
-        built.ok, built.output, jadpo = build_jadpo()
+        built.ok, built.output, tools = build_tools()
     if built:
         built.seconds = time.monotonic() - begun
         report.finished(built)
+    jadpo = tools.get('jadpo')
+
+    # One PostgreSQL server for every step that uses one, unless
+    # JADPO_TEST_DATABASE_URL already names one (CI's).
+    server = None
+    if (any(step.postgres for step in chosen) and SERVER_BIN in tools
+            and not os.environ.get('JADPO_TEST_DATABASE_URL', '').strip()):
+        server = PostgresServer(tools[SERVER_BIN], report)
+    try:
+        return run_steps(chosen, built, server, binaries, jadpo, report, started_at)
+    finally:
+        if server:
+            server.stop()
+
+
+def run_steps(chosen: list[Step], built: Step | None, server: PostgresServer | None,
+              binaries: list[TestBinary], jadpo: str | None, report: Report, started_at: float) -> int:
     not_run = [step for step in chosen
                if step.tests and not built.ok or step.jadpo and not jadpo]
 
@@ -364,19 +441,22 @@ def main() -> int:
         # pool's queue.
         def in_turn(lane: list[Step]) -> None:
             for step in lane:
-                run_step(step, binaries, None, report, jadpo)
+                run_step(step, binaries, None, report, jadpo, server)
         futures = [steps_pool.submit(in_turn, lane) for lane in lanes.values()]
-        futures += [steps_pool.submit(run_step, step, binaries, tests_pool, report, jadpo) for step in rest]
+        futures += [steps_pool.submit(run_step, step, binaries, tests_pool, report, jadpo, server)
+                    for step in rest]
         for future in futures:
             future.result()
     for step in alone:
-        run_step(step, binaries, None, report, jadpo)
+        run_step(step, binaries, None, report, jadpo, server)
 
-    ran = ([built] if built else []) + pending
+    if server:
+        server.ready()
+    ran = [step for step in (built, server and server.step) if step] + pending
     failed = [step for step in ran if not step.ok]
     for step in failed:
         print(f'\n== FAILED: {step.name}\n{step.output.rstrip()}', flush=True)
-    total = time.monotonic() - started
+    total = time.monotonic() - started_at
     if not_run:
         print(f'\nnot run, because the build failed: {", ".join(step.name for step in not_run)}')
     if failed or not_run:

@@ -22,3 +22,8 @@ serde_json.workspace = true
 
 [lints]
 workspace = true
+
+# One disposable server for a run of the gate (tools/verify.py).
+[[bin]]
+name = "jadpo-test-server"
+test = false

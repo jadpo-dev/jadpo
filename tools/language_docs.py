@@ -87,6 +87,10 @@ PHASE_ONE = 6
 MIGRATION_EPOCH = 1792504800  # 2026-10-20T14:00:00Z
 # Area 14's command errors, shown by the CLI's tests rather than by pages.
 COMMAND_AREA = 14
+# Set by `tools/verify.py --profile quick`: nothing may start PostgreSQL, so
+# a project with migrations is checked and formatted, and its `jadpo test`
+# run is reported as skipped.
+SKIP_POSTGRES = os.environ.get('JADPO_SKIP_POSTGRES') == '1'
 # What a note says about a block still on the frozen v0 result.
 ARCHIVED_NOTES = ('archived compiler', 'being removed')
 
@@ -209,6 +213,8 @@ class Page:
         self.blessings = []
         # Projects with tests that ran: (name, files, jadpo test --json).
         self.corpus = []
+        # Projects whose tests weren't run, since they need PostgreSQL.
+        self.skipped = []
 
     def collect_blocks(self):
         lines = self.body.splitlines()
@@ -261,9 +267,15 @@ class Page:
 
         def compile_one(item):
             """Runs jadpo over one project: its migrations' problems, and
-            what `check`, `fmt` and, when it has tests, `test` said."""
+            what `check`, `fmt` and, when it has tests, `test` said. A
+            project with tests runs `jadpo test --json` once; only one that
+            shows a failed test also runs the plain `jadpo test` its output
+            block holds. Under JADPO_SKIP_POSTGRES a project with
+            migrations runs no tests (`test_json` is None)."""
             name, blocks = item
-            runs = expectation(blocks)[2]
+            _, expected, runs = expectation(blocks)
+            if SKIP_POSTGRES and any(b['attrs'].get('migrate') for b in blocks):
+                runs = False
             problems, test_code, test_out, test_json_code, test_json = [], None, None, None, None
             with tempfile.TemporaryDirectory() as tmp:
                 steps = 0
@@ -284,10 +296,11 @@ class Page:
                 if runs:
                     # From inside the project, so paths and rerun commands
                     # are the project's own.
-                    test_code, test_out = jadpo(['test', '.', '--seed', TEST_SEED], cwd=tmp)
+                    if expected.startswith('test.'):
+                        test_code, test_out = jadpo(['test', '.', '--seed', TEST_SEED], cwd=tmp)
                     test_json_code, test_json = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=tmp)
             out = without_run_time(out.replace(tmp + '/', '').replace(tmp, '.'))
-            if runs:
+            if test_out is not None:
                 test_out = without_run_time(test_out)
             return problems, code, out, json_code, json_out, formatted, test_code, test_out, test_json_code, test_json
 
@@ -356,22 +369,27 @@ class Page:
             self.problems.append(f'{name}: has tests, so it must check cleanly before they run')
         elif formatted:
             self.problems.append(f'{name}: checks but is not canonically formatted (run jadpo fmt)')
+        if test_json is None:
+            # Its tests need PostgreSQL, which this run may not start.
+            self.skipped.append(name)
+            self.results[name] = {'expected': expected, 'ok': ok, 'output': '', 'rules': [], 'check': True}
+            return
         try:
             document = json.loads(test_json)
         except ValueError:
             document = {}
             self.problems.append(f'{name}: jadpo test --json gave no document')
-        if test_json_code != test_code:
+        if test_code is not None and test_json_code != test_code:
             self.problems.append(f'{name}: jadpo test exits {test_code} but --json exits {test_json_code}')
         tests = (document.get('data') or {}).get('tests') or []
         codes = [t['failure']['code'] for t in tests if t.get('outcome') == 'failed']
         if expected == 'pass':
-            if test_code != 0 or codes or not tests:
+            if test_json_code != 0 or codes or not tests:
                 ok = False
                 shown = codes[:3] or [d.get('rule') for d in document.get('diagnostics', [])][:3]
                 self.problems.append(f'{name}: its tests must pass, but jadpo test says {shown or "nothing ran"}')
         else:
-            if codes != [expected] or test_code != 1:
+            if codes != [expected] or test_json_code != 1:
                 ok = False
                 self.problems.append(f'{name}: expected exactly one test to fail with {expected} but got {codes or "no failures"}')
             last = [b for b in blocks if 'expect' in b['attrs']][-1]
@@ -386,7 +404,7 @@ class Page:
         files = [(b['attrs']['file'], b['source']) for b in blocks]
         if ok:
             self.corpus.append((name, files, test_json))
-        self.results[name] = {'expected': expected, 'ok': ok, 'output': test_out.strip(), 'rules': codes,
+        self.results[name] = {'expected': expected, 'ok': ok, 'output': (test_out or '').strip(), 'rules': codes,
                               'check': True}
 
     def bless(self):
@@ -994,6 +1012,10 @@ def main():
     print(f'{len(owners)}/{len(catalogue)} catalogue errors are assigned to an area')
     corpus = [(page, entry) for page in pages for entry in page.corpus]
     print(f'{len(corpus)} spec project(s) with tests ran under jadpo test')
+    skipped = [f'{page.path.name} {name}' for page in pages for name in page.skipped]
+    if skipped:
+        print(f'skipped: jadpo test for {len(skipped)} project(s) with migrations, which need PostgreSQL '
+              f'(JADPO_SKIP_POSTGRES is set): {", ".join(skipped)}')
     if args.export_corpus:
         export_corpus(corpus)
     if args.freeze and not failed:

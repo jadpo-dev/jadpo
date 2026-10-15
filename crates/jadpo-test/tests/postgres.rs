@@ -841,3 +841,66 @@ fn copies_keep_up_with_tests_on_many_threads() {
         started.elapsed()
     );
 }
+
+/// The ids of the server's databases whose names start with `prefix`.
+fn database_ids(runtime: &Runtime, prefix: &str) -> Vec<SqlValue> {
+    let server = jadpo_test::database::server().unwrap();
+    let store = postgres(&server.url("postgres")).unwrap();
+    runtime.block_on(async {
+        rows(
+            &store,
+            "SELECT oid::int8 FROM pg_database WHERE starts_with(datname, $1)",
+            &[SqlValue::Text(prefix.into())],
+        )
+        .await
+        .into_iter()
+        .flatten()
+        .collect()
+    })
+}
+
+#[test]
+fn copies_left_by_one_run_are_used_by_the_next() {
+    if skipped() {
+        return;
+    }
+    let runtime = Runtime::new().unwrap();
+    let first = TestDatabases::new(note_steps("handed_note"), false);
+    let host = TestHost::new(&first);
+    runtime.block_on(async { add_note(&host, "handed_note", "left").await.unwrap() });
+    host.finish(false);
+    // The run is over: its copies are emptied and left on the server.
+    drop(first);
+    let free = database_ids(&runtime, "jadpo_free_");
+    assert!(!free.is_empty(), "the run's copies are left for the next");
+    let second = TestDatabases::new(note_steps("handed_note"), false);
+    let host = TestHost::new(&second);
+    runtime.block_on(async {
+        assert_eq!(note_count(&host, "handed_note").await, 0, "emptied");
+        let id = host_rows(
+            &host,
+            "SELECT oid::int8 FROM pg_database WHERE datname = current_database()",
+        )
+        .await;
+        assert!(
+            free.contains(&id[0][0]),
+            "a copy the first run left: {id:?}"
+        );
+    });
+    host.finish(false);
+}
+
+#[test]
+fn a_run_makes_no_more_copies_than_its_tests_can_use() {
+    if skipped() {
+        return;
+    }
+    let runtime = Runtime::new().unwrap();
+    let databases = TestDatabases::new(note_steps("lone_note"), false).for_tests(1);
+    let host = TestHost::new(&databases);
+    runtime.block_on(async { assert_eq!(note_count(&host, "lone_note").await, 0) });
+    // The one test's copy, and none prepared beyond it.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert_eq!(databases.copies(), 1);
+    host.finish(false);
+}
