@@ -502,6 +502,9 @@ migration {
   yet). Removing an entity, moving one between stores and changing a
   column's type other than widening it aren't built yet: `jadpo migrate
   new` says so.
+- **Backfills can be worked out** from each row's own fields (Richard,
+  2026-10-15), for a new field that reshapes data the entity already holds.
+  See "Computed backfills" below; not built yet.
 - **Forgetting is caught at once**: `jadpo check` fails while the entities
   and the latest snapshot disagree, naming what changed and the command to
   run, so the editor, the build and CI all stop. Loose files, with no
@@ -514,6 +517,52 @@ migration {
   configuration gives each connection its URL (area 10), both take it with
   `--url`. The application's refusal to start against a database that
   does not match comes with the compiled deployables (Phase 8).
+
+### Computed backfills
+
+A backfill can be an expression over each row's own stored fields, so a
+migration can reshape data rather than only fill it with one value
+(Richard, 2026-10-15):
+
+```jadpo fragment
+// domains/planning/libraries/priorities.jadpo
+library priorities {
+    function from_flag(legacy_flag: Bool) -> Priority {
+        if (legacy_flag) {
+            return Priority.high
+        }
+        return Priority.normal
+    }
+}
+
+// database/migrations/20261101T0900_priority_from_flag/changes.jadpo
+/// Replaces the legacy flag with a priority worked out from it.
+migration {
+    Todo.priority: {
+        backfill: priorities.from_flag(Todo.legacy_flag)
+    }
+    Todo.legacy_flag: FieldChange.retired
+}
+```
+
+- `Todo.legacy_flag` means each row's stored value, as on the right of an
+  update's `set:` (area 6). The expression may use the entity's fields as
+  they stand before this migration, including one this migration retires,
+  constants and pure functions (`priorities` is a library, area 1); never a
+  query, another entity or `clock.now`. It is typed against the field it
+  fills, like any value.
+- The migration adds the column as optional and fills existing rows in
+  batches, each in its own transaction, so a large table is never locked
+  for the whole backfill. A last short transaction fills rows that servers
+  still on the old build wrote meanwhile, and makes the column required.
+- When every operation in the expression has a SQL form, each batch is one
+  `UPDATE`; otherwise `jadpo migrate apply` reads each batch, works the
+  values out in the runtime and writes them back. The generated SQL says
+  which.
+- Freeform SQL in migrations stays out: a backfill is checked Jadpo, so a
+  migration can't write a value its field's rules forbid.
+
+Built in chunk 5.6.
 
 A migration's `postgres.sql` holds a section per store, each opened by a
 `-- store: <name>` line, and names every table, column, constraint and index
@@ -1921,3 +1970,4 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Deleting a record with a lifecycle | Chosen in chunk 3.4: `delete` runs the `delete` transition; with none, code can't delete the record, nor remove one whose delete would cascade to an entity with a lifecycle; only purge removes them | 2026-10-15 |
 | Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place until configuration (chunk 5.1); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
 | Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |
+| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review) | 2026-10-15 |

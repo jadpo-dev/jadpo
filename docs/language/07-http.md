@@ -167,7 +167,8 @@ Every route has a deadline: 10 seconds unless `deadline:` says otherwise,
 and never more than 60 (question 5). When it passes, the runtime starts no
 new work, commits nothing and answers 504 `deadline_exceeded`. The deadline
 covers integration calls, which have their own shorter timeouts (area 11);
-longer work answers `status: SuccessStatus.accepted` and continues in a subscriber.
+longer work answers `status: SuccessStatus.accepted` and continues in a
+subscriber, or the route waits for it with `settle:`.
 
 ```jadpo fragment
 POST /import {
@@ -177,6 +178,48 @@ POST /import {
     run: import_todos(input)
 }
 ```
+
+
+## Waiting for follow-on work
+
+An action does its own database work and leaves the rest, such as a second
+provider call, to subscribers (area 12). When the client wants the finished
+result rather than `202`, the route waits for that work with `settle:`
+(Richard, 2026-10-15):
+
+```jadpo fragment
+POST /orders {
+    input: PlaceOrder
+    output: OrderView
+    status: SuccessStatus.created
+    run: place_order(input, current_principal.user)
+    settle: {
+        answer: order_view(result.id)
+        within: 5s
+    }
+}
+```
+
+- After the action commits, the runtime delivers the events it emitted at
+  once, and the events their subscribers emit in turn, while the request
+  waits.
+- The work has settled when every one of those deliveries has succeeded,
+  failed for good or been parked as `outcome_unknown`. A delivery waiting
+  to retry (`unavailable`, `rate_limited`) has not.
+- Then the route runs `answer:`, a named query given `result` (the
+  action's result), and answers with its result and the route's `status:`.
+  If `within:` passes first, it runs the same query and answers `202`, so
+  the client gets the same `output:` either way and knows from the status
+  whether the work finished. The work carries on in the background either
+  way, exactly as it would without `settle:`.
+- With `settle:`, `output:` is the query's result type, not the action's.
+  `within:` must fit inside the route's `deadline:`, and waiting never ends
+  in a 504, because the action has already committed.
+- Only work this action set off is waited for, never other requests' work
+  or published copies of events (area 12).
+- A repeat with the same `Idempotency-Key` runs the answer query again
+  rather than replaying a stored body, so it shows how far the work has
+  got.
 
 ## Health
 
@@ -956,3 +999,5 @@ route groups, inputs, outputs, statuses, OpenAPI and the API record; chunk
 | Route test request and `Response` | Owned by area 13; this page links to it | 2026-10-12 |
 | Route declaration form | `GET /path { }` entries inside a `routes` group, keyed by method and path; the one exception to the colon rule | 2026-10-12 |
 | Idempotent writes | Every non-`GET` route honours `Idempotency-Key`, handled entirely by the runtime: stored with the response in the action's transaction for 24 hours, scoped to the caller; reuse with a different request is 422, in flight is 409; `unavailable` and internal failures not stored; `idempotency: Idempotency.required` per API | 2026-10-12 |
+| Expired idempotency keys | A lookup ignores a key older than 24 hours; the runtime deletes expired keys in batches from its own minute tick (area 12), so the table holds about a day of keys (Richard, from an outside review) | 2026-10-15 |
+| Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |

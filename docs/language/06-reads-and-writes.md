@@ -982,6 +982,26 @@ bound waits for a host clock, which comes with time (chunk 5.2). A record
 handed to an action from outside its transaction (a test passing one an
 earlier action returned) is checked only as far as its row is still there.
 
+
+### Outside calls hold no transaction
+
+No transaction is open while an action waits on a provider (Richard,
+2026-10-15). What an action reads before its outside call runs in a short
+read-only snapshot that closes before the call goes out; the transaction
+opens after the call returns, and the action's writes and any later reads
+run in it. Reads between two outside calls get a snapshot of their own. A
+write to a record loaded before the call checks that its row is unchanged
+since it was loaded, by comparing PostgreSQL's row version (`xmin`, which
+Entity Framework's PostgreSQL provider uses the same way), and a change is
+a concurrent change like any other: the whole action runs again, and the
+call repeats harmlessly under its idempotency key (area 11).
+
+So a slow provider holds no database connection, and the time it takes
+never widens the window in which another request's change forces a rerun.
+The guarantee is the one repeatable read gives: every record the action
+writes is checked against the copy it loaded. Built with outside calls in
+chunk 7.4.
+
 ::: today
 
 An action that calls two entities' writing actions must say
@@ -1039,9 +1059,17 @@ in one step and nothing needs checking. On the right of `set:`,
 `video.view_count` would be the copy loaded earlier. Such an update takes the
 record's `id` instead of a loaded record, and its values may use only
 parameters, constants, `clock.now` and the record's stored fields, so no
-increment is ever lost. As the action's first statement it never reruns; after
-an earlier read in the same action, two requests racing on the row rerun the
-action, as any concurrent change does (Richard, 2026-10-15).
+increment is ever lost.
+
+Which isolation level an action runs at follows from what it does (Richard,
+2026-10-15). An action that loads no record, neither itself nor through any
+action it calls, runs at PostgreSQL's read committed level: of two requests
+counting the same row at once, the second waits for the first, adds to its
+count and commits, and neither reruns. An action that loads a record runs at
+repeatable read (see "All-or-nothing actions and concurrent changes"), so a
+counter racing another request on a row it loaded reruns the action, as any
+concurrent change does. The compiler decides this from the graph; authors
+write nothing.
 
 ```jadpo check project=counter file=video.jadpo hidden
 type ViewCount = Int {
@@ -1076,6 +1104,12 @@ decimal places than the field's `scale`, since PostgreSQL would round the
 sum its own way (half away from zero) rather than Jadpo's: a literal by its
 own places, any other value by its type's `scale`, and one whose type sets
 none is refused (`data.stored_decimal_scale`, built in chunk 3.4).
+Until chunk 3.7 every action runs at repeatable
+read, so even a counter that is the action's first statement reruns when
+another request increments the row at the same moment: PostgreSQL makes the
+second wait, then refuses it with "could not serialize access due to
+concurrent update" once the first commits. At read committed both commit
+and the count goes up by two (checked against PostgreSQL 16, 2026-10-15).
 
 ## Reading in a loop
 
@@ -3294,6 +3328,18 @@ database.
     `jadpo test` supplies an in-memory cache that behaves like Redis and is
     emptied between tests, so tests run production's code paths; a test
     checks a cached read by reading, writing elsewhere and reading again.
+15. **Can a one-step update refuse when the stored value would break a
+    rule?** Raised 2026-10-15 by an outside review. Taking stock
+    (`Product.stock - quantity`) can't be a one-step update today, because
+    the declared ranges can't prove the result stays at 0 or above, so the
+    action loads the product first, and buyers racing on one product rerun
+    each other; in a flash sale that uses up the three-attempt budget.
+    *Recommendation:* a stored-value construction in `set:` may map the
+    rules it can break, as any construction does (area 2):
+    `stock: Stock(Product.stock - quantity) { min: OutOfStock }`. The
+    database checks the condition in the same statement (`WHERE "stock" >=
+    $1`), and no row updated is the mapped failure, so the update stays one
+    step and never reruns. Open.
 
 ### Decisions
 
@@ -3332,7 +3378,8 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | References that hold | Chosen in chunk 3.3: a reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure | 2026-10-14 |
 | Stored values | Chosen in chunk 3.3: an update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove | 2026-10-14 |
 | Refusals in a called action | Chosen in chunk 3.3: a write that can be refused, run by an action another action called, runs inside a savepoint, so a caller handling the failure carries on | 2026-10-14 |
-| Counters and reruns | A counter never loses an increment; it reruns its action only when an earlier read in the same action races another request on the row, as any concurrent change does (corrects the earlier "never reruns") (Richard) | 2026-10-15 |
 | Transitions as operations | Chosen in chunk 3.4: `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records | 2026-10-15 |
 | A transition's `when:` refusing | Chosen in chunk 3.4: a `when:` that asks more than `visible:` can refuse a record that is there, a conflict mapped in `conflict:` keyed by the transition (`User.disable: UserDisabled`), with no catch-all; one that asks only what `visible:` asks can't, since a hidden record is not found | 2026-10-15 |
 | Counter decimals | A decimal added to or subtracted from a stored field in a counter update may not have more decimal places than the field's `scale`; built in chunk 3.4 as `data.stored_decimal_scale`, a value whose type sets no `scale` counting as too many (Richard) | 2026-10-15 |
+| Isolation by what an action does | An action that loads no record, itself or through any action it calls, runs at read committed, so concurrent counters on one row both commit without a rerun; any other action runs at repeatable read. Corrects "as the action's first statement it never reruns", which PostgreSQL refuses at repeatable read (Richard, from an outside review) | 2026-10-15 |
+| Outside calls and the transaction | No transaction is open during an outside call: reads before it run in a read-only snapshot closed before the call, the transaction opens after it, and a write to a record loaded before the call checks its row version, a change rerunning the action (Richard, from an outside review) | 2026-10-15 |

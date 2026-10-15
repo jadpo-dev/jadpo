@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-14. This page is the only list of outstanding work: the
+**Updated:** 2026-10-15. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -210,28 +210,59 @@ reference only).
   `jadpo lsp`, with highlighting, so errors, hover and go to definition work
   in the editor (area 14, "Editor support"). The archived extension is
   reference only.
+- [ ] **3.7 Isolation by what an action does** `opus · xhigh` (area 6,
+  "Counters and other one-step updates", 2026-10-15): an action that loads
+  no record, itself or through any action it calls, runs at read committed;
+  every other action at repeatable read. Done when two concurrent counters
+  that are their actions' first statements both commit with no rerun (today
+  the second reruns), and a counter after a read still reruns.
 
 ## Phase 4 — HTTP, identity and policy (areas 7–9)
 
 - [ ] **4.1 Routes:** `opus · high` groups, inputs, outputs, statuses, OpenAPI, the API
   record, default rate limits.
-- [ ] **4.2 Request guarantees:** `opus · high` idempotency, deadlines, body limits, health.
+- [ ] **4.2 Request guarantees:** `opus · high` idempotency (a lookup ignores
+  keys past 24 hours; deleting them comes with 6.2), deadlines, body limits,
+  health.
 - [ ] **4.3 Sign-in:** `opus · high` sessions, API tokens, service keys.
 - [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
   report.
 
-## Phase 5 — Configuration, time and translations (area 10)
+## Phase 5 — Configuration, time, translations and the standard library (area 10)
 
 - [ ] **5.1 Configuration:** `sonnet · high` `config.jadpo`, environments, secrets, signing
   keys.
 - [ ] **5.2 Time:** `opus · high` durations, instants, formatting.
 - [ ] **5.3 Translations and locales.** `sonnet · high`
+- [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`
+  and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
+  real code keeps needing more: splitting and trimming text, formatting and
+  rounding numbers, hashing, encodings. Collect what the decided areas and
+  the example apps already call or will need, compare the standard
+  libraries of TypeScript, Rust, Go, Elixir and Python, and write one new
+  area page: the namespaces, every operation's signature and failures,
+  which have a SQL form (for queries and backfills), and what is left out
+  on purpose. **Needs Richard** to decide the page before 5.5.
+- [ ] **5.5 Standard library: the build** `opus · high`: the operations 5.4
+  decided, in the shared operation table, the interpreter and the runtime,
+  each with its page examples as tests. Split here before starting if 5.4's
+  page is more than one session.
+- [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
+  2026-10-15): `backfill:` as an expression over each row's own fields,
+  filled in batches, one `UPDATE` each where it has a SQL form and by
+  `jadpo migrate apply` otherwise, then made required.
 
 ## Phase 6 — Events and schedules (area 12)
 
 - [ ] **6.1 Events:** `opus · high` outbox, subscribers, retries, `Access.system`, trace
   context.
-- [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics.
+- [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
+  and the runtime's own sweeps, starting with deleting expired idempotency
+  keys (area 7).
+- [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
+  "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
+  events and their follow-ons at once, answers with the named query when
+  they settle and with `202` past `within:`.
 
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
@@ -241,6 +272,13 @@ reference only).
   packages, generated fakes, `jadpo provider record`.
 - [ ] **7.3 Email:** `opus · high` the capability, SMTP driver, `emails/` templates, the dev
   inbox, the health score.
+- [ ] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
+  11, 2026-10-15): reads before a call in a read-only snapshot closed before
+  it, the transaction opened after it, a write to a record loaded before the
+  call checked by its row version, and a change rerunning the action with
+  the call repeated under its key. Done when a test holds a provider call
+  open and shows no transaction open meanwhile, and a change made during
+  the call reruns the action.
 
 ## Phase 8 — Compiled deployables
 

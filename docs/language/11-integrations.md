@@ -293,8 +293,13 @@ action book_collection(shipment: Shipment) fails CollectionSlotGone -> Shipment 
   over many pages runs one page per subscriber delivery (area 12).
 - **Order with writes** (question 7, decided). A call that changes something
   comes before any write; the writes commit after it returns, and a failed
-  commit retries the call with the same key. An action makes at most one
-  such call (area 12). Work that must follow a write emits an event.
+  commit retries the call with the same key. No transaction is open while
+  the call is out: reads before it use a snapshot closed before the call,
+  and a write to a record loaded before it checks the row is unchanged
+  (area 6, "Outside calls hold no transaction", 2026-10-15). An action makes
+  at most one such call, so a rerun or a retried request repeats exactly one
+  keyed call and gets the provider's stored answer (area 12). Work that must
+  follow a write emits an event.
 
 ## Webhooks as events
 
@@ -1703,6 +1708,16 @@ are open.
     - `connection.webhook_url` as a mapping value (Twilio's status
       callback). *Decided 2026-10-13:* yes, as recommended.
 
+26. **What happens when a write is refused after the call took effect?**
+    Raised 2026-10-15 by an outside review. The call comes before the
+    writes, so a write refused afterwards for good (a unique rule, a
+    restricted reference) rolls back the database's only record of a change
+    the provider kept, and retrying the request refuses again.
+    *Recommendation:* `jadpo check` warns at a write that can be refused
+    after a changing call, naming the two fixes: check the condition with a
+    read before the call, or record the call's result first and do the
+    refusable work in a subscriber of an event that write emits. Open.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -1749,3 +1764,4 @@ are open.
 | Development drivers | Nothing leaves the machine: local inbox, local disk, published-event log, in-memory cache; the database runs its real engine | 2026-10-13 |
 | Targets | Drivers list the targets they run on; `jadpo check` refuses mismatches; the schedule tick comes from the target | 2026-10-13 |
 | Gaps from the modelled packages | Test-credential sandboxes, placeholder hosts, credential shape by scheme, more webhook checks, `connection.webhook_url`, each built with the first package needing it | 2026-10-13 |
+| Transaction during a call | None is open: reads before the call run in a snapshot closed before it, the transaction opens after it, and writes to records loaded before it check the row version (area 6) (Richard, from an outside review) | 2026-10-15 |

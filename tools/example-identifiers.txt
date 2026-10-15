@@ -278,6 +278,7 @@ formatted_price
 fragile
 fresh
 from_count
+from_flag
 gbp
 gluten
 golden
@@ -526,6 +527,7 @@ price_lines
 price_loaves
 price_per_kilo
 price_text
+priorities
 priority
 priority_too_high
 pristine
