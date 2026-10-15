@@ -1,0 +1,14 @@
+// Habits an SQL author brings to a query's conditions.
+query open_todos(owner: User.id) -> List<Todo> {
+    from: Todo
+    where: Todo.owner_id = owner  // error: syntax.equality_operator
+    where: Todo.done_at IS NULL  // error: syntax.equality_operator
+    where: Todo.started_at IS NOT NULL  // error: syntax.equality_operator
+    where: Todo.status <> TodoStatus.done  // error: syntax.equality_operator
+    where: NOT Todo.archived  // error: syntax.logical_operator
+    where: Todo.flagged OR Todo.urgent  // error: syntax.logical_operator
+    where: Todo.flagged AND Todo.urgent  // error: syntax.logical_operator
+    where: Todo.title == 'urgent'  // error: syntax.string_quotes
+    order: [Todo.due_at asc]
+    limit: 50
+}

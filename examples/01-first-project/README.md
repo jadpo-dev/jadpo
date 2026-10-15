@@ -52,4 +52,6 @@ target/release/jadpo fmt --check examples/01-first-project
   <!-- try {"file": "domains/baking/actions/usual_order.jadpo", "replace": "use baking/types { Pence }\n", "with": "", "check": ["import.missing"]} -->
 - In `usual_order.jadpo`, change `use baking/actions { price_loaves }` to `use baking/actions { price_loaves, usual_order }`. `jadpo check` reports `import.unneeded`: a file sees what it declares without importing it.
   <!-- try {"file": "domains/baking/actions/usual_order.jadpo", "replace": "use baking/actions { price_loaves }", "with": "use baking/actions { price_loaves, usual_order }", "check": ["import.unneeded"]} -->
+- In `price_loaves.jadpo`, change `var total: Pence` to `let total: Pence`, as JavaScript or Rust would have it. `jadpo check` reports `syntax.variable_keyword`, whose edit writes `var` back; the rest of the project is still checked, since `let` reads as `var`.
+  <!-- try {"file": "domains/baking/actions/price_loaves.jadpo", "replace": "var total: Pence", "with": "let total: Pence", "check": ["syntax.variable_keyword"]} -->
 - Then read [02-named-types](../02-named-types/README.md).

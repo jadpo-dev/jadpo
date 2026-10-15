@@ -2,13 +2,19 @@
 //! §2.2): every example, mutated at random many times, still parses into a
 //! tree that holds its text exactly. The mutations are seeded, so a failure
 //! repeats; the failing input is printed.
+//!
+//! The mutations insert habits from other languages too, and every parse
+//! keeps the rule behind them (decision register, 2026-10-15): a syntax
+//! error never brings a second on its line, and when every error is a clean
+//! habit (`Parse::checkable`), applying the edits gives, round by round, a
+//! file with none.
 
 #[path = "support/examples.rs"]
 mod examples;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use jadpo_syntax::{parse_file, parse_snippet, parse_template};
+use jadpo_syntax::{Parse, parse_file, parse_snippet, parse_template};
 
 #[path = "support/mutate.rs"]
 mod mutate;
@@ -19,17 +25,86 @@ fn check(text: &str) {
     let result = catch_unwind(AssertUnwindSafe(|| {
         for parse in [parse_file(text), parse_snippet(text), parse_template(text)] {
             assert_eq!(parse.syntax().to_string(), text, "the tree lost text");
-            for error in parse.errors() {
-                assert!(
-                    error.start <= error.end && error.end as usize <= text.len(),
-                    "an error points outside the text: {error:?}"
-                );
-            }
+            one_error_a_line(text, &parse);
         }
+        clean_edits_converge(text);
     }));
     if result.is_err() {
         panic!("the parser failed on this input:\n{text:?}");
     }
+}
+
+/// Errors and their edits stay in the text, and no line has two errors.
+fn one_error_a_line(text: &str, parse: &Parse) {
+    let mut lines = std::collections::HashSet::new();
+    for error in parse.errors() {
+        assert!(
+            error.start <= error.end && error.end as usize <= text.len(),
+            "an error points outside the text: {error:?}"
+        );
+        for edit in &error.edits {
+            assert!(
+                edit.start <= edit.end
+                    && edit.end as usize <= text.len()
+                    && text.is_char_boundary(edit.start as usize)
+                    && text.is_char_boundary(edit.end as usize),
+                "an edit points outside the text: {error:?}"
+            );
+        }
+        let line = text[..error.start as usize].matches('\n').count();
+        assert!(
+            lines.insert(line),
+            "a second error on line {}: {error:?}",
+            line + 1
+        );
+    }
+}
+
+/// A file whose errors are all clean habits becomes a file with none when
+/// their edits are made, a round at a time (a line shows one at a time).
+fn clean_edits_converge(text: &str) {
+    let mut current = text.to_string();
+    for _ in 0..12 {
+        let parse = parse_file(&current);
+        if !parse.checkable() {
+            assert_eq!(
+                current,
+                text,
+                "an edit left a file that isn't checkable:\n{current:?}\n{:#?}",
+                parse.errors()
+            );
+            return;
+        }
+        if parse.errors().is_empty() {
+            return;
+        }
+        let mut edits: Vec<_> = parse
+            .errors()
+            .iter()
+            .flat_map(|e| e.edits.clone())
+            .collect();
+        edits.sort_by_key(|edit| (edit.start, edit.end));
+        let mut next = current.clone();
+        let mut last_start = u32::MAX;
+        for edit in edits.iter().rev() {
+            if edit.end > last_start {
+                continue;
+            }
+            next.replace_range(edit.start as usize..edit.end as usize, &edit.text);
+            last_start = edit.start;
+        }
+        assert_ne!(
+            next,
+            current,
+            "clean errors with no edit:\n{current:?}\n{:#?}",
+            parse.errors()
+        );
+        current = next;
+    }
+    panic!(
+        "clean edits didn't converge:\n{current:?}\n{:#?}",
+        parse_file(&current).errors()
+    );
 }
 
 #[test]
@@ -76,6 +151,10 @@ fn hostile_input_is_survived() {
     inputs.push("{{ if a }}".repeat(5_000));
     inputs.push("{{ for a in b }}".repeat(5_000));
     inputs.push("- ".repeat(20_000));
+    // Habits written tight against their neighbours: the edits keep the
+    // words apart.
+    inputs.push("function f(a: Flag, b: Flag): Flag {\n    return !a&&b||a===b;\n}\n".to_string());
+    inputs.push("function f(a: Flag)->Flag {\n    return a AND(b) OR NOT(a)\n}\n".to_string());
     for input in inputs {
         check(&input);
     }

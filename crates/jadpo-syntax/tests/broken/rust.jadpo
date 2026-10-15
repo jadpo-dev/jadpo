@@ -1,0 +1,35 @@
+// Habits a Rust author brings.
+use shared::types::{Pence, Quantity};  // error: syntax.import_statement
+
+pub fn total(items: List<Item>) -> Pence {  // error: syntax.export_keyword
+    let count: Quantity = 1;  // error: syntax.variable_keyword
+    let mut sum: Pence = 0  // error: syntax.variable_keyword
+    var item: Item = load(count)?  // error: syntax.try_catch
+    var names: List<Name> = collection.map(items, |item| item.name)  // error: syntax.inline_function_arrow
+    var rank: Rank = match item.status {
+        Status.open => 1  // error: syntax.match_arrow
+        Status.done -> 2
+    }
+    assert_eq!(total(items), 3);  // error: syntax.assertion_form
+    assert!(count > 0)  // error: syntax.assertion_form
+    assert_ne!(count, 2)  // error: syntax.assertion_form
+    return sum
+}
+
+pub(crate) fn empty() -> Pence {  // error: syntax.export_keyword
+    return 0
+}
+
+fn zero() -> Pence {  // error: syntax.function_keyword
+    return 0
+}
+
+struct Line {  // error: syntax.type_keyword
+    price: Pence,  // error: syntax.member_comma
+    count: Quantity,  // error: syntax.member_comma
+}
+
+enum Status {  // error: syntax.type_keyword
+    open,  // error: syntax.member_comma
+    done  /* the last one */  // error: syntax.comment_style
+}

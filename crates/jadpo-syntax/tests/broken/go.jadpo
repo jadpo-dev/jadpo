@@ -1,0 +1,13 @@
+// Habits a Go author brings.
+import "fmt"  // error: syntax.import_statement
+
+type Line struct {  // error: syntax.type_keyword
+    price: Pence
+}
+
+func total(lines: []Line) -> Pence {  // error: syntax.function_keyword
+    var prices: List<Pence> = gather(lines)
+    var copied: []Pence = prices  // error: syntax.collection_type
+    var sum: Pence = 0
+    return sum
+}

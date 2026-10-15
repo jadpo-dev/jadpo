@@ -81,6 +81,8 @@ or library.
 ## Comments
 
 Line comments start with `//`. They carry no meaning and are kept for tooling.
+`#` and `/* */` comments from other languages are `syntax.comment_style`,
+whose edit writes them with `//` (or `///` for `/** */`).
 A `///` comment attaches to the next declaration and documents it: editors,
 generated documentation and the library catalogue show it.
 
@@ -1318,6 +1320,95 @@ error: `\q` isn't an escape Jadpo knows
   next: Write `\\q` for a backslash followed by `q` (agent)
   rule: syntax.invalid_escape
   help: docs/language/01-project-layout-and-modules.html#syntax-invalid-escape
+
+check failed: 1 error, 1 file
+```
+
+### Habits from other languages
+
+People and agents write constructs from other languages out of habit
+(decision register, 2026-10-15). Each has an error of its own that names
+the habit and the Jadpo form, with an edit, and parsing carries on as if the
+Jadpo form had been written, so a line gives one error. When the Jadpo
+form only renames or drops words, the rest of the project is checked too.
+The catalogue is `jadpo_syntax::habits`; [area 3](03-logic.md#habits-from-other-languages)
+explains how a line shows one error at a time.
+
+### `syntax.comment_style`
+
+A comment starts with `//`, or `///` to document a declaration; `#` and `/* */` are other languages'.
+
+```jadpo check project=e-habit-comment expect=syntax.comment_style
+# Counts start at zero.
+type Count = Int {
+    min: 0
+}
+```
+
+```text output
+error: Jadpo writes comments with `//`, not `#`
+ --> main.jadpo:1:1
+  |
+1 | # Counts start at zero.
+  | ^ write `//`
+  reason: `#` starts a comment in Python, Ruby, shell scripts and YAML; a Jadpo comment starts with `//`, or `///` to document a declaration.
+  next: Use `//` instead of `#` (agent)
+  rule: syntax.comment_style
+  help: docs/language/01-project-layout-and-modules.html#syntax-comment-style
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.import_statement`
+
+A file brings names in with `use <folder> { Names }`; `jadpo fmt` writes those lines.
+
+```jadpo check project=e-habit-import expect=syntax.import_statement
+import { Count } from "./shared/types"
+
+function same(count: Count) -> Count {
+    return count
+}
+```
+
+```text output
+error: Jadpo writes `use`, not `import`
+ --> main.jadpo:1:1
+  |
+1 | import { Count } from "./shared/types"
+  | ^^^^^^ write `use`
+  reason: `import … from` brings names into a JavaScript or TypeScript file, `from … import` into a Python module and `import a.b.C` into a Java or Kotlin file; a Jadpo file brings names in from a folder with `use <folder> { Names }`, and `jadpo fmt` writes those lines for you.
+  next: Write `use shared/types { Count }` (agent)
+  rule: syntax.import_statement
+  help: docs/language/01-project-layout-and-modules.html#syntax-import-statement
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.export_keyword`
+
+Every declaration is visible across its domain without `export` or `pub`; `public` opens one to other domains.
+
+```jadpo check project=e-habit-export expect=syntax.export_keyword
+type Count = Int {
+    min: 0
+}
+
+export function same(count: Count) -> Count {
+    return count
+}
+```
+
+```text output
+error: Jadpo has no `export`
+ --> main.jadpo:5:1
+  |
+5 | export function same(count: Count) -> Count {
+  | ^^^^^^ remove `export`
+  reason: `export` makes a name visible to other files in JavaScript and TypeScript, and `pub` outside its module in Rust; every Jadpo declaration is visible across its domain, and `public` opens it to other domains.
+  next: Remove `export` (agent)
+  rule: syntax.export_keyword
+  help: docs/language/01-project-layout-and-modules.html#syntax-export-keyword
 
 check failed: 1 error, 1 file
 ```

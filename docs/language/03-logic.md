@@ -227,10 +227,12 @@ Operators work on the representation, so their result is a plain `Int`,
 `Decimal`, `Text` or `Bool`, and turning it back into a named type is a
 constructor (area 2). Parentheses group. `and` and `or` stop as soon as the
 answer is known. `a < b < c` is an error, because `a < b` is a `Bool`.
-Logical operators are words; `!`, `&&` and `||` are not Jadpo. Nor are
+Logical operators are words; `!`, `&&` and `||` are not Jadpo, and each is
+one error whose edit writes the word (`syntax.logical_operator`). Nor are
 `===` and `!==`: `==` and `!=` already compare values of one type, so each
 is one error whose edit writes `==` or `!=` (`syntax.equality_operator`,
-chunk 3.5).
+chunk 3.5), as are SQL's `<>`, `=` and `IS NULL` (chunk 3.8, [Habits from
+other languages](#habits-from-other-languages)).
 
 Questions 6 and 7 decided operator typing and division:
 
@@ -1222,12 +1224,12 @@ function rank(status: TicketStatus) -> Rank {
 ```
 
 ```text output
-error: Match arms use `->`
+error: Jadpo writes `->`, not `=>`
  --> main.jadpo:12:27
    |
 12 |         TicketStatus.open => 1
-   |                           ^^ expected `->`
-  reason: `=>` was removed: an arm uses the same arrow as a result type.
+   |                           ^^ write `->`
+  reason: `=>` ends a match arm's pattern in Rust, Scala, C# and PHP; a Jadpo arm uses `->`, the same arrow as a result type.
   next: Use `->` instead of `=>` (agent)
   rule: syntax.match_arrow
   help: docs/language/03-logic.html#syntax-match-arrow
@@ -2468,6 +2470,497 @@ error: `result` has no value
 check failed: 1 error, 1 file
 ```
 
+### Habits from other languages
+
+People and agents write constructs from other languages out of habit
+(decision register, 2026-10-15). Each has an error of its own that names
+the habit and the Jadpo form, with an edit, and parsing carries on as if
+the Jadpo form had been written. A syntax error never brings a second on
+its line: anything else the line holds is reported once the first is
+fixed, so `pub fn total(): Pence {` shows `pub`, then `fn`, then `:`.
+When the Jadpo form only renames or drops words (`let` for `var`, `&&` for
+`and`, a `;` at the end of a line), the tree is the one the Jadpo form
+gives and the rest of the project is checked too, leaving out only
+problems on the habit's line. The catalogue is `jadpo_syntax::habits`,
+and a corpus of broken files checks one error a line
+(`crates/jadpo-syntax/tests/broken/`).
+
+### `syntax.variable_keyword`
+
+A variable is `var name: Type = value`, or `var mut` when it can change.
+
+```jadpo check project=e-habit-let expect=syntax.variable_keyword
+type Count = Int {
+    min: 0
+}
+
+function same(count: Count) -> Count {
+    let kept: Count = count
+    return kept
+}
+```
+
+```text output
+error: Jadpo writes `var`, not `let`
+ --> main.jadpo:6:5
+  |
+6 |     let kept: Count = count
+  |     ^^^ write `var`
+  reason: `let` declares a variable in JavaScript, TypeScript, Swift and Rust; a Jadpo variable is `var name: Type = value`, or `var mut` when it can change.
+  next: Use `var` instead of `let` (agent)
+  rule: syntax.variable_keyword
+  help: docs/language/03-logic.html#syntax-variable-keyword
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.function_keyword`
+
+A function starts with `function`, not `fn`, `func`, `def` or `fun`.
+
+```jadpo check project=e-habit-fn expect=syntax.function_keyword
+type Count = Int {
+    min: 0
+}
+
+fn same(count: Count) -> Count {
+    return count
+}
+```
+
+```text output
+error: Jadpo writes `function`, not `fn`
+ --> main.jadpo:5:1
+  |
+5 | fn same(count: Count) -> Count {
+  | ^^ write `function`
+  reason: `fn` declares a function in Rust; Jadpo starts one with `function`, or `action` when it reads or writes stored data.
+  next: Use `function` instead of `fn` (agent)
+  rule: syntax.function_keyword
+  help: docs/language/03-logic.html#syntax-function-keyword
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.return_type_arrow`
+
+The result type follows `->`.
+
+```jadpo check project=e-habit-colon-result expect=syntax.return_type_arrow
+type Count = Int {
+    min: 0
+}
+
+function same(count: Count): Count {
+    return count
+}
+```
+
+```text output
+error: Jadpo writes the result type after `->`, not `:`
+ --> main.jadpo:5:28
+  |
+5 | function same(count: Count): Count {
+  |                            ^ write `->`
+  reason: `: Type` after the parameters is the result type in TypeScript and Kotlin; Jadpo writes `-> Type`, as in `function total(order: Order) -> Amount {`.
+  next: Use `->` instead of `:` (agent)
+  rule: syntax.return_type_arrow
+  help: docs/language/03-logic.html#syntax-return-type-arrow
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.async_await`
+
+A call gives its result when it returns, so nothing is marked `async` or `await`.
+
+```jadpo check project=e-habit-await expect=syntax.async_await
+type Count = Int {
+    min: 0
+}
+
+function same(count: Count) -> Count {
+    return count
+}
+
+function same_twice(count: Count) -> Count {
+    return await same(count)
+}
+```
+
+```text output
+error: Jadpo has no `await`
+ --> main.jadpo:10:12
+   |
+10 |     return await same(count)
+   |            ^^^^^ remove `await`
+  reason: `async` and `await` mark code that waits for a result in JavaScript, TypeScript, Python, Rust, C# and Swift; a Jadpo call always gives its result when it returns, so there is nothing to mark.
+  next: Remove `await` (agent)
+  rule: syntax.async_await
+  help: docs/language/03-logic.html#syntax-async-await
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.semicolon`
+
+A statement or member ends at the end of its line.
+
+```jadpo check project=e-habit-semicolon expect=syntax.semicolon
+type Count = Int {
+    min: 0
+}
+
+function same(count: Count) -> Count {
+    return count;
+}
+```
+
+```text output
+error: Jadpo has no `;`
+ --> main.jadpo:6:17
+  |
+6 |     return count;
+  |                 ^ remove `;`
+  reason: `;` ends a statement in JavaScript, Rust, Go, Java, C#, Kotlin, Swift and SQL; a Jadpo statement or member ends at the end of its line.
+  next: Remove `;` (agent)
+  rule: syntax.semicolon
+  help: docs/language/03-logic.html#syntax-semicolon
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.logical_operator`
+
+Logical operators are the words `and`, `or` and `not`, for `&&`, `||` and `!`, and SQL's `AND`, `OR` and `NOT`.
+
+```jadpo check project=e-habit-logic expect=syntax.logical_operator
+type Open = Bool {}
+
+type Paid = Bool {}
+
+type Done = Bool {}
+
+function done(open: Open, paid: Paid) -> Done {
+    return Done(open && paid)
+}
+```
+
+```text output
+error: Jadpo writes `and`, not `&&`
+ --> main.jadpo:8:22
+  |
+8 |     return Done(open && paid)
+  |                      ^^ write `and`
+  reason: `&&`, `||` and `!` are the logical operators of JavaScript, Rust, Go, Java, C#, Kotlin and Swift; Jadpo writes them as words: `and`, `or` and `not`.
+  next: Use `and` instead of `&&` (agent)
+  rule: syntax.logical_operator
+  help: docs/language/03-logic.html#syntax-logical-operator
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.ternary_operator`
+
+A choice between two values is a `match` on the condition; the edit writes it.
+
+```jadpo check project=e-habit-ternary expect=syntax.ternary_operator
+type Count = Int {
+    min: 0
+}
+
+type Size = Text {}
+
+function size(count: Count) -> Size {
+    return count > 10 ? "large" : "small"
+}
+```
+
+```text output
+error: Jadpo chooses a value with `match`, not `? :`
+ --> main.jadpo:8:23
+  |
+8 |     return count > 10 ? "large" : "small"
+  |                       ^ write a `match`
+  reason: `condition ? a : b` chooses a value in JavaScript, Java, C#, Kotlin and Swift; Jadpo chooses between two values with a `match` on the condition.
+  next: Write `match (count > 10)` with the arms `true -> "large"` and `false -> "small"` (agent)
+  rule: syntax.ternary_operator
+  help: docs/language/03-logic.html#syntax-ternary-operator
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.increment_operator`
+
+A `var mut` changes with `=`, and a named type converts the result back with its constructor.
+
+```jadpo check project=e-habit-increment expect=syntax.increment_operator
+type Count = Int {
+    min: 0
+}
+
+function bumped(count: Count) -> Count {
+    var mut next: Count = count
+    next++
+    return next
+}
+```
+
+```text output
+error: Jadpo writes `next = next + 1`, not `next++`
+ --> main.jadpo:7:9
+  |
+7 |     next++
+  |         ^^ write `next = next + 1`
+  reason: `++`, `--`, `+=`, `-=` and `*=` change a variable in place in JavaScript, Java, C#, Go, Kotlin, Swift and Python; Jadpo assigns a `var mut` with `=`, and a named type converts the result back with its constructor, as in `count = Count(count + 1)`.
+  next: Write `next = next + 1` (agent)
+  rule: syntax.increment_operator
+  help: docs/language/03-logic.html#syntax-increment-operator
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.else_if`
+
+An `if` goes on with `else if`.
+
+```jadpo check project=e-habit-elif expect=syntax.else_if
+type Count = Int {
+    min: 0
+}
+
+type Size = Text {}
+
+function size(count: Count) -> Size {
+    if (count > 100) {
+        return "large"
+    } elif (count > 10) {
+        return "medium"
+    }
+    return "small"
+}
+```
+
+```text output
+error: Jadpo writes `else if`, not `elif`
+ --> main.jadpo:10:7
+   |
+10 |     } elif (count > 10) {
+   |       ^^^^ write `else if`
+  reason: `elif` continues an `if` in Python, `elsif` in Ruby and `elseif` in PHP and Lua; Jadpo writes `else if`.
+  next: Use `else if` instead of `elif` (agent)
+  rule: syntax.else_if
+  help: docs/language/03-logic.html#syntax-else-if
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.for_loop`
+
+A loop is `for item in items {`, without brackets. A counting loop has no Jadpo form, so its error has no edit.
+
+```jadpo check project=e-habit-for expect=syntax.for_loop
+type Pence = Int {
+    min: 0
+}
+
+type OrderLine = Object {
+    subtotal: Pence
+}
+
+function order_total(lines: List<OrderLine>) -> Pence {
+    var mut total: Pence = 0
+    for (const line of lines) {
+        total = Pence(total + line.subtotal)
+    }
+    return total
+}
+```
+
+```text output
+error: Jadpo writes `for line in lines`, not `for (const line of lines)`
+ --> main.jadpo:11:9
+   |
+11 |     for (const line of lines) {
+   |         ^^^^^^^^^^^^^^^^^^^^^ write `for line in lines`
+  reason: `for (const item of items)` walks a list in JavaScript and TypeScript, `for (item in items)` in Kotlin, `for (Type item : items)` in Java and `foreach (var item in items)` in C#; Jadpo writes `for item in items {`, without brackets.
+  next: Write `for line in lines` (agent)
+  rule: syntax.for_loop
+  help: docs/language/03-logic.html#syntax-for-loop
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.switch_statement`
+
+A choice between cases is a `match`, with arms `pattern -> result`: `switch` and `when` are `match`, `case` goes, and `default` or `else` is `_`.
+
+```jadpo check project=e-habit-switch expect=syntax.switch_statement
+type TicketStatus = Enum {
+    open
+    closed
+}
+
+type Rank = Int {
+    min: 1
+}
+
+function rank(status: TicketStatus) -> Rank {
+    return switch (status) {
+        TicketStatus.open -> 1
+        TicketStatus.closed -> 2
+    }
+}
+```
+
+```text output
+error: Jadpo writes `match`, not `switch`
+ --> main.jadpo:11:12
+   |
+11 |     return switch (status) {
+   |            ^^^^^^ write `match`
+  reason: `switch` chooses between cases in JavaScript, Java, C#, Go and Swift, and `when` in Kotlin; Jadpo's `match` does, with one arm per line, `pattern -> result`, covering every case.
+  next: Use `match` instead of `switch` (agent)
+  rule: syntax.switch_statement
+  help: docs/language/03-logic.html#syntax-switch-statement
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.try_catch`
+
+A call that can fail is marked where it is made: `attempt` passes its failures on, and a `match` on the call handles them. `try {` and `catch` have no edit, since what to do with each failure is the author's to say.
+
+```jadpo check project=e-habit-try expect=syntax.try_catch
+type Count = Int {
+    min: 0
+}
+
+type CountMissing = Failure {
+    kind: FailureKind.not_found
+}
+
+function counted_or_missing(count: Count) fails CountMissing -> Count {
+    if (count == 0) {
+        reject CountMissing
+    }
+    return count
+}
+
+function first(count: Count) fails CountMissing -> Count {
+    var result: Count = try counted_or_missing(count)
+    return result
+}
+```
+
+```text output
+error: Jadpo writes `attempt`, not `try`
+ --> main.jadpo:17:25
+   |
+17 |     var result: Count = try counted_or_missing(count)
+   |                         ^^^ write `attempt`
+  reason: `try` marks a call that can fail in Swift; Jadpo writes `attempt`, which passes the call's failures on to the caller.
+  next: Use `attempt` instead of `try` (agent)
+  rule: syntax.try_catch
+  help: docs/language/03-logic.html#syntax-try-catch
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.inline_function_arrow`
+
+An inline function is `item -> expression`.
+
+```jadpo check project=e-habit-arrow expect=syntax.inline_function_arrow
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type Todo = Object {
+    title: TodoTitle
+}
+
+function titles(todos: List<Todo>) -> List<TodoTitle> {
+    return collection.map(todos, todo => todo.title)
+}
+```
+
+```text output
+error: Jadpo writes `todo -> todo.title`, not `todo => todo.title`
+ --> main.jadpo:10:34
+   |
+10 |     return collection.map(todos, todo => todo.title)
+   |                                  ^^^^^^^ write `todo -> todo.title`
+  reason: `x => e` is an arrow function in JavaScript, TypeScript and C#, `lambda x: e` in Python and `|x| e` in Rust; a Jadpo inline function is `item -> expression`.
+  next: Write `todo -> todo.title` (agent)
+  rule: syntax.inline_function_arrow
+  help: docs/language/03-logic.html#syntax-inline-function-arrow
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.named_argument_equals`
+
+A named argument is `name: value`.
+
+```jadpo check project=e-habit-named-equals expect=syntax.named_argument_equals
+type Price = Decimal {
+    scale: 2
+    min: 0.00
+}
+
+type People = Int {
+    min: 1
+}
+
+function share(total: Price, people: People) -> Price {
+    return Price(decimal.divide(total, people, rounding = Rounding.half_even))
+}
+```
+
+```text output
+error: Jadpo names an argument with `:`, not `=`
+ --> main.jadpo:11:57
+   |
+11 |     return Price(decimal.divide(total, people, rounding = Rounding.half_even))
+   |                                                         ^ write `:`
+  reason: `name = value` names an argument in Python, Kotlin and C#; Jadpo writes `name: value`.
+  next: Use `:` instead of `=` (agent)
+  rule: syntax.named_argument_equals
+  help: docs/language/03-logic.html#syntax-named-argument-equals
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.member_comma`
+
+Each member is on its own line, with no commas between them.
+
+```jadpo check project=e-habit-member-comma expect=syntax.member_comma
+type Pence = Int {
+    min: 0
+}
+
+type PriceRange = Object {
+    low: Pence,
+    high: Pence
+}
+```
+
+```text output
+error: Jadpo has no `,` between members
+ --> main.jadpo:6:15
+  |
+6 |     low: Pence,
+  |               ^ remove `,`
+  reason: Commas separate fields in JavaScript, TypeScript, Rust, Go, Swift and JSON; each Jadpo member is on its own line, and the formatter puts it there.
+  next: Remove `,` (agent)
+  rule: syntax.member_comma
+  help: docs/language/03-logic.html#syntax-member-comma
+
+check failed: 1 error, 1 file
+```
+
 ### `syntax.equality_operator`
 
 ```jadpo check project=e-equality expect=syntax.equality_operator
@@ -2488,7 +2981,7 @@ error: Jadpo compares with `==`, not `===`
   |
 8 |     return Done(count === 0)
   |                       ^^^ write `==`
-  reason: `==` and `!=` already compare two values of the same type, with no conversion between types, so there is no stricter form to ask for.
+  reason: `===` and `!==` compare without converting types in JavaScript and TypeScript; Jadpo's `==` and `!=` never convert between types, so there is no stricter form to ask for.
   next: Use `==` instead of `===` (agent)
   rule: syntax.equality_operator
   help: docs/language/03-logic.html#syntax-equality-operator
@@ -2501,19 +2994,26 @@ check failed: 1 error, 1 file
 ```jadpo check project=e-throw expect=syntax.unsupported_throw
 type Note = Text {}
 
-function fail_loudly(note: Note) -> Note {
-    throw Error("boom")
+type NoteRejected = Failure {
+    kind: FailureKind.rejected
+}
+
+function checked_note(note: Note) fails NoteRejected -> Note {
+    if (note == "") {
+        throw NoteRejected
+    }
+    return note
 }
 ```
 
 ```text output
-error: Jadpo has no `throw`
- --> main.jadpo:4:5
+error: Jadpo writes `reject`, not `throw`
+ --> main.jadpo:9:9
   |
-4 |     throw Error("boom")
-  |     ^^^^^ not a Jadpo statement
-  reason: A callable raises one of its declared failures with `reject`, and lists it in `fails`.
-  next: Use `reject` with a declared failure, as in `reject NoteRejected` (agent)
+9 |         throw NoteRejected
+  |         ^^^^^ write `reject`
+  reason: `throw` raises an error in JavaScript, Java, C#, Kotlin and Swift, and `raise` in Python and Ruby; a Jadpo callable raises one of its declared failures with `reject`, and lists it in `fails`.
+  next: Use `reject` instead of `throw` (agent)
   rule: syntax.unsupported_throw
   help: docs/language/03-logic.html#syntax-unsupported-throw
 

@@ -379,6 +379,29 @@ test that fails when they drift. *Rejected:* tree-sitter or LALR
 generators, with weaker recovery and messages, and a second lossless tree
 still needed.
 
+**Habits from other languages** (chunk 3.8, decision register
+2026-10-15). `jadpo_syntax::habits` is the catalogue of constructs
+carried over from TypeScript and JavaScript, Python, Rust, Go, Java and
+C#, Kotlin and Swift, and SQL (`let`, `fn`, `&&`, `===`, `;`, `#`, `T[]`,
+`??`, `switch`, `import … from` and the rest), each with its rule, where
+it is found and the words of its error; what it leaves out, and why, is
+in its module comment. The lexer and the parser report each with its edit
+and carry on as if the Jadpo form were written: a word Jadpo spells
+differently is read as Jadpo's word, and one it doesn't have is kept in
+the tree as `SKIPPED` trivia, read as nothing. When that is all the Jadpo
+form changes, the error is clean, and a project whose syntax errors are
+all clean (`Parse::checkable`) is checked too, leaving out other problems
+on those lines; any other syntax error still comes alone. Names another
+language gives a type or a value (`string`, `Vec`, `null`, `None`) are
+the checker's, when they resolve to nothing (`type.foreign_type`,
+`type.foreign_value`). Behind it all, a syntax error never brings a
+second on its line: a parse keeps the first error a line. A corpus of
+broken files (`crates/jadpo-syntax/tests/broken/`), the parser's fuzz
+test, which also checks that clean edits converge on a file with no
+errors, and a jadpo-check test that checks each clean habit against its
+edited source hold it. The language server shows these errors and their
+edits like any other; it offers no code actions yet.
+
 **Formatter.** Syntax tree to a document algebra to a printer, owning
 indentation, blank lines and member order (areas 1 and 14). Every example
 is checked to be idempotent and to parse to the same AST after formatting.

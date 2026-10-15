@@ -46,11 +46,14 @@ pub fn standard_operations() -> Vec<StubSignature> {
     std_lib::StdNames::get().signatures()
 }
 
-/// Every problem in `project`, in a stable order. Syntax errors come alone:
-/// a file that does not parse would only add knock-on errors.
+/// Every problem in `project`, in a stable order. Syntax errors come alone,
+/// since a file that does not parse would only add knock-on errors, unless
+/// every one is a habit from another language that parsed as its Jadpo
+/// form (`Parse::checkable`): then the rest of the project is checked too,
+/// and no other problem is reported on a line with a syntax error.
 pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let files = project.files(db);
-    let mut out: Vec<Diagnostic> = files
+    let syntax: Vec<Diagnostic> = files
         .iter()
         .flat_map(|file| {
             let path = file.path(db);
@@ -61,7 +64,9 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .collect::<Vec<_>>()
         })
         .collect();
-    if out.is_empty() {
+    let checkable = files.iter().all(|file| parse(db, *file).checkable());
+    let mut out = Vec::new();
+    if syntax.is_empty() || checkable {
         if files
             .iter()
             .all(|file| item_tree(db, *file).items.is_empty())
@@ -100,8 +105,42 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
     }
+    if !syntax.is_empty() {
+        let line = |path: &str, offset: u32| {
+            files
+                .iter()
+                .find(|file| file.path(db) == path)
+                .map(|file| line_of(file.text(db), offset))
+        };
+        let broken: std::collections::HashSet<(String, Option<usize>)> = syntax
+            .iter()
+            .filter_map(|d| d.primary.as_ref())
+            .map(|label| {
+                let path = label.span.path.clone();
+                let at = line(&path, label.span.start);
+                (path, at)
+            })
+            .collect();
+        out.retain(|d| {
+            d.primary.as_ref().is_none_or(|label| {
+                let path = label.span.path.clone();
+                let at = line(&path, label.span.start);
+                !broken.contains(&(path, at))
+            })
+        });
+        out.extend(syntax);
+    }
     sort(&mut out);
     out
+}
+
+/// The zero-based line `offset` is on.
+fn line_of(text: &str, offset: u32) -> usize {
+    let end = (offset as usize).min(text.len());
+    text.as_bytes()[..end]
+        .iter()
+        .filter(|&&b| b == b'\n')
+        .count()
 }
 
 /// By file, then position, then rule, so output never depends on the
@@ -132,6 +171,26 @@ fn empty_project(files: usize) -> Diagnostic {
     )
     .reason(reason)
     .next("Add a declaration, such as a `type`, `function` or `action`")
+}
+
+/// `type.foreign_value`: `null`, `None` or `True` written for a value Jadpo
+/// spells `none`, `true` or `false` (decision register, 2026-10-15), when
+/// `written` is one; the caller has checked the name means nothing else.
+pub(crate) fn foreign_value(written: &str, span: jadpo_diag::Span) -> Option<Diagnostic> {
+    let (meaning, jadpo) = jadpo_syntax::habits::foreign_value(written)?;
+    let habit = &jadpo_syntax::habits::FOREIGN_VALUE;
+    Some(
+        Diagnostic::new(habit.rule, habit.message(written, jadpo))
+            .at(span.clone(), habit.label_for(written, jadpo))
+            .reason(jadpo_syntax::habits::foreign_reason(
+                written,
+                meaning,
+                jadpo,
+                "writes it",
+            ))
+            .next(habit.next_for(written, jadpo))
+            .edit(span, jadpo),
+    )
 }
 
 pub(crate) fn and_list(items: &[String]) -> String {
