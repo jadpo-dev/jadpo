@@ -1932,6 +1932,29 @@ impl<'a> Reader<'a> {
             );
             return None;
         }
+        // The least it can be must still read something: PostgreSQL
+        // refuses a negative `LIMIT`, and 0 reads nothing.
+        let min = self
+            .lookup
+            .rule_chain(&ty)
+            .iter()
+            .find_map(|(_, rules)| rules.min);
+        if min.is_none_or(|min| min.compare(jadpo_std::Num::whole(1)).is_lt()) {
+            let written = shown(value.syntax());
+            let least = min.map_or_else(|| "no `min:`".to_string(), |n| format!("`min: {n}`"));
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_LIMIT_RANGE,
+                    format!("`{written}` can be below 1, so the {what} could read nothing"),
+                )
+                .at(span, format!("`{ty}` has {least}"))
+                .reason(format!(
+                    "`{what}:` is how many records come back at most, so it is at least 1, and a value's type must say so with `min: 1` or more, as the built-in `PageSize` (1 to 100) does."
+                ))
+                .next(format!("Give `{ty}` `min: 1`, or type the value as `PageSize`")),
+            );
+            return None;
+        }
         Some(Bound::Value(bound))
     }
 
