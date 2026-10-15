@@ -237,6 +237,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         status: SuccessStatus.created
@@ -853,6 +854,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         status: SuccessStatus.created
@@ -874,9 +876,9 @@ test "a memo comes back" {
 
 ```text output
 error: No route answers `POST /memo`
- --> main.jadpo:33:15
+ --> main.jadpo:34:15
    |
-33 |         path: "/memo"
+34 |         path: "/memo"
    |               ^^^^^^^ no such route
   reason: A request names a route by its method and its path as `jadpo routes` prints it, placeholders by name; the `POST` routes are `/memos`.
   next: Write the path of the route this test exercises, as `jadpo routes` lists it (agent)
@@ -914,6 +916,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         status: SuccessStatus.created
@@ -932,9 +935,9 @@ test "a memo comes back" {
 
 ```text output
 error: `POST /memos` takes `input:`, a `AddMemo`
- --> main.jadpo:31:30
+ --> main.jadpo:32:30
    |
-31 |     var response: Response = request {
+32 |     var response: Response = request {
    |                              ^^^^^^^ doesn't fit the route
   reason: A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`.
   next: Give the request what its route takes (agent)

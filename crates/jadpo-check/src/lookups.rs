@@ -233,6 +233,12 @@ impl std::fmt::Debug for Lookup<'_> {
 }
 
 impl<'db> Lookup<'db> {
+    /// The project's identity declarations (area 8), read when a check
+    /// meets a caller.
+    pub fn identity(&self) -> std::sync::Arc<crate::identity::Identity> {
+        std::sync::Arc::clone(crate::identity::identity(self.db, self.project))
+    }
+
     pub fn new(db: &'db dyn Db, project: Project) -> Lookup<'db> {
         Lookup {
             db,

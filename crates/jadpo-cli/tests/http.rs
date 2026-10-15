@@ -160,6 +160,7 @@ routes Todos {
 
     /// Creates a todo.
     POST / {
+        authentication: RouteAuthentication.none
         input: CreateTodo
         output: TodoView
         status: SuccessStatus.created
@@ -168,6 +169,7 @@ routes Todos {
 
     /// Todos, by title.
     GET / {
+        authentication: RouteAuthentication.none
         input: ListTodos
         output: List<TodoView>
         run: list_todos(input)
@@ -175,6 +177,7 @@ routes Todos {
 
     /// One todo.
     GET /{todo_id: Todo.id} {
+        authentication: RouteAuthentication.none
         output: TodoView
         run: find_todo(todo_id)
     }
@@ -734,7 +737,7 @@ const NOTES: &[(&str, &str)] = &[
     ),
     (
         "domains/notes/routes/notes.jadpo",
-        "use notes/entities { Note }\nuse notes/types { NoteInput, NoteView }\nuse notes/actions { add_note, edit_note }\n\n/// Notes.\nroutes Notes {\n    prefix: /notes\n\n    /// Adds a note.\n    POST / {\n        input: NoteInput\n        output: NoteView\n        status: SuccessStatus.created\n        run: add_note(input)\n    }\n\n    /// Rewrites a note, within a second.\n    PUT /{note_id: Note.id} {\n        input: NoteInput\n        output: NoteView\n        deadline: 1s\n        run: edit_note(note_id, input)\n    }\n}\n",
+        "use notes/entities { Note }\nuse notes/types { NoteInput, NoteView }\nuse notes/actions { add_note, edit_note }\n\n/// Notes.\nroutes Notes {\n    prefix: /notes\n\n    /// Adds a note.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: NoteInput\n        output: NoteView\n        status: SuccessStatus.created\n        run: add_note(input)\n    }\n\n    /// Rewrites a note, within a second.\n    PUT /{note_id: Note.id} {\n        authentication: RouteAuthentication.none\n        input: NoteInput\n        output: NoteView\n        deadline: 1s\n        run: edit_note(note_id, input)\n    }\n}\n",
     ),
 ];
 
@@ -920,7 +923,7 @@ fn a_route_on_a_health_path_is_refused() {
     write(
         &root,
         "domains/notes/routes/health.jadpo",
-        "use notes/types { NoteInput, NoteView }\nuse notes/actions { add_note }\n\n/// Not the runtime's.\nroutes Health {\n    prefix: /health\n\n    POST /ready {\n        input: NoteInput\n        output: NoteView\n        run: add_note(input)\n    }\n}\n",
+        "use notes/types { NoteInput, NoteView }\nuse notes/actions { add_note }\n\n/// Not the runtime's.\nroutes Health {\n    prefix: /health\n\n    POST /ready {\n        authentication: RouteAuthentication.none\n        input: NoteInput\n        output: NoteView\n        run: add_note(input)\n    }\n}\n",
     );
     let checked = jadpo(&root, &["check", "--color", "never"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
@@ -932,4 +935,483 @@ fn a_route_on_a_health_path_is_refused() {
         checked.stdout
     );
     assert!(checked.stdout.contains("rule: route.path_overlap"));
+}
+/// A project that signs members up and keeps their notes (area 8).
+const SIGN_IN: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        r#"use notes/entities { Member }
+use notes/types { MemberStatus }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+        active: Member.status == MemberStatus.active
+    }
+}
+"#,
+    ),
+    (
+        "authentication.jadpo",
+        r#"authentication {
+    browser_session: {
+        cookie: "notes_session"
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/register.jadpo",
+        r#"use notes/entities { Member }
+use notes/types { Handle, MemberStatus }
+use notes/failures { HandleTaken }
+
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+            status: MemberStatus.active
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/sign_out.jadpo",
+        r#"/// Ends the session the request came with.
+action sign_out() -> Unit {
+    sessions.end()
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/sign_up.jadpo",
+        r#"use notes/entities { Member }
+use notes/types { Handle }
+use notes/failures { HandleTaken }
+use notes/actions { register }
+
+/// Registers a member and signs them in.
+action sign_up(input: SignUp) fails HandleTaken -> Unit {
+    var member: Member = attempt register(input.handle)
+    sessions.start(member.id)
+}
+
+/// What signing up takes.
+type SignUp = Input {
+    handle: Handle
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/suspend.jadpo",
+        r#"use notes/entities { Member, MemberNotFound }
+use notes/types { MemberStatus }
+
+action suspend(member_id: Member.id) fails MemberNotFound -> Member {
+    return attempt Member.update(member_id) {
+        set: {
+            status: MemberStatus.suspended
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/write_note.jadpo",
+        r#"use notes/entities { Note }
+use notes/types { NoteText, NoteView }
+
+/// Writes a note as the signed-in member.
+action write_note(input: WriteNote, author: Principal.user) -> NoteView {
+    var note: Note = Note.create {
+        set: {
+            author_id: author.id
+            text: input.text
+        }
+    }
+    return NoteView {
+        text: note.text
+    }
+}
+
+/// What writing a note takes.
+type WriteNote = Input {
+    text: NoteText
+}
+"#,
+    ),
+    (
+        "domains/notes/entities/member.jadpo",
+        r#"use notes/types { Handle, MemberStatus }
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    status: MemberStatus
+}
+"#,
+    ),
+    (
+        "domains/notes/entities/note.jadpo",
+        r#"use notes/entities { Member }
+use notes/types { NoteText }
+
+entity Note {
+    id: Uuid
+    author_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+}
+"#,
+    ),
+    (
+        "domains/notes/failures/handle_taken.jadpo",
+        r#"type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+"#,
+    ),
+    (
+        "domains/notes/routes/account.jadpo",
+        r#"use notes/actions { SignUp, sign_out, sign_up }
+
+/// Signing up and out.
+routes Account {
+    prefix: /account
+
+    /// Anyone may sign up; the response sets the session's cookies.
+    POST /sign-up {
+        authentication: RouteAuthentication.none
+        input: SignUp
+        status: SuccessStatus.no_content
+        run: sign_up(input)
+    }
+
+    /// Ends the session and clears its cookies.
+    POST /sign-out {
+        status: SuccessStatus.no_content
+        run: sign_out()
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/routes/notes.jadpo",
+        r#"use notes/types { NoteView }
+use notes/actions { WriteNote, write_note }
+
+/// The signed-in member's notes.
+routes Notes {
+    prefix: /notes
+
+    POST / {
+        input: WriteNote
+        output: NoteView
+        status: SuccessStatus.created
+        run: write_note(input, current_principal.user)
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/types/handle.jadpo",
+        r#"type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+"#,
+    ),
+    (
+        "domains/notes/types/member_status.jadpo",
+        r#"type MemberStatus = Enum {
+    active
+    suspended
+}
+"#,
+    ),
+    (
+        "domains/notes/types/note_text.jadpo",
+        r#"type NoteText = Text {
+    min_length: 1
+    max_length: 500
+}
+"#,
+    ),
+    (
+        "domains/notes/types/note_view.jadpo",
+        r#"use notes/types { NoteText }
+
+type NoteView = Output {
+    text: NoteText
+}
+"#,
+    ),
+];
+
+/// The sign-in project, migrated and recorded, checking cleanly.
+fn sign_in_project() -> (tempdir::Dir, PathBuf) {
+    let dir = tempdir::Dir::new("sign-in");
+    let root = dir.path().join("notes");
+    for (path, text) in SIGN_IN {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    (dir, root)
+}
+
+/// The session's cookies a response sets: the session's token and its
+/// CSRF token, with each one's attributes.
+fn session_cookies(reply: &Reply) -> (String, String, Vec<String>) {
+    let set: Vec<String> = reply
+        .headers
+        .iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case("set-cookie"))
+        .map(|(_, value)| value.clone())
+        .collect();
+    let value = |name: &str| {
+        set.iter()
+            .find_map(|cookie| cookie.strip_prefix(&format!("{name}=")))
+            .and_then(|rest| rest.split(';').next())
+            .unwrap_or_default()
+            .to_string()
+    };
+    (value("notes_session"), value("notes_session_csrf"), set)
+}
+
+#[test]
+fn a_browser_session_signs_in_writes_with_its_csrf_token_and_signs_out() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = sign_in_project();
+    let dev = Dev::start(&root);
+    let json = [("content-type", "application/json")];
+
+    // Signing up is public, and its response sets both cookies.
+    let signed = dev.send("POST", "/account/sign-up", &json, r#"{"handle":"ann"}"#);
+    assert_eq!(signed.status, 204, "{}", signed.body);
+    let (token, csrf, set) = session_cookies(&signed);
+    assert_eq!(token.len(), 64, "{set:?}");
+    assert_eq!(csrf.len(), 64, "{set:?}");
+    let session = set
+        .iter()
+        .find(|cookie| cookie.starts_with("notes_session="))
+        .expect("the session's cookie");
+    for attribute in [
+        "HttpOnly",
+        "Secure",
+        "SameSite=Strict",
+        "Path=/",
+        "Max-Age=2592000",
+    ] {
+        assert!(session.contains(attribute), "{session}");
+    }
+    let readable = set
+        .iter()
+        .find(|cookie| cookie.starts_with("notes_session_csrf="))
+        .expect("the CSRF token's cookie");
+    assert!(!readable.contains("HttpOnly"), "{readable}");
+
+    // Only verifiers are kept.
+    let rows = query(
+        &dev.url,
+        "SELECT \"verifier\", \"csrf_verifier\" FROM \"jadpo_sessions\"",
+        Vec::new(),
+    );
+    assert_eq!(rows.len(), 1);
+    for column in &rows[0] {
+        let jadpo_runtime::SqlValue::Text(kept) = column else {
+            panic!("{column:?}");
+        };
+        assert_ne!(kept, &token);
+        assert_ne!(kept, &csrf);
+    }
+
+    let note = r#"{"text":"Buy milk"}"#;
+    let cookie = format!("notes_session={token}; notes_session_csrf={csrf}");
+
+    // No credential.
+    let anonymous = dev.send("POST", "/notes", &json, note);
+    assert_eq!(anonymous.status, 401);
+    assert_eq!(anonymous.json()["error"]["code"], "authentication_required");
+
+    // The cookie alone: a write needs the server's origin and the token.
+    let forged = dev.send("POST", "/notes", &[json[0], ("cookie", &cookie)], note);
+    assert_eq!(forged.status, 403);
+    assert_eq!(forged.json()["error"]["code"], "csrf_rejected");
+    let elsewhere = dev.send(
+        "POST",
+        "/notes",
+        &[
+            json[0],
+            ("cookie", &cookie),
+            ("origin", "https://elsewhere.test"),
+            ("x-jadpo-csrf", &csrf),
+        ],
+        note,
+    );
+    assert_eq!(elsewhere.json()["error"]["code"], "csrf_rejected");
+
+    // Signed in, from this server, with the session's token.
+    let signed_in = [
+        json[0],
+        ("cookie", cookie.as_str()),
+        ("origin", "http://localhost"),
+        ("x-jadpo-csrf", csrf.as_str()),
+    ];
+    let written = dev.send("POST", "/notes", &signed_in, note);
+    assert_eq!(written.status, 201, "{}", written.body);
+    assert_eq!(written.json()["text"], "Buy milk");
+
+    // A cookie and a bearer token are two credentials.
+    let both = dev.send(
+        "POST",
+        "/notes",
+        &[
+            signed_in[0],
+            signed_in[1],
+            signed_in[2],
+            signed_in[3],
+            ("authorization", "Bearer x"),
+        ],
+        note,
+    );
+    assert_eq!(both.status, 401);
+    assert_eq!(both.json()["error"]["code"], "ambiguous_credentials");
+
+    // A session nobody started is refused, and its cookies cleared.
+    let unknown = format!("notes_session={}", "0".repeat(64));
+    let stale = dev.send("POST", "/notes", &[json[0], ("cookie", &unknown)], note);
+    assert_eq!(stale.status, 401);
+    assert_eq!(stale.json()["error"]["code"], "invalid_credentials");
+    let (_, _, cleared) = session_cookies(&stale);
+    assert!(
+        cleared.iter().all(|cookie| cookie.contains("Max-Age=0")),
+        "{cleared:?}"
+    );
+    assert_eq!(cleared.len(), 2, "{cleared:?}");
+
+    // Signing out ends the session and clears its cookies.
+    let out = dev.send("POST", "/account/sign-out", &signed_in[1..], "");
+    assert_eq!(out.status, 204, "{}", out.body);
+    let (_, _, cleared) = session_cookies(&out);
+    assert!(
+        cleared.iter().all(|cookie| cookie.contains("Max-Age=0")),
+        "{cleared:?}"
+    );
+    let after = dev.send("POST", "/notes", &signed_in, note);
+    assert_eq!(after.status, 401);
+    assert_eq!(after.json()["error"]["code"], "invalid_credentials");
+}
+
+#[test]
+fn a_signed_in_callers_idempotency_keys_are_their_own() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = sign_in_project();
+    let dev = Dev::start(&root);
+    let json = ("content-type", "application/json");
+    let sign_up = |handle: &str| {
+        let reply = dev.send(
+            "POST",
+            "/account/sign-up",
+            &[json],
+            &format!(r#"{{"handle":"{handle}"}}"#),
+        );
+        assert_eq!(reply.status, 204, "{}", reply.body);
+        let (token, csrf, _) = session_cookies(&reply);
+        (format!("notes_session={token}"), csrf)
+    };
+    let (ann, ann_csrf) = sign_up("ann");
+    let (bob, bob_csrf) = sign_up("bob");
+    let write = |cookie: &str, csrf: &str, text: &str| {
+        dev.send(
+            "POST",
+            "/notes",
+            &[
+                json,
+                ("cookie", cookie),
+                ("origin", "http://localhost"),
+                ("x-jadpo-csrf", csrf),
+                ("idempotency-key", "note-1"),
+            ],
+            &format!(r#"{{"text":"{text}"}}"#),
+        )
+    };
+    let first = write(&ann, &ann_csrf, "Ann's");
+    assert_eq!(first.status, 201, "{}", first.body);
+    // The same key from another caller is another request.
+    let other = write(&bob, &bob_csrf, "Bob's");
+    assert_eq!(other.status, 201, "{}", other.body);
+    assert_eq!(other.json()["text"], "Bob's");
+    // Ann's repeat is answered from her key.
+    let repeat = write(&ann, &ann_csrf, "Ann's");
+    assert_eq!(repeat.status, 201);
+    assert_eq!(repeat.body, first.body);
+    let rows = query(&dev.url, "SELECT count(*) FROM \"note\"", Vec::new());
+    assert_eq!(rows[0][0], jadpo_runtime::SqlValue::Int8(2));
+    let scopes = query(
+        &dev.url,
+        "SELECT DISTINCT \"scope\" FROM \"jadpo_idempotency_keys\" ORDER BY 1",
+        Vec::new(),
+    );
+    assert_eq!(scopes.len(), 2);
+    for scope in scopes {
+        let jadpo_runtime::SqlValue::Text(scope) = &scope[0] else {
+            panic!("{scope:?}");
+        };
+        assert!(scope.starts_with("user "), "{scope}");
+    }
+}
+
+#[test]
+fn openapi_shows_the_session_and_what_signing_in_answers() {
+    let (_dir, root) = sign_in_project();
+    let document: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("build/openapi/main.json")).expect("the document"),
+    )
+    .expect("JSON");
+    let scheme = &document["components"]["securitySchemes"]["browser_session"];
+    assert_eq!(scheme["type"], "apiKey");
+    assert_eq!(scheme["in"], "cookie");
+    assert_eq!(scheme["name"], "notes_session");
+    assert_eq!(
+        document["security"][0]["browser_session"],
+        serde_json::json!([])
+    );
+    let sign_up = &document["paths"]["/account/sign-up"]["post"];
+    assert_eq!(sign_up["security"], serde_json::json!([]));
+    assert!(sign_up["responses"].get("401").is_none());
+    let write = &document["paths"]["/notes"]["post"]["responses"];
+    for status in ["401", "403", "503"] {
+        assert!(write.get(status).is_some(), "POST /notes answers {status}");
+    }
+    let refused = write["403"]["content"]["application/json"]["schema"]["oneOf"]
+        .as_array()
+        .expect("both refusals");
+    assert_eq!(refused.len(), 2);
+    let record = std::fs::read_to_string(root.join("api/main.api")).expect("the record");
+    assert!(
+        record.contains("POST /account/sign-up\n    authentication: none\n"),
+        "{record}"
+    );
+    assert!(record.contains("POST /notes\n    input:"), "{record}");
 }

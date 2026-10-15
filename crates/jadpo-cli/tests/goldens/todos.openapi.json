@@ -502,7 +502,8 @@
           "504": {
             "$ref": "#/components/responses/DeadlineExceeded"
           }
-        }
+        },
+        "security": []
       },
       "post": {
         "description": "Creates a todo.",
@@ -582,7 +583,8 @@
           "504": {
             "$ref": "#/components/responses/DeadlineExceeded"
           }
-        }
+        },
+        "security": []
       }
     },
     "/todos/{todo_id}": {
@@ -633,7 +635,8 @@
           "504": {
             "$ref": "#/components/responses/DeadlineExceeded"
           }
-        }
+        },
+        "security": []
       }
     }
   }

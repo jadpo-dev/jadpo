@@ -1416,6 +1416,19 @@ impl<'a> Reader<'a> {
                 );
                 return None;
             }
+            // A caller's field (area 8): `caller.id`.
+            if let Ty::Opaque(name, _) = &ty
+                && let Some(kind) = [
+                    jadpo_std::http::PrincipalKind::User,
+                    jadpo_std::http::PrincipalKind::Service,
+                ]
+                .into_iter()
+                .find(|kind| kind.type_name() == name)
+                && let Some(found) = self.lookup.identity().field_type(kind, field)
+            {
+                ty = found;
+                continue;
+            }
             let Some(host) = self.object_of(&ty) else {
                 self.value_unsupported(scope, &expr);
                 return None;

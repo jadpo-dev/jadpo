@@ -2,15 +2,14 @@
 title: Identity
 area: 8
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
+checked-with: jadpo chunk-4.3 (2026-10-16)
 rules:
-  - semantic.application_principal_shape
   - semantic.auth_*
-  - semantic.multiple_applications
-  - semantic.multiple_principals
+  - semantic.multiple_*
   - semantic.principal_variant_*
   - semantic.revocation_delay_*
   - type.auth_*
+  - type.principal_*
 ---
 
 # Identity
@@ -20,7 +19,7 @@ ways a caller proves who they are, how code reads the caller, service
 credentials, revocation, and the failures authentication produces. Who may do
 what is policy, area 9.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 8. The new compiler does not build identity yet: roadmap chunk 4.3 (sign-in) builds sessions, API tokens and service keys.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 8. Built in the new compiler in roadmap chunk 4.3: the principal, browser sessions, routes signed in by default, `current_principal`, starting and ending a session, and signing in from a route test. API tokens and service keys come with 4.3b, the revocation delay with signing keys (5.1b); "Status" below lists the rest.
 
 The rules underneath all of it were accepted in the AUTH-001 contract and are
 not reopened here:
@@ -113,7 +112,7 @@ authentication {
     api_token: {
         signing_key: config.session_signing_key
     }
-    oidc: {
+    external_token: {
         issuer: config.oidc_issuer
         audience: config.oidc_audience
     }
@@ -127,15 +126,24 @@ authentication {
 |---|---|---|---|
 | `browser_session` | `HttpOnly`, `Secure`, `SameSite=Strict` cookie | users | Writes need the exact `Origin` and a session-bound `X-Jadpo-CSRF` header |
 | `api_token` | `Authorization: Bearer` | users | For the application's own mobile or command-line clients |
-| `oidc` | `Authorization: Bearer` JWT from a provider | users | Only the subject is used; the user is looked up on every request |
+| `external_token` | `Authorization: Bearer` JWT from a provider | users | Only the subject is used; the user is looked up on every request (renamed from `oidc`, question 11) |
 | `service_key` | `Authorization: Bearer` key | services | Shown once, stored as a verifier; can be exchanged for a short token |
 
 - Keys come only from secret configuration (area 10); a key in source is an
-  error.
+  error. Until configuration is built (roadmap chunk 5.1), `origin:` and
+  `signing_key:` are `toolchain.not_built_yet`: a session is an opaque value
+  looked up in the database, which needs no key, and a cookie write's
+  `Origin` must name the server its `Host` header gives.
+- `browser_session:` names its cookie (`cookie:`, 1 to 64 letters, digits,
+  `_` and `-`). The session's token travels in it, `HttpOnly`, `Secure`,
+  `SameSite=Strict`, for the whole site; its CSRF token in a second cookie
+  of the same name with `_csrf` after it, which the application's pages
+  read and send back in `X-Jadpo-CSRF` on every write. A session lasts 30
+  days from when it starts.
 - A bearer token is never accepted from the URL, and the cookie name and
   `Authorization` header can never be ordinary route input.
-- OIDC adds one pinned dependency; applications without it have
-  none. The algorithms, limits and key refresh are fixed by the compiler.
+- `external_token` adds one pinned dependency; applications without it
+  have none. The algorithms, limits and key refresh are fixed by the compiler.
 - With a revocation delay and service keys, the compiler generates
   `POST /auth/exchange`, which trades a key for a short-lived token (question
   1's proposal fixes the path).
@@ -268,6 +276,309 @@ action sign_out() -> Unit {
 How the person is checked (a magic link, an OIDC code exchange) stays in the
 application or an integration (area 11).
 
+- `sessions.start` keeps the session in the action's own transaction, in
+  the store the principal's user entity lives in (a `jadpo_sessions` system
+  table, area 5), so an action that fails starts none; the route's response
+  sets its cookies once the action commits. `sessions.end` deletes the
+  session the request came with, and the response clears the cookies.
+- Only an action calls them (`type.auth_sessions_context`); a test reaches
+  them through the route, or calls the action, which keeps the session
+  without a response to set it on.
+- Only verifiers are kept: a session's token and its CSRF token are 32
+  random bytes each, stored as their digests, so a copy of the database
+  signs no one in.
+
+### Signing in, end to end
+
+A whole application that signs members up, keeps their notes and refuses a
+suspended member. The principal and its one sign-in method:
+
+
+
+```jadpo check project=sign-in file=app.jadpo
+use notes/entities { Member }
+use notes/types { MemberStatus }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+        active: Member.status == MemberStatus.active
+    }
+}
+```
+
+```jadpo check project=sign-in file=authentication.jadpo
+authentication {
+    browser_session: {
+        cookie: "notes_session"
+    }
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/types/handle.jadpo hidden
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/types/member_status.jadpo hidden
+type MemberStatus = Enum {
+    active
+    suspended
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/types/note_text.jadpo hidden
+type NoteText = Text {
+    min_length: 1
+    max_length: 500
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/types/note_view.jadpo hidden
+use notes/types { NoteText }
+
+type NoteView = Output {
+    text: NoteText
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/entities/member.jadpo hidden
+use notes/types { Handle, MemberStatus }
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    status: MemberStatus
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/entities/note.jadpo hidden
+use notes/entities { Member }
+use notes/types { NoteText }
+
+entity Note {
+    id: Uuid
+    author_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/failures/handle_taken.jadpo hidden
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/actions/register.jadpo hidden
+use notes/entities { Member }
+use notes/types { Handle, MemberStatus }
+use notes/failures { HandleTaken }
+
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+            status: MemberStatus.active
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/actions/suspend.jadpo hidden
+use notes/entities { Member, MemberNotFound }
+use notes/types { MemberStatus }
+
+action suspend(member_id: Member.id) fails MemberNotFound -> Member {
+    return attempt Member.update(member_id) {
+        set: {
+            status: MemberStatus.suspended
+        }
+    }
+}
+```
+
+Signing up checks the handle, starts a session and answers with no content; its response sets the cookies. Writing a note takes the signed-in member as a parameter:
+
+```jadpo check project=sign-in file=domains/notes/actions/sign_up.jadpo
+use notes/entities { Member }
+use notes/types { Handle }
+use notes/failures { HandleTaken }
+use notes/actions { register }
+
+/// Registers a member and signs them in.
+action sign_up(input: SignUp) fails HandleTaken -> Unit {
+    var member: Member = attempt register(input.handle)
+    sessions.start(member.id)
+}
+
+/// What signing up takes.
+type SignUp = Input {
+    handle: Handle
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/actions/sign_out.jadpo
+/// Ends the session the request came with.
+action sign_out() -> Unit {
+    sessions.end()
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/actions/write_note.jadpo
+use notes/entities { Note }
+use notes/types { NoteText, NoteView }
+
+/// Writes a note as the signed-in member.
+action write_note(input: WriteNote, author: Principal.user) -> NoteView {
+    var note: Note = Note.create {
+        set: {
+            author_id: author.id
+            text: input.text
+        }
+    }
+    return NoteView {
+        text: note.text
+    }
+}
+
+/// What writing a note takes.
+type WriteNote = Input {
+    text: NoteText
+}
+```
+
+Signing up is the one route anyone may call; every other needs the session:
+
+```jadpo check project=sign-in file=domains/notes/routes/account.jadpo
+use notes/actions { SignUp, sign_out, sign_up }
+
+/// Signing up and out.
+routes Account {
+    prefix: /account
+
+    /// Anyone may sign up; the response sets the session's cookies.
+    POST /sign-up {
+        authentication: RouteAuthentication.none
+        input: SignUp
+        status: SuccessStatus.no_content
+        run: sign_up(input)
+    }
+
+    /// Ends the session and clears its cookies.
+    POST /sign-out {
+        status: SuccessStatus.no_content
+        run: sign_out()
+    }
+}
+```
+
+```jadpo check project=sign-in file=domains/notes/routes/notes.jadpo migrate=initial
+use notes/types { NoteView }
+use notes/actions { WriteNote, write_note }
+
+/// The signed-in member's notes.
+routes Notes {
+    prefix: /notes
+
+    POST / {
+        input: WriteNote
+        output: NoteView
+        status: SuccessStatus.created
+        run: write_note(input, current_principal.user)
+    }
+}
+```
+
+```jadpo check project=sign-in file=api/main.api hidden
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+POST /account/sign-out
+    status: 204
+
+POST /account/sign-up
+    authentication: none
+    input: SignUp (body)
+    status: 204
+    fails: handle_taken 409
+
+POST /notes
+    input: WriteNote (body)
+    output: NoteView
+    status: 201
+
+output NoteView
+    text: Text { min_length: 1, max_length: 500 }
+
+input SignUp
+    handle: Text { min_length: 3, max_length: 40 }
+
+input WriteNote
+    text: Text { min_length: 1, max_length: 500 }
+
+failure handle_taken 409 "That handle is taken."
+```
+
+A route test signs in with `as:` through the real browser session (a session kept for the member, its cookie, its CSRF token and an `Origin`), so a suspended member is refused exactly as a browser would be:
+
+```jadpo check project=sign-in file=domains/notes/routes/notes.test.jadpo
+use notes/entities { Member }
+use notes/actions { WriteNote, register, suspend }
+
+test "a note needs someone signed in" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/notes"
+        input: WriteNote {
+            text: "Buy milk"
+        }
+    }
+    assert response.status == 401
+    assert response.code == "authentication_required"
+}
+
+test "a signed-in member writes a note" {
+    var member: Member = attempt register("ann")
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/notes"
+        as: Principal.user(member)
+        input: WriteNote {
+            text: "Buy milk"
+        }
+    }
+    assert response.status == 201
+}
+
+test "a suspended member is refused" {
+    var member: Member = attempt register("bob")
+    var suspended: Member = attempt suspend(member.id)
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/notes"
+        as: Principal.user(suspended)
+        input: WriteNote {
+            text: "Buy milk"
+        }
+    }
+    assert response.status == 403
+    assert response.code == "user_disabled"
+}
+```
+
 ## Failures
 
 Authentication failures are raised by the runtime, never declared or listed in
@@ -291,1807 +602,972 @@ record id and the reason, never the credential.
 
 ## Errors
 
-> These examples predate the decisions above and are rewritten when the area is built (roadmap chunk 4.3). Under question 1's decision about twenty of these rules disappear, listed in the proposals file.
-
-Every error this area can produce, with an example that triggers it.
+Every error this area's checks produce, with an example that triggers it.
+The examples are one file each, so the application, principal and
+sign-in methods sit beside the entity they name; a project keeps them in
+`app.jadpo` and `authentication.jadpo`.
 
 ### `semantic.multiple_applications`
 
-```jadpo project=e-multiple-applications expect=semantic.multiple_applications
-application App {
-    authentication {
-        principal: Principal
-        revocation {
-            mode: immediate
-        }
-    }
-}
+```jadpo check project=e-multiple-applications expect=semantic.multiple_applications
+application {}
 
-application Other {
-    authentication {
-        principal: Principal
-        revocation {
-            mode: immediate
-        }
-    }
+application {
+    revocation_delay: 5m
 }
+```
 
-principal Principal {
-    user {
-        subject: Text
-    }
-    service {
-        subject: Text
-    }
-}
+```text output
+error: `application { }` is declared twice
+ --> main.jadpo:3:1
+  |
+1 | application {}
+  | ----------- first declared here
+3 | application {
+  | ^^^^^^^^^^^ declared again
+  reason: A project is one application, declared once in `app.jadpo`; its settings all go in that one block.
+  next: Move what this `application` holds into the first, and remove it (agent)
+  rule: semantic.multiple_applications
+  help: docs/language/08-identity.html#semantic-multiple-applications
+
+check failed: 1 error, 1 file
 ```
 
 ### `semantic.multiple_principals`
 
-```jadpo project=e-multiple-principals expect=semantic.multiple_principals
-application App {
-    authentication {
-        principal: Principal
-        revocation {
-            mode: immediate
-        }
+```jadpo check project=e-multiple-principals expect=semantic.multiple_principals
+principal {
+    user: {
+        subject: Member.handle
     }
 }
 
-principal Principal {
-    user {
-        subject: Text
-    }
-    service {
-        subject: Text
+principal {
+    user: {
+        subject: Member.handle
     }
 }
 
-principal Other {
-    user {
-        subject: Text
-    }
-    service {
-        subject: Text
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
 }
 ```
 
-### `semantic.application_principal_shape`
+```text output
+error: `principal { }` is declared twice
+ --> main.jadpo:7:1
+  |
+1 | principal {
+  | --------- first declared here
+7 | principal {
+  | ^^^^^^^^^ declared again
+  reason: The caller is declared once, in `app.jadpo`: one `user:` and at most one `service:`, so every route reads the same caller.
+  next: Move what this `principal` holds into the first, and remove it (agent)
+  rule: semantic.multiple_principals
+  help: docs/language/08-identity.html#semantic-multiple-principals
 
-```jadpo project=e-application-principal-shape expect=semantic.application_principal_shape
-application App {
-    authentication {
-        principal: Principal?
-        revocation {
-            mode: immediate
-        }
+check failed: 1 error, 1 file
+```
+
+### `semantic.multiple_authentication`
+
+```jadpo check project=e-multiple-authentication expect=semantic.multiple_authentication
+principal {
+    user: {
+        subject: Member.handle
     }
 }
 
-principal Principal {
-    user {
-        subject: Text
+authentication {
+    browser_session: {
+        cookie: "session"
     }
-    service {
-        subject: Text
+}
+
+authentication {}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
 }
 ```
 
-### `semantic.principal_variant_duplicate`
+```text output
+error: `authentication { }` is declared twice
+ --> main.jadpo:13:1
+   |
+ 7 | authentication {
+   | -------------- first declared here
+13 | authentication {}
+   | ^^^^^^^^^^^^^^ declared again
+  reason: The ways a caller signs in are listed once, in `authentication.jadpo`, so one place says how anyone gets in.
+  next: Move what this `authentication` holds into the first, and remove it (agent)
+  rule: semantic.multiple_authentication
+  help: docs/language/08-identity.html#semantic-multiple-authentication
 
-```jadpo project=e-principal-variant-duplicate expect=semantic.principal_variant_duplicate
-application App {
-    authentication {
-        principal: Principal
-        revocation {
-            mode: immediate
-        }
-    }
-}
-
-principal Principal {
-    user {
-        subject: Text
-    }
-    user {
-        subject: Text
-    }
-    service {
-        subject: Text
-    }
-}
+check failed: 1 error, 1 file
 ```
 
 ### `semantic.principal_variant_required`
 
-```jadpo project=e-principal-variant-required expect=semantic.principal_variant_required
-application App {
-    authentication {
-        principal: Principal
-        revocation {
-            mode: immediate
-        }
+```jadpo check project=e-principal-variant-required expect=semantic.principal_variant_required
+principal {}
+```
+
+```text output
+error: The principal declares no kind of caller
+ --> main.jadpo:1:1
+  |
+1 | principal {}
+  | ^^^^^^^^^ no `user:` or `service:`
+  reason: A principal says which entity a signed-in caller is: `user:` for a person, `service:` for another system, or both.
+  next: Add `user: { subject: <Entity>.<field> }` (agent)
+  rule: semantic.principal_variant_required
+  help: docs/language/08-identity.html#semantic-principal-variant-required
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.principal_variant_unknown`
+
+A role is a field of the user's entity, which policy reads (area 9), never
+a kind of caller:
+
+```jadpo check project=e-principal-variant-unknown expect=semantic.principal_variant_unknown
+principal {
+    user: {
+        subject: Member.handle
+    }
+    admin: {
+        subject: Member.handle
     }
 }
 
-principal Principal {
-    user {
-        subject: Text
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
 }
 ```
 
-### `semantic.revocation_delay_required`
+```text output
+error: `admin` isn't a kind of caller
+ --> main.jadpo:5:5
+  |
+5 |     admin: {
+  |     ^^^^^ not `user` or `service`
+  reason: A principal declares `user:`, a person, and `service:`, another system; a role or a tenant is a field of the user's entity, which policy reads (area 9).
+  next: Remove `admin` (agent)
+  rule: semantic.principal_variant_unknown
+  help: docs/language/08-identity.html#semantic-principal-variant-unknown
 
-```jadpo project=e-revocation-delay-required expect=semantic.revocation_delay_required
-application App {
-    authentication {
-        principal: Principal
-        revocation {
-            mode: bounded
-        }
+check failed: 1 error, 1 file
+```
+
+### `semantic.principal_variant_duplicate`
+
+```jadpo check project=e-principal-variant-duplicate expect=semantic.principal_variant_duplicate
+principal {
+    user: {
+        subject: Member.handle
+    }
+    user: {
+        subject: Member.handle
     }
 }
 
-principal Principal {
-    user {
-        subject: Text
-    }
-    service {
-        subject: Text
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
 }
 ```
 
-### `semantic.revocation_delay_forbidden`
+```text output
+error: `user:` is declared twice
+ --> main.jadpo:5:5
+  |
+2 |     user: {
+  |     ---- first declared here
+5 |     user: {
+  |     ^^^^ declared again
+  reason: A principal says once which entity a user is, so a caller is looked up one way.
+  next: Remove one `user:` (agent)
+  rule: semantic.principal_variant_duplicate
+  help: docs/language/08-identity.html#semantic-principal-variant-duplicate
 
-```jadpo project=e-revocation-delay-forbidden expect=semantic.revocation_delay_forbidden
-application App {
-    authentication {
-        principal: Principal
-        revocation {
-            mode: immediate
-            maximum_delay: 5m
-        }
+check failed: 1 error, 1 file
+```
+
+### `semantic.principal_variant_invalid`
+
+```jadpo check project=e-principal-variant-invalid expect=semantic.principal_variant_invalid
+principal {
+    user: {
+        active: Member.suspended == false
     }
 }
 
-principal Principal {
-    user {
-        subject: Text
-    }
-    service {
-        subject: Text
+entity Member {
+    id: Uuid
+    suspended: Bool
+}
+```
+
+```text output
+error: `user:` has no `subject:`
+ --> main.jadpo:2:5
+  |
+2 |     user: {
+  |     ^^^^ no `subject:`
+  reason: A principal's variant names the unique field that identifies a caller, `subject: <Entity>.<field>`, and may say when a record counts as active, `active: <condition>`.
+  next: Add `subject: <Entity>.<field>`, naming a unique field (agent)
+  rule: semantic.principal_variant_invalid
+  help: docs/language/08-identity.html#semantic-principal-variant-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `type.principal_subject_invalid`
+
+```jadpo check project=e-principal-subject-invalid expect=type.principal_subject_invalid
+principal {
+    user: {
+        subject: Member
     }
 }
+
+entity Member {
+    id: Uuid
+}
+```
+
+```text output
+error: `Member` isn't an entity's field
+ --> main.jadpo:3:18
+  |
+3 |         subject: Member
+  |                  ^^^^^^ not `<Entity>.<field>`
+  reason: A user is looked up by a unique field of the entity it is stored as, written `<Entity>.<field>`, such as `User.email`.
+  next: Name a unique field of the entity, such as `User.email` (agent)
+  rule: type.principal_subject_invalid
+  help: docs/language/08-identity.html#type-principal-subject-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `type.principal_subject_not_unique`
+
+```jadpo check project=e-principal-subject-not-unique expect=type.principal_subject_not_unique
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle
+}
+```
+
+```text output
+error: `Member.handle` doesn't identify one user
+ --> main.jadpo:3:18
+  |
+3 |         subject: Member.handle
+  |                  ^^^^^^^^^^^^^ not unique
+  reason: A caller is looked up by its subject, so the subject names exactly one record: `Member.handle` isn't `unique: true`.
+  next: Make `handle` a required field with `unique: true`, or name one that is (agent)
+  rule: type.principal_subject_not_unique
+  help: docs/language/08-identity.html#type-principal-subject-not-unique
+
+check failed: 1 error, 1 file
+```
+
+### `type.principal_active_invalid`
+
+```jadpo check project=e-principal-active-invalid expect=type.principal_active_invalid
+principal {
+    user: {
+        subject: Member.handle
+        active: Member.suspended
+    }
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    suspended: Bool
+}
+```
+
+```text output
+error: `Member.suspended` isn't a condition `active:` can use
+ --> main.jadpo:4:17
+  |
+4 |         active: Member.suspended
+  |                 ^^^^^^^^^^^^^^^^ not a comparison
+  reason: `active:` is a condition on `Member`'s own fields, such as `Member.<field> == <value>`; a field alone says nothing to compare it with.
+  next: Compare a field of `Member` with a value (agent)
+  rule: type.principal_active_invalid
+  help: docs/language/08-identity.html#type-principal-active-invalid
+
+check failed: 1 error, 1 file
 ```
 
 ### `semantic.revocation_delay_invalid`
 
-```jadpo project=e-revocation-delay-invalid expect=semantic.revocation_delay_invalid
-application App {
-    authentication {
-        principal: Principal
-        revocation {
-            mode: bounded
-            maximum_delay: 0m
-        }
-    }
-}
-
-principal Principal {
-    user {
-        subject: Text
-    }
-    service {
-        subject: Text
-    }
+```jadpo check project=e-revocation-delay-invalid expect=semantic.revocation_delay_invalid
+application {
+    revocation_delay: 0m
 }
 ```
 
-### `semantic.auth_strategy_duplicate`
+```text output
+error: `0m` can't be a revocation delay
+ --> main.jadpo:2:23
+  |
+2 |     revocation_delay: 0m
+  |                       ^^ not above zero
+  reason: `revocation_delay:` is how long a disabled caller or a revoked session may keep working, a duration above zero such as `5m`; leaving it out checks the caller's record on every request.
+  next: Write a duration such as `5m`, or leave `revocation_delay:` out (agent)
+  rule: semantic.revocation_delay_invalid
+  help: docs/language/08-identity.html#semantic-revocation-delay-invalid
 
-```jadpo project=e-auth-strategy-duplicate file=context.jadpo expect=semantic.auth_strategy_duplicate hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
+check failed: 1 error, 1 file
 ```
 
-```jadpo project=e-auth-strategy-duplicate expect=semantic.auth_strategy_duplicate
-authentication browser_session {
-    transport {
+### `semantic.auth_method_unknown`
+
+Passwords are out of scope: checking the person is the application's job,
+and a session starts once it has (`sessions.start`):
+
+```jadpo check project=e-auth-method-unknown expect=semantic.auth_method_unknown
+authentication {
+    password: {}
+}
+```
+
+```text output
+error: `password` isn't a way to sign in
+ --> main.jadpo:2:5
+  |
+2 |     password: {}
+  |     ^^^^^^^^ not a sign-in method
+  reason: A caller signs in with one of the language's methods: `browser_session`, `api_token`, `external_token`, `service_key` and `oauth_token`. Each decides where its credential travels and how it is checked.
+  next: Remove `password:` (agent)
+  rule: semantic.auth_method_unknown
+  help: docs/language/08-identity.html#semantic-auth-method-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.auth_method_duplicate`
+
+```jadpo check project=e-auth-method-duplicate expect=semantic.auth_method_duplicate
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+authentication {
+    browser_session: {
         cookie: "session"
     }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
+    browser_session: {
+        cookie: "admin_session"
     }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-
-authentication browser_session {
-    transport {
-        bearer: authorization_header
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_credential_slot_duplicate`
-
-```jadpo project=e-auth-credential-slot-duplicate file=context.jadpo expect=semantic.auth_credential_slot_duplicate hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-credential-slot-duplicate expect=semantic.auth_credential_slot_duplicate
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-
-authentication second_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_bearer_location_forbidden`
-
-```jadpo project=e-auth-bearer-location-forbidden file=context.jadpo expect=semantic.auth_bearer_location_forbidden hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-bearer-location-forbidden expect=semantic.auth_bearer_location_forbidden
-authentication browser_session {
-    transport {
-        bearer: query
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_validator_required`
-
-```jadpo project=e-auth-validator-required file=context.jadpo expect=semantic.auth_validator_required hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-validator-required expect=semantic.auth_validator_required
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_validator_duplicate`
-
-```jadpo project=e-auth-validator-duplicate file=context.jadpo expect=semantic.auth_validator_duplicate hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-validator-duplicate expect=semantic.auth_validator_duplicate
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-        user_session {
-            mode: signed
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_validation_mode_unknown`
-
-```jadpo project=e-auth-validation-mode-unknown file=context.jadpo expect=semantic.auth_validation_mode_unknown hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-validation-mode-unknown expect=semantic.auth_validation_mode_unknown
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: homegrown
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_principal_variant_unknown`
-
-```jadpo project=e-auth-principal-variant-unknown file=context.jadpo expect=semantic.auth_principal_variant_unknown hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-principal-variant-unknown expect=semantic.auth_principal_variant_unknown
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: administrator
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_resolution_duplicate`
-
-```jadpo project=e-auth-resolution-duplicate file=context.jadpo expect=semantic.auth_resolution_duplicate hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-resolution-duplicate expect=semantic.auth_resolution_duplicate
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_resolution_authority_invalid`
-
-```jadpo project=e-auth-resolution-authority-invalid file=context.jadpo expect=semantic.auth_resolution_authority_invalid hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-resolution-authority-invalid expect=semantic.auth_resolution_authority_invalid
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_mapping_required`
-
-```jadpo project=e-auth-mapping-required file=context.jadpo expect=semantic.auth_mapping_required hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-mapping-required expect=semantic.auth_mapping_required
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_mapping_duplicate`
-
-```jadpo project=e-auth-mapping-duplicate file=context.jadpo expect=semantic.auth_mapping_duplicate hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-mapping-duplicate expect=semantic.auth_mapping_duplicate
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `semantic.auth_mapping_target_invalid`
-
-```jadpo project=e-auth-mapping-target-invalid file=context.jadpo expect=semantic.auth_mapping_target_invalid hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-mapping-target-invalid expect=semantic.auth_mapping_target_invalid
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.service.service_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `type.auth_adapter_setting`
-
-```jadpo project=e-auth-adapter-setting file=context.jadpo expect=type.auth_adapter_setting hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-adapter-setting expect=type.auth_adapter_setting
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-            secret: "hard-coded-key"
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `type.auth_jwt_transport`
-
-```jadpo project=e-auth-jwt-transport file=context.jadpo expect=type.auth_jwt_transport hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-jwt-transport expect=type.auth_jwt_transport
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        oidc_user {
-            mode: jwt
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `type.auth_claim_unknown`
-
-```jadpo project=e-auth-claim-unknown file=context.jadpo expect=type.auth_claim_unknown hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-claim-unknown expect=type.auth_claim_unknown
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    claims {
-        email -> Principal.user.subject
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `type.auth_claim_authoritative_field`
-
-```jadpo project=e-auth-claim-authoritative-field file=context.jadpo expect=type.auth_claim_authoritative_field hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-claim-authoritative-field expect=type.auth_claim_authoritative_field
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    claims {
-        subject -> Principal.user.user_id
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `type.auth_authority_not_persistent`
-
-```jadpo project=e-auth-authority-not-persistent file=context.jadpo expect=type.auth_authority_not_persistent hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-entity Visitor { id: Uuid subject: Text enabled: Bool identity: id }
-```
-
-```jadpo project=e-auth-authority-not-persistent expect=type.auth_authority_not_persistent
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: Visitor.id
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `type.auth_authority_not_unique`
-
-```jadpo project=e-auth-authority-not-unique file=context.jadpo expect=type.auth_authority_not_unique hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool nickname: Text }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-authority-not-unique expect=type.auth_authority_not_unique
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.nickname
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `type.auth_mapping_mismatch`
-
-```jadpo project=e-auth-mapping-mismatch file=context.jadpo expect=type.auth_mapping_mismatch hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-mapping-mismatch expect=type.auth_mapping_mismatch
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            subject -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `type.auth_resolution_incomplete`
-
-```jadpo project=e-auth-resolution-incomplete file=context.jadpo expect=type.auth_resolution_incomplete hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-resolution-incomplete expect=type.auth_resolution_incomplete
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-### `type.auth_resolution_required`
-
-```jadpo project=e-auth-resolution-required file=context.jadpo expect=type.auth_resolution_required hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-resolution-required expect=type.auth_resolution_required
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-        service_session {
-            mode: opaque
-            principal: service
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
 }
-```
 
-### `type.auth_inactive_failure_kind`
-
-```jadpo project=e-auth-inactive-failure-kind file=context.jadpo expect=type.auth_inactive_failure_kind hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
-
-```jadpo project=e-auth-inactive-failure-kind expect=type.auth_inactive_failure_kind
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserMissing
-    }
-}
-
-failure UserMissing {
-    kind: NotFound
-    code: "user_missing"
-    message: "User not found."
-}
-```
-
-### `type.auth_lifecycle_active_field`
-
-```jadpo project=e-auth-lifecycle-active-field file=context.jadpo expect=type.auth_lifecycle_active_field hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
+type Handle = Text {
+    max_length: 40
 }
-enum UserStatus { active disabled }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
 
-```jadpo project=e-auth-lifecycle-active-field expect=type.auth_lifecycle_active_field
-entity User {
+entity Member {
     id: Uuid
-    subject: Text
-    enabled: Bool
-    status: UserStatus
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        unique: subject
+    handle: Handle {
+        unique: true
     }
+}
+```
 
-    lifecycle {
-        initial: {
-            status: User.status(UserStatus.active)
-        }
-        visible when status == UserStatus.active
-        transition disable {
-            from: status == UserStatus.active
-            set: {
-                status: User.status(UserStatus.disabled)
-            }
-        }
+```text output
+error: `browser_session:` is declared twice
+ --> main.jadpo:11:5
+   |
+ 8 |     browser_session: {
+   |     --------------- first declared here
+11 |     browser_session: {
+   |     ^^^^^^^^^^^^^^^ declared again
+  reason: Each way to sign in is one block, written once, so its settings are in one place.
+  next: Move the settings into the first `browser_session:`, and remove this one (agent)
+  rule: semantic.auth_method_duplicate
+  help: docs/language/08-identity.html#semantic-auth-method-duplicate
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.auth_setting_unknown`
+
+The language owns the cookie's flags, its lifetime and the CSRF check:
+
+```jadpo check project=e-auth-setting-unknown expect=semantic.auth_setting_unknown
+principal {
+    user: {
+        subject: Member.handle
     }
 }
 
-authentication browser_session {
-    transport {
+authentication {
+    browser_session: {
         cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
+        same_site: "lax"
     }
 }
-```
 
-### `type.auth_lifecycle_mapping_scope`
-
-```jadpo project=e-auth-lifecycle-mapping-scope file=context.jadpo expect=type.auth_lifecycle_mapping_scope hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
+type Handle = Text {
+    max_length: 40
 }
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-enum UserStatus { active disabled }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-```
 
-```jadpo project=e-auth-lifecycle-mapping-scope expect=type.auth_lifecycle_mapping_scope
-entity User {
+entity Member {
     id: Uuid
-    subject: Text
-    enabled: Bool
-    handle: Text
-    status: UserStatus
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        unique: subject
-        unique: handle
+    handle: Handle {
+        unique: true
     }
+}
+```
 
-    lifecycle {
-        initial: {
-            status: User.status(UserStatus.active)
-        }
-        visible when status == UserStatus.active
-        transition disable {
-            from: status == UserStatus.active
-            set: {
-                status: User.status(UserStatus.disabled)
-            }
-        }
+```text output
+error: `same_site` isn't a `browser_session` setting
+ --> main.jadpo:10:9
+   |
+10 |         same_site: "lax"
+   |         ^^^^^^^^^ unknown setting
+  reason: A browser session takes `cookie:`, its cookie's name, and `origin:`; the language sets the cookie's flags, its lifetime and the CSRF check.
+  next: Remove `same_site:` (agent)
+  rule: semantic.auth_setting_unknown
+  help: docs/language/08-identity.html#semantic-auth-setting-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.auth_setting_invalid`
+
+```jadpo check project=e-auth-setting-invalid expect=semantic.auth_setting_invalid
+principal {
+    user: {
+        subject: Member.handle
     }
 }
 
-authentication browser_session {
-    transport {
+authentication {
+    browser_session: {
+        cookie: "my session"
+    }
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+```
+
+```text output
+error: `cookie:` isn't a cookie's name
+ --> main.jadpo:9:17
+  |
+9 |         cookie: "my session"
+  |                 ^^^^^^^^^^^^ not a cookie name
+  reason: A browser session's cookie is named in text: 1 to 64 letters, digits, `_` and `-`, starting with a letter, such as `"session"`.
+  next: Write the cookie's name in quotes, such as `cookie: "session"` (agent)
+  rule: semantic.auth_setting_invalid
+  help: docs/language/08-identity.html#semantic-auth-setting-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.auth_setting_required`
+
+```jadpo check project=e-auth-setting-required expect=semantic.auth_setting_required
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+authentication {
+    browser_session: {}
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+```
+
+```text output
+error: `browser_session:` doesn't name its cookie
+ --> main.jadpo:8:5
+  |
+8 |     browser_session: {}
+  |     ^^^^^^^^^^^^^^^ no `cookie:`
+  reason: A browser session travels in a cookie the application names, so two applications on one domain never share one.
+  next: Add `cookie: "<name>"`, such as `cookie: "session"` (agent)
+  rule: semantic.auth_setting_required
+  help: docs/language/08-identity.html#semantic-auth-setting-required
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.auth_principal_required`
+
+```jadpo check project=e-auth-principal-required expect=semantic.auth_principal_required
+authentication {
+    browser_session: {
         cookie: "session"
     }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: status == UserStatus.active
-        mappings {
-            handle -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
+}
+```
+
+```text output
+error: `browser_session:` signs in users, but no `user:` is declared
+ --> main.jadpo:2:5
+  |
+2 |     browser_session: {
+  |     ^^^^^^^^^^^^^^^ nobody to sign in
+  reason: A browser session signs in a user, looked up through the principal's `user:` in `app.jadpo`, which names the entity and the unique field that identify one.
+  next: Declare `principal { user: { subject: <Entity>.<field> } }` in `app.jadpo` (agent)
+  rule: semantic.auth_principal_required
+  help: docs/language/08-identity.html#semantic-auth-principal-required
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.auth_not_set_up`
+
+Every route needs a signed-in caller unless it says otherwise, so routes
+with nothing to sign anyone in could never be called:
+
+```jadpo check project=e-auth-not-set-up expect=semantic.auth_not_set_up
+type Memo = Text {
+    max_length: 200
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> Unit {
+    var text: Memo = input.text
+    assert text != ""
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        status: SuccessStatus.no_content
+        run: add_memo(input)
     }
 }
 ```
 
-### `type.auth_exchange_binding`
+```text output
+error: `POST /memos` needs a signed-in caller, but nothing signs anyone in
+ --> main.jadpo:17:5
+   |
+17 |     POST / {
+   |     ^^^^^^ needs a signed-in caller
+  reason: Every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`, and `authentication.jadpo` declares no way to sign in that is built, so no request could reach this route.
+  next: Declare how callers sign in, `authentication { browser_session: { cookie: "<name>" } }`, or let anyone call the route with `authentication: RouteAuthentication.none` (human)
+  rule: semantic.auth_not_set_up
+  help: docs/language/08-identity.html#semantic-auth-not-set-up
 
-```jadpo project=e-auth-exchange-binding file=context.jadpo expect=type.auth_exchange_binding hidden
-application TodoApplication {
-    authentication { principal: Principal revocation { mode: bounded maximum_delay: 5m } }
-}
-config TodoConfiguration {
-    signing_key: Text { binding: "SESSION_SIGNING_KEY" secret: true }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-enum UserStatus { active disabled }
-enum ServiceStatus { active disabled }
-enum CredentialStatus { active revoked }
-entity User {
-    id: Uuid identity
-    name: Text unique
-    status: UserStatus
-}
-entity Service {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete restrict
-    name: Text unique
-    status: ServiceStatus
-}
-entity ServiceCredential {
-    id: Uuid identity
-    service_id: Service.id references Service.id as service on_delete cascade
-    verifier: Text unique
-    status: CredentialStatus
-    expires_at: Instant
-    revoked_at: Instant?
-}
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" }
-```
-
-```jadpo project=e-auth-exchange-binding expect=type.auth_exchange_binding
-authentication api_bearer {
-    transport { bearer: authorization_header }
-    validators {
-        service_key {
-            mode: api_key
-            principal: service
-            secret: config.signing_key
-            audience: "todo-service-key"
-            owner: Service.owner_id
-            credentials {
-                identity: ServiceCredential.id
-                principal: ServiceCredential.service_id
-                verifier: ServiceCredential.verifier
-                active: status == CredentialStatus.active
-                expires: ServiceCredential.expires_at
-                revoked: ServiceCredential.revoked_at
-            }
-        }
-        service_signed {
-            mode: signed
-            principal: service
-            secret: config.signing_key
-            audience: "todo-service-token"
-        }
-    }
-    exchange {
-        path: "/auth/exchange"
-        key: service_key
-        signed: service_key
-    }
-    resolution service {
-        authority: Service.name
-        active: status == ServiceStatus.active
-        mappings { name -> Principal.service.subject id -> Principal.service.service_id }
-        inactive: ServiceDisabled
-    }
-}
-```
-
-### `type.auth_exchange_path`
-
-```jadpo project=e-auth-exchange-path file=context.jadpo expect=type.auth_exchange_path hidden
-application TodoApplication {
-    authentication { principal: Principal revocation { mode: bounded maximum_delay: 5m } }
-}
-config TodoConfiguration {
-    signing_key: Text { binding: "SESSION_SIGNING_KEY" secret: true }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-enum UserStatus { active disabled }
-enum ServiceStatus { active disabled }
-enum CredentialStatus { active revoked }
-entity User {
-    id: Uuid identity
-    name: Text unique
-    status: UserStatus
-}
-entity Service {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete restrict
-    name: Text unique
-    status: ServiceStatus
-}
-entity ServiceCredential {
-    id: Uuid identity
-    service_id: Service.id references Service.id as service on_delete cascade
-    verifier: Text unique
-    status: CredentialStatus
-    expires_at: Instant
-    revoked_at: Instant?
-}
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" }
-```
-
-```jadpo project=e-auth-exchange-path expect=type.auth_exchange_path
-authentication api_bearer {
-    transport { bearer: authorization_header }
-    validators {
-        service_key {
-            mode: api_key
-            principal: service
-            secret: config.signing_key
-            audience: "todo-service-key"
-            owner: Service.owner_id
-            credentials {
-                identity: ServiceCredential.id
-                principal: ServiceCredential.service_id
-                verifier: ServiceCredential.verifier
-                active: status == CredentialStatus.active
-                expires: ServiceCredential.expires_at
-                revoked: ServiceCredential.revoked_at
-            }
-        }
-        service_signed {
-            mode: signed
-            principal: service
-            secret: config.signing_key
-            audience: "todo-service-token"
-        }
-    }
-    exchange {
-        path: "auth/exchange?key=raw"
-        key: service_key
-        signed: service_signed
-    }
-    resolution service {
-        authority: Service.name
-        active: status == ServiceStatus.active
-        mappings { name -> Principal.service.subject id -> Principal.service.service_id }
-        inactive: ServiceDisabled
-    }
-}
-```
-
-### `type.auth_exchange_route_collision`
-
-```jadpo project=e-auth-exchange-route-collision file=context.jadpo expect=type.auth_exchange_route_collision hidden
-application TodoApplication {
-    authentication { principal: Principal revocation { mode: bounded maximum_delay: 5m } }
-}
-config TodoConfiguration {
-    signing_key: Text { binding: "SESSION_SIGNING_KEY" secret: true }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-enum UserStatus { active disabled }
-enum ServiceStatus { active disabled }
-enum CredentialStatus { active revoked }
-entity User {
-    id: Uuid identity
-    name: Text unique
-    status: UserStatus
-}
-entity Service {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete restrict
-    name: Text unique
-    status: ServiceStatus
-}
-entity ServiceCredential {
-    id: Uuid identity
-    service_id: Service.id references Service.id as service on_delete cascade
-    verifier: Text unique
-    status: CredentialStatus
-    expires_at: Instant
-    revoked_at: Instant?
-}
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" }
-```
-
-```jadpo project=e-auth-exchange-route-collision expect=type.auth_exchange_route_collision
-authentication api_bearer {
-    transport { bearer: authorization_header }
-    validators {
-        service_key {
-            mode: api_key
-            principal: service
-            secret: config.signing_key
-            audience: "todo-service-key"
-            owner: Service.owner_id
-            credentials {
-                identity: ServiceCredential.id
-                principal: ServiceCredential.service_id
-                verifier: ServiceCredential.verifier
-                active: status == CredentialStatus.active
-                expires: ServiceCredential.expires_at
-                revoked: ServiceCredential.revoked_at
-            }
-        }
-        service_signed {
-            mode: signed
-            principal: service
-            secret: config.signing_key
-            audience: "todo-service-token"
-        }
-    }
-    exchange {
-        path: "/auth/exchange"
-        key: service_key
-        signed: service_signed
-    }
-    resolution service {
-        authority: Service.name
-        active: status == ServiceStatus.active
-        mappings { name -> Principal.service.subject id -> Principal.service.service_id }
-        inactive: ServiceDisabled
-    }
-}
-
-type Health = Text {}
-
-function alive() -> Health {
-    return Health("alive")
-}
-
-route POST /auth/exchange {
-    auth: none
-    output: Health
-    run: alive()
-}
+check failed: 1 error, 1 file
 ```
 
 ### `type.auth_principal_output`
 
-```jadpo project=e-auth-principal-output file=context.jadpo expect=type.auth_principal_output hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
+```jadpo check project=e-auth-principal-output expect=type.auth_principal_output
+principal {
+    user: {
+        subject: Member.handle
+    }
 }
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
+
+type Handle = Text {
+    max_length: 40
 }
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-authentication browser_session {
-    transport {
-        cookie: "session"
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
+}
+
+type Whoami = Output {
+    caller: Principal.user
 }
 ```
 
-```jadpo project=e-auth-principal-output expect=type.auth_principal_output
-output Leak {
-    actor: Principal.user
-}
+```text output
+error: `Whoami.caller` holds a caller
+ --> main.jadpo:19:13
+   |
+19 |     caller: Principal.user
+   |             ^^^^^^^^^^^^^^ a caller
+  reason: A caller value is who signed in, as the runtime holds it, and is never sent to a client; an output sends the fields a client needs.
+  next: Type `caller` with the entity's id, such as `User.id`, or send the fields a client needs (agent)
+  rule: type.auth_principal_output
+  help: docs/language/08-identity.html#type-auth-principal-output
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.auth_principal_input`
 
-```jadpo project=e-auth-principal-input file=context.jadpo expect=type.auth_principal_input hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
+```jadpo check project=e-auth-principal-input expect=type.auth_principal_input
+principal {
+    user: {
+        subject: Member.handle
+    }
 }
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
+
+type Handle = Text {
+    max_length: 40
 }
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-authentication browser_session {
-    transport {
-        cookie: "session"
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
+}
+
+type ActAs = Input {
+    caller: Principal.user
 }
 ```
 
-```jadpo project=e-auth-principal-input expect=type.auth_principal_input
-input Spoof {
-    actor: Principal.user
-}
+```text output
+error: `ActAs.caller` holds a caller
+ --> main.jadpo:19:13
+   |
+19 |     caller: Principal.user
+   |             ^^^^^^^^^^^^^^ a caller
+  reason: A caller comes only from signing in, never from what a request sends, so a route takes it as `current_principal` and passes it on.
+  next: Remove `caller`, and pass `current_principal` to what the route runs (agent)
+  rule: type.auth_principal_input
+  help: docs/language/08-identity.html#type-auth-principal-input
 
-output Done {
-    ok: Bool
-}
-
-query echo(actor: Principal.user) -> Done {
-    policy {
-        Access.authenticated: [invoke]
-    }
-    return Done {
-        ok: true
-    }
-}
-
-route POST /echo {
-    input: Spoof
-    output: Done
-    run: echo(input.actor)
-}
+check failed: 1 error, 1 file
 ```
 
 ### `type.auth_principal_failure_context`
 
-```jadpo project=e-auth-principal-failure-context file=context.jadpo expect=type.auth_principal_failure_context hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
+```jadpo check project=e-auth-principal-failure-context expect=type.auth_principal_failure_context
+principal {
+    user: {
+        subject: Member.handle
+    }
 }
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
+
+type Handle = Text {
+    max_length: 40
 }
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-authentication browser_session {
-    transport {
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+type MemoLocked = Failure {
+    kind: FailureKind.conflict
+    client: {
+        caller: Principal.user
+    }
+}
+```
+
+```text output
+error: `MemoLocked.caller` holds a caller
+ --> main.jadpo:21:17
+   |
+21 |         caller: Principal.user
+   |                 ^^^^^^^^^^^^^^ a caller
+  reason: A failure is logged and its client fields reach the caller, and a caller value holds who signed in, so a failure carries the caller's `id` instead.
+  next: Type `caller` with the entity's id, such as `User.id` (agent)
+  rule: type.auth_principal_failure_context
+  help: docs/language/08-identity.html#type-auth-principal-failure-context
+
+check failed: 1 error, 1 file
+```
+
+### `type.auth_principal_variant_unknown`
+
+```jadpo check project=e-auth-principal-variant-unknown expect=type.auth_principal_variant_unknown
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+authentication {
+    browser_session: {
         cookie: "session"
     }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
+}
+
+type MemberView = Output {
+    handle: Handle
+}
+
+type MemberNotFound = Failure {
+    kind: FailureKind.not_found
+}
+
+query whoami(caller: Principal.user) fails MemberNotFound -> MemberView {
+    from: Member
+    where: Member.id == caller.id
+    missing: MemberNotFound
+}
+
+routes Members {
+    prefix: /members
+
+    GET /me {
+        output: MemberView
+        run: whoami(current_principal.service)
     }
 }
 ```
 
-```jadpo project=e-auth-principal-failure-context expect=type.auth_principal_failure_context
-failure Leak {
-    kind: Rejected
-    code: "leak"
-    internal {
-        actor: Principal.user
-    }
-}
-```
+```text output
+error: `current_principal.service` isn't a kind of caller
+ --> main.jadpo:43:39
+   |
+43 |         run: whoami(current_principal.service)
+   |                                       ^^^^^^^ not declared
+  reason: `principal { }` declares no `service:`, so no service ever signs in; it declares `user`.
+  next: Write `current_principal.user` instead of `current_principal.service` (agent)
+  rule: type.auth_principal_variant_unknown
+  help: docs/language/08-identity.html#type-auth-principal-variant-unknown
 
-### `type.auth_reserved_route_input`
-
-```jadpo project=e-auth-reserved-route-input file=context.jadpo expect=type.auth_reserved_route_input hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
-}
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-authentication browser_session {
-    transport {
-        cookie: "session"
-    }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
-    }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-```jadpo project=e-auth-reserved-route-input expect=type.auth_reserved_route_input
-input Note {
-    session: Text
-}
-
-output Done {
-    ok: Bool
-}
-
-query save(note: Note) -> Done {
-    policy {
-        Access.authenticated: [invoke]
-    }
-    return Done {
-        ok: true
-    }
-}
-
-route POST /notes {
-    input: Note
-    output: Done
-    run: save(input)
-}
+check failed: 1 error, 1 file
 ```
 
 ### `type.auth_public_principal`
 
-```jadpo project=e-auth-public-principal file=context.jadpo expect=type.auth_public_principal hidden
-application App {
-    authentication { principal: Principal revocation { mode: immediate } }
+```jadpo check project=e-auth-public-principal expect=type.auth_public_principal
+principal {
+    user: {
+        subject: Member.handle
+    }
 }
-principal Principal {
-    user { subject: Text user_id: Uuid }
-    service { subject: Text service_id: Uuid }
-}
-entity User { id: Uuid identity subject: Text unique enabled: Bool }
-entity Service { id: Uuid identity name: Text unique enabled: Bool }
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "Not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "Not available." }
-config AuthConfig { signing_key: Text { binding: "SIGNING_KEY" secret: true } }
-authentication browser_session {
-    transport {
+
+authentication {
+    browser_session: {
         cookie: "session"
     }
-    validators {
-        user_session {
-            mode: opaque
-            principal: user
-        }
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
     }
-    resolution user {
-        authority: User.subject
-        active: enabled == true
-        mappings {
-            subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
+}
+
+type MemberView = Output {
+    handle: Handle
+}
+
+type MemberNotFound = Failure {
+    kind: FailureKind.not_found
+}
+
+query whoami(caller: Principal.user) fails MemberNotFound -> MemberView {
+    from: Member
+    where: Member.id == caller.id
+    missing: MemberNotFound
+}
+
+routes Members {
+    prefix: /members
+
+    GET /me {
+        authentication: RouteAuthentication.none
+        output: MemberView
+        run: whoami(current_principal.user)
     }
 }
 ```
 
-```jadpo project=e-auth-public-principal expect=type.auth_public_principal
-output Me {
+```text output
+error: A route anyone may call passes `current_principal`
+ --> main.jadpo:44:21
+   |
+44 |         run: whoami(current_principal.user)
+   |                     ^^^^^^^^^^^^^^^^^ no one is signed in here
+  reason: `authentication: RouteAuthentication.none` reads no credential, so the route has no caller to pass on, and nothing it runs may use one.
+  next: Remove `authentication: RouteAuthentication.none` so callers sign in, or stop passing `current_principal` (human)
+  rule: type.auth_public_principal
+  help: docs/language/08-identity.html#type-auth-public-principal
+
+check failed: 1 error, 1 file
+```
+
+### `type.auth_sessions_context`
+
+```jadpo check project=e-auth-sessions-context expect=type.auth_sessions_context
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "session"
+    }
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
     id: Uuid
-}
-
-query me(principal: Principal.user) -> Me {
-    policy {
-        Access.public: [invoke]
-    }
-    return Me {
-        id: principal.user_id
+    handle: Handle {
+        unique: true
     }
 }
 
-route GET /me {
-    auth: none
-    output: Me
-    run: me(current_principal.user)
+test "signing out ends the session" {
+    sessions.end()
 }
+```
+
+```text output
+error: A test can't call `sessions.end`
+ --> main.jadpo:25:5
+   |
+25 |     sessions.end()
+   |     ^^^^^^^^^^^^ outside an action
+  reason: `sessions.end` ends the session of the request a route answers, so only an action, which a route runs, calls it.
+  next: Call `sessions.end` in the action a sign-in or sign-out route runs (agent)
+  rule: type.auth_sessions_context
+  help: docs/language/08-identity.html#type-auth-sessions-context
+
+check failed: 1 error, 1 file
+```
+
+### `type.auth_principal_construction`
+
+A caller only comes from signing in; tests, fixtures and seeds make one
+from a record:
+
+```jadpo check project=e-auth-principal-construction expect=type.auth_principal_construction
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+action act_as(member: Member) -> Principal.user {
+    return Principal.user(member)
+}
+```
+
+```text output
+error: An action can't make a caller
+ --> main.jadpo:19:12
+   |
+19 |     return Principal.user(member)
+   |            ^^^^^^^^^^^^^^ made from a record
+  reason: A caller only comes from signing in; tests, fixtures and seeds make one from a record with `Principal.user(...)`, and application code takes it as a parameter a route passes.
+  next: Take a `Principal.user` parameter, which the route passes as `current_principal.user` (agent)
+  rule: type.auth_principal_construction
+  help: docs/language/08-identity.html#type-auth-principal-construction
+
+check failed: 1 error, 1 file
 ```
 
 ## Review

@@ -432,6 +432,7 @@ routes Todos {
 
     /// Creates a todo.
     POST / {
+        authentication: RouteAuthentication.none
         input: CreateTodo
         output: TodoView
         status: SuccessStatus.created
@@ -440,6 +441,7 @@ routes Todos {
 
     /// One todo.
     GET /{todo_id: Todo.id} {
+        authentication: RouteAuthentication.none
         output: TodoView
         run: find_todo(todo_id)
     }
@@ -452,11 +454,13 @@ routes Todos {
 version: 1
 
 POST /todos
+    authentication: none
     input: CreateTodo (body)
     output: TodoView
     status: 201
 
 GET /todos/{todo_id: Uuid}
+    authentication: none
     output: TodoView
     status: 200
     fails: todo_not_found 404
@@ -1322,6 +1326,52 @@ error: `90s` can't be a route's deadline
 check failed: 1 error, 1 file
 ```
 
+### `route.authentication_invalid`
+
+A route says only when it differs from needing a signed-in caller, and an
+unclear value is refused without a guess, since one fix keeps the route
+protected and the other opens it (area 8):
+
+```jadpo check project=e-route-authentication expect=route.authentication_invalid
+type Memo = Text {
+    max_length: 200
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> Unit {
+    var text: Memo = input.text
+    assert text != ""
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        authentication: none
+        input: AddMemo
+        status: SuccessStatus.no_content
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `none` isn't a `RouteAuthentication`
+ --> main.jadpo:18:25
+   |
+18 |         authentication: none
+   |                         ^^^^ not `.none` or `.fresh`
+  reason: Every route needs a signed-in caller unless it says otherwise: `RouteAuthentication.none` lets anyone call it, and `RouteAuthentication.fresh` checks the caller's record on this request. One opens the route and the other keeps it protected, so neither is guessed.
+  next: Write `RouteAuthentication.fresh` to keep the route signed in, `RouteAuthentication.none` to let anyone call it, or remove `authentication:` (human)
+  rule: route.authentication_invalid
+  help: docs/language/07-http.html#route-authentication-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `route.placeholder_type`
 
 A placeholder is typed with a named scalar or an `X.id`, never optional:
@@ -1471,12 +1521,14 @@ routes Memos {
     prefix: /memos
 
     POST /{memo_id: MemoId} {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: tag_memo(memo_id, input)
     }
 
     POST /{shelf_id: MemoId} {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: tag_memo(shelf_id, input)
@@ -1486,11 +1538,11 @@ routes Memos {
 
 ```text output
 error: `POST /memos/{shelf_id}` could answer the same requests as `POST /memos/{memo_id}`
- --> main.jadpo:36:5
+ --> main.jadpo:37:5
    |
 30 |     POST /{memo_id: MemoId} {
    |     ----------------------- already answered here
-36 |     POST /{shelf_id: MemoId} {
+37 |     POST /{shelf_id: MemoId} {
    |     ^^^^^^^^^^^^^^^^^^^^^^^^ answers the same requests
   reason: A request such as `/memos/…` matches both `POST /memos/{memo_id}` and `POST /memos/{shelf_id}`: where two paths differ, one must have fixed text where the other has a placeholder, since a fixed segment beats a placeholder.
   next: Give one of the paths fixed text where the other has a placeholder (agent)
@@ -1578,6 +1630,7 @@ routes Memos {
     api: admin
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: add_memo(input)
@@ -1642,6 +1695,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: TaggedMemo
         output: MemoView
         run: add_tagged_memo(input)
@@ -1705,6 +1759,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: TaggedMemo
         output: MemoView
         run: add_tagged_memo(input)
@@ -1773,6 +1828,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: TaggedMemo
         output: MemoView
         run: add_tagged_memo(input)
@@ -1839,6 +1895,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: TaggedMemo
         output: MemoView
         run: add_tagged_memo(input)
@@ -1911,6 +1968,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: add_memo(input)
@@ -2021,6 +2079,36 @@ error: `true` isn't an `Idempotency`
 check failed: 1 error, 1 file
 ```
 
+### `api.authentication_invalid`
+
+An API lists the sign-in methods it accepts, each one `authentication.jadpo`
+declares (area 8):
+
+```jadpo check project=e-api-authentication file=app.jadpo expect=api.authentication_invalid
+application {
+    apis: {
+        main: {
+            prefix: /v1
+            authentication: [AuthenticationMethod.browser_session]
+        }
+    }
+}
+```
+
+```text output
+error: API `main` accepts `browser_session`, which isn't declared
+ --> app.jadpo:5:30
+  |
+5 |             authentication: [AuthenticationMethod.browser_session]
+  |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not declared
+  reason: An API accepts only the ways to sign in the application declares; `authentication.jadpo` declares no way to sign in yet.
+  next: List the methods the API accepts, each one `authentication.jadpo` declares (agent)
+  rule: api.authentication_invalid
+  help: docs/language/07-http.html#api-authentication-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `api.setting_unknown`
 
 ```jadpo check project=e-api-setting file=app.jadpo expect=api.setting_unknown
@@ -2040,7 +2128,7 @@ error: `version` isn't an API setting
   |
 5 |             version: 2
   |             ^^^^^^^ unknown setting
-  reason: An API in `apis:` holds its `prefix:` and `idempotency:`, and later its `authentication:` and `rate_limit:`.
+  reason: An API in `apis:` holds its `prefix:`, `idempotency:` and `authentication:`, and later its `rate_limit:`.
   next: Remove `version` (agent)
   rule: api.setting_unknown
   help: docs/language/07-http.html#api-setting-unknown
@@ -2093,6 +2181,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: add_memo(input)
