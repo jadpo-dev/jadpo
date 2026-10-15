@@ -920,7 +920,9 @@ and the sources alone, so it is the same whichever executor ran the call;
 
 **The test runner.** Built in chunk 2.2 (`jadpo-test`, `jadpo test`): it
 finds the tests through the graph, takes a test's kind from its `calls`
-edges (an action, query or fixture makes it an action test), picks them by
+edges (an action, query or fixture makes it an action test, and since
+chunk 3.10 so does a `reads` edge, an entity's `get` called straight from
+the test), picks them by
 file, `<file>:<line>`, `--name`, `--kind` and `--failed`, and runs them
 through `Program::call` in a Fisher–Yates order from a SplitMix64 order
 seed, so `--seed` reproduces a run. A failed `assert` keeps the value of

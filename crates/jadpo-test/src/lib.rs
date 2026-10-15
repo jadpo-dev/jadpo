@@ -435,12 +435,14 @@ pub fn discover(graph: &Graph) -> Vec<Test> {
                 return None;
             }
             let place = node.place.as_ref()?;
+            // An entity's `get` read straight from the test needs a store
+            // as much as a query does.
             let acts = graph.outgoing(id, EdgeKind::Calls).any(|callee| {
                 matches!(
                     graph.node(callee).kind,
                     Kind::Action | Kind::Query | Kind::Fixture
                 )
-            });
+            }) || graph.outgoing(id, EdgeKind::Reads).next().is_some();
             Some(Test {
                 key: node.key.as_str().to_string(),
                 name: node.name.clone(),

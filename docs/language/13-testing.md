@@ -129,6 +129,57 @@ test. Calling an action is an ordinary call, with no `call` word. Area 1
 named the second kind "integration"; this page calls it "action", because
 `integration` is the keyword for third-party APIs (area 11).
 
+Only actions write records (area 6), so a test changes data through the
+action that does it, which is what an action test proves, and a fixture
+builds the data it starts from. A test may read straight from an entity
+with `get`, as it may call a query, and either makes it an action test
+with its own database; a write straight to an entity is
+`semantic.not_callable` (chunk 3.10):
+
+```jadpo check project=e-test-writes file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-test-writes file=domains/shop/types/count.jadpo hidden
+type Count = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-test-writes file=domains/shop/entities/shelf.jadpo hidden migrate=initial
+use shop/types { Count }
+
+entity Shelf {
+    id: Uuid
+    visits: Count
+}
+```
+
+```jadpo check project=e-test-writes file=domains/shop/entities/shelf.test.jadpo expect=semantic.not_callable
+test "a shelf counts its visits" {
+    var shelf: Shelf = attempt Shelf.update("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e") {
+        set: {
+            visits: 3
+        }
+    }
+    assert shelf.visits == 3
+}
+```
+
+```text output
+error: A test can't call `Shelf.update`
+ --> domains/shop/entities/shelf.test.jadpo:2:32
+  |
+2 |     var shelf: Shelf = attempt Shelf.update("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e") {
+  |                                ^^^^^^^^^^^^ writes a record
+  reason: Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, builds the data a test starts from. A test may still read, with `Shelf.get` and queries.
+  next: Call the action that writes `Shelf`, or move the write into a fixture (agent)
+  rule: semantic.not_callable
+  help: docs/language/01-project-layout-and-modules.html#semantic-not-callable
+
+check failed: 1 error, 4 files
+```
+
 A route test sends a typed request through the real generated boundary
 (question 5; area 7 settles the request's shape):
 

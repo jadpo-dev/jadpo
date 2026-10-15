@@ -7,7 +7,8 @@
 //! out (and a required field it sends as `none`), a counter and text
 //! joined onto a stored field, and an action that handles a refusal from
 //! an action it calls and carries on, keeping none of what the failed action wrote
-//! (a savepoint per called action whose failure is handled). Then,
+//! (a savepoint per called action whose failure is handled), and a test
+//! that reads a record with `get` and nothing else. Then,
 //! through the interpreter with a second connection changing a record
 //! mid-action, the whole action rerun after a concurrent change, its
 //! first attempt's rows gone and its second's there once, and concurrent counters losing no increment. Last, two
@@ -228,6 +229,10 @@ test \"an action handles a refusal from one it calls and carries on\" {
     assert a.name == \"A\"
 }
 
+test \"a test reads a record straight from its entity\" {
+    assert Shelf.get(\"0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e\") fails ShelfNotFound
+}
+
 test \"a called action that fails and is handled keeps none of its writes\" {
     var kept: Shelf = attempt keep_then_try(\"K\", \"T\")
     assert kept.name == \"K\"
@@ -257,7 +262,7 @@ fn writes_do_what_area_6_says() {
     write(&root, "domains/shop/actions/add_shelf.test.jadpo", TESTS);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("7 passed"), "{}", tested.stdout);
+    assert!(tested.stdout.contains("8 passed"), "{}", tested.stdout);
 }
 
 // --- a concurrent change, forced -----------------------------------------------
