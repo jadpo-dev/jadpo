@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 # A shared leaf crate (docs/compiler-runtime.md §2.1): it depends on no other
 # workspace crate, so compiler and runtime crates may both depend on it, and

@@ -4,7 +4,7 @@
   "description": "Jadpo language support: highlighting, and the compiler's own errors, hover and go to definition through jadpo lsp.",
   "version": "0.1.0",
   "publisher": "jadpo",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "private": true,
   "repository": {
     "type": "git",

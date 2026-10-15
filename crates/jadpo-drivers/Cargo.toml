@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 # A runtime crate (docs/compiler-runtime.md §2.1 and §2.6): it builds for
 # wasm32-unknown-unknown, with and without its drivers, and depends only on

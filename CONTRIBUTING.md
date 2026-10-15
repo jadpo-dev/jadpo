@@ -1,6 +1,8 @@
 # Contributing to Jadpo
 
-Jadpo is experimental and licensing has not been chosen yet. The
+Jadpo is experimental. Contributions are accepted under the licence of
+the part they change: code under the [Apache License 2.0](LICENSE), as its
+section 5 provides, and documentation under [CC BY 4.0](docs/LICENSE.md). The
 [roadmap](docs/roadmap.md) is the plan; [AGENTS.md](AGENTS.md) has the working
 rules for people and agents alike.
 

@@ -59,3 +59,18 @@ names the habit and the Jadpo form, with an edit, and parsing carries on as
 if the Jadpo form had been written. Behind it, a syntax error never produces
 a second error on the same line, checked over a corpus of broken files.
 Built in roadmap chunk 3.8.
+
+### Licence — 2026-10-15
+
+Richard: Jadpo should be free to use, fork and build commercial software
+with, and leave room for commercial offerings of his own. The code (compiler,
+runtime, standard library, tools, editor extension, examples) is Apache-2.0
+alone: its patent grant protects users from contributors' patents, and
+unlike a dual MIT OR Apache-2.0 licence it lets nobody take Jadpo under MIT
+to escape the clause that ends the licence of anyone who sues over patents.
+The documentation is CC BY 4.0. A source-available licence (FSL) that would
+forbid selling Jadpo itself was considered and rejected: it would cost
+adoption, and nobody pays for a copy of something free. Instead
+[TRADEMARKS.md](../TRADEMARKS.md) requires a modified version to use a
+different name. Commercial offerings will be separate code, licensed when
+they exist.
