@@ -6,6 +6,7 @@ ada
 ada_borrows_two
 add_copy
 add_delivery
+add_interest
 add_todo
 admin_orders
 administrative_health
@@ -24,12 +25,15 @@ application_configuration
 applies_to
 apply_change
 apply_discount
+approved
 archive_todo
 archived
+archived_at
 arrived_at
 article
 article_conflict
 article_not_found
+article_title
 asked_words
 attachment
 auth_config
@@ -53,7 +57,6 @@ basket
 basket_empty
 basket_line
 batch_code
-batches
 best_before
 bill
 billing_name
@@ -66,10 +69,10 @@ book_already_lent
 book_by_id
 book_card
 book_collection
+book_has_loans
 book_id
 book_ids
 book_not_found
-book_on_loan
 book_title
 book_titled
 book_view
@@ -196,6 +199,7 @@ day_count
 days
 days_left
 days_overdue
+declare_lost
 decline_reason
 deleted_at
 deliver_to
@@ -207,6 +211,8 @@ delivery_state
 destination_company_id
 details
 diners
+disable_user
+disabled_at
 discount
 discount_code
 discount_for
@@ -233,6 +239,7 @@ dune
 duplicate_failure
 duplicate_success
 edit_todo
+edited_at
 effort
 egg
 email_on_completion
@@ -285,8 +292,10 @@ half_price
 handover
 handover_charge
 has_urgent
+headline_text
 heavy
 heavy_ingredients
+hide_todo
 higher
 hit
 hits
@@ -297,6 +306,7 @@ icing
 icing_too_long
 icing_unreadable
 import_reference
+in_review
 in_shop
 in_store
 incomplete_receipt
@@ -348,6 +358,7 @@ lead_id
 ledger_account
 ledger_amount
 ledger_entry
+left_at
 left_over
 legacy_flag
 lend
@@ -370,7 +381,9 @@ loan
 loan_changes
 loan_days
 loan_id
+loan_not_out
 loan_period
+loan_status
 loan_view
 loans
 loans_due
@@ -402,6 +415,7 @@ member_id
 member_loans
 member_not_found
 member_page
+members_named
 menu
 menu_entry
 menu_item
@@ -452,6 +466,7 @@ order_locked
 order_not_found
 order_note
 order_shelf
+order_stage
 order_state
 order_status
 order_too_large
@@ -570,6 +585,7 @@ reminder_sent_at
 reminder_temporarily_unavailable
 reminder_tick
 reminder_time
+remove_article
 rename_product
 renew
 renewed
@@ -593,6 +609,9 @@ rested
 restock
 retag_todo
 return_book
+returned_at
+review_stage
+revoke_card
 revoked_at
 rye
 sack_count
@@ -653,6 +672,7 @@ snooze_todo
 source_company_id
 split_evenly
 sponge
+stage
 stamp_card
 stamp_count
 stamped_once
@@ -665,6 +685,7 @@ steam_word
 stock
 stock_badge
 stock_badges
+story
 street_address
 stripe_v2024
 subtitle
@@ -742,6 +763,7 @@ user_id
 user_missing
 user_name
 user_not_found
+user_stage
 user_status
 user_todos
 user_view
@@ -756,6 +778,8 @@ vouch
 vouched
 vouched_by
 voucher
+wallet
+wallet_id
 water
 water_difference
 wear

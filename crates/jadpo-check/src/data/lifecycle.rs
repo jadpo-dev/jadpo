@@ -142,15 +142,19 @@ pub(super) fn read(
         .find(|(name, _)| name == "initial")
         .map(|(_, member)| reader.values(member, "initial"))
         .unwrap_or_default();
+    // A `visible:` already reported leaves what it hides unknown, so
+    // nothing reports a knock-on of it.
+    let has_visible = sections.iter().any(|(name, _)| name == "visible");
+    let unknown = has_visible && visible.is_none();
     let mut transitions = Vec::new();
     if let Some((_, member)) = sections.iter().find(|(name, _)| name == "transitions") {
-        transitions = reader.transitions(member, visible.as_ref());
+        transitions = reader.transitions(member, visible.as_ref(), unknown);
     }
     let purge = sections
         .iter()
         .find(|(name, _)| name == "purge")
-        .and_then(|(_, member)| reader.purge(member, visible.is_some()));
-    let has_visible = sections.iter().any(|(name, _)| name == "visible");
+        .and_then(|(_, member)| reader.purge(member, has_visible))
+        .filter(|_| visible.is_some());
     let has_transitions = sections.iter().any(|(name, _)| name == "transitions");
     if !has_visible && !has_transitions {
         reader.out.push(
@@ -159,7 +163,7 @@ pub(super) fn read(
                 format!("`{}`'s lifecycle hides nothing and changes nothing", entity.name),
             )
             .at(key_span.clone(), "no `visible:` or `transitions:`")
-            .reason("A lifecycle says which records normal reads see (`visible:`) or the named changes its fields go through (`transitions:`); one with neither would only stop the records being deleted.")
+            .reason("A lifecycle says which records reads see (`visible:`) or the named changes its fields go through (`transitions:`); one with neither would only stop the records being deleted.")
             .next("Add `visible:` or `transitions:`, or remove `lifecycle:`"),
         );
     }
@@ -323,7 +327,7 @@ impl<'a> Reader<'a, '_> {
                 )
                 .at(at, "a condition goes here")
                 .reason(format!(
-                    "`{word}:` is one condition on the record's own fields, such as `deleted_at == none`."
+                    "`{word}:` is one condition on the record's own fields, such as `<field> == none`."
                 ))
                 .next(format!("Write `{word}: <field> == <value>`")),
             );
@@ -793,6 +797,7 @@ impl<'a> Reader<'a, '_> {
         &mut self,
         member: &ast::Member,
         visible: Option<&Condition>,
+        unknown: bool,
     ) -> Vec<TransitionModel> {
         let mut out: Vec<TransitionModel> = Vec::new();
         let takes = "A transition has an optional `when:`, saying when it is allowed, and a `set:` giving the fields it changes.";
@@ -841,7 +846,7 @@ impl<'a> Reader<'a, '_> {
                         &rule::DATA_LIFECYCLE_TRANSITION_NAME,
                         format!("A transition can't be called `{transition}`"),
                     )
-                    .at(span, "taken")
+                    .at(span, "name in use")
                     .reason(reason)
                     .next("Name the transition after the change it makes, such as `archive`"),
                 );
@@ -866,7 +871,7 @@ impl<'a> Reader<'a, '_> {
                             )
                             .at(at, "nothing to change")
                             .reason(
-                                "A transition is a change of stage, so it sets at least one field.",
+                                "A transition is a named change, so it sets at least one field.",
                             )
                             .next("Add the fields it changes to `set:`"),
                         );
@@ -879,6 +884,7 @@ impl<'a> Reader<'a, '_> {
                 }
             };
             let guarded = match (&when, visible) {
+                _ if unknown => false,
                 (None, _) => false,
                 (Some(_), None) => true,
                 (Some(when), Some(visible)) => {

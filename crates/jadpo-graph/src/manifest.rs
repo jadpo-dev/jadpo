@@ -253,7 +253,7 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ),
     (
         "visible",
-        "A lifecycle's condition for the records normal reads see, as written",
+        "A lifecycle's condition for the records reads see, as written",
     ),
     (
         "purge",

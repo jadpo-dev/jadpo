@@ -1,0 +1,8 @@
+// `Member.delete` runs the lifecycle's `delete` transition: the member is
+// hidden from then on, and their row stays until purge removes it. By
+// `id`, a member who isn't there, or has left already, is `MemberNotFound`.
+
+/// A member leaves the library.
+action leave(member_id: Member.id) fails MemberNotFound -> Unit {
+    attempt Member.delete(member_id)
+}

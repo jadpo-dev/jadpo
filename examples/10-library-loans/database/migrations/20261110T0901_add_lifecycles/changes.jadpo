@@ -1,0 +1,7 @@
+/// Gives members and loans their lifecycles: until now a returned loan was
+/// deleted, so every loan already stored is still out.
+migration {
+    Loan.status: {
+        backfill: LoanStatus.out
+    }
+}

@@ -20,6 +20,36 @@ entity Loan {
     changed_at: Instant {
         generated: Generated.on_change
     }
+    // Out until the book comes back; only the lifecycle's transition
+    // changes these two.
+    status: LoanStatus
+    returned_at: Instant?
+
+    // A lifecycle with no `visible:` hides nothing: returned loans stay on
+    // record. A new loan starts `out` (`initial:`), and its transitions are
+    // the only way to move it on, each allowed only while it is out, so
+    // checking a loan in twice is refused, a conflict its caller maps.
+    // With a lifecycle and no `delete` transition, no code deletes a loan.
+    lifecycle: {
+        initial: {
+            status: LoanStatus.out
+        }
+        transitions: {
+            check_in: {
+                when: status == LoanStatus.out
+                set: {
+                    status: LoanStatus.returned
+                    returned_at: clock.now
+                }
+            }
+            declare_lost: {
+                when: status == LoanStatus.out
+                set: {
+                    status: LoanStatus.lost
+                }
+            }
+        }
+    }
 
     // A unique rule over several fields has a name, which a write's
     // conflict names: a book is lent once on any day.

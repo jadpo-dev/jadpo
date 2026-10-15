@@ -253,7 +253,7 @@ entity Todo {
 owns is given in `initial:`:
 
 ```jadpo check project=lifecycle-publishing
-type PostTitle = Text {
+type HeadlineText = Text {
     max_length: 120
 }
 
@@ -263,16 +263,16 @@ type ReviewStage = Enum {
     approved
 }
 
-entity Post {
+entity Story {
     id: Uuid
-    title: PostTitle
+    headline: HeadlineText
     stage: ReviewStage
     published_at: Instant?
 
     lifecycle: {
         visible: published_at != none and published_at <= clock.now
         initial: {
-            stage: ReviewStage.draft  // every new post starts as a draft
+            stage: ReviewStage.draft  // every new story starts as a draft
         }
         transitions: {
             submit: {
@@ -1350,7 +1350,7 @@ error: A transition can't be called `update`
  --> main.jadpo:7:13
   |
 7 |             update: {
-  |             ^^^^^^ taken
+  |             ^^^^^^ name in use
   reason: `Todo.update` is already an operation every entity has, so a transition can't take its name; `delete` is the one a transition may take over.
   next: Name the transition after the change it makes, such as `archive` (agent)
   rule: data.lifecycle_transition_name

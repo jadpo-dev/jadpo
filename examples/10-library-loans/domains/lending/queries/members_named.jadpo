@@ -1,0 +1,11 @@
+// Every query of an entity with a lifecycle reads only its visible
+// records, so the index this query needs holds only those: the migration
+// creates it `WHERE "left_at" IS NULL`.
+
+/// The members with a name, for the desk's search.
+query members_named(name: Member.name) -> List<Member> {
+    from: Member
+    where: Member.name == name
+    order: [Member.joined_at asc]
+    limit: 20
+}

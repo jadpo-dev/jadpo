@@ -1,4 +1,0 @@
-/// The copy is out on loan, so it can't leave the catalogue.
-type BookOnLoan = Failure {
-    kind: FailureKind.conflict
-}

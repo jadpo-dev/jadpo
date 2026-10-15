@@ -1,0 +1,14 @@
+test "a member who leaves is hidden, and their loans stay on record" {
+    var ada: Borrower = ada_borrows_two()
+    attempt leave(ada.member.id)
+    assert member_by_email("ada@example.test") == none
+    assert member_loans(ada.member.id) fails MemberNotFound
+    assert members_named("Ada") == []
+    assert leave(ada.member.id) fails MemberNotFound
+    var due: List<LoanView> = loans_due(
+        collection.map(ada.books, book -> book.id),
+        "2026-10-01",
+        "2026-11-30"
+    )
+    assert collection.map(due, loan -> loan.book.title) == ["Dune", "Emma"]
+}
