@@ -17,6 +17,7 @@ use jadpo_syntax::ast::{self, AstNode, Decl};
 
 use crate::case::{starts_upper, to_snake};
 use crate::lookups::{Lookup, Name, NameView};
+use crate::std_lib::StdNames;
 use crate::tree::{self, name_span};
 use crate::types::{callables_of, typed_body};
 
@@ -428,11 +429,51 @@ fn unused_beside_primary(
             }
         }
     }
+    if supporting.iter().all(|item| used.contains(&item.index))
+        || names_nothing(db, project, file, source, &used)
+    {
+        return Vec::new();
+    }
     supporting
         .into_iter()
         .filter(|item| !used.contains(&item.index))
         .map(|item| unused_beside(path, source, item, primary))
         .collect()
+}
+
+/// Whether a declaration in `used` writes a name that names nothing. That
+/// is resolution's to report, and it may be a misspelling of the
+/// supporting declaration it was meant to use, so while one does, nothing
+/// beside the primary is called unused: one mistake, one error.
+fn names_nothing(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    source: &ast::SourceFile,
+    used: &BTreeSet<u32>,
+) -> bool {
+    let lookup = Lookup::new(db, project);
+    let std = StdNames::get();
+    let unknown_type = used.iter().any(|&index| {
+        named_in(source, index).iter().any(|name| {
+            starts_upper(name)
+                && lookup.declared(name).is_empty()
+                && !std.is_type(name)
+                && !std.reserved(name)
+                && !std.is_generic(name)
+                && !lookup.is_package(name)
+        })
+    });
+    unknown_type
+        || callables_of(db, file)
+            .into_iter()
+            .filter(|callable| used.contains(&callable.index(db)))
+            .any(|callable| {
+                typed_body(db, project, callable)
+                    .body
+                    .calls()
+                    .any(|(_, callee)| matches!(callee, Callee::Unknown))
+            })
 }
 
 /// Every name declaration `index` reads: types, calls and values, but not

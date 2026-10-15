@@ -461,6 +461,28 @@ impl Lexer<'_> {
     /// own.
     fn semicolon(&mut self) {
         let start = self.pos;
+        // Splitting the line is only the fix when what comes before the `;`
+        // can end one: not after `use shared/;` or `a +;`.
+        let ends_line = matches!(
+            self.last,
+            Some((
+                IDENT
+                    | R_PAREN
+                    | R_BRACK
+                    | R_BRACE
+                    | R_ANGLE
+                    | STRING
+                    | INT_NUMBER
+                    | DECIMAL_NUMBER
+                    | UNIT_NUMBER
+                    | TRUE_KW
+                    | FALSE_KW
+                    | NONE_KW
+                    | RETURN_KW,
+                _,
+                _
+            ))
+        );
         self.pos += 1;
         self.push(SKIPPED, start);
         let after = self.rest_of_line(self.pos);
@@ -490,7 +512,7 @@ impl Lexer<'_> {
                 written: ";".into(),
                 jadpo: String::new(),
                 edits: vec![edit],
-                clean: true,
+                clean: ends || ends_line,
                 next,
             },
         );

@@ -470,3 +470,13 @@ fn habit_edits_write_the_jadpo_form() {
         assert_eq!(fixed_by_edits(written, &error), meant, "{}", error.message);
     }
 }
+
+#[test]
+fn a_semicolon_in_a_use_path_is_not_a_clean_split() {
+    // After `use shared/` splitting the line at `;` leaves a line that
+    // still doesn't parse, so the habit isn't clean and `jadpo fmt`
+    // doesn't apply it.
+    let path = parse_file("use shared/;types { Pence }\n");
+    assert_eq!(path.errors().len(), 1, "{:#?}", path.errors());
+    assert!(!path.checkable(), "{:#?}", path.errors());
+}

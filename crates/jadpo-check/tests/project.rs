@@ -675,6 +675,24 @@ fn a_file_holds_only_what_its_primary_declaration_uses() {
             "shared/types/parcel.jadpo layout.unused_declaration: `Ounces` isn't used by `Parcel`",
         ]
     );
+    // While the primary writes a name that names nothing, perhaps a
+    // misspelling of the helper it meant, only that is reported.
+    assert_eq!(
+        with(&[(
+            "domains/ordering/actions/quote.jadpo",
+            "use shared/types { Price }\n\naction quote(subtotal: Price) -> Price {\n    return dobuled(subtotal)\n}\n\nfunction doubled(amount: Price) -> Price {\n    return Price(amount + amount)\n}\n"
+        )]),
+        [
+            "domains/ordering/actions/quote.jadpo semantic.unknown_callee: `dobuled` isn't a function, action or query"
+        ]
+    );
+    assert_eq!(
+        with(&[(
+            "domains/ordering/actions/quote.jadpo",
+            "action quote(note: Ntoe) -> Unit {}\n\ntype Note = Text {}\n"
+        )]),
+        ["domains/ordering/actions/quote.jadpo semantic.unknown_name: `Ntoe` isn't declared"]
+    );
     // One that another file uses is moved, not removed.
     assert_eq!(
         with(&[
