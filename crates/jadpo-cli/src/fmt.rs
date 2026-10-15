@@ -140,7 +140,7 @@ fn make_moves(root: &Path) {
             {
                 return;
             }
-            if std::fs::write(&file, apply(&text, edits)).is_err() {
+            if std::fs::write(&file, jadpo_check::apply_edits(&text, edits)).is_err() {
                 return;
             }
         }
@@ -172,37 +172,8 @@ fn fixed_imports(root: &Path, files: &[PathBuf]) -> BTreeMap<String, String> {
         if !wanted.contains(&path) {
             continue;
         }
-        let original = file.text(&loaded.db).clone();
-        // Each round applies the edits that don't overlap; what's left,
-        // such as two names for one new line, the next round finishes.
-        for _ in 0..16 {
-            let problems = jadpo_check::import_problems(&loaded.db, project, file);
-            let edits = jadpo_check::import_edits(problems);
-            if edits.is_empty() {
-                break;
-            }
-            let text = apply(file.text(&loaded.db), edits);
-            if jadpo_syntax::parse_file(&text).has_errors() {
-                break;
-            }
-            loaded.set_text(&path, text);
-        }
-        if *file.text(&loaded.db) != original {
-            out.insert(path, file.text(&loaded.db).clone());
-        }
-    }
-    out
-}
-
-/// `text` with each `(start, end, replacement)` applied, from the end
-/// back so earlier offsets stay right.
-fn apply(text: &str, mut edits: Vec<(u32, u32, String)>) -> String {
-    edits.sort_by_key(|a| std::cmp::Reverse((a.0, a.1)));
-    let mut out = text.to_string();
-    for (start, end, replacement) in edits {
-        let (start, end) = (start as usize, end as usize);
-        if start <= end && end <= out.len() {
-            out.replace_range(start..end, &replacement);
+        if let Some(fixed) = jadpo_check::fix_imports(&mut loaded, &path) {
+            out.insert(path, fixed);
         }
     }
     out

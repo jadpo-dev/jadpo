@@ -16,17 +16,20 @@
 //!   value the runtime holds.
 //!
 //! - [`QueryPlan`]s and [`EntityPlan`]s: the SQL each query and `get`
-//!   runs, with its parameters and row codecs (chunk 3.2, `queries`), and
-//!   [`WriteSitePlan`]s: what each `create`, `update` and `delete` runs and
-//!   what its refusals raise (chunk 3.3, `writes`), with a lifecycle's
-//!   transitions, and the [`PurgePlan`] of each lifecycle's `purge:`
-//!   (chunk 3.4, `purge`).
+//!   runs, with its parameters, row codecs and the failure when a read of
+//!   one record finds none (chunk 3.2, `queries`), and [`WriteSitePlan`]s:
+//!   what each `create`, `update` and `delete` runs and what its refusals
+//!   raise (chunk 3.3, `writes`), with a lifecycle's transitions, and the
+//!   [`PurgePlan`] of each lifecycle's `purge:` (chunk 3.4, `purge`).
 //!
-//! Built in chunk 2.10 from the checker's graph and typed bodies; the SQL
-//! of reads and creates joined in chunk 3.2; policy, the other writes,
-//! codecs for HTTP and the route, schedule and subscriber tables join it
-//! with their areas. It is plain data, shared
-//! by every thread that runs the project.
+//! Built in chunk 2.10 from the checker's graph and typed bodies; reads
+//! and creates joined in chunk 3.2, the other writes in chunk 3.3 and
+//! lifecycles in chunk 3.4; policy, codecs for HTTP and the route,
+//! schedule and subscriber tables join it with their areas. What it decides
+//! is `jadpo-std`'s plain data (type and failure plans, constants, read,
+//! write and purge plans), which the runtime runs without a compiler crate,
+//! and its SQL text is written by `jadpo-sql` (chunk 3.12). It is shared by
+//! every thread that runs the project.
 
 mod constant;
 mod purge;
@@ -45,14 +48,15 @@ use jadpo_graph::{Key, Kind};
 pub use jadpo_std::Isolation;
 
 pub use constant::Constant;
-pub use jadpo_std::write::PurgePlan;
-pub use queries::{EntityPlan, MissingPlan, MissingValue, QueryPlan, quoted};
+pub use jadpo_std::read::{MissingPlan, MissingValue};
+pub use jadpo_std::write::{PurgePlan, Raises, Refusal};
+pub use queries::{EntityPlan, QueryPlan};
 pub use sites::{ArmPattern, ConstId, Decoded, Given, Raise, SitePlan};
 pub use types::{
     FailureId, FailurePlan, FieldPlan, ShapeId, ShapePlan, Types, ValidatorId, ValidatorPlan,
     VariantPlan, last,
 };
-pub use writes::{Refusal, WriteSitePlan};
+pub use writes::WriteSitePlan;
 
 /// One callable with a body: a function, action, fixture, library
 /// function, test or seed.

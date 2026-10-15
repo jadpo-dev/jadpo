@@ -20,7 +20,9 @@
 //! Each problem's edit is the one-step fix, and [`import_edits`] gives
 //! every fix at once that `jadpo fmt` applies: it adds a missing import,
 //! removes an unused one and moves a name to the folder it is in. The
-//! formatter then sorts the lines.
+//! formatter then sorts the lines. [`fix_imports`] applies them round by
+//! round against a loaded project, for `jadpo fmt` and, later, the
+//! language server.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -361,6 +363,47 @@ pub fn import_edits(problems: &[Diagnostic]) -> Vec<(u32, u32, String)> {
         }
     }
     chosen
+}
+
+/// The text of the file at `path` with its imports fixed: each round
+/// applies the edits [`import_edits`] chooses from its [`import_problems`]
+/// and checks again, so what a round leaves, such as two names for one
+/// new line, the next finishes; it stops when none is left, or before an
+/// edit that would leave the file unparsable. `loaded` keeps the fixed
+/// text. `None` when nothing changed, or no source file is at `path`.
+pub fn fix_imports(loaded: &mut jadpo_db::Loaded, path: &str) -> Option<String> {
+    let file = loaded.file(path)?;
+    let project = loaded.project;
+    let original = file.text(&loaded.db).clone();
+    for _ in 0..16 {
+        let problems = import_problems(&loaded.db, project, file);
+        let edits = import_edits(problems);
+        if edits.is_empty() {
+            break;
+        }
+        let text = apply_edits(file.text(&loaded.db), edits);
+        if jadpo_syntax::parse_file(&text).has_errors() {
+            break;
+        }
+        loaded.set_text(path, text);
+    }
+    let fixed = file.text(&loaded.db);
+    (*fixed != original).then(|| fixed.clone())
+}
+
+/// `text` with each `(start, end, replacement)` applied, from the end
+/// back so earlier offsets stay right; an edit outside the text is left
+/// out.
+pub fn apply_edits(text: &str, mut edits: Vec<(u32, u32, String)>) -> String {
+    edits.sort_by_key(|a| std::cmp::Reverse((a.0, a.1)));
+    let mut out = text.to_string();
+    for (start, end, replacement) in edits {
+        let (start, end) = (start as usize, end as usize);
+        if start <= end && end <= out.len() {
+            out.replace_range(start..end, &replacement);
+        }
+    }
+    out
 }
 
 /// Where a file's first `use` line goes: after the comments that open the

@@ -9,39 +9,8 @@
 use jadpo_graph::body::Literal;
 use jadpo_std::{Builtin, Dur, Num};
 
-/// A value known while compiling, in the representation the runtime holds
-/// it in (`jadpo-value`'s `Value`), without depending on the runtime.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Constant {
-    Unit,
-    None,
-    Bool(bool),
-    Int(i64),
-    /// `mantissa × 10^-scale`, at the scale its type keeps.
-    Decimal {
-        mantissa: i128,
-        scale: u32,
-    },
-    Text(String),
-    /// Lowercase.
-    Uuid(String),
-    /// Milliseconds since 1970-01-01T00:00:00Z.
-    Instant(i64),
-    /// Days since 1970-01-01.
-    Date(i32),
-    /// Milliseconds since midnight.
-    Time(u32),
-    /// Milliseconds.
-    Duration(i64),
-    /// A variant of an enum, the `ordinal`th it declares, with a payload's
-    /// fields in their declared order: a field's default.
-    Variant {
-        ty: String,
-        ordinal: u32,
-        name: String,
-        fields: Vec<(String, Constant)>,
-    },
-}
+/// A value known while compiling, as plain data the runtime reads too.
+pub use jadpo_std::Constant;
 
 /// Text as a literal of a type built on `builtin` holds it; `None` when
 /// the text isn't one, which the checker rules out.

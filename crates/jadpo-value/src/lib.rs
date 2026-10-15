@@ -21,7 +21,14 @@
 // values (docs/compiler-runtime.md §2.6); tests may still unwrap.
 #![cfg_attr(
     not(test),
-    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        clippy::unreachable,
+        clippy::unimplemented
+    )
 )]
 
 pub mod collection;

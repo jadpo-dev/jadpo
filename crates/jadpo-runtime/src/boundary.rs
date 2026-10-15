@@ -306,6 +306,10 @@ mod tests {
             }
             Box::pin(async {})
         }
+
+        fn random(&self, _bytes: &mut [u8]) -> bool {
+            false
+        }
     }
 
     /// A body that writes (or not), emits, then ends as `end` says, and

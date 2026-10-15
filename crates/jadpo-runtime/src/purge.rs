@@ -4,7 +4,9 @@
 //! compiler's own operation, outside every action and policy (area 9);
 //! the built-in hourly purge schedule calls [`purge`] for each entity
 //! whose lifecycle has `purge:` (area 12, which comes with chunk 6.2 and
-//! logs each run's batches).
+//! logs each run's batches). A run stops at its budget of batches, so a
+//! Workers cron run can't overrun its limits however much is due; the
+//! next run carries on where it stopped.
 
 use jadpo_std::write::{PURGE_BATCH, PurgePlan, PurgeSource};
 use jadpo_value::Value;
@@ -12,14 +14,22 @@ use jadpo_value::Value;
 use crate::read::to_sql;
 use crate::{Host, StoreError};
 
+/// How many batches one purge run deletes at most, [`PURGE_BATCH`]
+/// records each: what the schedule gives a run, so it ends well inside a
+/// Workers cron run's limits (area 12).
+pub const PURGE_BATCHES: u32 = 20;
+
 /// What one purge run deleted.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Purged {
     /// The entity's name.
     pub entity: String,
-    /// How many records each batch deleted, in order; the last deleted
-    /// fewer than a whole batch.
+    /// How many records each batch deleted, in order; when the run
+    /// finished, the last deleted fewer than a whole batch.
     pub batches: Vec<u64>,
+    /// Whether it deleted every record due: `false` when it stopped at its
+    /// budget, leaving the rest to the next run.
+    pub finished: bool,
 }
 
 impl Purged {
@@ -30,10 +40,17 @@ impl Purged {
 }
 
 /// Runs `plan` at `now` (the run's time, milliseconds since the epoch):
-/// batch after batch until one deletes fewer than a whole batch. A batch
+/// batch after batch until one deletes fewer than a whole batch, or
+/// `batches` batches have run ([`PURGE_BATCHES`] for the schedule). A batch
 /// that fails is rolled back and ends the run; the batches before it stay
-/// deleted, and the next run carries on where it stopped.
-pub async fn purge(host: &dyn Host, plan: &PurgePlan, now: i64) -> Result<Purged, StoreError> {
+/// deleted, and the next run carries on where it stopped, as it does after
+/// a run that used its budget.
+pub async fn purge(
+    host: &dyn Host,
+    plan: &PurgePlan,
+    now: i64,
+    batches: u32,
+) -> Result<Purged, StoreError> {
     let Some(database) = host.database(&plan.store) else {
         return Err(StoreError::Fault(format!(
             "no connection to the store `{}`",
@@ -52,8 +69,9 @@ pub async fn purge(host: &dyn Host, plan: &PurgePlan, now: i64) -> Result<Purged
     let mut purged = Purged {
         entity: plan.entity.clone(),
         batches: Vec::new(),
+        finished: false,
     };
-    loop {
+    for _ in 0..batches {
         let mut transaction = database.begin().await?;
         let rows = match transaction.query(&plan.sql, &params).await {
             Ok(rows) => rows,
@@ -66,7 +84,9 @@ pub async fn purge(host: &dyn Host, plan: &PurgePlan, now: i64) -> Result<Purged
         let removed = rows.len() as u64;
         purged.batches.push(removed);
         if removed < u64::from(PURGE_BATCH) {
+            purged.finished = true;
             return Ok(purged);
         }
     }
+    Ok(purged)
 }

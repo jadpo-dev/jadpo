@@ -10,8 +10,8 @@
 use std::path::{Path, PathBuf};
 
 use jadpo_db::{Database, File, Layout, Project};
-use jadpo_plan::{Decoded, Plan, PurgePlan, Refusal, WriteSitePlan};
-use jadpo_std::read::{Cardinality, Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
+use jadpo_plan::{Decoded, Plan, PurgePlan, Raises, WriteSitePlan};
+use jadpo_std::read::{Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
 use jadpo_std::write::WriteSource;
 
 fn folder() -> PathBuf {
@@ -97,12 +97,7 @@ fn select(out: &mut String, select: &Select, depth: usize) {
 }
 
 fn read(name: &str, read: &ReadPlan) -> String {
-    let cardinality = match read.cardinality {
-        Cardinality::One => "one",
-        Cardinality::Optional => "optional",
-        Cardinality::List => "list",
-        Cardinality::Page => "page",
-    };
+    let cardinality = read.cardinality.word();
     let mut out = format!("-- {name}: {cardinality}, store {}\n", read.store);
     if let Some(page) = &read.page {
         let size = match &page.size {
@@ -155,18 +150,18 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
         let columns: Vec<String> = returned.columns.iter().map(column).collect();
         out.push_str(&format!("-- returns: {}\n", columns.join(", ")));
     }
-    for (constraint, refusal) in plan.refusals.iter().zip(&write.refusals) {
-        let raises = match refusal {
-            Refusal::Arm(at) => format!("conflict arm {at}"),
-            Refusal::NotFound(missing) => format!("not found, failure {}", missing.failure.0),
-            Refusal::Gone(what) => format!("fault: {what}"),
+    for refusal in &plan.refusals {
+        let raises = match &refusal.raises {
+            Raises::Arm(at) => format!("conflict arm {at}"),
+            Raises::NotFound(missing) => format!("not found, failure {}", missing.failure.0),
+            Raises::Gone(what) => format!("fault: {what}"),
         };
-        out.push_str(&format!("-- refused by {constraint}: {raises}\n"));
+        out.push_str(&format!("-- refused by {}: {raises}\n", refusal.constraint));
     }
     if let Some(guard) = &plan.guard {
         out.push_str(&format!(
             "-- no row: asks, refused by {} when the record is there\n",
-            plan.refusals[guard.refusal as usize]
+            plan.refusals[guard.refusal as usize].constraint
         ));
         for line in guard.sql.lines() {
             out.push_str(&format!("--   {line}\n"));
@@ -180,7 +175,7 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             ));
         }
     }
-    if write.missing.is_some() {
+    if plan.missing.is_some() {
         out.push_str("-- no row: the entity's not-found failure\n");
     }
     out

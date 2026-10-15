@@ -12,8 +12,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use jadpo_check::data::migrations::{
-    self as records, Decision, Migration, Migrations, Step, decided, decision_misfit,
-    example_backfill, field_type, read_decisions, store_steps,
+    self as records, Decision, Migration, Migrations, decided, decision_misfit, example_backfill,
+    field_type, read_decisions, store_steps,
 };
 use jadpo_check::data::{DataModel, data_model, schema};
 use jadpo_db::Loaded;
@@ -848,7 +848,7 @@ fn change_groups(
 /// when the project has several.
 fn target(
     call: &Call,
-    steps: &BTreeMap<String, Vec<Step>>,
+    steps: &BTreeMap<String, Vec<jadpo_runtime::Migration>>,
 ) -> Result<Option<(String, String)>, Reply> {
     let Some(url) = call.value("--url") else {
         return Ok(None);
@@ -872,17 +872,6 @@ fn target(
         },
     };
     Ok(Some((store, url.to_string())))
-}
-
-fn runtime_steps(steps: &[Step]) -> Vec<jadpo_runtime::Migration> {
-    steps
-        .iter()
-        .map(|step| jadpo_runtime::Migration {
-            name: step.name.clone(),
-            digest: step.digest.clone(),
-            sql: step.sql.clone(),
-        })
-        .collect()
 }
 
 /// Whether the migrations may be applied: their records read, and the
@@ -918,7 +907,7 @@ fn apply(call: &Call) -> Reply {
         Err(reply) => return reply,
     };
     let list = steps.get(&store).map(Vec::as_slice).unwrap_or_default();
-    let migrations = runtime_steps(list);
+    let migrations = list.to_vec();
     let ran = run(&url, |database| {
         Box::pin(async move { jadpo_runtime::migrate(database, &migrations).await })
     });
@@ -1029,7 +1018,7 @@ fn status(call: &Call) -> Reply {
     let mut states: BTreeMap<String, &str> = BTreeMap::new();
     if let Some((store, url)) = &target {
         let list = steps.get(store).map(Vec::as_slice).unwrap_or_default();
-        let migrations = runtime_steps(list);
+        let migrations = list.to_vec();
         let standing = run(url, |database| {
             Box::pin(async move { jadpo_runtime::standing(database, &migrations).await })
         });

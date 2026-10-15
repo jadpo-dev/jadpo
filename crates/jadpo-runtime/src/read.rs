@@ -21,16 +21,16 @@ use crate::{
 
 /// What a read found.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Found {
+pub(crate) enum Found {
     Value(Value),
-    /// A read for exactly one record found none: the executor raises the
-    /// read's not-found failure, which its plan names.
+    /// A read for exactly one record found none: [`crate::store`] raises
+    /// the read's not-found failure, which its plan names.
     Missing,
 }
 
 /// What stops a read or a write before it gives a value.
 #[derive(Debug)]
-pub enum Interrupt {
+pub(crate) enum Interrupt {
     Failed(Box<Failure>),
     Fault(Box<Fault>),
 }
@@ -40,7 +40,7 @@ pub const PAGE: &str = "Page";
 
 /// Runs `plan` with `args`, called from site `site` of the frame on top of
 /// `ctx`.
-pub async fn read(
+pub(crate) async fn read(
     ctx: &mut Ctx<'_>,
     plan: &ReadPlan,
     args: &[Value],
@@ -436,10 +436,11 @@ fn uuid_bytes(text: &str) -> Option<[u8; 16]> {
         return None;
     }
     let mut out = [0u8; 16];
-    for (i, pair) in hex.chunks(2).enumerate() {
-        let high = (pair[0] as char).to_digit(16)?;
-        let low = (pair[1] as char).to_digit(16)?;
-        out[i] = u8::try_from(high * 16 + low).ok()?;
+    for (byte, pair) in out.iter_mut().zip(hex.chunks(2)) {
+        let [high, low] = pair else { return None };
+        let high = (*high as char).to_digit(16)?;
+        let low = (*low as char).to_digit(16)?;
+        *byte = u8::try_from(high * 16 + low).ok()?;
     }
     Some(out)
 }
@@ -521,7 +522,7 @@ pub mod cursor {
         };
         let mut out = Vec::with_capacity(types.len());
         for (_, ty) in types {
-            let kind = take(1)?[0];
+            let kind = *take(1)?.first()?;
             let value = match (kind, ty) {
                 (1, SqlType::Int8) => SqlValue::Int8(i64::from_be_bytes(take(8)?.try_into().ok()?)),
                 (2, SqlType::Text) => {
@@ -553,7 +554,9 @@ pub mod cursor {
                 .enumerate()
                 .fold(0u32, |acc, (i, b)| acc | (u32::from(*b) << (16 - 8 * i)));
             for i in 0..=chunk.len() {
-                out.push(ALPHABET[((n >> (18 - 6 * i)) & 63) as usize] as char);
+                if let Some(digit) = ALPHABET.get(((n >> (18 - 6 * i)) & 63) as usize) {
+                    out.push(*digit as char);
+                }
             }
         }
         out

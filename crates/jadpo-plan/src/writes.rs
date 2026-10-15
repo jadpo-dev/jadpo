@@ -20,20 +20,24 @@
 
 use std::collections::HashMap;
 
-use jadpo_check::data::sql;
 use jadpo_check::data::{DataModel, EntityModel, foreign_key, unique_constraint};
 use jadpo_graph::body::{BinaryOp, Body, Callee, Expr, Node, SiteId, UnaryOp};
 use jadpo_graph::schema::object_name;
 use jadpo_graph::{Key, Kind, TypeRef};
+use jadpo_std::read::MissingValue;
 use jadpo_std::read::{Field, Record, SqlType};
-use jadpo_std::write::{Guard, Returned, WriteOp, WriteParam, WritePlan, WriteSource};
-
-use crate::queries::{
-    MissingPlan, MissingValue, Planner, Reach, column_type, field, quoted, where_clause,
+use jadpo_std::write::{
+    Guard, Raises, Refusal, Returned, WriteOp, WriteParam, WritePlan, WriteSource,
 };
+
+use jadpo_sql::Bind;
+use jadpo_sql::statement as text;
+
+use crate::queries::{Planner, Reach, column_type, field};
 use crate::types::{Types, ValidatorId};
 
-/// What one write site runs, and what its refusals raise.
+/// What one write site runs: its plan, which says what its refusals and
+/// a missing record raise, and the sites the executor works out first.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteSitePlan {
     pub plan: WritePlan,
@@ -42,24 +46,6 @@ pub struct WriteSitePlan {
     /// its field's type keeps it (a decimal at its scale), with that
     /// field's validator.
     pub inputs: Vec<(SiteId, Option<ValidatorId>)>,
-    /// What each of the plan's refusals raises, in the same order.
-    pub refusals: Vec<Refusal>,
-    /// A write by `id` that finds no record: the entity's not-found
-    /// failure, given the `id`.
-    pub missing: Option<MissingPlan>,
-}
-
-/// What a refused write raises.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Refusal {
-    /// The failure the `conflict:` arm at this position names.
-    Arm(u32),
-    /// A reference naming a record that isn't there: that entity's
-    /// not-found failure.
-    NotFound(MissingPlan),
-    /// A reference read from a record loaded earlier, whose record was
-    /// deleted since: a fault saying so.
-    Gone(String),
 }
 
 /// One write's statement as it is built.
@@ -80,7 +66,7 @@ impl Writing {
                 self.params.len() - 1
             }
         };
-        format!("${}", at + 1)
+        jadpo_sql::placeholder(at)
     }
 
     /// The input `site`, worked out before the write runs.
@@ -90,10 +76,10 @@ impl Writing {
     }
 }
 
-impl jadpo_check::data::sql::Bind for Writing {
-    fn bind(&mut self, value: &jadpo_check::data::queries::Value, ty: SqlType) -> Option<String> {
+impl Bind for Writing {
+    fn bind(&mut self, value: &jadpo_sql::Value, ty: SqlType) -> Option<String> {
         match value {
-            jadpo_check::data::queries::Value::Now => Some(self.param(WriteSource::Now, ty)),
+            jadpo_sql::Value::Now => Some(self.param(WriteSource::Now, ty)),
             _ => None,
         }
     }
@@ -123,7 +109,7 @@ impl Planner<'_> {
         let model: &DataModel = self.model;
         let entity_model = model.entity(&name)?;
         let store = entity_model.store.clone()?;
-        let table = quoted(&entity_model.table);
+        let table = entity_model.table.as_str();
         let lifecycle = entity_model.lifecycle.as_ref();
         // The lifecycle transition it runs, as the lifecycle declares it.
         let transition = match transition {
@@ -160,10 +146,10 @@ impl Planner<'_> {
                             .iter()
                             .find(|(name, _)| *name == field.name)
                             .map_or_else(
-                                || Some("NULL".to_string()),
-                                |(_, value)| sql::value(&mut writing, value, ty),
+                                || Some(jadpo_sql::NULL.to_string()),
+                                |(_, value)| jadpo_sql::value(&mut writing, value, ty),
                             )?;
-                        names.push(quoted(&field.born));
+                        names.push(field.born.as_str());
                         values.push(value);
                         continue;
                     }
@@ -184,15 +170,10 @@ impl Planner<'_> {
                         }
                         WriteSource::Input(*input)
                     };
-                    names.push(quoted(&field.born));
+                    names.push(field.born.as_str());
                     values.push(writing.param(source, ty));
                 }
-                format!(
-                    "INSERT INTO {table} ({})\nVALUES ({})\nRETURNING {}",
-                    names.join(", "),
-                    values.join(", "),
-                    returning(entity_model)
-                )
+                text::insert(table, &names, &values, &returning(entity_model))
             }
             WriteOp::Update | WriteOp::Delete => {
                 let record = writing.input((*target)?, None);
@@ -211,14 +192,14 @@ impl Planner<'_> {
                     for (name, value) in &transition.set {
                         let field = field(entity_model, name)?;
                         let ty = column_type(field)?.param();
-                        let value = sql::value(&mut writing, value, ty)?;
-                        assignments.push(format!("{} = {value}", quoted(&field.born)));
+                        let value = jadpo_sql::value(&mut writing, value, ty)?;
+                        assignments.push(text::equal(&field.born, &value));
                     }
                     for field in &entity_model.fields {
                         if field.generated == Some(jadpo_std::Generated::OnChange) {
                             let ty = column_type(field)?.param();
                             let now = writing.param(WriteSource::Now, ty);
-                            assignments.push(format!("{} = {now}", quoted(&field.born)));
+                            assignments.push(text::equal(&field.born, &now));
                         }
                     }
                 } else if *op == WriteOp::Update {
@@ -243,7 +224,7 @@ impl Planner<'_> {
                             }
                             writing.param(WriteSource::Input(input), ty)
                         };
-                        assignments.push(format!("{} = {sql}", quoted(&field.born)));
+                        assignments.push(text::equal(&field.born, &sql));
                     }
                     // `patch:` and `when_supplied:`.
                     let mut supplied_fields: Vec<String> = Vec::new();
@@ -278,10 +259,7 @@ impl Planner<'_> {
                                 },
                                 ty,
                             );
-                            let column = quoted(&field.born);
-                            assignments.push(format!(
-                                "{column} = CASE WHEN {supplied} THEN {value} ELSE {column} END"
-                            ));
+                            assignments.push(text::set_when(&field.born, &supplied, &value));
                             if field.reference.is_some() {
                                 written_refs.push((
                                     name.clone(),
@@ -319,10 +297,7 @@ impl Planner<'_> {
                                     ));
                                 }
                                 let value = writing.param(WriteSource::Input(at), ty);
-                                let column = quoted(&field.born);
-                                assignments.push(format!(
-                                    "{column} = CASE WHEN {supplied} THEN {value} ELSE {column} END"
-                                ));
+                                assignments.push(text::set_when(&field.born, &supplied, &value));
                             }
                         }
                     }
@@ -333,7 +308,6 @@ impl Planner<'_> {
                         }
                         let ty = column_type(field)?.param();
                         let now = writing.param(WriteSource::Now, ty);
-                        let column = quoted(&field.born);
                         if let Some(input) = patch_input {
                             let any = writing.param(
                                 WriteSource::AnySupplied {
@@ -342,19 +316,17 @@ impl Planner<'_> {
                                 },
                                 SqlType::Bool,
                             );
-                            assignments.push(format!(
-                                "{column} = CASE WHEN {any} THEN {now} ELSE {column} END"
-                            ));
+                            assignments.push(text::set_when(&field.born, &any, &now));
                         } else {
-                            assignments.push(format!("{column} = {now}"));
+                            assignments.push(text::equal(&field.born, &now));
                         }
                     }
                     if assignments.is_empty() {
-                        assignments.push("\"id\" = \"id\"".to_string());
+                        assignments.push(text::equal("id", &text::column("id")));
                     }
                 }
                 let id = writing.param(id_source.clone(), SqlType::Uuid);
-                let mut conditions = vec![format!("\"id\" = {id}")];
+                let mut conditions = vec![text::equal("id", &id)];
                 conditions.extend(self.access(&mut writing, entity_model, Reach::Write)?);
                 // A transition's `when:` joins the `WHERE` when it can
                 // refuse a visible record; writing no row then asks which
@@ -365,47 +337,51 @@ impl Planner<'_> {
                 {
                     let mut asking = Writing::default();
                     let id = asking.param(id_source, SqlType::Uuid);
-                    let mut asked = vec![format!("\"id\" = {id}")];
+                    let mut asked = vec![text::equal("id", &id)];
                     asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
-                    let mut probe = format!("SELECT 1\nFROM {table}");
-                    where_clause(&mut probe, &asked, "");
+                    let mut probe = text::select_one(table);
+                    text::where_clause(&mut probe, &asked, "");
                     guard = Some((probe, asking.params));
-                    conditions.push(sql::condition(&mut writing, entity_model, when, false)?);
+                    conditions.push(jadpo_sql::condition(
+                        &mut writing,
+                        entity_model,
+                        when,
+                        false,
+                    )?);
                 }
                 let mut sql = match op {
-                    _ if transition.is_some() => {
-                        format!("UPDATE {table}\nSET {}", assignments.join(",\n    "))
-                    }
-                    WriteOp::Update => {
-                        format!("UPDATE {table}\nSET {}", assignments.join(",\n    "))
-                    }
-                    _ => format!("DELETE FROM {table}"),
+                    _ if transition.is_some() => text::update(table, &assignments),
+                    WriteOp::Update => text::update(table, &assignments),
+                    _ => text::delete(table),
                 };
-                where_clause(&mut sql, &conditions, "");
+                text::where_clause(&mut sql, &conditions, "");
                 if *op == WriteOp::Update {
-                    sql.push_str(&format!("\nRETURNING {}", returning(entity_model)));
+                    text::returning(&mut sql, &returning(entity_model));
                 }
                 sql
             }
         };
         // What each refusal raises: an arm's failure, a missing record's
         // not-found failure, or a record deleted since it was loaded.
-        let mut refusals: Vec<String> = Vec::new();
-        let mut raises: Vec<Refusal> = Vec::new();
+        let mut refusals: Vec<Refusal> = Vec::new();
         let mut guarded_at = None;
         for (at, arm) in conflicts.iter().enumerate() {
             if arm.rule.kind() == Some(Kind::Transition) {
                 // The transition's `when:` refusing the record.
                 guarded_at = Some(refusals.len() as u32);
-                refusals.push(format!("when: {}", self.types.name(&arm.rule)));
-                raises.push(Refusal::Arm(at as u32));
+                refusals.push(Refusal {
+                    constraint: format!("when: {}", self.types.name(&arm.rule)),
+                    raises: Raises::Arm(at as u32),
+                });
                 continue;
             }
             let Some(constraint) = self.constraint(&arm.rule) else {
                 continue;
             };
-            refusals.push(constraint);
-            raises.push(Refusal::Arm(at as u32));
+            refusals.push(Refusal {
+                constraint,
+                raises: Raises::Arm(at as u32),
+            });
         }
         for (field_name, value) in written_refs {
             let Some(field) = field(entity_model, &field_name) else {
@@ -415,24 +391,26 @@ impl Planner<'_> {
                 continue;
             };
             let constraint = foreign_key(entity_model, field);
-            if refusals.contains(&constraint) {
+            if refusals
+                .iter()
+                .any(|refusal| refusal.constraint == constraint)
+            {
                 continue;
             }
             let may_be_missing = missing
                 .iter()
                 .any(|(key, _)| self.types.field_name(key) == field_name);
-            let raise = if may_be_missing {
+            let raises = if may_be_missing {
                 let target = model.entity(&reference.target)?;
-                Refusal::NotFound(self.not_found(target, value)?)
+                Raises::NotFound(self.not_found(target, value)?)
             } else {
-                Refusal::Gone(format!(
+                Raises::Gone(format!(
                     "the `{}` this {} refers to was deleted after it was loaded",
                     reference.target,
                     op.word()
                 ))
             };
-            refusals.push(constraint);
-            raises.push(raise);
+            refusals.push(Refusal { constraint, raises });
         }
         let missing = match not_found {
             Some(_) => Some(self.not_found(
@@ -466,10 +444,9 @@ impl Planner<'_> {
                 returns,
                 by_id: *by_id,
                 refusals,
+                missing,
             },
             inputs: writing.inputs,
-            refusals: raises,
-            missing,
         })
     }
 
@@ -493,7 +470,7 @@ impl Planner<'_> {
         Some(match &body.site(site).node {
             Node::Expr(Expr::Stored { field: key }) => {
                 let field = field(entity, self.types.field_name(key))?;
-                quoted(&field.born)
+                text::column(&field.born)
             }
             Node::Expr(Expr::Binary {
                 op: op @ (BinaryOp::Add | BinaryOp::Subtract),
@@ -503,20 +480,15 @@ impl Planner<'_> {
                 let lhs = self.stored_sql(body, *lhs, entity, ty, writing)?;
                 let rhs = self.stored_sql(body, *rhs, entity, ty, writing)?;
                 // Jadpo's `+` joins text, which SQL writes `||`.
-                let op = match op {
-                    BinaryOp::Add if ty == SqlType::Text => "||",
-                    BinaryOp::Add => "+",
-                    _ => "-",
-                };
-                format!("({lhs} {op} {rhs})")
+                match op {
+                    BinaryOp::Add => text::plus(&lhs, &rhs, ty == SqlType::Text),
+                    _ => text::minus(&lhs, &rhs),
+                }
             }
             Node::Expr(Expr::Unary {
                 op: UnaryOp::Negate,
                 operand,
-            }) => format!(
-                "(-{})",
-                self.stored_sql(body, *operand, entity, ty, writing)?
-            ),
+            }) => text::negate(&self.stored_sql(body, *operand, entity, ty, writing)?),
             Node::Expr(Expr::Call {
                 callee: Callee::Construct(_),
                 args,
@@ -567,13 +539,12 @@ impl Planner<'_> {
 }
 
 /// Every column of an entity, as `RETURNING` lists them.
-fn returning(entity: &EntityModel) -> String {
+fn returning(entity: &EntityModel) -> Vec<&str> {
     entity
         .fields
         .iter()
-        .map(|field| quoted(&field.born))
-        .collect::<Vec<_>>()
-        .join(", ")
+        .map(|field| field.born.as_str())
+        .collect()
 }
 
 /// Whether the value at `site` reads a stored field.

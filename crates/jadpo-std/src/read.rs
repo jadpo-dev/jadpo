@@ -1,6 +1,7 @@
 //! What a read runs (area 6; docs/compiler-runtime.md §2.1 and
 //! §2.5): the SQL text, where each parameter comes from, how each column
-//! becomes a value and how a row becomes a record, decided once by
+//! becomes a value and how a row becomes a record, and the failure when a
+//! read of one record finds none, decided once by
 //! `jadpo-plan` and run by `jadpo-runtime` for both executors, so the
 //! interpreter and compiled code send the same statements and build the
 //! same values.
@@ -10,6 +11,9 @@
 //! and a page's cursor are written as `($n IS NULL OR ...)`, so the same
 //! query always sends the same text, and PostgreSQL plans an unnamed
 //! statement with its parameters' values, where that test folds away.
+
+use crate::Constant;
+use crate::types::FailureId;
 
 /// The type of a SQL parameter or column, as the runtime knows it: one per
 /// column type area 5 maps a field to ("Storage types"), plus the widths of
@@ -88,16 +92,30 @@ impl SqlType {
     }
 }
 
-/// How many records a read gives (area 6, "Named queries").
+/// How many records a read gives (area 6, "Named queries"), from a
+/// query's result type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Cardinality {
-    /// Exactly one, or the read's not-found failure.
+    /// `T`: exactly one, or the read's not-found failure.
     One,
-    /// At most one: `none` when nothing matches.
+    /// `T?`: at most one, `none` when nothing matches.
     Optional,
+    /// `List<T>`: up to `limit:`.
     List,
-    /// One page and a cursor for the next.
+    /// `Page<T>`: one page and a cursor for the next.
     Page,
+}
+
+impl Cardinality {
+    /// As the manifest and `jadpo sql` write it: `one`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Cardinality::One => "one",
+            Cardinality::Optional => "optional",
+            Cardinality::List => "list",
+            Cardinality::Page => "page",
+        }
+    }
 }
 
 /// Where a parameter's value comes from when the statement runs.
@@ -230,4 +248,29 @@ pub struct ReadPlan {
     pub cardinality: Cardinality,
     pub select: Select,
     pub page: Option<PageRead>,
+    /// For a read of exactly one record: the failure when nothing matches,
+    /// the query's `missing:` or the entity's not-found failure for `get`.
+    pub missing: Option<MissingPlan>,
+}
+
+/// The failure a read or a write raises when the record it names isn't
+/// there, with its fields.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MissingPlan {
+    pub failure: FailureId,
+    /// Each field given: its place in the failure's fields, and its value.
+    pub fields: Vec<(Option<u32>, MissingValue)>,
+}
+
+/// Where a missing record's failure's field gets its value.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum MissingValue {
+    /// The operation's argument (a write's input), or a field inside it.
+    Arg {
+        index: u32,
+        path: Vec<String>,
+    },
+    Constant(Constant),
+    /// The operation's clock.
+    Now,
 }

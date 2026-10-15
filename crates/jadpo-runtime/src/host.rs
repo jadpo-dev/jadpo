@@ -8,7 +8,9 @@
 //! [`MemoryHost`], which holds no store (chunk 2.10); since chunk 3.1 a
 //! transaction runs SQL with [`SqlValue`] parameters and rows, and a host
 //! gives each store by its connection's name, so the PostgreSQL driver in
-//! `jadpo-drivers` plugs in. Delivery to subscribers comes with area 12.
+//! `jadpo-drivers` plugs in; since chunk 3.12 a host gives random bytes
+//! for a deployable's new identities. Delivery to subscribers comes with
+//! area 12.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -188,6 +190,13 @@ pub trait Host {
     /// Delivers what a committed action emitted, in the order it emitted
     /// it. Never called for an action that rolled back.
     fn deliver(&self, events: Vec<Event>) -> LocalFuture<'_, ()>;
+
+    /// Fills `bytes` from the platform's cryptographically secure source
+    /// of randomness (the operating system's, or the Web Crypto API on
+    /// Workers): what a deployable's new identities take (area 5). `false`
+    /// when it has none to give, as a test's host, whose invocations run
+    /// under a seed instead ([`crate::Env::seed`]).
+    fn random(&self, bytes: &mut [u8]) -> bool;
 }
 
 /// A store that holds nothing: its transactions begin, commit and roll back
@@ -257,5 +266,10 @@ impl Host for MemoryHost {
 
     fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    /// None: what runs on it runs under a seed.
+    fn random(&self, _bytes: &mut [u8]) -> bool {
+        false
     }
 }

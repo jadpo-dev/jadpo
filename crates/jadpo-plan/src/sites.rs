@@ -148,7 +148,7 @@ impl Decoder<'_> {
         let plan = failure.and_then(|id| self.types.failure(id));
         fields
             .iter()
-            .map(|(key, _)| plan.and_then(|plan| plan.slot(key)))
+            .map(|(key, _)| plan.and_then(|plan| plan.slot(key.as_str())))
             .collect()
     }
 
@@ -204,7 +204,7 @@ impl Decoder<'_> {
                     .map(|(field, _)| Given {
                         slot: shape
                             .and_then(|id| self.types.shape(id))
-                            .and_then(|plan| plan.slot(field)),
+                            .and_then(|plan| plan.slot(field.as_str())),
                         name: self.types.field_name(field).to_string(),
                         validator: self.types.validator_id(&TypeRef::Field(field.clone())),
                     })

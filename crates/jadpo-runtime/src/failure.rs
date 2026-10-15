@@ -1,7 +1,9 @@
 //! A domain failure at runtime (area 4): which declared failure, its client
 //! and internal fields, where it was raised and the path it travelled, and
-//! the failure it was mapped from.
+//! the failure it was mapped from. [`Failure::of`] builds one from its
+//! failure plan, as both executors raise a declared failure.
 
+use jadpo_std::types::{FailurePlan, Section};
 use jadpo_value::Value;
 
 use crate::{Frame, Places};
@@ -55,6 +57,32 @@ impl Failure {
             frames: Vec::new(),
             cause: None,
         }
+    }
+
+    /// Declared failure `plan`, with the fields given in `values` placed
+    /// by `slots` (each value's place among the failure's fields), before
+    /// it is raised; `None` when a field is left without a value.
+    pub fn of(plan: &FailurePlan, slots: &[Option<u32>], values: Vec<Value>) -> Option<Failure> {
+        let mut given: Vec<Option<Value>> = vec![None; plan.fields.len()];
+        for (slot, value) in slots.iter().zip(values) {
+            if let Some(place) = slot.and_then(|slot| given.get_mut(slot as usize))
+                && place.is_none()
+            {
+                *place = Some(value);
+            }
+        }
+        let mut failure = Failure::new(plan.key.as_str(), plan.name.as_str(), plan.code.as_str());
+        failure.kind = plan.kind.clone();
+        failure.status = plan.status;
+        failure.message = plan.message.clone();
+        for (field, value) in plan.fields.iter().zip(given) {
+            let entry = (field.name.clone(), value?);
+            match field.section {
+                Some(Section::Client) => failure.client.push(entry),
+                _ => failure.internal.push(entry),
+            }
+        }
+        Some(failure)
     }
 
     /// The failure as the value a `match` arm binds it to (area 4): a

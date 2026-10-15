@@ -246,10 +246,11 @@ Rust 1.88 or later).
 
 | Crate | Responsibility | wasm32 |
 |---|---|---|
-| `jadpo-std` | Shared leaf: built-in types, exact numbers, value rules and their validators, the standard library's enums Rust interprets, the typed operation table | yes |
+| `jadpo-std` | Shared leaf: built-in types, exact numbers, value rules and their validators, the standard library's enums Rust interprets, the typed operation table; the plans both executors run, as plain data (type and failure plans, constants, read, write and purge plans) | yes |
 | `jadpo-diag` | Rule catalogue, diagnostic model, edits | |
 | `jadpo-syntax` | Lexer, parser, lossless syntax tree, typed AST, `jadpo.ungram` | |
 | `jadpo-fmt` | Formatter | |
+| `jadpo-sql` | PostgreSQL text: conditions, statements and table definitions, rendered from what the graph, the checker and the plan decide | |
 | `jadpo-graph` | Node and edge model, identity keys, canonical JSON, diff | |
 | `jadpo-db` | Incremental database: inputs, project layout, packages and lock, identity registry, the before side from git | |
 | `jadpo-check` | Resolution, types, failures, effects, policy, data and layout rules, as queries that build the graph | |
@@ -280,6 +281,23 @@ record) that `jadpo-plan` decides and `jadpo-runtime` runs, so both
 executors send the same statements and build the same values, and compiled
 code needs nothing from a compiler crate to run them.
 
+Since chunk 3.12 everything the runtime needs of a plan is that kind of
+plain data in `jadpo-std`: type plans (`jadpo_std::types`: a type's
+validator chain, a shape's fields in declared order with what a field
+left out holds, a variant's place, a failure's code, kind, status,
+message and sectioned fields), constants (`Constant`), and on the read
+and write plans the failure a missing record raises (`MissingPlan`) and
+what each refused constraint raises (`Refusal`: the site's `conflict:`
+arm, a reference's not-found failure, or a fault). `jadpo-plan` decides
+and numbers them; the runtime raises from them (§2.5), and Phase 4's
+codecs and display reads and Phase 8's code generator read them without
+the interpreter. PostgreSQL text is written in one leaf crate,
+`jadpo-sql`, which depends only on `jadpo-std`: the condition model and
+its renderer (below), the plan's reads, writes and purges, and a
+migration's table definitions, each a function given the columns,
+conditions and values its caller chose, so the graph, the checker and the
+plan keep no SQL text of their own.
+
 Since chunk 3.1 the physical schema lives where both sides of the compiler
 reach it: `jadpo_graph::schema` holds the model (stores, tables, columns,
 keys, unique constraints, foreign keys and indexes, each with the name the
@@ -302,9 +320,10 @@ chunk 3.4 an index of an entity with a lifecycle holds only the records
 its `visible:` lets through (`Index::predicate`, a partial index's `WHERE`
 in the snapshot and the migration), unless `visible:` reads `clock.now`,
 and a reference's own index then stays. Conditions become SQL in one
-place, `jadpo_check::data::sql`, which the plans' statements and the
-indexes' predicates both use, through a `Bind` that says where a
-parameter goes. What
+place, `jadpo_sql::condition` (in `jadpo_check::data` until chunk 3.12),
+which the plans' statements and the indexes' predicates both use, through
+a `Bind` that says where a parameter goes and the `Columns` an entity's
+model gives it. What
 each write can break (`data::write_rules`: an entity's unique rules, its
 references, and the restricting references a delete reaches through every
 `cascade`) is a per-entity query the checker and the plan both read, so a
@@ -320,8 +339,9 @@ operation takes and gives, is decided once (decided 2026-10-13, Phase 1
 review). The layers are a table in the root `Cargo.toml`
 (`[workspace.metadata.layers]`); a workspace test reads it and `cargo
 metadata` and fails on anything a crate reaches, directly or through other
-crates, against these rules, and on salsa anywhere but `jadpo-db` and
-`jadpo-check`. *Rejected:* v0's single `core` crate, which grew to
+crates, against these rules, on salsa anywhere but `jadpo-db` and
+`jadpo-check`, and, since chunk 3.12, on `jadpo-sql` reaching anything
+but the shared leaf. *Rejected:* v0's single `core` crate, which grew to
 everything and let the generator read the syntax tree.
 
 **The standard library** (`collection`, `temporal`, `decimal` and the rest)
@@ -413,9 +433,10 @@ chunk 3.5 it moves `use` lines to the top of the file and sorts them and
 their names (`jadpo_fmt::imports`), reading the path alone; the canonical
 form sorts them the same way, so the self-check and the digests take their
 order for layout. Adding or removing an import needs the project's names,
-which the formatter doesn't have, so `jadpo fmt` (in `jadpo-cli`) first
-applies the edits of the file's import problems against a loaded project,
-round by round until none is left, then formats. Since chunk 3.9 it puts
+which the formatter doesn't have, so `jadpo fmt` first applies the edits
+of the file's import problems against a loaded project, round by round
+until none is left (`jadpo_check::fix_imports`, in `jadpo-cli` until chunk
+3.12, now where the language server can reuse it), then formats. Since chunk 3.9 it puts
 a file's primary declaration first (area 1, "Files and names"): `jadpo
 fmt` reads which declaration that is from the file's path and item tree
 (`jadpo_db::primary`, the same answer the layout rules use) and passes its
@@ -849,7 +870,9 @@ the interpreter and compiled code begin the same transaction. An action
 called inside another joins its boundary at the caller's level, which
 already counts the callee; a read or write run outside any action (a test's
 own read, later a route's display read) runs at repeatable read, since a
-read loads what it reads and its includes need one snapshot.
+read loads what it reads and its includes need one snapshot, which the
+runtime's store entry point decides (since chunk 3.12; the interpreter did
+until then).
 
 **Interpreter.** Functions are pure (area 3) and run synchronously. Only
 actions, queries and tests are `async`, and the checker knows which
@@ -918,22 +941,25 @@ canonical order area 2 decides ("Set order"), which is `Value`'s `Ord` in
 in declared order, objects and tagged unions field by field.
 
 Since chunk 3.2 a site that pauses names its target: a callable, a
-query's plan, an entity's `get` or, since chunk 3.3, a write's plan. The
-driver runs a read or a write through the runtime (`jadpo_runtime::read`
-and `write`) inside the running action's transaction, or, called outside
+query's plan, an entity's `get` or, since chunk 3.3, a write's plan. A
+write (one typed `Write` node for `create`, `update` and `delete`) works
+out its inputs first, in the order its plan lists them (its record, then
+the values its block gives, each kept the way its field's type keeps it),
+then pauses. Since chunk 3.12 the runtime has one entry point for both,
+`jadpo_runtime::store(ctx, StoreOp::Read | StoreOp::Write, failures,
+args, site)`: inside the running action's transaction, or, called outside
 any action (by a test, later by a route's display read), in a boundary of
-its own, as a one-statement action. A read for exactly one record that
-finds none comes back `Missing`, and the executor raises the failure its
-plan names (`missing:`, or `<Entity>NotFound` for `get`), its fields from
-the call's arguments. A write (one typed `Write` node for `create`,
-`update` and `delete`) works out its inputs first, in the order its plan
-lists them (its record, then the values its block gives, each kept the way
-its field's type keeps it), then pauses; the runtime gives back the
-record, `Missing` (by `id`, no record) or which of the plan's constraints
-the store refused, and the executor raises the entity's not-found failure,
-a reference's not-found failure, or the failure the site's `conflict:` arm
-names, working out that arm's fields only then, with the store's refusal
-as its internal cause.
+its own, as a one-statement action. It gives back `Stored::Value` (what
+it read, or the record written), `Stored::Failed` (the failure the plan
+names when a read for exactly one record finds none, `missing:` or
+`<Entity>NotFound` for `get`, or a write by `id` finds no record, its
+fields from the arguments; a reference's not-found failure with the
+store's refusal as its cause; `unavailable` or an invalid cursor),
+`Stored::Conflict { arm, cause }` (a refusal the site's `conflict:` arm
+maps), or `Stored::Fault`. The executor is left the arm dispatch: it
+raises the arm's failure, working out that arm's fields only then, with
+the store's refusal as its internal cause. Until chunk 3.12 the
+interpreter turned a missing record and a refusal into failures itself.
 
 **Code generation.** `quote!` into a `syn` tree, printed with
 [prettyplease](https://github.com/dtolnay/prettyplease): deterministic,
@@ -1053,20 +1079,26 @@ Connections are unencrypted until TLS is built. `jadpo-host-native` gives
 `Runtime` (one current-thread tokio runtime with a `LocalSet`),
 `NativeTransport` over tokio's TCP and Unix sockets, and `postgres(url)`.
 
-Built in chunk 3.2: `jadpo_runtime::read` runs a read plan (one statement,
+Built in chunk 3.2: the runtime runs a read plan (one statement,
 then one per include, each with the keys of the records it is included in
 as one array parameter, so never a statement per record), decodes each
 column into a value and each row into a record, and for a page fetches one
 more row than its size and writes the next cursor: the query's tag and the
 last record's order values, as URL-safe base64, which a query refuses
 (422 `invalid_input`) unless it made it. `create` inserts a record with a
-new version 7 identity (`Ctx::new_id`, its random bits from the
-invocation's seed) and the clock for generated fields, and builds the
-record from the values it sent. A store's refusal becomes what the
+new version 7 identity (`Ctx::new_id`) and the clock for generated fields,
+and builds the record from the values it sent. Since chunk 3.12 an
+identity's random bits come from the host (`Host::random`, the platform's
+secure source: the operating system's, or the Web Crypto API on Workers)
+when the invocation has no seed, as in a deployable; a test's environment
+keeps its seed (`Env::seed`), whose SplitMix generator makes the same
+identities on every run but can be run backwards, so it serves tests
+only. A host with no randomness asked for an identity without a seed is a
+defect at the write. A store's refusal becomes what the
 runtime raises: `unavailable`, a rerun after a concurrent change, and
 otherwise the `Store` fault with the driver's reason.
 
-Built in chunk 3.3: `jadpo_runtime::write` runs a write plan
+Built in chunk 3.3: the runtime runs a write plan
 (`jadpo_std::write`, one per write site, planned in `jadpo-plan`'s
 `writes`). A create inserts every column, with a new identity and the
 clock in its generated fields; an update sets what `set:` gives and every
@@ -1119,7 +1151,8 @@ names; asking for a second store in one action is a fault, since an action
 writes one store (area 5), and since chunk 3.10 the checker refuses an
 action that reads a second store (`toolchain.not_built_yet`) until reads
 outside the transaction are built. `jadpo_runtime::migrate` and `standing` apply a
-store's pending migrations and say where it stands, recording each in the
+store's pending migrations (each `jadpo_std::Migration`, as the checker
+reads it from the migration folders) and say where it stands, recording each in the
 store's `jadpo_migrations` table under the table's lock (a row lock, never
 an advisory one) and refusing a store that applied a migration the project
 doesn't have, one that changed since, or one out of order; `jadpo migrate
@@ -1140,12 +1173,12 @@ fields its `set:` gives (fixed values written into the text, `clock.now`
 a parameter) and every `on_change` field, with its `when:` in the `WHERE`
 when it can refuse a visible record; a create fills each owned field from
 `initial:`, or `NULL`. A guarded transition's plan carries a `Guard`: when
-the update changes no row, `jadpo_runtime::write` asks with its `SELECT 1`
+the update changes no row, the runtime asks with its `SELECT 1`
 whether the record is there and visible, and a row is the refusal its
 `conflict:` arm maps (listed among the plan's refusals as `when:
 Entity.transition`), otherwise the not-found failure or the fault as for
-any write. `jadpo_runtime::purge(host, plan, now)` is purge's entry point,
-outside every action: batch after batch, each its own transaction, one
+any write. `jadpo_runtime::purge(host, plan, now, batches)` is purge's
+entry point, outside every action: batch after batch, each its own transaction, one
 `DELETE ... WHERE "id" IN (SELECT ... LIMIT 500 FOR UPDATE SKIP LOCKED)
 RETURNING "id"` of hidden records whose `since:` field is older than `now`
 less `after:`, oldest first, leaving out with `NOT EXISTS` any a
@@ -1153,9 +1186,14 @@ less `after:`, oldest first, leaving out with `NOT EXISTS` any a
 comes back short (since chunk 3.10 through every chain of cascades, and,
 when one leads back to an entity already on it, such as a folder inside a
 folder, through a recursive query that follows the cascades as deep as
-the data goes); it returns each batch's count (`Purged`). Area 12's
+the data goes); it returns each batch's count (`Purged`). Since chunk 3.12
+a run stops after `batches` batches (`PURGE_BATCHES`, 20, for the
+schedule) and says whether it `finished`, so a Workers cron run can't
+overrun however much is due, and the next run carries on; the budget is a
+batch count, since no host reads a clock yet (chunk 5.2). Area 12's
 hourly purge schedule will call it (chunk 6.2); a live test calls it
-directly (`crates/jadpo-cli/tests/lifecycle.rs`).
+directly (`crates/jadpo-cli/tests/lifecycle.rs`), stopping one run at its
+budget.
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
@@ -1216,7 +1254,9 @@ the same traits.
   counted by the runtime across database, providers and SMTP.
 - A panic aborts the instance, so runtime crates deny `unwrap`, `expect`
   and `panic!` by lint, and faults are values; the crate-graph test holds
-  every shared and runtime crate to the lint (chunk 1.9).
+  every shared and runtime crate to the lint (chunk 1.9), and since chunk
+  3.12 to clippy's `indexing_slicing`, `unreachable` and `unimplemented`
+  too.
 - `wasm32-unknown-unknown` with wasm-bindgen; Cloudflare documents no
   component-model support and only experimental WASI. Each deployable links only the drivers it reaches, which keeps
   start-up inside the one-second limit.
@@ -1388,7 +1428,9 @@ server (above), then runs the steps concurrently: each test binary
 straight from that build, from its package's folder, a processor's worth
 at a time; the Python checks beside them, given that `jadpo` through
 `JADPO_BIN` and checking their projects concurrently; cargo's own steps
-(clippy, the documentation tests, the wasm32 build) one after another; and
+(clippy and the wasm32 build) one after another (chunk 3.12 dropped the
+documentation-test step: no crate has a documentation example, so it ran
+none); and
 the watch-mode latency test last, alone, since it measures time. Each
 crate's integration tests are one binary (since chunk 3.11: `autotests =
 false`, one `[[test]]` called `integration`, and `tests/main.rs` declaring

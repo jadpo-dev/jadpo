@@ -1,8 +1,9 @@
 //! What a write runs (area 6, "The operations every entity gets";
 //! docs/compiler-runtime.md §2.5): one statement per `create`, `update` or
 //! `delete`, where each parameter comes from, what the row it returns
-//! becomes, and the constraints whose refusal the write maps, decided once
-//! by `jadpo-plan` and run by `jadpo-runtime` for both executors.
+//! becomes, the constraints whose refusal the write maps and what each
+//! raises, and the failure when the record it names isn't there, decided
+//! once by `jadpo-plan` and run by `jadpo-runtime` for both executors.
 //!
 //! The executor works out the write's inputs first (a loaded record or an
 //! `id`, the values `set:` gives, a patch's input), in the order they are
@@ -12,7 +13,7 @@
 //! `CASE WHEN <supplied> THEN <value> ELSE <column> END`, so the same write
 //! always sends the same statement.
 
-use crate::read::{Column, Record, SqlType};
+use crate::read::{Column, MissingPlan, Record, SqlType};
 
 /// Which operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -82,13 +83,40 @@ pub struct WritePlan {
     /// entity's not-found failure, rather than a record loaded earlier and
     /// gone since.
     pub by_id: bool,
-    /// The constraints a refusal can name that the write maps, in order:
-    /// the executor raises what its site maps each one to. A lifecycle
-    /// transition's `when:` is one too, written `when: Loan.check_in`.
-    pub refusals: Vec<String>,
+    /// The constraints a refusal can name that the write maps, in order,
+    /// each with what it raises. A lifecycle transition's `when:` is one
+    /// too, written `when: Loan.check_in`.
+    pub refusals: Vec<Refusal>,
     /// For a transition whose `when:` can refuse a visible record: what
     /// to ask when the write changed no row.
     pub guard: Option<Guard>,
+    /// A write by `id` that finds no record: the entity's not-found
+    /// failure, given the `id`.
+    pub missing: Option<MissingPlan>,
+}
+
+/// A constraint whose refusal a write maps (area 6, "When a write is
+/// refused"), and what the refusal raises.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Refusal {
+    /// The constraint as the store names it, or the transition whose
+    /// `when:` refused, `when: Loan.check_in`.
+    pub constraint: String,
+    pub raises: Raises,
+}
+
+/// What a refused write raises.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Raises {
+    /// The failure the site's `conflict:` arm at this position names,
+    /// whose fields the executor works out only then.
+    Arm(u32),
+    /// A reference naming a record that isn't there: that entity's
+    /// not-found failure.
+    NotFound(MissingPlan),
+    /// A reference read from a record loaded earlier, whose record was
+    /// deleted since: a fault saying so.
+    Gone(String),
 }
 
 /// What a guarded transition asks when it changed no row (area 5,

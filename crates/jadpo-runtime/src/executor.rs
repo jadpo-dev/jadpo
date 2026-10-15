@@ -3,10 +3,11 @@
 //! first implementation and compiled code its second (Phase 8), so the
 //! runner hands both the same context and reads the same [`Outcome`].
 //!
-//! [`block_on`] drives one invocation's future on the thread that made it.
-//! Nothing the runtime awaits yet waits on I/O, so it needs no reactor;
-//! the native host's current-thread runtime per core (§2.6) takes over
-//! when the store does (chunk 3.1).
+//! [`block_on`] drives one invocation's future on the thread that made it,
+//! with no reactor: for one that waits on nothing outside it, such as a
+//! function, or an action on a host with no store. One that waits on a
+//! store's I/O runs inside the native host's current-thread runtime
+//! instead (§2.6, chunk 3.1), which drives it.
 
 use std::future::Future;
 use std::sync::Arc;

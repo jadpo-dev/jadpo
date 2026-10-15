@@ -12,6 +12,8 @@ use std::collections::BTreeMap;
 
 use jadpo_std::Num;
 
+use jadpo_sql::table;
+
 use crate::schema::{Allows, Change, Column, Holds, Schema, Table, changes};
 
 /// A decision a change needs before its SQL can be written.
@@ -190,44 +192,25 @@ pub fn narrows(was: &Allows, now: &Allows) -> bool {
 }
 
 /// The conditions under which a stored value of `column`, which `was`
-/// held, breaks what `now` allows: none unless `now` allows less.
+/// held, breaks what `now` allows: none unless `now` allows less. A
+/// pattern is left out, since PostgreSQL's regular expressions are not
+/// Jadpo's.
 fn refit(was: &Column, now: &Column, column: &str) -> Vec<String> {
-    if narrowed(was, now) {
-        breaks(column, now.allows.as_ref())
-    } else {
-        Vec::new()
+    match &now.allows {
+        Some(allows) if narrowed(was, now) => table::breaks(column, &allowed(allows)),
+        _ => Vec::new(),
     }
 }
 
-/// The SQL condition a stored value of `column` breaks `allows` under; a
-/// pattern is left out, since PostgreSQL's regular expressions are not
-/// Jadpo's.
-fn breaks(column: &str, allows: Option<&Allows>) -> Vec<String> {
-    let mut out = Vec::new();
-    let Some(allows) = allows else {
-        return out;
-    };
-    if !allows.values.is_empty() {
-        let values: Vec<String> = allows
-            .values
-            .iter()
-            .map(|v| format!("'{}'", v.replace('\'', "''")))
-            .collect();
-        out.push(format!("{column} NOT IN ({})", values.join(", ")));
+/// What `allows` allows, as the SQL renderer reads it.
+fn allowed(allows: &Allows) -> table::Allowed<'_> {
+    table::Allowed {
+        values: &allows.values,
+        min: allows.min.as_deref(),
+        max: allows.max.as_deref(),
+        min_length: allows.min_length,
+        max_length: allows.max_length,
     }
-    if let Some(min) = &allows.min {
-        out.push(format!("{column} < {min}"));
-    }
-    if let Some(max) = &allows.max {
-        out.push(format!("{column} > {max}"));
-    }
-    if let Some(n) = allows.min_length {
-        out.push(format!("char_length({column}) < {n}"));
-    }
-    if let Some(n) = allows.max_length {
-        out.push(format!("char_length({column}) > {n}"));
-    }
-    out
 }
 
 fn table_in<'s>(schema: &'s Schema, store: &str, table: &str) -> Option<&'s Table> {
@@ -314,20 +297,6 @@ pub fn section_digest(sql: &str) -> String {
     blake3::hash(sql.as_bytes()).to_hex()[..16].to_string()
 }
 
-/// A double-quoted identifier, so a table called `user` is a name, not a
-/// keyword.
-pub fn ident(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
-}
-
-fn idents(names: &[String]) -> String {
-    names
-        .iter()
-        .map(|n| ident(n))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 /// The SQL from `before` to `after`, with `decided` giving each needed
 /// decision (`None` while it is still to make, which leaves a comment in
 /// its place). Changes this compiler can't migrate yet are refused.
@@ -378,14 +347,8 @@ pub fn migration_sql(
                 let need = needed
                     .iter()
                     .find(|n| &n.table == table && &n.column == column);
-                let add = format!(
-                    "ALTER TABLE {} ADD COLUMN {} {}",
-                    ident(table),
-                    ident(column),
-                    col.sql_type
-                );
                 plan.columns.push(Statement {
-                    sql: add,
+                    sql: table::add_column(table, column, &col.sql_type),
                     does: "add column",
                 });
                 if let Some(need) = need {
@@ -403,12 +366,7 @@ pub fn migration_sql(
                 if was.sql_type != now.sql_type {
                     if widens(&was.sql_type, &now.sql_type) {
                         plan.columns.push(Statement {
-                            sql: format!(
-                                "ALTER TABLE {} ALTER COLUMN {} TYPE {}",
-                                ident(table),
-                                ident(column),
-                                now.sql_type
-                            ),
+                            sql: table::change_type(table, column, &now.sql_type),
                             does: "change column type",
                         });
                     } else {
@@ -450,17 +408,13 @@ pub fn migration_sql(
                         plan.columns.extend(backfill(
                             table,
                             column,
-                            &refit(was, now, &ident(column)),
+                            &refit(was, now, column),
                             need,
                             decided,
                         ));
                     }
                     None if !was.nullable && now.nullable => plan.columns.push(Statement {
-                        sql: format!(
-                            "ALTER TABLE {} ALTER COLUMN {} DROP NOT NULL",
-                            ident(table),
-                            ident(column)
-                        ),
+                        sql: table::drop_not_null(table, column),
                         does: "allow none",
                     }),
                     None => {}
@@ -474,16 +428,12 @@ pub fn migration_sql(
             }
             Change::DropForeignKey { table, name, .. } | Change::DropUnique { table, name, .. } => {
                 plan.drop.push(Statement {
-                    sql: format!(
-                        "ALTER TABLE {} DROP CONSTRAINT {}",
-                        ident(table),
-                        ident(name)
-                    ),
+                    sql: table::drop_constraint(table, name),
                     does: "drop constraint",
                 });
             }
             Change::DropIndex { name, .. } => plan.drop.push(Statement {
-                sql: format!("DROP INDEX {}", ident(name)),
+                sql: table::drop_index(name),
                 does: "drop index",
             }),
             Change::AddUnique { table, name, .. } => {
@@ -544,41 +494,34 @@ fn backfill(
     need: &Needed,
     decided: &dyn Fn(&Needed) -> Option<Decided>,
 ) -> Vec<Statement> {
-    let (table, column) = (ident(table), ident(column));
     match (need.kind, decided(need)) {
         (NeededKind::Backfill, Some(Decided::Backfill(value))) => {
-            let mut empty = vec![format!("{column} IS NULL")];
+            let mut empty = vec![table::is_null(column)];
             empty.extend(broken.iter().cloned());
             vec![
                 Statement {
-                    sql: format!(
-                        "UPDATE {table} SET {column} = {value} WHERE {}",
-                        empty.join(" OR ")
-                    ),
+                    sql: table::fill(table, column, &value, &empty),
                     does: "fill existing rows",
                 },
                 Statement {
-                    sql: format!("ALTER TABLE {table} ALTER COLUMN {column} SET NOT NULL"),
+                    sql: table::set_not_null(table, column),
                     does: "require a value",
                 },
             ]
         }
         (NeededKind::Refit, Some(Decided::Backfill(value))) => vec![Statement {
-            sql: format!(
-                "UPDATE {table} SET {column} = {value} WHERE {}",
-                broken.join(" OR ")
-            ),
+            sql: table::fill(table, column, &value, broken),
             does: "replace values no longer allowed",
         }],
         (NeededKind::Retire, Some(Decided::Retired)) => vec![Statement {
-            sql: format!("ALTER TABLE {table} ALTER COLUMN {column} DROP NOT NULL"),
+            sql: table::drop_not_null(table, column),
             does: "retire column",
         }],
         _ => vec![Statement {
-            sql: format!(
-                "-- waiting for the decision about {} in changes.jadpo",
+            sql: table::comment(&format!(
+                "waiting for the decision about {} in changes.jadpo",
                 need.key()
-            ),
+            )),
             does: "decision to make",
         }],
     }
@@ -611,79 +554,63 @@ fn add_unique(table: &str, name: &str, def: &Table) -> Statement {
     let columns = def
         .unique
         .get(name)
-        .map(|u| idents(&u.columns))
+        .map(|u| u.columns.as_slice())
         .unwrap_or_default();
     Statement {
-        sql: format!(
-            "ALTER TABLE {} ADD CONSTRAINT {} UNIQUE ({columns})",
-            ident(table),
-            ident(name)
-        ),
+        sql: table::add_unique(table, name, columns),
         does: "add unique rule",
     }
 }
 
 fn add_foreign_key(table: &str, name: &str, def: &Table) -> Statement {
-    let (columns, target, on_delete) = def.foreign_keys.get(name).map_or_else(
-        || (String::new(), String::new(), "RESTRICT"),
-        |key| (idents(&key.columns), ident(&key.table), key.on_delete.sql()),
-    );
+    let sql = match def.foreign_keys.get(name) {
+        Some(key) => {
+            table::add_foreign_key(table, name, &key.columns, &key.table, key.on_delete.sql())
+        }
+        None => table::add_foreign_key(table, name, &[], "", "RESTRICT"),
+    };
     Statement {
-        sql: format!(
-            "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({columns}) REFERENCES {target} (\"id\") ON DELETE {on_delete}",
-            ident(table),
-            ident(name)
-        ),
+        sql,
         does: "add reference",
     }
 }
 
 fn create_index(table: &str, name: &str, def: &Table) -> Statement {
     let index = def.indexes.get(name);
-    let columns = index
+    let columns: Vec<table::IndexColumn<'_>> = index
         .map(|i| {
             i.columns
                 .iter()
-                .map(|column| {
-                    if i.collate.contains(column) {
-                        format!("{} COLLATE \"C\"", ident(column))
-                    } else {
-                        ident(column)
-                    }
+                .map(|column| table::IndexColumn {
+                    name: column,
+                    collate: i.collate.contains(column),
                 })
-                .collect::<Vec<_>>()
-                .join(", ")
+                .collect()
         })
         .unwrap_or_default();
-    let partial = index
-        .and_then(|i| i.predicate.as_ref())
-        .map(|predicate| format!(" WHERE {predicate}"))
-        .unwrap_or_default();
+    let predicate = index.and_then(|i| i.predicate.as_deref());
     Statement {
-        sql: format!(
-            "CREATE INDEX {} ON {} ({columns}){partial}",
-            ident(name),
-            ident(table)
-        ),
+        sql: table::create_index(table, name, &columns, predicate),
         does: "create index",
     }
 }
 
-fn create_table(name: &str, table: &Table) -> String {
-    let mut lines: Vec<String> = table
+fn create_table(name: &str, def: &Table) -> String {
+    let columns: Vec<table::ColumnDef<'_>> = def
         .ordered()
         .into_iter()
-        .map(|(column, def)| {
-            let null = if def.nullable { "" } else { " NOT NULL" };
-            format!("    {} {}{null}", ident(column), def.sql_type)
+        .map(|(column, def)| table::ColumnDef {
+            name: column,
+            sql_type: &def.sql_type,
+            nullable: def.nullable,
         })
         .collect();
-    lines.push(format!(
-        "    CONSTRAINT {} PRIMARY KEY ({})",
-        ident(&table.primary_key.name),
-        idents(&table.primary_key.columns)
-    ));
-    format!("CREATE TABLE {} (\n{}\n)", ident(name), lines.join(",\n"))
+    table::create_table(
+        name,
+        &columns,
+        &def.primary_key.name,
+        &def.primary_key.columns,
+    )
 }
 
 #[cfg(test)]

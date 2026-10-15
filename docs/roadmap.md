@@ -254,7 +254,7 @@ reference only).
   through `JADPO_TEST_DATABASE_URL`; the language pages run `jadpo test`
   once; the CI PostgreSQL steps no longer take turns; `--profile quick`
   truly needs no PostgreSQL; one integration-test binary per crate.
-- [ ] **3.12 The runtime owns what both executors need** `opus · xhigh`,
+- [x] **3.12 The runtime owns what both executors need** `opus · xhigh`,
   before 4.1: failure shapes, refusals, missing plans and field and type
   plans move into `jadpo-std` as plain data; one runtime entry point runs a
   read or write (opening its own boundary outside an action) and returns

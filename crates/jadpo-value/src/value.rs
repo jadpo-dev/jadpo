@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::rc::Rc;
 
-use jadpo_std::{Dur, Num, Rounding};
+use jadpo_std::{Constant, Dur, Num, Rounding};
 
 /// An exact decimal: `mantissa × 10^-scale` (area 2, question 8), never
 /// more than [`Decimal::MAX_DIGITS`] digits, the most an exact number holds.
@@ -329,6 +329,40 @@ impl Value {
             name: Rc::from(name),
             fields,
         }))
+    }
+
+    /// A value known while compiling (a literal, a field's default, a
+    /// value a plan gives a failure's field), as the runtime holds it.
+    pub fn constant(constant: &Constant) -> Value {
+        match constant {
+            Constant::Unit => Value::Unit,
+            Constant::None => Value::None,
+            Constant::Bool(value) => Value::Bool(*value),
+            Constant::Int(n) => Value::Int(*n),
+            Constant::Decimal { mantissa, scale } => {
+                Value::Decimal(Decimal::new(*mantissa, *scale))
+            }
+            Constant::Text(text) => Value::text(text),
+            Constant::Uuid(text) => Value::Uuid(Rc::from(text.as_str())),
+            Constant::Instant(millis) => Value::Instant(*millis),
+            Constant::Date(day) => Value::Date(*day),
+            Constant::Time(millis) => Value::Time(*millis),
+            Constant::Duration(millis) => Value::Duration(*millis),
+            Constant::Variant {
+                ty,
+                ordinal,
+                name,
+                fields,
+            } => Value::variant(
+                ty,
+                *ordinal,
+                name,
+                fields
+                    .iter()
+                    .map(|(name, field)| (Rc::from(name.as_str()), Value::constant(field)))
+                    .collect(),
+            ),
+        }
     }
 
     /// The items of a list or a set.

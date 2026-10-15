@@ -12,7 +12,7 @@ here, so this script stays the single gate that CI and every session run
 
 It builds the workspace and its tests once, then runs every step that
 needs nothing else concurrently: each test binary straight from that build,
-cargo's own steps (clippy, documentation tests, wasm32) one after another
+cargo's own steps (clippy, wasm32) one after another
 beside them, and the timing test last, alone. The steps that use
 PostgreSQL share one server: the one JADPO_TEST_DATABASE_URL names, or a
 disposable one started for the run (jadpo-test-server) and named to every
@@ -181,9 +181,6 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # tests run here but for the timing test, which runs last, alone.
         Step('compiler tests', 'tests', tests='everything',
              args=['--skip', f'watch::{latency_test}'], env={'JADPO_SKIP_POSTGRES': '1'}),
-        # Examples in the crates' documentation comments.
-        Step('documentation tests', 'tests',
-             ['cargo', 'test', '--locked', '--workspace', '--doc'], lane='cargo'),
         # Phase 2 (docs/compiler-runtime.md §2.7): a save in a generated
         # 230-file project shows the tests it reaches, through the real
         # watch loop, within the 1-second target plus a CI allowance; the

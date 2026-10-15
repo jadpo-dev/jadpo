@@ -1,6 +1,8 @@
 //! Type plans (docs/compiler-runtime.md §2.1 and §2.5): what a value of
 //! each type is made of, read from the graph once so both executors build,
-//! check and read values the same way.
+//! check and read values the same way. The plans are `jadpo-std`'s plain
+//! data ([`jadpo_std::types`]); this numbers them and answers questions
+//! about a type's chain.
 //!
 //! - A [`ValidatorPlan`] is a type's rules along its chain, most specific
 //!   first, and the built-in type at the bottom: what the runtime's
@@ -22,123 +24,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use jadpo_graph::body::Literal;
-use jadpo_graph::{Base, Detail, FieldDefault, Graph, Key, Kind, Node, Rules, Section, TypeRef};
+use jadpo_graph::{Base, Detail, FieldDefault, Graph, Key, Kind, Node, Rules, TypeRef};
 use jadpo_std::Builtin;
 
 use crate::constant::{self, Constant};
 
-/// A type's rules ready to compile into a validator, by number.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ValidatorId(pub u32);
-
-/// An object's, entity's or variant's shape, by number.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ShapeId(pub u32);
-
-/// A declared failure's plan, by number.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct FailureId(pub u32);
-
-/// A type's rules along its chain.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct ValidatorPlan {
-    /// What the chain is built on; `None` for an object, an enum or a
-    /// container.
-    pub builtin: Option<Builtin>,
-    /// Each declaration's rules along the chain, most specific first.
-    pub rules: Vec<Rules>,
-}
-
-impl ValidatorPlan {
-    /// The fixed scale a decimal of this type is kept at: the first
-    /// `scale:` along the chain.
-    pub fn scale(&self) -> Option<u32> {
-        self.rules.iter().find_map(|rules| rules.scale)
-    }
-}
-
-/// One field of an object, entity, variant or failure.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FieldPlan {
-    pub key: Key,
-    /// Its own name, as a value holds it: `receipt` for
-    /// `PaymentOutcome.paid.receipt`.
-    pub name: String,
-    /// Its rules: the field's own, then its type's.
-    pub validator: ValidatorId,
-    /// What a value built without it holds: `none` for an optional
-    /// `Input` field, its `default:` for one with a default (area 2).
-    pub absent: Option<Constant>,
-    /// An optional `Input` field without a `default:`: a value built
-    /// without it remembers it was left out, which an update's `patch:`
-    /// reads (area 6).
-    pub omittable: bool,
-    /// An omittable field whose type isn't nullable: `none` given to it is
-    /// the same as leaving it out, since nothing could clear it (area 6,
-    /// patch; chosen in chunk 3.10), so a patch keeps the stored value.
-    pub none_left_out: bool,
-    /// A failure field's section.
-    pub section: Option<Section>,
-}
-
-/// A variant: its name and where it stands among its enum's variants.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct VariantPlan {
-    pub name: String,
-    /// From 0, in the order the enum declares its variants.
-    pub ordinal: u32,
-}
-
-/// What an object, entity or variant is made of.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ShapePlan {
-    /// The object's type or entity, or the variant's enum, by its name now.
-    pub ty: String,
-    /// For a variant.
-    pub variant: Option<VariantPlan>,
-    /// In the order the type declares them.
-    pub fields: Vec<FieldPlan>,
-}
-
-impl ShapePlan {
-    /// The place of the field with key `key` among the shape's fields.
-    pub fn slot(&self, key: &Key) -> Option<u32> {
-        let at = self.fields.iter().position(|field| field.key == *key)?;
-        u32::try_from(at).ok()
-    }
-
-    /// The place of the field called `name`.
-    pub fn slot_named(&self, name: &str) -> Option<u32> {
-        let at = self.fields.iter().position(|field| field.name == name)?;
-        u32::try_from(at).ok()
-    }
-}
-
-/// A declared failure (area 4).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FailurePlan {
-    /// Its identity key: `type QuantityUnavailable`.
-    pub key: Key,
-    /// Its name as written.
-    pub name: String,
-    /// Its public code.
-    pub code: String,
-    /// `FailureKind.conflict` as `conflict`.
-    pub kind: Option<String>,
-    /// The HTTP status its kind sets.
-    pub status: Option<u16>,
-    pub message: Option<String>,
-    /// In the order the failure declares them, across its `client` and
-    /// `internal` blocks.
-    pub fields: Vec<FieldPlan>,
-}
-
-impl FailurePlan {
-    pub fn slot(&self, key: &Key) -> Option<u32> {
-        let at = self.fields.iter().position(|field| field.key == *key)?;
-        u32::try_from(at).ok()
-    }
-}
+pub use jadpo_std::types::{
+    FailureId, FailurePlan, FieldPlan, ShapeId, ShapePlan, ValidatorId, ValidatorPlan, VariantPlan,
+};
 
 /// The part of a dotted name after its last dot: `receipt` in
 /// `PaymentOutcome.paid.receipt`.
@@ -213,6 +106,12 @@ impl Types {
         self.failures.get(id.0 as usize)
     }
 
+    /// Every failure plan, by number: what the runtime raises a missing
+    /// record's failure from.
+    pub fn failures(&self) -> &[FailurePlan] {
+        &self.failures
+    }
+
     /// The number of `ty`'s validator, numbering it on first use.
     pub(crate) fn validator_id(&mut self, ty: &TypeRef) -> ValidatorId {
         if let Some(id) = self.validator_ids.get(ty) {
@@ -232,7 +131,7 @@ impl Types {
         }
         let mut plan = self.shape_plan(key)?;
         for field in &mut plan.fields {
-            field.validator = self.validator_id(&TypeRef::Field(field.key.clone()));
+            field.validator = self.validator_id(&TypeRef::Field(Key::from_text(&field.key)));
         }
         let id = ShapeId(self.shapes.len() as u32);
         self.shapes.push(plan);
@@ -247,7 +146,7 @@ impl Types {
         }
         let mut plan = self.failure_plan(key)?;
         for field in &mut plan.fields {
-            field.validator = self.validator_id(&TypeRef::Field(field.key.clone()));
+            field.validator = self.validator_id(&TypeRef::Field(Key::from_text(&field.key)));
         }
         let id = FailureId(self.failures.len() as u32);
         self.failures.push(plan);
@@ -477,7 +376,7 @@ impl Types {
                     let none_left_out =
                         omittable && !self.is_nullable(&TypeRef::Field(node.key.clone()));
                     Some(FieldPlan {
-                        key: node.key.clone(),
+                        key: node.key.as_str().to_string(),
                         name: last(&node.name).to_string(),
                         validator: ValidatorId(u32::MAX),
                         absent,
@@ -556,7 +455,7 @@ impl Types {
             return None;
         };
         Some(FailurePlan {
-            key: key.clone(),
+            key: key.as_str().to_string(),
             name: node.name.clone(),
             code: detail.code.clone(),
             kind: detail.kind.clone(),

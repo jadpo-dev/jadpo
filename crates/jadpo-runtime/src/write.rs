@@ -8,11 +8,11 @@
 //! is a concurrent change, so the boundary runs the action again (area 6,
 //! "All-or-nothing actions and concurrent changes"). A unique rule or a
 //! reference the store refuses comes back as which of the plan's
-//! constraints it was, for the executor to raise what its site maps it
-//! to; a write by `id` that finds no row is the entity's not-found
-//! failure. A caller that handles the failure carries on in a transaction
-//! the refusal didn't end: the action it called ran inside a savepoint
-//! ([`crate::action`]).
+//! constraints it was, which [`crate::store`] turns into what the plan
+//! says it raises; a write by `id` that finds no row is the entity's
+//! not-found failure. A caller that handles the failure carries on in a
+//! transaction the refusal didn't end: the action it called ran inside a
+//! savepoint ([`crate::action`]).
 
 use jadpo_std::read::Field;
 use jadpo_std::write::{WriteParam, WritePlan, WriteSource};
@@ -23,21 +23,21 @@ use crate::{Ctx, Failure, FaultKind, SqlValue, StoreError};
 
 /// What a write did.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Written {
+pub(crate) enum Written {
     /// The record it created or changed; `Unit` for a delete.
     Value(Value),
-    /// A write by `id` found no record: the executor raises the entity's
-    /// not-found failure.
+    /// A write by `id` found no record: the entity's not-found failure,
+    /// which its plan names.
     Missing,
-    /// The store refused it with the plan's constraint at `at`: the
-    /// executor raises what its site maps that to, keeping `cause`, the
-    /// store's refusal, as its internal cause (area 4).
+    /// The store refused it with the plan's constraint at `at`: what the
+    /// plan says that raises, keeping `cause`, the store's refusal, as its
+    /// internal cause (area 4).
     Refused { at: u32, cause: Box<Failure> },
 }
 
 /// Runs `plan` with `inputs`, the values its site worked out, called from
 /// site `site` of the frame on top of `ctx`.
-pub async fn write(
+pub(crate) async fn write(
     ctx: &mut Ctx<'_>,
     plan: &WritePlan,
     inputs: &[Value],
@@ -61,7 +61,11 @@ pub async fn write(
     let rows = match result {
         Ok(rows) => rows,
         Err(StoreError::Conflict { constraint }) => {
-            return match plan.refusals.iter().position(|c| *c == constraint) {
+            return match plan
+                .refusals
+                .iter()
+                .position(|refusal| refusal.constraint == constraint)
+            {
                 Some(at) => {
                     let mut cause =
                         Failure::new("runtime refused", "ConstraintRefused", "constraint_refused");
@@ -97,8 +101,10 @@ pub async fn write(
                     cause.kind = Some("conflict".to_string());
                     cause.status = Some(409);
                     let at = guard.refusal;
-                    if let Some(rule) = plan.refusals.get(at as usize) {
-                        cause.internal.push(("rule".to_string(), Value::text(rule)));
+                    if let Some(refusal) = plan.refusals.get(at as usize) {
+                        cause
+                            .internal
+                            .push(("rule".to_string(), Value::text(&refusal.constraint)));
                     }
                     let cause = ctx.fail(cause, site);
                     return Ok(Written::Refused { at, cause });
@@ -174,7 +180,16 @@ fn params_of(
                 }
                 _ => return Err(defect(ctx, "a patch that isn't a record", site)),
             },
-            WriteSource::NewId => Value::uuid(&uuid_text(&ctx.new_id())),
+            WriteSource::NewId => match ctx.new_id() {
+                Some(id) => Value::uuid(&uuid_text(&id)),
+                None => {
+                    return Err(defect(
+                        ctx,
+                        "a new identity on a host with no randomness and no seed",
+                        site,
+                    ));
+                }
+            },
             WriteSource::Now => Value::Instant(now),
         };
         match to_sql(&value, param.ty) {

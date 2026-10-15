@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::JoinHandle;
 
-use jadpo_check::data::migrations::Step;
+use jadpo_runtime::Migration;
 
 use crate::postgres::{Server, ServerError};
 
@@ -53,7 +53,7 @@ pub fn server() -> Result<Arc<Server>, String> {
 
 /// The digest naming a store's template: its migrations' names and
 /// digests, in order.
-pub fn template_digest(steps: &[Step]) -> String {
+pub fn template_digest(steps: &[Migration]) -> String {
     let mut hasher = blake3::Hasher::new();
     for step in steps {
         hasher.update(step.name.as_bytes());
@@ -65,7 +65,7 @@ pub fn template_digest(steps: &[Step]) -> String {
 }
 
 /// The template of one store: built once per process and digest.
-fn template(server: &Server, store: &str, steps: &[Step]) -> Result<String, String> {
+fn template(server: &Server, store: &str, steps: &[Migration]) -> Result<String, String> {
     static BUILT: OnceLock<Mutex<BTreeMap<String, Result<String, String>>>> = OnceLock::new();
     let name = format!("jadpo_tpl_{}_{}", short(store), template_digest(steps));
     let built = BUILT.get_or_init(|| Mutex::new(BTreeMap::new()));
@@ -95,7 +95,7 @@ fn short(store: &str) -> String {
         .collect()
 }
 
-fn build_template(server: &Server, name: &str, steps: &[Step]) -> Result<String, String> {
+fn build_template(server: &Server, name: &str, steps: &[Migration]) -> Result<String, String> {
     if exists(server, name)? {
         return Ok(name.to_string());
     }
@@ -131,16 +131,9 @@ fn build_template(server: &Server, name: &str, steps: &[Step]) -> Result<String,
 
 /// Applies `steps` to the database at `url`, on a runtime of its own that
 /// is gone, with its connections, when this returns.
-fn migrate(url: &str, steps: &[Step]) -> Result<(), String> {
+fn migrate(url: &str, steps: &[Migration]) -> Result<(), String> {
     let url = url.to_string();
-    let migrations: Vec<jadpo_runtime::Migration> = steps
-        .iter()
-        .map(|step| jadpo_runtime::Migration {
-            name: step.name.clone(),
-            digest: step.digest.clone(),
-            sql: step.sql.clone(),
-        })
-        .collect();
+    let migrations = steps.to_vec();
     std::thread::spawn(move || -> Result<(), String> {
         let runtime = jadpo_host_native::Runtime::new().map_err(|e| e.to_string())?;
         let store = jadpo_host_native::postgres(&url).map_err(|e| format!("{e:?}"))?;
@@ -269,7 +262,7 @@ impl std::fmt::Debug for TestDatabases {
 }
 
 struct Shared {
-    steps: BTreeMap<String, Vec<Step>>,
+    steps: BTreeMap<String, Vec<Migration>>,
     keep_failed: bool,
     state: Mutex<State>,
     changed: Condvar,
@@ -333,7 +326,7 @@ impl State {
 impl TestDatabases {
     /// The databases for a run whose stores have `steps`; nothing starts
     /// until a test asks for its database.
-    pub fn new(steps: BTreeMap<String, Vec<Step>>, keep_failed: bool) -> TestDatabases {
+    pub fn new(steps: BTreeMap<String, Vec<Migration>>, keep_failed: bool) -> TestDatabases {
         TestDatabases {
             shared: Arc::new(Shared {
                 steps,
@@ -908,5 +901,10 @@ impl jadpo_runtime::Host for TestHost<'_> {
 
     fn deliver(&self, _events: Vec<jadpo_runtime::Event>) -> jadpo_runtime::LocalFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    /// None: a test runs under its seed, so it reproduces.
+    fn random(&self, _bytes: &mut [u8]) -> bool {
+        false
     }
 }

@@ -253,7 +253,7 @@ pub(crate) struct Checked {
     pub project: bool,
     /// Each store's migrations, which build the test databases; empty
     /// when the project has no tables.
-    pub steps: BTreeMap<String, Vec<jadpo_check::data::migrations::Step>>,
+    pub steps: BTreeMap<String, Vec<jadpo_runtime::Migration>>,
 }
 
 /// The project's sources by path, for the code frames of its errors.

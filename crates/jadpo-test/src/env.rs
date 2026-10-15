@@ -52,7 +52,7 @@ impl TestEnv {
     pub fn new(seed: u64, key: &str) -> TestEnv {
         TestEnv {
             env: Env {
-                seed: splitmix(seed ^ digest(key)),
+                seed: Some(splitmix(seed ^ digest(key))),
                 clock: Clock::TEST,
             },
             database: TestDatabase::None,

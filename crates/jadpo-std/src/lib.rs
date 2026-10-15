@@ -5,16 +5,22 @@
 //!
 //! - [`Builtin`]: the types built into the language, which no Jadpo
 //!   declaration can say what they are made of.
-//! - [`Num`]: an exact number as written, for literals and rules.
+//! - [`Num`]: an exact number as written, for literals and rules, and
+//!   [`Literal`], a literal as written.
 //! - [`Rules`]: the rules a valid value follows (area 2), and the
 //!   validators that check text, numbers and lengths against them and
 //!   against the validated built-in types (email, URL, UUID, IP address).
 //! - [`Rounding`], [`TextFormat`], [`UuidVersion`] and [`Weekday`], and
 //!   the `Zone` and `Locale` tables ([`ZONES`], [`LOCALES`]): the standard
 //!   library's enums that Rust code interprets, declared once.
+//! - [`types`]: type plans, what a value of each type is made of and what
+//!   a declared failure holds, and [`Constant`], a value known while
+//!   compiling, as plain data `jadpo-plan` decides and the runtime reads.
 //! - [`read`] and [`write`]: what a read and a write run, SQL and codecs,
+//!   and the failures they raise when nothing matches or the store refuses,
 //!   decided by `jadpo-plan` and run by `jadpo-runtime` for both executors
-//!   (area 6), and the [`Isolation`] an action's transaction runs at.
+//!   (area 6), the [`Isolation`] an action's transaction runs at, and
+//!   each store's share of a [`Migration`].
 //! - [`OPERATIONS`]: every standard-library operation with its parameters'
 //!   kinds, its result and the Rust function that runs it in
 //!   `jadpo-value`, which the Jadpo stubs in `jadpo-check` are tested
@@ -28,26 +34,40 @@
 // values (docs/compiler-runtime.md §2.6); tests may still unwrap.
 #![cfg_attr(
     not(test),
-    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        clippy::unreachable,
+        clippy::unimplemented
+    )
 )]
 
 mod builtin;
+mod constant;
 mod enums;
 mod isolation;
+mod literal;
+mod migration;
 mod num;
 mod operations;
 pub mod read;
 mod rules;
 mod time;
+pub mod types;
 pub mod write;
 mod zones;
 
 pub use builtin::Builtin;
+pub use constant::Constant;
 pub use enums::{
     Driver, FieldChange, Generated, LOCALE, OnDelete, Rounding, TextFormat, UuidVersion, Weekday,
     ZONE, enums, variant_ordinal,
 };
 pub use isolation::Isolation;
+pub use literal::Literal;
+pub use migration::Migration;
 pub use num::{Num, compare_exact};
 pub use operations::{Kind, OPERATIONS, Op, Operation, Param, operation};
 pub use read::SqlType;

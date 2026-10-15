@@ -59,165 +59,26 @@ const PAGE: &str = "Page";
 
 // --- the model ---------------------------------------------------------------
 
-/// How many records a query returns, from its result type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Cardinality {
-    /// `T`: exactly one, or the `missing:` failure.
-    One,
-    /// `T?`: zero or one.
-    Optional,
-    /// `List<T>`: up to `limit:`.
-    List,
-    /// `Page<T>`: one page and a cursor for the next.
-    Page,
-}
+/// How many records a query returns, from its result type: the read
+/// plans' own, decided once in `jadpo-std`.
+pub use jadpo_std::read::Cardinality;
 
-impl Cardinality {
-    pub fn word(self) -> &'static str {
-        match self {
-            Cardinality::One => "one",
-            Cardinality::Optional => "optional",
-            Cardinality::List => "list",
-            Cardinality::Page => "page",
-        }
-    }
-}
+/// A condition on one entity's fields, its comparisons and the values it
+/// reads: the SQL renderer's model, which the plan's statements and the
+/// partial indexes render (`jadpo-sql`).
+pub use jadpo_sql::{Compare, Condition, Value};
 
-/// A value a query reads: never computed.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Value {
-    /// A parameter, by position, or a field inside it: `filter.status`.
-    Param {
-        index: u32,
-        path: Vec<String>,
-    },
-    /// A literal, as written, which takes the type of the field it is
-    /// compared with.
-    Literal(Const),
-    /// A plain variant of an enum: `TodoStatus.open`.
-    Variant {
-        ty: String,
-        variant: String,
-    },
-    List(Vec<Value>),
-    /// `clock.now`: the time the operation started.
-    Now,
-}
-
-impl Value {
-    /// Whether it reads a parameter anywhere inside.
-    pub fn reads_param(&self) -> bool {
-        match self {
-            Value::Param { .. } => true,
-            Value::List(items) => items.iter().any(Value::reads_param),
-            _ => false,
-        }
-    }
-}
-
-/// A comparison's operator.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Compare {
-    Equal,
-    NotEqual,
-    Less,
-    LessEqual,
-    Greater,
-    GreaterEqual,
-}
-
-impl Compare {
-    fn from_token(token: &str) -> Option<Compare> {
-        Some(match token {
-            "==" => Compare::Equal,
-            "!=" => Compare::NotEqual,
-            "<" => Compare::Less,
-            "<=" => Compare::LessEqual,
-            ">" => Compare::Greater,
-            ">=" => Compare::GreaterEqual,
-            _ => return None,
-        })
-    }
-
-    pub fn is_ordering(self) -> bool {
-        !matches!(self, Compare::Equal | Compare::NotEqual)
-    }
-
-    /// The SQL operator.
-    pub fn sql(self) -> &'static str {
-        match self {
-            Compare::Equal => "=",
-            Compare::NotEqual => "<>",
-            Compare::Less => "<",
-            Compare::LessEqual => "<=",
-            Compare::Greater => ">",
-            Compare::GreaterEqual => ">=",
-        }
-    }
-
-    /// The operator that holds exactly when this one doesn't, for two
-    /// values that are both present.
-    pub fn negated(self) -> Compare {
-        match self {
-            Compare::Equal => Compare::NotEqual,
-            Compare::NotEqual => Compare::Equal,
-            Compare::Less => Compare::GreaterEqual,
-            Compare::LessEqual => Compare::Greater,
-            Compare::Greater => Compare::LessEqual,
-            Compare::GreaterEqual => Compare::Less,
-        }
-    }
-}
-
-/// A condition on one entity's fields, as written: one an index can serve
-/// (area 6, "Filters").
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Condition {
-    /// `Todo.field <op> value`.
-    Compare {
-        field: String,
-        op: Compare,
-        value: Value,
-    },
-    /// `Todo.field == none`, or `!= none` when `negated`.
-    IsNone {
-        field: String,
-        negated: bool,
-    },
-    /// `Todo.field in list`.
-    In {
-        field: String,
-        value: Value,
-    },
-    And(Vec<Condition>),
-    Or(Vec<Condition>),
-    Not(Box<Condition>),
-    /// A `where_present:` line: `condition` applies only when `value` is
-    /// present, and reads it as present.
-    Present {
-        value: Value,
-        condition: Box<Condition>,
-    },
-}
-
-impl Condition {
-    /// The fields it tests.
-    pub fn fields(&self, out: &mut BTreeSet<String>) {
-        match self {
-            Condition::Compare { field, .. }
-            | Condition::IsNone { field, .. }
-            | Condition::In { field, .. } => {
-                out.insert(field.clone());
-            }
-            Condition::And(all) | Condition::Or(all) => {
-                all.iter().for_each(|c| c.fields(out));
-            }
-            Condition::Not(inner)
-            | Condition::Present {
-                condition: inner, ..
-            } => inner.fields(out),
-        }
-    }
+/// A comparison's operator from its token: `==`, `<=`.
+fn compare_token(token: &str) -> Option<Compare> {
+    Some(match token {
+        "==" => Compare::Equal,
+        "!=" => Compare::NotEqual,
+        "<" => Compare::Less,
+        "<=" => Compare::LessEqual,
+        ">" => Compare::Greater,
+        ">=" => Compare::GreaterEqual,
+        _ => return None,
+    })
 }
 
 /// One field of an order: the entity's field and its direction.
@@ -967,7 +828,7 @@ impl<'a> Reader<'a> {
         let comparison = match &expr {
             Expr::BinExpr(binary) => binary
                 .op()
-                .is_some_and(|op| Compare::from_token(op.text()).is_some() || op.text() == "in"),
+                .is_some_and(|op| compare_token(op.text()).is_some() || op.text() == "in"),
             _ => false,
         };
         if !comparison {
@@ -1084,7 +945,7 @@ impl<'a> Reader<'a> {
                         })
                     }
                     token => {
-                        let Some(compare) = Compare::from_token(token) else {
+                        let Some(compare) = compare_token(token) else {
                             self.unsupported(
                                 scope,
                                 &expr,
@@ -1403,7 +1264,10 @@ impl<'a> Reader<'a> {
                     ));
                     return None;
                 }
-                return Some((Value::Literal(constant), expected.strip_nullable().clone()));
+                return Some((
+                    Value::Literal(constant.literal()?),
+                    expected.strip_nullable().clone(),
+                ));
             }
             Expr::ListExpr(list) => {
                 let element = match self.lookup.structure(expected) {

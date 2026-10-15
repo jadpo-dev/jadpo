@@ -18,6 +18,7 @@ blake3.workspace = true
 jadpo-check.workspace = true
 jadpo-db.workspace = true
 jadpo-graph.workspace = true
+jadpo-sql.workspace = true
 jadpo-std.workspace = true
 
 [lints]

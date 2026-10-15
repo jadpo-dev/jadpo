@@ -39,7 +39,7 @@ pub struct LifecycleModel {
     /// The records normal reads see; every other record is hidden.
     pub visible: Option<Condition>,
     /// The starting value of each field it owns that has one, as written:
-    /// `none` is `Value::Literal(Const::None)`.
+    /// `none` is `Value::Literal(Literal::None)`.
     pub initial: Vec<(String, Value)>,
     pub transitions: Vec<TransitionModel>,
     pub purge: Option<PurgeModel>,
@@ -604,7 +604,7 @@ impl<'a> Reader<'a, '_> {
                 if !matches!(constant, Const::Other | Const::Path(_)) =>
             {
                 if matches!(constant, Const::None) && field.nullable {
-                    return Some(Value::Literal(Const::None));
+                    return Some(Value::Literal(jadpo_std::Literal::None));
                 }
                 if let Err(problem) =
                     crate::types::literal::check(self.lookup, expected.strip_nullable(), &constant)
@@ -619,7 +619,7 @@ impl<'a> Reader<'a, '_> {
                     ));
                     return None;
                 }
-                return Some(Value::Literal(constant));
+                return constant.literal().map(Value::Literal);
             }
             _ => {}
         }

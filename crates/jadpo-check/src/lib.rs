@@ -1,9 +1,10 @@
 //! Checking a Jadpo project (docs/compiler-runtime.md §2.2): the rules of
-//! each language area as salsa queries over `jadpo-db`. Areas 1 to 4 are
+//! each language area as salsa queries over `jadpo-db`. Areas 1 to 6 are
 //! built: layout, naming, visibility and resolution, then values and types
-//! and the logic of bodies ([`types`]), and failures (`failures`, with the
-//! body rules beside the others in [`types`]). [`graph`] builds the
-//! application graph from these queries.
+//! and the logic of bodies ([`types`]), failures (`failures`, with the
+//! body rules beside the others in [`types`]), and data, entities, queries
+//! and migrations ([`data`]). [`graph`] builds the application graph from
+//! these queries.
 //!
 //! [`check`] assembles every diagnostic for a project, sorted by file and
 //! position so the same source always gives the same output.
@@ -27,7 +28,7 @@ pub use failures::{
     DECLARABLE_KINDS, FailureInfo, FailureTable, MEMBERS as FAILURE_MEMBERS, failure_problems,
     failure_table,
 };
-pub use imports::{import_edits, import_problems};
+pub use imports::{apply_edits, fix_imports, import_edits, import_problems};
 pub use layout::layout_problems;
 pub use naming::{domain_problems, naming_problems};
 pub use resolve::resolve_file;

@@ -245,7 +245,7 @@ pub fn compile_pattern(pattern: &str) -> Result<Pattern, String> {
         if b == b'\\' {
             escaped = true;
         } else if b == b'(' && bytes.get(i + 1) == Some(&b'?') {
-            let rest = &bytes[i + 2..];
+            let rest = bytes.get(i + 2..).unwrap_or_default();
             if rest.starts_with(b"=")
                 || rest.starts_with(b"!")
                 || rest.starts_with(b"<=")
@@ -296,7 +296,8 @@ pub fn uuid_version(text: &str) -> Option<u8> {
     {
         return None;
     }
-    groups[2]
+    groups
+        .get(2)?
         .chars()
         .next()
         .and_then(|c| c.to_digit(16))

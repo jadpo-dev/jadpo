@@ -4,15 +4,16 @@
 //! action or fixture goes through the runtime's action boundary
 //! ([`jadpo_runtime::action`]), which runs the callee's body (a fresh
 //! machine) inside the caller's transaction or one of its own; the caller
-//! then resumes with what the callee gave. The future of a nested call is
-//! the only one boxed, so a body that never pauses never allocates one, and
-//! functions, which never pause, run on the machine without awaiting
-//! anything.
+//! then resumes with what the callee gave. A read or a write goes to the
+//! runtime's one entry point ([`jadpo_runtime::store`]), which gives its
+//! value, its failure or the `conflict:` arm a refusal maps to. The future
+//! of a nested call is the only one boxed, so a body that never pauses
+//! never allocates one, and functions, which never pause, run on the
+//! machine without awaiting anything.
 
 use jadpo_graph::body::SiteId;
-use jadpo_plan::{MissingPlan, MissingValue, Refusal};
 use jadpo_runtime::{
-    ActionBody, Ctx, Fault, FaultKind, Found, Interrupt, Isolation, LocalFuture, Outcome, Written,
+    ActionBody, Ctx, Fault, FaultKind, Isolation, LocalFuture, Outcome, StoreOp, Stored,
 };
 use jadpo_value::Value;
 
@@ -77,9 +78,10 @@ pub(crate) fn invoke<'a, 'p: 'a>(
     })
 }
 
-/// A read or a write (area 6): inside the running action's transaction,
-/// or, called outside any action (by a test, or a route's display read),
-/// in a boundary of its own, as a one-statement action.
+/// A read or a write (area 6), which the runtime runs from its plan,
+/// inside the running action's transaction or a boundary of its own: what
+/// is left here is finding the plan and dispatching a refusal to the
+/// `conflict:` arm its site maps it to.
 fn store<'a, 'p: 'a>(
     program: &'a Program,
     ctx: &'a mut Ctx<'p>,
@@ -88,152 +90,32 @@ fn store<'a, 'p: 'a>(
     at: u32,
 ) -> LocalFuture<'a, Result<Value, Stop>> {
     Box::pin(async move {
-        if ctx.in_action() {
-            return effect(program, ctx, target, &args, at).await;
-        }
-        let mut body = Effect {
-            program,
-            target,
-            args,
-            at,
+        let plan = program.plan();
+        let op = match target {
+            Target::Query(id) => plan.query(id).map(|query| StoreOp::Read(&query.read)),
+            Target::Get(id) => plan.entity(id).map(|entity| StoreOp::Read(&entity.get)),
+            Target::Write(id) => plan.write(id).map(|write| StoreOp::Write(&write.plan)),
+            Target::Callable(_) => None,
         };
-        result(jadpo_runtime::action(ctx, &mut body).await)
+        let Some(op) = op else {
+            let what = match target {
+                Target::Query(_) => "a query with no plan",
+                Target::Get(_) => "an entity with no plan",
+                Target::Write(_) => "a write with no plan",
+                Target::Callable(_) => "a call run as a read",
+            };
+            return Err(Stop::Fault(
+                ctx.fault(FaultKind::Defect(what.to_string()), at),
+            ));
+        };
+        let failures = plan.types().failures();
+        match jadpo_runtime::store(ctx, op, failures, &args, at).await {
+            Stored::Value(value) => Ok(value),
+            Stored::Failed(failure) => Err(Stop::Failed(failure)),
+            Stored::Conflict { arm, cause } => Err(Stop::Refused { arm, cause }),
+            Stored::Fault(fault) => Err(Stop::Fault(fault)),
+        }
     })
-}
-
-/// A read or write as the boundary runs it.
-struct Effect<'a> {
-    program: &'a Program,
-    target: Target,
-    args: Vec<Value>,
-    at: u32,
-}
-
-impl<'p> ActionBody<'p> for Effect<'_> {
-    /// A read run on its own loads what it reads, and its includes need
-    /// the first statement's snapshot; so does anything else run outside
-    /// an action.
-    fn isolation(&self) -> Isolation {
-        Isolation::RepeatableRead
-    }
-
-    fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
-        Box::pin(async move {
-            outcome(effect(self.program, ctx, self.target, &self.args, self.at).await)
-        })
-    }
-}
-
-/// Runs a read or a write from its plan.
-async fn effect(
-    program: &Program,
-    ctx: &mut Ctx<'_>,
-    target: Target,
-    args: &[Value],
-    at: u32,
-) -> Result<Value, Stop> {
-    let plan = program.plan();
-    let defect = |ctx: &mut Ctx<'_>, what: &str| {
-        Stop::Fault(ctx.fault(FaultKind::Defect(what.to_string()), at))
-    };
-    let (read, missing) = match target {
-        Target::Query(id) => match plan.query(id) {
-            Some(query) => (&query.read, query.missing.as_ref()),
-            None => return Err(defect(ctx, "a query with no plan")),
-        },
-        Target::Get(id) => match plan.entity(id) {
-            Some(entity) => (&entity.get, entity.not_found.as_ref()),
-            None => return Err(defect(ctx, "an entity with no plan")),
-        },
-        Target::Write(id) => {
-            let Some(write) = plan.write(id) else {
-                return Err(defect(ctx, "a write with no plan"));
-            };
-            return match jadpo_runtime::write(ctx, &write.plan, args, at).await {
-                Ok(Written::Value(value)) => Ok(value),
-                // By `id`, no record has it: the entity's not-found failure.
-                Ok(Written::Missing) => {
-                    match write
-                        .missing
-                        .as_ref()
-                        .and_then(|missing| failure(program, missing, args, ctx))
-                    {
-                        Some(failure) => Err(Stop::Failed(ctx.fail(failure, at))),
-                        None => Err(defect(ctx, "a write by id with no failure for none")),
-                    }
-                }
-                Ok(Written::Refused { at: refusal, cause }) => {
-                    match write.refusals.get(refusal as usize) {
-                        Some(Refusal::Arm(arm)) => Err(Stop::Refused { arm: *arm, cause }),
-                        Some(Refusal::NotFound(missing)) => {
-                            match failure(program, missing, args, ctx) {
-                                Some(mut failure) => {
-                                    failure.cause = Some(cause);
-                                    Err(Stop::Failed(ctx.fail(failure, at)))
-                                }
-                                None => Err(defect(ctx, "a reference with no failure for none")),
-                            }
-                        }
-                        Some(Refusal::Gone(what)) => {
-                            Err(Stop::Fault(ctx.fault(FaultKind::Store(what.clone()), at)))
-                        }
-                        None => Err(defect(ctx, "a refusal the plan doesn't list")),
-                    }
-                }
-                Err(stop) => Err(interrupt(stop)),
-            };
-        }
-        Target::Callable(_) => return Err(defect(ctx, "a call run as a read")),
-    };
-    match jadpo_runtime::read(ctx, read, args, at).await {
-        Ok(Found::Value(value)) => Ok(value),
-        Ok(Found::Missing) => {
-            match missing.and_then(|missing| failure(program, missing, args, ctx)) {
-                Some(failure) => Err(Stop::Failed(ctx.fail(failure, at))),
-                None => Err(defect(
-                    ctx,
-                    "a read for one record with no failure for none",
-                )),
-            }
-        }
-        Err(stop) => Err(interrupt(stop)),
-    }
-}
-
-/// The not-found failure a read raises, with its fields.
-fn failure(
-    program: &Program,
-    missing: &MissingPlan,
-    args: &[Value],
-    ctx: &Ctx<'_>,
-) -> Option<jadpo_runtime::Failure> {
-    let slots: Vec<Option<u32>> = missing.fields.iter().map(|(slot, _)| *slot).collect();
-    let values: Vec<Value> = missing
-        .fields
-        .iter()
-        .map(|(_, value)| match value {
-            MissingValue::Arg { index, path } => {
-                let mut value = args.get(*index as usize).cloned().unwrap_or(Value::None);
-                for name in path {
-                    value = match &value {
-                        Value::Record(record) => record.get(name).cloned().unwrap_or(Value::None),
-                        _ => Value::None,
-                    };
-                }
-                value
-            }
-            MissingValue::Constant(constant) => crate::values::value(constant),
-            MissingValue::Now => Value::Instant(ctx.now()),
-        })
-        .collect();
-    program.failure(missing.failure, &slots, values)
-}
-
-fn interrupt(stop: Interrupt) -> Stop {
-    match stop {
-        Interrupt::Failed(failure) => Stop::Failed(failure),
-        Interrupt::Fault(fault) => Stop::Fault(fault),
-    }
 }
 
 /// An action's body as the runtime's boundary runs it, once or, after a

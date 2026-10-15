@@ -6,8 +6,8 @@
 use std::rc::Rc;
 
 use jadpo_graph::TypeRef;
-use jadpo_plan::{Constant, ShapePlan, Types};
-use jadpo_value::{Decimal, Record, Value, Variant};
+use jadpo_plan::{ShapePlan, Types};
+use jadpo_value::{Record, Value, Variant};
 
 /// A shape with the names a value holds, ready to build values from.
 #[derive(Debug)]
@@ -38,7 +38,7 @@ impl Shape {
                 .map(|field| {
                     (
                         Rc::from(field.name.as_str()),
-                        field.absent.as_ref().map(value),
+                        field.absent.as_ref().map(Value::constant),
                     )
                 })
                 .collect(),
@@ -104,37 +104,6 @@ impl Shape {
     }
 }
 
-/// A constant as the runtime holds it.
-pub(crate) fn value(constant: &Constant) -> Value {
-    match constant {
-        Constant::Unit => Value::Unit,
-        Constant::None => Value::None,
-        Constant::Bool(value) => Value::Bool(*value),
-        Constant::Int(n) => Value::Int(*n),
-        Constant::Decimal { mantissa, scale } => Value::Decimal(Decimal::new(*mantissa, *scale)),
-        Constant::Text(text) => Value::text(text),
-        Constant::Uuid(text) => Value::Uuid(Rc::from(text.as_str())),
-        Constant::Instant(millis) => Value::Instant(*millis),
-        Constant::Date(day) => Value::Date(*day),
-        Constant::Time(millis) => Value::Time(*millis),
-        Constant::Duration(millis) => Value::Duration(*millis),
-        Constant::Variant {
-            ty,
-            ordinal,
-            name,
-            fields,
-        } => Value::variant(
-            ty,
-            *ordinal,
-            name,
-            fields
-                .iter()
-                .map(|(name, field)| (Rc::from(name.as_str()), value(field)))
-                .collect(),
-        ),
-    }
-}
-
 /// Values of a project's types built from their parts, as its bodies build
 /// them: for tests and tools that pass a callable arguments.
 #[derive(Clone, Copy, Debug)]
@@ -164,7 +133,7 @@ impl Codec<'_> {
         let key = self.types.named(ty)?;
         self.types
             .text(&TypeRef::Node(key), text)
-            .map(|constant| value(&constant))
+            .map(|constant| Value::constant(&constant))
     }
 
     fn build(&self, plan: &ShapePlan, fields: Vec<(&str, Value)>) -> Option<Value> {
