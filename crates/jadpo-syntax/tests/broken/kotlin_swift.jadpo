@@ -1,0 +1,22 @@
+// Habits a Kotlin or Swift author brings.
+fun total(items: List<Item>): Pence {  // error: syntax.function_keyword
+    val count: Quantity = 1  // error: syntax.variable_keyword
+    var name: Name = maybe ?: fallback  // error: syntax.null_coalescing
+    var rank: Rank = when (status) {  // error: syntax.switch_statement
+        Status.open -> 1
+        else -> 2  // error: syntax.switch_statement
+    }
+    for (item in items) {  // error: syntax.for_loop
+        emit Counted { item: item }
+    }
+    var item: Item = try load(count)  // error: syntax.try_catch
+    return 0
+}
+
+func zero() -> Pence {  // error: syntax.function_keyword
+    return 0
+}
+
+function one(): Pence {  // error: syntax.return_type_arrow
+    return 1
+}

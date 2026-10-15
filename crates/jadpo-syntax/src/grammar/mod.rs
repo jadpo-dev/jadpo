@@ -6,6 +6,8 @@
 //! reported once, with the reason and the next step written for the person
 //! or agent who has to fix it.
 
+mod habits;
+
 use jadpo_diag::rule;
 
 use crate::SyntaxKind::{self, *};
@@ -35,6 +37,10 @@ pub(crate) fn source_file(p: &mut Parser<'_>) {
             use_decl(p);
             continue;
         }
+        if habits::at_import(p) {
+            habits::import(p);
+            continue;
+        }
         if at_decl(p) {
             let before = p.events.len();
             decl(p);
@@ -55,6 +61,8 @@ pub(crate) fn snippet(p: &mut Parser<'_>) {
         let before = p.position();
         if at_use(p) {
             use_decl(p);
+        } else if habits::at_import(p) {
+            habits::import(p);
         } else if at_decl(p) {
             decl(p);
         } else if at_route_entry(p) {
@@ -156,7 +164,7 @@ fn recover_to_declaration(p: &mut Parser<'_>) {
     let m = p.start();
     loop {
         skip_balanced(p);
-        if p.at_eof() || (p.on_new_line() && (at_decl(p) || at_use(p))) {
+        if p.at_eof() || (p.on_new_line() && (at_decl(p) || at_use(p) || habits::at_import(p))) {
             break;
         }
     }
@@ -223,9 +231,24 @@ fn use_decl(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump_remap(USE_KW);
     let path = p.start();
+    let path_start = p.range().0;
     use_segment(p);
-    while p.at(SLASH) && !p.on_new_line() {
-        p.bump(SLASH);
+    let mut colons = false;
+    while (p.at(SLASH) || at_path_colons(p)) && !p.on_new_line() {
+        if p.at(COLON) {
+            // Rust's `use a::b::{C}`: one error for the line.
+            if !colons {
+                habits::path_colons(p, path_start);
+                colons = true;
+            }
+            p.skip_token();
+            p.skip_token();
+            if p.at(L_BRACE) {
+                break;
+            }
+        } else {
+            p.bump(SLASH);
+        }
         if (p.at(IDENT) || p.current().is_keyword()) && !p.on_new_line() {
             use_segment(p);
         } else {
@@ -258,6 +281,10 @@ fn use_decl(p: &mut Parser<'_>) {
         skip_line(p);
     }
     m.complete(p, USE_DECL);
+}
+
+fn at_path_colons(p: &Parser<'_>) -> bool {
+    p.at(COLON) && p.nth(1) == COLON && p.nth_adjacent(1)
 }
 
 /// One name in a `use` path. A folder may be a word a declaration starts
@@ -368,7 +395,7 @@ fn contextual_decl(p: &Parser<'_>, n: usize) -> Option<SyntaxKind> {
 /// only sometimes starts one (`config {`, `test "..."`) written at the
 /// start of a line. Indented, such a word is a member of the block.
 pub(crate) fn ends_block(p: &Parser<'_>) -> bool {
-    if p.on_new_line() && p.at_column_zero() && at_use(p) {
+    if p.on_new_line() && p.at_column_zero() && (at_use(p) || habits::at_import(p)) {
         return true;
     }
     if !p.on_new_line() || !at_decl(p) {
@@ -383,17 +410,26 @@ pub(crate) fn ends_block(p: &Parser<'_>) -> bool {
 }
 
 pub(crate) fn at_decl(p: &Parser<'_>) -> bool {
-    let n = usize::from(p.at(PUBLIC_KW));
+    // `export`, `pub` and `async` from other languages may come first.
+    let prefix = habits::decl_prefix_len(p);
+    let public = usize::from(p.nth(prefix) == PUBLIC_KW);
+    let n = prefix + public;
     match p.nth(n) {
         TYPE_KW | FUNCTION_KW | ACTION_KW | QUERY_KW | FIXTURE_KW | ENTITY_KW | LIBRARY_KW
         | ROUTES_KW | SCHEDULE_KW | SUBSCRIBER_KW => true,
-        IDENT => contextual_decl(p, n).is_some() || n == 1,
-        _ => n == 1,
+        IDENT => {
+            contextual_decl(p, n).is_some()
+                || habits::function_keyword_at(p, n).is_some()
+                || habits::type_keyword_at(p, n).is_some()
+                || (public == 1 && prefix == 0)
+        }
+        _ => public == 1 && prefix == 0,
     }
 }
 
 fn decl(p: &mut Parser<'_>) {
     let m = p.start();
+    habits::decl_prefix(p);
     if p.at(PUBLIC_KW) {
         let v = p.start();
         p.bump(PUBLIC_KW);
@@ -457,6 +493,10 @@ fn decl(p: &mut Parser<'_>) {
                 member_list(p, Members::Declaration);
                 m.complete(p, SINGLETON_DECL);
             }
+            None if habits::function_keyword_at(p, 0).is_some() => {
+                habits::function_keyword(p, m);
+            }
+            None if habits::type_keyword_at(p, 0).is_some() => habits::type_keyword(p, m),
             None => {
                 after_public(p);
                 m.complete(p, ERROR);
@@ -519,9 +559,14 @@ fn body_start(p: &mut Parser<'_>, members: bool) {
 }
 
 fn type_decl(p: &mut Parser<'_>, m: crate::parser::Marker) {
-    p.bump(TYPE_KW);
+    p.bump_remap(TYPE_KW);
     let type_name = p.current_text().to_string();
     name(p, "this type");
+    if habits::go_struct(p, &type_name) {
+        member_list(p, Members::Declaration);
+        m.complete(p, TYPE_DECL);
+        return;
+    }
     if !p.eat(EQ) && !p.at(L_BRACE) {
         let found = p.found();
         let error = p
@@ -586,8 +631,13 @@ fn type_decl(p: &mut Parser<'_>, m: crate::parser::Marker) {
 }
 
 fn callable(p: &mut Parser<'_>, m: crate::parser::Marker, kind: SyntaxKind, members: bool) {
-    let keyword = p.current_text().to_string();
-    p.bump_any();
+    let (keyword, keyword_kind) = match kind {
+        FUNCTION_DECL => ("function", FUNCTION_KW),
+        ACTION_DECL => ("action", ACTION_KW),
+        _ => ("query", QUERY_KW),
+    };
+    // `fn` and the like were reported as habits and read as `function`.
+    p.bump_remap(keyword_kind);
     name(p, &format!("this {keyword}"));
     if p.at(L_PAREN) {
         param_list(p);
@@ -609,6 +659,26 @@ fn callable(p: &mut Parser<'_>, m: crate::parser::Marker, kind: SyntaxKind, memb
     let arrow = p.range().0;
     if p.at(THIN_ARROW) {
         ret_type(p);
+    } else if p.at(COLON) && !p.on_new_line() && (p.nth(1) == IDENT || p.nth(1).is_keyword()) {
+        // TypeScript's and Kotlin's `): Type {`.
+        let (start, end) = p.range();
+        let spaced = p.prev_end() < start;
+        habits::report(
+            p,
+            &crate::habits::COLON_RESULT,
+            (":", "->"),
+            (start, end),
+            vec![TextEdit::replace(
+                start,
+                end,
+                if spaced { "->" } else { " ->" },
+            )],
+            true,
+        );
+        let m = p.start();
+        p.bump_remap(THIN_ARROW);
+        ty(p, "the result type");
+        m.complete(p, RET_TYPE);
     }
     if p.at(FAILS_KW) {
         let before = p.prev_end();
@@ -877,6 +947,13 @@ fn path(p: &mut Parser<'_>) -> CompletedMarker {
 // --- types --------------------------------------------------------------------
 
 fn ty(p: &mut Parser<'_>, what: &str) -> Option<CompletedMarker> {
+    let start = p.range().0;
+    if habits::at_go_slice(p) {
+        // Go's `[]Tag`: reported, and the type after the brackets read.
+        habits::go_slice(p);
+        let done = ty(p, what);
+        return done;
+    }
     if !p.at(IDENT) {
         let found = p.found();
         if p.current().is_keyword() {
@@ -907,6 +984,24 @@ fn ty(p: &mut Parser<'_>, what: &str) -> Option<CompletedMarker> {
         generic_arg_list(p);
     }
     let mut done = m.complete(p, PATH_TYPE);
+    // `Tag[]`, `list[Tag]` and `Tag | null` from other languages.
+    if p.at(L_BRACK) && p.nth_adjacent(0) {
+        if p.nth(1) == R_BRACK {
+            habits::array_suffix(p, start);
+        } else if let Some(jadpo) =
+            habits::python_collection(&p.text()[start as usize..p.prev_end() as usize])
+        {
+            habits::python_brackets(p, start, jadpo);
+        }
+    }
+    if p.at(ERROR)
+        && p.current_text() == "|"
+        && p.nth(1) == IDENT
+        && crate::habits::is_null_word(p.nth_text(1))
+        && !p.nth_on_new_line(1)
+    {
+        habits::null_union(p, start);
+    }
     let mut levels = 0;
     while p.at(QUESTION) && !p.on_new_line() && p.enter() {
         levels += 1;
@@ -1082,8 +1177,14 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
         IDENT => {
             if member_key_len(p).is_some() {
                 member(p, context);
-            } else if p.nth_on_new_line(1) || p.nth(1) == R_BRACE || p.nth(1) == EOF {
+            } else if habits::at_named_equals(p) {
+                // `name = value` from C#, Kotlin and TypeScript.
+                habits::member_equals(p, context);
+            } else if p.nth_on_new_line(1) || matches!(p.nth(1), R_BRACE | EOF | COMMA) {
                 bare_member(p, context);
+                if p.at(COMMA) && !p.on_new_line() {
+                    habits::member_comma(p, true);
+                }
             } else {
                 member_without_colon(p, context);
             }
@@ -1207,6 +1308,10 @@ fn member_key_before_colon(p: &Parser<'_>) -> String {
 /// After a member: a new line, `}`, or another member on the same line
 /// (which the formatter moves to its own line).
 fn member_end(p: &mut Parser<'_>) {
+    if p.at(COMMA) && !p.on_new_line() {
+        // Commas between members, from JSON and most languages.
+        habits::member_comma(p, false);
+    }
     if p.at_eof() || p.at(R_BRACE) || p.on_new_line() || p.at(DOT3) {
         return;
     }
@@ -1376,6 +1481,10 @@ fn block(p: &mut Parser<'_>) -> CompletedMarker {
 }
 
 fn block_item(p: &mut Parser<'_>) {
+    // `assert_eq!(a, b)`, `expect(a).toBe(b)` and the like.
+    if matches!(p.current(), IDENT | ASSERT_KW) && habits::assertion(p) {
+        return;
+    }
     match p.current() {
         VAR_KW => var_stmt(p),
         RETURN_KW => return_stmt(p),
@@ -1412,32 +1521,18 @@ fn block_item(p: &mut Parser<'_>) {
             skip_statement(p);
             return;
         }
-        IDENT if (p.at_word("let") || p.at_word("const")) && p.nth(1) == IDENT => {
-            let word = p.current_text().to_string();
-            let (start, end) = p.range();
-            let error = SyntaxError::new(
-                &rule::SYNTAX_EXPECTED_STATEMENT,
-                format!("Jadpo declares variables with `var`, not `{word}`"),
-                start,
-                end,
-            )
-            .label("not a Jadpo statement")
-            .reason("A variable is `var name: Type = value`, or `var mut` when it can change.")
-            .next(format!("Use `var` instead of `{word}`"))
-            .edit(TextEdit::replace(start, end, "var"));
-            p.push_error(error);
-            skip_statement(p);
+        IDENT if habits::at_variable_keyword(p) => {
+            habits::variable_keyword(p);
+        }
+        IDENT if (p.at_word("throw") || p.at_word("raise")) && !p.nth_on_new_line(1) => {
+            habits::throw(p);
+        }
+        IDENT if habits::at_try_block(p) => {
+            habits::try_block(p);
             return;
         }
-        IDENT if p.at_word("throw") && !p.nth_on_new_line(1) => {
-            let error = p
-                .error_here(&rule::SYNTAX_UNSUPPORTED_THROW, "Jadpo has no `throw`")
-                .label("not a Jadpo statement")
-                .reason("A callable raises one of its declared failures with `reject`, and lists it in `fails`.")
-                .next("Use `reject` with a declared failure, as in `reject NoteRejected`");
-            p.push_error(error);
-            skip_statement(p);
-            return;
+        IDENT if p.at_word("foreach") && p.nth(1) == L_PAREN && !p.nth_on_new_line(1) => {
+            for_stmt(p);
         }
         _ => expr_stmt(p),
     }
@@ -1476,7 +1571,8 @@ fn statement_end(p: &mut Parser<'_>) {
 
 fn var_stmt(p: &mut Parser<'_>) {
     let m = p.start();
-    p.bump(VAR_KW);
+    // `let` and the like were reported as habits and read as `var`.
+    p.bump_remap(VAR_KW);
     if p.at_word("mut") {
         p.bump_remap(MUT_KW);
     } else {
@@ -1573,6 +1669,12 @@ fn missing_variable_type(p: &mut Parser<'_>, var_name: &str, name_end: u32) {
 }
 
 fn stmt_value(p: &mut Parser<'_>) -> Option<CompletedMarker> {
+    p.stmt_value_start = Some(p.range().0);
+    if habits::at_try_call(p) {
+        // Swift's `try call()`, read as `attempt call()`.
+        habits::try_call(p);
+        return Some(attempt_expr(p));
+    }
     if p.at(ATTEMPT_KW) {
         Some(attempt_expr(p))
     } else {
@@ -1583,7 +1685,7 @@ fn stmt_value(p: &mut Parser<'_>) -> Option<CompletedMarker> {
 fn attempt_expr(p: &mut Parser<'_>) -> CompletedMarker {
     let m = p.start();
     let (attempt_start, _) = p.range();
-    p.bump(ATTEMPT_KW);
+    p.bump_remap(ATTEMPT_KW);
     p.attempting(expr);
     if p.at(L_BRACE) && !p.on_new_line() {
         member_list(p, Members::Record);
@@ -1661,7 +1763,11 @@ fn if_stmt(p: &mut Parser<'_>) {
     if_block(p);
     // `else if` branches are siblings in one list, however many there are:
     // a chain never nests the tree.
-    while p.at(ELSE_KW) && p.nth(1) == IF_KW {
+    while (p.at(ELSE_KW) && p.nth(1) == IF_KW) || habits::at_else_if(p) {
+        if habits::at_else_if(p) {
+            habits::else_if(p);
+            continue;
+        }
         let branch = p.start();
         p.bump(ELSE_KW);
         p.bump(IF_KW);
@@ -1783,7 +1889,17 @@ fn close_bracket_error(p: &mut Parser<'_>, open: (u32, u32), close: &str) {
 
 fn for_stmt(p: &mut Parser<'_>) {
     let m = p.start();
-    p.bump(FOR_KW);
+    let (for_start, _) = p.range();
+    // `foreach` was reported with its brackets, and is read as `for`.
+    p.bump_remap(FOR_KW);
+    if p.at(L_PAREN) && !p.on_new_line() {
+        habits::for_brackets(p, for_start);
+        if p.at(L_BRACE) {
+            block(p);
+        }
+        m.complete(p, FOR_STMT);
+        return;
+    }
     name(p, "the loop's variable");
     if !p.eat(IN_KW) {
         let found = p.found();
@@ -1839,7 +1955,17 @@ fn assert_stmt(p: &mut Parser<'_>) {
 
 fn expr_stmt(p: &mut Parser<'_>) {
     let m = p.start();
+    let start = p.range().0;
+    // `=` after the first value assigns.
+    let saved = p.assigning;
+    p.assigning = true;
     stmt_value(p);
+    p.assigning = saved;
+    if habits::at_increment(p) {
+        habits::increment(p, start);
+        m.complete(p, EXPR_STMT);
+        return;
+    }
     if p.at(EQ) && !p.on_new_line() {
         p.bump(EQ);
         stmt_value(p);
@@ -1887,11 +2013,13 @@ fn infix_power(p: &Parser<'_>) -> Option<(u8, SyntaxKind)> {
         EQ2 | NEQ | IN_KW => (3, p.current()),
         IDENT if p.at_word("matches") => (3, MATCHES_KW),
         L_ANGLE | LTEQ | R_ANGLE | GTEQ => (4, p.current()),
+        // `count++` and `count += 1` are habits a statement reports.
+        PLUS | MINUS | STAR | SLASH if habits::at_increment(p) => return None,
         PLUS | MINUS => (5, p.current()),
         STAR | SLASH | PERCENT => (6, p.current()),
         // `&&` and `||` were reported by the lexer; read them as `and`/`or`.
-        ERROR if p.current_text() == "||" => (1, ERROR),
-        ERROR if p.current_text() == "&&" => (2, ERROR),
+        ERROR if p.current_text() == "||" => (1, OR_KW),
+        ERROR if p.current_text() == "&&" => (2, AND_KW),
         _ => return None,
     };
     Some(power)
@@ -1907,10 +2035,24 @@ fn expr_bp(p: &mut Parser<'_>, min: u8) -> Option<CompletedMarker> {
 }
 
 fn expr_bp_inner(p: &mut Parser<'_>, min: u8) -> Option<CompletedMarker> {
+    let start = p.range().0;
     let mut lhs = unary(p)?;
     // Each operator nests the tree one level deeper.
     let mut levels = 0;
-    while let Some((power, kind)) = infix_power(p) {
+    loop {
+        // Operators from other languages: SQL's `AND` and `=`, `?? `, `? :`.
+        if let Some((power, habit)) = habits::infix_habit(p) {
+            let ternary = habit == habits::InfixHabit::Ternary;
+            if power <= min || (ternary && min > 0) || p.line_break_ends() || !p.enter() {
+                break;
+            }
+            levels += 1;
+            lhs = habits::infix(p, lhs, start, power, habit);
+            continue;
+        }
+        let Some((power, kind)) = infix_power(p) else {
+            break;
+        };
         if power <= min || p.line_break_ends() || !p.enter() {
             break;
         }
@@ -1934,11 +2076,45 @@ fn unary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
             expr_bp(p, 7);
             Some(m.complete(p, PREFIX_EXPR))
         }
+        // `!` was reported by the lexer, and SQL's `NOT` is reported here:
+        // both read as `not`.
         ERROR if p.current_text() == "!" => {
             let m = p.start();
-            p.bump_any();
+            p.bump_remap(NOT_KW);
             expr_bp(p, 7);
             Some(m.complete(p, PREFIX_EXPR))
+        }
+        IDENT if habits::at_capital_not(p) => {
+            let m = p.start();
+            habits::capital_not(p);
+            expr_bp(p, 7);
+            Some(m.complete(p, PREFIX_EXPR))
+        }
+        // `await x` and `new Type(x)` read as `x` and `Type(x)`.
+        IDENT if habits::at_await(p) => {
+            habits::await_word(p);
+            unary(p)
+        }
+        IDENT if habits::at_new(p) => {
+            habits::new_word(p);
+            unary(p)
+        }
+        IDENT if habits::at_try_call(p) => {
+            habits::try_call(p);
+            let error = p
+                .error_here(
+                    &rule::SYNTAX_ATTEMPT_PLACEMENT,
+                    "`attempt` can only start a statement",
+                )
+                .label("inside an expression")
+                .reason(
+                    "Every place a callable can stop early is at the start of a line: a `var`, \
+                     an assignment, a `return`, or a statement of its own.",
+                )
+                .next("Move the call into its own `var` statement with `attempt`, then use the variable");
+            p.push_error(error);
+            let done = attempt_expr(p);
+            Some(postfix(p, done, None))
         }
         ATTEMPT_KW => {
             let error = p
@@ -1954,11 +2130,12 @@ fn unary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
                 .next("Move the call into its own `var` statement with `attempt`, then use the variable");
             p.push_error(error);
             let done = attempt_expr(p);
-            Some(postfix(p, done))
+            Some(postfix(p, done, None))
         }
         _ => {
+            let start = p.range().0;
             let done = primary(p)?;
-            Some(postfix(p, done))
+            Some(postfix(p, done, Some(start)))
         }
     }
 }
@@ -1970,7 +2147,19 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
             p.bump_any();
             LITERAL
         }
+        // `switch (x) {` and Kotlin's `when (x) {`, read as `match`.
+        IDENT if habits::at_switch(p) => {
+            habits::switch(p);
+            match_expr(p);
+            MATCH_EXPR
+        }
         IDENT => {
+            p.bump(IDENT);
+            NAME_REF
+        }
+        // Go's `[]Tag` where a type is written as a value: the type.
+        L_BRACK if habits::at_go_slice(p) => {
+            habits::go_slice(p);
             p.bump(IDENT);
             NAME_REF
         }
@@ -2052,12 +2241,18 @@ fn expected_expression(p: &mut Parser<'_>) {
     }
 }
 
-fn postfix(p: &mut Parser<'_>, lhs: CompletedMarker) -> CompletedMarker {
+/// The suffixes after a value that starts at `start` (when known, for the
+/// edits of habits from other languages).
+fn postfix(p: &mut Parser<'_>, lhs: CompletedMarker, start: Option<u32>) -> CompletedMarker {
     // Each suffix nests the tree one level deeper.
     let mut levels = 0;
-    let done = postfix_levels(p, lhs, &mut levels);
+    let mut chain = None;
+    let done = postfix_levels(p, lhs, &mut levels, start, &mut chain);
     for _ in 0..levels {
         p.leave();
+    }
+    if let (Some(start), Some(chain)) = (start, chain) {
+        habits::optional_chaining(p, start, chain);
     }
     done
 }
@@ -2066,8 +2261,15 @@ fn postfix_levels(
     p: &mut Parser<'_>,
     mut lhs: CompletedMarker,
     levels: &mut u32,
+    start: Option<u32>,
+    chain: &mut Option<u32>,
 ) -> CompletedMarker {
     loop {
+        if let Some(start) = start
+            && habits::postfix_habit(p, &mut lhs, start, chain)
+        {
+            continue;
+        }
         let suffix = matches!(p.current(), DOT | L_PAREN | L_BRACE | L_ANGLE | QUESTION);
         if suffix && !p.enter() {
             return lhs;
@@ -2100,7 +2302,13 @@ fn postfix_levels(
                 generic_arg_list(p);
                 m.complete(p, GENERIC_EXPR)
             }
-            QUESTION if !p.on_new_line() => {
+            // `Name?` as a type, unless the `?` starts `??`, `?:` or a
+            // ternary from another language.
+            QUESTION
+                if !p.on_new_line()
+                    && !(p.nth_adjacent(1) && matches!(p.nth(1), QUESTION | COLON))
+                    && !habits::ternary_ahead(p) =>
+            {
                 let m = lhs.precede(p);
                 p.bump(QUESTION);
                 m.complete(p, NULLABLE_EXPR)
@@ -2164,7 +2372,17 @@ fn arg_list(p: &mut Parser<'_>) {
 
 fn arg(p: &mut Parser<'_>, named: &mut Vec<(String, (u32, u32))>) {
     let m = p.start();
-    if p.at(IDENT) && p.nth(1) == COLON {
+    // `x => e`, `lambda x: e`, `|x| e`: inline functions from other
+    // languages, read as `x -> e`.
+    if habits::inline_function(p) {
+        m.complete(p, ARG);
+        return;
+    }
+    let equals = habits::at_named_equals(p);
+    if equals {
+        habits::named_equals(p);
+    }
+    if p.at(IDENT) && (p.nth(1) == COLON || equals) {
         let word = p.current_text().to_string();
         let range = p.range();
         if let Some((_, first)) = named.iter().find(|(name, _)| *name == word) {
@@ -2182,7 +2400,7 @@ fn arg(p: &mut Parser<'_>, named: &mut Vec<(String, (u32, u32))>) {
         }
         named.push((word, range));
         name(p, "this argument");
-        p.bump(COLON);
+        p.bump_remap(COLON);
         expr(p);
     } else if p.at(IDENT) && p.nth(1) == THIN_ARROW {
         let lambda = p.start();
@@ -2276,7 +2494,8 @@ fn list(p: &mut Parser<'_>) {
 }
 
 fn match_expr(p: &mut Parser<'_>) {
-    p.bump(MATCH_KW);
+    // `switch` and `when` were reported as habits and read as `match`.
+    p.bump_remap(MATCH_KW);
     p.with_records(false, |p| expr(p));
     if !p.at(L_BRACE) {
         let found = p.found();
@@ -2321,17 +2540,23 @@ fn match_expr(p: &mut Parser<'_>) {
 }
 
 fn match_arm(p: &mut Parser<'_>) {
+    // `case P:`, `default:` and Kotlin's `else ->`, from other languages.
+    if habits::switch_arm(p) {
+        return;
+    }
     let m = p.start();
     pattern(p);
     if p.at(FAT_ARROW) {
         let (start, end) = p.range();
-        let error = SyntaxError::new(&rule::SYNTAX_MATCH_ARROW, "Match arms use `->`", start, end)
-            .label("expected `->`")
-            .reason("`=>` was removed: an arm uses the same arrow as a result type.")
-            .next("Use `->` instead of `=>`")
-            .edit(TextEdit::replace(start, end, "->"));
-        p.push_error(error);
-        p.bump(FAT_ARROW);
+        habits::report(
+            p,
+            &crate::habits::FAT_ARROW_ARM,
+            ("=>", "->"),
+            (start, end),
+            vec![TextEdit::replace(start, end, "->")],
+            true,
+        );
+        p.bump_remap(THIN_ARROW);
     } else if !p.eat(THIN_ARROW) {
         let found = p.found();
         let error = p

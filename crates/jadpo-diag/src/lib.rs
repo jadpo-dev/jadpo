@@ -413,14 +413,24 @@ rules! {
         "01-project-layout-and-modules.html#semantic-wrong-name-kind", "Name is the wrong kind of declaration here";
     STORE_ACTION_SPANS_STORES: "store.action_spans_stores", area 6, Error, Human,
         "06-reads-and-writes.html#store-action-spans-stores", "Action writes more than one store";
+    SYNTAX_ASSERTION_FORM: "syntax.assertion_form", area 13, Error, Agent,
+        "13-testing.html#syntax-assertion-form", "Assertion written in another language's form";
+    SYNTAX_ASYNC_AWAIT: "syntax.async_await", area 3, Error, Agent,
+        "03-logic.html#syntax-async-await", "Code marked `async` or `await`";
     SYNTAX_ATTEMPT_PLACEMENT: "syntax.attempt_placement", area 3, Error, Agent,
         "03-logic.html#syntax-attempt-placement", "Attempt is used inside an expression";
+    SYNTAX_COLLECTION_TYPE: "syntax.collection_type", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-collection-type", "Collection type written in another language's form";
     SYNTAX_COLON_REQUIRED: "syntax.colon_required", area 3, Error, Agent,
         "03-logic.html#syntax-colon-required", "Member has no colon before its value";
+    SYNTAX_COMMENT_STYLE: "syntax.comment_style", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#syntax-comment-style", "Comment written with `#` or `/* */`";
     SYNTAX_CONDITION_BRACKETS: "syntax.condition_brackets", area 3, Error, Agent,
         "03-logic.html#syntax-condition-brackets", "Condition is not in brackets";
+    SYNTAX_ELSE_IF: "syntax.else_if", area 3, Error, Agent,
+        "03-logic.html#syntax-else-if", "Else-if written as `elif` or `elsif`";
     SYNTAX_EQUALITY_OPERATOR: "syntax.equality_operator", area 3, Error, Agent,
-        "03-logic.html#syntax-equality-operator", "Comparison written with `===` or `!==`";
+        "03-logic.html#syntax-equality-operator", "Comparison written with another language's operator";
     SYNTAX_EXPECTED_DECLARATION: "syntax.expected_declaration", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-expected-declaration", "Expected a declaration";
     SYNTAX_EXPECTED_EXPRESSION: "syntax.expected_expression", area 3, Error, Agent,
@@ -429,22 +439,62 @@ rules! {
         "01-project-layout-and-modules.html#syntax-expected-name", "Expected a name";
     SYNTAX_EXPECTED_STATEMENT: "syntax.expected_statement", area 3, Error, Agent,
         "03-logic.html#syntax-expected-statement", "Expected a statement";
+    SYNTAX_EXPORT_KEYWORD: "syntax.export_keyword", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#syntax-export-keyword", "Declaration marked `export` or `pub`";
     SYNTAX_FAILS_AFTER_RESULT: "syntax.fails_after_result", area 4, Error, Agent,
         "04-failures.html#syntax-fails-after-result", "Fails list comes after the result type";
+    SYNTAX_FOR_LOOP: "syntax.for_loop", area 3, Error, Agent,
+        "03-logic.html#syntax-for-loop", "Loop written in another language's form";
+    SYNTAX_FUNCTION_KEYWORD: "syntax.function_keyword", area 3, Error, Agent,
+        "03-logic.html#syntax-function-keyword", "Function declared with `fn`, `func`, `def` or `fun`";
+    SYNTAX_IMPORT_STATEMENT: "syntax.import_statement", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#syntax-import-statement", "Import written in another language's form";
+    SYNTAX_INCREMENT_OPERATOR: "syntax.increment_operator", area 3, Error, Agent,
+        "03-logic.html#syntax-increment-operator", "Variable changed with `++`, `--` or `+=`";
+    SYNTAX_INLINE_FUNCTION_ARROW: "syntax.inline_function_arrow", area 3, Error, Agent,
+        "03-logic.html#syntax-inline-function-arrow", "Inline function written in another language's form";
     SYNTAX_INVALID_ESCAPE: "syntax.invalid_escape", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-invalid-escape", "Unknown escape in a string";
+    SYNTAX_LOGICAL_OPERATOR: "syntax.logical_operator", area 3, Error, Agent,
+        "03-logic.html#syntax-logical-operator", "Logical operator written in another language's form";
     SYNTAX_MAPPING_BLOCK_REQUIRED: "syntax.mapping_block_required", area 4, Error, Agent,
         "04-failures.html#syntax-mapping-block-required", "Mappings are written after the call instead of in a block";
     SYNTAX_MATCH_ARROW: "syntax.match_arrow", area 3, Error, Agent,
         "03-logic.html#syntax-match-arrow", "Match arm uses `=>`";
     SYNTAX_MATCH_PATTERN: "syntax.match_pattern", area 3, Error, Agent,
         "03-logic.html#syntax-match-pattern", "Expected a match pattern";
+    SYNTAX_MEMBER_COMMA: "syntax.member_comma", area 3, Error, Agent,
+        "03-logic.html#syntax-member-comma", "Members separated by commas";
     SYNTAX_NAMED_ARGUMENT_DUPLICATE: "syntax.named_argument_duplicate", area 3, Error, Agent,
         "03-logic.html#syntax-named-argument-duplicate", "Named argument is given twice";
+    SYNTAX_NAMED_ARGUMENT_EQUALS: "syntax.named_argument_equals", area 3, Error, Agent,
+        "03-logic.html#syntax-named-argument-equals", "Named argument written with `=`";
+    SYNTAX_NEW_KEYWORD: "syntax.new_keyword", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-new-keyword", "Value created with `new`";
+    SYNTAX_NULL_COALESCING: "syntax.null_coalescing", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-null-coalescing", "Default for a missing value written with `??`";
+    SYNTAX_NULLABLE_TYPE: "syntax.nullable_type", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-nullable-type", "Nullable type written in another language's form";
+    SYNTAX_OPTIONAL_CHAINING: "syntax.optional_chaining", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-optional-chaining", "Field of a missing value read with `?.`";
     SYNTAX_POSITIONAL_AFTER_NAMED: "syntax.positional_after_named", area 3, Error, Agent,
         "03-logic.html#syntax-positional-after-named", "Positional argument follows a named one";
+    SYNTAX_RETURN_TYPE_ARROW: "syntax.return_type_arrow", area 3, Error, Agent,
+        "03-logic.html#syntax-return-type-arrow", "Result type written after `:`";
+    SYNTAX_SEMICOLON: "syntax.semicolon", area 3, Error, Agent,
+        "03-logic.html#syntax-semicolon", "Statement or member ends with `;`";
+    SYNTAX_STRING_QUOTES: "syntax.string_quotes", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-string-quotes", "String in single quotes or backticks";
+    SYNTAX_SWITCH_STATEMENT: "syntax.switch_statement", area 3, Error, Agent,
+        "03-logic.html#syntax-switch-statement", "Choice written with `switch` or `when`";
+    SYNTAX_TERNARY_OPERATOR: "syntax.ternary_operator", area 3, Error, Agent,
+        "03-logic.html#syntax-ternary-operator", "Value chosen with `? :`";
+    SYNTAX_TRY_CATCH: "syntax.try_catch", area 3, Error, Agent,
+        "03-logic.html#syntax-try-catch", "Failure handled with `try`, `catch` or `?`";
     SYNTAX_TYPE_BLOCK_REQUIRED: "syntax.type_block_required", area 2, Error, Agent,
         "02-values-and-types.html#syntax-type-block-required", "Type has no block";
+    SYNTAX_TYPE_KEYWORD: "syntax.type_keyword", area 2, Error, Agent,
+        "02-values-and-types.html#syntax-type-keyword", "Type declared with `struct`, `interface` or `enum`";
     SYNTAX_TYPE_PARENT_REQUIRED: "syntax.type_parent_required", area 2, Error, Agent,
         "02-values-and-types.html#syntax-type-parent-required", "Type has no base";
     SYNTAX_UNEXPECTED_CHARACTER: "syntax.unexpected_character", area 1, Error, Agent,
@@ -452,9 +502,11 @@ rules! {
     SYNTAX_UNEXPECTED_TOKEN: "syntax.unexpected_token", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-unexpected-token", "Something else was expected here";
     SYNTAX_UNSUPPORTED_THROW: "syntax.unsupported_throw", area 3, Error, Agent,
-        "03-logic.html#syntax-unsupported-throw", "Jadpo has no `throw`";
+        "03-logic.html#syntax-unsupported-throw", "Failure raised with `throw` or `raise`";
     SYNTAX_UNTERMINATED_STRING: "syntax.unterminated_string", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-unterminated-string", "String is not closed";
+    SYNTAX_VARIABLE_KEYWORD: "syntax.variable_keyword", area 3, Error, Agent,
+        "03-logic.html#syntax-variable-keyword", "Variable declared with `let`, `const` or `val`";
     SYNTAX_VARIABLE_TYPE_REQUIRED: "syntax.variable_type_required", area 2, Error, Agent,
         "02-values-and-types.html#syntax-variable-type-required", "Variable has no type";
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
@@ -527,6 +579,10 @@ rules! {
         "02-values-and-types.html#type-field-on-non-record", "Field is read from a value without fields";
     TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
         "02-values-and-types.html#type-field-unproved", "Object field value may break the field's rules";
+    TYPE_FOREIGN_TYPE: "type.foreign_type", area 2, Error, Agent,
+        "02-values-and-types.html#type-foreign-type", "Type named as another language names it";
+    TYPE_FOREIGN_VALUE: "type.foreign_value", area 2, Error, Agent,
+        "02-values-and-types.html#type-foreign-value", "Value written as another language writes it";
     TYPE_INCOMPARABLE: "type.incomparable", area 3, Error, Agent,
         "03-logic.html#type-incomparable", "Values cannot be compared for equality";
     TYPE_INLINE_FUNCTION_PLACEMENT: "type.inline_function_placement", area 3, Error, Agent,

@@ -11,6 +11,7 @@ rules:
   - configuration.fixture_value_invalid
   - configuration.fixture_value_missing
   - semantic.test_service_fake_required
+  - syntax.assertion_form
   - test.assertion_failed
   - test.fault
   - test.unexpected_failure
@@ -1107,6 +1108,38 @@ fixture local {
     config {
     }
 }
+```
+
+### `syntax.assertion_form`
+
+A test checks with `assert condition`: Rust's `assert_eq!`, JUnit's `assertEquals`, Python's `assertEqual`, Jest's `expect(...).toBe(...)` and Node's `assert.equal` are habits from other languages (decision register, 2026-10-15), one error each whose edit writes the `assert`.
+
+```jadpo check project=e-habit-assertion expect=syntax.assertion_form
+type Count = Int {
+    min: 0
+}
+
+function same(count: Count) -> Count {
+    return count
+}
+
+test "same gives back its count" {
+    assert_eq!(same(2), 2)
+}
+```
+
+```text output
+error: Jadpo writes `assert same(2) == 2`, not `assert_eq!(same(2), 2)`
+ --> main.jadpo:10:5
+   |
+10 |     assert_eq!(same(2), 2)
+   |     ^^^^^^^^^^^^^^^^^^^^^^ write `assert same(2) == 2`
+  reason: `assert_eq!` checks a test's values in Rust, `assertEquals` in JUnit, `assertEqual` in Python's unittest, `expect(…).toBe(…)` in Jest and `assert.equal` in Node; a Jadpo test checks with `assert condition`.
+  next: Write `assert same(2) == 2` (agent)
+  rule: syntax.assertion_form
+  help: docs/language/13-testing.html#syntax-assertion-form
+
+check failed: 1 error, 1 file
 ```
 
 ## Review

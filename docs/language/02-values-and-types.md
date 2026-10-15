@@ -620,7 +620,10 @@ it came from the billing or the shipping address.
 > **Decided on 2026-10-12, built in chunk 1.4.** Objects and inputs use `type Name = Object { ... }` and `type Name = Input { ... }`, and (question 20) `optional` and `default` go in a settings block after the field's type.
 
 There is no `null` or `undefined`. A type followed by `?` may hold `none`, and
-reading it means handling both cases, usually with `match` (area 3).
+reading it means handling both cases, usually with `match` (area 3). `null`,
+`nil`, `undefined` and `None` are each `type.foreign_value`, and `??` and
+`?.` are `syntax.null_coalescing` and `syntax.optional_chaining`, whose edits
+write the `match`.
 
 ```jadpo check project=absent file=names.jadpo hidden
 type ProductName = Text {
@@ -2144,6 +2147,277 @@ error: `price` needs a type
   next: Write `var price: Price = 0.00` (agent)
   rule: syntax.variable_type_required
   help: docs/language/02-values-and-types.html#syntax-variable-type-required
+
+check failed: 1 error, 1 file
+```
+
+### Habits from other languages
+
+People and agents write constructs from other languages out of habit
+(decision register, 2026-10-15). Each has an error of its own that names
+the habit and the Jadpo form, with an edit, and parsing carries on as if the
+Jadpo form had been written, so a line gives one error. When the Jadpo
+form only renames or drops words, the rest of the project is checked too.
+The catalogue is `jadpo_syntax::habits`; [area 3](03-logic.md#habits-from-other-languages)
+explains how a line shows one error at a time.
+
+### `syntax.string_quotes`
+
+Strings are in double quotes.
+
+```jadpo check project=e-habit-quotes expect=syntax.string_quotes
+type Code = Text {
+    pattern: '^[a-z]+$'
+}
+```
+
+```text output
+error: Jadpo writes strings in double quotes
+ --> main.jadpo:2:14
+  |
+2 |     pattern: '^[a-z]+$'
+  |              ^^^^^^^^^^ write `"`
+  reason: Single quotes enclose text in Python, JavaScript and SQL, and a character in Rust, Java, C# and Kotlin, and backticks a template in JavaScript; Jadpo has one kind of string, in double quotes.
+  next: Write `"^[a-z]+$"` (agent)
+  rule: syntax.string_quotes
+  help: docs/language/02-values-and-types.html#syntax-string-quotes
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.type_keyword`
+
+Every type is `type Name = Base { ... }`: `struct`, `interface` and `enum` are other languages' words for `Object` and `Enum`.
+
+```jadpo check project=e-habit-struct expect=syntax.type_keyword
+type Count = Int {
+    min: 0
+}
+
+struct Point {
+    across: Count
+    down: Count
+}
+```
+
+```text output
+error: Jadpo writes `type Point = Object`, not `struct Point`
+ --> main.jadpo:5:1
+  |
+5 | struct Point {
+  | ^^^^^^^^^^^^ write `type Point = Object`
+  reason: `struct` declares a record in Rust, Go, Swift and C#, `interface` an object's shape in TypeScript, and `enum` a list of cases in most languages; every Jadpo type is `type Name = Base { ... }`, with `Object` or `Enum` as the base.
+  next: Write `type Point = Object` (agent)
+  rule: syntax.type_keyword
+  help: docs/language/02-values-and-types.html#syntax-type-keyword
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.collection_type`
+
+A collection names its types in angle brackets: `List<Tag>`, `Set<Tag>`, `Map<Tag, Count>`.
+
+```jadpo check project=e-habit-collection expect=syntax.collection_type
+type Tag = Text {
+    max_length: 30
+}
+
+type Basket = Object {
+    tags: Tag[]
+}
+```
+
+```text output
+error: Jadpo writes `List<Tag>`, not `Tag[]`
+ --> main.jadpo:6:14
+  |
+6 |     tags: Tag[]
+  |              ^^ write `List<Tag>`
+  reason: `T[]` is a list type in TypeScript, Java and C#, `[]T` in Go, and `list[T]` in Python; Jadpo writes a collection's types in angle brackets, as in `List<T>`, `Set<T>` and `Map<K, V>`.
+  next: Write `List<Tag>` (agent)
+  rule: syntax.collection_type
+  help: docs/language/02-values-and-types.html#syntax-collection-type
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.nullable_type`
+
+A type that may hold `none` is written with `?`.
+
+```jadpo check project=e-habit-nullable expect=syntax.nullable_type
+type ProductName = Text {
+    min_length: 1
+}
+
+type Listing = Object {
+    name: ProductName
+    subtitle: ProductName | null
+}
+```
+
+```text output
+error: Jadpo writes `ProductName?`, not `ProductName | null`
+ --> main.jadpo:7:27
+  |
+7 |     subtitle: ProductName | null
+  |                           ^^^^^^ write `ProductName?`
+  reason: `T | null` and `T | undefined` are types that may be missing in TypeScript, and `T | None` and `Optional[T]` in Python; Jadpo writes `T?`, which holds a `T` or `none`.
+  next: Write `ProductName?` (agent)
+  rule: syntax.nullable_type
+  help: docs/language/02-values-and-types.html#syntax-nullable-type
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.null_coalescing`
+
+A value that may be `none` is read with a `match` that handles both cases; the edit writes it.
+
+```jadpo check project=e-habit-coalescing expect=syntax.null_coalescing
+type ProductName = Text {
+    min_length: 1
+}
+
+type Listing = Object {
+    name: ProductName
+    subtitle: ProductName?
+}
+
+function headline(listing: Listing) -> ProductName {
+    return listing.subtitle ?? listing.name
+}
+```
+
+```text output
+error: Jadpo reads a value that may be `none` with `match`, not `??`
+ --> main.jadpo:11:29
+   |
+11 |     return listing.subtitle ?? listing.name
+   |                             ^^ write a `match`
+  reason: `??` gives a default for a missing value in JavaScript, TypeScript, C# and Swift, and `?:` in Kotlin; Jadpo reads a value that may be `none` with a `match` that handles both cases.
+  next: Write `match listing.subtitle` with the arms `some(subtitle) -> subtitle` and `none -> listing.name` (agent)
+  rule: syntax.null_coalescing
+  help: docs/language/02-values-and-types.html#syntax-null-coalescing
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.optional_chaining`
+
+A field of a value that may be `none` is read in a `match` too.
+
+```jadpo check project=e-habit-chaining expect=syntax.optional_chaining
+type PostalCode = Text {
+    max_length: 10
+}
+
+type Address = Object {
+    postal_code: PostalCode
+}
+
+type Customer = Object {
+    address: Address?
+}
+
+function postal_code(customer: Customer) -> PostalCode? {
+    return customer.address?.postal_code
+}
+```
+
+```text output
+error: Jadpo reads a value that may be `none` with `match`, not `?.`
+ --> main.jadpo:14:28
+   |
+14 |     return customer.address?.postal_code
+   |                            ^^ write a `match`
+  reason: `?.` reads a field of a value that may be missing in JavaScript, TypeScript, C#, Kotlin and Swift; Jadpo reads a value that may be `none` with a `match` that handles both cases.
+  next: Write `match customer.address` with the arms `some(address) -> address.postal_code` and `none -> none` (agent)
+  rule: syntax.optional_chaining
+  help: docs/language/02-values-and-types.html#syntax-optional-chaining
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.new_keyword`
+
+A value is made with `Type(value)`, or an object with `Type { field: value }`, without `new`.
+
+```jadpo check project=e-habit-new expect=syntax.new_keyword
+type CustomerNote = Text {
+    max_length: 500
+}
+
+type NoteWasEdited = Bool {}
+
+function edited(before: CustomerNote, after: CustomerNote) -> NoteWasEdited {
+    return new NoteWasEdited(before != after)
+}
+```
+
+```text output
+error: Jadpo creates a value without `new`
+ --> main.jadpo:8:12
+  |
+8 |     return new NoteWasEdited(before != after)
+  |            ^^^ remove `new`
+  reason: `new` creates an object in JavaScript, TypeScript, Java and C#; Jadpo creates a value with `Type(value)`, or an object with `Type { field: value }`.
+  next: Remove `new` (agent)
+  rule: syntax.new_keyword
+  help: docs/language/02-values-and-types.html#syntax-new-keyword
+
+check failed: 1 error, 1 file
+```
+
+### `type.foreign_type`
+
+A type named as another language names it, which the project doesn't declare: `string`, `int`, `bool`, `void`, `Vec`, `HashMap`, `Option<T>` and the rest of the table in `jadpo_syntax::habits`.
+
+```jadpo check project=e-habit-foreign-type expect=type.foreign_type
+type Listing = Object {
+    name: string
+}
+```
+
+```text output
+error: Jadpo writes `Text`, not `string`
+ --> main.jadpo:2:11
+  |
+2 |     name: string
+  |           ^^^^^^ write `Text`
+  reason: `string` is text in TypeScript, C# and Go; Jadpo calls it `Text`.
+  next: Use `Text` instead of `string` (agent)
+  rule: type.foreign_type
+  help: docs/language/02-values-and-types.html#type-foreign-type
+
+check failed: 1 error, 1 file
+```
+
+### `type.foreign_value`
+
+There is no `null`, `nil`, `undefined` or `None`: a missing value is `none`, and Python's `True` and `False` are `true` and `false`.
+
+```jadpo check project=e-habit-foreign-value expect=type.foreign_value
+type ProductName = Text {
+    min_length: 1
+}
+
+function no_subtitle() -> ProductName? {
+    return null
+}
+```
+
+```text output
+error: Jadpo writes `none`, not `null`
+ --> main.jadpo:6:12
+  |
+6 |     return null
+  |            ^^^^ write `none`
+  reason: `null` is a missing value in JavaScript, Java, C# and Kotlin; Jadpo writes it `none`.
+  next: Use `none` instead of `null` (agent)
+  rule: type.foreign_value
+  help: docs/language/02-values-and-types.html#type-foreign-value
 
 check failed: 1 error, 1 file
 ```

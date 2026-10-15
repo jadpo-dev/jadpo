@@ -141,6 +141,7 @@ check_note
 check_out
 check_shelf
 check_title
+checked_note
 checkout
 checkout_unavailable
 choose_handover
@@ -164,10 +165,12 @@ contact_text
 copy_name
 count_in_house_use
 count_ingredients
+count_missing
 count_out_of_range
 count_refused
 count_tiers
 count_todos
+counted_or_missing
 counter
 counter_id
 country
@@ -262,7 +265,6 @@ expires_at
 export_my_data
 expose_secret
 exposed_secret
-fail_loudly
 family_basket
 fee
 fill_tray
@@ -442,6 +444,7 @@ new_todo
 next_page
 nickname
 no_guests
+no_subtitle
 normal
 not_a_call
 not_an_address
@@ -450,6 +453,7 @@ not_your_order
 note_invalid
 note_not_found
 note_refused
+note_rejected
 note_role
 note_was_edited
 nothing_to_bake
@@ -510,6 +514,7 @@ payment_outcome
 payment_refused
 payment_succeeded
 pence
+people
 per_kilo
 per_todo
 per_tray
@@ -521,6 +526,7 @@ plan_effort
 pong
 portion_count
 portions
+postal_code
 postcode
 postpone_all
 pretend_pure
@@ -532,6 +538,7 @@ price_lines
 price_loaf
 price_loaves
 price_per_kilo
+price_range
 price_text
 priorities
 priority
@@ -628,6 +635,7 @@ sacks
 safe_to_eat
 sales
 same_price
+same_twice
 save_draft
 save_note
 save_session
