@@ -609,14 +609,14 @@ fn unused(path: &str, source: &ast::SourceFile, item: &Item, library: Option<u32
 }
 
 fn unused_beside(path: &str, source: &ast::SourceFile, item: &Item, primary: &Item) -> Diagnostic {
-    let (name, owner) = (&item.name, &primary.name);
+    let (name, primary) = (&item.name, &primary.name);
     Diagnostic::new(
         &rule::LAYOUT_UNUSED_DECLARATION,
-        format!("`{name}` isn't used by `{owner}`"),
+        format!("`{name}` isn't used by `{primary}`"),
     )
     .at(
         name_span(source, path, item.index, None),
-        format!("`{owner}` doesn't use this"),
+        format!("`{primary}` doesn't use this"),
     )
     .reason(
         "Everything in a file besides the declaration it is named after is there for that declaration, used by it directly or through one another; anything else is dead code. Tests don't count as users.",

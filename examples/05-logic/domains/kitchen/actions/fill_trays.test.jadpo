@@ -1,17 +1,13 @@
 test "a part-filled tray still counts" {
-    assert fill_trays(100, 24) == 5
-    assert fill_trays(96, 24) == 4
-    assert fill_trays(0, 24) == 0
+    assert fill_trays(100, 24).trays == 5
+    assert fill_trays(96, 24).trays == 4
+    assert fill_trays(0, 24).trays == 0
 }
 
-test "the remainder is what whole trays leave over" {
-    assert left_over(100, 24) == 4
-}
-
-test "a half penny goes to the even penny, or up at the till" {
-    // 10.05 shared by 2 is 5.025: half-even gives 5.02, half-up 5.03.
-    assert share(10.05, 2) == 5.02
-    assert till_share(10.05, 2) == 5.03
-    // 10.15 shared by 2 is 5.075: both give 5.08, the even penny.
-    assert share(10.15, 2) == 5.08
+test "the last tray holds what whole trays leave over" {
+    assert fill_trays(100, 24) == TrayPlan {
+        trays: 5
+        last_tray: 4
+    }
+    assert fill_trays(96, 24).last_tray == 0
 }

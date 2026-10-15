@@ -13,6 +13,7 @@ administrative_health
 alice
 alice_with_todos
 allergen
+allergen_check
 allergens
 allergies
 already_archived
@@ -23,7 +24,6 @@ api_bearer
 app_role
 application_configuration
 applies_to
-apply_change
 apply_code
 apply_discount
 approved
@@ -44,6 +44,7 @@ author_view
 available_count
 avatar
 avoid
+avoids_all
 awaited_delivery
 badge
 badge_name_too_long
@@ -58,8 +59,8 @@ basket
 basket_empty
 basket_line
 batch_code
+batch_size
 best_before
-bill
 billing_name
 billing_reference
 board
@@ -77,6 +78,7 @@ book_not_found
 book_title
 book_titled
 book_view
+booked
 booking
 bookings
 books
@@ -91,6 +93,7 @@ browser_session
 budget
 build_product
 bumped
+bun_cost
 bun_count
 buns
 business_zone
@@ -105,6 +108,7 @@ cake_request
 cake_size
 cake_sold_out
 cake_stand
+cakes
 can_take
 cancel_unpaid_orders
 candle_count
@@ -163,6 +167,7 @@ contact_address
 contact_email
 contact_text
 copy_name
+cost_bun
 count_in_house_use
 count_ingredients
 count_missing
@@ -215,7 +220,6 @@ delivery_id
 delivery_state
 destination_company_id
 details
-diners
 disable_user
 disabled_at
 discount
@@ -229,6 +233,7 @@ double_if_room
 double_order
 double_quantity
 doubled_checked
+doubled_order
 draft_name
 due_at
 due_before
@@ -254,6 +259,7 @@ email_taken
 emma
 emptied
 empty_patch
+end_of_day
 enrol
 entered
 entry_count
@@ -276,6 +282,7 @@ first_loan
 first_quantity
 first_use
 flapjack
+floor_scale
 flour
 flour_for
 flour_short
@@ -354,11 +361,12 @@ kilograms
 kilos
 kitchen
 kitchen_busy
-kitchen_count
 label_jar
+labelled
 larger
 last_lent_at
 last_seen_at
+last_tray
 last_viewed_at
 late
 latest_due_at
@@ -451,6 +459,7 @@ not_an_address
 not_work
 not_your_order
 note_invalid
+note_matches
 note_not_found
 note_refused
 note_rejected
@@ -486,6 +495,7 @@ ordered_at
 out_of_stock
 outcome_label
 oven_down
+oven_setting
 oven_temperature
 ovens
 ovens_lit
@@ -578,6 +588,7 @@ read_clock
 receipt
 receipt_id
 recipe
+recipe_label
 record_payment
 record_payment_webhook
 redeem_card
@@ -632,6 +643,7 @@ revoked_at
 rye
 sack_count
 sacks
+safe_for
 safe_to_eat
 sales
 same_price
@@ -642,6 +654,7 @@ save_session
 scale_address
 scale_recipe
 scaled
+scaled_recipe
 scone
 search_todos
 seated
@@ -675,6 +688,7 @@ short_date
 short_product_name
 shortbread
 shout
+show_on_menu
 sign_in_link
 signed_in
 signup_ip
@@ -683,6 +697,7 @@ size_price
 sku
 slice_count
 slices
+slices_in
 slot_taken
 small
 snooze_days
@@ -732,7 +747,6 @@ tier
 tier_count
 tier_name
 tiers_above
-till_share
 till_total
 times_lent
 title
@@ -772,6 +786,9 @@ tray
 tray_capacity
 tray_count
 tray_full
+tray_plan
+trays
+turned_down
 two_open_todos
 unknown_failure
 update_profile
@@ -812,6 +829,7 @@ weight_of
 welcome_email
 wet_enough
 white
+whole_batch
 wholemeal
 wildcard_failure
 with_delivery

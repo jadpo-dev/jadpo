@@ -3,7 +3,12 @@ test "collecting in the shop is free" {
 }
 
 test "a delivery charges its fee and says where to go" {
-    var charge: HandoverCharge = choose_handover(deliver("12 Mill Lane", 450))
+    // A variant with fields is built like an object, after its name.
+    var delivery: Handover = Handover.delivery {
+        address: "12 Mill Lane"
+        fee: 450
+    }
+    var charge: HandoverCharge = choose_handover(delivery)
     assert charge.fee == 450
     assert charge.deliver_to == "12 Mill Lane"
 }

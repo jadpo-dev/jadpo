@@ -11,12 +11,18 @@
 //
 // Copied fields follow their source: their types and rules come with
 // them, and renaming `CakeLine.cake` renames it everywhere it is copied.
+// `show_on_menu.jadpo` and `change_line.jadpo` use `pick` and
+// `optional: all`.
 
-use sales/types { CakeCount, CakeLine, CakeName, Pence }
+use sales/types { CakeLine, Pence }
 
-/// What the menu board shows for a line.
-type MenuEntry = Output {
-    pick: [CakeLine.cake, CakeLine.each]
+/// The receipt line for `line`.
+action summarise_line(line: CakeLine) -> LineReceipt {
+    return LineReceipt {
+        cake: line.cake
+        each: line.each
+        total: Pence(line.each * line.count)
+    }
 }
 
 /// A line as the receipt prints it.
@@ -27,47 +33,4 @@ type LineReceipt = Output {
     // the receipt's `each` is plain `Pence`, without the line's £60 limit.
     each: Pence
     total: Pence
-}
-
-/// A change to a line, where the sender sends only what changes.
-type ChangeLine = Input {
-    pick: [CakeLine.cake, CakeLine.count]
-    optional: all
-}
-
-/// What the menu board shows for `line`.
-function menu_entry(line: CakeLine) -> MenuEntry {
-    return MenuEntry {
-        cake: line.cake
-        each: line.each
-    }
-}
-
-/// `line` with `change` applied: a field left out of the change keeps the
-/// line's value.
-function apply_change(line: CakeLine, change: ChangeLine) -> CakeLine {
-    // An optional field reads as `T?`: `some(value)` when it was sent and
-    // `none` when it was left out. `match` must handle both.
-    var cake: CakeName = match change.cake {
-        some(sent) -> sent
-        none -> line.cake
-    }
-    var count: CakeCount = match change.count {
-        some(sent) -> sent
-        none -> line.count
-    }
-    return CakeLine {
-        cake: cake
-        count: count
-        each: line.each
-    }
-}
-
-/// The receipt line for `line`.
-action summarise_line(line: CakeLine) -> LineReceipt {
-    return LineReceipt {
-        cake: line.cake
-        each: line.each
-        total: Pence(line.each * line.count)
-    }
 }

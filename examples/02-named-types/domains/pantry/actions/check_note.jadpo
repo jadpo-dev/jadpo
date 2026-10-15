@@ -1,0 +1,73 @@
+// Identities, contacts and links: built-in types that check their text.
+
+/// Whether a delivery note is for the delivery the bakery is waiting for,
+/// and gives the supplier's usual contacts.
+action check_note(
+    id: DeliveryId,
+    desk: SupplierDesk,
+    site: SupplierSite,
+    scale: ScaleAddress,
+    invoices: InvoiceAddress
+) -> NoteMatches {
+    // Each helper's answer is a yes or no with a type of its own, and
+    // `and` joins any two yes-or-no answers into a plain `Bool`, which
+    // `NoteMatches(...)` gives its meaning.
+    return NoteMatches(expected_delivery(id) and usual_contacts(desk, site, scale, invoices))
+}
+
+/// Whether a delivery note matches the delivery the bakery expects.
+type NoteMatches = Bool {}
+
+/// A delivery's identity. `Uuid` values are written as text and checked
+/// as UUIDs; `version` pins which version is accepted.
+type DeliveryId = Uuid {
+    version: UuidVersion.v4
+}
+
+// `Email`, `Url` and `IpAddress` are ready-made named types built on
+// `Text`, each checking its own format. Wrapping one in your own type
+// names what it is for; `format: TextFormat.email` gives a plain `Text`
+// type the same email check.
+
+/// Where to send questions about a delivery.
+type SupplierDesk = Email {}
+
+/// The supplier's order page.
+type SupplierSite = Url {}
+
+/// The address of the scale that weighed the delivery.
+type ScaleAddress = IpAddress {}
+
+/// A contact address checked by a rule rather than by its base.
+type InvoiceAddress = Text {
+    format: TextFormat.email
+}
+
+// Each of the note's answers is a yes or no, and each has its own type,
+// because "this is the delivery we expected" and "these are the
+// supplier's usual contacts" are different facts. A text literal compared
+// with `==` takes the other side's type, so `"6f1c…"` below is read as a
+// UUID and checked as one, not compared as text.
+
+/// Whether a delivery is the one the bakery is waiting for.
+type AwaitedDelivery = Bool {}
+
+/// Whether a delivery note gives the supplier's usual contacts.
+type UsualContacts = Bool {}
+
+/// Whether `id` is the delivery the bakery is waiting for.
+function expected_delivery(id: DeliveryId) -> AwaitedDelivery {
+    return AwaitedDelivery(id == "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d")
+}
+
+/// Whether a delivery note names the supplier's usual contacts.
+function usual_contacts(
+    desk: SupplierDesk,
+    site: SupplierSite,
+    scale: ScaleAddress,
+    invoices: InvoiceAddress
+) -> UsualContacts {
+    return UsualContacts(
+        desk == "orders@mill.example" and site == "https://mill.example/orders" and scale == "10.0.0.7" and invoices == "accounts@mill.example"
+    )
+}

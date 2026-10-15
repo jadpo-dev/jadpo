@@ -1,0 +1,18 @@
+// A view that shows some of a type's fields, copied with `pick` (see
+// `summarise_line.jadpo` for every way to copy fields).
+
+use sales/types { CakeLine }
+
+/// What the menu board shows for `line`: the cake and its price, not how
+/// many were ordered.
+action show_on_menu(line: CakeLine) -> MenuEntry {
+    return MenuEntry {
+        cake: line.cake
+        each: line.each
+    }
+}
+
+/// What the menu board shows for a line.
+type MenuEntry = Output {
+    pick: [CakeLine.cake, CakeLine.each]
+}

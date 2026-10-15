@@ -19,14 +19,18 @@ test "repricing builds a new line and leaves the old one alone" {
 }
 
 test "half price rounds down and equals a line built with the same fields" {
-    // `==` compares contents, so the line `half_price` builds equals one
-    // written out separately with the same fields.
     var line: CakeLine = CakeLine {
         cake: "Carrot"
         count: 2
         each: 2401
     }
-    assert half_price(line) == CakeLine {
+    var end_of_day: Reprice = Reprice {
+        line: line
+        each: none
+    }
+    // `==` compares contents, so the line `reprice_line` builds equals one
+    // written out separately with the same fields.
+    assert reprice_line(end_of_day) == CakeLine {
         cake: "Carrot"
         count: 2
         each: 1200

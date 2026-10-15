@@ -1,0 +1,29 @@
+// Literals for these types are text too, checked while compiling: a UUID,
+// an email address, a link or an IP address must be a valid one.
+
+test "the awaited delivery from the usual contacts matches" {
+    assert check_note(
+        "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d",
+        "orders@mill.example",
+        "https://mill.example/orders",
+        "10.0.0.7",
+        "accounts@mill.example"
+    )
+}
+
+test "another delivery, or another contact, doesn't match" {
+    assert not check_note(
+        "0b6f3a52-91c4-4d2e-8f7a-1c2d3e4f5a6b",
+        "orders@mill.example",
+        "https://mill.example/orders",
+        "10.0.0.7",
+        "accounts@mill.example"
+    )
+    assert not check_note(
+        "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d",
+        "sales@mill.example",
+        "https://mill.example/orders",
+        "10.0.0.7",
+        "accounts@mill.example"
+    )
+}

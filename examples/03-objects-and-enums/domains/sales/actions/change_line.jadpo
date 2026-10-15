@@ -1,0 +1,31 @@
+// A change where every field may be left out: `pick` copies the fields a
+// customer may change, and `optional: all` lets them send only the ones
+// that change (see `summarise_line.jadpo` for every way to copy fields).
+
+use sales/types { CakeCount, CakeLine, CakeName }
+
+/// `line` with `change` applied: a field left out of the change keeps the
+/// line's value.
+action change_line(line: CakeLine, change: ChangeLine) -> CakeLine {
+    // An optional field reads as `T?`: `some(value)` when it was sent and
+    // `none` when it was left out. `match` must handle both.
+    var cake: CakeName = match change.cake {
+        some(sent) -> sent
+        none -> line.cake
+    }
+    var count: CakeCount = match change.count {
+        some(sent) -> sent
+        none -> line.count
+    }
+    return CakeLine {
+        cake: cake
+        count: count
+        each: line.each
+    }
+}
+
+/// A change to a line, where the sender sends only what changes.
+type ChangeLine = Input {
+    pick: [CakeLine.cake, CakeLine.count]
+    optional: all
+}

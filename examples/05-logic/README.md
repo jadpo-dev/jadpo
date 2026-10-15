@@ -8,8 +8,8 @@ kitchen.
 ## What it teaches
 
 1. **Operators.** Precedence, brackets, `and`, `or`, `not`, unary minus and comparisons. See `domains/kitchen/actions/mix_dough.jadpo` and [area 3, Expressions and operators](../../docs/language/03-logic.md#expressions-and-operators).
-2. **Division.** `integer.divide` and `decimal.divide` with a named `rounding:`, each `Rounding` mode, the remainder `%`, and divisors that can't be zero. See `actions/fill_trays.jadpo` and [area 3, Expressions and operators](../../docs/language/03-logic.md#expressions-and-operators).
-3. **Choosing.** `if`, `else if` and `else`; `match` as a value and as a statement, with literal, `true`/`false` and `_` patterns, text patterns on text typed at the oven's keypad, and empty arms. See `actions/set_oven.jadpo` and [area 3, Match](../../docs/language/03-logic.md#match).
+2. **Division.** `integer.divide` with a named `rounding:`, the remainder `%`, and divisors that can't be zero, in `actions/fill_trays.jadpo`; then `decimal.divide` rounding a share of money two ways, in `actions/cost_bun.jadpo`. See [area 3, Expressions and operators](../../docs/language/03-logic.md#expressions-and-operators).
+3. **Choosing.** `if`, `else if` and `else`; `match` as a value and as a statement, with literal, `true`/`false` and `_` patterns, text patterns on text typed at the oven's keypad, `some` and `none`, and empty arms. See `actions/set_oven.jadpo` and [area 3, Match](../../docs/language/03-logic.md#match).
 4. **Recursion.** A type that contains itself, walked by a function that calls itself. See `actions/count_tiers.jadpo` and [area 3, Recursion](../../docs/language/03-logic.md#recursion).
 
 Each action's tests sit beside it, in `<file>.test.jadpo`.

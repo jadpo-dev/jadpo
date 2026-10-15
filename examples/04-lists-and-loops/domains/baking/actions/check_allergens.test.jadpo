@@ -5,8 +5,8 @@ test "a recipe with milk isn't safe for someone avoiding milk" {
         ingredients: []
         allergens: [Allergen.gluten, Allergen.milk]
     }
-    assert not check_allergens(scone, [Allergen.milk])
-    assert check_allergens(scone, [Allergen.nuts, Allergen.egg])
+    assert not check_allergens(scone, [Allergen.milk]).avoids_all
+    assert check_allergens(scone, [Allergen.nuts, Allergen.egg]).avoids_all
 }
 
 test "a set compares without order" {
@@ -15,5 +15,5 @@ test "a set compares without order" {
         allergens: [Allergen.gluten]
     }
     // The badges come back in one order and are compared in another.
-    assert badges(flapjack) == [Badge.nut_free, Badge.vegan, Badge.vegetarian]
+    assert check_allergens(flapjack, []).badges == [Badge.nut_free, Badge.vegan, Badge.vegetarian]
 }

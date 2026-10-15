@@ -4,23 +4,30 @@
 
 use sales/types { CakeLine }
 
-/// A price change: the line to change and its new price per cake.
-type Reprice = Object {
-    line: CakeLine
-    each: CakeLine.each
-}
-
-/// A copy of `change.line` at its new price.
+/// A copy of `change.line` at its new price, or at half price when the
+/// change gives none.
 action reprice_line(change: Reprice) -> CakeLine {
-    return CakeLine {
-        cake: change.line.cake
-        count: change.line.count
-        each: change.each
+    // A value that may be absent is read with `match`: `some(each)` when
+    // there is one, naming it `each`, and `none` when there isn't.
+    return match change.each {
+        some(each) -> CakeLine {
+            cake: change.line.cake
+            count: change.line.count
+            each: each
+        }
+        none -> half_price(change.line)
     }
 }
 
-/// `line` at half price, as cakes left at closing time are sold: half
-/// of each cake's price, rounded down to the penny.
+/// A price change: the line to change and its new price per cake, left
+/// out for cakes left at closing time, which go at half price.
+type Reprice = Object {
+    line: CakeLine
+    each: CakeLine.each?
+}
+
+/// `line` at half price: half of each cake's price, rounded down to the
+/// penny.
 function half_price(line: CakeLine) -> CakeLine {
     // `line.each / 2` is a plain `Int`, and a field needs a value of its
     // own type, so `CakeLine.each(...)` uses the field as a constructor:

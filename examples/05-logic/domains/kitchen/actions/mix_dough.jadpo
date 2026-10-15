@@ -11,6 +11,29 @@
 // Brackets group. `and` and `or` stop as soon as the answer is known.
 // Logical operators are words: `!`, `&&` and `||` are not Jadpo.
 
+/// Whether a dough of `flour` and `water` grams, mixed with water at
+/// `temperature` and kneaded for `minutes`, is ready: wet enough, mixed
+/// within 4 degrees of 26, and either kneaded long enough or rested.
+action mix_dough(
+    flour: Grams,
+    water: Grams,
+    temperature: Celsius,
+    minutes: Minutes,
+    rested: Rested
+) -> Ready {
+    // `*` binds tighter than `>=`, which binds tighter than `and`, which
+    // binds tighter than `or`. Hydration is water as a share of flour,
+    // worked out in whole numbers: 100 * water >= 65 * flour means at
+    // least 65%.
+    var wet_enough: Bool = 100 * water >= 65 * flour
+    var difference: Difference = water_difference(temperature)
+    // Within 4 degrees either way: no more than 4 too warm, and, with
+    // unary minus turning the sign round, no more than 4 too cold.
+    var close_enough: Bool = difference <= 4 and -difference <= 4
+    // The brackets make the `or` happen before the `and`.
+    return Ready(wet_enough and close_enough and (minutes >= 10 or rested))
+}
+
 /// A weight in grams, never negative.
 type Grams = Int {
     min: 0
@@ -46,27 +69,4 @@ function water_difference(water: Celsius) -> Difference {
     // Subtracting two values gives a plain `Int`; the range of `Celsius`
     // proves the result fits `Difference`, so no check can fail.
     return Difference(water - 26)
-}
-
-/// Whether a dough of `flour` and `water` grams, mixed with water at
-/// `temperature` and kneaded for `minutes`, is ready: wet enough, mixed
-/// within 4 degrees of 26, and either kneaded long enough or rested.
-action mix_dough(
-    flour: Grams,
-    water: Grams,
-    temperature: Celsius,
-    minutes: Minutes,
-    rested: Rested
-) -> Ready {
-    // `*` binds tighter than `>=`, which binds tighter than `and`, which
-    // binds tighter than `or`. Hydration is water as a share of flour,
-    // worked out in whole numbers: 100 * water >= 65 * flour means at
-    // least 65%.
-    var wet_enough: Bool = 100 * water >= 65 * flour
-    var difference: Difference = water_difference(temperature)
-    // Within 4 degrees either way: no more than 4 too warm, and, with
-    // unary minus turning the sign round, no more than 4 too cold.
-    var close_enough: Bool = difference <= 4 and -difference <= 4
-    // The brackets make the `or` happen before the `and`.
-    return Ready(wet_enough and close_enough and (minutes >= 10 or rested))
 }
