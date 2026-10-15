@@ -1310,8 +1310,9 @@ at a time; the Python checks beside them, given that `jadpo` through
 the watch-mode latency test last, alone, since it measures time. Each
 crate's integration tests are one binary (since chunk 3.11: `autotests =
 false`, one `[[test]]` called `integration`, and `tests/main.rs` declaring
-each test file as a module), so the workspace links eleven integration
-binaries rather than fifty-odd; a named step runs its test files by name
+each test file as a module, which the crate-graph test checks, so no file
+is left out), so the workspace links eleven integration binaries rather
+than fifty-odd; a named step runs its test files by name
 filter (`proofs::`), fails if a filter matches no test, and `compiler
 tests` skips those files, so no test runs twice. Each step prints `ok` or
 `FAILED` as it finishes, then the failures' output with a command that
