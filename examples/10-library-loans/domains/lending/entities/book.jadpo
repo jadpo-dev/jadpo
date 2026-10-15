@@ -1,4 +1,4 @@
-use lending/types { BookTitle, Isbn, LendCount, Wear }
+use lending/types { BookTitle, Isbn, LendCount, UseCount, Wear }
 
 /// One copy of a book on the shelves.
 entity Book {
@@ -12,4 +12,6 @@ entity Book {
     // Counted by `lend`, which the database works out in one step.
     times_lent: LendCount
     last_lent_at: Instant?
+    // Counted by `count_in_house_use`, which reads nothing first.
+    in_house_uses: UseCount
 }

@@ -13,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -967,12 +967,14 @@ request A: updates todo 7, commits
 ```
 
 On PostgreSQL this is the repeatable-read isolation level, whose "could not
-serialize" error the runtime already retries. Catching a client that edits
-a stale copy across two requests is HTTP's `If-Match` (area 7).
+serialize" error the runtime already retries; an action that loads no
+record runs at read committed instead ("Counters and other one-step
+updates", below). Catching a client that edits a stale copy across two
+requests is HTTP's `If-Match` (area 7).
 
-Built in chunk 3.3. Every action's transaction runs at repeatable read, so
-its snapshot is taken at its first statement and a record it loaded is the
-record as of then; an `update` or `delete` of a row another transaction
+Built in chunk 3.3. An action that loads a record runs at repeatable read
+(every action did until chunk 3.7), so its snapshot is taken at its first
+statement and a record it loaded is the record as of then; an `update` or `delete` of a row another transaction
 changed since is PostgreSQL's serialisation failure, which the driver
 reports as a concurrent change. The runtime then rolls the transaction
 back, throws away the attempt's events, and runs the whole action again
@@ -1104,12 +1106,30 @@ decimal places than the field's `scale`, since PostgreSQL would round the
 sum its own way (half away from zero) rather than Jadpo's: a literal by its
 own places, any other value by its type's `scale`, and one whose type sets
 none is refused (`data.stored_decimal_scale`, built in chunk 3.4).
-Until chunk 3.7 every action runs at repeatable
-read, so even a counter that is the action's first statement reruns when
-another request increments the row at the same moment: PostgreSQL makes the
-second wait, then refuses it with "could not serialize access due to
-concurrent update" once the first commits. At read committed both commit
-and the count goes up by two (checked against PostgreSQL 16, 2026-10-15).
+
+Built in chunk 3.7. An action loads a record when it reads one (`get`, or
+a query with what it includes), is handed one (a parameter whose type
+holds a record, such as `video: Video`, or a list or object holding one),
+writes one back (an `update`, `delete` or transition of a record rather
+than its `id`), or runs a transition whose `when:` can refuse a visible
+record, since telling that refusal from a missing record takes a second
+statement, which must see the first one's snapshot. A create, and an
+update, delete or other transition by `id`, counters among them, loads
+nothing: the store checks a reference a create sets in the same statement.
+Calling a function never does. `jadpo check` decides each action and
+fixture from these and the actions and fixtures it calls, writes it into
+the manifest as `isolation` (`read_committed` or `repeatable_read`), and
+the runtime begins the transaction at it (`BEGIN ISOLATION LEVEL READ
+COMMITTED` or `REPEATABLE READ`). An action another action calls joins that
+action's transaction at its level, which already counts what the callee
+does; each action a test calls begins its own. So `view_video` above runs
+at read committed: two requests counting one video at once both commit at
+their first attempt, the second waiting for the first's lock and adding to
+its count, while a counter in an action that read the video first still
+reruns the second (both checked live against PostgreSQL in
+`crates/jadpo-cli/tests/writes.rs`). What runs outside an action, such as
+a read a test makes itself, migrations and purge, runs at repeatable
+read.
 
 ## Reading in a loop
 
@@ -3390,5 +3410,7 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Transitions as operations | Chosen in chunk 3.4: `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records | 2026-10-15 |
 | A transition's `when:` refusing | Chosen in chunk 3.4: a `when:` that asks more than `visible:` can refuse a record that is there, a conflict mapped in `conflict:` keyed by the transition (`User.disable: UserDisabled`), with no catch-all; one that asks only what `visible:` asks can't, since a hidden record is not found | 2026-10-15 |
 | Counter decimals | A decimal added to or subtracted from a stored field in a counter update may not have more decimal places than the field's `scale`; built in chunk 3.4 as `data.stored_decimal_scale`, a value whose type sets no `scale` counting as too many (Richard) | 2026-10-15 |
-| Isolation by what an action does | An action that loads no record, itself or through any action it calls, runs at read committed, so concurrent counters on one row both commit without a rerun; any other action runs at repeatable read. Corrects "as the action's first statement it never reruns", which PostgreSQL refuses at repeatable read (Richard, from an outside review) | 2026-10-15 |
+| Isolation by what an action does | An action that loads no record, itself or through any action it calls, runs at read committed, so concurrent counters on one row both commit without a rerun; any other action runs at repeatable read. Corrects "as the action's first statement it never reruns", which PostgreSQL refuses at repeatable read (Richard, from an outside review). Built in chunk 3.7 | 2026-10-15 |
+| What loads a record | Chosen in chunk 3.7: reading one (`get`, a query and its includes); being handed one (a parameter whose type holds a record, which area 5 calls a loaded record, so a record authentication loads for an action counts too); writing one back (an `update`, `delete` or transition of a record rather than its `id`, wherever the record came from); and a transition whose `when:` can refuse a visible record, whose second statement must share the first one's snapshot. A create (its references checked by the store in the same statement), an update, delete or unguarded transition by `id`, and a counter load nothing | 2026-10-15 |
+| Isolation of fixtures and tests | Chosen in chunk 3.7: a fixture is decided as an action is; each action or fixture a test calls begins its own transaction at its own level; a read or write a test runs itself, and whatever else runs outside an action (migrations, purge), runs at repeatable read | 2026-10-15 |
 | Outside calls and the transaction | No transaction is open during an outside call: reads before it run in a read-only snapshot closed before the call, the transaction opens after it, and a write to a record loaded before the call checks its row version, a change rerunning the action (Richard, from an outside review) | 2026-10-15 |

@@ -3,9 +3,15 @@
 //
 // An update by `id` whose values read the stored ones, `Book.times_lent`
 // rather than `book.times_lent`, is worked out by the database in one
-// step: two desks lending the same copy at once both count, and nothing
-// is lost. Its values may use only parameters, constants, `clock.now` and
-// the stored fields.
+// step, so no count is lost. Its values may use only parameters,
+// constants, `clock.now` and the stored fields.
+//
+// `lend` reads the copy with `Book.get`, and is handed the member it
+// lends to, so it loads records, and the compiler runs it at repeatable
+// read: of two desks lending the same copy at once, the second finds the
+// copy changed since it read it and runs again from the start, reading
+// the first desk's count. `count_in_house_use` reads nothing, so two at
+// once both commit without running again.
 
 use lending/entities { Book, Loan, Member }
 use lending/types { LendCount }

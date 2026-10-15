@@ -1,0 +1,17 @@
+use lending/entities { Book }
+use lending/types { Wear }
+use lending/failures { BookNotFound }
+use lending/actions { add_copy }
+
+test "each use in the library counts, in the database" {
+    var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)
+    var first_use: Book = attempt count_in_house_use(dune.id)
+    assert first_use.in_house_uses == 1
+    var second_use: Book = attempt count_in_house_use(dune.id)
+    assert second_use.in_house_uses == 2
+    assert second_use.times_lent == 0
+}
+
+test "a copy that isn't there can't be counted" {
+    assert count_in_house_use("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e") fails BookNotFound
+}

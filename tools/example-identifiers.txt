@@ -162,6 +162,7 @@ contact_address
 contact_email
 contact_text
 copy_name
+count_in_house_use
 count_ingredients
 count_out_of_range
 count_refused
@@ -271,6 +272,7 @@ find_customer
 finish_magic_link
 first_loan
 first_quantity
+first_use
 flapjack
 flour
 flour_for
@@ -309,6 +311,7 @@ icing
 icing_too_long
 icing_unreadable
 import_reference
+in_house_uses
 in_review
 in_shop
 in_store
@@ -636,6 +639,7 @@ search_todos
 seated
 second_loan
 second_session
+second_use
 secret_to_public
 send_completion_email
 send_due_reminders
@@ -765,6 +769,7 @@ unknown_failure
 update_profile
 update_statistics
 updated_at
+use_count
 user_disabled
 user_id
 user_missing

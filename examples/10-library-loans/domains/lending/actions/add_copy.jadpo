@@ -10,6 +10,7 @@ action add_copy(isbn: Book.isbn, title: Book.title, wear: Wear) -> Book {
             wear: wear
             times_lent: 0
             last_lent_at: none
+            in_house_uses: 0
         }
     }
 }

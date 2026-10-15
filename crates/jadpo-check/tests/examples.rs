@@ -9,7 +9,7 @@
 //! The list of built features comes from the compiler's own tables
 //! wherever one exists, so a feature added to a table demands an example:
 //! the grammar's node kinds, the graph's node and edge kinds and their
-//! status, the type bases, the constraints, input field settings, failure
+//! status, the isolation levels an action runs at, the type bases, the constraints, input field settings, failure
 //! members and declarable kinds, the copying lines, the standard library's
 //! operation table and the enums its operations take, the generated
 //! namespaces' built members, and the layout's root files and folders.
@@ -327,6 +327,12 @@ fn built() -> BTreeSet<String> {
         ["comparison", "in", "none", "and", "or", "not", "present"]
             .iter()
             .map(|c| format!("query condition {c}")),
+    );
+    // Area 6's isolation levels (chunk 3.7), each on an action that writes.
+    out.extend(
+        jadpo_std::Isolation::ALL
+            .iter()
+            .map(|level| format!("isolation {}", level.word())),
     );
     out.insert("data migration decision backfill".to_string());
     out.extend(
@@ -1173,6 +1179,15 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
     }
     for edge in graph.edges() {
         used.insert(format!("graph edge {}", edge.kind.word()));
+    }
+    // An isolation level counts on an action or fixture that writes: one
+    // that reaches no store teaches nothing about either.
+    for id in graph.ids() {
+        if let Some(level) = graph.node(id).isolation()
+            && graph.outgoing(id, EdgeKind::Writes).next().is_some()
+        {
+            used.insert(format!("isolation {}", level.word()));
+        }
     }
     // A generated member is used where a body names it, as written.
     for member in generated_members() {

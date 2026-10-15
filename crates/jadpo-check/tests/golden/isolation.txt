@@ -1,5 +1,6 @@
 10-library-loans
   action add_copy                    read_committed
+  action count_in_house_use          read_committed
   action declare_lost                repeatable_read: runs `Loan.declare_lost`, whose `when:` can refuse a record
   action enrol                       read_committed
   action issue_card                  repeatable_read: reads `Member` with `get`
