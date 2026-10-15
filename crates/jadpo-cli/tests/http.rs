@@ -1414,4 +1414,30 @@ fn openapi_shows_the_session_and_what_signing_in_answers() {
         "{record}"
     );
     assert!(record.contains("POST /notes\n    input:"), "{record}");
+    let listed = jadpo(&root, &["routes", "--json"]);
+    assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
+    let listed: serde_json::Value = serde_json::from_str(&listed.stdout).expect("JSON");
+    let shown: Vec<(String, String)> = listed["data"]["routes"]
+        .as_array()
+        .expect("routes")
+        .iter()
+        .map(|route| {
+            (
+                format!(
+                    "{} {}",
+                    route["method"].as_str().unwrap_or(""),
+                    route["path"].as_str().unwrap_or("")
+                ),
+                route["authentication"].as_str().unwrap_or("").to_string(),
+            )
+        })
+        .collect();
+    assert!(
+        shown.contains(&("POST /account/sign-up".into(), "none".into())),
+        "{shown:?}"
+    );
+    assert!(
+        shown.contains(&("POST /notes".into(), "required".into())),
+        "{shown:?}"
+    );
 }

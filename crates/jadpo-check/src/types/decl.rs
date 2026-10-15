@@ -1333,7 +1333,7 @@ impl Decls<'_> {
         let (rule, why, next) = if self.failure {
             (
                 &rule::TYPE_AUTH_PRINCIPAL_FAILURE_CONTEXT,
-                "A failure is logged and its client fields reach the caller, and a caller value holds who signed in, so a failure carries the caller's `id` instead.",
+                "A failure is logged and its client fields reach the client, while a caller value holds who signed in, so a failure carries the caller's `id` instead.",
                 format!("Type `{name}` with the entity's id, such as `User.id`"),
             )
         } else {

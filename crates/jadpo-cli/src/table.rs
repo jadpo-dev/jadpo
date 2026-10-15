@@ -587,8 +587,8 @@ pub static COMMANDS: &[Command] = &[
         summary: "List every route",
         description: "List every route the project answers (area 7), grouped by API: its method and \
                       full path, the query or action it runs, its authentication and the file it is \
-                      written in. Routes have no authentication until sign-in is built, so each \
-                      shows none.",
+                      written in. Authentication is required, none (anyone may call it) or fresh \
+                      (the caller's record is read now).",
         arguments: &[],
         flags: &[],
         examples: &[

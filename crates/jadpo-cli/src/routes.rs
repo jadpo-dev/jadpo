@@ -1,7 +1,8 @@
 //! `jadpo routes` (area 7, question 15): every route with its full method
 //! and path, what it runs, its authentication and where it is written,
-//! grouped by API. Routes have no authentication until sign-in is built
-//! (area 8, chunk 4.3), so every route shows `none`.
+//! grouped by API. Authentication is `required` for a route that needs a
+//! signed-in caller, `none` for one anyone may call and `fresh` for one
+//! that reads the caller's record now (area 8).
 //!
 //! The screen is one block per API, its name and prefix in bold, then a
 //! row per route in the order a URL is read; the footer counts them.
@@ -47,19 +48,25 @@ pub fn routes(call: &Call) -> Reply {
             rows.iter().map(|r| r.method.len()).max().unwrap_or(0),
             rows.iter().map(|r| r.path.len()).max().unwrap_or(0),
             rows.iter().map(|r| r.runs.len()).max().unwrap_or(0),
+            rows.iter()
+                .map(|r| r.authentication.len())
+                .max()
+                .unwrap_or(0),
         ];
         let shown = rows
             .iter()
             .map(|r| {
                 format!(
-                    "{:w0$}  {:w1$}  {:w2$}  none  {}",
+                    "{:w0$}  {:w1$}  {:w2$}  {:w3$}  {}",
                     r.method,
                     r.path,
                     r.runs,
+                    r.authentication,
                     r.place,
                     w0 = widths[0],
                     w1 = widths[1],
-                    w2 = widths[2]
+                    w2 = widths[2],
+                    w3 = widths[3]
                 )
             })
             .collect();
@@ -74,7 +81,7 @@ pub fn routes(call: &Call) -> Reply {
                 ("method", Json::from(r.method.as_str())),
                 ("path", Json::from(r.path.as_str())),
                 ("runs", Json::from(r.runs.as_str())),
-                ("authentication", "none".into()),
+                ("authentication", Json::from(r.authentication)),
                 ("file", Json::from(r.file.as_str())),
                 ("line", Json::from(r.line as usize)),
             ]));
@@ -106,6 +113,7 @@ struct Line {
     method: String,
     path: String,
     runs: String,
+    authentication: &'static str,
     file: String,
     line: u32,
     place: String,
@@ -128,6 +136,11 @@ fn listing(groups: &Groups, graph: &jadpo_graph::Graph) -> Vec<Line> {
                     if route.run.query { "query" } else { "action" },
                     route.run.name
                 ),
+                authentication: match route.authentication {
+                    jadpo_std::http::Authentication::Required => "required",
+                    jadpo_std::http::Authentication::Public => "none",
+                    jadpo_std::http::Authentication::Fresh => "fresh",
+                },
                 file: group.path.clone(),
                 line,
                 place: format!("{}:{line}", group.path),
