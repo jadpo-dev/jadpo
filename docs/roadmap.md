@@ -227,7 +227,7 @@ reference only).
   Jadpo form were written; no syntax error followed by a second on the same
   line, checked over a corpus of broken files; each rule with a checked
   example on its area page.
-- [ ] **3.9 One declaration and what it uses** `opus · high` (area 1,
+- [x] **3.9 One declaration and what it uses** `opus · high` (area 1,
   "Files and names", 2026-10-15): a supporting type, failure or helper the
   file's primary declaration doesn't use, directly or through one another,
   is `layout.unused_declaration`, tests not counting; `jadpo fmt` puts the
