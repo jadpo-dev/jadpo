@@ -77,7 +77,7 @@ pub use limits::MAX_DEPTH;
 pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, standing};
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
-pub use purge::{Purged, purge};
+pub use purge::{PURGE_BATCHES, Purged, purge};
 pub use read::{Found, Interrupt, PAGE, cursor, from_sql, invalid_cursor, read, to_sql, uuid_text};
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};
 pub use write::{Written, write};

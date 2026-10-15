@@ -22,7 +22,8 @@ use jadpo_cli::{Output, run};
 use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
 use jadpo_runtime::{
-    Clock, Ctx, Database, Env, Event, Executor, Host, LocalFuture, Outcome, Row, SqlValue,
+    Clock, Ctx, Database, Env, Event, Executor, Host, LocalFuture, Outcome, PURGE_BATCHES, Row,
+    SqlValue,
 };
 use jadpo_term::Environment;
 use jadpo_value::Value;
@@ -426,23 +427,24 @@ fn purge_deletes_records_hidden_long_enough_and_keeps_the_rest() {
         );
 
         // Hidden for 29 days: not yet.
-        let early = jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 29 * DAY)
+        let early = jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 29 * DAY, PURGE_BATCHES)
             .await
             .expect("purge");
         assert_eq!(early.removed(), 0, "{early:?}");
 
         // Hidden for 31 days: Bob and Dee go, with Dee's visits; Cy's badge
         // holds her; Ada was never hidden.
-        let purged = jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 31 * DAY)
-            .await
-            .expect("purge");
+        let purged =
+            jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 31 * DAY, PURGE_BATCHES)
+                .await
+                .expect("purge");
         assert_eq!(purged.entity, "Member");
         assert_eq!(purged.batches, vec![2], "one batch, short of a whole one");
         assert_eq!(names(&check, "member").await, ["Ada", "Cy"]);
         assert_eq!(names(&check, "visit").await, ["ada's"], "cascaded with Dee");
 
         // Run again: nothing left to purge.
-        let again = jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 31 * DAY)
+        let again = jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 31 * DAY, PURGE_BATCHES)
             .await
             .expect("purge");
         assert_eq!(again.removed(), 0);
@@ -454,7 +456,7 @@ fn purge_deletes_records_hidden_long_enough_and_keeps_the_rest() {
             .await
             .expect("delete");
         transaction.commit().await.expect("commit");
-        let last = jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 31 * DAY)
+        let last = jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 31 * DAY, PURGE_BATCHES)
             .await
             .expect("purge");
         assert_eq!(last.removed(), 1);
@@ -499,10 +501,18 @@ fn purge_works_in_batches() {
             .await
             .expect("insert");
         transaction.commit().await.expect("commit");
-        let purged = jadpo_runtime::purge(&host, &plan, Clock::TEST.now())
+        // A run stops at its budget; the next carries on.
+        let first = jadpo_runtime::purge(&host, &plan, Clock::TEST.now(), 2)
             .await
             .expect("purge");
-        assert_eq!(purged.batches, vec![500, 500, 201]);
+        assert_eq!(first.batches, vec![500, 500]);
+        assert!(!first.finished, "stopped at its budget");
+        assert_eq!(names(&check, "member").await.len(), 201);
+        let purged = jadpo_runtime::purge(&host, &plan, Clock::TEST.now(), PURGE_BATCHES)
+            .await
+            .expect("purge");
+        assert_eq!(purged.batches, vec![201]);
+        assert!(purged.finished);
         assert!(names(&check, "member").await.is_empty());
     });
     drop(host);
@@ -605,7 +615,7 @@ fn purge_follows_a_cascade_back_to_its_own_entity() {
             .expect("insert");
         transaction.commit().await.expect("commit");
 
-        let purged = jadpo_runtime::purge(&host, &plan, Clock::TEST.now())
+        let purged = jadpo_runtime::purge(&host, &plan, Clock::TEST.now(), PURGE_BATCHES)
             .await
             .expect("a held folder never stops the batch");
         assert_eq!(purged.removed(), 2, "{purged:?}");
@@ -618,7 +628,7 @@ fn purge_follows_a_cascade_back_to_its_own_entity() {
             .await
             .expect("delete");
         transaction.commit().await.expect("commit");
-        let last = jadpo_runtime::purge(&host, &plan, Clock::TEST.now())
+        let last = jadpo_runtime::purge(&host, &plan, Clock::TEST.now(), PURGE_BATCHES)
             .await
             .expect("purge");
         assert_eq!(last.removed(), 1);
