@@ -463,6 +463,10 @@ rules! {
         "01-project-layout-and-modules.html#semantic-not-callable", "Name cannot be called";
     SEMANTIC_OWN_DOMAIN_QUALIFICATION: "semantic.own_domain_qualification", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-own-domain-qualification", "Own-domain call is qualified";
+    SEMANTIC_REQUEST_INVALID: "semantic.request_invalid", area 13, Error, Agent,
+        "13-testing.html#semantic-request-invalid", "Route test request doesn't fit its route";
+    SEMANTIC_REQUEST_ROUTE_UNKNOWN: "semantic.request_route_unknown", area 13, Error, Agent,
+        "13-testing.html#semantic-request-route-unknown", "No route answers a route test's request";
     SEMANTIC_STANDARD_NAMESPACE_RESERVED: "semantic.standard_namespace_reserved", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-standard-namespace-reserved", "Name belongs to a standard-library namespace";
     SEMANTIC_STANDARD_OPERATION_QUALIFICATION: "semantic.standard_operation_qualification", area 1, Error, Agent,

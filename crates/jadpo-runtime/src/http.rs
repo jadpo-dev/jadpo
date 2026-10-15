@@ -59,6 +59,9 @@ pub struct Response {
     pub code: Option<String>,
     /// The route it answered by: `POST /todos`.
     pub route: Option<String>,
+    /// The fault behind a 500, for the host's log and a route test's
+    /// report; never sent.
+    pub fault: Option<Box<crate::Fault>>,
 }
 
 impl Response {
@@ -427,9 +430,12 @@ async fn run_route(
             },
         },
         Outcome::Failed(failure) => declared_failure(app, &failure, request_id),
-        Outcome::Fault(_) | Outcome::Assertion(_) => {
-            runtime_failure(INTERNAL_FAULT, request_id, None)
+        Outcome::Fault(fault) => {
+            let mut response = runtime_failure(INTERNAL_FAULT, request_id, None);
+            response.fault = Some(fault);
+            response
         }
+        Outcome::Assertion(_) => runtime_failure(INTERNAL_FAULT, request_id, None),
     }
 }
 
@@ -483,6 +489,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         body,
         code: Some(code.to_string()),
         route: None,
+        fault: None,
     }
 }
 
@@ -544,6 +551,134 @@ fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &str) -> Respo
         status,
         &failure.code,
         envelope(&failure.code, &message, request_id, details.as_deref()),
+    )
+}
+
+// --- route tests ---------------------------------------------------------------
+
+/// The request a route test sends (area 13: "through the real generated
+/// boundary without a network"): route `route`'s method and path, its
+/// placeholders written from `args` (in the route's order), then its input,
+/// the last of `args`, as the query string or the JSON body, its header
+/// fields as headers. `None` when `route` isn't in the table.
+pub fn test_request(app: &App<'_>, route: u32, args: &[Value]) -> Option<Request> {
+    let plan = app.table.routes.get(route as usize)?;
+    let mut values = args.iter();
+    let mut path = String::new();
+    for segment in &plan.segments {
+        path.push('/');
+        match segment {
+            Segment::Fixed(text) => path.push_str(text),
+            Segment::Param { codec, .. } => {
+                let value = values.next().cloned().unwrap_or(Value::None);
+                let mut json = String::new();
+                app.codecs.write(*codec, &value, &mut json);
+                path.push_str(&percent_encode(&json_text(&json)));
+            }
+        }
+    }
+    if path.is_empty() {
+        path.push('/');
+    }
+    let mut request = Request {
+        method: plan.method.word().to_string(),
+        path,
+        address: Some("route test".to_string()),
+        ..Request::default()
+    };
+    if let Some(input) = &plan.input {
+        let value = values.next().cloned().unwrap_or(Value::None);
+        let mut json = String::new();
+        app.codecs.write(input.codec, &value, &mut json);
+        let mut object = match serde_json::from_str::<serde_json::Value>(&json) {
+            Ok(serde_json::Value::Object(object)) => object,
+            _ => serde_json::Map::new(),
+        };
+        for (field, header) in &input.headers {
+            if let Some(value) = object.remove(field)
+                && !value.is_null()
+            {
+                request
+                    .headers
+                    .push((header.clone(), json_text(&value.to_string())));
+            }
+        }
+        if input.query {
+            let mut pairs = Vec::new();
+            for (key, value) in &object {
+                let items = match value {
+                    serde_json::Value::Array(items) => items.clone(),
+                    serde_json::Value::Null => Vec::new(),
+                    other => vec![other.clone()],
+                };
+                for item in items {
+                    pairs.push(format!(
+                        "{}={}",
+                        percent_encode(key),
+                        percent_encode(&json_text(&item.to_string()))
+                    ));
+                }
+            }
+            request.query = (!pairs.is_empty()).then(|| pairs.join("&"));
+        } else {
+            request.body = serde_json::Value::Object(object).to_string().into_bytes();
+            request
+                .headers
+                .push(("content-type".to_string(), "application/json".to_string()));
+        }
+    }
+    Some(request)
+}
+
+/// A JSON value as text: a string's contents, anything else as written.
+fn json_text(json: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(json) {
+        Ok(serde_json::Value::String(text)) => text,
+        _ => json.to_string(),
+    }
+}
+
+/// `text` with everything but unreserved characters percent-encoded.
+fn percent_encode(text: &str) -> String {
+    let mut out = String::new();
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+/// What a route test gets back: a `Response` with its `status`, the
+/// failure's `code` (`none` on success) and route `route`'s output read
+/// back from the body (`none` unless it succeeded).
+pub fn response_value(app: &App<'_>, route: u32, response: &Response) -> Value {
+    let plan = app.table.routes.get(route as usize);
+    let output = match plan.and_then(|plan| plan.output) {
+        Some(codec) if (200..300).contains(&response.status) => {
+            serde_json::from_slice::<serde_json::Value>(&response.body)
+                .ok()
+                .and_then(|json| {
+                    app.codecs
+                        .read(codec, &json, &Path::default(), &mut Vec::new())
+                })
+                .unwrap_or(Value::None)
+        }
+        _ => Value::None,
+    };
+    let code = match &response.code {
+        Some(code) => Value::text(code),
+        None => Value::None,
+    };
+    Value::record(
+        "Response",
+        vec![
+            ("status".into(), Value::Int(i64::from(response.status))),
+            ("code".into(), code),
+            ("output".into(), output),
+        ],
     )
 }
 

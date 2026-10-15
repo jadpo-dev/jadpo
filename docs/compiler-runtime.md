@@ -281,6 +281,23 @@ record) that `jadpo-plan` decides and `jadpo-runtime` runs, so both
 executors send the same statements and build the same values, and compiled
 code needs nothing from a compiler crate to run them.
 
+Since chunk 4.1 the plan also holds the route table
+(`jadpo_std::http::RouteTable`, `Plan::routes`): each route's method and
+full path, where its input comes from (the query string, the JSON body,
+and the fields read from headers), its success status and deadline, the
+action it runs by callable number or the query's read plan, and how each
+argument is made from the placeholders and the input; and a JSON codec
+(`jadpo_std::http::Codec`) for every type that crosses the boundary,
+numbered like the type plans: a scalar with its validator and whether an
+`Int` is a JSON number, an object's fields in declared order, an enum's
+variants, collections, `T?` and a page. The checker reads each route group
+into a model without positions (`jadpo_check::routes`: `group_read` per
+group, `table_problems` across them, `api_table` from `app.jadpo`), which
+the graph (route and API nodes, `runs` and `uses` edges), the plan, the
+API record (`routes::record`) and OpenAPI (`routes::openapi`, written by
+`jadpo check` to `build/openapi/<api>.json`) all read; the record and
+OpenAPI render types through one view of the graph (`routes::wire`).
+
 Since chunk 3.12 everything the runtime needs of a plan is that kind of
 plain data in `jadpo-std`: type plans (`jadpo_std::types`: a type's
 validator chain, a shape's fields in declared order with what a field
@@ -1027,8 +1044,15 @@ their results come back in the seed's order. Since chunk 3.1 an action test
 in a project with tables runs on `jadpo_test::database::TestHost`, driven by
 the native host's runtime on its thread, and gets its own copy of the test
 database the first time it uses a store (§2.7). The trace, fakes and clock
-control come with their phases, and route and schedule tests (`--kind
-route`, `--kind schedule`) are `toolchain.not_built_yet`.
+control come with their phases. Since chunk 4.1 a test that sends a
+`request` through a route is a route test (`--kind route`): the typed
+body's `Request` site pauses like a call into the boundary, and the
+interpreter builds the request a client would send from the route table
+(`jadpo_runtime::http::test_request`), hands it to the runtime's HTTP
+component in the test's own context and database, and reads the response
+back as a `Response` value (`response_value`); a defect behind a 500 ends
+the test with that fault. Schedule tests (`--kind
+schedule`) are `toolchain.not_built_yet`.
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
@@ -1194,6 +1218,33 @@ batch count, since no host reads a clock yet (chunk 5.2). Area 12's
 hourly purge schedule will call it (chunk 6.2); a live test calls it
 directly (`crates/jadpo-cli/tests/lifecycle.rs`), stopping one run at its
 budget.
+
+Built in chunk 4.1: the HTTP component (`jadpo_runtime::http`). A host
+hands it a `Request` (method, path, query string, headers, body, the
+client's address) and sends the `Response` it gives. It counts the request
+against the default rate limits (`RateLimits`: 120 a minute per address
+until sign-in, fixed windows in a bounded amount of memory, the oldest
+counters dropped first), routes by the route table (a fixed segment beats
+a placeholder; 404 `route_not_found`, 405 `method_not_allowed` with
+`Allow`; `HEAD` as `GET` without the body, `OPTIONS` with `Allow`),
+decodes each placeholder and the input with the route's codecs
+(`jadpo_value::json`: each problem as `{ field, rule }` by its path in the
+input, 422 `invalid_input`; a body that isn't JSON, 400
+`invalid_request`), runs the action through the executor, inside the
+runtime's action boundary, or the query through `store`, and writes the
+output, or the failure envelope with the client fields' codecs, the status
+the failure's kind sets and `request_id`, which `x-request-id` repeats; a
+fault is 500 `internal_fault` and travels on the response for the host's
+log. The component is the same for both executors and every host; route
+tests (§2.5) drive it with a request built from typed values.
+`jadpo-host-native` serves it (`http::serve`): one listener whose thread
+hands each connection to a worker chosen by the client's address, and one
+current-thread tokio runtime per worker, each with its own handler, stores
+and rate-limit counters, so an address is always counted on one thread;
+hyper reads and writes HTTP/1.1. `NativeHost` gives each store by name and
+the operating system's randomness. `jadpo dev` runs the interpreter on it,
+swapping in each save that checks cleanly; deadlines, the body limit,
+health and idempotency come with chunk 4.2.
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`

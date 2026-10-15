@@ -230,7 +230,7 @@ macro_rules! edges {
 }
 
 edges! {
-    Calls: "calls", Built, "A callable calls a function, action, query, fixture or library function";
+    Calls: "calls", Built, "A callable calls a function, action, query, fixture or library function; a test sends a request through a route";
     Reads: "reads", Built, "A query or an entity's `get` reads an entity";
     Writes: "writes", Built, "An action or fixture creates, updates or deletes an entity's records";
     Emits: "emits", Reserved, "Emits an event";

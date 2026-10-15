@@ -373,6 +373,7 @@ impl Part<'_> {
             .calls()
             .filter(|(_, callee)| callee.is_callable())
             .filter_map(|(_, callee)| callee.key().cloned())
+            .chain(body.requests().cloned())
             .collect();
         // An entity's `get` reads it (area 6).
         let reads: BTreeSet<Key> = body

@@ -94,6 +94,8 @@ struct Line {
     code: Option<String>,
     route: Option<String>,
     millis: u128,
+    /// The fault behind a 500: what it was and where, innermost first.
+    fault: Option<(String, Vec<String>)>,
 }
 
 /// What every worker reads: the version being served and where its
@@ -168,6 +170,12 @@ impl Handler for DevHandler {
                     code: response.code.clone(),
                     route: response.route.clone(),
                     millis: started.elapsed().as_millis(),
+                    fault: response.fault.as_ref().map(|fault| {
+                        (
+                            fault.kind.classification().to_string(),
+                            fault.stack(program.places()),
+                        )
+                    }),
                 });
             }
             response
@@ -220,6 +228,15 @@ impl Out<'_> {
                 ("status", Json::from(line.status as usize)),
                 ("code", line.code.as_deref().map_or(Json::Null, Json::from)),
                 ("ms", Json::from(line.millis as usize)),
+                (
+                    "fault",
+                    line.fault.as_ref().map_or(Json::Null, |(kind, frames)| {
+                        Json::object([
+                            ("classification", Json::from(kind.as_str())),
+                            ("frames", Json::array(frames.iter().map(String::as_str))),
+                        ])
+                    }),
+                ),
             ]);
             self.json(data, &[], &BTreeMap::new());
             return;
@@ -237,7 +254,16 @@ impl Out<'_> {
             .as_deref()
             .map_or_else(String::new, |code| format!(" {code}"));
         let time = self.paint(Token::Muted, &format!("{} ms", line.millis));
-        let text = format!("{short_id}  {request:<34} {status}{code}   {time}\n");
+        let mut text = format!("{short_id}  {request:<34} {status}{code}   {time}\n");
+        if let Some((kind, frames)) = &line.fault {
+            text.push_str(&format!(
+                "  {} {kind}\n",
+                self.paint(Token::Failure, "fault")
+            ));
+            for frame in frames {
+                text.push_str(&format!("    {}\n", self.paint(Token::Muted, frame)));
+            }
+        }
         let _ = self.out.write_all(text.as_bytes());
         let _ = self.out.flush();
     }
@@ -403,7 +429,7 @@ pub fn serve_to(
             let out_cell = RefCell::new(&mut out);
             poller.wait(&|| {
                 if let Ok(mut out) = out_cell.try_borrow_mut() {
-                    drain(&mut **out);
+                    drain(&mut out);
                 }
                 stop()
             })

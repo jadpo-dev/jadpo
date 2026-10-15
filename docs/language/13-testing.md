@@ -10,6 +10,8 @@ rules:
   - configuration.fixture_secret_unexpected
   - configuration.fixture_value_invalid
   - configuration.fixture_value_missing
+  - semantic.request_invalid
+  - semantic.request_route_unknown
   - semantic.test_service_fake_required
   - syntax.assertion_form
   - test.assertion_failed
@@ -200,6 +202,61 @@ test "a due date in the past is rejected" {
     }
     assert response.status == 422
     assert response.code == "due_date_in_past"
+}
+```
+
+Built in chunk 4.1, without `as:`, which comes with sign-in (area 8). The
+request names its route by `method:` and its path as `jadpo routes` prints
+it, each placeholder given in `params:` (`path: "/todos/{todo_id}"` with
+`params: { todo_id: todo.id }`), and `input:` is the route's `Input`. It
+goes through the runtime's HTTP component exactly as a client's would, and
+gives a `Response`: `status`, the failure's `code` (`none` on success) and
+the route's `output` (`none` unless it succeeded). A defect behind the
+response ends the test as `test.fault`, with its frames:
+
+```jadpo check project=route-test
+type Memo = Text {
+    max_length: 200
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        status: SuccessStatus.created
+        run: add_memo(input)
+    }
+}
+
+test "a memo comes back as it was sent" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/memos"
+        input: AddMemo {
+            text: "Call the plumber"
+        }
+    }
+    assert response.status == 201
+    assert response.code == none
+    assert response.output == MemoView {
+        text: "Call the plumber"
+    }
 }
 ```
 
@@ -768,6 +825,125 @@ FAIL  a long plan still adds up
 test failed: 1 failed, 1 pure test
 ```
 
+### `semantic.request_route_unknown`
+
+A request names a route the project has, by its method and its path as
+`jadpo routes` prints it:
+
+```jadpo check project=e-request-route expect=semantic.request_route_unknown
+type Memo = Text {
+    max_length: 200
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        status: SuccessStatus.created
+        run: add_memo(input)
+    }
+}
+
+test "a memo comes back" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/memo"
+        input: AddMemo {
+            text: "Call the plumber"
+        }
+    }
+    assert response.status == 201
+}
+```
+
+```text output
+error: No route answers `POST /memo`
+ --> main.jadpo:33:15
+   |
+33 |         path: "/memo"
+   |               ^^^^^^^ no such route
+  reason: A request names a route by its method and its path as `jadpo routes` prints it, placeholders by name; the `POST` routes are `/memos`.
+  next: Write the path of the route this test exercises, as `jadpo routes` lists it (agent)
+  rule: semantic.request_route_unknown
+  help: docs/language/13-testing.html#semantic-request-route-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `semantic.request_invalid`
+
+A request gives what its route takes: each placeholder in `params:` and
+the route's `input:`:
+
+```jadpo check project=e-request-invalid expect=semantic.request_invalid
+type Memo = Text {
+    max_length: 200
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        status: SuccessStatus.created
+        run: add_memo(input)
+    }
+}
+
+test "a memo comes back" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/memos"
+    }
+    assert response.status == 201
+}
+```
+
+```text output
+error: `POST /memos` takes `input:` (AddMemo)
+ --> main.jadpo:31:30
+   |
+31 |     var response: Response = request {
+   |                              ^^^^^^^ doesn't fit the route
+  reason: A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`.
+  next: Give the request what its route takes (agent)
+  rule: semantic.request_invalid
+  help: docs/language/13-testing.html#semantic-request-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `semantic.test_service_fake_required`
 
 A test reaches `ReminderMail.send_overdue_reminder` without a fake:
@@ -1204,7 +1380,8 @@ with when it comes.
 | Feature | Status |
 |---|---|
 | Pure and action tests | Work in the new compiler (run, chunk 2.2): `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Since chunk 2.10 each test gets its own environment (its seed and clock, and the places its database and fakes will take), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
-| Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test), and the footer and `--json` count each kind. Route and schedule tests come with areas 7 and 12; `--kind route` and `--kind schedule` say so (`toolchain.not_built_yet`). |
+| Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test), and the footer and `--json` count each kind. Schedule tests come with area 12; `--kind schedule` says so (`toolchain.not_built_yet`). |
+| Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` comes with sign-in (area 8, roadmap 4.3). |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Clock | Decided, not built: the test clock comes with time (area 10, roadmap 5.2). |

@@ -33,16 +33,16 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo new <name>` | Creates a project that passes `check`, `fmt --check` and `test` | Decided (question 9), not built: `jadpo new` is `cli.unknown_command` |
 | `jadpo check` | Checks everything and writes the derived files in `build/` | Built (chunks 1.1–1.8): writes `build/manifest.json` and the catalogues in `build/catalogue/`; writing files is question 3 |
 | `jadpo fmt` | Formats; `--check` only reports; `--layout` also applies promotion moves | Built (chunk 1.2): formats, and `--check` only reports; since chunk 3.5 it fixes each file's imports first, and `--layout` makes promotion moves; since chunk 3.9 it puts each file's primary declaration first |
-| `jadpo test` | Runs every test | Built (chunk 2.2): pure and action tests, in the interpreter |
+| `jadpo test` | Runs every test | Built (chunk 2.2): pure and action tests, in the interpreter; route tests since chunk 4.1 |
 | `jadpo test <file>` / `<file>:<line>` | Runs one test file, or the test at that line | Built (chunk 2.2); a folder runs the tests under it |
-| `jadpo test --name <text>` / `--kind route` / `--failed` / `--affected` | Runs tests whose names match, one kind, last run's failures, or the tests a change reaches | `--name`, `--kind pure` and `--kind action`, and `--failed` built (chunk 2.2); route and schedule kinds come with areas 7 and 12; `--affected` decided in question 7, not built: a change is measured against the merge-base with `main` (Richard, 2026-10-14) |
+| `jadpo test --name <text>` / `--kind route` / `--failed` / `--affected` | Runs tests whose names match, one kind, last run's failures, or the tests a change reaches | `--name`, `--kind pure` and `--kind action`, and `--failed` built (chunk 2.2), `--kind route` in chunk 4.1; the schedule kind comes with area 12; `--affected` decided in question 7, not built: a change is measured against the merge-base with `main` (Richard, 2026-10-14) |
 | `jadpo test --watch` | Reruns the affected tests on every save | Built (chunk 2.3): each save reruns the tests that reach a node whose digest changed since the last run, within the path, name and kind given; a broken build shows its errors and runs nothing; `--json` writes one envelope per line; ctrl-c quits |
 | `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built: the flag says `toolchain.not_built_yet` (chunk 2.8) |
 | `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | `--seed` built (chunk 2.2); `--keep-failed` built with the test database (chunk 3.1): it keeps the database and names it in the report; the trace comes with area 17 |
 | `jadpo build` | Writes the runnable app into `build/target/` | Decided, not built: comes with compiled deployables (Phase 8) |
-| `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Decided, not built; `--no-run` replaces `watch` (question 3) |
+| `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Built (chunk 4.1): runs the app in the interpreter on the native host at `http://localhost:3000` (`--port` to change it), one line per request with its request id; each save that checks cleanly serves the next request, and while a save has errors the last good version keeps serving. The database is the one `--url` names, until configuration gives each connection its URL (area 10), or a disposable PostgreSQL for the session, with pending migrations applied as they appear. `--no-run` only checks on every save and writes `build/`; `--json` writes one envelope per line |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: until then `build/manifest.json` and the catalogues hold the map |
-| `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Decided in area 7, not built |
+| `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Built (chunk 4.1); every route's authentication is `none` until sign-in (area 8) |
 | `jadpo sql <query>`, `jadpo sql <action>` | Prints a query's generated SQL for PostgreSQL and SQLite, or the statements an action's writes send; `--explain` runs it on a disposable database and shows the plan | Built for PostgreSQL (chunk 3.2): each statement the query sends, one for each include too, with the parameters that fill it, and `--json`. Since chunk 3.4, given an action, each `create`, `update`, `delete` and transition it writes, in order, with its parameters as the action writes them, what each refusal raises (the constraint and the failure its `conflict:` arm names, the not-found failure, or a fault) and, for a transition whose `when:` can refuse a record, the statement that asks when no row changed. Tab completes the project's queries and actions, and without one it fails listing them. SQLite comes with a SQLite store; `--explain` is decided, not built: the flag says `toolchain.not_built_yet` |
 | `jadpo impact <name>` | Lists what a change to `name` reaches | Decided in area 1, not built |
 | `jadpo rename <old> <new>` | Renames a declaration or field everywhere, keeping stored data | Proposed (question 5) |
@@ -50,7 +50,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo migrate new <purpose>` / `apply` / `status` | Writes, runs and lists migrations | Built (chunk 3.1): `new` writes the next migration, or finishes the latest once its decisions are written; `apply` and `status` take the database's URL with `--url` (and `--store` when there are several) until configuration gives each connection its URL (area 10); replaces `schema` (question 4). Prompting for a missing purpose, as the design language draws it, waits for prompts: without one the command names a purpose to use |
 | `jadpo seed <name>` | Runs a seed; refuses production | Decided in area 5, not built |
 | `jadpo config set <field>` / `check` | Sets or checks local configuration in `.env.local` | Decided, not built: comes with configuration (area 10) |
-| `jadpo api update` | Rewrites the committed public API record (`api/main.api`) from the source | Proposed in area 7 (question 10) |
+| `jadpo api update` | Rewrites the committed public API record (`api/main.api`) from the source | Built (chunk 4.1): one record per API with routes, its `version:` raised by one when it changes; a record whose API has no routes is removed. `jadpo check` fails while a record disagrees (`api.record_out_of_date`) |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12 |
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries | Proposed (question 13) |
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` | Decided in area 12, not built |
@@ -295,6 +295,7 @@ each command is built.
 
 | Rule | Raised by | What it means |
 |---|---|---|
+| `cli.api_arguments` | `api` | Api command has invalid arguments |
 | `cli.build_arguments` | `build` | Build command has invalid arguments |
 | `cli.build_experiment_scope` | `build` | Experimental target only builds qualified fixtures |
 | `cli.build_experiment_unavailable` | `build` | Shared-Rust experiment checkout was not found |
@@ -305,13 +306,7 @@ each command is built.
 | `cli.config_tty_required` | `config` | Configuration entry requires an interactive terminal |
 | `cli.dev_arguments` | `dev` | Dev command has invalid arguments |
 | `cli.dev_port_invalid` | `dev` | Development port is invalid |
-| `cli.dev_readiness_timeout` | `dev` | Generated runtime did not become ready |
-| `cli.dev_rollback_cleanup_failed` | `dev` | Previous runtime revision could not be cleaned up |
-| `cli.dev_rollback_prepare_failed` | `dev` | Last-known-good runtime revision could not be preserved |
-| `cli.dev_rollback_restore_failed` | `dev` | Last-known-good runtime revision could not be restored |
-| `cli.dev_runtime_exited` | `dev` | Generated runtime exited unexpectedly |
-| `cli.dev_runtime_status_failed` | `dev` | Generated runtime status could not be read |
-| `cli.dev_target_missing` | `dev` | Generated runtime entrypoint is missing |
+| `cli.dev_start_failed` | `dev` | Development server could not start |
 | `cli.fmt_arguments` | `fmt` | Format command has invalid arguments |
 | `cli.incident_arguments` | `incident` | Incident command has invalid arguments |
 | `cli.incident_invalid` | `incident` | Runtime event is not a valid enrichment input |
@@ -324,6 +319,7 @@ each command is built.
 | `cli.lsp_arguments` | `lsp` | Language-server command has invalid arguments |
 | `cli.presentation_arguments` | any command | Terminal presentation option is invalid |
 | `cli.project_required` | any command | Command requires a project path |
+| `cli.routes_arguments` | `routes` | Routes command has invalid arguments |
 | `cli.schema_command_required` | `schema` | Schema command requires a subcommand |
 | `cli.schema_decision_arguments` | `schema` | Schema decision command has invalid arguments |
 | `cli.schema_diff_arguments` | `schema` | Schema diff command has invalid arguments |

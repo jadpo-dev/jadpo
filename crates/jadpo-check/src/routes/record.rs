@@ -93,7 +93,7 @@ fn write(
     lookup: &Lookup<'_>,
     mut routes: Vec<(&GroupModel, &RouteModel)>,
 ) -> String {
-    routes.sort_by(|a, b| (a.1.path(), method_order(a.1)).cmp(&(b.1.path(), method_order(b.1))));
+    routes.sort_by_key(|(_, route)| (route.path(), method_order(route)));
     let mut refs: BTreeSet<Key> = BTreeSet::new();
     let mut failures: BTreeSet<Key> = BTreeSet::new();
     let mut out = String::new();

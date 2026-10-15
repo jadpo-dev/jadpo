@@ -71,6 +71,8 @@ pub(crate) enum Target {
     Get(u32),
     /// `create`, `update` or `delete`, by the number of the write's plan.
     Write(u32),
+    /// A route test's request, by the route's place in the route table.
+    Request(u32),
 }
 
 /// Where a run of the machine stopped.
@@ -733,8 +735,9 @@ impl<'p> Machine<'p> {
                         }
                         self.enter(ctx, callee, args, at)?;
                     }
-                    // A read or a write always waits on the store.
-                    Target::Query(_) | Target::Get(_) | Target::Write(_) => {
+                    // A read or a write always waits on the store, and a
+                    // request on the HTTP component.
+                    Target::Query(_) | Target::Get(_) | Target::Write(_) | Target::Request(_) => {
                         return Ok(Flow::Pause { target, args, at });
                     }
                 }
@@ -1283,6 +1286,34 @@ impl<'p> Machine<'p> {
                 self.tasks.push(Task::Expr(*receiver));
             }
             Expr::Call { callee, args, .. } => return self.call(ctx, id, callee, args),
+            // A route test's request (area 13): its placeholders and input
+            // worked out, then the runtime's HTTP component answers it.
+            Expr::Request {
+                route,
+                params,
+                input,
+            } => {
+                let Some(index) = self
+                    .program
+                    .plan()
+                    .routes()
+                    .routes
+                    .iter()
+                    .position(|plan| plan.key == route.as_str())
+                else {
+                    return Err(self.defect(ctx, "a request to a route with no plan", id));
+                };
+                let parts: Vec<SiteId> = params.iter().copied().chain(*input).collect();
+                self.tasks.push(Task::Invoke {
+                    target: Target::Request(index as u32),
+                    count: parts.len(),
+                    at: id,
+                    then: None,
+                });
+                for site in parts.into_iter().rev() {
+                    self.tasks.push(Task::Expr(site));
+                }
+            }
             Expr::Write { conflicts, .. } => {
                 let Some(Decoded::Write {
                     plan: Some(plan), ..

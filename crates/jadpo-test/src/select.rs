@@ -291,7 +291,7 @@ pub(crate) fn kind_not_built(kind: TestKind) -> Diagnostic {
         ),
         _ => (
             "Schedule tests",
-            "A schedule test runs a schedule once (area 12), and this toolchain runs pure and action tests so far.",
+            "A schedule test runs a schedule once (area 12), and this toolchain runs pure, action and route tests so far.",
         ),
     };
     Diagnostic::new(

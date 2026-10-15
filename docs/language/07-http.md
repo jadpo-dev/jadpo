@@ -830,11 +830,11 @@ routes Memos {
 ```
 
 ```text output
-error: A route passes its placeholders and input, not an expression
+error: A route passes its placeholders and input, not a value built in the route
  --> main.jadpo:27:13
    |
 27 |             AddMemo {
-   |             ^^^^^^^^^ an expression
+   |             ^^^^^^^^^ a value built in the route
   reason: A route is a thin door: what it runs gets the route's placeholders, its `input` and their fields as written, and works out anything else itself.
   next: Pass a placeholder, `input` or a field of them, and move the rest into what the route runs (agent)
   rule: route.argument_invalid
@@ -1368,7 +1368,7 @@ error: `memo_id` can't be typed `MemoId?`
 30 |     POST /{memo_id: MemoId?} {
    |                     ^^^^^^^ not a named scalar
   reason: A placeholder's type is a named scalar or an `X.id`: a placeholder is always there, so it is never optional.
-  next: Type it with a named type built on a scalar, or a field type such as `Todo.id` (agent)
+  next: Type it with a named type built on a scalar, or an `X.id` (agent)
   rule: route.placeholder_type
   help: docs/language/07-http.html#route-placeholder-type
 

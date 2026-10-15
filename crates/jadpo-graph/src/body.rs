@@ -94,6 +94,14 @@ impl Body {
             })
     }
 
+    /// Every route a test sends a request through, in source order.
+    pub fn requests(&self) -> impl Iterator<Item = &Key> + '_ {
+        self.sites.iter().filter_map(|site| match &site.node {
+            Node::Expr(Expr::Request { route, .. }) => Some(route),
+            _ => None,
+        })
+    }
+
     /// Every callee, in source order, with the site that calls it.
     pub fn calls(&self) -> impl Iterator<Item = (SiteId, &Callee)> + '_ {
         self.sites
@@ -170,7 +178,12 @@ impl Site {
             Node::Expr(Expr::Build { fallible, .. }) => {
                 matches!(fallible, Fallible::Construction { .. })
             }
-            Node::Expr(Expr::Reject { .. } | Expr::Propagate { .. } | Expr::Write { .. }) => true,
+            Node::Expr(
+                Expr::Reject { .. }
+                | Expr::Propagate { .. }
+                | Expr::Write { .. }
+                | Expr::Request { .. },
+            ) => true,
             Node::Expr(Expr::Binary { op, .. }) => op.can_fault(),
             Node::Expr(Expr::Unary { op, .. }) => *op == UnaryOp::Negate,
             _ => false,
@@ -320,6 +333,14 @@ pub enum Expr {
     /// Passes the failure its arm handles on.
     Propagate {
         failure: Option<Key>,
+    },
+    /// `request { ... }` in a route test (area 13): a request through the
+    /// route with key `route`, its placeholders in the route's order and
+    /// its input, answered with a `Response` (`status`, `code`, `output`).
+    Request {
+        route: Key,
+        params: Vec<SiteId>,
+        input: Option<SiteId>,
     },
     /// `item -> expression`, given to a collection operation.
     Inline {

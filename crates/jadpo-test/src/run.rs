@@ -134,8 +134,9 @@ fn one<E: Executor>(
     };
     let mut env = TestEnv::new(seed, &test.key);
     let places = executor.places();
-    // Only a test that calls an action, query or fixture can touch a store.
-    if let (Some(databases), Some(runtime), TestKind::Action) =
+    // Only a test that calls an action, query or fixture, or sends a
+    // request through a route, can touch a store.
+    if let (Some(databases), Some(runtime), TestKind::Action | TestKind::Route) =
         (stores.databases, stores.runtime, test.kind)
     {
         env.database = TestDatabase::Copied {

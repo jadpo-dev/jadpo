@@ -223,7 +223,7 @@ pub const KINDS: &[Value] = &[
     },
     Value {
         name: "route",
-        description: "Tests that send a request (not built yet)",
+        description: "Tests that send a request through a route",
     },
     Value {
         name: "schedule",
@@ -279,7 +279,7 @@ pub static COMMANDS: &[Command] = &[
                       and <file>:<line> the test at that line. The project must check without errors \
                       first. With --watch, it keeps running: each save reruns the tests the change \
                       reaches, through the compiler's graph, within the path, name and kind given. \
-                      Pure and action tests run so far.",
+                      Pure, action and route tests run so far.",
         arguments: &[Argument {
             name: "path",
             description: "A test file, <file>:<line>, or a folder",

@@ -584,6 +584,23 @@ impl Body<'_> {
                 .insert(node_key(node.syntax()), (PAGE.to_string(), vec![field]));
             return ty;
         }
+        // A route test's response (area 13).
+        if let Some(found) = self.response_field(receiver, &field) {
+            return match found {
+                Some(ty) => {
+                    self.facts.fields.insert(
+                        node_key(node.syntax()),
+                        ("Response".to_string(), vec![field]),
+                    );
+                    ty
+                }
+                None => {
+                    let fields = response_fields();
+                    self.unknown_field("Response", &field, &fields, span, false);
+                    Ty::Error
+                }
+            };
+        }
         // A type a later area defines has fields this check doesn't know yet.
         if receiver.has_error() || matches!(receiver.strip_nullable(), Ty::Opaque(..) | Ty::Var(_))
         {
@@ -688,6 +705,13 @@ impl Body<'_> {
 
     /// `Type { ... }` and `Enum.variant { ... }`.
     pub(super) fn record(&mut self, record: &ast::RecordExpr) -> Ty {
+        // `request { ... }` in a route test (area 13).
+        if let Some(Expr::NameRef(head)) = record.expr()
+            && text(&head) == "request"
+            && self.find("request").is_none()
+        {
+            return self.request(record);
+        }
         self.resolved_by(|names, out| crate::resolve::record_head(names, record, out));
         let Some(head) = record.expr() else {
             self.walk(|walk| walk.member_values(record.member_list()));
@@ -1192,6 +1216,24 @@ fn name_of(ty: &Ty) -> String {
 pub(crate) const PAGE: &str = "Page";
 
 /// `Page<T>`'s fields, as the unknown-field error lists them.
+/// A route test's response's fields, for messages.
+fn response_fields() -> Vec<FieldDef> {
+    ["status", "code", "output"]
+        .into_iter()
+        .map(|name| FieldDef {
+            name: name.to_string(),
+            declared: Ty::Error,
+            rules: Rules::default(),
+            optional: false,
+            default: None,
+            header: None,
+            copied: false,
+            replaces: None,
+            generated: false,
+        })
+        .collect()
+}
+
 fn page_fields(item: &Ty) -> Vec<FieldDef> {
     [
         ("items", Ty::List(Box::new(item.clone()))),
