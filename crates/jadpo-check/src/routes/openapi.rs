@@ -40,7 +40,7 @@ const SHARED: [(&str, &str, &str, &str); 8] = [
         "413",
         "RequestTooLarge",
         "request_too_large",
-        "The body is larger than 1 MB.",
+        "The body is over 1 MB.",
     ),
     (
         "422",

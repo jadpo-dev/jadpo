@@ -118,11 +118,8 @@ pub(crate) const METHOD_NOT_ALLOWED: (u16, &str, &str) = (
     "This path doesn't answer this method.",
 );
 const RATE_LIMITED: (u16, &str, &str) = (429, "rate_limited", "Too many requests.");
-const REQUEST_TOO_LARGE: (u16, &str, &str) = (
-    413,
-    "request_too_large",
-    "The request body is larger than 1 MB.",
-);
+const REQUEST_TOO_LARGE: (u16, &str, &str) =
+    (413, "request_too_large", "The request body is over 1 MB.");
 const DEADLINE_EXCEEDED: (u16, &str, &str) = (
     504,
     "deadline_exceeded",

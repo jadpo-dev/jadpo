@@ -79,7 +79,7 @@
             }
           }
         },
-        "description": "The body is larger than 1 MB."
+        "description": "The body is over 1 MB."
       }
     },
     "schemas": {
@@ -329,7 +329,7 @@
         "type": "object"
       },
       "RequestTooLarge": {
-        "description": "The body is larger than 1 MB.",
+        "description": "The body is over 1 MB.",
         "properties": {
           "error": {
             "properties": {

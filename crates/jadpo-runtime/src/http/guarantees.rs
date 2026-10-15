@@ -485,8 +485,11 @@ fn a_passed_deadline_drops_the_work_commits_nothing_and_answers_504() {
         out_of_time: true,
         ..Fake::default()
     };
-    let late = send(&table, &program, &host, &post(Some("k1"), "{}"), NOW);
-    assert_eq!((late.status, code(&late)), (504, Some("deadline_exceeded")));
+    let timed_out = send(&table, &program, &host, &post(Some("k1"), "{}"), NOW);
+    assert_eq!(
+        (timed_out.status, code(&timed_out)),
+        (504, Some("deadline_exceeded"))
+    );
     let lines = host.store.lines();
     assert_eq!(
         lines,
