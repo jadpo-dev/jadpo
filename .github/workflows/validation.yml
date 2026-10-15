@@ -24,7 +24,7 @@ concurrency:
 # branch protection requires, passes only when every job passed.
 
 # Line tables keep backtraces' file and line and spare the linker the rest
-# of the debug information, for the eighty-odd test binaries.
+# of the debug information, for the test binaries.
 env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
