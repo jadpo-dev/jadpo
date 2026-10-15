@@ -39,8 +39,9 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    The full gate runs once, in the building subagent; when merging, the
    session runs `--profile quick` only if merging `main` brought in code,
    and leaves the full run to CI.
-   From 2.4 on, every chunk adds or extends the commented examples in
-   `examples/` so the coverage check still passes with what it built.
+   Every chunk keeps the examples in `examples/` passing; each phase ends
+   with an examples chunk that brings them up to date with everything the
+   phase built (Richard, 2026-10-15).
 4. Open a pull request from a branch named `chunk-<number>`, merge it when CI
    passes, and tick it here in the same pull request.
    If the chunk needs a language decision that is not on the pages, stop and
@@ -248,6 +249,9 @@ reference only).
 - [ ] **4.3 Sign-in:** `opus · high` sessions, API tokens, service keys.
 - [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
   report.
+- [ ] **4.6 Teaching examples for Phase 4** `opus · high`: bring
+  `examples/` up to date with routes, identity and policy, and pass
+  `tools/verify.py --require-examples`.
 
 ## Phase 5 — Configuration, time, translations and the standard library (area 10)
 
@@ -272,6 +276,8 @@ reference only).
   2026-10-15): `backfill:` as an expression over each row's own fields,
   filled in batches, one `UPDATE` each where it has a SQL form and by
   `jadpo migrate apply` otherwise, then made required.
+- [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
+  time, translations and the standard library, passing `--require-examples`.
 
 ## Phase 6 — Events and schedules (area 12)
 
@@ -284,6 +290,8 @@ reference only).
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
   they settle and with `202` past `within:`.
+- [ ] **6.4 Teaching examples for Phase 6** `opus · high`: events and
+  schedules, passing `--require-examples`.
 
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
@@ -300,6 +308,8 @@ reference only).
   the call repeated under its key. Done when a test holds a provider call
   open and shows no transaction open meanwhile, and a change made during
   the call reruns the action.
+- [ ] **7.5 Teaching examples for Phase 7** `opus · high`: packages,
+  capabilities and email, passing `--require-examples`.
 
 ## Phase 8 — Compiled deployables
 
@@ -368,6 +378,7 @@ replanned against this list when reached.
   pull request. Never put a worktree under `/private/tmp`.
 - `tools/verify.py` output and the tests are the evidence. No evidence
   packets, per-step reviews, timing logs or plan documents.
-- One independent review per phase, not per chunk.
+- One independent review per phase, not per chunk, by two reviewers:
+  soundness, and architecture for the phases ahead.
 - Update this page when a chunk finishes or the order changes, and nothing
   else.
