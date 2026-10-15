@@ -13,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Lifecycles come with chunk 3.4, so their examples are proposals. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -585,9 +585,8 @@ domains call that domain's public actions.
 | `Todo.delete(todo)` | removes the record, or runs the lifecycle's `delete` transition |
 | `User.disable(user)` | runs a lifecycle transition, named after it |
 
-Built since chunk 3.3: every operation but the lifecycle's transitions,
-which come with chunk 3.4; calling one is `toolchain.not_built_yet`. An
-`update` or `delete` takes the record loaded earlier in the action, or its
+Built since chunk 3.3, the lifecycle's transitions since chunk 3.4. An
+`update`, `delete` or transition takes the record loaded earlier in the action, or its
 `id`: by `id` it fails with the entity's not-found failure when no record
 has it (chosen in chunk 3.3, since area 5's lifecycle writes
 `Todo.delete(todo_id)` and this table `Todo.delete(todo)`). An update gives
@@ -634,6 +633,68 @@ action start_project(owner_id: User.id, name: Project.name) fails UserNotFound -
     }
 }
 ```
+
+A transition (area 5, "Lifecycle") is an update of the fields its `set:`
+gives, run on the record loaded earlier or by `id`, which gives back the
+record as stored; through `delete`, it gives nothing. Its block takes only
+`conflict:`, since what it changes is fixed in the lifecycle. Like every
+update and delete it reaches only a record `visible:` lets through, so a
+hidden one is the entity's not-found failure. A `when:` that asks more than
+`visible:` can refuse a record that is there, and that refusal is mapped in
+`conflict:` like a rule, keyed by the transition (chosen in chunk 3.4):
+
+```jadpo check project=transition file=planning.jadpo hidden
+type UserName = Text {
+    max_length: 80
+}
+
+type UserStage = Enum {
+    active
+    disabled
+}
+
+entity User {
+    id: Uuid
+    name: UserName
+    stage: UserStage
+    disabled_at: Instant?
+
+    lifecycle: {
+        initial: {
+            stage: UserStage.active
+        }
+        transitions: {
+            disable: {
+                when: stage == UserStage.active
+                set: {
+                    stage: UserStage.disabled
+                    disabled_at: clock.now
+                }
+            }
+        }
+    }
+}
+
+type UserDisabled = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=transition file=disable_user.jadpo
+// domains/planning/actions/disable_user.jadpo
+action disable_user(user_id: User.id) fails UserNotFound, UserDisabled -> User {
+    return attempt User.disable(user_id) {
+        conflict: {
+            User.disable: UserDisabled  // its `when:` doesn't hold
+        }
+    }
+}
+```
+
+The statement is `UPDATE "user" SET "stage" = 'disabled', "disabled_at" =
+$1 WHERE "id" = $2 AND "stage" = 'active'`; when it changes no row, a second
+statement asks whether the user is there and visible, which tells
+`UserDisabled` from `UserNotFound`. `jadpo sql disable_user` shows both.
 
 Nothing else is an entity operation: `Todo.fetch(todo_id)` is
 `semantic.unknown_callee` (checked since chunk 1.9), while `Todo.title(value)`
@@ -798,7 +859,8 @@ input EditTodo {
 
 ## When a write is refused
 
-A write can be refused for two reasons. The record is not there: that
+A write can be refused for two reasons, and a lifecycle transition for a
+third: its `when:` doesn't hold (above). The record is not there: that
 reports the entity's not-found failure, `TodoNotFound`, including a
 reference that names a missing record (`ProjectNotFound` for a bad
 `project_id`). Or a database rule refuses it: a unique rule, or a `restrict`
@@ -1011,7 +1073,9 @@ in Jadpo, under constructions the declared ranges prove (`ViewCount(...)`
 here, since a count of at least 0 plus 1 is at least 0); anything else needs
 the record loaded first. A decimal added to a stored field may not have more
 decimal places than the field's `scale`, since PostgreSQL would round the
-sum its own way (half away from zero) rather than Jadpo's (chunk 3.4).
+sum its own way (half away from zero) rather than Jadpo's: a literal by its
+own places, any other value by its type's `scale`, and one whose type sets
+none is refused (`data.stored_decimal_scale`, built in chunk 3.4).
 
 ## Reading in a loop
 
@@ -2052,6 +2116,88 @@ error: `Book.get` reads once for every item of the loop
 check failed: 1 error, 1 file
 ```
 
+### `data.lifecycle_owned_field`
+
+Only a lifecycle's transitions change the fields it owns: every field a transition sets or `initial:` gives:
+
+```jadpo check project=e-lifecycle-owned-field expect=data.lifecycle_owned_field
+entity Todo {
+    id: Uuid
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none
+        transitions: {
+            delete: {
+                set: {
+                    deleted_at: clock.now
+                }
+            }
+        }
+    }
+}
+
+action hide_todo(todo: Todo) -> Todo {
+    return Todo.update(todo) {
+        set: {
+            deleted_at: clock.now
+        }
+    }
+}
+```
+
+```text output
+error: `Todo.update` sets `deleted_at`, which only `Todo`'s lifecycle changes
+ --> main.jadpo:20:13
+   |
+20 |             deleted_at: clock.now
+   |             ^^^^^^^^^^ owned by the lifecycle
+  reason: `Todo`'s lifecycle owns `deleted_at`: only its transition `delete` changes it, so the record's stages always move as the lifecycle says.
+  next: Remove `deleted_at`, and call `Todo.delete(todo)` to change it (agent)
+  rule: data.lifecycle_owned_field
+  help: docs/language/06-reads-and-writes.html#data-lifecycle-owned-field
+
+check failed: 1 error, 1 file
+```
+
+### `data.lifecycle_hard_delete`
+
+Code never removes a record that has a lifecycle: `delete` runs its `delete` transition, and an entity with none can't be deleted:
+
+```jadpo check project=e-lifecycle-hard-delete expect=data.lifecycle_hard_delete
+type ArticleTitle = Text {
+    max_length: 120
+}
+
+entity Article {
+    id: Uuid
+    title: ArticleTitle
+    published_at: Instant?
+
+    lifecycle: {
+        visible: published_at != none and published_at <= clock.now
+    }
+}
+
+action remove_article(article: Article) -> Unit {
+    Article.delete(article)
+}
+```
+
+```text output
+error: `Article.delete` would remove a record `Article`'s lifecycle keeps
+ --> main.jadpo:16:5
+   |
+16 |     Article.delete(article)
+   |     ^^^^^^^^^^^^^^ a lifecycle keeps it
+  reason: Code never removes a record that has a lifecycle: `delete` runs its `delete` transition, and `Article`'s lifecycle has none. Only purge, the compiler's own, removes such records, once they have been hidden long enough.
+  next: Add a `delete` transition to `Article`'s lifecycle, saying what deleting one changes (human)
+  rule: data.lifecycle_hard_delete
+  help: docs/language/06-reads-and-writes.html#data-lifecycle-hard-delete
+
+check failed: 1 error, 1 file
+```
+
 ### `data.set_generated_field`
 
 ```jadpo check project=e-set-generated-field expect=data.set_generated_field
@@ -2291,6 +2437,44 @@ error: `Counter.hits` is a stored value, read only by an update by `id`
 check failed: 1 error, 1 file
 ```
 
+### `data.stored_decimal_scale`
+
+The database rounds a sum its own way, so a decimal added to a stored field
+keeps no more places than the field does:
+
+```jadpo check project=e-stored-decimal-scale expect=data.stored_decimal_scale
+type Balance = Decimal {
+    scale: 2
+}
+
+entity Wallet {
+    id: Uuid
+    balance: Balance
+}
+
+action add_interest(wallet_id: Wallet.id) fails WalletNotFound -> Wallet {
+    return attempt Wallet.update(wallet_id) {
+        set: {
+            balance: Balance(Wallet.balance + 0.005)
+        }
+    }
+}
+```
+
+```text output
+error: `Wallet.update` adds a decimal with more places than `Wallet.balance` keeps
+ --> main.jadpo:13:47
+   |
+13 |             balance: Balance(Wallet.balance + 0.005)
+   |                                               ^^^^^ 3 decimal places
+  reason: The database works `Wallet.balance` out in one step, and keeps it at `scale: 2`; `0.005` has 3, and PostgreSQL would round the result half away from zero where Jadpo rounds half to even, so the stored value could differ from Jadpo's.
+  next: Give the value at most 2 decimal places, or a type with `scale: 2` or fewer (agent)
+  rule: data.stored_decimal_scale
+  help: docs/language/06-reads-and-writes.html#data-stored-decimal-scale
+
+check failed: 1 error, 1 file
+```
+
 ### `data.stored_value_unproven`
 
 Nothing checks a value the database works out before it is stored, so the
@@ -2400,7 +2584,7 @@ error: `Customer.mail` names no unique rule or reference
    |
 18 |             Customer.mail: EmailTaken
    |             ^^^^^^^^^^^^^ not a rule
-  reason: A `conflict:` arm is keyed by the rule the store refuses, written `Entity.name`: a field with `unique: true`, a rule named in `unique:`, or a `restricted` reference that refuses a delete. `Customer.create` can break `Customer.email`. Did you mean `Customer.email`?
+  reason: A `conflict:` arm is keyed by the rule the store refuses, written `Entity.name`: a field with `unique: true`, a rule named in `unique:`, a `restricted` reference that refuses a delete, or a lifecycle transition whose `when:` can refuse it. `Customer.create` can break `Customer.email`. Did you mean `Customer.email`?
   next: Use `Customer.email` instead of `Customer.mail` (agent)
   rule: data.conflict_unknown
   help: docs/language/06-reads-and-writes.html#data-conflict-unknown
@@ -3149,3 +3333,6 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Stored values | Chosen in chunk 3.3: an update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove | 2026-10-14 |
 | Refusals in a called action | Chosen in chunk 3.3: a write that can be refused, run by an action another action called, runs inside a savepoint, so a caller handling the failure carries on | 2026-10-14 |
 | Counters and reruns | A counter never loses an increment; it reruns its action only when an earlier read in the same action races another request on the row, as any concurrent change does (corrects the earlier "never reruns") (Richard) | 2026-10-15 |
+| Transitions as operations | Chosen in chunk 3.4: `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records | 2026-10-15 |
+| A transition's `when:` refusing | Chosen in chunk 3.4: a `when:` that asks more than `visible:` can refuse a record that is there, a conflict mapped in `conflict:` keyed by the transition (`User.disable: UserDisabled`), with no catch-all; one that asks only what `visible:` asks can't, since a hidden record is not found | 2026-10-15 |
+| Counter decimals | A decimal added to or subtracted from a stored field in a counter update may not have more decimal places than the field's `scale`; built in chunk 3.4 as `data.stored_decimal_scale`, a value whose type sets no `scale` counting as too many (Richard) | 2026-10-15 |

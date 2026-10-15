@@ -11,7 +11,7 @@ How a Jadpo program declares the records it keeps and how their schema
 changes. Reading and writing records is area 6; who may read or change one
 is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.1: entities, their fields, references, unique rules, indexes and stores, migrations and the test database; the examples marked `check` compile with this checkout's `jadpo`. Lifecycles (chunk 3.4), caches (with the Redis driver) and seeds come later, and their examples are proposals. The reasoning behind the store and cache rules is in [the stores and caching mapping](research/data-stores-and-caching-mapping.md); where it differs, this page wins.
+> Decided on 2026-10-12. Built in chunk 3.1: entities, their fields, references, unique rules, indexes and stores, migrations and the test database; lifecycles in chunk 3.4. The examples marked `check` compile with this checkout's `jadpo`. Caches (with the Redis driver) and seeds come later, and their examples are proposals. The reasoning behind the store and cache rules is in [the stores and caching mapping](research/data-stores-and-caching-mapping.md); where it differs, this page wins.
 
 Examples use the golden todo app's `planning` domain, plus a shop where Redis
 is needed.
@@ -209,24 +209,29 @@ out of normal view. The common case is soft delete: deleting a todo hides it
 everywhere at once but keeps it for 30 days, so it can be investigated or
 restored, and then removes it for good.
 
-```jadpo fragment
+```jadpo check project=lifecycle
+type TodoTitle = Text {
+    max_length: 200
+}
+
 entity Todo {
-    ...
+    id: Uuid
+    title: TodoTitle
     deleted_at: Instant?
 
     lifecycle: {
-        visible: deleted_at == none          // which records normal reads can see
+        visible: deleted_at == none  // which records normal reads can see
         transitions: {
-            delete: {                        // a named, allowed stage change
-                when: deleted_at == none     // only allowed when this is true
+            delete: {  // a named, allowed stage change
+                when: deleted_at == none  // only allowed when this is true
                 set: {
-                    deleted_at: clock.now    // what the change sets
+                    deleted_at: clock.now  // what the change sets
                 }
             }
         }
-        purge: {                             // permanent deletion of hidden records
-            after: config.soft_delete_retention
-            since: deleted_at
+        purge: {  // permanent deletion of hidden records
+            after: 30d  // how long a hidden record is kept
+            since: deleted_at  // counted from when it was hidden
         }
     }
 }
@@ -244,16 +249,84 @@ entity Todo {
 
 `visible:` and `when:` are conditions on the record's own fields: comparisons
 (`==`, `!=`, `<`, `<=`, `>`, `>=`), `and`, `or`, `none` checks and
-`clock.now`, so scheduled publishing works:
+`clock.now`, so scheduled publishing works. A starting value the compiler
+owns is given in `initial:`:
 
-```jadpo fragment
-lifecycle: {
-    visible: published_at != none and published_at <= clock.now
+```jadpo check project=lifecycle-publishing
+type PostTitle = Text {
+    max_length: 120
+}
+
+type ReviewStage = Enum {
+    draft
+    in_review
+    approved
+}
+
+entity Post {
+    id: Uuid
+    title: PostTitle
+    stage: ReviewStage
+    published_at: Instant?
+
+    lifecycle: {
+        visible: published_at != none and published_at <= clock.now
+        initial: {
+            stage: ReviewStage.draft  // every new post starts as a draft
+        }
+        transitions: {
+            submit: {
+                when: stage == ReviewStage.draft
+                set: {
+                    stage: ReviewStage.in_review
+                }
+            }
+        }
+    }
 }
 ```
 
 They cannot mention other records or who is asking: that is policy (area 9),
 which keeps lifecycle conditions simple enough to become database indexes.
+
+Built in chunk 3.4, with these readings of the decisions above (recorded
+below):
+
+- **Bare fields.** A lifecycle's conditions name the record's fields bare,
+  as written above (`deleted_at`, not `Todo.deleted_at`); a qualified one is
+  `data.lifecycle_condition` with the fix. `in` and `not` aren't among the
+  decided operators, and the opposite comparison says the same.
+- **What a lifecycle owns.** Every field a transition sets, and every field
+  `initial:` gives, changes only through the transitions: a `create`,
+  `update` or patch that gives one is `data.lifecycle_owned_field` (area 6).
+  A new record gets its `initial:` value, or `none`; a required field a
+  transition sets needs an `initial:` value
+  (`data.lifecycle_initial_required`). Values in `set:` and `initial:` are
+  fixed: literals, enum values, `none` and `clock.now`.
+- **Delete.** `Todo.delete` runs the lifecycle's `delete` transition, which
+  changes the record and keeps it. An entity with a lifecycle but no
+  `delete` transition can't be deleted by code at all, and neither can a
+  record whose removal would cascade to one with a lifecycle
+  (`data.lifecycle_hard_delete`): only purge removes such records.
+- **Transitions see visible records only.** A transition is an update, so
+  it reaches a record only while `visible:` holds; a hidden one is the
+  entity's not-found failure, and a restore needs a decision of its own.
+  A `when:` that asks only what `visible:` asks already can't refuse a
+  record that is there; any other `when:` can, and its callers map that
+  refusal in `conflict:` (area 6).
+- **Purge.** `after:` takes a duration written in place (`30d`) until
+  configuration comes with chunk 5.1, when `config.soft_delete_retention`
+  works too. A record is purged once `visible:` doesn't hold and its
+  `since:` field is older than the run's time less `after:`; each batch
+  deletes at most 500 records, oldest first, in its own transaction.
+  References that `cascade` and those `cleared` do what they do for any
+  delete; a record a `restricted` reference holds, directly or through
+  a cascade, stays until nothing holds it, and never stops the rest going.
+  Purge is the compiler's own operation, outside every action and policy:
+  the runtime's purge entry point runs it, and area 12's built-in hourly
+  purge schedule will call it (chunk 6.2); until then nothing runs it on a
+  timer. Each run reports how many records each batch deleted, which the
+  schedule logs.
 
 ## Indexes
 
@@ -281,8 +354,11 @@ built yet. Since chunk 3.2 the queries' indexes are derived: for each
 query, and each list it includes, the fields it always tests with `==` or
 `in`, then its order's fields, unless an index or unique key the table
 already has serves them; a reference's own index goes once a query's index
-starts with its column. The partial indexes for `visible:` come with lifecycles (chunk
-3.4).
+starts with its column. Since chunk 3.4 the index a query of an entity with a
+lifecycle needs is partial, holding only the records `visible:` lets queries
+see (`WHERE "deleted_at" IS NULL`), unless `visible:` reads `clock.now`,
+which changes as time passes; a reference's own index then stays, since
+deleting the record it points at still finds hidden records.
 
 ## Caches
 
@@ -512,8 +588,8 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's actual output. A lifecycle's errors come with chunk 3.4, and
-the errors of reading and writing records with area 6. An example's hidden
+new compiler's actual output; the errors of reading and writing records,
+including a write to a field a lifecycle owns, are area 6's. An example's hidden
 files and the migrations its `jadpo migrate new` steps write are in the
 page's source.
 
@@ -1079,6 +1155,320 @@ error: `Note.the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
 check failed: 1 error, 1 file
 ```
 
+### `data.lifecycle_section`
+
+A lifecycle holds `visible:`, `initial:`, `transitions:` and `purge:`, each once; a transition holds `when:` and `set:`, and `purge:` holds `after:` and `since:`:
+
+```jadpo check project=e-lifecycle-section expect=data.lifecycle_section
+entity Todo {
+    id: Uuid
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none
+        hidden: deleted_at != none
+    }
+}
+```
+
+```text output
+error: `hidden` isn't part of a lifecycle
+ --> main.jadpo:7:9
+  |
+7 |         hidden: deleted_at != none
+  |         ^^^^^^ not a section here
+  reason: A lifecycle holds `visible:`, `initial:`, `transitions:` and `purge:`.
+  next: Remove `hidden` from the lifecycle (agent)
+  rule: data.lifecycle_section
+  help: docs/language/05-data.html#data-lifecycle-section
+
+check failed: 1 error, 1 file
+```
+
+### `data.lifecycle_condition`
+
+A lifecycle condition tests the record's own fields against fixed values, never another record or who is asking:
+
+```jadpo check project=e-lifecycle-condition expect=data.lifecycle_condition
+entity Todo {
+    id: Uuid
+    owner_id: Uuid
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none and owner_id == current_user.id
+    }
+}
+```
+
+```text output
+error: `current_user.id` isn't something a lifecycle condition can compare with
+ --> main.jadpo:7:53
+  |
+7 |         visible: deleted_at == none and owner_id == current_user.id
+  |                                                     ^^^^^^^^^^^^^^^ from outside the record
+  reason: A lifecycle condition compares the record's own fields with fixed values: a literal, an enum value or `clock.now`. It never mentions other records or who is asking, which is policy (area 9), so it can join every statement's `WHERE` and an index.
+  next: Compare with a literal, an enum value or `clock.now` (agent)
+  rule: data.lifecycle_condition
+  help: docs/language/05-data.html#data-lifecycle-condition
+
+check failed: 1 error, 1 file
+```
+
+### `data.lifecycle_unknown_field`
+
+Every field a lifecycle names is one of the record's own:
+
+```jadpo check project=e-lifecycle-unknown-field expect=data.lifecycle_unknown_field
+entity Todo {
+    id: Uuid
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deletd_at == none
+    }
+}
+```
+
+```text output
+error: `Todo` has no field `deletd_at`
+ --> main.jadpo:6:18
+  |
+6 |         visible: deletd_at == none
+  |                  ^^^^^^^^^ not declared
+  reason: A lifecycle names the fields of the record it is written in, and `Todo`'s fields are `id` and `deleted_at`. Did you mean `deleted_at`?
+  next: Use `deleted_at` instead of `deletd_at` (agent)
+  rule: data.lifecycle_unknown_field
+  help: docs/language/05-data.html#data-lifecycle-unknown-field
+
+check failed: 1 error, 1 file
+```
+
+### `data.lifecycle_value`
+
+A transition sets each field to a fixed value, the same every time it runs:
+
+```jadpo check project=e-lifecycle-value expect=data.lifecycle_value
+entity Todo {
+    id: Uuid
+    deleted_at: Instant?
+    edited_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none
+        transitions: {
+            delete: {
+                set: {
+                    deleted_at: edited_at
+                }
+            }
+        }
+    }
+}
+```
+
+```text output
+error: `edited_at` is another field of the record
+ --> main.jadpo:11:33
+   |
+11 |                     deleted_at: edited_at
+   |                                 ^^^^^^^^^ a field, not a value
+  reason: A transition sets each field to a fixed value (a literal, an enum value, `none` or `clock.now`), the same every time it runs; copying one field into another isn't one.
+  next: Use a literal, an enum value, `none` or `clock.now` (agent)
+  rule: data.lifecycle_value
+  help: docs/language/05-data.html#data-lifecycle-value
+
+check failed: 1 error, 1 file
+```
+
+### `data.lifecycle_initial_required`
+
+A required field only transitions change gets its first value from `initial:`:
+
+```jadpo check project=e-lifecycle-initial-required expect=data.lifecycle_initial_required
+type OrderStage = Enum {
+    placed
+    shipped
+}
+
+entity Order {
+    id: Uuid
+    stage: OrderStage
+
+    lifecycle: {
+        transitions: {
+            ship: {
+                when: stage == OrderStage.placed
+                set: {
+                    stage: OrderStage.shipped
+                }
+            }
+        }
+    }
+}
+```
+
+```text output
+error: `Order.stage` has no starting value
+ --> main.jadpo:8:5
+   |
+ 8 |     stage: OrderStage
+   |     ^^^^^ required, and only transitions set it
+12 |             ship: {
+   |             ---- set here
+  reason: Only the lifecycle's transitions change `stage`, so a create can't give it; a required field gets its first value from `initial:`, and an optional one starts as `none`.
+  next: Add `stage: <value>` to the lifecycle's `initial:` (agent)
+  rule: data.lifecycle_initial_required
+  help: docs/language/05-data.html#data-lifecycle-initial-required
+
+check failed: 1 error, 1 file
+```
+
+### `data.lifecycle_transition_name`
+
+A transition is an operation of its entity, so it can't take another operation's name or a field's:
+
+```jadpo check project=e-lifecycle-transition-name expect=data.lifecycle_transition_name
+entity Todo {
+    id: Uuid
+    archived_at: Instant?
+
+    lifecycle: {
+        transitions: {
+            update: {
+                set: {
+                    archived_at: clock.now
+                }
+            }
+        }
+    }
+}
+```
+
+```text output
+error: A transition can't be called `update`
+ --> main.jadpo:7:13
+  |
+7 |             update: {
+  |             ^^^^^^ taken
+  reason: `Todo.update` is already an operation every entity has, so a transition can't take its name; `delete` is the one a transition may take over.
+  next: Name the transition after the change it makes, such as `archive` (agent)
+  rule: data.lifecycle_transition_name
+  help: docs/language/05-data.html#data-lifecycle-transition-name
+
+check failed: 1 error, 1 file
+```
+
+### `data.lifecycle_purge_visible`
+
+Purge deletes records once they have been hidden for a while, so the lifecycle says which records are hidden:
+
+```jadpo check project=e-lifecycle-purge-visible expect=data.lifecycle_purge_visible
+entity Todo {
+    id: Uuid
+    deleted_at: Instant?
+
+    lifecycle: {
+        transitions: {
+            delete: {
+                set: {
+                    deleted_at: clock.now
+                }
+            }
+        }
+        purge: {
+            after: 30d
+            since: deleted_at
+        }
+    }
+}
+```
+
+```text output
+error: `Todo`'s lifecycle purges records but hides none
+ --> main.jadpo:13:9
+   |
+13 |         purge: {
+   |         ^^^^^ no `visible:` above
+  reason: Purge permanently deletes records once they have been hidden for a while, so the lifecycle must say which records are hidden, with `visible:`.
+  next: Add `visible: <condition>` to the lifecycle (agent)
+  rule: data.lifecycle_purge_visible
+  help: docs/language/05-data.html#data-lifecycle-purge-visible
+
+check failed: 1 error, 1 file
+```
+
+### `data.lifecycle_purge_after`
+
+A hidden record is kept for a positive duration before purge deletes it:
+
+```jadpo check project=e-lifecycle-purge-after expect=data.lifecycle_purge_after
+entity Todo {
+    id: Uuid
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none
+        purge: {
+            after: 0d
+            since: deleted_at
+        }
+    }
+}
+```
+
+```text output
+error: `after: 0d` isn't a positive duration
+ --> main.jadpo:8:20
+  |
+8 |             after: 0d
+  |                    ^^ not a positive duration
+  reason: `after:` is how long a hidden record is kept before purge deletes it, a duration such as `30d` or `12h`, longer than nothing; a hidden record would be deleted the moment it is hidden.
+  next: Write a duration, such as `after: 30d` (agent)
+  rule: data.lifecycle_purge_after
+  help: docs/language/05-data.html#data-lifecycle-purge-after
+
+check failed: 1 error, 1 file
+```
+
+### `data.lifecycle_purge_since`
+
+`since:` names the time field purge counts from:
+
+```jadpo check project=e-lifecycle-purge-since expect=data.lifecycle_purge_since
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none
+        purge: {
+            after: 30d
+            since: title
+        }
+    }
+}
+```
+
+```text output
+error: `title` isn't a time
+ --> main.jadpo:14:20
+   |
+14 |             since: title
+   |                    ^^^^^ a `TodoTitle`
+  reason: `since:` names the `Instant` field purge counts from: a record goes once it has been hidden for `after:` since that time.
+  next: Name an `Instant` field of the record (agent)
+  rule: data.lifecycle_purge_since
+  help: docs/language/05-data.html#data-lifecycle-purge-since
+
+check failed: 1 error, 1 file
+```
+
 ### `migration.out_of_date`
 
 A project with an entity and no migration yet:
@@ -1359,6 +1749,15 @@ Built in chunk 3.1 (run, with the examples above and `crates/jadpo-check`,
   `JADPO_TEST_DATABASE_URL` names or a disposable one, with copies
   prepared in the background; `--keep-failed` keeps a failed test's.
 
+Built in chunk 3.4: **lifecycles**, as the Lifecycle section says. Each
+lifecycle and transition is a node in the manifest (`lifecycle Todo`,
+`transition Todo.delete`, with its `when:`, whether it can refuse a record
+and the fields it sets); `visible:` joins every query, `get`, update,
+delete and transition at one place in the plan; queries' indexes are
+partial; and purge is one statement per batch, run by the runtime's purge
+entry point, tested against live PostgreSQL with cascades, restricted
+references and batches (`crates/jadpo-cli/tests/lifecycle.rs`).
+
 Not built yet, and said so where it is used (`toolchain.not_built_yet`):
 
 - Removing an entity, moving one between stores, dropping a retired column
@@ -1366,8 +1765,10 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   `jadpo migrate new`.
 - Entities in Redis, whose expiry syntax is open (question 15), record
   caches (`caches:`), and indexes with a `kind:` option.
-- `lifecycle:` and `policy:` are read but not checked: chunk 3.4 and area 9
-  build them. Seeds and `jadpo seed` are not built.
+- `policy:` is read but not checked: area 9 builds it. Seeds and `jadpo
+  seed` are not built.
+- A lifecycle's `purge: { after: config.<setting> }` waits for configuration
+  (chunk 5.1), and the hourly purge schedule for schedules (chunk 6.2).
 - `jadpo rename`, which writes the identity registry (area 18), comes with
   area 14's tooling; until then a field renamed by hand reads as one
   removed and one added.
@@ -1515,3 +1916,8 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | System tables | Tables the runtime needs (schedule state, event outbox, delivery records, idempotency keys, sessions) are generated, prefixed `jadpo_`, and part of the migration snapshots like any entity; drift in them fails `jadpo check` (Richard, from area 12) | 2026-10-13 |
 | Migration snapshots | Each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; the compiler diffs consecutive snapshots; `jadpo check` fails with the command to run when entities and the latest snapshot disagree (Richard) | 2026-10-12 |
 | Table names | A table is named after its entity's born name in singular snake_case (`Todo` → `todo`, `LoanRecord` → `loan_record`), never pluralised: no English inflection rules to get wrong, and the code and the database use the same word. Built in chunk 3.1 (Richard) | 2026-10-14 |
+| Lifecycle conditions on bare fields | Chosen in chunk 3.4: `visible:` and `when:` name the record's fields bare, as this page writes them; `in` and `not` aren't among the decided operators | 2026-10-15 |
+| What a lifecycle owns | Chosen in chunk 3.4: every field a transition sets or `initial:` gives changes only through transitions; a new record takes its `initial:` value or `none`, and a required field a transition sets needs one; `set:` and `initial:` values are literals, enum values, `none` and `clock.now` | 2026-10-15 |
+| Deleting a record with a lifecycle | Chosen in chunk 3.4: `delete` runs the `delete` transition; with none, code can't delete the record, nor remove one whose delete would cascade to an entity with a lifecycle; only purge removes them | 2026-10-15 |
+| Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place until configuration (chunk 5.1); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
+| Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |

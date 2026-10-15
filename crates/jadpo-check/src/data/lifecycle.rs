@@ -672,13 +672,22 @@ impl<'a> Reader<'a, '_> {
                     "A lifecycle condition compares a field with a fixed value; comparing two fields of a record can't be served by an index.".to_string()
                 },
             )
-        } else {
+        } else if set {
             (
                 format!("`{}` isn't a fixed value", shown(expr.syntax())),
                 "worked out, or from outside the record",
                 format!(
-                    "A lifecycle's values are fixed: {fixed}. It takes no parameters and knows nothing of who is asking, so the same change happens wherever it runs."
+                    "A transition sets fixed values: {fixed}. It takes no parameters and knows nothing of who is asking, so the same change happens wherever it runs."
                 ),
+            )
+        } else {
+            (
+                format!(
+                    "`{}` isn't something a lifecycle condition can compare with",
+                    shown(expr.syntax())
+                ),
+                "from outside the record",
+                "A lifecycle condition compares the record's own fields with fixed values: a literal, an enum value or `clock.now`. It never mentions other records or who is asking, which is policy (area 9), so it can join every statement's `WHERE` and an index.".to_string(),
             )
         };
         let rule = if set {
@@ -686,11 +695,16 @@ impl<'a> Reader<'a, '_> {
         } else {
             &rule::DATA_LIFECYCLE_CONDITION
         };
+        let next = if set {
+            format!("Use {fixed}")
+        } else {
+            "Compare with a literal, an enum value or `clock.now`".to_string()
+        };
         self.out.push(
             Diagnostic::new(rule, message)
                 .at(self.span(&expr), label)
                 .reason(reason)
-                .next(format!("Use {fixed}")),
+                .next(next),
         );
         None
     }
