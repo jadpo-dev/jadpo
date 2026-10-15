@@ -78,5 +78,12 @@ first project to stored records, each commented and with its own tests.
 
 The project's public home is [jadpo.dev](https://jadpo.dev/); source and
 pull requests are at
-[richardwillars/jadpo](https://github.com/richardwillars/jadpo). Licensing
-has not been chosen yet.
+[richardwillars/jadpo](https://github.com/richardwillars/jadpo).
+
+## Licence
+
+Jadpo's code is licensed under the [Apache License 2.0](LICENSE): use it,
+change it and build commercial software with it freely. The documentation is
+[CC BY 4.0](docs/LICENSE.md). Modified versions must use a different name;
+[TRADEMARKS.md](TRADEMARKS.md) says how the name may be used. The design
+skills in `.agents/skills/` are third-party, under their own licences.
