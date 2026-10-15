@@ -650,7 +650,13 @@ rechecked all 2,003 files' bodies in 18 ms and now rechecks that file in
 5 ms; an uncalled function's signature rechecked 2,003 bodies in 17 ms and
 now rechecks its own file in 6 ms; a new file nothing reads rechecked
 2,004 files' bodies, resolution and naming in 833 ms and now checks only
-itself in 12 ms. The test asserts the counts, not the times.
+itself in 12 ms. The test asserts the counts, not the times. Since chunk
+3.5 each action file in it imports `Count` and `import_problems` is among
+the checks counted: a body edit, a rule on a type one file uses and a new
+file each recheck one file's imports, and a rule on the type all 2,001
+files import rechecks the imports of its own file only, since its entry
+in the name table doesn't change (release build: cold 128 ms, a body edit
+8 ms, that rule 39 ms with its 2,001 bodies).
 
 Inputs carry durability: standard library and packages high, root files
 medium, domain files low, so a keystroke never revalidates packages.
