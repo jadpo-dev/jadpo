@@ -41,7 +41,7 @@ impl Purged {
 
 /// Runs `plan` at `now` (the run's time, milliseconds since the epoch):
 /// batch after batch until one deletes fewer than a whole batch, or
-/// `budget` batches have run ([`PURGE_BATCHES`] for the schedule). A batch
+/// `batches` batches have run ([`PURGE_BATCHES`] for the schedule). A batch
 /// that fails is rolled back and ends the run; the batches before it stay
 /// deleted, and the next run carries on where it stopped, as it does after
 /// a run that used its budget.
@@ -49,7 +49,7 @@ pub async fn purge(
     host: &dyn Host,
     plan: &PurgePlan,
     now: i64,
-    budget: u32,
+    batches: u32,
 ) -> Result<Purged, StoreError> {
     let Some(database) = host.database(&plan.store) else {
         return Err(StoreError::Fault(format!(
@@ -71,7 +71,7 @@ pub async fn purge(
         batches: Vec::new(),
         finished: false,
     };
-    for _ in 0..budget {
+    for _ in 0..batches {
         let mut transaction = database.begin().await?;
         let rows = match transaction.query(&plan.sql, &params).await {
             Ok(rows) => rows,

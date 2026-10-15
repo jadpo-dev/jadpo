@@ -1177,8 +1177,8 @@ the update changes no row, the runtime asks with its `SELECT 1`
 whether the record is there and visible, and a row is the refusal its
 `conflict:` arm maps (listed among the plan's refusals as `when:
 Entity.transition`), otherwise the not-found failure or the fault as for
-any write. `jadpo_runtime::purge(host, plan, now, budget)` is purge's entry point,
-outside every action: batch after batch, each its own transaction, one
+any write. `jadpo_runtime::purge(host, plan, now, batches)` is purge's
+entry point, outside every action: batch after batch, each its own transaction, one
 `DELETE ... WHERE "id" IN (SELECT ... LIMIT 500 FOR UPDATE SKIP LOCKED)
 RETURNING "id"` of hidden records whose `since:` field is older than `now`
 less `after:`, oldest first, leaving out with `NOT EXISTS` any a
@@ -1187,7 +1187,7 @@ comes back short (since chunk 3.10 through every chain of cascades, and,
 when one leads back to an entity already on it, such as a folder inside a
 folder, through a recursive query that follows the cascades as deep as
 the data goes); it returns each batch's count (`Purged`). Since chunk 3.12
-a run stops after `budget` batches (`PURGE_BATCHES`, 20, for the
+a run stops after `batches` batches (`PURGE_BATCHES`, 20, for the
 schedule) and says whether it `finished`, so a Workers cron run can't
 overrun however much is due, and the next run carries on; the budget is a
 batch count, since no host reads a clock yet (chunk 5.2). Area 12's

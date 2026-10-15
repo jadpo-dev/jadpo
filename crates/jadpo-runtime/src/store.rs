@@ -75,9 +75,11 @@ pub async fn store(
     };
     match action(ctx, &mut alone).await {
         Outcome::Value(value) => Stored::Value(value),
+        // The refusal it kept, unless the boundary ended otherwise, such as
+        // `unavailable` after concurrent changes.
         Outcome::Failed(failure) => match alone.conflict.take() {
-            Some((arm, cause)) => Stored::Conflict { arm, cause },
-            None => Stored::Failed(failure),
+            Some((arm, cause)) if cause == failure => Stored::Conflict { arm, cause },
+            _ => Stored::Failed(failure),
         },
         Outcome::Fault(fault) => Stored::Fault(fault),
         Outcome::Assertion(_) => Stored::Fault(ctx.fault(
