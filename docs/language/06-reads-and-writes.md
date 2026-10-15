@@ -1107,7 +1107,7 @@ action view_video(video_id: Video.id) fails VideoNotFound -> Video {
 Built in chunk 3.3: the statement is `UPDATE "video" SET "view_count" =
 ("view_count" + $1), ...`, and no row is `VideoNotFound`. The database works
 a stored field out with `+` and `-`, which give the same result in SQL as
-in Jadpo, under constructions the declared ranges prove (`ViewCount(...)`
+in Jadpo (`+` joining text is written `||`, since chunk 3.10), under constructions the declared ranges prove (`ViewCount(...)`
 here, since a count of at least 0 plus 1 is at least 0); anything else needs
 the record loaded first. A decimal added to a stored field may not have more
 decimal places than the field's `scale`, since PostgreSQL would round the

@@ -1015,7 +1015,8 @@ value (a record built without an optional `Input` field remembers it,
 `Record::omitted`; since chunk 3.10 `none` given to one whose type isn't
 nullable counts as left out, `FieldPlan::none_left_out`, so a patch never
 sends `NULL` to a required column). An update by `id` works out a stored field
-(`Post.view_count + 1`) in the statement, with `+` and `-` only. A delete
+(`Post.view_count + 1`) in the statement, with `+` and `-` only (`+` on
+text is `||`, since chunk 3.10). A delete
 removes the row; by `id`, no row is `Missing`, and of a loaded record it is
 a fault, since a record changed by another transaction is a concurrent
 change and one this transaction can't see was deleted by it, or loaded

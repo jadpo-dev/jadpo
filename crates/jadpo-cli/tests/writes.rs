@@ -4,8 +4,9 @@
 //! and a restricting reference refused as the failures their `conflict:`
 //! arms name, a reference to a record that isn't there as its not-found
 //! failure, an update and a delete by `id`, a patch keeping what it leaves
-//! out (and a required field it sends as `none`), a counter, and an action that handles a refusal from an action it
-//! calls and carries on, keeping none of what the failed action wrote
+//! out (and a required field it sends as `none`), a counter and text
+//! joined onto a stored field, and an action that handles a refusal from
+//! an action it calls and carries on, keeping none of what the failed action wrote
 //! (a savepoint per called action whose failure is handled). Then,
 //! through the interpreter with a second connection changing a record
 //! mid-action, the whole action rerun after a concurrent change, its
@@ -128,6 +129,18 @@ const FILES: &[(&str, &str)] = &[
         "use shop/entities { Shelf }\nuse shop/failures { ShelfTaken, TooMany }\nuse shop/actions { add_shelf, add_then_refuse }\n\n/// Adds a shelf, then handles a called action that writes and fails, and one the store refuses.\naction keep_then_try(kept: Shelf.name, tried: Shelf.name) fails ShelfTaken -> Shelf {\n    var first: Shelf = attempt add_shelf(kept)\n    var refused: Bool = match add_then_refuse(tried) {\n        success -> false\n        TooMany -> true\n        ShelfTaken -> false\n    }\n    var taken: Bool = match add_shelf(kept) {\n        success -> false\n        ShelfTaken -> true\n    }\n    if (refused and taken) {\n        return first\n    }\n    reject ShelfTaken\n}\n",
     ),
     (
+        "domains/shop/entities/log.jadpo",
+        "/// A running log.\nentity Log {\n    id: Uuid\n    text: Text\n}\n",
+    ),
+    (
+        "domains/shop/actions/start_log.jadpo",
+        "use shop/entities { Log }\n\n/// Starts a log.\naction start_log(text: Log.text) -> Log {\n    return Log.create {\n        set: {\n            text: text\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/shop/actions/append.jadpo",
+        "use shop/entities { Log, LogNotFound }\n\n/// Adds to a log in one step.\naction append(log_id: Log.id, more: Log.text) fails LogNotFound -> Log {\n    return attempt Log.update(log_id) {\n        set: {\n            text: Log.text + more\n        }\n    }\n}\n",
+    ),
+    (
         "domains/shop/actions/tally.jadpo",
         "use shop/entities { Shelf, ShelfNotFound }\nuse shop/types { Count }\n\n/// Counts a visit to a shelf it reads first.\naction tally(shelf_id: Shelf.id) fails ShelfNotFound -> Shelf {\n    var shelf: Shelf = attempt Shelf.get(shelf_id)\n    return attempt Shelf.update(shelf.id) {\n        set: {\n            visits: Count(Shelf.visits + 1)\n        }\n    }\n}\n",
     ),
@@ -145,10 +158,10 @@ const FILES: &[(&str, &str)] = &[
     ),
 ];
 
-const TESTS: &str = "use shop/entities { Item, Shelf, ShelfNotFound }
+const TESTS: &str = "use shop/entities { Item, Log, Shelf, ShelfNotFound }
 use shop/types { ItemChanges }
 use shop/failures { ShelfInUse, ShelfTaken }
-use shop/actions { add_item, edit_item, keep_then_try, remove_shelf, rename_shelf, shelf_named, visit }
+use shop/actions { add_item, append, edit_item, keep_then_try, remove_shelf, rename_shelf, shelf_named, start_log, visit }
 
 test \"a unique rule is a conflict\" {
     var a: Shelf = attempt add_shelf(\"A\")
@@ -167,6 +180,9 @@ test \"a counter adds to what is stored\" {
     var twice: Shelf = attempt visit(a.id)
     assert twice.visits == 2
     assert visit(\"0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e\") fails ShelfNotFound
+    var log: Log = start_log(\"a\")
+    var joined: Log = attempt append(log.id, \"b\")
+    assert joined.text == \"ab\"
 }
 
 test \"a reference to a record that isn't there is not found\" {
