@@ -2,16 +2,18 @@
 //! owns rather than either executor: every action is all-or-nothing (areas
 //! 3 and 6). The outermost action opens the boundary; the body, which the
 //! executor supplies, runs; the transaction is begun at the body's first
-//! store operation ([`Ctx::transaction`]); when another transaction
-//! changed what it read, the whole body runs again within the budget;
-//! then it commits, or rolls back when the body failed, and only after a
-//! commit are the events it emitted delivered. An action called inside
-//! another joins its transaction (area 1, "Cross-domain writes"), and so
-//! does a fixture's, since a fixture is a test-only action (area 13); a
-//! test, or a fixture's caller, opens a boundary per action it calls, so
-//! each commits on its own.
+//! store operation ([`Ctx::transaction`]), at the isolation level the body
+//! names (area 6, "Counters and other one-step updates"); when another
+//! transaction changed what it read, the whole body runs again within the
+//! budget; then it commits, or rolls back when the body failed, and only
+//! after a commit are the events it emitted delivered. An action called
+//! inside another joins its transaction (area 1, "Cross-domain writes"),
+//! at the caller's level, which already counts what every action it calls
+//! does; so does a fixture's, since a fixture is a test-only action (area
+//! 13); a test, or a fixture's caller, opens a boundary per action it
+//! calls, so each commits on its own.
 
-use crate::{Ctx, Failure, LocalFuture, Outcome, StoreError};
+use crate::{Ctx, Failure, Isolation, LocalFuture, Outcome, StoreError};
 
 /// How many times a body runs before a concurrent change gives up with
 /// `unavailable` (area 6: "after three attempts within a second, the
@@ -23,6 +25,12 @@ pub const RERUN_ATTEMPTS: u32 = 3;
 /// than once, each time from the start.
 pub trait ActionBody<'p> {
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome>;
+
+    /// The level a boundary of its own begins its transaction at: read
+    /// committed when the action loads no record, itself or through any
+    /// action it calls, repeatable read otherwise, as its plan says (area
+    /// 6). Joining a running action's boundary, it takes that action's.
+    fn isolation(&self) -> Isolation;
 }
 
 /// What the runtime raises when an action can't finish because its store
@@ -57,9 +65,13 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
         return outcome;
     }
     ctx.actions += 1;
+    let isolation = body.isolation();
     let mut attempt = 1;
     loop {
-        ctx.boundary = Some(Default::default());
+        ctx.boundary = Some(crate::ctx::Boundary {
+            isolation,
+            ..Default::default()
+        });
         let outcome = body.run(ctx).await;
         let boundary = ctx.boundary.take().unwrap_or_default();
         let succeeded = matches!(outcome, Outcome::Value(_));
@@ -172,10 +184,17 @@ mod tests {
     struct Store(Rc<Log>);
 
     impl Database for Store {
-        fn begin(&self) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+        fn begin_at(
+            &self,
+            isolation: Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
             let log = Rc::clone(&self.0);
             Box::pin(async move {
-                log.lines.borrow_mut().push("begin".into());
+                let line = match isolation {
+                    Isolation::RepeatableRead => "begin".to_string(),
+                    other => format!("begin {}", other.word()),
+                };
+                log.lines.borrow_mut().push(line);
                 Ok(Box::new(Tx(log)) as Box<dyn Transaction>)
             })
         }
@@ -218,18 +237,40 @@ mod tests {
     }
 
     /// A body that writes (or not), emits, then ends as `end` says, and
-    /// runs `inner` as an action called inside it.
+    /// runs `inner` as an action called inside it. Its plan says it loads a
+    /// record unless `isolation` says otherwise.
     struct Write<'i> {
         writes: bool,
         end: fn() -> Outcome,
         inner: Option<&'i mut Write<'i>>,
         runs: u32,
+        isolation: Isolation,
+        /// The level of the transaction it found itself in.
+        found: Option<Isolation>,
+    }
+
+    impl<'i> Write<'i> {
+        fn new(writes: bool, end: fn() -> Outcome) -> Write<'i> {
+            Write {
+                writes,
+                end,
+                inner: None,
+                runs: 0,
+                isolation: Isolation::RepeatableRead,
+                found: None,
+            }
+        }
     }
 
     impl<'p> ActionBody<'p> for Write<'_> {
+        fn isolation(&self) -> Isolation {
+            self.isolation
+        }
+
         fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
             Box::pin(async move {
                 self.runs += 1;
+                self.found = ctx.isolation();
                 if self.writes && ctx.transaction("main").await.is_err() {
                     return Outcome::Value(Value::Unit);
                 }
@@ -268,21 +309,11 @@ mod tests {
     #[test]
     fn the_transaction_opens_at_the_first_store_operation_and_events_follow_the_commit() {
         let host = Recorded::new(0);
-        let mut body = Write {
-            writes: true,
-            end: ok,
-            inner: None,
-            runs: 0,
-        };
+        let mut body = Write::new(true, ok);
         assert_eq!(run(&host, &mut body), ok());
         assert_eq!(host.lines(), ["begin", "commit", "deliver type Ran1"]);
         let host = Recorded::new(0);
-        let mut reading_nothing = Write {
-            writes: false,
-            end: ok,
-            inner: None,
-            runs: 0,
-        };
+        let mut reading_nothing = Write::new(false, ok);
         run(&host, &mut reading_nothing);
         assert_eq!(
             host.lines(),
@@ -292,14 +323,33 @@ mod tests {
     }
 
     #[test]
+    fn the_transaction_begins_at_the_level_the_body_names_and_a_called_action_joins_at_it() {
+        let host = Recorded::new(0);
+        let mut counter = Write::new(true, ok);
+        counter.isolation = Isolation::ReadCommitted;
+        assert_eq!(run(&host, &mut counter), ok());
+        assert_eq!(counter.found, Some(Isolation::ReadCommitted));
+        assert_eq!(
+            host.lines(),
+            ["begin read_committed", "commit", "deliver type Ran1"],
+            "an action that loads no record"
+        );
+        // An action called inside another takes the caller's level, which
+        // already counts what the callee does.
+        let host = Recorded::new(0);
+        let mut inner = Write::new(true, ok);
+        inner.isolation = Isolation::ReadCommitted;
+        let mut outer = Write::new(true, ok);
+        outer.inner = Some(&mut inner);
+        assert_eq!(run(&host, &mut outer), ok());
+        assert_eq!(host.lines()[0], "begin", "at repeatable read");
+        assert_eq!(outer.found, Some(Isolation::RepeatableRead));
+    }
+
+    #[test]
     fn a_body_that_fails_rolls_back_and_delivers_nothing() {
         let host = Recorded::new(0);
-        let mut body = Write {
-            writes: true,
-            end: fault,
-            inner: None,
-            runs: 0,
-        };
+        let mut body = Write::new(true, fault);
         assert_eq!(run(&host, &mut body), fault());
         assert_eq!(host.lines(), ["begin", "rollback"]);
     }
@@ -307,18 +357,9 @@ mod tests {
     #[test]
     fn an_action_called_inside_another_joins_its_transaction() {
         let host = Recorded::new(0);
-        let mut inner = Write {
-            writes: true,
-            end: ok,
-            inner: None,
-            runs: 0,
-        };
-        let mut outer = Write {
-            writes: true,
-            end: ok,
-            inner: Some(&mut inner),
-            runs: 0,
-        };
+        let mut inner = Write::new(true, ok);
+        let mut outer = Write::new(true, ok);
+        outer.inner = Some(&mut inner);
         assert_eq!(run(&host, &mut outer), ok());
         assert_eq!(
             host.lines(),
@@ -330,12 +371,7 @@ mod tests {
     #[test]
     fn a_concurrent_change_reruns_the_whole_body_within_the_budget() {
         let host = Recorded::new(1);
-        let mut body = Write {
-            writes: true,
-            end: ok,
-            inner: None,
-            runs: 0,
-        };
+        let mut body = Write::new(true, ok);
         assert_eq!(run(&host, &mut body), ok());
         assert_eq!(body.runs, 2);
         assert_eq!(
@@ -344,12 +380,7 @@ mod tests {
             "the first attempt's events are thrown away with it"
         );
         let host = Recorded::new(RERUN_ATTEMPTS);
-        let mut body = Write {
-            writes: true,
-            end: ok,
-            inner: None,
-            runs: 0,
-        };
+        let mut body = Write::new(true, ok);
         let Outcome::Failed(failure) = run(&host, &mut body) else {
             panic!("unavailable");
         };

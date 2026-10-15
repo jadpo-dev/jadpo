@@ -59,7 +59,7 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
     let word = node.kind.word();
     let name = |key: &Key| name_now(graph, key);
     match &node.detail {
-        Detail::Callable(signature) => {
+        Detail::Callable { signature, .. } => {
             let keyword = match node.kind {
                 Kind::Function => "function",
                 Kind::Query => "query",

@@ -36,6 +36,8 @@ const DERIVED: &[&str] = &[
     "build/catalogue/failures.json",
 ];
 
+mod support;
+
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("manifest-{name}"));
     let _ = fs::remove_dir_all(&dir);
@@ -59,7 +61,9 @@ fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
 
 fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
-    run(&args, &Environment::empty().with_cwd(cwd))
+    let mut output = run(&args, &Environment::empty().with_cwd(cwd));
+    output.stdout = support::without_run_time(&output.stdout);
+    output
 }
 
 fn read(root: &Path, path: &str) -> String {

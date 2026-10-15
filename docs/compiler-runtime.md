@@ -757,6 +757,25 @@ chunk 3.3 the context counts the actions joined inside the open boundary
 (`Ctx::nested`), so a write that can be refused, run by a called action,
 runs inside a savepoint its caller can carry on from.
 
+Since chunk 3.7 the boundary begins its transaction at the isolation level
+the body names (`ActionBody::isolation`), which both executors take from
+the plan: an action or fixture that loads no record, itself or through any
+action it calls, runs at read committed, and every other at repeatable
+read (area 6, "Counters and other one-step updates"). `jadpo-check` decides
+it: each file's actions and fixtures are read once from their typed
+bodies, without positions (`file_loading`: whether one reads a record with
+`get` or a query, is handed one in a parameter, writes one back rather than
+by `id`, or runs a transition whose `when:` can refuse a visible record,
+and which actions and fixtures it calls), and the project's decision closes
+that over the calls (`isolation`), as `written_stores` does for stores. The
+graph carries it on each action and fixture node, the manifest writes it as
+`isolation`, and `CallablePlan::isolation` hands it to the executors, so
+the interpreter and compiled code begin the same transaction. An action
+called inside another joins its boundary at the caller's level, which
+already counts the callee; a read or write run outside any action (a test's
+own read, later a route's display read) runs at repeatable read, since a
+read loads what it reads and its includes need one snapshot.
+
 **Interpreter.** Functions are pure (area 3) and run synchronously. Only
 actions, queries and tests are `async`, and the checker knows which
 expressions can suspend, so only those frames are boxed futures
@@ -938,7 +957,9 @@ server through a `Transport` the host supplies (open a stream to an
 `Endpoint`, TCP or a Unix socket; spawn a connection's task on the same
 thread), so one driver serves both targets. Its `postgres` feature gives
 `Postgres`, a `Database` over tokio-postgres: a few idle connections kept
-between transactions, each transaction at repeatable read, every statement
+between transactions, each transaction at repeatable read (since chunk
+3.7, at the level it is asked for, set in the transaction's own `BEGIN`
+and never for the session), every statement
 unnamed (`query_typed`, each parameter's type taken from its value), and
 its own binary codecs for the runtime's types. One function classifies
 errors by SQLSTATE: unique, foreign-key and exclusion violations are a
@@ -986,12 +1007,26 @@ deleted since is a fault. `Transaction` gained `savepoint`,
 `release_savepoint` and `rollback_to_savepoint`; the PostgreSQL driver
 forgets a refused statement's error once the transaction returns to its
 savepoint, so the transaction can still commit. Every transaction is at
-repeatable read, so an update or delete of a row another transaction
+repeatable read (since chunk 3.7, every action that loads a record), so an
+update or delete of a row another transaction
 changed since the first statement is PostgreSQL's serialisation failure,
 classified as a concurrent change: the boundary rolls back and runs the
 whole action again. A live test forces one from a second connection and
 proves the rerun reads afresh, keeps only the second attempt's rows and
 loses no counter increment (`crates/jadpo-cli/tests/writes.rs`).
+
+Built in chunk 3.7: `Database::begin_at(isolation)` begins a transaction
+at the action's level (`begin` stays repeatable read, for migrations,
+purge and tools), and the PostgreSQL driver sends `BEGIN ISOLATION LEVEL
+READ COMMITTED` or `REPEATABLE READ`, so no session state outlives the
+transaction (Hyperdrive pools by transaction). At read committed a
+counter that is its action's first statement waits for another
+transaction's lock on its row, then adds to the committed count, so two
+at once both commit at their first attempt; a deadlock is still a
+concurrent change. A live test races two requests on one row, each on its
+own connection, holding the first's lock until the second is seen waiting
+for it: the counter commits twice with one attempt each, and a counter
+after a read reruns the second (`crates/jadpo-cli/tests/writes.rs`).
 The driver also sends `time` values and one-dimensional arrays.
 `Host::database(store)` gives each store by its connection's name, and an
 action's transaction is begun in the store its first store operation
@@ -1039,7 +1074,7 @@ doubles the async signatures and lets bugs hide on one target.
 | HTTP | Router from the route table, input decoding, body limit, deadline, health, failure envelope, `request_id` | fetch event |
 | Identity | Sessions, CSRF, API tokens, service keys, OIDC sign-in, revocation delay | same |
 | Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
-| Transactions | Repeatable read, revision checks, rerun within the budget | same |
+| Transactions | Read committed or repeatable read by what the action does, revision checks, rerun within the budget | same |
 | Idempotency | Keys and stored responses in the action's transaction | same |
 | Outbox | Delivery, retries, circuit breaker, dead letters; native delivery workers | `waitUntil` after commit, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records, tick adapters; native timer | Cloudflare cron |
@@ -1245,7 +1280,7 @@ a PostgreSQL service, the pinned toolchain and a cargo cache. Benchmarks
 | The runtime grows without seams | Components behind traits; capability features per deployable |
 | salsa's breaking releases and advisories | Exact pin, two crates, upgraded in its own change |
 | workers-rs is 0.x | Only `jadpo-host-workers` touches it; our own JavaScript glue where it falls short |
-| PostgreSQL from Workers, Wasm slower than Bun | Hyperdrive with caching off, unnamed statements and repeatable read, and typed codecs, measured in the performance spike (chunk 8.3), before the Phase 9 benchmarks |
+| PostgreSQL from Workers, Wasm slower than Bun | Hyperdrive with caching off, unnamed statements and each transaction's isolation level set in its own `BEGIN`, and typed codecs, measured in the performance spike (chunk 8.3), before the Phase 9 benchmarks |
 | Graph shape fixed too early | Kinds for later areas reserved now; `format` changes only on removals or changed meaning |
 
 **1.1 Workspace and CLI shell.** `rust-toolchain.toml`, the root

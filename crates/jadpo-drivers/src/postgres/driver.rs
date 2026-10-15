@@ -6,7 +6,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use bytes::BytesMut;
-use jadpo_runtime::{Database, LocalFuture, Row, SqlValue, StoreError, Transaction};
+use jadpo_runtime::{Database, Isolation, LocalFuture, Row, SqlValue, StoreError, Transaction};
 use tokio_postgres::config::Host;
 use tokio_postgres::types::{FromSql, IsNull, ToSql, Type, to_sql_checked};
 use tokio_postgres::{Client, Config, NoTls};
@@ -21,11 +21,19 @@ const MAX_IDLE: usize = 8;
 /// PostgreSQL's default port.
 const DEFAULT_PORT: u16 = 5432;
 
-const BEGIN: &str = "BEGIN ISOLATION LEVEL REPEATABLE READ";
+/// Begins a transaction at `isolation`: the level is the transaction's
+/// own, never the session's, since Hyperdrive pools by transaction (§2.6).
+fn begin_sql(isolation: Isolation) -> &'static str {
+    match isolation {
+        Isolation::ReadCommitted => "BEGIN ISOLATION LEVEL READ COMMITTED",
+        Isolation::RepeatableRead => "BEGIN ISOLATION LEVEL REPEATABLE READ",
+    }
+}
 
 /// A PostgreSQL store, reached through the host's [`Transport`]. It keeps
-/// a few connections open between transactions and begins each one at
-/// repeatable read (area 6).
+/// a few connections open between transactions and begins each one at the
+/// level it is asked for: read committed for an action that loads no
+/// record, repeatable read for any other (area 6).
 ///
 /// Connections are unencrypted: TLS is not built yet, so a URL that
 /// requires it (`sslmode=require`) is refused when the first transaction
@@ -131,7 +139,11 @@ impl Postgres {
 }
 
 impl Database for Postgres {
-    fn begin(&self) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+    fn begin_at(
+        &self,
+        isolation: Isolation,
+    ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+        let begin = begin_sql(isolation);
         Box::pin(async move {
             // An idle connection may have been closed by the server since;
             // one that can't begin is dropped and the next one tried.
@@ -142,7 +154,7 @@ impl Database for Postgres {
                 if client.is_closed() {
                     continue;
                 }
-                match client.batch_execute(BEGIN).await {
+                match client.batch_execute(begin).await {
                     Ok(()) => return Ok(self.open(client)),
                     Err(error) => match store_error(&error) {
                         StoreError::Unavailable => continue,
@@ -152,7 +164,7 @@ impl Database for Postgres {
             }
             let client = self.connect().await?;
             client
-                .batch_execute(BEGIN)
+                .batch_execute(begin)
                 .await
                 .map_err(|error| store_error(&error))?;
             Ok(self.open(client))

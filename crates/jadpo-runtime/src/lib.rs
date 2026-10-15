@@ -10,7 +10,8 @@
 //!   through it (`assertion_begin`, `record`, `assertion_end`), so both
 //!   executors feed one recorder.
 //! - [`action`]: the action boundary, which the runtime owns: the
-//!   transaction opened at the first store operation, the body (an
+//!   transaction opened at the first store operation, at the
+//!   [`Isolation`] the body's plan names (chunk 3.7), the body (an
 //!   [`ActionBody`] either executor supplies) rerun on a concurrent change
 //!   within [`RERUN_ATTEMPTS`], the commit, then the events delivered.
 //! - [`Host`] and the capability traits ([`Database`], [`Transaction`]),
@@ -64,6 +65,7 @@ pub use host::{
     Database, Event, Host, LocalFuture, MemoryHost, NoStore, RELEASE_SAVEPOINT,
     ROLLBACK_TO_SAVEPOINT, Row, SAVEPOINT, SqlType, SqlValue, StoreError, Transaction,
 };
+pub use jadpo_std::Isolation;
 pub use limits::MAX_DEPTH;
 pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, standing};
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};

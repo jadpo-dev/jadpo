@@ -107,8 +107,9 @@ that path numbers decode against, and each deployable's build id.
 > `build/manifest.json`, errors or not, at `format` 1: `compiler`, `errors`
 > and `nodes`. A node has `id`, `kind`, `name`, `file`, `lines` and `digest`,
 > and where they apply `domain`, `parent`, `public`, `doc`, a type's `base`,
-> `rules` and `failure`, a field's `type`, a callable's `signature`, and its
-> edges as sorted lists by kind: `calls`, `uses`, and `raises` for the
+> `rules` and `failure`, a field's `type`, a callable's `signature`, an
+> action's or fixture's `isolation` (`read_committed` or `repeatable_read`,
+> area 6, since chunk 3.7), and its edges as sorted lists by kind: `calls`, `uses`, and `raises` for the
 > failures that can leave a callable (the `fails` above). Nodes are built for
 > areas 1 to 4; the build stamp (`source`, `deployables`, build ids),
 > routes, schedules, hosts, policy, personal fields and thresholds join as

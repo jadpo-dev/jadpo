@@ -462,8 +462,9 @@ enum Held {
 struct Unready(String);
 
 impl jadpo_runtime::Database for Unready {
-    fn begin(
+    fn begin_at(
         &self,
+        _isolation: jadpo_runtime::Isolation,
     ) -> jadpo_runtime::LocalFuture<
         '_,
         Result<Box<dyn jadpo_runtime::Transaction>, jadpo_runtime::StoreError>,

@@ -1,0 +1,15 @@
+10-library-loans
+  action add_copy                    read_committed
+  action count_in_house_use          read_committed
+  action declare_lost                repeatable_read: runs `Loan.declare_lost`, whose `when:` can refuse a record
+  action enrol                       read_committed
+  action issue_card                  repeatable_read: reads `Member` with `get`
+  action leave                       read_committed
+  action lend                        repeatable_read: is handed a record in `member`
+  action loan_period                 read_committed
+  action renew                       repeatable_read: is handed a record in `loan`
+  action return_book                 repeatable_read: is handed a record in `loan`
+  action revoke_card                 repeatable_read: is handed a record in `card`
+  action vouch                       repeatable_read: is handed a record in `voucher`
+  action withdraw_copy               read_committed
+  fixture ada_borrows_two            repeatable_read: calls `issue_card`, which loads a record

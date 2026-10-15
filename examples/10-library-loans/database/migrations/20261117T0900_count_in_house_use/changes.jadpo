@@ -1,0 +1,7 @@
+/// Starts counting the copies read in the library: none has been counted
+/// yet.
+migration {
+    Book.in_house_uses: {
+        backfill: 0
+    }
+}

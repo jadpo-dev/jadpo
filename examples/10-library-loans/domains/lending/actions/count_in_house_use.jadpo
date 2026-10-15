@@ -1,0 +1,19 @@
+// A counter as the whole action. It reads no record, takes none as a
+// parameter and calls no action that does, so it loads no record, and the
+// compiler runs it at read committed: of two staff counting the same copy
+// at once, the second waits for the first's count, adds to it and
+// commits, and neither runs again. `lend` reads the copy before counting,
+// so it runs at repeatable read instead. Nothing is written for either.
+
+use lending/entities { Book }
+use lending/types { UseCount }
+use lending/failures { BookNotFound }
+
+/// Counts a copy someone read in the library without borrowing it.
+action count_in_house_use(book_id: Book.id) fails BookNotFound -> Book {
+    return attempt Book.update(book_id) {
+        set: {
+            in_house_uses: UseCount(Book.in_house_uses + 1)
+        }
+    }
+}

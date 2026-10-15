@@ -200,8 +200,10 @@ impl Part<'_> {
         let key = self.lookup.registry().key(kind, &item.name, None);
         let mut node = self.node(key.clone(), kind, item.name.clone(), syntax.clone());
         node.public = public;
-        node.detail =
-            Detail::Callable(self.signature(self.lookup.signature(&item.name), &item.signature));
+        node.detail = Detail::Callable {
+            signature: self.signature(self.lookup.signature(&item.name), &item.signature),
+            isolation: None,
+        };
         self.out.nodes.push(node);
         if kind == Kind::Query {
             // A query is a declarative node, not a body (§2.3): what its
@@ -262,10 +264,13 @@ impl Part<'_> {
             );
             node.parent = Some(key.clone());
             node.public = item.public;
-            node.detail = Detail::Callable(self.signature(
-                self.lookup.library_signature(&item.name, &member.name),
-                &member.signature,
-            ));
+            node.detail = Detail::Callable {
+                signature: self.signature(
+                    self.lookup.library_signature(&item.name, &member.name),
+                    &member.signature,
+                ),
+                isolation: None,
+            };
             self.out.nodes.push(node);
             self.body(&child, item.index, Some(member.index));
         }

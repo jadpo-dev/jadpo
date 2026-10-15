@@ -11,6 +11,7 @@
       "domain": "notes",
       "file": "domains/notes/actions/save_note.jadpo",
       "id": "action save_note",
+      "isolation": "read_committed",
       "kind": "action",
       "lines": [
         5,
@@ -43,6 +44,7 @@
       "domain": "notes",
       "file": "domains/notes/actions/summarise_note.jadpo",
       "id": "action summarise_note",
+      "isolation": "read_committed",
       "kind": "action",
       "lines": [
         3,

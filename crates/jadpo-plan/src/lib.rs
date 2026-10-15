@@ -6,7 +6,9 @@
 //! - Callables are numbered ([`Plan::callables`]), each with its typed
 //!   body, the label a frame names it by, its file and line, and every
 //!   site decoded ([`SitePlan`]): the frame table compiled code holds as a
-//!   static array and the interpreter turns into the runtime's `Places`.
+//!   static array and the interpreter turns into the runtime's `Places`;
+//!   an action or fixture also carries the [`Isolation`] its transaction
+//!   begins at, decided from the graph (area 6, chunk 3.7).
 //! - [`Types`]: type plans (declared field order, validator chains, field
 //!   defaults, set and list kinds, variants' places in their enum) and
 //!   failure shapes (client and internal sections, codes, kinds).
@@ -40,6 +42,7 @@ use jadpo_check::types::{callables_of, typed_body};
 use jadpo_db::{Db, Project};
 use jadpo_graph::body::Body;
 use jadpo_graph::{Key, Kind};
+pub use jadpo_std::Isolation;
 
 pub use constant::Constant;
 pub use jadpo_std::write::PurgePlan;
@@ -67,6 +70,12 @@ pub struct CallablePlan {
     pub body: Arc<Body>,
     /// Each of the body's sites, decoded, by site number.
     pub sites: Vec<SitePlan>,
+    /// The level a transaction of its own begins at, from the graph: for
+    /// an action or fixture, read committed when it loads no record,
+    /// itself or through any action it calls, otherwise repeatable read
+    /// (area 6, "Counters and other one-step updates"). Every other
+    /// callable says repeatable read, and never begins one.
+    pub isolation: Isolation,
 }
 
 impl CallablePlan {
@@ -161,6 +170,7 @@ impl Plan {
             let line = node
                 .and_then(|node| node.place.as_ref())
                 .map_or(1, |place| place.lines.0);
+            let isolation = node.and_then(|node| node.isolation()).unwrap_or_default();
             let text = files.get(&file).map(String::as_str).unwrap_or_default();
             let number = |key: &Key| by_key.get(key).copied();
             let query = |key: &Key| query_ids.get(key).copied();
@@ -183,6 +193,7 @@ impl Plan {
                 line,
                 body,
                 sites,
+                isolation,
             });
         }
         Plan {

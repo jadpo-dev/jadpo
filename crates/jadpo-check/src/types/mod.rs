@@ -12,6 +12,7 @@
 mod body;
 pub(crate) mod decl;
 pub(crate) mod literal;
+mod loading;
 mod recursion;
 mod rules;
 mod shape;
@@ -26,6 +27,7 @@ pub use body::{
     callables_of, failure_set, failure_sets, typed_body,
 };
 pub use decl::type_problems;
+pub use loading::{Decided, Loading, Loads, file_loading, has_isolation, isolation};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules};
 pub use shape::{COPY_LINES, FieldsBase, Shape, looks_like_type, type_shapes};

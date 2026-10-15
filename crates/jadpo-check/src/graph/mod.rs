@@ -1,7 +1,8 @@
 //! The graph (docs/compiler-runtime.md §2.3), built from the checker's
 //! queries: every domain, file and declaration of areas 1 to 4 with its
 //! stable key, place, digest and `///` description; fields and variants;
-//! signatures; and the `calls`, `uses` and `raises` edges between them.
+//! signatures; the `calls`, `uses` and `raises` edges between them; and
+//! each action's and fixture's isolation level (area 6, chunk 3.7).
 //!
 //! Each file's part is a query of its own ([`file_part`]), so an edit
 //! rebuilds that file's nodes and the project's graph is only assembled
@@ -200,10 +201,19 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
     // of two declarations with one name is always the same one.
     let mut files: Vec<_> = project.files(db).to_vec();
     files.sort_by(|a, b| a.path(db).cmp(b.path(db)));
+    // Each action's and fixture's isolation follows from what it and the
+    // actions it calls do, so it is set once every file is read (area 6).
+    let decided = crate::types::isolation(db, project);
     for file in files {
         let part = file_part(db, project, file);
         for node in &part.nodes {
-            builder.node(node.clone());
+            let mut node = node.clone();
+            if crate::types::has_isolation(node.kind)
+                && let jadpo_graph::Detail::Callable { isolation, .. } = &mut node.detail
+            {
+                *isolation = decided.get(&node.key).map(|decided| decided.isolation);
+            }
+            builder.node(node);
         }
         for (from, kind, to) in &part.edges {
             builder.edge(from.clone(), *kind, to.clone());

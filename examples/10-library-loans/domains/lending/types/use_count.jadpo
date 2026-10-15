@@ -1,0 +1,4 @@
+/// How many times a copy has been read in the library without being lent.
+type UseCount = Int {
+    min: 0
+}
