@@ -322,7 +322,7 @@ impl Executor for Program {
         args: Vec<Value>,
     ) -> LocalFuture<'a, Outcome> {
         Box::pin(async move {
-            drive::outcome(drive::invoke(self, ctx, callable, args, Frame::ENTRY).await)
+            drive::outcome(drive::invoke(self, ctx, callable, args, Frame::ENTRY, false).await)
         })
     }
 }

@@ -100,6 +100,67 @@ pub struct Column {
     /// Retired by a migration (area 5, "Removing data"): no field holds it,
     /// and it stays, nullable, until a later migration drops it.
     pub retired: bool,
+    /// The values its field's type allows beyond what the column type
+    /// says, which the application checks rather than the database: a
+    /// change to them changes which stored values are valid, so it is a
+    /// change to the schema like any other (area 5, "Storage types").
+    /// `None` in a system table, and in a snapshot written before chunk
+    /// 3.10, which didn't record it: the next migration does, with nothing
+    /// to decide, since the application always checked it.
+    pub allows: Option<Allows>,
+}
+
+/// What a column's field allows beyond its column type: an enum's
+/// variants, and the field's bounds, lengths and patterns.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Allows {
+    /// The variant names of an enum without data, sorted.
+    pub values: Vec<String>,
+    /// The bounds of a number, written as the numbers they are.
+    pub min: Option<String>,
+    pub max: Option<String>,
+    /// A text's least and most characters.
+    pub min_length: Option<u64>,
+    pub max_length: Option<u64>,
+    /// The regular expressions the whole text must match, sorted.
+    pub patterns: Vec<String>,
+}
+
+impl Allows {
+    fn to_value(&self) -> Value {
+        let mut value = Value::object();
+        value.set_some("values", strings(&self.values));
+        if let Some(min) = &self.min {
+            value.set("min", min);
+        }
+        if let Some(max) = &self.max {
+            value.set("max", max);
+        }
+        if let Some(n) = self.min_length {
+            value.set("min_length", i64::try_from(n).unwrap_or(i64::MAX));
+        }
+        if let Some(n) = self.max_length {
+            value.set("max_length", i64::try_from(n).unwrap_or(i64::MAX));
+        }
+        value.set_some("patterns", strings(&self.patterns));
+        value
+    }
+
+    fn from_value(value: &Value) -> Allows {
+        let text = |key: &str| value.get(key).and_then(Value::as_str).map(String::from);
+        let count = |key: &str| match value.get(key) {
+            Some(Value::Int(n)) => u64::try_from(*n).ok(),
+            _ => None,
+        };
+        Allows {
+            values: list_of(value, "values").unwrap_or_default(),
+            min: text("min"),
+            max: text("max"),
+            min_length: count("min_length"),
+            max_length: count("max_length"),
+            patterns: list_of(value, "patterns").unwrap_or_default(),
+        }
+    }
 }
 
 /// A primary key.
@@ -170,6 +231,9 @@ pub struct Index {
     /// A partial index's condition, as SQL: the records a lifecycle's
     /// `visible:` lets normal reads see (area 5, "Indexes").
     pub predicate: Option<String>,
+    /// The text columns it keeps in code-point order (`COLLATE "C"`), as a
+    /// query sorts them (area 6), so a sorted read can use it.
+    pub collate: Vec<String>,
 }
 
 /// A name the database keeps whole: `table_part1_suffix`, cut to fit
@@ -268,6 +332,9 @@ impl Table {
             entry.set("type", &column.sql_type);
             entry.set_some("nullable", column.nullable);
             entry.set_some("retired", column.retired);
+            if let Some(allows) = &column.allows {
+                entry.set("allows", allows.to_value());
+            }
             columns.set(name, entry);
         }
         value.set("columns", columns);
@@ -300,6 +367,7 @@ impl Table {
             if let Some(predicate) = &index.predicate {
                 entry.set("where", predicate);
             }
+            entry.set_some("collate_c", strings(&index.collate));
             indexes.set(name, entry);
         }
         value.set_some("indexes", indexes);
@@ -326,6 +394,7 @@ impl Table {
                     sql_type: text_of(entry, "type")?,
                     nullable: flag(entry, "nullable"),
                     retired: flag(entry, "retired"),
+                    allows: entry.get("allows").map(Allows::from_value),
                 },
             );
         }
@@ -365,6 +434,7 @@ impl Table {
                     columns: list_of(entry, "columns")?,
                     reason: text_of(entry, "reason")?,
                     predicate: entry.get("where").and_then(Value::as_str).map(String::from),
+                    collate: list_of(entry, "collate_c").unwrap_or_default(),
                 },
             );
         }
@@ -772,6 +842,7 @@ mod tests {
                 sql_type: "uuid".into(),
                 nullable: false,
                 retired: false,
+                allows: None,
             },
         );
         if extra {
@@ -783,6 +854,7 @@ mod tests {
                     sql_type: "timestamptz(3)".into(),
                     nullable: true,
                     retired: false,
+                    allows: None,
                 },
             );
         }

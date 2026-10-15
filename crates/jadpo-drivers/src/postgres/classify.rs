@@ -38,6 +38,19 @@ pub fn classify(cause: Cause<'_>) -> StoreError {
             // too_many_connections, and every connection exception
             "57P01" | "57P02" | "57P03" | "53300" => StoreError::Unavailable,
             _ if code.starts_with("08") => StoreError::Unavailable,
+            // A statement Jadpo wrote that the server finds malformed
+            // (class 42, but for a missing privilege, table or column,
+            // which say the database isn't the one the project expects),
+            // a value it can't take (class 22), `NULL` in a required
+            // column or a broken check (23502, 23514), or a feature it
+            // lacks (class 0A).
+            _ if (code.starts_with("42") && !matches!(code, "42501" | "42P01" | "42703"))
+                || code.starts_with("22")
+                || code.starts_with("0A")
+                || matches!(code, "23502" | "23514") =>
+            {
+                StoreError::Statement(format!("{code}: {message}"))
+            }
             _ => StoreError::Fault(format!("PostgreSQL refused ({code}): {message}")),
         },
         Cause::Lost => StoreError::Unavailable,
@@ -92,16 +105,28 @@ mod tests {
     }
 
     #[test]
+    fn a_statement_jadpo_got_wrong_is_jadpos_mistake() {
+        // Other integrity errors are not conflicts: a not-null or check
+        // violation is a bug in the plan, not a race; so are a missing
+        // operator and a negative `LIMIT`.
+        for code in [
+            "23502", "23514", "42883", "42601", "2201W", "22P02", "0A000",
+        ] {
+            assert_eq!(
+                server(code, Some("c")),
+                StoreError::Statement(format!("{code}: the message"))
+            );
+        }
+    }
+
+    #[test]
     fn anything_else_is_a_fault_with_its_sqlstate_and_message() {
         assert_eq!(
             server("42P01", None),
             StoreError::Fault("PostgreSQL refused (42P01): the message".into())
         );
-        // Other integrity errors are not conflicts: a not-null or check
-        // violation is a bug in the plan, not a race.
-        assert!(matches!(server("23502", Some("c")), StoreError::Fault(_)));
-        assert!(matches!(server("23514", Some("c")), StoreError::Fault(_)));
         assert!(matches!(server("40002", None), StoreError::Fault(_)));
+        assert!(matches!(server("42501", None), StoreError::Fault(_)));
         assert_eq!(
             classify(Cause::Other("invalid connection string")),
             StoreError::Fault("PostgreSQL client: invalid connection string".into())

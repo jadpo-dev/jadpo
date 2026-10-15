@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use jadpo_graph::schema::{Column, Holds, Key, Table, object_name};
+use jadpo_graph::schema::{Allows, Column, Holds, Key, Table, object_name};
 use jadpo_std::{Builtin, Num};
 
 use crate::types::{Def, Ty, TypeView};
@@ -54,6 +54,38 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
         Ty::List(_) | Ty::Set(_) | Ty::Map(..) => "jsonb".into(),
         other => return Err(other.to_string()),
     })
+}
+
+/// What the field typed `field` (`Todo.priority`, so the field's own
+/// settings count) allows beyond its column type: an enum's variants, and
+/// the bounds, lengths and patterns its rules set, most specific first,
+/// since a refinement only narrows.
+pub fn allows(table: &dyn TypeView, field: &Ty) -> Allows {
+    let mut out = Allows::default();
+    if let Ty::Named(name) = table.structure(field)
+        && let Some(Def::Enum { variants }) = table.def(&name)
+        && variants.iter().all(|v| v.fields.is_none())
+    {
+        out.values = variants.iter().map(|v| v.name.clone()).collect();
+        out.values.sort();
+    }
+    for (_, rules) in table.rule_chain(field) {
+        if out.min.is_none() {
+            out.min = rules.min.map(|n| n.to_string());
+        }
+        if out.max.is_none() {
+            out.max = rules.max.map(|n| n.to_string());
+        }
+        out.min_length = out.min_length.or(rules.min_length);
+        out.max_length = out.max_length.or(rules.max_length);
+        if let Some(pattern) = &rules.pattern
+            && !out.patterns.contains(pattern)
+        {
+            out.patterns.push(pattern.clone());
+        }
+    }
+    out.patterns.sort();
+    out
 }
 
 /// The declared bounds of a number type, most specific first: a
@@ -118,6 +150,7 @@ fn column(position: u32, sql_type: &str, nullable: bool) -> Column {
         sql_type: sql_type.to_string(),
         nullable,
         retired: false,
+        allows: None,
     }
 }
 
@@ -151,6 +184,7 @@ pub fn system_table(name: &str) -> Table {
                     columns: vec!["emitted_at".into()],
                     reason: "system outbox".into(),
                     predicate: None,
+                    collate: Vec::new(),
                 },
             );
         }
@@ -184,6 +218,7 @@ pub fn system_table(name: &str) -> Table {
                     columns: vec!["status".into(), "next_attempt_at".into()],
                     reason: "system deliveries".into(),
                     predicate: None,
+                    collate: Vec::new(),
                 },
             );
         }
@@ -203,6 +238,7 @@ pub fn system_table(name: &str) -> Table {
                     columns: vec!["kept_until".into()],
                     reason: "system idempotency keys".into(),
                     predicate: None,
+                    collate: Vec::new(),
                 },
             );
         }

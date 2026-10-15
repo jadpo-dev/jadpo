@@ -474,7 +474,8 @@ impl Planner<'_> {
     }
 
     /// A value an update by `id` works out from stored fields, as SQL: a
-    /// stored field is its column, `+`, `-` and a construction (which the
+    /// stored field is its column, `+` (`||` joining text), `-` and a
+    /// construction (which the
     /// checker proved can't fail) are worked out by the database, and
     /// anything else is an input the executor works out first.
     fn stored_sql(
@@ -501,7 +502,12 @@ impl Planner<'_> {
             }) => {
                 let lhs = self.stored_sql(body, *lhs, entity, ty, writing)?;
                 let rhs = self.stored_sql(body, *rhs, entity, ty, writing)?;
-                let op = if *op == BinaryOp::Add { "+" } else { "-" };
+                // Jadpo's `+` joins text, which SQL writes `||`.
+                let op = match op {
+                    BinaryOp::Add if ty == SqlType::Text => "||",
+                    BinaryOp::Add => "+",
+                    _ => "-",
+                };
                 format!("({lhs} {op} {rhs})")
             }
             Node::Expr(Expr::Unary {

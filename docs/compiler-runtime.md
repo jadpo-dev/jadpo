@@ -767,9 +767,14 @@ body again, up to `RERUN_ATTEMPTS` (3) times, then fails `unavailable`; a
 body that fails rolls back; and what it emitted is delivered only after it
 commits. The second of area 6's budget waits for the host's clock (no host
 reads one yet; chunk 5.2 brings time), and caches come with area 5. Since
-chunk 3.3 the context counts the actions joined inside the open boundary
-(`Ctx::nested`), so a write that can be refused, run by a called action,
-runs inside a savepoint its caller can carry on from.
+chunk 3.10 an action called inside another whose failure the caller
+handles (`ActionBody::caught`: the call is an outcome `match`'s subject or
+an `assert … fails`'s) runs inside a savepoint: when it fails, the
+transaction returns to it, undoing its writes, a refused statement among
+them, and its events; when it began the transaction itself, the
+transaction is rolled back and the caller's next store operation begins
+another. (Chunk 3.3 savepointed only each refusable write, which kept a
+failed action's earlier writes.)
 
 Since chunk 3.7 the boundary begins its transaction at the isolation level
 the body names (`ActionBody::isolation`), which both executors take from
@@ -915,7 +920,9 @@ and the sources alone, so it is the same whichever executor ran the call;
 
 **The test runner.** Built in chunk 2.2 (`jadpo-test`, `jadpo test`): it
 finds the tests through the graph, takes a test's kind from its `calls`
-edges (an action, query or fixture makes it an action test), picks them by
+edges (an action, query or fixture makes it an action test, and since
+chunk 3.10 so does a `reads` edge, an entity's `get` called straight from
+the test), picks them by
 file, `<file>:<line>`, `--name`, `--kind` and `--failed`, and runs them
 through `Program::call` in a Fisher–Yates order from a SplitMix64 order
 seed, so `--seed` reproduces a run. A failed `assert` keeps the value of
@@ -980,7 +987,12 @@ errors by SQLSTATE: unique, foreign-key and exclusion violations are a
 conflict with the server's constraint name; serialisation failures and
 deadlocks a concurrent change; connection exceptions (class 08), shutdowns
 (57P01–57P03), too many connections, a closed connection and any I/O
-failure unavailable; anything else a fault with its SQLSTATE and message.
+failure unavailable; since chunk 3.10 a statement the server finds
+malformed or out of its rules (class 42 but for a missing privilege, table
+or column, class 22, class 0A, a not-null or check violation) a
+`Statement` error, which the runtime reports as a defect in Jadpo rather
+than asking a person to check the database; anything else a fault with its
+SQLSTATE and message.
 Connections are unencrypted until TLS is built. `jadpo-host-native` gives
 `Runtime` (one current-thread tokio runtime with a `LocalSet`),
 `NativeTransport` over tokio's TCP and Unix sockets, and `postgres(url)`.
@@ -1007,8 +1019,11 @@ both return the row (`RETURNING`), decoded with the read plans' codecs. A
 patch writes each field of its input as `CASE WHEN <supplied> THEN <value>
 ELSE <column> END`, so its text is fixed and a field left out keeps its
 value (a record built without an optional `Input` field remembers it,
-`Record::omitted`). An update by `id` works out a stored field
-(`Post.view_count + 1`) in the statement, with `+` and `-` only. A delete
+`Record::omitted`; since chunk 3.10 `none` given to one whose type isn't
+nullable counts as left out, `FieldPlan::none_left_out`, so a patch never
+sends `NULL` to a required column). An update by `id` works out a stored field
+(`Post.view_count + 1`) in the statement, with `+` and `-` only (`+` on
+text is `||`, since chunk 3.10). A delete
 removes the row; by `id`, no row is `Missing`, and of a loaded record it is
 a fault, since a record changed by another transaction is a concurrent
 change and one this transaction can't see was deleted by it, or loaded
@@ -1045,12 +1060,20 @@ The driver also sends `time` values and one-dimensional arrays.
 `Host::database(store)` gives each store by its connection's name, and an
 action's transaction is begun in the store its first store operation
 names; asking for a second store in one action is a fault, since an action
-writes one store (area 5). `jadpo_runtime::migrate` and `standing` apply a
+writes one store (area 5), and since chunk 3.10 the checker refuses an
+action that reads a second store (`toolchain.not_built_yet`) until reads
+outside the transaction are built. `jadpo_runtime::migrate` and `standing` apply a
 store's pending migrations and say where it stands, recording each in the
 store's `jadpo_migrations` table under the table's lock (a row lock, never
 an advisory one) and refusing a store that applied a migration the project
 doesn't have, one that changed since, or one out of order; `jadpo migrate
-apply` and the test database both run them.
+apply` and the test database both run them. Since chunk 3.10 a snapshot's
+column also records what its field allows beyond the column type
+(`Column::allows`: an enum's variants, the field's bounds, lengths and
+patterns), so allowing less is a migration whose `backfill:` decision
+replaces the stored values no longer allowed (`NeededKind::Refit`), and
+an index keeps the text columns a query sorts by in code-point order
+(`Index::collate`).
 
 Built in chunk 3.4: `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and
@@ -1071,7 +1094,10 @@ outside every action: batch after batch, each its own transaction, one
 RETURNING "id"` of hidden records whose `since:` field is older than `now`
 less `after:`, oldest first, leaving out with `NOT EXISTS` any a
 `restricted` reference holds, directly or through a cascade, until a batch
-comes back short; it returns each batch's count (`Purged`). Area 12's
+comes back short (since chunk 3.10 through every chain of cascades, and,
+when one leads back to an entity already on it, such as a folder inside a
+folder, through a recursive query that follows the cascades as deep as
+the data goes); it returns each batch's count (`Purged`). Area 12's
 hourly purge schedule will call it (chunk 6.2); a live test calls it
 directly (`crates/jadpo-cli/tests/lifecycle.rs`).
 

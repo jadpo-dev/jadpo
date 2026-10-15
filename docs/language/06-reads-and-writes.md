@@ -783,7 +783,11 @@ The statement's text is fixed: each field of the input is written `CASE
 WHEN <supplied> THEN <value> ELSE <column> END`, and an `on_change` field
 changes only when one was supplied. A value built without one of its
 optional `Input` fields remembers it was left out, which only a patch
-reads; it still equals one given `none`.
+reads; it still equals one given `none`. A field whose type isn't nullable
+(`title` above) can't be cleared, so `none` given to it is the same as
+leaving it out and the patch keeps the stored value (chosen in chunk 3.10:
+a check error can't tell, since forwarding an optional value such as a
+page's `next` cursor into an optional field is ordinary code).
 
 ::: today
 
@@ -943,9 +947,13 @@ that entity's not-found failure, which `attempt` passes on (chosen in chunk
 3.3: the transaction's snapshot holds a record loaded in it, and a
 concurrent delete of it is a concurrent change). The runtime maps the
 store's constraint name back to the rule (area 5 names every constraint).
-A write that can be refused, run by an action another action called, runs
-inside a savepoint, so a caller that handles the failure with `match`
-carries on in a transaction the refusal didn't end.
+An action whose failure its caller handles with `match` runs inside a
+savepoint (chosen in chunk 3.10): when it fails, everything it wrote is
+undone, a refused write among them, and the caller carries on in a
+transaction the failure didn't end, since an action is all-or-nothing
+whoever calls it. One that passes its failure on with `attempt` needs none:
+the failure ends its caller too, up to a `match` that undoes both or the
+outermost action, which rolls back.
 
 ## All-or-nothing actions and concurrent changes
 
@@ -1099,7 +1107,7 @@ action view_video(video_id: Video.id) fails VideoNotFound -> Video {
 Built in chunk 3.3: the statement is `UPDATE "video" SET "view_count" =
 ("view_count" + $1), ...`, and no row is `VideoNotFound`. The database works
 a stored field out with `+` and `-`, which give the same result in SQL as
-in Jadpo, under constructions the declared ranges prove (`ViewCount(...)`
+in Jadpo (`+` joining text is written `||`, since chunk 3.10), under constructions the declared ranges prove (`ViewCount(...)`
 here, since a count of at least 0 plus 1 is at least 0); anything else needs
 the record loaded first. A decimal added to a stored field may not have more
 decimal places than the field's `scale`, since PostgreSQL would round the
@@ -1220,8 +1228,76 @@ brings in the second store.
 
 Built in chunk 3.3: the check, counting every action an action calls. At
 run time an action's transaction is begun in the store its first store
-operation names, and any operation on another store in the same action is
-a fault; reading another store outside the transaction is not built yet.
+operation names. Reading another store outside the transaction is not
+built yet, so since chunk 3.10 an action that reads a second store, itself
+or through an action it calls, is `toolchain.not_built_yet` at the read or
+call that brings it in, rather than a fault as it runs:
+
+```jadpo check project=e-second-store-read file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        catalogue: {
+            driver: Driver.postgres
+        }
+    }
+}
+```
+
+```jadpo check project=e-second-store-read file=domains/ordering/types/product_name.jadpo hidden
+type ProductName = Text {
+    max_length: 80
+}
+```
+
+```jadpo check project=e-second-store-read file=domains/ordering/entities/product.jadpo hidden
+use ordering/types { ProductName }
+
+entity Product {
+    id: Uuid
+    name: ProductName
+
+    store: catalogue
+}
+```
+
+```jadpo check project=e-second-store-read file=domains/ordering/entities/order.jadpo hidden migrate=initial
+use ordering/types { ProductName }
+
+entity Order {
+    id: Uuid
+    product_name: ProductName
+}
+```
+
+```jadpo check project=e-second-store-read file=domains/ordering/actions/order_product.jadpo expect=toolchain.not_built_yet
+use ordering/entities { Order, Product, ProductNotFound }
+
+action order_product(product_id: Product.id) fails ProductNotFound -> Order {
+    var product: Product = attempt Product.get(product_id)
+    return Order.create {
+        set: {
+            product_name: product.name
+        }
+    }
+}
+```
+
+```text output
+error: Reading a second store in `order_product` isn't built yet
+ --> domains/ordering/actions/order_product.jadpo:4:36
+  |
+4 |     var product: Product = attempt Product.get(product_id)
+  |                                    ^^^^^^^^^^^^^^^^^^^^^^^ store `catalogue`
+  reason: An action may read another store outside its transaction (area 6), but this compiler runs all of an action's store operations in the one transaction its first begins; `order_product` uses `Order` (store `main`), and here it reads `Product` (store `catalogue`).
+  next: Read `Product` before `order_product` runs, and pass in what it needs, for now (agent)
+  rule: toolchain.not_built_yet
+  help: docs/language/06-reads-and-writes.html#one-store-per-action
+
+check failed: 1 error, 5 files
+```
 
 ## Where a read comes from
 
@@ -1864,6 +1940,44 @@ error: `limit: 0` would read nothing
    |            ^ below 1
   reason: `limit:` is how many records come back at most, so it is at least 1.
   next: Give `limit:` a number from 1 (agent)
+  rule: query.limit_range
+  help: docs/language/06-reads-and-writes.html#query-limit-range
+
+check failed: 1 error, 1 file
+```
+
+A value's type must keep it at 1 or more too, since PostgreSQL refuses a
+negative `LIMIT` and 0 reads nothing (chunk 3.10):
+
+```jadpo check project=e-limit-range-type expect=query.limit_range
+type Title = Text {
+    max_length: 80
+}
+
+type ShelfSize = Int {
+    max: 50
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+}
+
+query shelf(size: ShelfSize) -> List<Book> {
+    from: Book
+    order: [Book.title asc]
+    limit: size
+}
+```
+
+```text output
+error: `size` can be below 1, so the limit could read nothing
+ --> main.jadpo:17:12
+   |
+17 |     limit: size
+   |            ^^^^ `ShelfSize` has no `min:`
+  reason: `limit:` is how many records come back at most, so it is at least 1, and a value's type must say so with `min: 1` or more, as the built-in `PageSize` (1 to 100) does.
+  next: Give `ShelfSize` `min: 1`, or type the value as `PageSize` (agent)
   rule: query.limit_range
   help: docs/language/06-reads-and-writes.html#query-limit-range
 
@@ -3406,7 +3520,8 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Provided not-found failure | Chosen in chunk 3.3: kind `not_found`, public, no fields, placed at its entity | 2026-10-14 |
 | References that hold | Chosen in chunk 3.3: a reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure | 2026-10-14 |
 | Stored values | Chosen in chunk 3.3: an update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove | 2026-10-14 |
-| Refusals in a called action | Chosen in chunk 3.3: a write that can be refused, run by an action another action called, runs inside a savepoint, so a caller handling the failure carries on | 2026-10-14 |
+| `none` to a field that can't be cleared | Chosen in chunk 3.10: `none` given to an optional `Input` field whose type isn't nullable is the same as leaving it out, so a patch keeps the stored value | 2026-10-15 |
+| Refusals in a called action | Chosen in chunk 3.3, widened in chunk 3.10: an action whose failure its caller handles with `match` runs inside a savepoint, so its failure undoes all it wrote, a refusal among it, and the caller carries on | 2026-10-15 |
 | Transitions as operations | Chosen in chunk 3.4: `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records | 2026-10-15 |
 | A transition's `when:` refusing | Chosen in chunk 3.4: a `when:` that asks more than `visible:` can refuse a record that is there, a conflict mapped in `conflict:` keyed by the transition (`User.disable: UserDisabled`), with no catch-all; one that asks only what `visible:` asks can't, since a hidden record is not found | 2026-10-15 |
 | Counter decimals | A decimal added to or subtracted from a stored field in a counter update may not have more decimal places than the field's `scale`; built in chunk 3.4 as `data.stored_decimal_scale`, a value whose type sets no `scale` counting as too many (Richard) | 2026-10-15 |

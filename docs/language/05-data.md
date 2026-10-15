@@ -321,7 +321,9 @@ below):
   deletes at most 500 records, oldest first, in its own transaction.
   References that `cascade` and those `cleared` do what they do for any
   delete; a record a `restricted` reference holds, directly or through
-  a cascade, stays until nothing holds it, and never stops the rest going.
+  any chain of cascades (one that comes back to its own entity, a folder
+  inside a folder, followed as deep as the data goes, since chunk 3.10),
+  stays until nothing holds it, and never stops the rest going.
   Purge is the compiler's own operation, outside every action and policy:
   the runtime's purge entry point runs it, and area 12's built-in hourly
   purge schedule will call it (chunk 6.2); until then nothing runs it on a
@@ -359,6 +361,10 @@ lifecycle needs is partial, holding only the records `visible:` lets queries
 see (`WHERE "deleted_at" IS NULL`), unless `visible:` reads `clock.now`,
 which changes as time passes; a reference's own index then stays, since
 deleting the record it points at still finds hidden records.
+Since chunk 3.10 a text field a query sorts by is indexed in code-point
+order (`"title" COLLATE "C"`), the order a query sorts text in (area 6),
+so the sorted read uses the index; its name ends `_sorted_idx`, apart from
+an index on the same columns that tests them with `==`.
 
 ## Caches
 
@@ -421,6 +427,60 @@ stored whole as `jsonb` in the API's JSON, which caches and Redis entities
 hold too. The database enforces types, required fields, keys and references;
 the application checks each field's own rules. Renaming an enum variant
 changes stored values, so it needs a migration.
+
+Built in chunk 3.10: each migration's snapshot records what every field
+allows beyond its column type, an enum's variants and the field's bounds,
+lengths and patterns, so changing them is drift `jadpo check` reports like
+any other. A change that allows more (a variant added, a longer
+`max_length`) is a migration with nothing to run. One that allows less (a
+variant renamed or removed, a shorter `max_length`, a narrower range)
+needs a decision: `backfill:` gives the records already stored with a
+value the field no longer allows one it does, and the migration's SQL
+replaces exactly those. A new `pattern:` isn't built yet, since
+PostgreSQL's regular expressions aren't Jadpo's; `jadpo migrate new` says
+so. A snapshot written before chunk 3.10 didn't record these, so the next
+migration records them with nothing to decide.
+
+```jadpo check project=narrowing file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=narrowing file=domains/shipping/types/box_size.jadpo hidden
+type BoxSize = Enum {
+    small
+    medium
+    large
+}
+```
+
+```jadpo check project=narrowing file=domains/shipping/entities/parcel.jadpo hidden migrate=initial
+use shipping/types { BoxSize }
+
+entity Parcel {
+    id: Uuid
+    size: BoxSize
+}
+```
+
+```jadpo check project=narrowing file=domains/shipping/types/box_size.jadpo migrate=drop_large
+type BoxSize = Enum {
+    small
+    medium
+}
+```
+
+```jadpo check project=narrowing file=database/migrations/20261020T1401_drop_large/changes.jadpo migrate=finish
+// changes.jadpo
+/// Stops sending large boxes.
+migration {
+    Parcel.size: {
+        backfill: BoxSize.medium  // parcels stored as large become medium
+    }
+}
+```
+
+The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
+"size" NOT IN ('medium', 'small')`.
 
 | Field type | PostgreSQL |
 |---|---|
@@ -1723,7 +1783,7 @@ error: Nothing about `Note.body` needs a decision
   |
 5 |     Note.body: FieldChange.retired
   |     ^^^^^^^^^ no such change
-  reason: A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `20261020T1401_add_stars` changes about `Note.body` does: a decision is a value for existing rows of a required field, or retiring a field that is gone.
+  reason: A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `20261020T1401_add_stars` changes about `Note.body` does: a decision is a value for existing rows of a required field or for rows a field no longer allows, or retiring a field that is gone.
   next: Remove `Note.body` (agent)
   rule: migration.decision_unknown
   help: docs/language/05-data.html#migration-decision-unknown
@@ -1837,6 +1897,35 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   `jadpo migrate` takes it with `--url`, and the application's refusal to
   start against a database that doesn't match comes with the compiled
   deployables (Phase 8).
+- Structured fields (an enum with data, an object, a list, a set or a
+  map) on an entity: their `jsonb` holds the API's JSON, which comes with
+  area 7, so until then the field is refused where it is declared rather
+  than every read and write of it failing as it runs (chunk 3.10):
+
+```jadpo check project=e-structured-field expect=toolchain.not_built_yet
+type Tag = Text {
+    max_length: 20
+}
+
+entity Parcel {
+    id: Uuid
+    tags: List<Tag>
+}
+```
+
+```text output
+error: Storing a `List<Tag>` field isn't built yet
+ --> main.jadpo:7:11
+  |
+7 |     tags: List<Tag>
+  |           ^^^^^^^^^ structured, stored as `jsonb`
+  reason: Area 5 stores an enum with data, an object, a list, a set or a map as `jsonb` holding the API's JSON, and that JSON comes with area 7; until then this compiler can't read or write `Parcel.tags`.
+  next: Store what `Parcel.tags` holds in fields of its own, or as records of an entity that refers to `Parcel`, for now (agent)
+  rule: toolchain.not_built_yet
+  help: docs/language/05-data.html#storage-types
+
+check failed: 1 error, 1 file
+```
 
 ### Carried to later areas
 

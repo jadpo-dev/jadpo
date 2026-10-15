@@ -195,6 +195,9 @@ pub struct FieldModel {
     pub unique: bool,
     pub generated: Option<Generated>,
     pub reference: Option<Reference>,
+    /// What its type allows beyond its column type, which a migration
+    /// snapshot records.
+    pub allows: physical::Allows,
 }
 
 /// A reference: the entity a field typed `X.id` points at.
@@ -613,6 +616,7 @@ impl Reader<'_> {
             unique: false,
             generated: None,
             reference: None,
+            allows: physical::Allows::default(),
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -647,7 +651,31 @@ impl Reader<'_> {
             );
             return Some(field);
         }
+        field.allows = columns::allows(
+            self.lookup,
+            &Ty::Field(entity.to_string(), vec![name.to_string()]),
+        );
         match column_type(self.lookup, &ty) {
+            // A structured field is stored as `jsonb` in the API's JSON
+            // (area 5), whose codec comes with area 7.
+            Ok(sql) if sql == "jsonb" => {
+                let shown = ty.strip_nullable().to_string();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("Storing a `{shown}` field isn't built yet"),
+                    )
+                    .at(node_span(path, value.syntax()), "structured, stored as `jsonb`")
+                    .reason(format!(
+                        "Area 5 stores an enum with data, an object, a list, a set or a map as `jsonb` holding the API's JSON, and that JSON comes with area 7; until then this compiler can't read or write `{entity}.{name}`."
+                    ))
+                    .next(format!(
+                        "Store what `{entity}.{name}` holds in fields of its own, or as records of an entity that refers to `{entity}`, for now"
+                    ))
+                    .help_at("05-data.html#storage-types"),
+                );
+                field.sql_type = Some(sql);
+            }
             Ok(sql) => field.sql_type = Some(sql),
             Err(what) => {
                 self.out.push(
@@ -1206,6 +1234,7 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
 fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mut Schema) {
     use queries::{Condition, Include, IncludeKind, OrderField};
     let queries = queries::query_models(db, project);
+    let lookup = Lookup::new(db, project);
     let mut wanted: Vec<(String, (Vec<String>, usize), String)> = Vec::new();
     fn equal_fields(filter: &[Condition], out: &mut Vec<String>) {
         for line in filter {
@@ -1291,10 +1320,32 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         // query, and so does a unique key all of whose columns it tests
         // for equality: at most one record matches each value.
         let tested = &born[..equal];
+        // The text columns it sorts by, after those it tests for
+        // equality, are kept in code-point order, as the query sorts
+        // them; an equality test compares under the column's own order.
+        let collate: Vec<String> = born[equal..]
+            .iter()
+            .zip(&fields[equal..])
+            .filter(|(_, name)| {
+                lookup.representation(&Ty::Field(entity.name.clone(), vec![(*name).clone()]))
+                    == Some(jadpo_std::Builtin::Text)
+            })
+            .map(|(column, _)| column.clone())
+            .collect();
+        let serves = |existing: &[String], sorted: &[String]| {
+            existing.len() >= born.len()
+                && existing[..born.len()] == born[..]
+                && born
+                    .iter()
+                    .all(|column| collate.contains(column) == sorted.contains(column))
+        };
         let covered = std::iter::once(&table.primary_key.columns)
-            .chain(table.indexes.values().map(|i| &i.columns))
             .chain(table.unique.values().map(|u| &u.columns))
-            .any(|existing| existing.len() >= born.len() && existing[..born.len()] == born[..])
+            .any(|existing| serves(existing, &[]))
+            || table
+                .indexes
+                .values()
+                .any(|index| serves(&index.columns, &index.collate))
             || std::iter::once(&table.primary_key.columns)
                 .chain(table.unique.values().map(|u| &u.columns))
                 .any(|key| key.iter().all(|column| tested.contains(column)));
@@ -1324,12 +1375,17 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         }
         let mut parts: Vec<&str> = vec![entity.table.as_str()];
         parts.extend(born.iter().map(String::as_str));
+        if !collate.is_empty() {
+            // Apart from an index on the same columns that tests them.
+            parts.push("sorted");
+        }
         table.indexes.insert(
             physical::object_name(&parts, "idx"),
             physical::Index {
                 columns: born,
                 reason: format!("query {query}"),
                 predicate,
+                collate,
             },
         );
     }
@@ -1367,6 +1423,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 sql_type: sql_type.clone(),
                 nullable: field.nullable,
                 retired: false,
+                allows: Some(field.allows.clone()),
             },
         );
         if field.unique && field.name != "id" {
@@ -1408,6 +1465,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                         columns: vec![field.born.clone()],
                         reason: format!("reference {}.{}", entity.born, field.born),
                         predicate: None,
+                        collate: Vec::new(),
                     },
                 );
             }
@@ -1429,6 +1487,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 columns: index.fields.iter().map(|f| column(f)).collect(),
                 reason: format!("index {}.{}", entity.born, index.name),
                 predicate: None,
+                collate: Vec::new(),
             },
         );
     }

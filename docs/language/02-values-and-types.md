@@ -2614,7 +2614,7 @@ type OrderLineView = Output {
     quantity: Quantity
 }
 
-entity Order {
+type Order = Object {
     id: Uuid
     lines: List<OrderLineView>
 }

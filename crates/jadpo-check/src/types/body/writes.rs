@@ -321,6 +321,21 @@ impl Body<'_> {
             Some(name) => format!("{entity}.{name}"),
             None => format!("{entity}.{}", op.word()),
         };
+        if self.test {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_NOT_CALLABLE,
+                    format!("A test can't call `{written}`"),
+                )
+                .at(head_span.clone(), "writes a record")
+                .reason(format!(
+                    "Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, builds the data a test starts from. A test may still read, with `{entity}.get` and queries."
+                ))
+                .next(format!(
+                    "Call the action that writes `{entity}`, or move the write into a fixture"
+                )),
+            );
+        }
         let result = match op {
             WriteOp::Delete => Ty::Prim(Prim::Unit),
             _ => Ty::Named(entity.to_string()),

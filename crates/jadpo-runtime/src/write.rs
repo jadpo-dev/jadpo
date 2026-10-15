@@ -10,9 +10,9 @@
 //! reference the store refuses comes back as which of the plan's
 //! constraints it was, for the executor to raise what its site maps it
 //! to; a write by `id` that finds no row is the entity's not-found
-//! failure. A write that can be refused, run by an action another action
-//! called, runs inside a savepoint, so a caller that handles the failure
-//! carries on in a transaction the refusal didn't end.
+//! failure. A caller that handles the failure carries on in a transaction
+//! the refusal didn't end: the action it called ran inside a savepoint
+//! ([`crate::action`]).
 
 use jadpo_std::read::Field;
 use jadpo_std::write::{WriteParam, WritePlan, WriteSource};
@@ -45,41 +45,18 @@ pub async fn write(
 ) -> Result<Written, Interrupt> {
     let now = ctx.now();
     let params = params_of(ctx, &plan.params, inputs, site, now)?;
-    // A refusal ends a PostgreSQL transaction; a savepoint keeps it going
-    // for a caller that handles the failure. Only an action called inside
-    // another can have such a caller: the outermost one rolls back.
-    let savepoint = !plan.refusals.is_empty() && ctx.nested();
-    let result = {
-        let transaction = match ctx.transaction(&plan.store).await {
-            Ok(transaction) => transaction,
-            Err(error) => return Err(refused(ctx, error, site)),
-        };
-        let mut result = Ok(Vec::new());
-        if savepoint && let Err(error) = transaction.savepoint().await {
-            result = Err(error);
-        }
-        if result.is_ok() {
-            result = match &plan.returns {
-                Some(_) => transaction.query(&plan.sql, &params).await,
-                None => transaction
-                    .execute(&plan.sql, &params)
-                    .await
-                    .map(|changed| (0..changed).map(|_| Vec::new()).collect()),
-            };
-        }
-        let mapped = matches!(&result, Err(StoreError::Conflict { constraint })
-            if plan.refusals.contains(constraint));
-        if savepoint && (result.is_ok() || mapped) {
-            let settled = if result.is_ok() {
-                transaction.release_savepoint().await
-            } else {
-                transaction.rollback_to_savepoint().await
-            };
-            if let Err(error) = settled {
-                result = Err(error);
-            }
-        }
-        result
+    // A refusal ends a PostgreSQL transaction; a caller that handles the
+    // failure it becomes returns to the savepoint taken before the action
+    // it called (`crate::action`), which undoes the refusal with the rest.
+    let result = match ctx.transaction(&plan.store).await {
+        Ok(transaction) => match &plan.returns {
+            Some(_) => transaction.query(&plan.sql, &params).await,
+            None => transaction
+                .execute(&plan.sql, &params)
+                .await
+                .map(|changed| (0..changed).map(|_| Vec::new()).collect()),
+        },
+        Err(error) => return Err(refused(ctx, error, site)),
     };
     let rows = match result {
         Ok(rows) => rows,

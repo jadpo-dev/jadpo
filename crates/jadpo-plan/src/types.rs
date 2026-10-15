@@ -73,6 +73,10 @@ pub struct FieldPlan {
     /// without it remembers it was left out, which an update's `patch:`
     /// reads (area 6).
     pub omittable: bool,
+    /// An omittable field whose type isn't nullable: `none` given to it is
+    /// the same as leaving it out, since nothing could clear it (area 6,
+    /// patch; chosen in chunk 3.10), so a patch keeps the stored value.
+    pub none_left_out: bool,
     /// A failure field's section.
     pub section: Option<Section>,
 }
@@ -470,12 +474,15 @@ impl Types {
                         None => None,
                     };
                     let omittable = *optional && default.is_none();
+                    let none_left_out =
+                        omittable && !self.is_nullable(&TypeRef::Field(node.key.clone()));
                     Some(FieldPlan {
                         key: node.key.clone(),
                         name: last(&node.name).to_string(),
                         validator: ValidatorId(u32::MAX),
                         absent,
                         omittable,
+                        none_left_out,
                         section: *section,
                     })
                 }

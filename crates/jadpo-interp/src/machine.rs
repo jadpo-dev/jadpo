@@ -341,6 +341,12 @@ impl<'p> Machine<'p> {
         }
     }
 
+    /// Whether the call it paused at is caught, its failure handled by an
+    /// outcome `match` or an `assert … fails` rather than passed on.
+    pub fn catching(&self) -> bool {
+        matches!(self.tasks.last(), Some(Task::Catch { .. }))
+    }
+
     /// Carries on after a pause with what the paused call gave.
     pub fn resume(&mut self, ctx: &mut Ctx<'_>, result: Result<Value, Stop>) -> Step {
         match result {

@@ -10,7 +10,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::schema::{Change, Column, Holds, Schema, Table, changes};
+use jadpo_std::Num;
+
+use crate::schema::{Allows, Change, Column, Holds, Schema, Table, changes};
 
 /// A decision a change needs before its SQL can be written.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,6 +34,10 @@ pub enum NeededKind {
     /// A field gone from its entity: its column is retired, kept with its
     /// data until a later migration drops it.
     Retire,
+    /// A field whose type allows less than it did (a variant gone, a
+    /// shorter `max_length`, a narrower range): stored rows it no longer
+    /// allows need a value it does.
+    Refit,
 }
 
 impl Needed {
@@ -125,6 +131,7 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
             None if !now.nullable => NeededKind::Backfill,
             Some(was) if !was.retired && now.retired => NeededKind::Retire,
             Some(was) if was.nullable && !now.nullable && !now.retired => NeededKind::Backfill,
+            Some(was) if !now.retired && narrowed(was, now) => NeededKind::Refit,
             _ => continue,
         };
         out.push(Needed {
@@ -135,6 +142,90 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
             field: now.field.clone().unwrap_or_else(|| column.clone()),
             kind,
         });
+    }
+    out
+}
+
+/// Whether column `now` refuses a value `was` allowed; never when `was`
+/// comes from a snapshot that didn't record what it allows.
+pub fn narrowed(was: &Column, now: &Column) -> bool {
+    match (&was.allows, &now.allows) {
+        (Some(was), Some(now)) => narrows(was, now),
+        _ => false,
+    }
+}
+
+/// Whether `now` refuses a value `was` allowed: a variant gone, or a
+/// bound or length tighter or new. A new pattern is refused by
+/// [`migration_sql`] instead, since no SQL finds the values it refuses.
+pub fn narrows(was: &Allows, now: &Allows) -> bool {
+    let tighter = |old: &Option<String>, new: &Option<String>, below: bool| match (old, new) {
+        (_, None) => false,
+        (None, Some(_)) => true,
+        (Some(old), Some(new)) => match (Num::parse(old), Num::parse(new)) {
+            (Some(old), Some(new)) => {
+                let order = new.compare(old);
+                if below { order.is_gt() } else { order.is_lt() }
+            }
+            _ => old != new,
+        },
+    };
+    let shorter = |old: Option<u64>, new: Option<u64>, below: bool| match (old, new) {
+        (_, None) => false,
+        (None, Some(_)) => true,
+        (Some(old), Some(new)) => {
+            if below {
+                new > old
+            } else {
+                new < old
+            }
+        }
+    };
+    (!was.values.is_empty() && was.values.iter().any(|v| !now.values.contains(v)))
+        || (was.values.is_empty() && !now.values.is_empty())
+        || tighter(&was.min, &now.min, true)
+        || tighter(&was.max, &now.max, false)
+        || shorter(was.min_length, now.min_length, true)
+        || shorter(was.max_length, now.max_length, false)
+}
+
+/// The conditions under which a stored value of `column`, which `was`
+/// held, breaks what `now` allows: none unless `now` allows less.
+fn refit(was: &Column, now: &Column, column: &str) -> Vec<String> {
+    if narrowed(was, now) {
+        breaks(column, now.allows.as_ref())
+    } else {
+        Vec::new()
+    }
+}
+
+/// The SQL condition a stored value of `column` breaks `allows` under; a
+/// pattern is left out, since PostgreSQL's regular expressions are not
+/// Jadpo's.
+fn breaks(column: &str, allows: Option<&Allows>) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(allows) = allows else {
+        return out;
+    };
+    if !allows.values.is_empty() {
+        let values: Vec<String> = allows
+            .values
+            .iter()
+            .map(|v| format!("'{}'", v.replace('\'', "''")))
+            .collect();
+        out.push(format!("{column} NOT IN ({})", values.join(", ")));
+    }
+    if let Some(min) = &allows.min {
+        out.push(format!("{column} < {min}"));
+    }
+    if let Some(max) = &allows.max {
+        out.push(format!("{column} > {max}"));
+    }
+    if let Some(n) = allows.min_length {
+        out.push(format!("char_length({column}) < {n}"));
+    }
+    if let Some(n) = allows.max_length {
+        out.push(format!("char_length({column}) > {n}"));
     }
     out
 }
@@ -298,7 +389,8 @@ pub fn migration_sql(
                     does: "add column",
                 });
                 if let Some(need) = need {
-                    plan.columns.extend(backfill(table, column, need, decided));
+                    plan.columns
+                        .extend(backfill(table, column, &[], need, decided));
                 }
             }
             Change::AlterColumn { table, column, .. } => {
@@ -330,6 +422,19 @@ pub fn migration_sql(
                         continue;
                     }
                 }
+                let new_pattern = match (&was.allows, &now.allows) {
+                    (Some(was), Some(now)) => {
+                        now.patterns.iter().any(|p| !was.patterns.contains(p))
+                    }
+                    _ => false,
+                };
+                if !now.retired && new_pattern {
+                    refusals.push(Refusal {
+                        change: format!("column `{table}.{column}` takes a new `pattern`"),
+                        reason: "Stored values a new pattern refuses would need a value it allows, and PostgreSQL's regular expressions aren't Jadpo's, so this compiler can't find them yet.".into(),
+                    });
+                    continue;
+                }
                 if was.retired && !now.retired {
                     refusals.push(Refusal {
                         change: format!("retired column `{table}.{column}` comes back"),
@@ -341,7 +446,15 @@ pub fn migration_sql(
                     .iter()
                     .find(|n| &n.table == table && &n.column == column);
                 match need {
-                    Some(need) => plan.columns.extend(backfill(table, column, need, decided)),
+                    Some(need) => {
+                        plan.columns.extend(backfill(
+                            table,
+                            column,
+                            &refit(was, now, &ident(column)),
+                            need,
+                            decided,
+                        ));
+                    }
                     None if !was.nullable && now.nullable => plan.columns.push(Statement {
                         sql: format!(
                             "ALTER TABLE {} ALTER COLUMN {} DROP NOT NULL",
@@ -427,21 +540,36 @@ struct Plan {
 fn backfill(
     table: &str,
     column: &str,
+    broken: &[String],
     need: &Needed,
     decided: &dyn Fn(&Needed) -> Option<Decided>,
 ) -> Vec<Statement> {
     let (table, column) = (ident(table), ident(column));
     match (need.kind, decided(need)) {
-        (NeededKind::Backfill, Some(Decided::Backfill(value))) => vec![
-            Statement {
-                sql: format!("UPDATE {table} SET {column} = {value} WHERE {column} IS NULL"),
-                does: "fill existing rows",
-            },
-            Statement {
-                sql: format!("ALTER TABLE {table} ALTER COLUMN {column} SET NOT NULL"),
-                does: "require a value",
-            },
-        ],
+        (NeededKind::Backfill, Some(Decided::Backfill(value))) => {
+            let mut empty = vec![format!("{column} IS NULL")];
+            empty.extend(broken.iter().cloned());
+            vec![
+                Statement {
+                    sql: format!(
+                        "UPDATE {table} SET {column} = {value} WHERE {}",
+                        empty.join(" OR ")
+                    ),
+                    does: "fill existing rows",
+                },
+                Statement {
+                    sql: format!("ALTER TABLE {table} ALTER COLUMN {column} SET NOT NULL"),
+                    does: "require a value",
+                },
+            ]
+        }
+        (NeededKind::Refit, Some(Decided::Backfill(value))) => vec![Statement {
+            sql: format!(
+                "UPDATE {table} SET {column} = {value} WHERE {}",
+                broken.join(" OR ")
+            ),
+            does: "replace values no longer allowed",
+        }],
         (NeededKind::Retire, Some(Decided::Retired)) => vec![Statement {
             sql: format!("ALTER TABLE {table} ALTER COLUMN {column} DROP NOT NULL"),
             does: "retire column",
@@ -512,7 +640,21 @@ fn add_foreign_key(table: &str, name: &str, def: &Table) -> Statement {
 
 fn create_index(table: &str, name: &str, def: &Table) -> Statement {
     let index = def.indexes.get(name);
-    let columns = index.map(|i| idents(&i.columns)).unwrap_or_default();
+    let columns = index
+        .map(|i| {
+            i.columns
+                .iter()
+                .map(|column| {
+                    if i.collate.contains(column) {
+                        format!("{} COLLATE \"C\"", ident(column))
+                    } else {
+                        ident(column)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
     let partial = index
         .and_then(|i| i.predicate.as_ref())
         .map(|predicate| format!(" WHERE {predicate}"))
@@ -570,6 +712,7 @@ mod tests {
                     sql_type: ty.to_string(),
                     nullable: *nullable,
                     retired: *retired,
+                    allows: None,
                 },
             );
         }
@@ -646,6 +789,7 @@ mod tests {
                     columns: vec!["old".into()],
                     reason: "index Todo.by_old".into(),
                     predicate: None,
+                    collate: Vec::new(),
                 },
             );
         }

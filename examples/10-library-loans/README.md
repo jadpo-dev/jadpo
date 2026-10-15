@@ -57,6 +57,7 @@ record.
 22. **Transitions and what a lifecycle owns.** A loan starts `out` from `initial:`, and its transitions are the only way to move it on: `Loan.check_in(loan)` marks one read earlier returned, and `Loan.declare_lost(loan_id)` marks one lost by its id, failing with `LoanNotFound` when none has it. Each `when:` allows it only while the loan is out, so checking in twice is refused, and each caller maps that refusal in `conflict:`, keyed by the transition, to `LoanNotOut`. No code sets `status` or `returned_at` any other way, and with no `delete` transition no code deletes a loan. See `domains/lending/entities/loan.jadpo`, `domains/lending/actions/return_book.jadpo`, `domains/lending/actions/declare_lost.jadpo` and their tests, and [area 6, The operations every entity gets](../../docs/language/06-reads-and-writes.md#the-operations-every-entity-gets).
 23. **A partial index.** `members_named` reads only members still in the library, so the fifth migration creates its index `WHERE "left_at" IS NULL`, and backfills every loan already stored as `out`. See `domains/lending/queries/members_named.jadpo` and `database/migrations/20261110T0901_add_lifecycles/`.
 24. **Isolation follows from what an action does.** `count_in_house_use` is nothing but a counter, so it loads no record and the compiler runs it at read committed: two staff counting one copy at once both commit, the second adding to the first's count. `lend` reads the copy and is handed the member, so it runs at repeatable read: of two desks lending one copy at once, the second runs again from the start. An action that calls one that loads a record runs at repeatable read too, as the fixture does. Nothing is written for either; `jadpo check` records each action's level in `build/manifest.json` as `isolation`. The sixth migration adds the count. See `domains/lending/actions/count_in_house_use.jadpo`, `domains/lending/actions/lend.jadpo`, `database/migrations/20261117T0900_count_in_house_use/` and [area 6, Counters and other one-step updates](../../docs/language/06-reads-and-writes.md#counters-and-other-one-step-updates).
+25. **What a field allows is part of the schema.** Each snapshot records an enum's variants and a field's bounds, lengths and patterns, so dropping a variant or tightening `max_length` is a migration whose decision gives stored records a value the field still allows. Snapshots written before that didn't record it, so the seventh migration records it, and remakes the index `browse_books` sorts by in code-point order (`COLLATE "C"`, as queries sort text) so it can read it. See `database/migrations/20261124T0900_record_what_fields_allow/` and [area 5, Storage types](../../docs/language/05-data.md#storage-types).
 
 ## Run it
 
@@ -75,7 +76,7 @@ cd examples/10-library-loans && ../../target/release/jadpo migrate status
 
 - `check` ends with `checked: <n> files` and no errors: the entities match
   the latest migration's snapshot.
-- `migrate status` lists the six migrations. Given a PostgreSQL database
+- `migrate status` lists the seven migrations. Given a PostgreSQL database
   with `--url`, `jadpo migrate apply` creates the tables there and `status`
   says which migrations it has applied.
 - `test` ends with `tested: 21 passed`. A test that writes records gets its

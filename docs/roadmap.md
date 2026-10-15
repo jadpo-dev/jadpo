@@ -238,7 +238,7 @@ reference only).
   example gate still finds every built feature. Done when the error has a
   checked example on area 1 and no example or page example breaks either
   rule.
-- [ ] **3.10 Phase 3 review: soundness** `opus · high`. A called action
+- [x] **3.10 Phase 3 review: soundness** `opus · high`. A called action
   that fails rolls back its own writes (a savepoint per called action whose
   failure the caller handles); purge follows self and cyclic cascades so a
   held record never stops the batch; a patch can't send `none` to a

@@ -85,6 +85,7 @@ books
 books_after
 books_titled
 borrower
+box_size
 bread
 browned
 browse_books
@@ -484,6 +485,7 @@ order_line_view
 order_locked
 order_not_found
 order_note
+order_product
 order_shelf
 order_stage
 order_state
@@ -511,6 +513,7 @@ page_todos
 paid
 pale
 pantry
+parcel
 partner_ref
 party_id
 party_label
@@ -679,6 +682,7 @@ shelf
 shelf_card
 shelf_empty
 shelf_name
+shelf_size
 shelvable
 shipment
 shipped
@@ -813,6 +817,7 @@ video
 video_id
 view_count
 view_video
+visits
 vouch
 vouched
 vouched_by

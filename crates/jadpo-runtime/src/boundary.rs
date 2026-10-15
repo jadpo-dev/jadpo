@@ -11,7 +11,10 @@
 //! at the caller's level, which already counts what every action it calls
 //! does; so does a fixture's, since a fixture is a test-only action (area
 //! 13); a test, or a fixture's caller, opens a boundary per action it
-//! calls, so each commits on its own.
+//! calls, so each commits on its own. A called action whose failure its
+//! caller handles (an outcome `match`) runs inside a savepoint: when it
+//! fails, what it wrote and emitted is undone and the caller carries on,
+//! since the action is all-or-nothing whoever calls it (area 6).
 
 use crate::{Ctx, Failure, Isolation, LocalFuture, Outcome, StoreError};
 
@@ -31,6 +34,14 @@ pub trait ActionBody<'p> {
     /// action it calls, repeatable read otherwise, as its plan says (area
     /// 6). Joining a running action's boundary, it takes that action's.
     fn isolation(&self) -> Isolation;
+
+    /// Whether the caller handles this action's failure (an outcome
+    /// `match` or `assert … fails` on the call) rather than passing it on:
+    /// then, inside a running action, it runs in a savepoint its failure
+    /// returns to.
+    fn caught(&self) -> bool {
+        false
+    }
 }
 
 /// What the runtime raises when an action can't finish because its store
@@ -59,10 +70,11 @@ enum Ended {
 /// emitted after it commits.
 pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     if ctx.in_action() {
-        ctx.nesting += 1;
-        let outcome = body.run(ctx).await;
-        ctx.nesting -= 1;
-        return outcome;
+        return if body.caught() {
+            caught(ctx, body).await
+        } else {
+            body.run(ctx).await
+        };
     }
     ctx.actions += 1;
     let isolation = body.isolation();
@@ -113,6 +125,66 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
             }
         }
     }
+}
+
+/// Runs `body`, called inside a running action by a caller that handles
+/// its failure, so that a failure leaves nothing it did behind: its writes
+/// are undone back to a savepoint taken before it ran (a refused statement
+/// among them, so the transaction carries on), or, when it began the
+/// transaction itself, the transaction is rolled back and the caller's
+/// next store operation begins a fresh one; what it emitted is dropped.
+async fn caught<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
+    let (open, emitted) = match &mut ctx.boundary {
+        Some(boundary) => (boundary.transaction.is_some(), boundary.outbox.len()),
+        None => (false, 0),
+    };
+    if open && let Some(Err(error)) = savepoint(ctx, Mark::Take).await {
+        return lost(ctx, error);
+    }
+    let outcome = body.run(ctx).await;
+    let failed = matches!(outcome, Outcome::Failed(_));
+    if open {
+        let mark = if failed { Mark::Return } else { Mark::Release };
+        if let Some(Err(error)) = savepoint(ctx, mark).await {
+            return lost(ctx, error);
+        }
+    } else if failed && let Some(boundary) = &mut ctx.boundary {
+        boundary.store = None;
+        if let Some(transaction) = boundary.transaction.take() {
+            let _ = transaction.rollback().await;
+        }
+    }
+    if failed && let Some(boundary) = &mut ctx.boundary {
+        boundary.outbox.truncate(emitted);
+    }
+    outcome
+}
+
+/// What [`caught`] does with its savepoint.
+enum Mark {
+    Take,
+    Release,
+    Return,
+}
+
+async fn savepoint(ctx: &mut Ctx<'_>, mark: Mark) -> Option<Result<(), StoreError>> {
+    let transaction = ctx.boundary.as_mut()?.transaction.as_mut()?;
+    Some(match mark {
+        Mark::Take => transaction.savepoint().await,
+        Mark::Release => transaction.release_savepoint().await,
+        Mark::Return => transaction.rollback_to_savepoint().await,
+    })
+}
+
+/// The store couldn't keep the savepoint: the action can't finish.
+fn lost(ctx: &mut Ctx<'_>, error: StoreError) -> Outcome {
+    if matches!(error, StoreError::ConcurrentChange) {
+        ctx.concurrent_change();
+    }
+    Outcome::Failed(Box::new(Failure {
+        frames: ctx.frames(),
+        ..unavailable()
+    }))
 }
 
 #[cfg(test)]
