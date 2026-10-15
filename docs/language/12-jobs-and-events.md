@@ -252,9 +252,14 @@ compare them.
   integration operations send as their idempotency key (area 11), so a
   provider that supports keys ignores the repeat.
 - **One outside change per action.** An action calls at most one integration
-  operation that changes something (question 11). After a call whose result
-  is lost, the runtime cannot know what happened; with one call per action it
-  knows exactly which call to ask about.
+  operation that changes something (question 11), so every action repeats
+  as a unit: a rerun or a redelivery repeats one keyed call and gets the
+  provider's stored answer. With two, the second could fail for good after
+  the first took effect, leaving a change nothing in the action undoes; one
+  call per action puts each step in its own subscriber, where its failure
+  is retried, parked or handled by that step's own action. Writes are not
+  limited this way: every write to the action's store, across any number of
+  domains, commits together (area 6).
 - **No order is promised** between events (question 6). A subscriber that
   cares about order reads the current state instead of trusting the event's
   copy, which is also what makes repeats safe.
@@ -267,7 +272,8 @@ runtime delivers them: on a long-running server from its own workers, on
 Cloudflare Workers right after the commit (`waitUntil`) with the
 once-a-minute schedule tick sweeping anything left. One place holds every
 log and trace, a request is never slowed by delivery, and no site needs a
-queue service.
+queue service. A route that wants the finished result instead of `202`
+waits for the work its action set off with `settle:` (area 7, 2026-10-15).
 
 External queues are never the delivery path. A connection can *publish*
 chosen public events outward, so other systems can react to them: an outbound
@@ -1040,7 +1046,12 @@ chunk 8.2.
     something?** *Recommendation:* no, a compile error. After a lost reply
     the runtime must know which single call to ask about; batch work emits one
     event per item instead. Inngest makes each outside call its own step for
-    the same reason. *Decided 2026-10-13:* yes, as recommended.
+    the same reason. *Decided 2026-10-13:* yes, as recommended. *Reason
+    corrected 2026-10-15 (Richard):* the runtime stops at the first call
+    whose outcome is unknown, so even several calls would leave only one in
+    doubt. The rule's purpose is that an action repeats as a unit, and that
+    no second call can fail for good after the first took effect (see
+    "Delivery: at least once, safe to repeat").
 12. **Are the limits right?** 1,000 events per action, 64 KB per event,
     chains 16 deep, 15 minutes per run. *Recommendation:* adopt them as
     defaults and confirm with measured runs, as ASYNC-001 requires. *Decided 2026-10-13:* yes, as recommended.
@@ -1138,6 +1149,7 @@ Nothing is decided on this page yet.
 | Automatic events from transitions | No; the action that makes the change emits | 2026-10-13 |
 | Delayed delivery | No; a schedule over a due field instead | 2026-10-13 |
 | One changing integration call per action | Yes, a compile error otherwise | 2026-10-13 |
+| Why one changing call | Corrected (Richard): every action repeats as a unit, a rerun repeating one keyed call, and no second call can fail for good after the first took effect; not "knowing which call to ask about", since the runtime stops at the first unknown outcome anyway | 2026-10-15 |
 | Limits | 1,000 events per action, 64 KB per event, chains 16 deep, 15 minutes per run, confirmed by measurement | 2026-10-13 |
 | Snapshot reads for exports | None; keyset pages; area 15's export reads in one transaction | 2026-10-13 |
 | Work after an accepted response | An event and subscriber; the client reads a record with a status field | 2026-10-13 |
