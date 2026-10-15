@@ -294,8 +294,6 @@ application or an integration (area 11).
 A whole application that signs members up, keeps their notes and refuses a
 suspended member. The principal and its one sign-in method:
 
-
-
 ```jadpo check project=sign-in file=app.jadpo
 use journal/entities { Member }
 use journal/types { MemberStatus }
@@ -410,7 +408,9 @@ action suspend(member_id: Member.id) fails MemberNotFound -> Member {
 }
 ```
 
-Signing up checks the handle, starts a session and answers with no content; its response sets the cookies. Writing a note takes the signed-in member as a parameter:
+Signing up checks the handle, starts a session and answers with no content;
+its response sets the cookies. Writing a note takes the signed-in member as
+a parameter:
 
 ```jadpo check project=sign-in file=domains/journal/actions/sign_up.jadpo
 use journal/entities { Member }
@@ -533,7 +533,9 @@ input WriteNote
 failure handle_taken 409 "That handle is taken."
 ```
 
-A route test signs in with `as:` through the real browser session (a session kept for the member, its cookie, its CSRF token and an `Origin`), so a suspended member is refused exactly as a browser would be:
+A route test signs in with `as:` through the real browser session (a session
+kept for the member, its cookie, its CSRF token and an `Origin`), so a
+suspended member is refused exactly as a browser would be:
 
 ```jadpo check project=sign-in file=domains/journal/routes/notes.test.jadpo
 use journal/entities { Member }
