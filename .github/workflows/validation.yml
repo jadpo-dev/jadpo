@@ -48,7 +48,8 @@ jobs:
   docs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    # `jadpo test` runs projects with tables against a PostgreSQL server.
+    # `jadpo test` runs projects with tables against a PostgreSQL server,
+    # one for the job, named by JADPO_TEST_DATABASE_URL.
     steps:
       - uses: actions/checkout@v7
         with:
@@ -79,8 +80,9 @@ jobs:
   tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # The live PostgreSQL steps run against one server through
-    # JADPO_TEST_DATABASE_URL; local runs start disposable ones instead.
+    # The live PostgreSQL steps share one server, named by
+    # JADPO_TEST_DATABASE_URL, and run at once; local runs start one
+    # disposable server for the run instead.
     steps:
       - uses: actions/checkout@v7
         with:
