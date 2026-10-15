@@ -13,13 +13,31 @@ concurrency:
   group: validation-${{ github.ref }}
   cancel-in-progress: true
 
+# The gate (tools/verify.py) split into its groups, one job each, run at
+# once (docs/compiler-runtime.md §2.7). Each job keeps its own cargo cache,
+# since each builds something different. `supported-language`, the check
+# branch protection requires, passes only when every job passed.
 jobs:
-  supported-language:
+  lint:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    # The gate's live PostgreSQL step runs against this server through
-    # JADPO_TEST_DATABASE_URL; local runs start a disposable one instead
-    # (docs/compiler-runtime.md §2.7).
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Everything rust-toolchain.toml lists, which rustup would add anyway.
+      - name: Install the pinned Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Formatting, clippy, the example-name ban and the editor grammar
+        run: python3 tools/verify.py --group lint
+
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # `jadpo test` runs projects with tables against this server.
     services:
       postgres:
         image: postgres:16
@@ -38,14 +56,78 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Everything rust-toolchain.toml lists, which rustup would add anyway.
       - name: Install the pinned Rust toolchain
-        if: hashFiles('rust-toolchain.toml') != ''
         run: |
           channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
           rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-        if: hashFiles('Cargo.toml') != ''
-      - name: Run the gate
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: The language pages and the teaching examples
         env:
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
-        run: python3 tools/verify.py
+        run: python3 tools/verify.py --group docs
+
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # The live PostgreSQL steps run against this server through
+    # JADPO_TEST_DATABASE_URL; local runs start disposable ones instead.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jadpo
+          POSTGRES_PASSWORD: jadpo
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jadpo -d postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Everything rust-toolchain.toml lists, which rustup would add anyway.
+      - name: Install the pinned Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Every test, with live PostgreSQL
+        env:
+          JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
+        run: python3 tools/verify.py --group tests
+
+  wasm32:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Everything rust-toolchain.toml lists, which rustup would add anyway.
+      - name: Install the pinned Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: The shared and runtime crates for wasm32
+        run: python3 tools/verify.py --group wasm32
+
+  supported-language:
+    needs: [lint, docs, tests, wasm32]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "lint, docs, tests, wasm32: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || exit 1
+          done
