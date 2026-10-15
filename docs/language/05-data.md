@@ -1907,7 +1907,7 @@ type Tag = Text {
     max_length: 20
 }
 
-entity Box {
+entity Parcel {
     id: Uuid
     tags: List<Tag>
 }
@@ -1919,8 +1919,8 @@ error: Storing a `List<Tag>` field isn't built yet
   |
 7 |     tags: List<Tag>
   |           ^^^^^^^^^ structured, stored as `jsonb`
-  reason: Area 5 stores an enum with data, an object, a list, a set or a map as `jsonb` holding the API's JSON, and that JSON comes with area 7; until then this compiler can't read or write `Box.tags`.
-  next: Store what `Box.tags` holds in fields of its own, or as records of an entity that refers to `Box`, for now (agent)
+  reason: Area 5 stores an enum with data, an object, a list, a set or a map as `jsonb` holding the API's JSON, and that JSON comes with area 7; until then this compiler can't read or write `Parcel.tags`.
+  next: Store what `Parcel.tags` holds in fields of its own, or as records of an entity that refers to `Parcel`, for now (agent)
   rule: toolchain.not_built_yet
   help: docs/language/05-data.html#storage-types
 
