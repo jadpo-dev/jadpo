@@ -138,7 +138,7 @@ habits! {
         "SQL writes `AND`, `OR` and `NOT` in capitals; Jadpo's logical operators are the lower-case words `and`, `or` and `not`.",
         "Use `$J` instead of `$W`";
     TERNARY: SYNTAX_TERNARY_OPERATOR, Parser, "c ? a : b" -> "match",
-        "Jadpo chooses a value with `match`, not `? :`", "not Jadpo",
+        "Jadpo chooses a value with `match`, not `? :`", "write a `match`",
         "`condition ? a : b` chooses a value in JavaScript, Java, C#, Kotlin and Swift; Jadpo chooses between two values with a `match` on the condition.",
         "Write $J";
     INCREMENT: SYNTAX_INCREMENT_OPERATOR, Parser, "x++" -> "x = x + 1",
@@ -304,11 +304,11 @@ habits! {
         "`T | null` and `T | undefined` are types that may be missing in TypeScript, and `T | None` and `Optional[T]` in Python; Jadpo writes `T?`, which holds a `T` or `none`.",
         "Write `$J`";
     NULL_COALESCING: SYNTAX_NULL_COALESCING, Parser, "a ?? b" -> "match",
-        "Jadpo reads a value that may be `none` with `match`, not `$W`", "not Jadpo",
+        "Jadpo reads a value that may be `none` with `match`, not `$W`", "write a `match`",
         "`??` gives a default for a missing value in JavaScript, TypeScript, C# and Swift, and `?:` in Kotlin; Jadpo reads a value that may be `none` with a `match` that handles both cases.",
         "Write $J";
     OPTIONAL_CHAINING: SYNTAX_OPTIONAL_CHAINING, Parser, "a?.b" -> "match",
-        "Jadpo reads a value that may be `none` with `match`, not `?.`", "not Jadpo",
+        "Jadpo reads a value that may be `none` with `match`, not `?.`", "write a `match`",
         "`?.` reads a field of a value that may be missing in JavaScript, TypeScript, C#, Kotlin and Swift; Jadpo reads a value that may be `none` with a `match` that handles both cases.",
         "Write $J";
     FOREIGN_TYPE: TYPE_FOREIGN_TYPE, Checker, "string" -> "Text",
