@@ -30,6 +30,10 @@ use crate::postgres::{Server, ServerError};
 /// How many copies are kept ready beyond the ones tests hold.
 const AHEAD: usize = 4;
 
+/// How many databases wait to be dropped before they are: drops that run at
+/// once share the checkpoint each waits for.
+const DROP_TOGETHER: usize = 16;
+
 /// How many threads make, empty and drop copies at once: PostgreSQL makes
 /// a copy in tens of milliseconds, a few at a time.
 const WORKERS: usize = 4;
@@ -531,7 +535,12 @@ fn work(shared: &Shared, server: &Server, templates: &BTreeMap<String, Template>
                 return;
             };
             loop {
-                if let Some(name) = state.drop.pop() {
+                // Every drop waits for a checkpoint of the whole server,
+                // so drops wait until there are several, or the run is
+                // over, and go together.
+                if (state.done || state.drop.len() >= DROP_TOGETHER)
+                    && let Some(name) = state.drop.pop()
+                {
                     break Job::Drop(name);
                 }
                 if state.done {
@@ -572,7 +581,9 @@ fn work(shared: &Shared, server: &Server, templates: &BTreeMap<String, Template>
                     || runtime
                         .as_ref()
                         .is_some_and(|runtime| empty(runtime, &copy, templates).is_ok());
-                if clean && state_reusable(shared) {
+                // A copy no test used is the template as it was migrated,
+                // whatever its migrations did, so it can be left too.
+                if clean && (!used || state_reusable(shared)) {
                     leave(server, copy, templates);
                 } else {
                     for name in copy.names() {

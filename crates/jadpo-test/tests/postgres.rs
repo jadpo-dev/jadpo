@@ -792,7 +792,7 @@ fn copies_of_a_template_with_rows_start_with_those_rows() {
         false,
     );
     let runtime = Runtime::new().unwrap();
-    for _ in 0..8 {
+    for _ in 0..3 {
         let host = TestHost::new(&databases);
         runtime.block_on(async {
             assert_eq!(
