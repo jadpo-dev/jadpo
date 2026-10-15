@@ -498,7 +498,8 @@ impl Lexer<'_> {
         self.push(if doc { DOC_COMMENT } else { COMMENT }, start);
         let marker = if doc { "///" } else { "//" };
         let closed = self.text[start..end].ends_with("*/") && end - start >= 4;
-        let alone_after = self.rest_of_line(end).trim().is_empty();
+        let after = self.rest_of_line(end).trim();
+        let alone_after = after.is_empty() || after.starts_with("//");
         let mut edits = Vec::new();
         if closed && alone_after {
             let inner = &self.text[start + if doc { 3 } else { 2 }..end - 2];

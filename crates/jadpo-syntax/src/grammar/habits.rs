@@ -112,6 +112,15 @@ fn match_text(p: &Parser<'_>, at: u32, subject: &str, arms: [(&str, &str); 2]) -
     out
 }
 
+/// A `match` the next step describes on one line: `` `match a` with the
+/// arms `x -> y` and `z -> w` ``.
+fn arms_summary(subject: &str, arms: [&str; 2]) -> String {
+    format!(
+        "`match {subject}` with the arms `{}` and `{}`",
+        arms[0], arms[1]
+    )
+}
+
 /// The name an arm binds a value that may be `none` to: its field's name
 /// (`listing.subtitle` binds `subtitle`), or `value`.
 fn binding_for(subject: &str) -> String {
@@ -1162,10 +1171,17 @@ pub(super) fn infix(
                 &subject,
                 [(&format!("some({bind})"), &bind), ("none", &fallback)],
             );
+            let summary = arms_summary(
+                &subject,
+                [
+                    &format!("some({bind}) -> {bind}"),
+                    &format!("none -> {fallback}"),
+                ],
+            );
             report(
                 p,
                 &h::NULL_COALESCING,
-                (&written, &jadpo),
+                (&written, &summary),
                 (op_start, op_end),
                 vec![TextEdit::replace(start, end, jadpo.clone())],
                 false,
@@ -1188,10 +1204,14 @@ pub(super) fn infix(
             let end = p.prev_end().max(b_start);
             let b = source(p, b_start, end);
             let jadpo = match_text(p, start, &subject, [("true", &a), ("false", &b)]);
+            let summary = arms_summary(
+                &subject,
+                [&format!("true -> {a}"), &format!("false -> {b}")],
+            );
             report(
                 p,
                 &h::TERNARY,
-                ("? :", &jadpo),
+                ("? :", &summary),
                 (op_start, op_end),
                 vec![TextEdit::replace(start, end, jadpo.clone())],
                 false,
@@ -1288,10 +1308,14 @@ pub(super) fn optional_chaining(p: &mut Parser<'_>, start: u32, chain: u32) {
             ("none", "none"),
         ],
     );
+    let summary = arms_summary(
+        &subject,
+        [&format!("some({bind}) -> {bind}{rest}"), "none -> none"],
+    );
     report(
         p,
         &h::OPTIONAL_CHAINING,
-        ("?.", &jadpo),
+        ("?.", &summary),
         (chain, chain + 2),
         vec![TextEdit::replace(start, end, jadpo.clone())],
         false,
@@ -1649,7 +1673,7 @@ pub(super) fn switch_arm(p: &mut Parser<'_>) -> bool {
         report(
             p,
             habit,
-            (&written_word, &format!("{pattern_text} -> {{")),
+            (&written_word, &format!("{pattern_text} -> {{ ... }}")),
             (arm_start, if case { word_end } else { arrow_end }),
             edits,
             false,

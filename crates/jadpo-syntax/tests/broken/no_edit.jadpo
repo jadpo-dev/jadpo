@@ -1,0 +1,17 @@
+// Habits and slips with no edit to offer: each is still one error.
+function load_all(ids: List<Id>) fails Missing -> Count {
+    try {  // error: syntax.try_catch (no edit)
+        var item: Item = attempt load(ids)
+    } catch (error) {  // error: syntax.try_catch (no edit)
+        return 0
+    } finally {  // error: syntax.try_catch (no edit)
+        return 1
+    }
+    for (var i = 0; i < 10; i++) {  // error: syntax.for_loop (no edit)
+        return 1
+    }
+    while (count > 0) {  // error: syntax.expected_statement (no edit)
+        return count
+    }
+    return 0
+}

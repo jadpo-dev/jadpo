@@ -78,7 +78,7 @@ macro_rules! habits {
         $headline:literal, $label:literal, $reason:literal, $next:literal;)*) => {
         $(
             #[doc = $reason]
-            pub const $name: Habit = Habit {
+            pub static $name: Habit = Habit {
                 rule: &rule::$rule,
                 detected: Detected::$detected,
                 written: $written,
@@ -140,7 +140,7 @@ habits! {
     TERNARY: SYNTAX_TERNARY_OPERATOR, Parser, "c ? a : b" -> "match",
         "Jadpo chooses a value with `match`, not `? :`", "not Jadpo",
         "`condition ? a : b` chooses a value in JavaScript, Java, C#, Kotlin and Swift; Jadpo chooses between two values with a `match` on the condition.",
-        "Write `$J`";
+        "Write $J";
     INCREMENT: SYNTAX_INCREMENT_OPERATOR, Parser, "x++" -> "x = x + 1",
         "Jadpo writes `$J`, not `$W`", "write `$J`",
         "`++`, `--`, `+=`, `-=` and `*=` change a variable in place in JavaScript, Java, C#, Go, Kotlin, Swift and Python; Jadpo assigns a `var mut` with `=`, and a named type converts the result back with its constructor, as in `count = Count(count + 1)`.",
@@ -306,11 +306,11 @@ habits! {
     NULL_COALESCING: SYNTAX_NULL_COALESCING, Parser, "a ?? b" -> "match",
         "Jadpo reads a value that may be `none` with `match`, not `$W`", "not Jadpo",
         "`??` gives a default for a missing value in JavaScript, TypeScript, C# and Swift, and `?:` in Kotlin; Jadpo reads a value that may be `none` with a `match` that handles both cases.",
-        "Write `$J`";
+        "Write $J";
     OPTIONAL_CHAINING: SYNTAX_OPTIONAL_CHAINING, Parser, "a?.b" -> "match",
         "Jadpo reads a value that may be `none` with `match`, not `?.`", "not Jadpo",
         "`?.` reads a field of a value that may be missing in JavaScript, TypeScript, C#, Kotlin and Swift; Jadpo reads a value that may be `none` with a `match` that handles both cases.",
-        "Write `$J`";
+        "Write $J";
     FOREIGN_TYPE: TYPE_FOREIGN_TYPE, Checker, "string" -> "Text",
         "Jadpo writes `$J`, not `$W`", "write `$J`",
         "$W",

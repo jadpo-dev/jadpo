@@ -1,0 +1,28 @@
+// Habits a Java or C# author brings.
+import shared.types.Pence;  // error: syntax.import_statement
+
+function total(lines: List<Line>) -> Pence {
+    foreach (var line in lines) {  // error: syntax.for_loop
+        emit Counted { line: line }
+    }
+    for (Line line : lines) {  // error: syntax.for_loop
+        emit Counted { line: line }
+    }
+    var point: Point = Point { x = 1 }  // error: syntax.colon_required
+    var label: Label = big ? "large" : "small"  // error: syntax.ternary_operator
+    var shown: Name = maybe ?? fallback  // error: syntax.null_coalescing
+    var word: Word = switch (count) {  // error: syntax.switch_statement
+        case 1 -> "one"  // error: syntax.switch_statement
+        default -> "many"  // error: syntax.switch_statement
+    }
+    assertEquals(3, total(lines))  // error: syntax.assertion_form
+    assertTrue(lines.empty)  // error: syntax.assertion_form
+    Assertions.assertFalse(lines.full)  // error: syntax.assertion_form
+    /* one line */  // error: syntax.comment_style
+    if (count <> 2) {  // error: syntax.equality_operator
+        throw NotCounted  // error: syntax.unsupported_throw
+    }
+    count -= 1  // error: syntax.increment_operator
+    count--  // error: syntax.increment_operator
+    return 0
+}

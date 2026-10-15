@@ -1,0 +1,22 @@
+// Habits a Python author brings.
+from shared.types import Pence, Quantity  // error: syntax.import_statement
+
+# A comment in Python's form.  // error: syntax.comment_style
+def total(items: list[Item]) -> Pence {  // error: syntax.function_keyword
+    if (items is None) {  // error: syntax.equality_operator
+        return 0
+    } elif (items is not None) {  // error: syntax.else_if
+        return 1
+    }
+    var names: List<Name> = collection.map(items, lambda item: item.name)  // error: syntax.inline_function_arrow
+    var first: Optional[Name] = none  // error: syntax.nullable_type
+    var sorted: List<Item> = order(items, reverse = true)  // error: syntax.named_argument_equals
+    var tags: Map<Tag, Count> = build(tags)
+    var counts: dict[Tag, Count] = tally(tags)  // error: syntax.collection_type
+    total += 2  // error: syntax.increment_operator
+    if (total is not None) {  // error: syntax.equality_operator
+        raise TotalMissing  // error: syntax.unsupported_throw
+    }
+    self.assertEqual(total, 3)  // error: syntax.assertion_form
+    return 0
+}
