@@ -19,7 +19,7 @@ is a view of it. Reviewing a change means comparing two manifests, and
 explaining a production event means rebuilding the manifest of the build
 that raised it.
 
-> Decided on 2026-10-13.
+> Decided on 2026-10-13. The manifest (chunk 1.7) and migrations (chunk 3.1) are built; the [status table](#status) says when the rest comes.
 
 | Name | Holds | Where | Committed | Written by | Read by |
 |---|---|---|---|---|---|
@@ -56,14 +56,6 @@ invite hand edits, so it is a build output.
 > command to run. Each folder is a `migration_snapshot` node in the
 > manifest. The identity registry is still read only once `jadpo rename`
 > writes it (area 14), so every born name is the name now.
-
-::: today
-
-There are no records. `build/compatibility/public-failure-codes.json` is
-regenerated every build and reports `baseline_not_configured`. The registry
-is `schema.identities.json`, and only `jadpo schema` commands write it.
-
-:::
 
 ## The manifest
 
@@ -107,9 +99,9 @@ that path numbers decode against, and each deployable's build id.
   timestamps. `format` changes only when a field is removed or changes
   meaning; additions keep the number. Manifests are never stored, so no
   tool ever reads an old format. `jadpo help --json` documents the schema.
-- **Size does not matter**, because it is never shipped. Today's map of
-  the golden todo is 101 KB (13 KB compressed). Agents ask for one node
-  with `jadpo inspect <name> --json` rather than reading the file.
+- **Size does not matter**, because it is never shipped. Agents ask for
+  one node with `jadpo inspect <name> --json` rather than reading the
+  file.
 
 > **Built (chunk 1.7).** For a project, `jadpo check` writes
 > `build/manifest.json`, errors or not, at `format` 1: `compiler`, `errors`
@@ -122,17 +114,6 @@ that path numbers decode against, and each deployable's build id.
 > routes, schedules, hosts, policy, personal fields and thresholds join as
 > their areas are built. `jadpo help --json` prints the schema with every
 > node and edge kind and whether it is built yet.
-
-::: today
-
-`build/app.meta.json` holds a graph whose nodes are numbered in order, so a
-node's number changes when anything before it changes. Operations are named
-like `route:GET:/health/live`. The source is identified only by a digest
-(`src_2c78570a2841d2f7`), with no commit. The approval subject is a second,
-separate file of 6.1 MB, and `inventory/` and `audit/` are a third set of
-views. All of these fold into the manifest and its reports.
-
-:::
 
 ## Stable identity
 
@@ -200,15 +181,6 @@ per base commit.
 - If the base does not compile with this compiler, for example after a
   language upgrade, `check` compares the records only and says so. Upgrade
   the compiler in its own change.
-
-::: today
-
-`jadpo approval <project> --before <folder>` compares two checked-out
-project folders: `--before main` fails with `toolchain.project_not_found`.
-The result is the 6.1 MB subject in `build/approval/`, plus a text copy
-that is one long line of JSON.
-
-:::
 
 ## Acceptances
 
@@ -365,18 +337,16 @@ that the path number cannot be decoded.
 
 ### Status
 
-Each row says how it was checked: run with `jadpo` 3ce094d0 on a copy of
-`examples/golden-todo-migration`, or read from source.
-
 | Feature | Status |
 |---|---|
-| Manifest | **Partial (run):** `jadpo artifacts` writes `build/app.meta.json` (101 KB, 13 KB compressed): 734 graph nodes keyed by a counter, operation ids such as `route:GET:/health/live`, and a source digest. No commit, no compiler version, no deployables. |
-| Views of it | **Separate (run):** `inventory/`, `audit/`, `openapi/`, `compatibility/`, `validators/` and `approval/` are written independently of `app.meta.json`; 16 files in all. |
-| Approval | **Gap (run):** `--before` takes a second project folder, not a git ref (`--before main` fails with `toolchain.project_not_found`). `subject.json` and its text copy are 6.1 MB each. Nothing blocks a release. |
-| Build stamp | **Partial (run):** the generated `app.ts` embeds the source digest `src_2c78570a2841d2f7`; no commit. |
-| `jadpo incident` | **Exists (read, `cli/src/main.rs`):** refuses with `cli.incident_revision_mismatch` unless the local source is exactly the event's. |
-| Identity registry | **Partial (read, `migration_identity.rs`):** `schema.identities.json` gives every table and column an id and physical name; no code; the golden todo has none. |
-| API record, acceptances, lock | **Not built (read):** no `api/`, no `acceptance` declaration, no `jadpo.lock`; the compatibility file reports `baseline_not_configured` (run). |
+| Manifest | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` at `format` 1, with nodes for areas 1 to 4 and their `calls`, `uses` and `raises` edges. The build stamp, routes, schedules, hosts, policy, personal fields and thresholds join as their areas are built. |
+| Views of it | The library and failure catalogues are built (chunk 1.7); the other reports, OpenAPI and the monitoring rules come with their areas. |
+| Migrations | Built (chunk 3.1): `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
+| Stable identity | Built (chunk 1.7): a key is the kind and the born name, and a test's key is the file it sits beside and its sentence (chunk 1.9). The registry is read once `jadpo rename` writes it (area 14). |
+| API record | Decided, not built: comes with routes (chunk 4.1). |
+| Lock | Decided, not built: comes with packages (chunk 7.1). |
+| Build stamp | Decided, not built: comes with compiled deployables (Phase 8). |
+| Approval, acceptances, package upgrade plans, `jadpo incident` | Decided, not built: after the first build (roadmap, areas 17 and 18). |
 
 ### Consistency with the rest of the language
 

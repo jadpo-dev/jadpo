@@ -86,7 +86,6 @@ browser_origin
 browser_session
 budget
 build_product
-bulk_quantity
 bumped
 bun_count
 buns
@@ -137,7 +136,6 @@ check_kitchen
 check_note
 check_out
 check_shelf
-check_size
 check_title
 checkout
 checkout_unavailable
@@ -156,7 +154,6 @@ company_membership
 company_role
 complete_todo
 completed_at
-configured_application
 contact_address
 contact_email
 contact_text
@@ -166,7 +163,6 @@ count_out_of_range
 count_refused
 count_tiers
 count_todos
-countdown
 counter
 counter_id
 country
@@ -201,8 +197,6 @@ days
 days_left
 days_overdue
 decline_reason
-delete_customer
-delete_todo
 deleted_at
 deliver_to
 delivered
@@ -291,7 +285,6 @@ half_price
 handover
 handover_charge
 has_urgent
-health_report
 heavy
 heavy_ingredients
 higher
@@ -303,7 +296,6 @@ http_status
 icing
 icing_too_long
 icing_unreadable
-illegal_write
 import_reference
 in_shop
 in_store
@@ -388,7 +380,6 @@ local_due
 locker
 locker_code
 london_morning
-london_noon
 longer_manuals
 lookup_code
 lookup_key
@@ -401,7 +392,6 @@ lookup_result
 lookup_timed_out
 loyalty
 mail_api_key
-mail_rate_limited_then_accepted
 mail_sender
 make_badge
 manual
@@ -446,8 +436,6 @@ nothing_to_bake
 notify_owner
 nut_free
 nuts
-oidc_audience
-oidc_issuer
 old_todo
 on_payment_succeeded
 on_shelf
@@ -494,7 +482,6 @@ party_label
 party_title
 passed_on
 pastry
-patch_customer
 patch_todo
 payment
 payment_intent
@@ -520,7 +507,6 @@ price
 price_basket
 price_flour
 price_item
-price_line
 price_lines
 price_loaves
 price_per_kilo
@@ -564,7 +550,6 @@ receipt_id
 recipe
 record_payment
 record_payment_webhook
-record_twice
 redeem_card
 register_and_record
 register_both
@@ -586,7 +571,6 @@ reminder_temporarily_unavailable
 reminder_tick
 reminder_time
 rename_product
-rename_todo
 renew
 renewed
 replies
@@ -616,7 +600,6 @@ sacks
 safe_to_eat
 sales
 same_price
-save_again
 save_draft
 save_note
 save_session
@@ -640,7 +623,6 @@ service_disabled
 service_fake_identity
 service_id
 service_status
-session_signing_key
 set_oven
 severe
 shelf
@@ -668,7 +650,6 @@ slot_taken
 small
 snooze_days
 snooze_todo
-soft_delete_retention
 source_company_id
 split_evenly
 sponge
@@ -676,7 +657,6 @@ stamp_card
 stamp_count
 stamped_once
 stamps_to_go
-standard_wait
 stars
 start_project
 starting_quantity
@@ -702,7 +682,6 @@ team
 team_id
 temperature
 temperature_for
-tenant_owner
 tenth
 test_configuration
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
@@ -718,7 +697,6 @@ till_total
 times_lent
 title
 title_blank
-title_taken
 titles
 todo
 todo_application
@@ -731,7 +709,6 @@ todo_count
 todo_cursor
 todo_detail
 todo_draft
-todo_event
 todo_id
 todo_ids
 todo_not_found
@@ -765,7 +742,6 @@ user_id
 user_missing
 user_name
 user_not_found
-user_role
 user_status
 user_todos
 user_view
@@ -801,7 +777,4 @@ work_email
 worn
 wrapper
 written_at
-wrong_conflict
-wrong_empty
-wrong_missing
 wrong_total

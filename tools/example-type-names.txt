@@ -1,7 +1,6 @@
 Account
 ApiKey
 Broken
-Calculation
 Choice
 Comment
 Count
@@ -33,19 +32,15 @@ Phrase
 Profile
 Project
 Rank
-Ratio
 Ready
 Reference
 Refused
-RequestId
 Score
 Service
 Session
 Settings
 Size
-Status
 Tag
 TraceId
 User
 Visitor
-Wait

@@ -22,7 +22,7 @@ These types exist without being declared, and their names cannot be reused.
 
 | Kind | Types | Notes |
 |---|---|---|
-| Representation | `Bool`, `Int`, `Decimal`, `Text`, `Bytes`, `Uuid` | The raw material for your own types. `Int` and `Decimal` are currently JavaScript numbers at runtime (see Review). |
+| Representation | `Bool`, `Int`, `Decimal`, `Text`, `Bytes`, `Uuid` | The raw material for your own types. `Int` is an exact 64-bit integer and `Decimal` an exact decimal with a required `scale` (see Review, question 8). |
 | Validated text | `Email`, `Url`, `IpAddress` | Ready-made named types built on `Text`. |
 | Time | `Instant`, `CalendarDate`, `Time`, `Duration`, `Zone`, `Locale`, `Weekday` and the formatting types | Described in area 10, Configuration and time. |
 | Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
@@ -102,11 +102,6 @@ the settings later areas add to an entity's or event's fields (`generated`,
 `retention`) are left to those areas. A number literal with more digits than
 an exact number holds (38) is `type.invalid_literal`.
 
-Today the compiler accepts constraints in some places where they have no
-effect: `min` on text, `min_length` on a number, a `pattern` other than
-`[a-z0-9_]+`, and any `format` other than `email` are all accepted but not
-checked at runtime. The Review lists these.
-
 ## Creating values
 
 Applying a type to a value, `Type(value)`, creates a value of that type by
@@ -132,29 +127,6 @@ function free() -> Price {
     return 0.00
 }
 ```
-
-::: today
-
-```jadpo project=construct
-type Quantity = Int {
-    min: 1
-    max: 1000
-}
-
-type Price = Decimal {
-    min: 0.0
-}
-
-function starting_quantity() -> Quantity {
-    return Quantity(1)
-}
-
-function free() -> Price {
-    return Price(0.0)
-}
-```
-
-:::
 
 When the value is a literal, the compiler checks it while compiling:
 `Quantity(0)` is a compile error (see `type.invalid_literal` below). When the
@@ -499,7 +471,7 @@ allowed. Inside a body, locals can still hold built-in types.
 
 ## Objects
 
-> **Decided on 2026-10-12.** Every object type is `type Name = Base { ... }`. Today's `value`, `input` and `output` keywords are shown collapsed below until the rework lands.
+> **Decided on 2026-10-12, built in chunk 1.4.** Every object type is `type Name = Base { ... }`; there are no `value`, `input` or `output` keywords.
 
 An object is a fixed set of named fields. The base after `=` says what the
 object is for:
@@ -586,66 +558,6 @@ function make_badge(profile: Profile) fails BadgeNameTooLong -> Badge {
 }
 ```
 
-::: today
-
-```jadpo project=records
-type ProductName = Text {
-    min_length: 1
-    max_length: 120
-}
-
-type Pence = Int {
-    min: 0
-}
-
-value Money {
-    amount: Pence
-}
-
-input CreateProduct {
-    name: ProductName
-    price: Pence
-}
-
-output ProductView {
-    name: ProductName
-    price: Money
-}
-
-type Dimensions = Object {
-    width: Pence
-    height: Pence
-}
-```
-
-Today `value`, `input`, `output` and `type X = Object` all declare the same
-thing, and any of them can be used at either boundary.
-
-```jadpo project=records-build
-type ProductName = Text {
-    min_length: 1
-    max_length: 120
-}
-
-type Pence = Int {
-    min: 0
-}
-
-output ProductView {
-    name: ProductName
-    price: Pence
-}
-
-function view(name: ProductName, price: Pence) -> ProductView {
-    return ProductView {
-        name: name
-        price: price
-    }
-}
-```
-
-:::
-
 ### Field types
 
 Every field of an object, entity or enum variant is a type of its own, written
@@ -677,36 +589,6 @@ function supplier_contact(supplier: Supplier) -> Email {
 }
 ```
 
-::: today
-
-```jadpo project=field-types
-entity Customer {
-    id: Uuid
-    email: Email
-    identity: id
-}
-
-entity Supplier {
-    id: Uuid
-    email: Email
-    identity: id
-}
-
-function contact_address(email: Email) -> Email {
-    return email
-}
-
-function customer_contact(customer: Customer) -> Email {
-    return contact_address(customer.email)
-}
-
-function supplier_contact(supplier: Supplier) -> Email {
-    return contact_address(supplier.email)
-}
-```
-
-:::
-
 Field types are how identifiers stay apart: `Customer.id` and `Supplier.id`
 are both UUIDs, and passing one where the other is expected is
 `type.sibling_mismatch`. To move a value into a field type on purpose, use the
@@ -729,30 +611,13 @@ type Badge = Object {
 }
 ```
 
-::: today
-
-```jadpo project=field-rules
-type ProductName = Text {
-    min_length: 1
-    max_length: 120
-}
-
-value Badge {
-    label: ProductName {
-        max_length: 12
-    }
-}
-```
-
-:::
-
 Reading through a nested object gives the inner object's field type:
 `customer.billing_address.postal_code` has type `Address.postal_code`, whether
 it came from the billing or the shipping address.
 
 ## Absent values
 
-> **Decided on 2026-10-12.** Objects and inputs use `type Name = Object { ... }` and `type Name = Input { ... }`; today's spelling is collapsed below. Decided (question 20): `optional` and `default` go in a settings block after the field's type.
+> **Decided on 2026-10-12, built in chunk 1.4.** Objects and inputs use `type Name = Object { ... }` and `type Name = Input { ... }`, and (question 20) `optional` and `default` go in a settings block after the field's type.
 
 There is no `null` or `undefined`. A type followed by `?` may hold `none`, and
 reading it means handling both cases, usually with `match` (area 3).
@@ -777,33 +642,6 @@ function headline(listing: Listing) -> ProductName {
     }
 }
 ```
-
-::: today
-
-```jadpo project=nullable
-type ProductName = Text {
-    min_length: 1
-    max_length: 120
-}
-
-value Listing {
-    name: ProductName
-    subtitle: ProductName?
-}
-
-function headline(listing: Listing) -> ProductName {
-    match listing.subtitle {
-        some(subtitle) => {
-            return subtitle
-        }
-        none => {
-            return listing.name
-        }
-    }
-}
-```
-
-:::
 
 A nullable field is still required: a `Listing` must say `subtitle: none`
 explicitly. Being allowed to leave a field out is a separate idea that belongs
@@ -834,32 +672,6 @@ type RenameProduct = Input {
 }
 ```
 
-::: today
-
-```jadpo project=inputs
-type ProductName = Text {
-    min_length: 1
-    max_length: 120
-}
-
-type PageSize = Int {
-    min: 1
-    max: 100
-}
-
-input ListProducts {
-    name: ProductName optional
-    page_size: PageSize default 25
-}
-
-input RenameProduct {
-    name: ProductName
-    subtitle: ProductName? default none
-}
-```
-
-:::
-
 - `optional: true` lets the request leave the field out; reading it gives
   `T?`, and a field left out reads as `none`. Only an update's `patch:` tells
   "left out" from "sent as `none`" (area 6).
@@ -872,7 +684,7 @@ A value can widen through `?`: a `Customer.email?` can be used where an
 
 ## Enums
 
-> **Decided on 2026-10-12.** Enums are `type Name = Enum { ... }`; today's `enum Name { ... }` is collapsed below.
+> **Decided on 2026-10-12, built in chunk 1.4.** Enums are `type Name = Enum { ... }`; there is no `enum` keyword.
 
 An enum is a closed list of named alternatives. Variants are always written
 with their enum's name.
@@ -888,22 +700,6 @@ function reopen() -> TicketStatus {
     return TicketStatus.open
 }
 ```
-
-::: today
-
-```jadpo project=enums
-enum TicketStatus {
-    open
-    waiting
-    closed
-}
-
-function reopen() -> TicketStatus {
-    return TicketStatus.open
-}
-```
-
-:::
 
 A variant can carry its own fields, which makes an enum a tagged union: each
 value is exactly one variant and has only that variant's fields.
@@ -948,54 +744,6 @@ function label(outcome: PaymentOutcome) -> OutcomeLabel {
 }
 ```
 
-::: today
-
-```jadpo project=tagged
-type ReceiptId = Uuid {}
-
-type DeclineReason = Text {
-    min_length: 1
-    max_length: 200
-}
-
-type OutcomeLabel = Text {
-    max_length: 20
-}
-
-enum PaymentOutcome {
-    pending
-    paid {
-        receipt_id: ReceiptId
-        paid_at: Instant
-    }
-    declined {
-        reason: DeclineReason
-    }
-}
-
-function decline(reason: DeclineReason) -> PaymentOutcome {
-    return PaymentOutcome.declined {
-        reason: reason
-    }
-}
-
-function label(outcome: PaymentOutcome) -> OutcomeLabel {
-    match outcome {
-        PaymentOutcome.pending => {
-            return OutcomeLabel("pending")
-        }
-        PaymentOutcome.paid { receipt_id, paid_at } => {
-            return OutcomeLabel("paid")
-        }
-        PaymentOutcome.declined { reason } => {
-            return OutcomeLabel("declined")
-        }
-    }
-}
-```
-
-:::
-
 The only way to read a variant's fields is to `match` on it. Payload fields
 have field types too, written `PaymentOutcome.declined.reason`.
 
@@ -1034,33 +782,6 @@ type Basket = Output {
     }
 }
 ```
-
-::: today
-
-```jadpo project=collections
-type Tag = Text {
-    min_length: 1
-    max_length: 30
-}
-
-type Pence = Int {
-    min: 0
-}
-
-value BasketLine {
-    tag: Tag
-    price: Pence
-}
-
-output Basket {
-    lines: List<BasketLine>
-    tags: List<Tag> {
-        max_length: 10
-    }
-}
-```
-
-:::
 
 A collection keeps its element type: a `List<Customer.email>` is not a
 `List<Email>`, and nothing converts one collection into another:
@@ -1288,39 +1009,10 @@ function reprice(product: Product, price: Pence) -> Product {
 }
 ```
 
-::: today
-
-```jadpo project=immutable
-type ProductName = Text {
-    min_length: 1
-    max_length: 120
-}
-
-type Pence = Int {
-    min: 0
-}
-
-value Product {
-    name: ProductName
-    price: Pence
-}
-
-function reprice(product: Product, price: Pence) -> Product {
-    return Product {
-        name: product.name
-        price: price
-    }
-}
-```
-
-:::
-
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's actual output. Six syntax entries near the end still show the
-archived compiler's error, because the new compiler reports those mistakes
-under another rule, named in each note.
+compiler's actual output.
 
 ### `type.mismatch`
 
@@ -2456,95 +2148,17 @@ error: `price` needs a type
 check failed: 1 error, 1 file
 ```
 
-### `syntax.expected_constraint`
-
-> The archived compiler's error: a misspelt setting is now `type.unknown_setting`.
-
-```jadpo project=e-constraint expect=syntax.expected_constraint
-type ProductName = Text {
-    min_length: 1
-    maxlength: 120
-}
-```
-
-### `syntax.constraint_colon_required`
-
-> The archived compiler's error: the new parser reports a missing colon as `syntax.colon_required` (area 3).
-
-```jadpo project=e-constraint-colon expect=syntax.constraint_colon_required
-type ContactEmail = Text {
-    format email
-}
-```
-
-### `syntax.expected_constraint_value`
-
-> The archived compiler's error: a setting's value is now checked as `type.setting_value`.
-
-```jadpo project=e-constraint-value expect=syntax.expected_constraint_value
-type Price = Decimal {
-    min: zero
-}
-```
-
-### `syntax.expected_literal`
-
-> The archived compiler's error: settings go in a block after the field's type, and a missing value is `syntax.expected_expression` (area 3).
-
-```jadpo project=e-literal-value expect=syntax.expected_literal
-type PageSize = Int {
-    min: 1
-}
-
-input ListProducts {
-    page_size: PageSize default
-}
-```
-
-### `syntax.expected_field_initialiser`
-
-> The archived compiler's error: the new parser reports `Product { name }` as `syntax.colon_required` (area 3).
-
-```jadpo project=e-initialiser expect=syntax.expected_field_initialiser
-type ProductName = Text {
-    max_length: 120
-}
-
-value Product {
-    name: ProductName
-}
-
-function product(name: ProductName) -> Product {
-    return Product { name }
-}
-```
-
-### `syntax.enum_empty`
-
-> The archived compiler's error: `type X = Enum {}` is now `type.enum_empty`.
-
-```jadpo project=e-enum-empty expect=syntax.enum_empty
-enum TicketStatus {}
-```
-
 ## Review
 
 ### Status
 
-| Feature | Status |
-|---|---|
-| Built-in types | Works in general. `Int` is a JavaScript number at runtime, so values beyond 2^53 lose precision without an error (`Big(9007199254740993)` compiles). `Decimal` is a binary floating-point number, not an exact decimal. |
-| Named types and nominal identity | Works in general. `type OrderId = Uuid` without a block is also accepted and formatted as-is, so there are two spellings. |
-| Constraint checking | Partial. Literals are checked at compile time for `min`, `max`, `min_length`, `max_length`, `format: email` and the time types, but not for `pattern`. At runtime, `pattern` is enforced only for the exact text `[a-z0-9_]+` and `format` only for `email`; every other pattern or format is silently dropped from the generated validator. Constraints that do not fit the base (`min` on `Text` becomes a string-to-number comparison at runtime), contradictory bounds (`min_length: 10`, `max_length: 3`), repeated constraints, negative lengths and invalid regular expressions are all accepted. Duration bounds cannot be written (`min: 1s` is a syntax error). |
-| `Type(value)` construction | Works for literals. Runtime construction validates, but its failure is undeclared: the generated code throws a `ValidationError` that route handlers only catch around input decoding, so a failure inside behaviour escapes as an internal fault (inferred from generated code, not run). `Uuid`-based types cannot be built from any literal, while `Instant`-based ones can. `TicketStatus("open")` is rejected, but with the generic "can't be constructed from `Text`" message rather than "enums are not constructed from text". |
-| Primitive-signature rule | Works for bare and nullable built-ins. Gaps: `List<Text>` and inline `Object { a: Int }` parameters pass, and a field declared as `Text` gives a usable `Owner.field` type. Prelude enums (`Zone`, `Weekday`, `Locale`) and `Instant` are rejected and need wrapping. |
-| Objects | Works in general. Two bugs: object construction checks each field against its declared type rather than its field type, so `Badge { label: name }` skips the field's own `max_length: 12` (no runtime check is generated), while entity `create` demands the exact field type; and a field given twice in an object (`Product { name: a name: b }`) is accepted, although the same mistake in an enum variant is an error. |
-| `optional` and `default` | Partial and unsound outside inputs. `optional` is accepted on `value` and `output` fields; such a field can be left out at construction and then read as a non-nullable `T`, which is `undefined` at runtime. On an input, an `optional` field reads as `T` and cannot be matched with `some`/`none`. `default` on a `value` is accepted but construction still requires the field. `name: Name default none` on a non-nullable field reports "`none` can't be used where `Name?` is required", which contradicts itself. |
-| Enums and tagged unions | Works in general for typing, matching and boundary decoding. Storage and migration of payload variants is designed in area 5. `type X = Enum { ... }` is a second accepted spelling. |
-| Collections | Types only. `List<T>` works at boundaries and in objects. `Set<T>` and `Map<K, V>` compile at HTTP boundaries, but the generated decoder requires a JavaScript `Set`/`Map`, which JSON never produces, so every request containing one is rejected with 422 (read from generated code, not run). No literals, iteration or `collection.*` functions exist; the `collection` namespace is reserved but empty. The formatter writes `List<Object { ... } >` with a stray space. |
-| Compatibility rules | Works in general: widening, sibling rejection, invariance and nullable lifting all behave as documented. |
-| Equality | Bug. `==` on objects and lists compiles to JavaScript `===`, which compares object identity, so two equal objects built separately are unequal. |
-| Value semantics | Works in general: no field assignment, `var mut` rebinding only. |
+Built by the new compiler in chunk 1.4, with the later chunks named in
+each section: construction failures by rule (2.5), conditions as proof
+(2.6), the soundness fixes (2.7) and named collection construction (2.11).
+Not built yet: a map literal, and walking or searching a set or map
+(Collections), which no roadmap chunk builds yet; and the JSON forms of
+sets, maps, large `Int`s and `Decimal`s, which come with routes in chunk
+4.1.
 
 ### Consistency with the rest of the language
 
@@ -3164,8 +2778,9 @@ to when that page is written.
    and operators work on the representation. *Decided 2026-10-12:* yes, and close
    the issue: no `as` cast and no unwrap escape hatch. The golden app has not
    needed one.
-8. **Which number types, and what are they at runtime?** `Int` silently
-   loses precision past 2^53 and `Decimal` is a JavaScript float, which is
+8. **Which number types, and what are they at runtime?** In the archived
+   TypeScript target `Int` silently lost precision past 2^53 and `Decimal`
+   was a JavaScript float, which is
    wrong for money (JavaScript has one number type, a 64-bit float, plus
    `BigInt` since 2020, and no decimal). *Decided 2026-10-12 (agreed in discussion):* no sized types
    such as `Int32` or `UInt8`. Size is a storage detail; the business rule is
@@ -3286,7 +2901,7 @@ to when that page is written.
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Nothing here is built yet; the rework is listed in the roadmap.
+Decided by Richard from 2026-10-12, each on the date shown. Status, above, says what is built.
 
 | Topic | Decision | Date |
 |---|---|---|

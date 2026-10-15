@@ -20,7 +20,7 @@ ways a caller proves who they are, how code reads the caller, service
 credentials, revocation, and the failures authentication produces. Who may do
 what is policy, area 9.
 
-> Decided on 2026-10-12. Code on this page shows the language after the rework, applying the decisions from areas 1 to 8. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 8. The new compiler does not build identity yet: roadmap chunk 4.3 (sign-in) builds sessions, API tokens and service keys.
 
 The rules underneath all of it were accepted in the AUTH-001 contract and are
 not reopened here:
@@ -72,64 +72,6 @@ principal {
   policy (area 9) reads it too.
 - `service:` is optional; most applications only have users (question 3).
 
-Today the principal declares its own fields, but only `subject`, a UUID id
-and `authentication_strength` build; anything else fails `jadpo build`, and
-the id cannot be a `User.id` (see Status).
-
-::: today
-
-The owner selected the unnamed `principal { }` without the application
-setting on 2026-10-04; it is not built yet. Both variants are required.
-
-```jadpo project=today file=app.jadpo
-application TodoApplication {
-    authentication {
-        principal: Principal
-        revocation {
-            mode: bounded
-            maximum_delay: 5m
-        }
-    }
-}
-
-principal Principal {
-    user {
-        subject: Text
-        user_id: Uuid
-    }
-    service {
-        subject: Text
-        service_id: Uuid
-    }
-}
-```
-
-```jadpo project=today file=config.jadpo hidden
-config TodoConfiguration {
-    session_signing_key: Text { binding: "SESSION_SIGNING_KEY" secret: true }
-    browser_origin: Url { binding: "BROWSER_ORIGIN" }
-    oidc_issuer: Url { binding: "OIDC_ISSUER" }
-    oidc_audience: Text { binding: "OIDC_AUDIENCE" }
-}
-```
-
-```jadpo project=today file=entities.jadpo hidden
-enum UserStatus { active disabled }
-enum ServiceStatus { active disabled }
-enum CredentialStatus { active revoked }
-entity User { id: Uuid identity authentication_subject: Text unique status: UserStatus }
-entity Service {
-    id: Uuid identity
-    owner_id: User.id references User.id as owner on_delete restrict
-    name: Text unique
-    status: ServiceStatus
-}
-failure UserDisabled { kind: NotPermitted code: "user_disabled" message: "This account is not available." }
-failure ServiceDisabled { kind: NotPermitted code: "service_disabled" message: "This service is not available." }
-```
-
-:::
-
 ## The application and revocation
 
 A signed-in caller can be disabled, or a session revoked, while they still hold
@@ -149,19 +91,10 @@ application {
   without a database read, and expire within the delay; renewing one checks
   the record. A disabled user may keep working for up to five minutes.
 
-This one setting replaces today's `mode:` and `maximum_delay:` (question 4),
-and leaving it out gives the strict behaviour. Three paths always
+This is the only revocation setting (question 4), and leaving it out gives
+the strict behaviour. Three paths always
 check the record whatever the setting: external OIDC tokens, service keys used
 directly, and routes marked `authentication: RouteAuthentication.fresh` (below).
-
-::: today
-
-`revocation { mode: immediate }` or `revocation { mode: bounded
-maximum_delay: 5m }` inside `application Name { authentication { } }` (see the
-box above). `bounded` without a delay, `immediate` with one, and a delay of
-zero are errors (`semantic.revocation_delay_*`).
-
-:::
 
 ## Ways to sign in
 
@@ -201,105 +134,11 @@ authentication {
   error.
 - A bearer token is never accepted from the URL, and the cookie name and
   `Authorization` header can never be ordinary route input.
-- OIDC adds one pinned dependency (`jose`); applications without it have
+- OIDC adds one pinned dependency; applications without it have
   none. The algorithms, limits and key refresh are fixed by the compiler.
 - With a revocation delay and service keys, the compiler generates
   `POST /auth/exchange`, which trades a key for a short-lived token (question
   1's proposal fixes the path).
-
-Today each method is a named **strategy** with a **transport**, named
-**validators**, **claims** and a **resolution** per variant: 120 lines in the
-golden todo, with the user lookup written twice.
-
-::: today
-
-```jadpo project=today file=browser_session.jadpo
-authentication browser_session {
-    transport {
-        cookie: "todo_session"
-    }
-    validators {
-        signed_user {
-            mode: signed
-            principal: user
-            secret: config.session_signing_key
-            audience: "todo-browser"
-            origin: config.browser_origin
-        }
-    }
-    resolution user {
-        authority: User.authentication_subject
-        active: status == UserStatus.active
-        mappings {
-            authentication_subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-}
-```
-
-```jadpo project=today file=api_bearer.jadpo
-authentication api_bearer {
-    transport {
-        bearer: authorization_header
-    }
-    validators {
-        jwt_user {
-            mode: jwt
-            principal: user
-            issuer: config.oidc_issuer
-            audience: config.oidc_audience
-        }
-        service_key {
-            mode: api_key
-            principal: service
-            secret: config.session_signing_key
-            audience: "todo-service-key"
-            owner: Service.owner_id
-            credentials {
-                identity: ServiceCredential.id
-                principal: ServiceCredential.service_id
-                verifier: ServiceCredential.verifier
-                active: status == CredentialStatus.active
-                expires: ServiceCredential.expires_at
-                revoked: ServiceCredential.revoked_at
-            }
-        }
-        service_signed {
-            mode: signed
-            principal: service
-            secret: config.session_signing_key
-            audience: "todo-service-token"
-        }
-    }
-    exchange {
-        path: "/auth/exchange"
-        key: service_key
-        signed: service_signed
-    }
-    resolution user {
-        authority: User.authentication_subject
-        active: status == UserStatus.active
-        mappings {
-            authentication_subject -> Principal.user.subject
-            id -> Principal.user.user_id
-        }
-        inactive: UserDisabled
-    }
-    resolution service {
-        authority: Service.name
-        active: status == ServiceStatus.active
-        mappings {
-            name -> Principal.service.subject
-            id -> Principal.service.service_id
-        }
-        inactive: ServiceDisabled
-    }
-}
-```
-
-:::
 
 ## Who is calling: `current_principal`
 
@@ -332,59 +171,6 @@ POST / {
   (area 12).
 - A caller value can never be returned to a client, read from request input or
   put in a failure's fields (`type.auth_principal_*`).
-
-Today there are two names: routes use `current_principal`, while actions and
-queries can also read the whole principal implicitly as `principal`, which
-`current_principal` is not (verified by compiling).
-
-::: today
-
-```jadpo project=today file=routes.jadpo
-output Me {
-    id: Uuid
-}
-
-query me(principal: Principal.user) -> Me {
-    policy {
-        Access.authenticated: [invoke]
-    }
-    return Me {
-        id: principal.user_id
-    }
-}
-
-route GET /me {
-    output: Me
-    run: me(current_principal.user)
-}
-
-route GET /me/checked {
-    auth: fresh
-    output: Me
-    run: me(current_principal.user)
-}
-
-output Health {
-    ok: Bool
-}
-
-query live() -> Health {
-    policy {
-        Access.public: [invoke]
-    }
-    return Health {
-        ok: true
-    }
-}
-
-route GET /health/live {
-    auth: none
-    output: Health
-    run: live()
-}
-```
-
-:::
 
 ## Routes: signed in by default
 
@@ -433,8 +219,6 @@ apis: {
 With one API, every method is accepted. Provider webhooks have no route to
 authenticate: the runtime generates them from the provider package, checks
 the signature and publishes each as an event (area 11).
-Question 8 spells the word out; today it is `auth: none` and `auth: fresh`
-(see the box above), and every route accepts every strategy.
 
 ## Service credentials
 
@@ -457,39 +241,17 @@ entity Service {
 }
 ```
 
-Question 7 proposes that the language stores the keys, as it already stores
-browser sessions, with generated operations to issue, list and revoke them
-(`Service.issue_key(service_id, expires_at)`, `Service.keys(service_id)`,
-`Service.revoke_key(key_id)`). Today the application declares a
-`ServiceCredential` entity and maps six of its fields in the strategy, and
-keys are issued only through the trusted host integration.
-
-::: today
-
-The six roles are mapped in the `credentials { }` block of the `service_key`
-validator above.
-
-```jadpo project=today file=service_credential.jadpo
-entity ServiceCredential {
-    id: Uuid identity
-    service_id: Service.id references Service.id as service on_delete cascade
-    verifier: Text unique
-    status: CredentialStatus
-    expires_at: Instant
-    revoked_at: Instant?
-}
-```
-
-:::
+The language stores the keys, as it stores browser sessions, with generated
+operations to issue, list and revoke them (`Service.issue_key(service_id,
+expires_at)`, `Service.keys(service_id)`, `Service.revoke_key(key_id)`); the
+application declares only `Service` (question 7).
 
 ## Starting and ending a session
 
-Today no Jadpo code can sign someone in or out. The generated application
-exposes `issue`, `refresh` and `revoke` to a trusted host program, which must
-check the person itself; there is no login, refresh or logout route, and
-passwords are out of scope. Rails (`start_new_session_for`,
-`terminate_session`) and Phoenix (`log_in_user`) generate exactly these two
-calls. Question 9 proposes the same:
+An action run by a route starts or ends a session, and the compiler sets and
+clears the cookie and CSRF token (question 9). Passwords are out of scope.
+Rails (`start_new_session_for`, `terminate_session`) and Phoenix
+(`log_in_user`) generate the same two calls:
 
 ```jadpo fragment
 action finish_magic_link(token: MagicLinkToken) fails LinkExpired -> SignedIn {
@@ -522,18 +284,16 @@ Authentication failures are raised by the runtime, never declared or listed in
 | The database or OIDC provider cannot be reached | `authentication_unavailable` | `unavailable` | 503 |
 | Keys or issuer missing or invalid | `authentication_misconfigured` | `misconfigured` | 500 |
 
-Question 6 proposes built-in `user_disabled` and `service_disabled` in place
-of today's declared `inactive: UserDisabled`, whose kind may be `NotPermitted`
-(403) or `Rejected` (422). With a revocation delay, a disabled caller is
+`user_disabled` and `service_disabled` are built in and never declared
+(question 6). With a revocation delay, a disabled caller is
 noticed within that delay. The log records the method, the credential's
 record id and the reason, never the credential.
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands. Under question 1's recommendation about twenty of these rules disappear, listed in the proposals file.
+> These examples predate the decisions above and are rewritten when the area is built (roadmap chunk 4.3). Under question 1's decision about twenty of these rules disappear, listed in the proposals file.
 
-Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+Every error this area can produce, with an example that triggers it.
 
 ### `semantic.multiple_applications`
 
@@ -2338,21 +2098,8 @@ route GET /me {
 
 ### Status
 
-Each row says how it was checked: compiled with `jadpo check` or `jadpo
-build`, or read from generated code. Runtime behaviour is from the AUTH-001
-evidence (24 first-party cases on SQLite and PostgreSQL, plus service and JWT
-suites), not rerun for this page.
-
-| Feature | Status |
-|---|---|
-| Application and principal | Works: one of each, both variants required, revocation delay rules enforced (compiled). |
-| Principal fields | **Gap (compiled):** a field beyond `subject`, a UUID id and `authentication_strength` passes `jadpo check` and fails `jadpo build` with `toolchain.target_auth_not_implemented`. **Bug (compiled):** a principal field typed `User.id` mapped from `User.id` is `type.auth_mapping_mismatch`, so code converts UUIDs by hand. |
-| Missing authentication | **Gap (compiled):** a project with protected routes and no `application` or strategy passes `jadpo check`; only `jadpo build` refuses it. |
-| Strategies | Browser cookie, opaque and signed bearer, JWT, service key and exchange all compile and generate (compiled the golden migration's shapes). |
-| Caller access | **Inconsistency (compiled):** `principal` is an implicit value in actions and queries; routes use `current_principal`, which is undefined inside a query. |
-| Lifecycle checks | `type.auth_lifecycle_*` fire only when the user entity uses the long `identity: id` and `persistence { }` form. **Bug (compiled), area 5:** on an entity written `id: Uuid identity`, a `lifecycle { }` block is silently ignored, even with an unknown field in it. |
-| Failure codes | **Bug (read from generated code):** `authentication_misconfigured` answers 500 from the selector but 503 from the cookie and JWT adapters. |
-| Login | None in Jadpo: sessions start only through the trusted host's `issue` (by design in AUTH-001). |
+The new compiler builds none of this area yet. Roadmap chunk 4.3 builds
+sessions, API tokens and service keys.
 
 ### Consistency with the rest of the language
 

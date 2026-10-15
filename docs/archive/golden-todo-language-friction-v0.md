@@ -1,15 +1,19 @@
 # Golden todo language-friction ledger
 
-**Snapshot:** verified compiler checkpoint `df2d7be`, 2026-09-30
+**Snapshot:** the archived v0 compiler at `df2d7be`, 2026-09-30
 
-**Status:** input to P10.5/P11, not permission to weaken the application
+**Status:** a record of where the golden todo pressed on the language, not
+permission to weaken the application. The dispositions below describe the
+archived compiler; the decided language answers these gaps on the
+[language pages](../language/README.md), and roadmap Phase 10 writes
+the application in it.
 
-The current compiler cannot check `app.jadpo` or `policy.jadpo` in full. That
-is expected. Each gap below must receive a minimal fixture and a language-issue
+The v0 compiler could not check the original `app.jadpo` or `policy.jadpo`
+in full. Each gap below needed a minimal fixture and a language-issue
 disposition before implementation. The original failed design pressure remains
 evidence even after support is added.
 
-| ID | Required construct | Current disposition | Issue |
+| ID | Required construct | Disposition at the snapshot | Issue |
 |---|---|---|---|
 | GF-001 | application declaration and secure authentication default | bounded application and closed user/service principal declarations plus protected `POST /todos` source migrated and checked; target generation and golden runtime integration remain open | `AUTH-001` |
 | GF-002 | browser, API, and service strategies normalised to one closed principal | signed browser/API, JWT user, and service API-key validators with active-user/service authority resolution and explicit service-credential owner mapping are migrated; accepted browser-origin configuration, authored golden issuance/exchange operations, and integrated execution remain open (the generated runtime already supports issuance/exchange) | `AUTH-001` |

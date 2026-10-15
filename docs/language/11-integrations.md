@@ -31,9 +31,9 @@ URL, sets a header or sees a raw response.
 > Reopened on 2026-10-13. Area 11 was decided on 2026-10-12 around
 > per-domain `integration` declarations; Richard agreed to rethink it around
 > provider packages ([the rethink](research/11-integrations-rethink.md)).
-> Questions 6, 7 and 8 stay decided; the rest are open again, with new
-> recommendations below. Today's compiled syntax is collapsed beneath each
-> section.
+> Questions 6, 7 and 8 kept their answers; the rest were decided again on
+> 2026-10-13. Nothing here is built yet: packages and connections come in
+> chunk 7.1, importing and fakes in chunk 7.2.
 
 | Topic | In short |
 |---|---|
@@ -120,216 +120,6 @@ Inside the package, names are bare. An app names them through the package:
 code (`slot_taken`, from its name) is the provider's error code, read from
 the place `error_code:` names.
 
-::: today
-
-The keyword is `service`, an operation is a run of flat lines, and settings
-use one-off grammar: `equals`, `exponential(...)` and `maps ... -> fault`.
-Faults are listed in the caller's `fails`. The compiler compares every line
-with a fixed list, so this is the only declaration that compiles:
-
-```jadpo project=today-declare file=types.jadpo hidden
-config TestConfiguration {
-    mail_api_key: Text {
-        binding: "MAIL_API_KEY"
-        secret: true
-    }
-}
-
-type ReminderIntentId = Uuid
-type TodoTitle = Text {
-    min_length: 1
-    max_length: 200
-}
-
-value ReminderMessage {
-    idempotency_key: ReminderIntentId
-    from: Email
-    to: Email
-    todo_title: TodoTitle
-    due_at: Instant?
-}
-
-value ReminderReceipt {
-    accepted_at: Instant
-}
-
-failure ReminderRecipientRejected {
-    kind: Rejected
-    code: "recipient_rejected"
-    message: "Recipient rejected."
-}
-
-failure ReminderTemporarilyUnavailable {
-    kind: Unavailable
-    code: "temporarily_unavailable"
-    message: "Temporarily unavailable."
-}
-```
-
-```jadpo project=today-declare file=tests/assurance/service-reference-mail-v0.1.json hidden
-{
-  "openapi": "3.1.0",
-  "info": {
-    "title": "Jadpo local reference mail provider",
-    "version": "0.1.0"
-  },
-  "servers": [
-    { "url": "https://mail.example.invalid" }
-  ],
-  "paths": {
-    "/v1/messages": {
-      "post": {
-        "operationId": "send_overdue_reminder",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "format": "uuid" }
-          }
-        ],
-        "security": [ { "providerCredential": [] } ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["idempotency_key", "from", "to", "todo_title", "due_at"],
-                "properties": {
-                  "idempotency_key": { "type": "string", "format": "uuid" },
-                  "from": { "type": "string", "format": "email" },
-                  "to": { "type": "string", "format": "email" },
-                  "todo_title": { "type": "string", "minLength": 1, "maxLength": 200 },
-                  "due_at": { "type": ["string", "null"], "format": "date-time" }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Accepted or deduplicated by the same key and payload",
-            "headers": {
-              "Idempotency-Key": {
-                "required": true,
-                "schema": { "type": "string", "format": "uuid" }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": ["accepted_at"],
-                  "properties": {
-                    "accepted_at": { "type": "string", "format": "date-time" }
-                  }
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/InvalidRecipient" },
-          "401": { "$ref": "#/components/responses/Authentication" },
-          "409": { "$ref": "#/components/responses/IdempotencyConflict" },
-          "429": { "$ref": "#/components/responses/RateLimited" }
-        }
-      }
-    }
-  },
-  "components": {
-    "securitySchemes": {
-      "providerCredential": { "type": "http", "scheme": "bearer" }
-    },
-    "responses": {
-      "InvalidRecipient": {
-        "description": "Recipient rejected before acceptance",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvalidRecipient" } } }
-      },
-      "Authentication": {
-        "description": "Credential rejected before acceptance",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Authentication" } } }
-      },
-      "IdempotencyConflict": {
-        "description": "Key reused with a different payload; no new acceptance",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdempotencyConflict" } } }
-      },
-      "RateLimited": {
-        "description": "Request refused before acceptance",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RateLimited" } } }
-      }
-    },
-    "schemas": {
-      "InvalidRecipient": {
-        "type": "object", "additionalProperties": false, "required": ["code"],
-        "properties": { "code": { "const": "invalid_recipient" } }
-      },
-      "Authentication": {
-        "type": "object", "additionalProperties": false, "required": ["code"],
-        "properties": { "code": { "const": "authentication" } }
-      },
-      "IdempotencyConflict": {
-        "type": "object", "additionalProperties": false, "required": ["code"],
-        "properties": { "code": { "const": "idempotency_conflict" } }
-      },
-      "RateLimited": {
-        "type": "object", "additionalProperties": false, "required": ["code"],
-        "properties": { "code": { "const": "rate_limited" } }
-      }
-    }
-  }
-}
-```
-
-```jadpo project=today-declare
-service ReminderMail {
-    import {
-        file: "tests/assurance/service-reference-mail-v0.1.json"
-        version: "0.1.0"
-        sha256: "c6a8b26a4b7ec82414df2e6608cb5eb6ca65f1767f7047bfbfedfc8f9441f83d"
-    }
-    credential {
-        scheme: bearer
-        header: "Authorization"
-        secret: config.mail_api_key
-    }
-    base_url: "https://mail.example.invalid"
-    egress: mail.example.invalid:443
-    proxy: prohibited
-    redirects: prohibited
-    timeout: 5s
-    retry: exponential(max_attempts: 3, max_elapsed: 30s, jitter: full)
-
-    operation send_overdue_reminder
-    POST /v1/messages
-    idempotency_key: ReminderIntentId
-    input ReminderMessage
-    output ReminderReceipt
-    request_key: input.idempotency_key equals header "Idempotency-Key"
-    receipt_key: response header "Idempotency-Key" equals request_key
-    maps provider.invalid_recipient -> ReminderRecipientRejected
-    maps provider.rate_limited -> ReminderTemporarilyUnavailable
-    maps provider.authentication -> fault Misconfigured
-    maps provider.idempotency_conflict -> fault Misconfigured
-    maps transport.pre_dispatch_refusal -> fault Unavailable
-    maps transport.pre_dispatch_timeout -> fault Unavailable
-    maps transport.possible_dispatch_timeout -> fault OutcomeUnknown
-    maps transport.possible_dispatch_loss -> fault OutcomeUnknown
-    maps transport.invalid_acknowledgement -> fault OutcomeUnknown
-    maps transport.unexpected_response -> fault OutcomeUnknown
-}
-
-action deliver(mail: ReminderMessage)
-    fails ReminderRecipientRejected, ReminderTemporarilyUnavailable, Misconfigured, Unavailable, OutcomeUnknown
-    -> ReminderReceipt
-{
-    return attempt ReminderMail.send_overdue_reminder(mail)
-}
-```
-
-:::
-
 ## Where packages come from
 
 There are three sources, and they all produce the same files.
@@ -387,14 +177,6 @@ live.
 Written operations that are not confirmed are allowed in every build. The
 approval report flags them, and CI requires a passing contract run against
 the sandbox for each one (see "Tests and fakes").
-
-::: today
-
-There are no packages, importers or registry. The one accepted declaration
-is a `service` naming its OpenAPI file, version and SHA-256 in an `import`
-block, and the file must be the golden app's fixed contract.
-
-:::
 
 ## The registry
 
@@ -463,15 +245,6 @@ application {
 - Two versions of one package are two connections, used side by side while
   callers move across (question 3).
 
-::: today
-
-No connections exist. The `service` declaration itself holds the host
-(`base_url` plus a restated `egress:`), a credential that must be
-`config.mail_api_key`, and `proxy: prohibited` and `redirects: prohibited`,
-each with one legal value.
-
-:::
-
 ## Calling
 
 An operation is called through its connection:
@@ -523,17 +296,6 @@ action book_collection(shipment: Shipment) fails CollectionSlotGone -> Shipment 
   commit retries the call with the same key. An action makes at most one
   such call (area 12). Work that must follow a write emits an event.
 
-::: today
-
-Called as `ReminderMail.send_overdue_reminder(mail)`. A call from a function
-or query is `semantic.service_call_context`, and any write in the same
-action, before or after the call, is `semantic.service_atomic_effect`.
-Callers must list the faults `Misconfigured`, `Unavailable` and
-`OutcomeUnknown`, which area 4 removes. Retries are fixed at `timeout: 5s`
-and `retry: exponential(max_attempts: 3, max_elapsed: 30s, jitter: full)`.
-
-:::
-
 ## Webhooks as events
 
 A package declares the provider's events and how they are signed. Giving a
@@ -558,7 +320,6 @@ built in: `SignatureScheme.stripe`, `SignatureScheme.standard_webhooks`
 (Svix and others) and `SignatureScheme.hmac_sha256` with a named
 header for the rest.
 
-Today nothing supports webhooks.
 
 ## Compile time
 
@@ -763,9 +524,8 @@ Workers.
 
 ## Errors
 
-Today's rules check the one fixed declaration. They carry over to the general
-compiler, with wording that no longer names the mail provider. Every example
-below is today's syntax.
+> These examples predate the provider packages above and are rewritten when
+> the area is built (roadmap chunks 7.1 and 7.2).
 
 ### `semantic.service_import_pin_invalid`
 
@@ -1030,7 +790,7 @@ service ReminderMail {
 
 ### `semantic.service_contract_invalid`
 
-Any other difference, here only the name, is outside the checked slice:
+A declaration with a different name:
 
 ```jadpo project=err-contract expect=semantic.service_contract_invalid
 service StripeV2024 {
@@ -1657,21 +1417,9 @@ entity Reminder {
 
 ### Status
 
-Each row says how it was checked: compiled with `jadpo check`, built with
-`jadpo build`, or read from the compiler source.
-
-| Feature | Status |
-|---|---|
-| Declaring | **Gap:** one hard-coded declaration. `checked_service_effect` compares every line with a fixed list of 29 and the name with `ReminderMail` (read); renaming it, or adding a second service, is `semantic.service_contract_invalid` (compiled). The operation, method, path, types, host and limits in the result are constants, not read from the source (read). |
-| Contract | Must be the fixed path and digest; a file outside the project is refused (compiled). The hand-written input and output types are checked field by field against the contract (read). |
-| Calls | A function caller and any write in the same action are rejected (compiled); an action that only calls passes (compiled). |
-| Generated adapter | `jadpo build` writes `build/target/service-adapter.ts` and `build/audit/services.json` (built). The service plan records 19 passing loopback HTTP tests; not rerun here. |
-| Failures | Callers must list the faults `Misconfigured`, `Unavailable` and `OutcomeUnknown` (compiled), which area 4 forbids. |
-| Credential | **Gap:** the setting must be named `mail_api_key` (read). |
-| Messages | **Bug:** every rule's advice names the mail provider ("Declare the mail API key", "Use ReminderIntentId"), whatever the service (read from the catalogue). |
-| Packages, importers, registry, recordings | None. |
-| Webhooks, versions, other schemes | None. |
-| Fakes | Work (area 13). |
+Nothing in this area is built yet. Packages and connections come in chunk
+7.1; the OpenAPI importer, hand-written packages, generated fakes and
+`jadpo provider record` in chunk 7.2; the `email` capability in chunk 7.3.
 
 ### Consistency with the rest of the language
 
@@ -1710,8 +1458,8 @@ Other points:
 - **Correction.** Twilio signs webhooks with its own HMAC-SHA1 scheme, not
   Standard Webhooks as the webhooks section said (checked 2026-10-13); see
   question 25.
-- **Rule IDs.** The `semantic.service_*` rules below check today's
-  declaration. Under packages, the pin, digest and egress rules become
+- **Rule IDs.** The `semantic.service_*` rules below check the `service`
+  declaration in the examples. Under packages, the pin, digest and egress rules become
   `jadpo.lock` and package checks (area 14).
 
 ### Carried to later areas

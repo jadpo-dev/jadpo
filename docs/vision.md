@@ -253,16 +253,15 @@ difficult or impossible: missing authentication, IDORs, unvalidated boundaries,
 arbitrary queries, accidental private-field output, secret leakage, undeclared
 egress, forgotten transaction boundaries, and inconsistent lifecycle handling.
 
-## 11. Why this is not merely a TypeScript transpiler
+## 11. Why the compilation target is not the point
 
-An initial implementation may emit TypeScript and run on Bun, but TypeScript is
-not the product story. Performance is not the initial advantage. The reason to
-adopt the language would be that its semantic model can reject unsafe programs
-that remain perfectly valid TypeScript.
+Jadpo compiles to native code and WebAssembly, but the target is not the
+product story. The reason to adopt the language would be that its semantic
+model can reject unsafe programs that remain perfectly valid TypeScript.
 
-The long-term runtime might compile to a native binary, but native performance
-does not prove the idea. Constraints, audits, safe evolution, and agent
-ergonomics do.
+Performance has to be good enough that developers don't avoid Jadpo for it,
+but native performance does not prove the idea. Constraints, audits, safe
+evolution, and agent ergonomics do.
 
 ## 12. Current posture
 

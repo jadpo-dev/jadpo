@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 9. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. The new compiler does not build policy yet: roadmap chunk 4.4 (policy) builds grants compiled into queries, tenancy and the permissions report.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -66,16 +66,6 @@ same caller.
 Policy is always on (question 2): from the first line of code, every
 reachable create, read, update or delete needs a grant.
 
-::: today
-
-Grants are keyed by role, `TodoRole.owner: [create, read, update, delete]`,
-and each role needs an enum and a field or membership that gives it out
-(`policy.role_unbound`). Policy only starts once something in the project
-declares one, so a project with none compiles every read and write
-unprotected.
-
-:::
-
 ## A user field on the record
 
 Naming a reference to the user entity, such as `owner_id`, grants the user it
@@ -86,21 +76,6 @@ refused.
 A user field named anywhere in a policy cannot be changed by an ordinary
 update, so it needs no `immutable:`. Handing a record to someone else is a
 named action listed in root `policy.jadpo` (see Actions).
-
-::: today
-
-The field carries a role, and `immutable: true` must be written, the only
-value allowed (`policy.role_field_update_forbidden` without it,
-`policy.binding_mutable` with `false`):
-
-```text
-owner_id: User.id {
-    role: TodoRole.owner
-    immutable: true
-}
-```
-
-:::
 
 ## A membership role
 
@@ -173,54 +148,6 @@ entity Project {
 - If an entity has two references to the scope, each grant names the one it
   means: `TeamRole.lead(from_team_id)` (question 5).
 
-::: today
-
-The same, with role enums declared as `enum`, no colons, and an owner role
-given out by a field:
-
-```jadpo project=today-membership
-enum CompanyRole {
-    owner
-    editor
-}
-
-entity User {
-    id: Uuid identity
-}
-
-entity Company {
-    id: Uuid identity
-    owner_id: User.id {
-        role: CompanyRole.owner
-        immutable: true
-    }
-
-    policy {
-        CompanyRole.owner: [read, update]
-        CompanyRole.editor: [read]
-    }
-}
-
-entity CompanyMembership {
-    id: Uuid identity
-    company_id: Company.id
-    user_id: User.id
-    role: CompanyRole
-
-    membership {
-        scope: company_id
-        member: user_id
-        role: role
-    }
-
-    policy {
-        CompanyRole.owner: [create, read, update, delete]
-    }
-}
-```
-
-:::
-
 ## Anyone signed in, or anyone
 
 `Access.authenticated` is anyone signed in, and `Access.public` is anyone at
@@ -260,15 +187,6 @@ caller has a membership. An entity shared by every tenant, such as a list of
 countries or `User` itself, says `tenant: Tenancy.shared` in its `policy:`.
 A new entity is tenant-scoped unless someone accepts otherwise.
 
-::: today
-
-There is no tenancy declaration; each entity is scoped only through the roles
-its grants name. The golden todo `policy.jadpo` is design-only: a second policy
-language of sentences (`read when principal.user.user_id == User.id`) that
-does not compile (`syntax.expected_declaration`). It is retired.
-
-:::
-
 ## Actions
 
 An action takes its permission from the entities it touches. Root
@@ -295,27 +213,6 @@ policy {
 `Todo.owner_id` means the current owner of the todo the action changes. For
 that action, the listed people replace the entity grants on what it reaches; field restrictions and tenancy still apply. Calling an integration
 needs nothing extra: permission to run the action covers it (question 9).
-
-::: today
-
-A non-entity action states `policy { Role: [invoke] }` as the first item in
-its body, and an exception sits in the entity's `policy { operations { } }`
-block: two places for one idea, the first a setting area 3 removed.
-
-```jadpo project=today-invoke
-output Health {
-    ok: Bool
-}
-
-action health_report() -> Health {
-    policy {
-        Access.authenticated: [invoke]
-    }
-    return Health { ok: true }
-}
-```
-
-:::
 
 ## Field restrictions
 
@@ -348,35 +245,6 @@ entity Project {
 - **Copies.** Passing a value through a variable or another type does not
   escape the field's rules; the compiler tracks where it came from.
 
-::: today
-
-`policy {}` with nothing inside marks a server-only field:
-
-```jadpo project=today-fields
-enum UserRole {
-    self
-}
-
-entity User {
-    id: Uuid {
-        role: UserRole.self
-        immutable: true
-    }
-    email: Text {
-        policy {}
-    }
-    display_name: Text
-
-    identity: id
-
-    policy {
-        UserRole.self: [read]
-    }
-}
-```
-
-:::
-
 ## The permissions report
 
 Policy is written beside each entity, so nobody has to keep a central copy.
@@ -408,14 +276,6 @@ Who schedules and subscribers act as is area 12's question; whatever is
 decided shows in the permissions report. The compiler's own purge of
 soft-deleted records (area 5) is the only operation outside policy.
 
-::: today
-
-`build/approval/subject.json` lists every grant, binding, scope and
-reachable effect, and `jadpo approval --before` compares two versions.
-Nothing stops an unapproved release.
-
-:::
-
 ## When policy says no
 
 The compiler adds policy to the SQL `WHERE` of every query and write (area
@@ -439,18 +299,6 @@ A token issued to another application (area 8) carries scopes, and scopes
 only narrow: the token may do what both the person's grants and its scopes
 allow (question 6).
 
-::: today
-
-Concealment and refusals work (read from generated code), but nothing is
-logged: a concealed record and a missing one leave the same trace. The golden
-todo actions still filter by owner by hand, repeating what policy adds:
-
-```text
-UPDATE "todo" SET ... WHERE "todo"."id" = $1 AND ("todo"."owner_id" = $2)
-```
-
-:::
-
 ## Caches and personal data
 
 Decided in area 5: a record cache applies policy on every read, a
@@ -462,10 +310,9 @@ person's data needs `delete` on their record and exporting it needs `read`.
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands. Under the decided model, `policy.binding_duplicate`, `policy.binding_mutable`, `policy.role_field_update_forbidden`, `policy.invoke_context`, `policy.operation_unknown` and `policy.operation_effect_mismatch` disappear; the rest keep their meaning in the new vocabulary.
+> These examples predate the decisions above and are rewritten when the area is built (roadmap chunk 4.4). Under the decided model, `policy.binding_duplicate`, `policy.binding_mutable`, `policy.role_field_update_forbidden`, `policy.invoke_context`, `policy.operation_unknown` and `policy.operation_effect_mismatch` disappear; the rest keep their meaning in the new vocabulary.
 
-Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+Every error this area can produce, with an example that triggers it.
 
 ### Owner fields and memberships
 
@@ -833,7 +680,7 @@ entity Note {
 
 ### `policy.effect_ungranted`
 
-Once any policy exists, an action that touches no entity needs its own grant:
+An action that touches no entity needs its own grant:
 
 ```jadpo project=e-effect-ungranted expect=policy.effect_ungranted
 entity Article {
@@ -1201,22 +1048,8 @@ action move_article(id: Article.id, company_id: Article.company_id)
 
 ### Status
 
-Each row says how it was checked: compiled with `jadpo check`, or read from
-the code generated for `examples/golden-todo-migration` and
-`examples/policy-runtime`.
-
-| Feature | Status |
-|---|---|
-| Roles, owner fields, memberships, grants | Work in today's role-keyed form, with the errors above (compiled). `Access.public` and `Access.authenticated` work. The decided model is not built. |
-| Policy on by default | **Gap (compiled):** policy only starts once something declares one. A project with no policy compiles a public `GET /notes/{id}` route that reads any note; adding one `policy` anywhere makes the same read `policy.effect_ungranted`. |
-| Scoping reads and writes | Works: the owner or membership condition is added to the SQL of reads, updates and deletes, and a create is checked against the new record (read from generated code). |
-| Hand-written filters | The golden todo actions take `principal: Principal.user` and filter `where: owner_id == Todo.owner_id(principal.user_id)` by hand, repeating policy (read from source). |
-| Concealment | A hidden record fails with the query's `missing:` failure (read from generated code). **Gap:** nothing is logged. |
-| Refusals | 403 `not_permitted`, "This operation is not permitted.", for a refused create or action (read from generated code). |
-| Fields | Narrowing, server-only (`policy {}`), whole-write refusal and output checks work (compiled). |
-| Action grants | Two places: `policy { Role: [invoke] }` inside an action's body, and `operations { }` inside an entity's policy (compiled). |
-| Root `policy.jadpo` | Design-only sentence language; `syntax.expected_declaration` (compiled). No tenancy declaration exists. |
-| Permissions report | Not built. `build/approval/subject.json` lists grants for the approval review; nothing blocks a release. |
+The new compiler builds none of this area yet. Roadmap chunk 4.4 builds
+grants compiled into queries, tenancy and the permissions report.
 
 ### Consistency with the rest of the language
 

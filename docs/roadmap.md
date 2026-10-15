@@ -12,7 +12,7 @@ and the [language pages](language/README.md), not here.
   examples become the tests.
 - **A new compiler, built around one graph**
   ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)).
-  The current compiler is archived, not reworked.
+  The first compiler (v0) was archived, not reworked.
 - **Two ways to run the graph:** an interpreter inside `jadpo` for `dev`,
   `test` and `call`, and compiled Rust for deployables, native and
   WebAssembly (Cloudflare Workers), sharing one runtime crate. Every test runs

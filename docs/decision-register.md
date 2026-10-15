@@ -24,8 +24,7 @@ Richard: the TypeScript/Bun target is to be dropped. Jadpo targets native Rust
 for long-running servers and WebAssembly for hosts such as Cloudflare Workers.
 Language features must work on both; where a host supplies a mechanism (for
 example scheduling), Jadpo offers its own by default and the host's as an
-option. How and when the targets are built is part of roadmap step 3. Not yet
-implemented.
+option. The targets are built in roadmap Phase 8 (compiled deployables).
 
 ### Language specification — 2026-10-13
 

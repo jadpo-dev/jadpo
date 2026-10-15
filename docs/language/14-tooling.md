@@ -30,7 +30,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 
 | Command | Does | Status |
 |---|---|---|
-| `jadpo new <name>` | Creates a project that passes `check`, `fmt --check` and `test` | Decided (question 9), not built: `jadpo new` is `cli.unknown_command` in the new compiler; the archived compiler had it |
+| `jadpo new <name>` | Creates a project that passes `check`, `fmt --check` and `test` | Decided (question 9), not built: `jadpo new` is `cli.unknown_command` |
 | `jadpo check` | Checks everything and writes the derived files in `build/` | Built (chunks 1.1–1.8): writes `build/manifest.json` and the catalogues in `build/catalogue/`; writing files is question 3 |
 | `jadpo fmt` | Formats; `--check` only reports; `--layout` also applies promotion moves | Built (chunk 1.2): formats, and `--check` only reports; `--layout` decided in area 1, not built |
 | `jadpo test` | Runs every test | Built (chunk 2.2): pure and action tests, in the interpreter |
@@ -39,9 +39,9 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo test --watch` | Reruns the affected tests on every save | Built (chunk 2.3): each save reruns the tests that reach a node whose digest changed since the last run, within the path, name and kind given; a broken build shows its errors and runs nothing; `--json` writes one envelope per line; ctrl-c quits |
 | `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built: the flag says `toolchain.not_built_yet` (chunk 2.8) |
 | `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | `--seed` built (chunk 2.2); `--keep-failed` built with the test database (chunk 3.1): it keeps the database and names it in the report; the trace comes with area 17 |
-| `jadpo build` | Writes the runnable app into `build/target/` | Decided, not built: comes with compiled deployables (Phase 8); the archived compiler had it |
-| `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Decided, not built; `--no-run` replaces `watch` (question 3); the archived compiler had it |
-| `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: `build/manifest.json` and the catalogues hold the map today; the archived compiler had it |
+| `jadpo build` | Writes the runnable app into `build/target/` | Decided, not built: comes with compiled deployables (Phase 8) |
+| `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Decided, not built; `--no-run` replaces `watch` (question 3) |
+| `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: until then `build/manifest.json` and the catalogues hold the map |
 | `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Decided in area 7, not built |
 | `jadpo sql <query>` | Prints a query's generated SQL for PostgreSQL and SQLite; `--explain` runs it on a disposable database and shows the plan | Built for PostgreSQL (chunk 3.2): each statement the query sends, one for each include too, with the parameters that fill it, and `--json`; Tab completes the project's queries, and without one it fails listing them. SQLite comes with a SQLite store; `--explain` is decided, not built: the flag says `toolchain.not_built_yet` |
 | `jadpo impact <name>` | Lists what a change to `name` reaches | Decided in area 1, not built |
@@ -49,31 +49,17 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo domain rename/split/merge` | Moves a domain's files and updates every call | Decided in area 1, not built |
 | `jadpo migrate new <purpose>` / `apply` / `status` | Writes, runs and lists migrations | Built (chunk 3.1): `new` writes the next migration, or finishes the latest once its decisions are written; `apply` and `status` take the database's URL with `--url` (and `--store` when there are several) until configuration gives each connection its URL (area 10); replaces `schema` (question 4). Prompting for a missing purpose, as the design language draws it, waits for prompts: without one the command names a purpose to use |
 | `jadpo seed <name>` | Runs a seed; refuses production | Decided in area 5, not built |
-| `jadpo config set <field>` / `check` | Sets or checks local configuration in `.env.local` | Decided, not built: comes with configuration (area 10); the archived compiler had it |
+| `jadpo config set <field>` / `check` | Sets or checks local configuration in `.env.local` | Decided, not built: comes with configuration (area 10) |
 | `jadpo api update` | Rewrites the committed public API record (`api/main.api`) from the source | Proposed in area 7 (question 10) |
-| `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12; the archived compiler had it |
+| `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12 |
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries | Proposed (question 13) |
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` | Decided in area 12, not built |
 | `jadpo provider add` / `import` / `record` / `update` | Adds, imports, confirms and upgrades provider packages | Decided in area 11; question 15 |
 | `jadpo trace <id>` / `jadpo why <name>` / `jadpo call` / `jadpo console` | Debugging (area 17) | Proposed in area 17 |
-| `jadpo incident [file \| -]` | Explains a runtime event: from a file, from standard input (`pbpaste \| jadpo incident -`, or a log stream piped in), or, with no argument in a terminal, from text pasted at a prompt; it finds the Jadpo events inside surrounding log text and groups them by request | Decided 2026-10-13, not built: comes with debugging (area 17); the archived compiler explained a file |
+| `jadpo incident [file \| -]` | Explains a runtime event: from a file, from standard input (`pbpaste \| jadpo incident -`, or a log stream piped in), or, with no argument in a terminal, from text pasted at a prompt; it finds the Jadpo events inside surrounding log text and groups them by request | Decided 2026-10-13, not built: comes with debugging (area 17) |
 | `jadpo lsp` | Runs the language server for editors | Built (chunk 1.7): diagnostics, hover and go to definition |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere | Built (chunk 1.1): `jadpo help [command]`, `--help` with examples on every command, and `jadpo help --json` with the rule catalogue and the schemas of the manifest and of `jadpo test --json` |
 | `jadpo completions <shell>` / `jadpo version` | Prints the Tab-completion script for zsh, bash or fish; prints the version | Built (chunk 1.1) |
-
-::: today
-
-Every command except `config` needs the project path (`jadpo check .`), while
-`config` refuses a path and only works from inside the project. JSON comes
-from `--diagnostic-format=json` on `check`, `watch` and `dev`, while
-`inspect` and `approval` print JSON always. There is no per-command help:
-`jadpo new --help` creates a project folder called `--help`. `jadpo artifacts`
-writes the derived files and `jadpo watch` rebuilds without running.
-`jadpo schema` has twelve subcommands (`init`, `check`, `add`, `rename`,
-`snapshot`, `diff`, `decision-template`, `decision-check`, `plan`, `sql`,
-`index-recommend`, `index-accept`).
-
-:::
 
 ## Running tests
 
@@ -90,15 +76,6 @@ rejects bad input with `{ field, rule }` details, every declared failure
 reaches the client in the right envelope and status, and no output has a
 field its type does not declare. They run with the others and appear in the
 report under the route they test.
-
-::: today
-
-`jadpo test` builds the app and runs each test one at a time against a fresh
-in-memory SQLite database built from the entities, not the migrations (read
-by area 13 from generated code). A project with no tests fails with
-`test.no_tests` (run).
-
-:::
 
 ## Formatting
 
@@ -132,23 +109,6 @@ type Count = Int {
 }
 ```
 
-::: today
-
-Doubled blank lines are reduced to one, but a missing blank line between
-declarations is not added and several members on one line are kept. This
-compiles and passes `jadpo fmt --check`:
-
-```jadpo project=fmt-today
-type Flags = Object { done: Bool pinned: Bool }
-type Count = Int {
-    min: 0
-}
-```
-
-`jadpo fmt --check` on that project prints "checked 0 source file(s)".
-
-:::
-
 ## Editor support
 
 The language server (`jadpo lsp`) gives any editor the compiler's own view:
@@ -176,8 +136,7 @@ comment, which would go stale, add noise to diffs and invite edits.
 Every error has one shape, in the terminal, the editor and JSON: what is
 wrong, where, why, the recommended next step, who decides (`agent` or
 `human`), the rule ID and a help link. One mistake gives one error; the
-compiler does not report knock-on errors. With question 6's changes an
-error reads:
+compiler does not report knock-on errors. An error reads:
 
 ```text
 error: `titel` isn't defined in this scope
@@ -191,30 +150,15 @@ error: `titel` isn't defined in this scope
   help: docs/language/03-logic.html#type-unknown-value
 ```
 
-What question 6 changes:
+What question 6 decided:
 
 - Paths are relative to the project.
-- The two impact lines appear only when they say something. Today every error
-  prints "Compilation is blocked until this problem is fixed" and "No
-  public-contract change has been applied", including `fmt --check`.
+- The two impact lines appear only when they say something.
 - An obvious repair carries its edit, so the editor and agents can apply it.
-  Today "Use `title`" comes with no edit.
 - The help link opens the error's own entry on these language pages, which
-  already have an example for every rule. Today links point to
-  `jadpo.dev/docs/diagnostics/…`, which did not resolve when checked.
+  already have an example for every rule.
 - JSON gives line and column as well as byte offsets, and uses one naming
   style for its keys.
-
-::: today
-
-`jadpo check . --diagnostic-format=json` prints one `diagnostic_report` with
-`schemaVersion: 2`, a `summary` block (`source_files`, `declarations`) and a
-`diagnostics` list. Each entry has `ruleId`, `summary`, `reason`,
-`recommendedNextStep` (with `edits`), `alternatives`, `location` (absolute
-path and byte range), `context`, `impact` and `helpId`. Keys mix camelCase
-and snake_case, and `diagnosticId` contains the absolute path.
-
-:::
 
 ## The `build/` folder
 
@@ -254,16 +198,6 @@ The schema report and the permissions report are decided
 because a reviewer reads them together. Each is written as Markdown, which an agent can search, with a `.json`
 twin for tools (question 10).
 
-::: today
-
-`jadpo artifacts .` writes `app.meta.json`, `inventory/`, `audit/`,
-`approval/`, `validators/plan.json`, `compatibility/`, `openapi/` and
-`diagnostics/` (15 files). `jadpo build .` adds `target/`, `sql/` and
-`persistence/`. `jadpo check` writes nothing. `jadpo new` also writes a
-hidden `.app/project.json`, which area 1's fixed root does not allow.
-
-:::
-
 ## Tools for agents
 
 Agents look things up through the compiler rather than browsing folders.
@@ -298,15 +232,6 @@ rounding.half_even   shared/libraries/rounding.jadpo:4
   code, and run `jadpo impact <name>` before changing or removing anything
   shared or public. It points at these language pages for syntax.
 
-::: today
-
-The skill tells agents to read `docs/decision-register.md`, `docs/syntax.md`
-and `docs/grammar-v0.1.md` before editing, use `jadpo inspect` and
-`jadpo artifacts`, and run `jadpo incident` for runtime events. It does not
-mention impact or catalogues.
-
-:::
-
 ## Review and sign-off
 
 Some changes need a person's acceptance before they ship: a change that can
@@ -317,13 +242,6 @@ acceptance, and `jadpo approval --before <ref>` writes the report a reviewer
 reads: what changed in routes, policy, failures and data. Who may write an
 acceptance is question 12.
 
-::: today
-
-`jadpo approval` compares two versions and prints the review subject
-(`build/approval/subject.json` and a text copy). Nothing blocks a release.
-
-:::
-
 ## Errors only the running app or a build raises
 
 The running app reports three events of its own, never compile errors:
@@ -332,18 +250,15 @@ gets `internal_fault`), `runtime.outcome_unknown` (a change may or may not
 have committed) and `runtime.startup_failed`. Area 4 decided what each logs.
 
 `jadpo build` refuses features the compiler checks but cannot generate yet,
-with `toolchain.target_*` errors: protected routes without a supported
-authentication adapter, schedules, durable workflows, non-PostgreSQL stores
-and a liveness route that reads data. Today `jadpo check` passes these
-projects and only `build` fails; for example a project with one schedule
-passes `check` and stops at `build` with `toolchain.target_job_not_implemented`
-(question 11). Area 8 asks the same for a protected route with no
-authentication set up.
+with `toolchain.target_*` errors. `jadpo check` reports the same errors, so
+a project that passes `check` also builds (question 11). Area 8 asks the
+same for a protected route with no authentication set up.
 
 ### Command errors
 
 Every error that only a command raises, so `jadpo check` cannot show it with a
-source example. Generated from the compiler's catalogue.
+source example. The list predates the decisions above and is rewritten as
+each command is built.
 
 | Rule | Raised by | What it means |
 |---|---|---|
@@ -356,7 +271,6 @@ source example. Generated from the compiler's catalogue.
 | `cli.config_prompt_failed` | `config` | Secure configuration prompt failed |
 | `cli.config_tty_required` | `config` | Configuration entry requires an interactive terminal |
 | `cli.dev_arguments` | `dev` | Dev command has invalid arguments |
-| `cli.dev_bun_start_failed` | `dev` | Bun could not start the generated runtime |
 | `cli.dev_port_invalid` | `dev` | Development port is invalid |
 | `cli.dev_readiness_timeout` | `dev` | Generated runtime did not become ready |
 | `cli.dev_rollback_cleanup_failed` | `dev` | Previous runtime revision could not be cleaned up |
@@ -489,9 +403,7 @@ source example. Generated from the compiler's catalogue.
 | `toolchain.scaffold_write_failed` | `new` | Project scaffold file could not be written |
 | `toolchain.source_read_failed` | any command | Jadpo source file could not be read |
 | `toolchain.target_auth_not_implemented` | `build` | Protected route `{route}` cannot be generated yet |
-| `toolchain.target_dependency_manifest` | `build` | Generated target attempted to add a dependency manifest |
 | `toolchain.target_durable_workflow_not_implemented` | `build` | Durable workflow target execution is not implemented |
-| `toolchain.target_external_module` | `build` | Generated target imports an external module |
 | `toolchain.target_job_not_implemented` | `build` | Scheduled job `{name}` cannot execute yet |
 | `toolchain.target_liveness_not_local` | `build` | Authored liveness route is not dependency-free |
 | `toolchain.target_store_not_implemented` | `build` | Authority store target adapter is not implemented |
@@ -506,7 +418,7 @@ descriptor if area 12's question 2 is accepted.
 ## Errors
 
 Every error this area can produce from source, with an example that
-triggers it and the compiler's actual output.
+triggers it.
 
 ### `toolchain.no_sources`
 
@@ -520,22 +432,21 @@ A project folder with notes but no .jadpo files.
 
 ### Status
 
-Each row says what the new compiler does, then what the archived compiler
-(`jadpo` 3ce094d0, tag `archive/compiler-v0`) did, run or read from its
-source and documents; the decisions above answer the archived findings.
+Each row says what the new compiler has built, with its chunk, and what
+is decided but not built yet.
 
 | Feature | Status |
 |---|---|
-| Command help | Built (chunk 1.1): every command has `--help` with examples, `jadpo help [command]` explains one, and `jadpo help --json` describes them all. Archived: **Bug (run):** no command has its own help. `--help` after a command is taken as the project path: `jadpo new --help` created a project folder called `--help`, and `jadpo artifacts --help` then wrote `build/` into it. |
-| Project path | Built (chunk 1.1): every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed (chunk 2.8). Archived: **Inconsistent (run):** every command needs a path except `config`, which rejects one (`cli.config_arguments`) and checks whichever folder you are in; run from the repository root it checked the whole repository. |
-| Scaffold | Decided (question 9), not built: `jadpo new` is `cli.unknown_command`. Archived: **Gap (run):** `jadpo new` writes a hidden `.app/project.json` and a root-level route with an inline `action:`, which the syntax review proposes removing, and `jadpo test` on the new project fails with `test.no_tests`. |
-| Formatter | Built (chunk 1.2): one member per line, one blank line between declarations, and `fmt --check` counts the files it read; `--layout` is decided, not built. Archived: **Gap (run):** keeps `Object { done: Bool pinned: Bool }` on one line and adds no blank line between declarations; doubled blank lines are reduced. `fmt --check` on a canonical project prints "checked 0 source file(s)", and `fmt` prints "formatted 0 source file(s)" when nothing changed. `--layout` does not exist. **Bug (reported by area 10, run there):** `fmt` rewrites `temporal.format(` as `temporal.format (`. |
-| Error messages | Built (chunks 1.1 on): one error per mistake in area 14's field order, `impact` only when it says something, edits on the next step where one exists, and help links to the language pages. Archived: worked, one error per mistake, with reason, next step, owner, rule and help (run). **Gaps (run):** every error prints the same two impact lines, including "Compilation is blocked" for `fmt --check`; an obvious rename ("Use `title`") carries no edit; help links to `jadpo.dev` did not resolve (`curl`: could not resolve host). **Bug (reported by area 10, compiled there):** a misspelt setting, `config.mail_snder`, names the internal `__jadpo_config`. |
-| JSON output | Built (chunk 1.1 on): every command takes `--json` and prints one envelope (`schemaVersion` 2 since chunk 2.8) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. Archived: worked for `check` (run). **Gaps (run):** absolute paths, including inside `diagnosticId`; byte offsets with no line or column; camelCase and snake_case keys mixed. |
-| `build/` | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. Archived: worked, 15 files from `artifacts`, more from `build`, byte-identical on repeat (run; repeatability read from `docs/generated-artifacts.md`). `check` writes nothing. |
-| Language server | Built (chunk 1.7): diagnostics, hover and go to definition. Archived: diagnostics, symbols, definition, references, hover, completion, rename, semantic tokens and formatting (read from `editors/vscode/README.md`, not run in an editor). |
-| Agent tools | The catalogues and the similar-helper warning are built (chunk 1.7); `impact`, `domain`, `rename`, `migrate` and `seed` are decided, not built. Archived: **Not built (run):** no `impact`, `domain`, `rename`, `migrate` or `seed` command, no catalogues, no schema report, no similar-helper warning. The skill points to older documents and does not mention `jadpo impact` (read). |
-| Build-only errors | Not applicable yet: there is no `jadpo build` until Phase 8. Archived: **Gap (run):** a project with a schedule passes `check` and fails `build` with `toolchain.target_job_not_implemented`. |
+| Command help | Built (chunk 1.1): every command has `--help` with examples, `jadpo help [command]` explains one, and `jadpo help --json` describes them all. |
+| Project path | Built (chunk 1.1): every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed (chunk 2.8). |
+| Scaffold | Decided (question 9), not built: `jadpo new` is `cli.unknown_command`. |
+| Formatter | Built (chunk 1.2): one member per line, one blank line between declarations, and `fmt --check` counts the files it read; `--layout` is decided, not built. |
+| Error messages | Built (chunks 1.1 on): one error per mistake in area 14's field order, `impact` only when it says something, edits on the next step where one exists, and help links to the language pages. |
+| JSON output | Built (chunk 1.1 on): every command takes `--json` and prints one envelope (`schemaVersion` 2 since chunk 2.8) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. |
+| `build/` | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. |
+| Language server | Built (chunk 1.7): diagnostics, hover and go to definition. |
+| Agent tools | The catalogues and the similar-helper warning are built (chunk 1.7); `migrate` is built (chunk 3.1); `impact`, `domain`, `rename` and `seed` are decided, not built. |
+| Build-only errors | Not applicable yet: there is no `jadpo build` until Phase 8. |
 
 ### Consistency with the rest of the language
 

@@ -32,7 +32,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> Decided on 2026-10-12. Code outside the collapsed boxes applies the decisions from areas 1 to 10. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read; the rest comes in Phase 5 (chunks 5.1 to 5.3).
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -69,38 +69,15 @@ config {
   settings: give a default instead, or leave the feature's setting required.
 - There is no `env.jadpo` and no second binding file (decided in area 1).
 
-::: today
-
-The declaration needs a name nobody uses, and every field repeats its own
-name as `binding:`:
-
-```jadpo project=today-config
-config TodoConfiguration {
-    mail_sender: Email {
-        binding: "MAIL_SENDER"
-    }
-
-    soft_delete_retention: Duration {
-        binding: "SOFT_DELETE_RETENTION"
-        default: 30d
-    }
-}
-```
-
-:::
-
 ### Environment variable names
 
 The variable name is the field name in capitals. Write `binding:` only when it
 must differ, for example `binding: "HEROKU_POSTGRESQL_URL"` to keep a name a
 hosting platform already uses.
 
-Today every field must state `binding:`, and every binding in the repository
-is the field name in capitals. The cost of deriving it: renaming a field
-renames the variable, which breaks a deployment that still sets the old name.
-The compiler already writes every binding to
-`build/audit/configuration.json`, so a changed name can be shown in the
-approval review like any other contract change (question 1).
+The cost of deriving it: renaming a field renames the variable, which breaks
+a deployment that still sets the old name. A changed name is therefore shown
+in the approval review like any other contract change (question 1).
 
 ### What a setting can hold
 
@@ -125,7 +102,7 @@ config {
 ```
 
 `LOG_LEVEL=debug` and `BUSINESS_ZONE=Europe/London` would then be valid
-values. Today `zone: Zone` is `configuration.type_unsupported`.
+values.
 
 ### Defaults
 
@@ -149,8 +126,8 @@ action leak() -> ApiKey {
 }
 ```
 
-This works today, including comparisons (`key == config.api_key` is rejected,
-because a yes/no answer leaks the secret one guess at a time).
+Comparisons are included: `key == config.api_key` is rejected, because a
+yes/no answer leaks the secret one guess at a time.
 
 ## Database and other connection URLs
 
@@ -167,13 +144,8 @@ application {
 }
 ```
 
-Today that cannot work. The only URL type, `Url`, accepts `http://` and
-`https://` only, so a real `postgres://user:password@host/db` is rejected as a
-default and stops the app at startup (both verified). The golden todo app
-declares `database_url: DatabaseUrl` with `type DatabaseUrl = Url {}` and
-could never start with a PostgreSQL address; the generated runtime instead
-reads `DATABASE_URL` from the environment directly, bypassing the declared
-field (read from generated code).
+`Url` accepts only `http://` and `https://`, so it cannot hold a
+`postgres://user:password@host/db` address.
 
 Proposed (question 3): built-in connection types, one per store engine,
 `PostgresUrl` (`postgres://` or `postgresql://`) and `RedisUrl` (`redis://`
@@ -207,15 +179,7 @@ or `invalid`, never the value. Both are tooling (area 14).
 The generated app reads only the declared variables, checks every value
 against its type, and refuses to start if any is missing or invalid. It never
 opens its port with bad configuration, and it reports the field and variable
-name, never the value:
-
-```text
-{"kind":"configuration_diagnostic","code":"config_invalid","declaration":"App.database_url","binding":"DATABASE_URL"}
-{"kind":"operational_log_event","eventName":"operation.failed","classification":"RUNTIME_STARTUP_FAILED", ...}
-```
-
-Verified under Bun 1.2.20 with missing, malformed and valid values. `jadpo
-dev` runs the same check against `.env.local` and keeps the last good version
+name, never the value. `jadpo dev` runs the same check against `.env.local` and keeps the last good version
 running when a change is invalid. A database that is configured correctly
 but down is not a configuration error: the app starts, reports not ready and
 recovers (health checks are area 11).
@@ -233,8 +197,8 @@ recovers (health checks are area 11).
 
 - Store `Instant`. Use `CalendarDate` only for facts that really are dates.
   There is no time without a date and zone, and no date-time without a zone.
-- `Instant` keeps milliseconds: the precision every target (JavaScript,
-  SQLite, PostgreSQL) shares. A literal with microseconds is rejected, and
+- `Instant` keeps milliseconds: the precision JavaScript clients, SQLite and
+  PostgreSQL all share. A literal with microseconds is rejected, and
   writes to PostgreSQL's microsecond column are always whole milliseconds
   (carried from area 5).
 - `Time` is a misleading name: in Java, JavaScript's Temporal and Elixir a
@@ -274,23 +238,6 @@ type RequestTimeout = Duration {
 var grace: Duration = 5m
 ```
 
-::: today
-
-Configuration accepts `5m` and `30d` but code needs `Duration("PT5M")`; `5m`
-in an expression and `max: 1h` in a constraint are syntax errors (verified).
-The time plan excludes `d`, because a calendar day is not always 24 hours,
-yet configuration accepts it.
-
-```jadpo project=today-duration
-type Wait = Duration {}
-
-function standard_wait() -> Wait {
-    return Wait("PT5M")
-}
-```
-
-:::
-
 `30d` would mean exactly 30 × 24 hours, which is what a retention period or a
 token lifetime means. Moving a date by calendar days is a separate operation
 on `CalendarDate` (below).
@@ -323,7 +270,7 @@ query todos_due_before(cutoff: ReminderCutoff) -> List<Todo> {
 Timeouts are measured on a separate clock that wall-clock changes cannot
 move; code never sees it. Tests fix and move the clock through fixtures
 (area 13). The generated SQL always passes the time as a value; the database's
-own `now()` is never used. This all works today.
+own `now()` is never used.
 
 ## Arithmetic and comparison
 
@@ -351,8 +298,7 @@ var local: Time = temporal.in_zone(clock.now, Zone.europe_london)
 
 Going the other way, from a date and a clock time to an instant, can be: at
 01:30 on the day clocks go back, London has two 01:30s, and on the day they go
-forward 01:30 does not exist. Today every call must say what to do in both
-cases:
+forward 01:30 does not exist. The call says what to do in both cases:
 
 ```jadpo fragment
 var cutoff: Time = temporal.resolve(
@@ -376,22 +322,6 @@ The `temporal` library has about 35 functions and six option enums. A
 smaller form, with one daylight-saving option instead of two, is in the
 [time and formatting proposals](research/10-configuration-and-time-proposals.md)
 (question 7).
-
-::: today
-
-The forms above compile today; this test is from `examples/temporal`:
-
-```jadpo project=today-zones
-test "London autumn day has twenty five hours" {
-    var bounds = temporal.day_bounds(
-        CalendarDate("2026-10-25"),
-        Zone.europe_london
-    )
-    assert temporal.between(bounds.start, bounds.end) == Duration("PT25H")
-}
-```
-
-:::
 
 ## Showing dates and times to people
 
@@ -427,42 +357,6 @@ page, but it cannot be stored (`type.presentation_text_persistence`), turned
 back into a time, compared as a time or rebuilt into `Text`. Clients that
 format for themselves receive the `Instant`.
 
-::: today
-
-An `Instant` must first become a `Time`, the format is either `style:` or an
-anonymous `components: { }` object (which area 2 forbids elsewhere), and
-relative text is `temporal.format_friendly(value, relative_to:, locale:,
-profile: FriendlyTimeFormat.conversational)`, naming its only profile. The
-space in `temporal.format (` is the formatter's doing (a bug; it writes that
-space after every `format`):
-
-```jadpo project=today-format
-locales {
-    default: "en-GB"
-    supported: ["en-GB", "en-US", "fr-FR"]
-    unsupported: fallback_to_default
-}
-
-test "human formats require a resolved zone" {
-    var value = temporal.in_zone(
-        Instant("2026-09-27T13:30:00Z"),
-        Zone.europe_london
-    )
-    var label = temporal.format (
-        value,
-        locale: Locale.en_gb,
-        components: {
-            day: numeric
-            month: long
-            year: numeric
-        }
-    )
-    assert label == label
-}
-```
-
-:::
-
 ## Locales
 
 `Locale` is a built-in enum of the standard locales (`Locale.en_gb`,
@@ -482,28 +376,13 @@ any enum, so an unsupported tag is an `invalid_value` failure; choosing a
 language from an `Accept-Language` header is a library call that falls back to
 `default`.
 
-::: today
-
-Locales are written as text tags while code uses `Locale.en_gb`, and
-`unsupported:` must choose `reject` or `fallback_to_default`:
-
-```jadpo project=today-locales
-locales {
-    default: "en-GB"
-    supported: ["en-GB", "en-US", "fr-FR"]
-    unsupported: fallback_to_default
-}
-```
-
-:::
-
 ## Translations
 
 Failure messages are translated by the client using the failure's `code`
 (decided in area 4); `message` stays fixed English. Text the server writes
 for people, such as emails and server-rendered pages, needs translating on
 the server, and area 1 reserved the root `translations/` folder for it.
-Nothing is built today.
+It comes in chunk 5.3.
 
 Proposed (question 9): one file per supported locale, `translations/en_gb.json`,
 holding keys and messages in ICU MessageFormat, the format translation
@@ -534,7 +413,7 @@ erasure, export) is designed in area 15 (Personal data).
 
 ## Errors
 
-> The examples in this section use today's syntax, because they show the compiler's real output; they are rewritten as the rework lands.
+> Most of these examples predate the decisions above and are rewritten when the area is built (roadmap Phase 5).
 
 ### `configuration.binding_required`
 
@@ -658,7 +537,7 @@ config App {
 
 ### `configuration.default_invalid`
 
-A PostgreSQL address is not a `Url` today:
+A PostgreSQL address is not a `Url`:
 
 ```jadpo project=e-default-invalid expect=configuration.default_invalid
 type DatabaseUrl = Url {}
@@ -875,7 +754,7 @@ locales {
 
 ### `syntax.locales_unsupported_required`
 
-The three items are positional today, so a different third name is reported:
+A third item with a different name:
 
 ```jadpo project=e-locales-unsupported-required expect=syntax.locales_unsupported_required
 locales {
@@ -945,22 +824,11 @@ locales {
 
 ### Status
 
-Each row says how it was checked: compiled with `jadpo check`, run under Bun
-1.2.20, or read from generated code.
-
-| Feature | Status |
-|---|---|
-| Declaring settings | Works: bindings, defaults, secrets and duplicates are checked (compiled). **Bug:** a `Duration` default is never checked: `default: 99999999999999999999d` compiles, and the app then refuses every start with `config_required` for that field instead of saying the default is invalid (compiled and run). The `d` unit contradicts the time plan, which allows only `ms`, `s`, `m` and `h`. |
-| Reading settings | Works as `config.<field>` in actions and functions. **Bug:** a misspelt field, `config.mail_snder`, reports "`__jadpo_config` has no `mail_snder` field", naming an internal variable (compiled). |
-| Database URL | **Bug:** `Url` accepts only `http(s)://`, so a PostgreSQL address is rejected as a default (compiled) and at startup (run). The generated runtime opens PostgreSQL from `DATABASE_URL` directly rather than from the declared field (read from generated code). |
-| Two URL checks | **Bug:** `jadpo config check` accepts `DATABASE_URL=http://db:5432/x`, but the app refuses to start with it, because the runtime also requires a dot in the host name (run both). A Docker Compose host such as `db` can never pass. |
-| Secrets | Works: returning, copying into another type and comparing a secret are all `configuration.secret_flow` (compiled); startup reports field and variable names only (run). |
-| Startup validation | Works: missing or invalid values stop the app before it opens its port, for both missing and malformed values (run). |
-| Local values | `jadpo config set` and `config check` work as described (run `config check`; `set` needs a terminal and was not run). |
-| Clock | Works: `clock.now` in a function or query is `type.clock_context`; actions read it freely (compiled). |
-| Time types | Microsecond literals are rejected (compiled). `Instant + Duration` returns plain `Instant`, so a named type must be rebuilt (compiled). Duration bounds (`max: 1h`) cannot be written (compiled; also noted in area 2). |
-| Formatting | Works as described, including the locale requirement and `PresentationText` checks; `PresentationText` may be returned in an `output` (compiled). Output text was not run. **Bug:** `jadpo fmt` rewrites every `temporal.format(` as `temporal.format (` (verified with `jadpo fmt`). |
-| Translations | Not built. |
+The new compiler has built the time literals and the built-in `Zone`,
+`Weekday` and `Locale` enums (chunk 1.9), and reports `clock.now` outside an
+action as `type.clock_context`. Settings and secrets come in chunk 5.1, time
+arithmetic and formatting in chunk 5.2, and locales and translations in
+chunk 5.3.
 
 ### Consistency with the rest of the language
 

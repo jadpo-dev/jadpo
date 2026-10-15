@@ -12,7 +12,7 @@ kinds that decide how each one reaches a client, listing, raising, passing on
 and mapping failures, the faults the runtime raises by itself, and what is
 logged.
 
-> Decided on 2026-10-12. Code on this page shows the language after the rework, applying the decisions from areas 1 to 4. Today's compiled syntax is collapsed beneath each section that changes.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 4. Built in the new compiler in roadmap chunk 1.6, with constructions' rule arms in chunks 2.5 and 2.6, overflow and the recursion limit in the interpreter (chunk 2.1), and a query's `missing:` in chunk 3.2. Writes' mappings come with chunk 3.3, the client's envelope and OpenAPI with routes (chunk 4.1), and concealment with policy (chunk 4.4).
 
 The rule behind all of it, from the failure model: **application code says
 what failed; the compiler and runtime decide how that fact is shown at each
@@ -89,43 +89,12 @@ Decided (question 13): a failure is written like every other type,
 `Failure` as a base brings `kind`, `message`, `client` and `internal`, as
 `Input` brings optional fields.
 
-::: today
-
-Kinds are UpperCamelCase, `code:` is required and repeats the name, and the
-two context blocks are `public { }` and `internal { }` without a colon:
-
-```jadpo project=declare
-type Quantity = Int {
-    min: 1
-    max: 1000
-}
-
-type ProductId = Uuid {}
-
-failure QuantityUnavailable {
-    kind: Conflict
-    code: "quantity_unavailable"
-    message: "The requested quantity is unavailable."
-
-    public {
-        available: Quantity
-    }
-
-    internal {
-        product_id: ProductId
-        requested: Quantity
-    }
-}
-```
-
-:::
-
 ## Kinds
 
 Carried from area 2: kinds are lower_snake_case option names (superseded
 2026-10-12: written `FailureKind.not_found`; see area 2 question 17). The
-"raised by" column is decided (question 3); today every kind can still be
-declared and rejected.
+"raised by" column is decided (question 3): declaring a kind only the
+runtime raises is `failure.kind_runtime_only`.
 
 | Kind | HTTP | Meaning | Raised by |
 |---|---:|---|---|
@@ -217,15 +186,6 @@ broke, never the value (question 4):
 }
 ```
 
-::: today
-
-The envelope is as above, verified by running a generated route under Bun
-1.2.20. Invalid input returns `invalid_input` with no details, and the
-OpenAPI document omits the 400 and 422 responses that request validation
-produces.
-
-:::
-
 ## Saying what can fail: `fails`
 
 ```jadpo fragment
@@ -251,55 +211,6 @@ is `failure.stale_declaration`, and a repeat is
 `fails` comes before `->` (decided in area 3), and faults are never listed
 (question 5).
 
-::: today
-
-The formatter breaks every signature that has `fails` over three lines:
-
-```jadpo project=fails
-type Title = Text {
-    max_length: 200
-}
-
-type Count = Int {
-    min: 0
-}
-
-failure TitleBlank {
-    kind: InvalidValue
-    code: "title_blank"
-    message: "Enter a title."
-}
-
-failure TitleTaken {
-    kind: Conflict
-    code: "title_taken"
-    message: "That title is already in use."
-}
-
-function check_title(title: Title)
-    fails TitleBlank
-    -> Title
-{
-    if title == Title("") {
-        reject TitleBlank
-    }
-    return title
-}
-
-action rename(title: Title, existing: Count)
-    fails TitleBlank, TitleTaken
-    -> Title
-{
-    var checked = attempt check_title(title)
-    if existing > 0 {
-        reject TitleTaken
-    }
-    return checked
-}
-```
-
-:::
-
 ## Raising a failure: `reject`
 
 ```jadpo fragment
@@ -321,51 +232,6 @@ missing, unknown or repeated field is an error. There is no `reject "text"`
 and no `throw` (area 3). `reject` can also be a `match` arm (area 3). Secret
 configuration cannot be put in a failure's fields (`configuration.secret_flow`,
 area 10), and nor can the signed-in principal (area 8).
-
-::: today
-
-The condition is in brackets because today `requested > available {` is read
-as building an object called `available` (an area 3 bug):
-
-```jadpo project=reject
-type Quantity = Int {
-    min: 1
-    max: 1000
-}
-
-type ProductId = Uuid {}
-
-failure QuantityUnavailable {
-    kind: Conflict
-    code: "quantity_unavailable"
-    message: "The requested quantity is unavailable."
-
-    public {
-        available: Quantity
-    }
-
-    internal {
-        product_id: ProductId
-        requested: Quantity
-    }
-}
-
-action reserve(product_id: ProductId, requested: Quantity, available: Quantity)
-    fails QuantityUnavailable
-    -> Quantity
-{
-    if (requested > available) {
-        reject QuantityUnavailable {
-            available: available
-            product_id: product_id
-            requested: requested
-        }
-    }
-    return requested
-}
-```
-
-:::
 
 ## Passing a failure on: `attempt`
 
@@ -450,25 +316,6 @@ function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
 }
 ```
 
-::: today
-
-Construction never needs `attempt`. This compiles, and when `quantity` is
-above 500 the route that reaches it answers 500 `internal_fault` (verified
-under Bun 1.2.20):
-
-```jadpo project=construction
-type Quantity = Int {
-    min: 1
-    max: 1000
-}
-
-function doubled(quantity: Quantity) -> Quantity {
-    return Quantity(quantity * 2)
-}
-```
-
-:::
-
 ## Turning one failure into another
 
 A failure can come from a condition the compiler knows about (a read that
@@ -528,43 +375,6 @@ PaymentDeclined rejected at domains/checkout/actions/pay.jadpo:14
   caused by CardDeclined from payments.charge (internal: decline_code)
   propagated through route POST /checkout
 ```
-
-::: today
-
-Data operations already map with `missing:`, `conflict:` and `empty:`, and
-the kind is checked; constructions map nothing. Services use
-`maps provider.x -> Failure` and outcome matches use `failure F => reject G`.
-The mapped failure is not kept anywhere.
-
-```jadpo project=mapping
-entity Customer {
-    id: Uuid identity
-}
-
-failure CustomerNotFound {
-    kind: NotFound
-    code: "customer_not_found"
-    message: "Customer not found."
-
-    internal {
-        customer_id: Customer.id
-    }
-}
-
-action find_customer(id: Customer.id)
-    fails CustomerNotFound
-    -> Customer
-{
-    return attempt query required Customer {
-        where: id == id
-        missing: CustomerNotFound {
-            customer_id: id
-        }
-    }
-}
-```
-
-:::
 
 ## Handling a failure in `match`
 
@@ -661,37 +471,6 @@ construction cannot reach the boundary, because it needs `attempt`.
 }
 ```
 
-::: today
-
-Any kind can be declared and rejected, and a standard kind can be listed in
-`fails` and rejected by name. This compiles, and the route that reaches
-`save` answers 500 `internal_fault` and logs an unhandled fault rather than
-503 (verified under Bun 1.2.20). Integrations list faults in `fails` and map
-them with `maps provider.authentication -> fault Misconfigured`.
-
-```jadpo project=faults
-type Note = Text {}
-
-failure Broken {
-    kind: InternalFault
-    code: "broken"
-}
-
-action save(note: Note)
-    fails Unavailable
-    -> Note
-{
-    reject Unavailable
-}
-```
-
-Verified under Bun 1.2.20: `Int` overflow is silent
-(`9007199254740991 * 9007199254740991` returned `8.112963841460666e+31` with
-200); dividing by a computed zero answers 500 `internal_fault`; unbounded
-recursion never answered within 25 seconds.
-
-:::
-
 ## Concealing records
 
 When policy hides a record from a caller, saying "forbidden" would reveal that
@@ -705,14 +484,6 @@ var todo: Todo = attempt Todo.get(todo_id)
 // someone else's todo fails with TodoNotFound, exactly like a missing one;
 // the log adds `concealed_by: policy`
 ```
-
-::: today
-
-`NotVisible` is a kind you can declare, intended to share its code with the
-matching not-found failure, but two failures cannot share a code (see
-`failure.duplicate_code` below), so the pair cannot be written.
-
-:::
 
 ## Logging
 
@@ -737,16 +508,6 @@ failure.
 }
 ```
 
-::: today
-
-Verified under Bun 1.2.20: a rejected domain failure writes nothing to the
-log, and its internal fields are discarded. A fault writes one
-`operation.failed` event with a classification such as
-`RUNTIME_UNHANDLED_FAULT`, no cause, and a stack only when
-`JADPO_DEBUG_TARGET_STACKS=1` is set.
-
-:::
-
 ## Messages and languages
 
 A failure's `message` is fixed English for developers and logs. Clients
@@ -760,18 +521,12 @@ translate by `code`, which is stable (question 12):
 { "todo_not_found": "Tâche introuvable." }
 ```
 
-The second block is a client's own French message table. Today there is no
-translation at all, and the OpenAPI document fixes each message as a
-constant.
+The second block is a client's own French message table.
 
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's actual output. Eight entries keep the archived compiler's
-example: four because the decided language has no such mistake any more, or
-the new compiler reports it under another rule, named in each note; and the
-four that check a data operation's mapping, which are built with data
-operations (area 6).
+new compiler's actual output.
 
 ### `syntax.fails_after_result`
 
@@ -827,51 +582,6 @@ error: `Missing` has no `kind`
   help: docs/language/04-failures.html#failure-kind-required
 
 check failed: 1 error, 1 file
-```
-
-### `syntax.failure_kind_required`
-
-> The archived compiler's error: a failure's missing `kind:` is now `failure.kind_required`, above.
-
-```jadpo project=e-kind-required expect=syntax.failure_kind_required
-failure Missing {
-    code: "missing"
-}
-```
-
-### `syntax.failure_code_required`
-
-> The archived compiler's error: `code:` is optional now; it defaults to the failure's name (question 1).
-
-```jadpo project=e-code-required expect=syntax.failure_code_required
-failure Missing {
-    kind: NotFound
-}
-```
-
-### `syntax.failure_item_colon_required`
-
-> The archived compiler's error: the new parser reports a missing colon as `syntax.colon_required` (area 3).
-
-```jadpo project=e-item-colon expect=syntax.failure_item_colon_required
-failure Missing {
-    kind NotFound
-    code: "missing"
-}
-```
-
-### `syntax.expected_failure_item`
-
-> The archived compiler's error: a setting a `Failure` doesn't take, such as `status: 404`, is now `type.unknown_setting` (area 2).
-
-A failure cannot choose its own HTTP status:
-
-```jadpo project=e-failure-item expect=syntax.expected_failure_item
-failure Missing {
-    kind: NotFound
-    code: "missing"
-    status: 404
-}
 ```
 
 ### `failure.kind_runtime_only`
@@ -1475,163 +1185,20 @@ error: An `attempt`'s mappings go in a block after the call
 check failed: 1 error, 1 file
 ```
 
-The four errors below check that a data operation's mapping names a failure
-of the right kind. The new compiler checks a construction's arms the same
-way, as `failure.mapping_kind` above.
-
-### `failure.required_query_not_not_found`
-
-> The archived compiler's example: since chunk 3.2 a query's `missing:` naming a failure of another kind is `failure.mapping_kind`, above (area 6).
-
-```jadpo project=e-query-kind expect=failure.required_query_not_not_found
-entity Customer {
-    id: Uuid identity
-}
-
-failure LookupRejected {
-    kind: Rejected
-    code: "lookup_rejected"
-}
-
-action find_customer(id: Customer.id)
-    fails LookupRejected
-    -> Customer
-{
-    return attempt query required Customer {
-        where: id == id
-        missing: LookupRejected
-    }
-}
-```
-
-### `failure.required_mutation_not_not_found`
-
-> The archived compiler's example: since chunk 3.3 a write maps no `missing:`, since a record that isn't there is the entity's own not-found failure (area 6), so this mistake no longer exists.
-
-```jadpo project=e-mutation-missing-kind expect=failure.required_mutation_not_not_found
-entity Customer {
-    id: Uuid identity
-}
-
-failure WrongMissing {
-    kind: Rejected
-    code: "wrong_missing"
-}
-
-failure CustomerConflict {
-    kind: Conflict
-    code: "customer_conflict"
-}
-
-action delete_customer(id: Customer.id)
-    fails WrongMissing, CustomerConflict
-    -> Customer
-{
-    return attempt delete required Customer {
-        where: id == id
-        missing: WrongMissing
-        conflict: CustomerConflict
-    }
-}
-```
-
-### `failure.mutation_conflict_not_conflict`
-
-> The archived compiler's example: since chunk 3.3 a write's `conflict:` arm naming a failure of another kind is `failure.mapping_kind`, above (area 6).
-
-```jadpo project=e-mutation-conflict-kind expect=failure.mutation_conflict_not_conflict
-entity Customer {
-    id: Uuid identity
-}
-
-failure CustomerNotFound {
-    kind: NotFound
-    code: "customer_not_found"
-}
-
-failure WrongConflict {
-    kind: Rejected
-    code: "wrong_conflict"
-}
-
-action delete_customer(id: Customer.id)
-    fails CustomerNotFound, WrongConflict
-    -> Customer
-{
-    return attempt delete required Customer {
-        where: id == id
-        missing: CustomerNotFound
-        conflict: WrongConflict
-    }
-}
-```
-
-### `failure.patch_empty_not_invalid_value`
-
-> The archived compiler's example: a patch that supplies nothing succeeds and changes nothing (area 6, question 7), so `empty:` and this mistake are gone.
-
-```jadpo project=e-patch-empty-kind expect=failure.patch_empty_not_invalid_value
-entity Customer {
-    id: Uuid identity
-    email: Text
-}
-
-input PatchCustomer {
-    email: Customer.email optional
-}
-
-failure WrongEmpty {
-    kind: Conflict
-    code: "wrong_empty"
-}
-
-failure CustomerNotFound {
-    kind: NotFound
-    code: "customer_not_found"
-}
-
-failure CustomerConflict {
-    kind: Conflict
-    code: "customer_conflict"
-}
-
-action patch_customer(id: Customer.id, input: PatchCustomer)
-    fails WrongEmpty, CustomerNotFound, CustomerConflict
-    -> Customer
-{
-    return attempt update required Customer {
-        where: id == id
-        patch: input
-        empty: WrongEmpty
-        missing: CustomerNotFound
-        conflict: CustomerConflict
-    }
-}
-```
-
 ## Review
 
 ### Status
 
-Each row says how it was checked: compiled with `jadpo check`, run under Bun
-1.2.20 through the generated `handleRequest`, or read from generated code.
-
 | Feature | Status |
 |---|---|
-| Declaring failures | Works: `kind` and `code` are required, members need a colon, unsupported items (`status: 404`) are rejected, and a kind must be a standard kind (`kind: Teapot` is `semantic.wrong_name_kind`; `kind: not_found` is `semantic.unknown_name` with "Did you mean `NotFound`?"). **Gaps (compiled):** `code: ""`, `code: "Not A Snake-Code"` and `message: ""` are accepted; a failure may take a compiler-owned code (`internal_fault`, `invalid_input`); `optional` is accepted in context fields although grammar §9 forbids it. |
-| Kinds | All 15 are declarable, including `InternalFault`, `OutcomeUnknown` and `Misconfigured` (compiled). **Bug:** `fails Unavailable` with `reject Unavailable` compiles, and the route answers 500 `internal_fault` and logs an unhandled fault instead of 503 (run). |
-| HTTP mapping and envelope | Works: a rejected `InvalidValue` failure answered 422 with `code`, `message`, `request_id` and its public `details`, and no internal fields (run). A failure without `message` gets "Request failed." whatever its kind (read from generated code). |
-| OpenAPI and compatibility | Declared failures are listed per status, with `oneOf` when two share one (read from generated output). **Gap:** the 400 `invalid_request` and 422 `invalid_input` responses that every input-taking route can produce are missing. `public-failure-codes.json` records code, status, message and public fields as breaking-change keys. |
-| `fails` | Works: the exact set is enforced (`undeclared_propagation`, `stale_declaration`, `duplicate_declaration`), for functions and actions. `-> R fails F` is still accepted (area 3). |
-| `reject` and context | Works: missing, unknown, duplicate and overlapping fields are errors; `reject "text"` is a syntax error; secret configuration in either block is `configuration.secret_flow` (compiled). |
-| Mapping | `missing:`, `conflict:` and `empty:` check the failure's kind (compiled). No cause is kept for a mapped failure (read from generated code). |
-| Runtime construction | No `attempt`; a failed check answered 500 `internal_fault` (run). |
-| Overflow | **Bug (run):** silent. `Int` is a JavaScript number, so `9007199254740991 * 9007199254740991` returned `8.112963841460666e+31` and `4294967297²` returned `18446744082299486000`, both with 200. |
-| Division by zero | A `Decimal` built from a division by a computed zero answered 500 `internal_fault` (run). |
-| Recursion | **Bug (run):** unbounded recursion, tail or not, never answered within 25 seconds under Bun 1.2.20. The same JavaScript under Node 24 throws `RangeError` after about 10,000 frames, so the hang is specific to Bun on this machine. |
-| Logging | **Gap (run):** a rejected domain failure writes nothing, and its internal fields are dropped. A fault writes one `operation.failed` event with no cause; the stack is printed only with `JADPO_DEBUG_TARGET_STACKS=1`. |
-| Concealment | `NotVisible` exists, but it cannot share a code with the matching not-found failure (`failure.duplicate_code`), so FAIL-002's alias cannot be written. |
-| Localisation | None. Messages are static strings and the OpenAPI document fixes each as a constant. |
+| Declaring failures, kinds and codes | Built in chunk 1.6: `type X = Failure { ... }`, the code from the name, `client` and `internal` fields, and the kind, code and field checks in Errors above. |
+| `fails`, `reject` and `attempt` | Built in chunk 1.6: the exact `fails` set, `reject` with every field, and `attempt` passing a failure on. |
+| Handling in `match` | Built in chunk 1.6, with a failure while the arguments are worked out leaving around the `match` since chunk 2.7. |
+| Mapping | A construction's rule arms and `invalid:`, and proof that a construction cannot break, in chunks 2.5 and 2.6; a query's `missing:` and its kind check (`failure.mapping_kind`) in chunk 3.2. Writes' `conflict:` and `empty:` come with chunk 3.3. |
+| Faults from code | Built in the interpreter (chunk 2.1): `Int` and `Decimal` overflow and the recursion limit are faults at their site, and a failure keeps the path it travelled and the failure it was mapped from. |
+| What the client sees | The envelope, the validation details and the OpenAPI responses come with routes (chunk 4.1). |
+| Concealing records | Comes with policy (chunk 4.4). |
+| Logging | Not built yet. |
 
 ### Consistency with the rest of the language
 
@@ -1659,7 +1226,7 @@ Each row says how it was checked: compiled with `jadpo check`, run under Bun
    not reserved, so an application failure can reuse them.
 - **The failure model spec is ahead of the compiler.** It promises structured
    internal events, semantic traces, redaction and a generic message per kind;
-   the generated runtime has none of them yet.
+   the archived compiler's generated runtime had none of them.
 - **Area 3's division decision removes one runtime fault.** With the
    divisor's type excluding zero, the remaining runtime faults from code are
    overflow and the recursion limit.
