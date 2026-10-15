@@ -21,7 +21,7 @@ use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, Expr, MemberItem};
 
 use super::queries::{Compare, Condition, Value, comparable, ordered};
-use super::{EntityModel, FieldModel};
+use super::{EntityModel, EntitySpans, FieldModel};
 use crate::case::{is_lower_snake, starts_upper};
 use crate::tree::{self, dotted, node_span};
 use crate::types::{Const, Def, Prim, Ty, TypeView};
@@ -36,8 +36,6 @@ const OPERATIONS: [&str; 3] = ["get", "create", "update"];
 /// An entity's lifecycle, as the checks, the indexes and the plans read it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LifecycleModel {
-    /// The `lifecycle` key.
-    pub span: Span,
     /// The records normal reads see; every other record is hidden.
     pub visible: Option<Condition>,
     /// The starting value of each field it owns that has one, as written:
@@ -54,7 +52,6 @@ pub struct LifecycleModel {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransitionModel {
     pub name: String,
-    pub span: Span,
     /// When it is allowed.
     pub when: Option<Condition>,
     /// Whether `when:` can refuse a visible record: false when it is only
@@ -114,6 +111,7 @@ pub(super) fn read(
     lookup: &dyn TypeView,
     path: &str,
     entity: &EntityModel,
+    spans: &EntitySpans,
     member: &ast::Member,
     out: &mut Vec<Diagnostic>,
 ) -> Option<LifecycleModel> {
@@ -156,8 +154,10 @@ pub(super) fn read(
     let has_visible = sections.iter().any(|(name, _)| name == "visible");
     let unknown = has_visible && visible.is_none();
     let mut transitions = Vec::new();
+    // Where each transition is written.
+    let mut written: Vec<Span> = Vec::new();
     if let Some((_, member)) = sections.iter().find(|(name, _)| name == "transitions") {
-        transitions = reader.transitions(member, visible.as_ref(), unknown);
+        (transitions, written) = reader.transitions(member, visible.as_ref(), unknown);
     }
     let purge = sections
         .iter()
@@ -195,22 +195,23 @@ pub(super) fn read(
     // A required field a transition sets needs a starting value: a create
     // can't give it, since only the lifecycle changes it.
     for name in &owned {
-        let Some(field) = entity.fields.iter().find(|f| f.name == *name) else {
+        let Some(index) = entity.fields.iter().position(|f| f.name == *name) else {
             continue;
         };
+        let (field, field_span) = (&entity.fields[index], &spans.fields[index]);
         if field.nullable || given.contains(name) {
             continue;
         }
         let at = transitions
             .iter()
-            .find(|t| t.set.iter().any(|(set, _)| set == name))
-            .map_or_else(|| field.span.clone(), |t| t.span.clone());
+            .position(|t| t.set.iter().any(|(set, _)| set == name))
+            .map_or_else(|| field_span.clone(), |at| written[at].clone());
         reader.out.push(
             Diagnostic::new(
                 &rule::DATA_LIFECYCLE_INITIAL_REQUIRED,
                 format!("`{}.{name}` has no starting value", entity.name),
             )
-            .at(field.span.clone(), "required, and only transitions set it")
+            .at(field_span.clone(), "required, and only transitions set it")
             .also(at, "set here")
             .reason(format!(
                 "Only the lifecycle's transitions change `{name}`, so a create can't give it; a required field gets its first value from `initial:`, and an optional one starts as `none`."
@@ -219,7 +220,6 @@ pub(super) fn read(
         );
     }
     Some(LifecycleModel {
-        span: key_span,
         visible,
         initial,
         transitions,
@@ -816,8 +816,9 @@ impl<'a> Reader<'a, '_> {
         member: &ast::Member,
         visible: Option<&Condition>,
         unknown: bool,
-    ) -> Vec<TransitionModel> {
+    ) -> (Vec<TransitionModel>, Vec<Span>) {
         let mut out: Vec<TransitionModel> = Vec::new();
+        let mut spans: Vec<Span> = Vec::new();
         let takes = "A transition has an optional `when:`, saying when it is allowed, and a `set:` giving the fields it changes.";
         let entity = self.entity;
         for (name, entry) in tree::members(member.block()) {
@@ -825,8 +826,8 @@ impl<'a> Reader<'a, '_> {
                 continue;
             };
             let span = self.span(&name);
-            if let Some(first) = out.iter().find(|t| t.name == transition) {
-                let first = first.span.clone();
+            if let Some(first) = out.iter().position(|t| t.name == transition) {
+                let first = spans[first].clone();
                 self.out.push(
                     Diagnostic::new(
                         &rule::DATA_LIFECYCLE_SECTION,
@@ -912,13 +913,13 @@ impl<'a> Reader<'a, '_> {
             };
             out.push(TransitionModel {
                 name: transition,
-                span,
                 when,
                 guarded,
                 set,
             });
+            spans.push(span);
         }
-        out
+        (out, spans)
     }
 
     // --- purge -------------------------------------------------------------------

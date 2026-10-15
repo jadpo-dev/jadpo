@@ -3,11 +3,17 @@
 //! settings (`generated:`, `unique:`, `on_delete:`), its references, its
 //! `unique:` and `indexes:` sections, the store it lives in, and the
 //! tables, columns, keys and indexes that follow, with the system tables
-//! each store holds. [`data_model`] reads every entity once, since
-//! references and stores cross files; [`data_problems`] gives one file's
-//! share of what it found, and [`schema`] the schema `jadpo migrate new`
-//! records and `jadpo check` compares with the latest migration
-//! ([`migrations`]).
+//! each store holds.
+//!
+//! Each entity is read by name ([`entity_read`]) into a model without
+//! positions ([`entity_model`]) and the problems found in it, so an edit
+//! reads again only the entity it is in, and what reads that entity
+//! (docs/compiler-runtime.md §2.4) runs again only when its model changes.
+//! What crosses entities, references to another store and cycles of
+//! required references, is worked out from the models ([`entity_links`]);
+//! [`data_problems`] gives one file's share, and [`schema`] the schema
+//! `jadpo migrate new` records and `jadpo check` compares with the latest
+//! migration ([`migrations`]).
 
 mod columns;
 pub mod lifecycle;
@@ -18,7 +24,7 @@ pub mod sql;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use jadpo_db::{Db, File, ItemKind, Project, symbols};
+use jadpo_db::{Db, File, ItemKind, Project, item_tree, symbols};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_graph::Kind;
 use jadpo_graph::schema::{self as physical, MAX_NAME, Schema};
@@ -27,7 +33,7 @@ use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 
 use crate::case::to_snake;
 use crate::graph::{field_key, registry};
-use crate::lookups::Lookup;
+use crate::lookups::{Lookup, Name, NameView};
 use crate::tree::{self, node_span};
 use crate::types::{Const, FieldsBase, Ty, TypeRef, TypeView};
 
@@ -164,14 +170,15 @@ fn path_names(expr: &Expr) -> Vec<String> {
     }
 }
 
-/// One entity as area 5 reads it.
+/// One entity as area 5 reads it, without positions: a comment or a blank
+/// line moves none of it, so what reads it is checked again only when the
+/// entity itself changes ([`EntitySpans`] says where its parts are).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EntityModel {
     pub name: String,
     /// Its born name, which its table is named after.
     pub born: String,
     pub path: String,
-    pub name_span: Span,
     /// The store it lives in; `None` when its `store:` is wrong.
     pub store: Option<String>,
     pub table: String,
@@ -187,7 +194,6 @@ pub struct EntityModel {
 pub struct FieldModel {
     pub name: String,
     pub born: String,
-    pub span: Span,
     pub ty: Ty,
     pub nullable: bool,
     /// The column type; `None` when the field can't be stored.
@@ -212,16 +218,33 @@ pub struct Reference {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListRule {
     pub name: String,
-    pub span: Span,
     /// The fields it names that exist, in order.
     pub fields: Vec<String>,
 }
 
-/// Every entity, with the problems area 5 finds in them.
+/// Where an entity's parts are written: what a problem points at.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EntitySpans {
+    /// Its name.
+    pub name: Span,
+    /// Each field's key, in the order of [`EntityModel::fields`].
+    pub fields: Vec<Span>,
+}
+
+/// One entity read from its file: its model, where its parts are, and the
+/// problems found in it alone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EntityRead {
+    pub model: Arc<EntityModel>,
+    pub spans: EntitySpans,
+    pub problems: Vec<Diagnostic>,
+}
+
+/// Every entity, for what reads them all: the schema, the migrations and
+/// the plan.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DataModel {
     pub entities: Vec<EntityModel>,
-    pub problems: Vec<Diagnostic>,
 }
 
 impl DataModel {
@@ -230,75 +253,163 @@ impl DataModel {
     }
 }
 
-/// The project's entities, read once.
+/// The names of the project's entities, in name order.
 #[salsa::tracked(returns(ref))]
-pub fn data_model(db: &dyn Db, project: Project) -> Arc<DataModel> {
-    let table = symbols(db, project);
+pub fn entity_names(db: &dyn Db, project: Project) -> Vec<String> {
+    symbols(db, project)
+        .declarations
+        .iter()
+        .filter(|(_, found)| found.iter().any(|s| s.kind == ItemKind::Entity))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
+/// The entity called `name`, read from the first file that declares one:
+/// a query of its own, which reads that file and the names the entity
+/// uses, so an edit elsewhere never reads it again.
+#[salsa::tracked(returns(ref))]
+pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Option<EntityRead> {
     let lookup = Lookup::new(db, project);
-    let registry = registry(db, project);
-    let connections = connections(db, project);
+    let symbol = lookup
+        .declared(name.text(db))
+        .iter()
+        .find(|s| s.kind == ItemKind::Entity)?;
+    let file = crate::lookups::file_at(db, project, Name::new(db, symbol.path.clone()))?;
+    let source = tree::source(db, file)?;
+    let Some(Decl::EntityDecl(decl)) = tree::decl_at(&source, symbol.index) else {
+        return None;
+    };
     let mut reader = Reader {
         lookup: &lookup,
-        registry,
-        connections,
+        registry: registry(db, project),
+        connections: connections(db, project),
+        spans: EntitySpans {
+            name: Span::new(&symbol.path, 0, 0),
+            fields: Vec::new(),
+        },
         out: Vec::new(),
     };
-    let mut entities = Vec::new();
-    let files: BTreeMap<&str, File> = project
-        .files(db)
-        .iter()
-        .map(|file| (file.path(db).as_str(), *file))
-        .collect();
-    let mut seen = BTreeSet::new();
-    for symbols in table.declarations.values() {
-        let Some(symbol) = symbols.iter().find(|s| s.kind == ItemKind::Entity) else {
-            continue;
-        };
-        if !seen.insert(symbol.name.clone()) {
-            continue;
-        }
-        let Some(source) = files
-            .get(symbol.path.as_str())
-            .and_then(|f| tree::source(db, *f))
-        else {
-            continue;
-        };
-        let Some(Decl::EntityDecl(decl)) = tree::decl_at(&source, symbol.index) else {
-            continue;
-        };
-        if let Some(entity) = reader.entity(&symbol.path, &decl) {
-            entities.push(entity);
-        }
-    }
-    entities.sort_by(|a, b| a.name.cmp(&b.name));
-    reader.across(&entities);
-    Arc::new(DataModel {
-        entities,
+    let model = reader.entity(&symbol.path, &decl)?;
+    Some(EntityRead {
+        model: Arc::new(model),
+        spans: reader.spans,
         problems: reader.out,
     })
 }
 
-/// Area 5's problems in one file.
+/// The entity called `name`, without positions: what every check that
+/// reads an entity depends on.
+#[salsa::tracked(returns(ref))]
+pub fn entity_model<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    name: Name<'db>,
+) -> Option<Arc<EntityModel>> {
+    entity_read(db, project, name)
+        .as_ref()
+        .map(|read| Arc::clone(&read.model))
+}
+
+/// Whether the entity called `name` read without a problem.
+#[salsa::tracked(returns(copy))]
+fn entity_clean<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> bool {
+    entity_read(db, project, name)
+        .as_ref()
+        .is_none_or(|read| read.problems.is_empty())
+}
+
+/// The project's entities, read by name: each read is the dependency of
+/// the check that makes it on that one entity.
+#[derive(Clone, Copy)]
+pub struct Entities<'db> {
+    db: &'db dyn Db,
+    project: Project,
+}
+
+impl std::fmt::Debug for Entities<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Entities").finish_non_exhaustive()
+    }
+}
+
+impl<'db> Entities<'db> {
+    pub fn new(db: &'db dyn Db, project: Project) -> Entities<'db> {
+        Entities { db, project }
+    }
+
+    pub fn get(&self, name: &str) -> Option<&'db EntityModel> {
+        entity_model(self.db, self.project, Name::new(self.db, name.to_string())).as_deref()
+    }
+
+    /// Every entity: for suggestions on a mistake, since reading them all
+    /// depends on every entity.
+    pub fn all(&self) -> &'db DataModel {
+        data_model(self.db, self.project)
+    }
+}
+
+/// Every entity, without positions, in name order.
+#[salsa::tracked(returns(ref))]
+pub fn data_model(db: &dyn Db, project: Project) -> Arc<DataModel> {
+    let entities = Entities::new(db, project);
+    Arc::new(DataModel {
+        entities: entity_names(db, project)
+            .iter()
+            .filter_map(|name| entities.get(name).cloned())
+            .collect(),
+    })
+}
+
+/// Whether every entity and every query read without a problem, so the
+/// schema they ask for is whole: without positions, so a comment doesn't
+/// make the migrations be compared again.
+#[salsa::tracked(returns(copy))]
+pub fn data_clean(db: &dyn Db, project: Project) -> bool {
+    let entities = entity_names(db, project)
+        .iter()
+        .all(|name| entity_clean(db, project, Name::new(db, name.clone())));
+    let links = entity_links(db, project);
+    entities
+        && links
+            .values()
+            .all(|links| links.across.is_empty() && links.cycles.is_empty())
+        && queries::queries_clean(db, project)
+}
+
+/// Area 5's problems in one file: those of the entities it declares, and
+/// of their references to other entities.
 #[salsa::tracked(returns(ref))]
 pub fn data_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let path = file.path(db);
-    data_model(db, project)
-        .problems
-        .iter()
-        .filter(|problem| {
-            problem
-                .primary
-                .as_ref()
-                .is_some_and(|label| &label.span.path == path)
-        })
-        .cloned()
-        .collect()
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    for item in &item_tree(db, file).items {
+        if item.kind != ItemKind::Entity || !seen.insert(item.name.as_str()) {
+            continue;
+        }
+        let name = Name::new(db, item.name.clone());
+        let Some(read) = entity_read(db, project, name) else {
+            continue;
+        };
+        if read.model.path != *path {
+            continue;
+        }
+        out.extend(read.problems.iter().cloned());
+        out.extend(link_problems(
+            db,
+            project,
+            read,
+            links_of(db, project, name),
+        ));
+    }
+    out
 }
 
 struct Reader<'a> {
     lookup: &'a Lookup<'a>,
     registry: &'a jadpo_graph::Registry,
     connections: &'a Connections,
+    spans: EntitySpans,
     out: Vec<Diagnostic>,
 }
 
@@ -309,11 +420,11 @@ impl Reader<'_> {
         let name_span = node_span(path, name_node.syntax());
         let born = self.registry.born(Kind::Entity, &name, None);
         let table = to_snake(&born);
+        self.spans.name = name_span.clone();
         let mut entity = EntityModel {
             name: name.clone(),
             born,
             path: path.to_string(),
-            name_span: name_span.clone(),
             store: Some(MAIN.to_string()),
             table: table.clone(),
             fields: Vec::new(),
@@ -381,6 +492,7 @@ impl Reader<'_> {
                     Some(value) if crate::types::looks_like_type(&value) => {
                         if let Some(field) = self.field(path, &name, &word, &key_span, &value) {
                             entity.fields.push(field);
+                            self.spans.fields.push(key_span.clone());
                         }
                     }
                     _ => self.unknown_section(path, key.syntax(), &word, &name),
@@ -388,7 +500,7 @@ impl Reader<'_> {
             }
         }
         // The identity (area 5, "Entities and the `id`").
-        match entity.fields.iter().find(|f| f.name == "id") {
+        match entity.fields.iter().position(|f| f.name == "id") {
             None => self.out.push(
                 Diagnostic::new(
                     &rule::DATA_IDENTITY_MISSING,
@@ -398,7 +510,8 @@ impl Reader<'_> {
                 .reason("Every entity's identity is one field, `id`, based on `Uuid`: generated when a record is created and never supplied by callers, so other code can refer to it as `Entity.id`.")
                 .next("Add `id: Uuid` as the entity's first field"),
             ),
-            Some(id) => {
+            Some(at) => {
+                let id = &entity.fields[at];
                 let uuid = self.lookup.representation(&id.ty)
                     == Some(jadpo_std::Builtin::Uuid)
                     && !matches!(id.ty.strip_nullable(), Ty::Field(..));
@@ -417,7 +530,7 @@ impl Reader<'_> {
                             &rule::DATA_IDENTITY_TYPE,
                             format!("`{name}.id` must be a required `Uuid`"),
                         )
-                        .at(id.span.clone(), label)
+                        .at(self.spans.fields[at].clone(), label)
                         .reason(reason)
                         .next("Write `id: Uuid`"),
                     );
@@ -432,7 +545,14 @@ impl Reader<'_> {
         }
         entity.store = self.placement(store, &name, &name_span);
         if let Some(member) = lifecycle {
-            entity.lifecycle = lifecycle::read(self.lookup, path, &entity, &member, &mut self.out);
+            entity.lifecycle = lifecycle::read(
+                self.lookup,
+                path,
+                &entity,
+                &self.spans,
+                &member,
+                &mut self.out,
+            );
         }
         // Names the database keeps (area 5, "Storage types").
         if table.starts_with("jadpo_") {
@@ -448,10 +568,10 @@ impl Reader<'_> {
         } else if table.len() > MAX_NAME {
             self.too_long(&name_span, &name, &table, "table");
         }
-        for field in &entity.fields {
+        for (field, span) in entity.fields.iter().zip(&self.spans.fields.clone()) {
             if field.born.len() > MAX_NAME {
                 self.too_long(
-                    &field.span,
+                    span,
                     &format!("{name}.{}", field.name),
                     &field.born,
                     "column",
@@ -609,7 +729,6 @@ impl Reader<'_> {
         let mut field = FieldModel {
             name: name.to_string(),
             born,
-            span: span.clone(),
             ty: ty.clone(),
             nullable,
             sql_type: None,
@@ -846,6 +965,8 @@ impl Reader<'_> {
             return Vec::new();
         };
         let mut out: Vec<ListRule> = Vec::new();
+        // Where each rule kept in `out` is written.
+        let mut spans: Vec<Span> = Vec::new();
         for (name, rule_member) in tree::members(Some(list)) {
             let Some(rule_name) = tree::name_text(&name) else {
                 continue;
@@ -995,14 +1116,15 @@ impl Reader<'_> {
                     a == b
                 }
             };
-            if let Some(earlier) = out.iter().find(|r| same(&r.fields, &fields)) {
+            if let Some(at) = out.iter().position(|r| same(&r.fields, &fields)) {
+                let earlier = &out[at];
                 self.out.push(
                     Diagnostic::new(
                         &rule::DATA_DUPLICATE_RULE,
                         format!("The {what} `{rule_name}` repeats `{}`", earlier.name),
                     )
                     .at(span, "same fields")
-                    .also(earlier.span.clone(), "first here")
+                    .also(spans[at].clone(), "first here")
                     .reason(if unique {
                         "Both cover the same fields, in whatever order, so they are one rule; a write's conflict names one of them (area 6).".to_string()
                     } else {
@@ -1014,135 +1136,282 @@ impl Reader<'_> {
             }
             out.push(ListRule {
                 name: rule_name,
-                span,
                 fields,
             });
+            spans.push(span);
         }
         out
     }
+}
 
-    /// Rules across entities: references to another store and cycles of
-    /// required references.
-    fn across(&mut self, entities: &[EntityModel]) {
-        let by_name: BTreeMap<&str, &EntityModel> =
-            entities.iter().map(|e| (e.name.as_str(), e)).collect();
-        for entity in entities {
-            for field in &entity.fields {
-                let Some(reference) = &field.reference else {
-                    continue;
-                };
-                let Some(target) = by_name.get(reference.target.as_str()) else {
-                    continue;
-                };
-                if let (Some(here), Some(there)) = (&entity.store, &target.store)
-                    && here != there
-                {
-                    self.out.push(
-                        Diagnostic::new(
-                            &rule::DATA_REFERENCE_ACROSS_STORES,
-                            format!("`{}.{}` refers to a `{}` in another store", entity.name, field.name, target.name),
-                        )
-                        .at(field.span.clone(), format!("`{}` is in `{here}`", entity.name))
-                        .also(target.name_span.clone(), format!("`{}` is in `{there}`", target.name))
-                        .reason("A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber.")
-                        .next(format!("Keep `{}` and `{}` in one store, or store the id as a plain `Uuid`", entity.name, target.name)),
-                    );
-                }
-            }
-        }
-        // Required references between entities, in name order, for a
-        // cycle found the same way every time.
-        let edges: BTreeMap<&str, Vec<(&str, &FieldModel)>> = entities
-            .iter()
-            .map(|entity| {
-                let out = entity
-                    .fields
-                    .iter()
-                    .filter(|f| !f.nullable)
-                    .filter_map(|f| {
-                        let target = f.reference.as_ref()?.target.as_str();
-                        by_name.contains_key(target).then_some((target, f))
-                    })
-                    .collect();
-                (entity.name.as_str(), out)
-            })
-            .collect();
-        let mut reported: BTreeSet<Vec<String>> = BTreeSet::new();
-        for start in edges.keys() {
-            if let Some(cycle) = find_cycle(&edges, start) {
-                let mut members: Vec<String> =
-                    cycle.iter().map(|(from, _)| from.to_string()).collect();
-                members.sort();
-                if !reported.insert(members) {
-                    continue;
-                }
-                let (first_entity, first_field) = cycle[0];
-                let path: Vec<String> = cycle
-                    .iter()
-                    .map(|(from, field)| format!("`{from}.{}`", field.name))
-                    .collect();
-                let mut problem = Diagnostic::new(
-                    &rule::DATA_REFERENCE_CYCLE,
-                    if cycle.len() == 1 {
-                        format!(
-                            "`{first_entity}.{}` requires a `{first_entity}` before any exists",
-                            first_field.name
-                        )
-                    } else {
-                        format!("Required references form a cycle through `{first_entity}`")
-                    },
-                )
-                .at(first_field.span.clone(), "required reference");
-                for (from, field) in &cycle[1..] {
-                    let _ = from;
-                    problem = problem.also(field.span.clone(), "and this one");
-                }
-                self.out.push(
-                    problem
-                        .reason(format!(
-                            "{} {} required, so no record could be created first: each needs one that already exists.",
-                            crate::and_list(&path),
-                            match cycle.len() {
-                                1 => "is",
-                                2 => "are both",
-                                _ => "are all",
-                            }
-                        ))
-                        .next("Make one of these references optional (`X.id?`)"),
-                );
+/// A field of an entity, by name and by its place among the entity's
+/// fields.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FieldAt {
+    pub entity: String,
+    pub field: String,
+    /// Its place in [`EntityModel::fields`].
+    pub index: usize,
+}
+
+/// A reference another entity, or the entity itself, holds to an entity.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Referrer {
+    pub holder: FieldAt,
+    pub on_delete: Option<OnDelete>,
+    /// Whether the entity holding it has a lifecycle.
+    pub lifecycle: bool,
+}
+
+/// A reference to an entity in another store.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Across {
+    pub field: FieldAt,
+    pub target: String,
+    /// The holder's store and the target's.
+    pub here: String,
+    pub there: String,
+}
+
+/// One entity's links with the others, without positions (area 5,
+/// "References").
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct EntityLinks {
+    /// The references to it, in the holders' name order, then their
+    /// fields' order.
+    pub referrers: Vec<Referrer>,
+    /// Its references to an entity in another store.
+    pub across: Vec<Across>,
+    /// The cycles of required references reported at it, each as the
+    /// fields it passes through, starting with one of its own.
+    pub cycles: Vec<Vec<FieldAt>>,
+}
+
+/// Every entity's links, by name: what crosses entities, read once from
+/// the models, so only a change to an entity can change it.
+#[salsa::tracked(returns(ref))]
+pub fn entity_links(db: &dyn Db, project: Project) -> BTreeMap<String, EntityLinks> {
+    let entities = &data_model(db, project).entities;
+    let by_name: BTreeMap<&str, &EntityModel> =
+        entities.iter().map(|e| (e.name.as_str(), e)).collect();
+    let mut out: BTreeMap<String, EntityLinks> = BTreeMap::new();
+    for entity in entities {
+        for (index, field) in entity.fields.iter().enumerate() {
+            let Some(reference) = &field.reference else {
+                continue;
+            };
+            let at = FieldAt {
+                entity: entity.name.clone(),
+                field: field.name.clone(),
+                index,
+            };
+            out.entry(reference.target.clone())
+                .or_default()
+                .referrers
+                .push(Referrer {
+                    holder: at.clone(),
+                    on_delete: reference.on_delete,
+                    lifecycle: entity.lifecycle.is_some(),
+                });
+            let Some(target) = by_name.get(reference.target.as_str()) else {
+                continue;
+            };
+            if let (Some(here), Some(there)) = (&entity.store, &target.store)
+                && here != there
+            {
+                out.entry(entity.name.clone())
+                    .or_default()
+                    .across
+                    .push(Across {
+                        field: at,
+                        target: target.name.clone(),
+                        here: here.clone(),
+                        there: there.clone(),
+                    });
             }
         }
     }
+    // Required references between entities, in name order, for a cycle
+    // found the same way every time.
+    let edges: BTreeMap<&str, Vec<Hop>> = entities
+        .iter()
+        .map(|entity| {
+            let hops = entity
+                .fields
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| !f.nullable)
+                .filter_map(|(index, f)| {
+                    let target = f.reference.as_ref()?.target.as_str();
+                    by_name.contains_key(target).then_some(Hop {
+                        from: entity.name.as_str(),
+                        to: target,
+                        field: f.name.as_str(),
+                        index,
+                    })
+                })
+                .collect();
+            (entity.name.as_str(), hops)
+        })
+        .collect();
+    let mut reported: BTreeSet<Vec<String>> = BTreeSet::new();
+    for start in edges.keys() {
+        if let Some(cycle) = find_cycle(&edges, start) {
+            let mut members: Vec<String> = cycle.iter().map(|hop| hop.from.to_string()).collect();
+            members.sort();
+            if !reported.insert(members) {
+                continue;
+            }
+            out.entry(start.to_string()).or_default().cycles.push(
+                cycle
+                    .iter()
+                    .map(|hop| FieldAt {
+                        entity: hop.from.to_string(),
+                        field: hop.field.to_string(),
+                        index: hop.index,
+                    })
+                    .collect(),
+            );
+        }
+    }
+    out
+}
+
+/// The entity called `name`'s links: what its references to others, and
+/// theirs to it, mean for it.
+#[salsa::tracked(returns(ref))]
+pub fn links_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> EntityLinks {
+    entity_links(db, project)
+        .get(name.text(db))
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The problems an entity's links bring: references to another store and
+/// cycles of required references, at its own fields, naming the other
+/// entities' parts where they are written.
+fn link_problems(
+    db: &dyn Db,
+    project: Project,
+    read: &EntityRead,
+    links: &EntityLinks,
+) -> Vec<Diagnostic> {
+    let spans = |entity: &str| -> Option<&EntitySpans> {
+        if entity == read.model.name {
+            return Some(&read.spans);
+        }
+        entity_read(db, project, Name::new(db, entity.to_string()))
+            .as_ref()
+            .map(|read| &read.spans)
+    };
+    let field_span =
+        |at: &FieldAt| -> Option<Span> { spans(&at.entity)?.fields.get(at.index).cloned() };
+    let entity = &read.model;
+    let mut out = Vec::new();
+    for across in &links.across {
+        let (Some(at), here, there) = (field_span(&across.field), &across.here, &across.there)
+        else {
+            continue;
+        };
+        let mut problem = Diagnostic::new(
+            &rule::DATA_REFERENCE_ACROSS_STORES,
+            format!(
+                "`{}.{}` refers to a `{}` in another store",
+                entity.name, across.field.field, across.target
+            ),
+        )
+        .at(at, format!("`{}` is in `{here}`", entity.name));
+        if let Some(target) = spans(&across.target) {
+            problem = problem.also(
+                target.name.clone(),
+                format!("`{}` is in `{there}`", across.target),
+            );
+        }
+        out.push(
+            problem
+                .reason("A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber.")
+                .next(format!("Keep `{}` and `{}` in one store, or store the id as a plain `Uuid`", entity.name, across.target)),
+        );
+    }
+    for cycle in &links.cycles {
+        let Some(first) = cycle.first() else {
+            continue;
+        };
+        let Some(at) = field_span(first) else {
+            continue;
+        };
+        let path: Vec<String> = cycle
+            .iter()
+            .map(|at| format!("`{}.{}`", at.entity, at.field))
+            .collect();
+        let mut problem = Diagnostic::new(
+            &rule::DATA_REFERENCE_CYCLE,
+            if cycle.len() == 1 {
+                format!(
+                    "`{}.{}` requires a `{}` before any exists",
+                    first.entity, first.field, first.entity
+                )
+            } else {
+                format!(
+                    "Required references form a cycle through `{}`",
+                    first.entity
+                )
+            },
+        )
+        .at(at, "required reference");
+        for other in &cycle[1..] {
+            if let Some(span) = field_span(other) {
+                problem = problem.also(span, "and this one");
+            }
+        }
+        out.push(
+            problem
+                .reason(format!(
+                    "{} {} required, so no record could be created first: each needs one that already exists.",
+                    crate::and_list(&path),
+                    match cycle.len() {
+                        1 => "is",
+                        2 => "are both",
+                        _ => "are all",
+                    }
+                ))
+                .next("Make one of these references optional (`X.id?`)"),
+        );
+    }
+    out
+}
+
+/// One required reference, as a step of a cycle.
+#[derive(Clone, Copy)]
+struct Hop<'a> {
+    from: &'a str,
+    to: &'a str,
+    field: &'a str,
+    index: usize,
 }
 
 /// A cycle of required references back to `start`, as the fields it
 /// passes through, shortest first by a breadth-first walk.
-fn find_cycle<'a>(
-    edges: &BTreeMap<&'a str, Vec<(&'a str, &'a FieldModel)>>,
-    start: &'a str,
-) -> Option<Vec<(&'a str, &'a FieldModel)>> {
-    let mut queue: std::collections::VecDeque<Vec<(&'a str, &'a FieldModel)>> =
-        std::collections::VecDeque::new();
-    for (to, field) in edges.get(start)? {
-        queue.push_back(vec![(start, *field)]);
-        if *to == start {
-            return Some(vec![(start, *field)]);
+fn find_cycle<'a>(edges: &BTreeMap<&'a str, Vec<Hop<'a>>>, start: &'a str) -> Option<Vec<Hop<'a>>> {
+    let mut queue: std::collections::VecDeque<Vec<Hop<'a>>> = std::collections::VecDeque::new();
+    for hop in edges.get(start)? {
+        queue.push_back(vec![*hop]);
+        if hop.to == start {
+            return Some(vec![*hop]);
         }
     }
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     while let Some(path) = queue.pop_front() {
-        let (from, field) = *path.last()?;
-        let to = field.reference.as_ref()?.target.as_str();
-        let _ = from;
+        let to = path.last()?.to;
         if to == start {
             return Some(path);
         }
         if !seen.insert(to) {
             continue;
         }
-        for (_, next) in edges.get(to).into_iter().flatten() {
+        for next in edges.get(to).into_iter().flatten() {
             let mut longer = path.clone();
-            longer.push((to, *next));
+            longer.push(*next);
             queue.push_back(longer);
         }
     }
@@ -1575,9 +1844,17 @@ impl WriteRules {
     }
 }
 
-/// What a write to `entity` can break, read from the data model once.
-pub fn write_rules_of(model: &DataModel, entity: &str) -> Option<WriteRules> {
-    let found = model.entity(entity)?;
+/// What a write to the entity called `entity` can break: a query of its
+/// own, which reads that entity and the references to it, so a body that
+/// writes one entity is checked again only when that entity's rules, or
+/// the references to it, change.
+#[salsa::tracked(returns(ref))]
+pub fn write_rules<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    entity: crate::lookups::Name<'db>,
+) -> Option<WriteRules> {
+    let found = entity_model(db, project, entity).as_deref()?;
     let mut rules = WriteRules::default();
     for field in &found.fields {
         if field.unique && field.name != "id" {
@@ -1615,51 +1892,32 @@ pub fn write_rules_of(model: &DataModel, entity: &str) -> Option<WriteRules> {
     }
     // A delete cascades through every `cascade` reference to what it
     // deletes, and any `restricted` reference on the way refuses it.
-    let mut seen: BTreeSet<&str> = BTreeSet::from([entity]);
-    let mut queue: Vec<&str> = vec![entity];
+    let mut seen: BTreeSet<String> = BTreeSet::from([found.name.clone()]);
+    let mut queue: Vec<String> = vec![found.name.clone()];
     let mut restricting = BTreeSet::new();
     while let Some(current) = queue.pop() {
-        for child in &model.entities {
-            for field in &child.fields {
-                let Some(reference) = &field.reference else {
-                    continue;
-                };
-                if reference.target != current {
-                    continue;
+        for referrer in &links_of(db, project, Name::new(db, current)).referrers {
+            let holder = &referrer.holder;
+            match referrer.on_delete {
+                // A reference that doesn't say is reported where it is
+                // declared; taken as refusing, nothing here reports a
+                // knock-on of it.
+                Some(OnDelete::Restricted) | None => {
+                    restricting.insert((holder.entity.clone(), holder.field.clone()));
                 }
-                match reference.on_delete {
-                    // A reference that doesn't say is reported where it is
-                    // declared; taken as refusing, nothing here reports a
-                    // knock-on of it.
-                    Some(OnDelete::Restricted) | None => {
-                        restricting.insert((child.name.clone(), field.name.clone()));
+                Some(OnDelete::Cascade) => {
+                    if referrer.lifecycle && rules.cascades_to_lifecycle.is_none() {
+                        rules.cascades_to_lifecycle =
+                            Some((holder.entity.clone(), holder.field.clone()));
                     }
-                    Some(OnDelete::Cascade) => {
-                        if child.lifecycle.is_some() && rules.cascades_to_lifecycle.is_none() {
-                            rules.cascades_to_lifecycle =
-                                Some((child.name.clone(), field.name.clone()));
-                        }
-                        if seen.insert(child.name.as_str()) {
-                            queue.push(child.name.as_str());
-                        }
+                    if seen.insert(holder.entity.clone()) {
+                        queue.push(holder.entity.clone());
                     }
-                    Some(OnDelete::Cleared) => {}
                 }
+                Some(OnDelete::Cleared) => {}
             }
         }
     }
     rules.restricting = restricting.into_iter().collect();
     Some(rules)
-}
-
-/// What a write to the entity called `entity` can break: a query of its
-/// own, so a body that writes one entity is checked again only when that
-/// entity's rules, or the references to it, change.
-#[salsa::tracked(returns(ref))]
-pub fn write_rules<'db>(
-    db: &'db dyn Db,
-    project: Project,
-    entity: crate::lookups::Name<'db>,
-) -> Option<WriteRules> {
-    write_rules_of(data_model(db, project), entity.text(db))
 }

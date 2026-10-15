@@ -24,6 +24,7 @@ use jadpo_graph::Kind;
 use jadpo_graph::body::{Callee, Node};
 
 use super::body::{callables_of, typed_body};
+use crate::lookups::Name;
 
 /// What one action or fixture does that reaches a store, in source order:
 /// each write's entity, or each action it calls, with where.
@@ -107,20 +108,34 @@ pub fn used_stores(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeMap<S
     stores_reached(db, project, true)
 }
 
+/// The store the entity called `entity` lives in.
+#[salsa::tracked(returns(ref))]
+fn entity_store<'db>(db: &'db dyn Db, project: Project, entity: Name<'db>) -> Option<String> {
+    crate::data::entity_model(db, project, entity)
+        .as_ref()?
+        .store
+        .clone()
+}
+
+/// The entity the query called `query` reads.
+#[salsa::tracked(returns(ref))]
+fn query_entity<'db>(db: &'db dyn Db, project: Project, query: Name<'db>) -> Option<String> {
+    crate::data::queries::query_model(db, project, query)
+        .as_ref()
+        .map(|query| query.entity.clone())
+}
+
 /// The store `reach` uses directly, with the entity it uses there: a
 /// write's, or with `reads`, a `get`'s or a query's.
 fn store_of(db: &dyn Db, project: Project, reach: &Reach, reads: bool) -> Option<(String, String)> {
-    let model = crate::data::data_model(db, project);
+    let name = |text: &str| Name::new(db, text.to_string());
     let entity = match reach {
         Reach::Writes(entity) => entity.clone(),
         Reach::Reads(entity) if reads => entity.clone(),
-        Reach::Queries(query) if reads => crate::data::queries::query_models(db, project)
-            .get(query)?
-            .entity
-            .clone(),
+        Reach::Queries(query) if reads => query_entity(db, project, name(query)).clone()?,
         _ => return None,
     };
-    let store = model.entity(&entity)?.store.clone()?;
+    let store = entity_store(db, project, name(&entity)).clone()?;
     Some((store, entity))
 }
 
@@ -159,28 +174,58 @@ fn stores_reached(
     out
 }
 
+/// The stores the action or fixture called `name` writes, and those it
+/// uses at all, through every action it calls: what a file's checks read
+/// of the project's stores, one action at a time.
+#[salsa::tracked(returns(ref))]
+fn stores_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Stores {
+    let name = name.text(db);
+    Stores {
+        written: written_stores(db, project)
+            .get(name)
+            .cloned()
+            .unwrap_or_default(),
+        used: used_stores(db, project)
+            .get(name)
+            .cloned()
+            .unwrap_or_default(),
+    }
+}
+
+/// What one action or fixture reaches: each store with an entity it
+/// writes there, and each with an entity it uses there.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+struct Stores {
+    written: BTreeMap<String, String>,
+    used: BTreeMap<String, String>,
+}
+
+/// Whether any action or fixture uses more than one store.
+#[salsa::tracked(returns(copy))]
+fn any_spans_stores(db: &dyn Db, project: Project) -> bool {
+    used_stores(db, project)
+        .values()
+        .any(|stores| stores.len() > 1)
+}
+
 /// The actions and fixtures in `file` that write more than one store,
 /// each reported at the write or call that brings in a second.
 #[salsa::tracked(returns(ref))]
 pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
-    let written = written_stores(db, project);
-    let used = used_stores(db, project);
-    if used.values().all(|stores| stores.len() <= 1) {
+    if !any_spans_stores(db, project) {
         return Vec::new();
     }
-    let model = crate::data::data_model(db, project);
+    let stores = |name: &str| stores_of(db, project, Name::new(db, name.to_string()));
     let path = file.path(db);
     let mut out = Vec::new();
     for (name, found) in reaches(db, project, file) {
-        let writes = written.get(&name).map_or(0, BTreeMap::len);
-        if writes <= 1 && used.get(&name).is_some_and(|stores| stores.len() > 1) {
-            out.extend(second_store_read(
-                db, project, path, &name, &found, written, used,
-            ));
+        let own = stores(&name);
+        if own.written.len() <= 1 && own.used.len() > 1 {
+            out.extend(second_store_read(db, project, path, &name, &found));
         }
     }
     for (name, found) in reaches(db, project, file) {
-        if written.get(&name).is_none_or(|stores| stores.len() <= 1) {
+        if stores(&name).written.len() <= 1 {
             continue;
         }
         // The first store it reaches, and the first reach into another.
@@ -188,14 +233,14 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
         for (reach, (start, end)) in found {
             let (stores, how): (BTreeMap<String, String>, String) = match &reach {
                 Reach::Writes(entity) => {
-                    let store = model.entity(entity).and_then(|e| e.store.clone());
+                    let store = entity_store(db, project, Name::new(db, entity.clone())).clone();
                     (
                         store.into_iter().map(|s| (s, entity.clone())).collect(),
                         "writes".to_string(),
                     )
                 }
                 Reach::Calls(callee) => (
-                    written.get(callee).cloned().unwrap_or_default(),
+                    stores(callee).written.clone(),
                     format!("calls `{callee}`, which writes"),
                 ),
                 Reach::Reads(_) | Reach::Queries(_) => continue,
@@ -243,19 +288,21 @@ fn second_store_read(
     path: &str,
     name: &str,
     found: &[(Reach, (u32, u32))],
-    written: &BTreeMap<String, BTreeMap<String, String>>,
-    used: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> Option<Diagnostic> {
-    let mut own: Option<(String, String)> = written
-        .get(name)
-        .and_then(|stores| stores.iter().next())
+    let stores = |name: &str| stores_of(db, project, Name::new(db, name.to_string()));
+    let mut own: Option<(String, String)> = stores(name)
+        .written
+        .iter()
+        .next()
         .map(|(store, entity)| (store.clone(), entity.clone()));
     for (reach, (start, end)) in found {
         let (stores, how): (Vec<(String, String)>, String) = match reach {
             Reach::Calls(callee) => (
-                used.get(callee)
-                    .map(|stores| stores.iter().map(|(s, e)| (s.clone(), e.clone())).collect())
-                    .unwrap_or_default(),
+                stores(callee)
+                    .used
+                    .iter()
+                    .map(|(s, e)| (s.clone(), e.clone()))
+                    .collect(),
                 format!("calls `{callee}`, which uses"),
             ),
             Reach::Writes(_) => (

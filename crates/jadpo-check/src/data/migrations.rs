@@ -23,7 +23,7 @@ use jadpo_std::{Builtin, FieldChange, Num};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr};
 
 use super::{DataModel, data_model};
-use crate::lookups::Lookup;
+use crate::lookups::{Lookup, Name};
 use crate::tree::{self, file_span, node_span};
 use crate::types::{Const, Def, Ty, TypeView};
 
@@ -460,12 +460,7 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         .entities
         .iter()
         .any(|entity| entity.fields.iter().any(|field| field.ty.has_error()));
-    let queries = super::queries::query_models(db, project);
-    if unknown_type
-        || !model.problems.is_empty()
-        || !queries.problems.is_empty()
-        || queries.incomplete
-    {
+    if unknown_type || !super::data_clean(db, project) {
         // The schema is partial until the entities and the queries, which
         // ask for indexes, check, and while a field's type names nothing:
         // their own errors come first.
@@ -475,7 +470,7 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let latest = set.latest_schema();
     let next = next_snapshot(&latest, source);
     if next != latest {
-        out.push(out_of_date(set, model, &latest, &next));
+        out.push(out_of_date(db, project, set, model, &latest, &next));
         return out;
     }
     if let Some(migration) = set.list.last() {
@@ -507,7 +502,14 @@ pub fn readable_changes(latest: &Schema, next: &Schema) -> Vec<Change> {
     changes
 }
 
-fn out_of_date(set: &Migrations, model: &DataModel, latest: &Schema, next: &Schema) -> Diagnostic {
+fn out_of_date(
+    db: &dyn Db,
+    project: Project,
+    set: &Migrations,
+    model: &DataModel,
+    latest: &Schema,
+    next: &Schema,
+) -> Diagnostic {
     let changes = readable_changes(latest, next);
     let shown: Vec<String> = changes
         .iter()
@@ -532,11 +534,9 @@ fn out_of_date(set: &Migrations, model: &DataModel, latest: &Schema, next: &Sche
             let Holds::Entity(born) = holds else {
                 return None;
             };
-            model
-                .entities
-                .iter()
-                .find(|e| e.born == born)
-                .map(|e| e.name_span.clone())
+            let entity = model.entities.iter().find(|e| e.born == born)?;
+            let read = super::entity_read(db, project, Name::new(db, entity.name.clone()));
+            read.as_ref().map(|read| read.spans.name.clone())
         })
         .unwrap_or_else(|| file_span(jadpo_db::PROJECT_FILE));
     let (message, label, compared, purpose) = match set.list.last() {
