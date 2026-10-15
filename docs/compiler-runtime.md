@@ -1067,7 +1067,13 @@ store's pending migrations and say where it stands, recording each in the
 store's `jadpo_migrations` table under the table's lock (a row lock, never
 an advisory one) and refusing a store that applied a migration the project
 doesn't have, one that changed since, or one out of order; `jadpo migrate
-apply` and the test database both run them.
+apply` and the test database both run them. Since chunk 3.10 a snapshot's
+column also records what its field allows beyond the column type
+(`Column::allows`: an enum's variants, the field's bounds, lengths and
+patterns), so allowing less is a migration whose `backfill:` decision
+replaces the stored values no longer allowed (`NeededKind::Refit`), and
+an index keeps the text columns a query sorts by in code-point order
+(`Index::collate`).
 
 Built in chunk 3.4: `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and
