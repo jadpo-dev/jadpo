@@ -31,6 +31,12 @@ pub enum StoreError {
     ConcurrentChange,
     /// The store can't be reached now.
     Unavailable,
+    /// The store refused a statement Jadpo wrote as malformed or as
+    /// breaking a rule the plan should have kept to (a missing operator, a
+    /// negative `LIMIT`, `NULL` in a required column): a mistake in Jadpo,
+    /// not in the program or the database. It holds the server's code and
+    /// message.
+    Statement(String),
     /// Anything else the driver can't classify.
     Fault(String),
 }

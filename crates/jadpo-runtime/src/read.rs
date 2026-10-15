@@ -161,6 +161,12 @@ pub(crate) fn refused(ctx: &mut Ctx<'_>, error: StoreError, site: u32) -> Interr
             )),
             site,
         )),
+        StoreError::Statement(what) => Interrupt::Fault(ctx.fault(
+            FaultKind::Defect(format!(
+                "a statement Jadpo wrote that the store refused ({what})"
+            )),
+            site,
+        )),
         StoreError::Fault(what) => Interrupt::Fault(ctx.fault(FaultKind::Store(what), site)),
     }
 }
@@ -609,6 +615,28 @@ pub mod cursor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_statement_the_store_refused_is_jadpos_mistake() {
+        let places = crate::Places::new();
+        let host = crate::MemoryHost::new();
+        let mut ctx = Ctx::new(&places, &host, crate::Env::default());
+        let stopped = refused(
+            &mut ctx,
+            StoreError::Statement("42883: operator does not exist: text + text".into()),
+            0,
+        );
+        let Interrupt::Fault(fault) = stopped else {
+            panic!("a fault");
+        };
+        assert_eq!(
+            fault.kind,
+            FaultKind::Defect(
+                "a statement Jadpo wrote that the store refused (42883: operator does not exist: text + text)"
+                    .into()
+            )
+        );
+    }
 
     #[test]
     fn values_and_columns_round_trip() {

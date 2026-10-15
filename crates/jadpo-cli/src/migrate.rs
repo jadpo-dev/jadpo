@@ -990,6 +990,7 @@ fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) -> Diagnostic
                 StoreError::Unavailable => "the database can't be reached".to_string(),
                 StoreError::Conflict { constraint } => format!("a row breaks `{constraint}`"),
                 StoreError::ConcurrentChange => "another transaction changed it at the same time".to_string(),
+                StoreError::Statement(fault) => format!("PostgreSQL refused ({fault})"),
                 StoreError::Fault(fault) => fault,
             };
             Diagnostic::new(

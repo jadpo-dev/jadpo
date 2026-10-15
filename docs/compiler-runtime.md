@@ -987,7 +987,12 @@ errors by SQLSTATE: unique, foreign-key and exclusion violations are a
 conflict with the server's constraint name; serialisation failures and
 deadlocks a concurrent change; connection exceptions (class 08), shutdowns
 (57P01–57P03), too many connections, a closed connection and any I/O
-failure unavailable; anything else a fault with its SQLSTATE and message.
+failure unavailable; since chunk 3.10 a statement the server finds
+malformed or out of its rules (class 42 but for a missing privilege, table
+or column, class 22, class 0A, a not-null or check violation) a
+`Statement` error, which the runtime reports as a defect in Jadpo rather
+than asking a person to check the database; anything else a fault with its
+SQLSTATE and message.
 Connections are unencrypted until TLS is built. `jadpo-host-native` gives
 `Runtime` (one current-thread tokio runtime with a `LocalSet`),
 `NativeTransport` over tokio's TCP and Unix sockets, and `postgres(url)`.
