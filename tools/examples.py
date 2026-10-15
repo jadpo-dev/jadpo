@@ -39,9 +39,10 @@ import re
 import shutil
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from language_docs import CORPUS, ROOT, TEST_SEED, jadpo
+from language_docs import CORPUS, ROOT, TEST_SEED, WORKERS, ensure_jadpo, jadpo
 
 EXAMPLES = ROOT / 'examples'
 EXPORT = CORPUS / 'examples'
@@ -127,54 +128,63 @@ def try_next(project: Path) -> tuple[list[dict], list[str]]:
 def try_outcomes(project: Path) -> list[str]:
     """Applies each "Try next" edit to a copy and checks it gives what the
     README says."""
-    name = project.name
     edits, problems = try_next(project)
-    for edit in edits:
-        label = f'{name}: README "Try next" edit of {edit.get("file")}'
-        with tempfile.TemporaryDirectory() as tmp:
-            copy = Path(tmp) / name
-            for path in source_files(project):
-                target = copy / path.relative_to(project)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(path, target)
-            target = copy / edit.get('file', '')
-            if not target.is_file():
-                problems.append(f'{label}: no such file')
-                continue
-            text = target.read_text()
-            # `also` lists further replacements in the same file, such as
-            # the `use` line a new name needs.
-            replacements = [edit] + list(edit.get('also', []))
-            bad = [r for r in replacements if not r.get('replace') or text.count(r['replace']) != 1]
-            if bad:
-                problems.append(f'{label}: the text to replace must occur exactly once: {bad[0].get("replace")!r}')
-                continue
-            for replacement in replacements:
-                text = text.replace(replacement['replace'], replacement.get('with', ''))
-            target.write_text(text)
-            if 'check' in edit:
-                _, out = jadpo(['check', '--json', '.'], cwd=copy)
-                try:
-                    rules = sorted({d['rule'] for d in json.loads(out)['diagnostics']})
-                except (ValueError, KeyError):
-                    problems.append(f'{label}: jadpo check --json gave no report')
-                    continue
-                if rules != sorted(edit['check']):
-                    problems.append(f'{label}: the README says {", ".join(edit["check"])}, but jadpo check reports {", ".join(rules) or "nothing"}')
-            if 'test' in edit:
-                _, out = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
-                try:
-                    document = json.loads(out)
-                except ValueError:
-                    problems.append(f'{label}: jadpo test --json gave no document')
-                    continue
-                tests = (document.get('data') or {}).get('tests') or []
-                codes = [t['failure']['code'] for t in tests if t.get('outcome') == 'failed']
-                if sorted(set(codes)) != sorted(edit['test']):
-                    rules = [d.get('rule') for d in document.get('diagnostics', [])]
-                    problems.append(f'{label}: the README says {", ".join(edit["test"])}, but jadpo test gives {", ".join(sorted(set(codes))) or ", ".join(rules) or "a pass"}')
-                elif 'failed' in edit and len(codes) != edit['failed']:
-                    problems.append(f'{label}: the README says {edit["failed"]} tests fail, but {len(codes)} do')
+    # Each edit is tried on a copy of its own, so they run at once.
+    with ThreadPoolExecutor(WORKERS) as pool:
+        for found in pool.map(lambda edit: try_edit(project, edit), edits):
+            problems += found
+    return problems
+
+
+def try_edit(project: Path, edit: dict) -> list[str]:
+    """The problems with one "Try next" edit, applied to a copy."""
+    name = project.name
+    problems: list[str] = []
+    label = f'{name}: README "Try next" edit of {edit.get("file")}'
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / name
+        for path in source_files(project):
+            target = copy / path.relative_to(project)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, target)
+        target = copy / edit.get('file', '')
+        if not target.is_file():
+            problems.append(f'{label}: no such file')
+            return problems
+        text = target.read_text()
+        # `also` lists further replacements in the same file, such as
+        # the `use` line a new name needs.
+        replacements = [edit] + list(edit.get('also', []))
+        bad = [r for r in replacements if not r.get('replace') or text.count(r['replace']) != 1]
+        if bad:
+            problems.append(f'{label}: the text to replace must occur exactly once: {bad[0].get("replace")!r}')
+            return problems
+        for replacement in replacements:
+            text = text.replace(replacement['replace'], replacement.get('with', ''))
+        target.write_text(text)
+        if 'check' in edit:
+            _, out = jadpo(['check', '--json', '.'], cwd=copy)
+            try:
+                rules = sorted({d['rule'] for d in json.loads(out)['diagnostics']})
+            except (ValueError, KeyError):
+                problems.append(f'{label}: jadpo check --json gave no report')
+                return problems
+            if rules != sorted(edit['check']):
+                problems.append(f'{label}: the README says {", ".join(edit["check"])}, but jadpo check reports {", ".join(rules) or "nothing"}')
+        if 'test' in edit:
+            _, out = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
+            try:
+                document = json.loads(out)
+            except ValueError:
+                problems.append(f'{label}: jadpo test --json gave no document')
+                return problems
+            tests = (document.get('data') or {}).get('tests') or []
+            codes = [t['failure']['code'] for t in tests if t.get('outcome') == 'failed']
+            if sorted(set(codes)) != sorted(edit['test']):
+                rules = [d.get('rule') for d in document.get('diagnostics', [])]
+                problems.append(f'{label}: the README says {", ".join(edit["test"])}, but jadpo test gives {", ".join(sorted(set(codes))) or ", ".join(rules) or "a pass"}')
+            elif 'failed' in edit and len(codes) != edit['failed']:
+                problems.append(f'{label}: the README says {edit["failed"]} tests fail, but {len(codes)} do')
     return problems
 
 
@@ -203,9 +213,15 @@ def main() -> int:
     found = projects()
     problems = reading_order_problems(found)
     documents = {}
-    for project in found:
-        found_problems, document = check(project)
-        found_problems += try_outcomes(project)
+
+    # Every project, and its "Try next" edits, at once.
+    ensure_jadpo()
+    with ThreadPoolExecutor(WORKERS) as pool:
+        checked = [pool.submit(check, project) for project in found]
+        tried = [pool.submit(try_outcomes, project) for project in found]
+        examined = [(c.result(), t.result()) for c, t in zip(checked, tried)]
+    for project, ((found_problems, document), tried_problems) in zip(found, examined):
+        found_problems += tried_problems
         problems += found_problems
         if document is not None:
             documents[project] = document
