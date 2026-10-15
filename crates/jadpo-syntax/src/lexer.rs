@@ -479,7 +479,8 @@ impl Lexer<'_> {
     fn semicolon(&mut self) {
         let start = self.pos;
         // Splitting the line is only the fix when what comes before the `;`
-        // can end one: not after `use shared/;` or `a +;`.
+        // can end one (not after `use shared/;` or `a +;`) and what follows
+        // can start one (not `use shared/types ;{ Pence }`).
         let ends_line = matches!(
             self.last,
             Some((
@@ -505,6 +506,7 @@ impl Lexer<'_> {
         let after = self.rest_of_line(self.pos);
         let code = after.split("//").next().unwrap_or("").trim();
         let ends = code.is_empty() || code.starts_with('}') || code.chars().all(|c| c == ';');
+        let ends_line = ends_line && !code.starts_with('{');
         let (edit, next) = if ends {
             // Spaces before the `;` go with it.
             let before = self.text[..start].trim_end_matches([' ', '\t']).len();

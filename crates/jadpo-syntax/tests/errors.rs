@@ -479,4 +479,7 @@ fn a_semicolon_in_a_use_path_is_not_a_clean_split() {
     let path = parse_file("use shared/;types { Pence }\n");
     assert_eq!(path.errors().len(), 1, "{:#?}", path.errors());
     assert!(!path.checkable(), "{:#?}", path.errors());
+    // Nor before the braces: a line can't start with `{`.
+    let names = parse_file("use shared/types ;{ Pence }\n");
+    assert!(!names.checkable(), "{:#?}", names.errors());
 }
