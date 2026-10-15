@@ -17,15 +17,22 @@ pinned toolchain from `rust-toolchain.toml`. To build `jadpo`:
 cargo build --release -p jadpo-cli
 ```
 
-The gate needs Python 3 and Rust, and PostgreSQL for its live database
-tests. It builds once, runs its steps concurrently and prints `ok` or
-`FAILED` for each; `--profile quick` leaves out the live database tests and
-the wasm32 build:
+The gate needs Python 3 and Rust, and PostgreSQL's tools (`initdb`,
+`pg_ctl`) for its live database tests: it starts one disposable server for
+the run, or uses the one `JADPO_TEST_DATABASE_URL` names. It builds once,
+runs its steps concurrently and prints `ok` or `FAILED` for each;
+`--profile quick` leaves out the live database tests and the wasm32 build,
+skips `jadpo test` for projects with migrations (saying so), and needs no
+PostgreSQL at all:
 
 ```sh
 python3 tools/verify.py
 python3 tools/verify.py --profile quick
 ```
+
+Each crate's integration tests are one binary whose modules are the files
+in its `tests/` folder; run one file with
+`cargo test -p jadpo-cli --test integration queries::`.
 
 A built feature no teaching example uses yet is only noted: the examples
 are brought up to date once per phase, by the examples chunk at its end,

@@ -6,7 +6,7 @@
 //! construction. Items are never converted in the same step, and
 //! `List<T>(xs)` stays an error.
 
-mod support;
+use crate::support;
 
 use jadpo_db::{Database, Layout};
 use support::{project, rules};

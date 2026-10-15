@@ -4,10 +4,8 @@
 //! itself. The edits are the parser fuzz test's, seeded, so a failure
 //! repeats; the failing input is printed.
 
-#[path = "../../jadpo-syntax/tests/support/examples.rs"]
-mod examples;
-#[path = "../../jadpo-syntax/tests/support/mutate.rs"]
-mod mutate;
+use crate::syntax_examples as examples;
+use crate::syntax_mutate as mutate;
 
 use jadpo_fmt::{format_file, format_snippet};
 use jadpo_syntax::{parse_file, parse_snippet};

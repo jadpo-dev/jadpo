@@ -13,7 +13,7 @@ const COUNT: &str = "domains/planning/types/count.jadpo";
 const TALLY: &str = "domains/planning/actions/tally.jadpo";
 
 /// A fresh folder for one test under cargo's temporary directory.
-mod support;
+use crate::support;
 
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("check-{name}"));

@@ -2,7 +2,7 @@
 //! (code, kind, fields, where it was raised, the path it travelled, its
 //! cause) and the faults the runtime raises itself.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::{FaultKind, Value};
 use support::{failure, fault, int, main, program, text, value, where_fault};

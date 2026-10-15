@@ -15,6 +15,10 @@
 //! - nothing depends on `jadpo-cli`, the binary;
 //! - salsa is confined to `jadpo-db` and `jadpo-check` (§2.4).
 //!
+//! Each crate's integration tests are one binary, `integration`, whose
+//! modules are every file in its `tests/` folder (§2.7), so no test file is
+//! left out of it.
+//!
 //! Every workspace crate must be in a layer, so a new crate is placed on
 //! purpose. Dev-dependencies are not part of the graph: tests may reach
 //! anywhere.
@@ -282,5 +286,85 @@ fn runtime_crates_deny_panics() {
     assert!(
         missing.is_empty(),
         "these crates don't deny unwrap, expect and panic!: {missing:?}"
+    );
+}
+
+/// Why the crate at `dir` doesn't have its integration tests as one binary
+/// (docs/compiler-runtime.md §2.7): its `tests/*.rs` files are modules of
+/// `tests/main.rs`, and cargo, told not to find tests itself, builds that
+/// one, so a test file left undeclared would never run.
+fn test_layout_problems(dir: &std::path::Path) -> Vec<String> {
+    let name = dir
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let tests = dir.join("tests");
+    let mut files: Vec<String> = std::fs::read_dir(&tests)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|file| file.ends_with(".rs") && file != "main.rs")
+                .collect()
+        })
+        .unwrap_or_default();
+    files.sort();
+    if files.is_empty() {
+        return Vec::new();
+    }
+    let mut problems = Vec::new();
+    let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap_or_default();
+    if !manifest.contains("autotests = false")
+        || !manifest.contains("[[test]]\nname = \"integration\"\npath = \"tests/main.rs\"")
+    {
+        problems.push(format!(
+            "{name}: Cargo.toml needs `autotests = false` and one [[test]] named `integration` at tests/main.rs"
+        ));
+    }
+    let main = std::fs::read_to_string(tests.join("main.rs")).unwrap_or_default();
+    for file in files {
+        let stem = file.trim_end_matches(".rs");
+        let declared = main.lines().any(|line| line == format!("mod {stem};"))
+            || main.contains(&format!("#[path = \"{file}\"]\nmod "));
+        if !declared {
+            problems.push(format!(
+                "{name}: tests/{file} is not a module of tests/main.rs"
+            ));
+        }
+    }
+    problems
+}
+
+#[test]
+fn each_crate_has_one_integration_test_binary_running_every_test_file() {
+    let crates = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+    let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(crates)
+        .expect("crates/")
+        .flatten()
+        .map(|entry| entry.path())
+        .collect();
+    dirs.sort();
+    let problems: Vec<String> = dirs
+        .iter()
+        .flat_map(|dir| test_layout_problems(dir))
+        .collect();
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+
+    // A file nobody declared is caught.
+    let scratch = std::env::temp_dir().join(format!("jadpo-layout-{}", std::process::id()));
+    std::fs::create_dir_all(scratch.join("tests")).unwrap();
+    std::fs::write(
+        scratch.join("Cargo.toml"),
+        "autotests = false\n\n[[test]]\nname = \"integration\"\npath = \"tests/main.rs\"\n",
+    )
+    .unwrap();
+    std::fs::write(scratch.join("tests/main.rs"), "mod kept;\n").unwrap();
+    std::fs::write(scratch.join("tests/kept.rs"), "").unwrap();
+    std::fs::write(scratch.join("tests/stray.rs"), "").unwrap();
+    let found = test_layout_problems(&scratch);
+    std::fs::remove_dir_all(&scratch).unwrap();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0].ends_with("tests/stray.rs is not a module of tests/main.rs"),
+        "{found:?}"
     );
 }

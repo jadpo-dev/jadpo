@@ -15,7 +15,7 @@ const TIDY_COUNT: &str = "type Count = Int {\n    min: 0\n}\n";
 const COUNT: &str = "domains/planning/types/count.jadpo";
 
 /// A fresh folder for one test under cargo's temporary directory.
-mod support;
+use crate::support;
 
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("fmt-{name}"));

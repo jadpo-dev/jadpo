@@ -691,3 +691,216 @@ fn a_test_that_never_uses_a_store_starts_nothing() {
     assert!(host.finish(false).is_empty());
     drop(databases);
 }
+
+/// One store whose migration is `sql`.
+fn steps_of(sql: &str) -> BTreeMap<String, Vec<Step>> {
+    BTreeMap::from([(
+        "main".to_string(),
+        vec![Step {
+            name: "20260101T0000_initial".into(),
+            digest: jadpo_graph::migration::section_digest(sql),
+            sql: sql.to_string(),
+        }],
+    )])
+}
+
+/// The rows a statement on the test's `main` store gives.
+async fn host_rows(host: &TestHost<'_>, sql: &str) -> Vec<Vec<SqlValue>> {
+    let database = host.database("main").expect("main");
+    let mut transaction = database.begin().await.unwrap();
+    let found = transaction.query(sql, &[]).await.unwrap();
+    transaction.commit().await.unwrap();
+    found
+}
+
+/// The name of the database the test's `main` store is.
+async fn database_name(host: &TestHost<'_>) -> String {
+    match host_rows(host, "SELECT current_database()::text")
+        .await
+        .as_slice()
+    {
+        [row] => match row.as_slice() {
+            [SqlValue::Text(name)] => name.clone(),
+            other => panic!("current_database gave {other:?}"),
+        },
+        other => panic!("current_database gave {other:?}"),
+    }
+}
+
+#[test]
+fn a_copy_given_back_is_emptied_and_used_again() {
+    if skipped() {
+        return;
+    }
+    let databases = TestDatabases::new(note_steps("reused_note"), false);
+    let runtime = Runtime::new().unwrap();
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..12 {
+        let host = TestHost::new(&databases);
+        runtime.block_on(async {
+            // The same unique body each time: nothing a test before it
+            // wrote is left.
+            add_note(&host, "reused_note", "same").await.unwrap();
+            assert_eq!(note_count(&host, "reused_note").await, 1);
+            seen.insert(database_name(&host).await);
+        });
+        host.finish(false);
+    }
+    assert!(
+        seen.len() < 12,
+        "copies are emptied and used again: {seen:?}"
+    );
+}
+
+#[test]
+fn a_reused_copy_starts_its_sequences_again() {
+    if skipped() {
+        return;
+    }
+    let databases = TestDatabases::new(
+        steps_of(
+            "CREATE SEQUENCE \"free_number\";\nCREATE TABLE \"ticket\" (\"n\" bigserial NOT NULL, \"body\" text NOT NULL);",
+        ),
+        false,
+    );
+    let runtime = Runtime::new().unwrap();
+    for _ in 0..10 {
+        let host = TestHost::new(&databases);
+        runtime.block_on(async {
+            assert_eq!(
+                host_rows(&host, "SELECT nextval('free_number')").await,
+                vec![vec![SqlValue::Int8(1)]]
+            );
+            assert_eq!(
+                host_rows(&host, "INSERT INTO ticket (body) VALUES ('a') RETURNING n").await,
+                vec![vec![SqlValue::Int8(1)]]
+            );
+        });
+        host.finish(false);
+    }
+}
+
+#[test]
+fn copies_of_a_template_with_rows_start_with_those_rows() {
+    if skipped() {
+        return;
+    }
+    let databases = TestDatabases::new(
+        steps_of(
+            "CREATE TABLE \"setting\" (\"name\" text NOT NULL);\nINSERT INTO \"setting\" (\"name\") VALUES ('first');",
+        ),
+        false,
+    );
+    let runtime = Runtime::new().unwrap();
+    for _ in 0..3 {
+        let host = TestHost::new(&databases);
+        runtime.block_on(async {
+            assert_eq!(
+                host_rows(&host, "SELECT count(*) FROM setting").await,
+                vec![vec![SqlValue::Int8(1)]],
+                "the migration's row, and nothing an earlier test did to it"
+            );
+            host_rows(&host, "DELETE FROM setting RETURNING name").await;
+        });
+        host.finish(false);
+    }
+}
+
+#[test]
+fn copies_keep_up_with_tests_on_many_threads() {
+    if skipped() {
+        return;
+    }
+    let databases = TestDatabases::new(note_steps("busy_note"), false);
+    // The server and the template, before the clock starts.
+    let warm = TestHost::new(&databases);
+    let runtime = Runtime::new().unwrap();
+    runtime.block_on(async { assert_eq!(note_count(&warm, "busy_note").await, 0) });
+    warm.finish(false);
+    let started = std::time::Instant::now();
+    std::thread::scope(|scope| {
+        for thread in 0..10 {
+            let databases = &databases;
+            scope.spawn(move || {
+                let runtime = Runtime::new().unwrap();
+                for test in 0..6 {
+                    let host = TestHost::new(databases);
+                    runtime.block_on(async {
+                        add_note(&host, "busy_note", &format!("{thread}-{test}"))
+                            .await
+                            .unwrap();
+                        assert_eq!(note_count(&host, "busy_note").await, 1);
+                    });
+                    host.finish(false);
+                }
+            });
+        }
+    });
+    println!(
+        "sixty tests on ten threads, each writing: {:?}",
+        started.elapsed()
+    );
+}
+
+/// The ids of the server's databases whose names start with `prefix`.
+fn database_ids(runtime: &Runtime, prefix: &str) -> Vec<SqlValue> {
+    let server = jadpo_test::database::server().unwrap();
+    let store = postgres(&server.url("postgres")).unwrap();
+    runtime.block_on(async {
+        rows(
+            &store,
+            "SELECT oid::int8 FROM pg_database WHERE starts_with(datname, $1)",
+            &[SqlValue::Text(prefix.into())],
+        )
+        .await
+        .into_iter()
+        .flatten()
+        .collect()
+    })
+}
+
+#[test]
+fn copies_left_by_one_run_are_used_by_the_next() {
+    if skipped() {
+        return;
+    }
+    let runtime = Runtime::new().unwrap();
+    let first = TestDatabases::new(note_steps("handed_note"), false);
+    let host = TestHost::new(&first);
+    runtime.block_on(async { add_note(&host, "handed_note", "left").await.unwrap() });
+    host.finish(false);
+    // The run is over: its copies are emptied and left on the server.
+    drop(first);
+    let free = database_ids(&runtime, "jadpo_free_");
+    assert!(!free.is_empty(), "the run's copies are left for the next");
+    let second = TestDatabases::new(note_steps("handed_note"), false);
+    let host = TestHost::new(&second);
+    runtime.block_on(async {
+        assert_eq!(note_count(&host, "handed_note").await, 0, "emptied");
+        let id = host_rows(
+            &host,
+            "SELECT oid::int8 FROM pg_database WHERE datname = current_database()",
+        )
+        .await;
+        assert!(
+            free.contains(&id[0][0]),
+            "a copy the first run left: {id:?}"
+        );
+    });
+    host.finish(false);
+}
+
+#[test]
+fn a_run_makes_no_more_copies_than_its_tests_can_use() {
+    if skipped() {
+        return;
+    }
+    let runtime = Runtime::new().unwrap();
+    let databases = TestDatabases::new(note_steps("lone_note"), false).for_tests(1);
+    let host = TestHost::new(&databases);
+    runtime.block_on(async { assert_eq!(note_count(&host, "lone_note").await, 0) });
+    // The one test's copy, and none prepared beyond it.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert_eq!(databases.copies(), 1);
+    host.finish(false);
+}

@@ -2,7 +2,7 @@
 //! 2.7): a proof that passed a value its type refuses, and a call that
 //! checked clean and then faulted, are each reported now.
 
-mod support;
+use crate::support;
 
 use jadpo_db::{Database, Layout};
 use jadpo_diag::Diagnostic;

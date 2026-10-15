@@ -6,6 +6,8 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+# One integration-test binary: tests/main.rs.
+autotests = false
 
 # A compiler crate (docs/compiler-runtime.md §2.1): read from the checker's
 # graph and typed bodies, consumed by the interpreter now and the code
@@ -20,3 +22,7 @@ jadpo-std.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

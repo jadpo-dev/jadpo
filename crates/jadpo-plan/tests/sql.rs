@@ -5,7 +5,7 @@
 //! `tests/sql/<name>.sql` with its parameters, includes and refusals, and
 //! compared byte for byte.
 //!
-//! `JADPO_BLESS=1 cargo test -p jadpo-plan --test sql` rewrites them.
+//! `JADPO_BLESS=1 cargo test -p jadpo-plan --test integration sql::` rewrites them.
 
 use std::path::{Path, PathBuf};
 

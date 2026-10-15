@@ -3,7 +3,7 @@
 //! its subject's declarations, and each mistake is reported once with the
 //! edit that fixes it.
 
-mod support;
+use crate::support;
 
 use jadpo_db::{Database, Layout};
 use support::{APP, problems, project};

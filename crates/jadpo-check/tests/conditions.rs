@@ -6,7 +6,7 @@
 //! that flips says so with its own error. Nothing here may prove a value
 //! that can break its type's rules at runtime.
 
-mod support;
+use crate::support;
 
 use jadpo_db::{Database, Layout};
 use support::{project, rules};

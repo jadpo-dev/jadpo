@@ -1,7 +1,7 @@
 //! The Phase 1 review's reproducers (roadmap chunk 1.9): each mistake the
 //! review found the checker accepting is now reported, once, with its rule.
 
-mod support;
+use crate::support;
 
 use jadpo_db::Layout;
 use support::rules;

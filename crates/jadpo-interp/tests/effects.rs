@@ -4,7 +4,7 @@
 //! a read or write on a host with no store stops with the store's fault at
 //! its line; the pure parts of actions and tests run.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::{AssertionDetail, FaultKind, Got, Outcome, Value};
 use support::{failure, fault, int, main, program, run, value, where_fault};

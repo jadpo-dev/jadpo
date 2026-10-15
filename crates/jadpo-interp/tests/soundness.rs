@@ -2,7 +2,7 @@
 //! value the interpreter once stored unchecked, each wrong result, each
 //! failure caught by the wrong `match`, now behaves as the pages decide.
 
-mod support;
+use crate::support;
 
 use jadpo_interp::{Outcome, Value};
 use support::{decimal, failure, int, main, run, text, value};
