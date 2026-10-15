@@ -57,7 +57,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo provider add` / `import` / `record` / `update` | Adds, imports, confirms and upgrades provider packages | Decided in area 11; question 15 |
 | `jadpo trace <id>` / `jadpo why <name>` / `jadpo call` / `jadpo console` | Debugging (area 17) | Proposed in area 17 |
 | `jadpo incident [file \| -]` | Explains a runtime event: from a file, from standard input (`pbpaste \| jadpo incident -`, or a log stream piped in), or, with no argument in a terminal, from text pasted at a prompt; it finds the Jadpo events inside surrounding log text and groups them by request | Decided 2026-10-13, not built: comes with debugging (area 17) |
-| `jadpo lsp` | Runs the language server for editors | Built (chunk 1.7): diagnostics, hover and go to definition |
+| `jadpo lsp` | Runs the language server for editors | Built (chunk 1.7): diagnostics, hover and go to definition; the VS Code extension in `editors/vscode` starts it (chunk 3.6) |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere | Built (chunk 1.1): `jadpo help [command]`, `--help` with examples on every command, and `jadpo help --json` with the rule catalogue and the schemas of the manifest and of `jadpo test --json` |
 | `jadpo completions <shell>` / `jadpo version` | Prints the Tab-completion script for zsh, bash or fish; prints the version | Built (chunk 1.1) |
 
@@ -114,8 +114,20 @@ type Count = Int {
 The language server (`jadpo lsp`) gives any editor the compiler's own view:
 errors while you type, go to definition, find references, hover with types and
 the failures a call can produce, completion, rename and formatting. The VS
-Code extension in `editors/vscode` adds highlighting and a command to open any
-generated file. It contains no parser of its own.
+Code extension in `editors/vscode` adds highlighting and starts the server. It
+contains no parser of its own, and a command to open any generated file comes
+with the generated files.
+
+> **Built (chunk 3.6).** The extension starts `jadpo lsp` for `.jadpo` files,
+> so the errors, hover and go to definition above work in VS Code, and
+> highlights keywords, declarations, types, strings, numbers and quantities,
+> comments, operators, route paths and `use` lines. The `jadpo.server.path`
+> setting names the binary (`jadpo` on `PATH` by default, or
+> `${workspaceFolder}/target/release/jadpo` for a checkout's own build), and a
+> missing binary says so. The highlighting grammar is written by hand and
+> `tools/editor_grammar.py`, part of `tools/verify.py`, fails when it leaves
+> out or adds a word the lexer reserves. Install and settings are in
+> `editors/vscode/README.md`.
 
 > **Built (chunk 1.7).** `jadpo lsp` gives the errors `jadpo check` gives
 > while you type, from one database kept for the server's life, so an edit

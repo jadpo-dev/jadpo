@@ -206,7 +206,7 @@ reference only).
   example and every page example to migrate them; go to definition from
   every use of a name, including on a `use` line. Done when no example or
   page example checks without its imports.
-- [ ] **3.6 VS Code extension** `sonnet · high`: `editors/vscode` starts
+- [x] **3.6 VS Code extension** `sonnet · high`: `editors/vscode` starts
   `jadpo lsp`, with highlighting, so errors, hover and go to definition work
   in the editor (area 14, "Editor support"). The archived extension is
   reference only.

@@ -65,6 +65,10 @@ def main() -> int:
         ('teaching examples: check, format and jadpo test',
          [sys.executable, 'tools/examples.py', '--export-corpus']),
         ('example names', [sys.executable, 'tools/example_names.py', '--check']),
+        # The VS Code extension's highlighting names every word the lexer
+        # reserves and no other (editors/vscode; needs no Node).
+        ('editor grammar in step with the lexer',
+         [sys.executable, 'tools/editor_grammar.py', '--check']),
     ]
     if (ROOT / 'Cargo.toml').exists():
         checks += [

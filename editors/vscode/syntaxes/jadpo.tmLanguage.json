@@ -1,0 +1,399 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Jadpo",
+  "scopeName": "source.jadpo",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#use"
+    },
+    {
+      "include": "#route-entry"
+    },
+    {
+      "include": "#route-path"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#expression"
+    }
+  ],
+  "repository": {
+    "expression": {
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#singleton-declarations"
+        },
+        {
+          "include": "#contextual-keywords"
+        },
+        {
+          "include": "#member-keys"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#types"
+        },
+        {
+          "include": "#calls"
+        },
+        {
+          "include": "#operators"
+        },
+        {
+          "include": "#punctuation"
+        }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.jadpo",
+          "match": "///(?!/).*$"
+        },
+        {
+          "name": "comment.line.double-slash.jadpo",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.jadpo",
+      "begin": "\"",
+      "end": "\"|(?=$)",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.jadpo"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.jadpo"
+        }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.jadpo",
+          "match": "\\\\[\"\\\\nrt]"
+        },
+        {
+          "name": "invalid.illegal.escape.jadpo",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.quantity.jadpo",
+          "match": "\\b\\d+(?:\\.\\d+)?[A-Za-z_][A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.jadpo",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.jadpo",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "use": {
+      "comment": "`use <folder> { Names }` and `use <domain>` (area 1, Imports).",
+      "begin": "^(\\s*)(use)\\b",
+      "end": "$",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.import.jadpo"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.block.begin.jadpo"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.block.end.jadpo"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#comments"
+            },
+            {
+              "name": "entity.name.type.jadpo",
+              "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+            },
+            {
+              "name": "entity.name.function.jadpo",
+              "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+            },
+            {
+              "match": ",",
+              "name": "punctuation.separator.comma.jadpo"
+            }
+          ]
+        },
+        {
+          "name": "entity.name.namespace.jadpo",
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "route-entry": {
+      "comment": "`GET /items/{item_id: Item.id}/complete { ... }`: after an HTTP method a `/` starts a path.",
+      "begin": "\\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\b\\s*(?=/(?!/))",
+      "end": "(?![/\\w\\-.~{])",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.http-method.jadpo"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#route-path-parts"
+        }
+      ]
+    },
+    "route-path": {
+      "comment": "After `:` a `/` starts a path too (`path: /items`).",
+      "begin": "(?:(?<=:)|(?<=: ))(?=/(?!/))",
+      "end": "(?![/\\w\\-.~{])",
+      "patterns": [
+        {
+          "include": "#route-path-parts"
+        }
+      ]
+    },
+    "route-path-parts": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.path.jadpo",
+          "match": "/"
+        },
+        {
+          "name": "string.unquoted.path-segment.jadpo",
+          "match": "[A-Za-z0-9_\\-.~]+"
+        },
+        {
+          "name": "meta.path-parameter.jadpo",
+          "begin": "(\\{)\\s*([a-z_][A-Za-z0-9_]*)?",
+          "end": "\\}",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.parameter.begin.jadpo"
+            },
+            "2": {
+              "name": "variable.parameter.jadpo"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.parameter.end.jadpo"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#expression"
+            }
+          ]
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "comment": "type and entity names are types.",
+          "match": "\\b(public)?\\s*\\b(type|entity)\\b\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.jadpo"
+            },
+            "2": {
+              "name": "keyword.declaration.jadpo"
+            },
+            "3": {
+              "name": "entity.name.type.jadpo"
+            }
+          }
+        },
+        {
+          "comment": "callables and the named blocks.",
+          "match": "\\b(public)?\\s*\\b(action|function|query|fixture|library|routes|schedule|subscriber)\\b\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.jadpo"
+            },
+            "2": {
+              "name": "keyword.declaration.jadpo"
+            },
+            "3": {
+              "name": "entity.name.function.jadpo"
+            }
+          }
+        },
+        {
+          "comment": "contextual keywords: reserved only in these positions.",
+          "match": "^\\s*(package|resource|provide|seed)\\b(?=\\s+[A-Za-z_]|\\s*\\{)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*))?",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.jadpo"
+            },
+            "2": {
+              "name": "entity.name.type.jadpo"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(test)\\b(?=\\s*\")",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.jadpo"
+            }
+          }
+        }
+      ]
+    },
+    "singleton-declarations": {
+      "comment": "Declarations that exist once per project carry no name (area 1).",
+      "match": "^\\s*(application|config|principal|authentication|policy|flags|migration|acceptance|locales)\\b(?=\\s*\\{)",
+      "captures": {
+        "1": {
+          "name": "keyword.declaration.jadpo"
+        }
+      }
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "constant.language.jadpo",
+          "match": "\\b(true|false|none)\\b"
+        },
+        {
+          "name": "keyword.control.jadpo",
+          "match": "\\b(if|else|for|in|match|return|attempt|reject|propagate|emit|assert)\\b"
+        },
+        {
+          "name": "keyword.operator.word.jadpo",
+          "match": "\\b(and|or|not|matches|asc|desc)\\b"
+        },
+        {
+          "name": "storage.modifier.jadpo",
+          "match": "\\b(public|mut|fails)\\b"
+        },
+        {
+          "name": "storage.type.jadpo",
+          "match": "\\b(var)\\b"
+        },
+        {
+          "name": "keyword.declaration.jadpo",
+          "match": "\\b(type|entity|action|function|query|fixture|library|routes|schedule|subscriber)\\b"
+        }
+      ]
+    },
+    "member-keys": {
+      "comment": "`name: value`, including dotted keys (`Todo.priority:`) and named arguments.",
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)(?=\\s*:(?!:))",
+      "captures": {
+        "1": {
+          "name": "variable.other.property.jadpo"
+        }
+      }
+    },
+    "types": {
+      "name": "entity.name.type.jadpo",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    "calls": {
+      "match": "\\b([a-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.call.jadpo"
+        }
+      }
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.jadpo",
+          "match": "->|=>"
+        },
+        {
+          "name": "keyword.operator.comparison.jadpo",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.assignment.jadpo",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arithmetic.jadpo",
+          "match": "[-+*/%]"
+        },
+        {
+          "name": "keyword.operator.optional.jadpo",
+          "match": "\\?"
+        },
+        {
+          "name": "keyword.operator.elision.jadpo",
+          "match": "\\.\\.\\."
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.comma.jadpo",
+          "match": ","
+        },
+        {
+          "name": "punctuation.separator.colon.jadpo",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.accessor.jadpo",
+          "match": "\\."
+        },
+        {
+          "name": "punctuation.definition.block.jadpo",
+          "match": "[{}\\[\\]()]"
+        }
+      ]
+    },
+    "contextual-keywords": {
+      "comment": "`include: [Todo]` names a member, and `{{ end }}` closes a template block.",
+      "match": "\\b(include)\\b(?=\\s*:)|\\b(end)\\b(?=\\s*\\}\\})",
+      "captures": {
+        "1": {
+          "name": "keyword.other.jadpo"
+        },
+        "2": {
+          "name": "keyword.control.jadpo"
+        }
+      }
+    }
+  }
+}
