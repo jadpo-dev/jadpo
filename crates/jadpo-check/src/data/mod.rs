@@ -19,7 +19,6 @@ mod columns;
 pub mod lifecycle;
 pub mod migrations;
 pub mod queries;
-pub mod sql;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -1631,7 +1630,9 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
             .as_ref()
             .and_then(|lifecycle| lifecycle.visible.as_ref())
             .filter(|visible| !lifecycle::reads_now(visible))
-            .and_then(|visible| sql::condition(&mut sql::Fixed, entity, visible, false));
+            .and_then(|visible| {
+                jadpo_sql::condition(&mut jadpo_sql::Fixed, entity, visible, false)
+            });
         // A reference's own index is no longer needed once this one
         // starts with its column (area 5), unless this one is partial: a
         // delete of the record it points at still finds hidden records.
@@ -1762,6 +1763,29 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         );
     }
     out
+}
+
+/// The field called `name` of `entity`.
+pub fn field<'e>(entity: &'e EntityModel, name: &str) -> Option<&'e FieldModel> {
+    entity.fields.iter().find(|f| f.name == name)
+}
+
+/// A field's column type, as a parameter or column is sent; `None` when
+/// the field can't be stored.
+pub fn sql_type(field: &FieldModel) -> Option<jadpo_std::SqlType> {
+    jadpo_std::SqlType::of_column(field.sql_type.as_deref()?)
+}
+
+/// An entity's fields as the columns a condition on them renders.
+impl jadpo_sql::Columns for EntityModel {
+    fn column(&self, name: &str) -> Option<jadpo_sql::Column<'_>> {
+        let field = field(self, name)?;
+        Some(jadpo_sql::Column {
+            name: &field.born,
+            nullable: field.nullable,
+            ty: sql_type(field),
+        })
+    }
 }
 
 /// The name the database knows a unique rule by.

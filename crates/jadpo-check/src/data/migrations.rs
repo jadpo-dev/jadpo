@@ -322,10 +322,10 @@ pub fn backfill_problem(lookup: &dyn TypeView, ty: &Ty, value: &Const) -> Option
 /// A backfill value as SQL.
 pub fn backfill_sql(value: &Const) -> Option<String> {
     Some(match value {
-        Const::Str(text) => format!("'{}'", text.replace('\'', "''")),
+        Const::Str(text) => jadpo_sql::text_literal(text),
         Const::Bool(value) => value.to_string(),
         Const::Number { value, .. } => number_text(*value),
-        Const::Path(path) if path.len() == 2 => format!("'{}'", path[1].replace('\'', "''")),
+        Const::Path(path) if path.len() == 2 => jadpo_sql::text_literal(&path[1]),
         _ => return None,
     })
 }

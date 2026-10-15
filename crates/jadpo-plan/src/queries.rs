@@ -25,11 +25,12 @@ use jadpo_check::data::queries::{
     self as model, Bound, Condition, Include, IncludeKind, OrderField, QueryModel, Source as From,
     Value,
 };
-use jadpo_check::data::sql::{self, Bind};
 use jadpo_check::data::{DataModel, EntityModel, FieldModel};
 use jadpo_check::lookups::Lookup;
 use jadpo_check::types::{Def, Prim, Ty, TypeView};
 use jadpo_graph::{Key, Kind};
+use jadpo_sql::Bind;
+use jadpo_sql::statement::{self as text, After, Order};
 use jadpo_std::read::{
     Cardinality, Column, Field, IncludeRead, IncludeShape, MissingPlan, MissingValue, PageRead,
     Param, ReadPlan, Record, Select, Size, Source, SqlType,
@@ -95,7 +96,7 @@ impl Statement {
                 self.params.len() - 1
             }
         };
-        format!("${}", at + 1)
+        jadpo_sql::placeholder(at)
     }
 }
 
@@ -172,34 +173,22 @@ impl Planner<'_> {
         if page {
             conditions.push(self.after(&mut statement, entity, &query.order)?);
         }
-        let mut sql = format!(
-            "SELECT {}\nFROM {}",
-            columns
-                .names
-                .iter()
-                .map(|f| quoted(&born(entity, f)))
-                .collect::<Vec<_>>()
-                .join(", "),
-            quoted(&entity.table)
-        );
-        where_clause(&mut sql, &conditions, "");
+        let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
+        text::where_clause(&mut sql, &conditions, "");
         if !query.order.is_empty() {
-            sql.push_str(&format!(
-                "\nORDER BY {}",
-                self.order_by(entity, &query.order, "")?
-            ));
+            text::order_by(&mut sql, &self.order(entity, &query.order)?, "");
         }
         match (&query.limit, page) {
-            (Some(Bound::Literal(n)), true) => sql.push_str(&format!("\nLIMIT {}", n + 1)),
+            (Some(Bound::Literal(n)), true) => text::limit(&mut sql, &(n + 1).to_string(), ""),
             (Some(Bound::Value(_)), true) => {
                 let n = statement.param(Source::SizePlusOne, SqlType::Int8);
-                sql.push_str(&format!("\nLIMIT {n}"));
+                text::limit(&mut sql, &n, "");
             }
-            (Some(Bound::Literal(n)), false) => sql.push_str(&format!("\nLIMIT {n}")),
+            (Some(Bound::Literal(n)), false) => text::limit(&mut sql, &n.to_string(), ""),
             (Some(Bound::Value(value)), false) => {
                 let source = self.source(value)?;
                 let n = statement.param(source, SqlType::Int8);
-                sql.push_str(&format!("\nLIMIT {n}"));
+                text::limit(&mut sql, &n, "");
             }
             (None, _) => {}
         }
@@ -318,7 +307,7 @@ impl Planner<'_> {
             let record = self.record(target, &include.element, &include.includes, &mut columns)?;
             let sql = match include.kind {
                 IncludeKind::Parent | IncludeKind::Child => {
-                    let mut conditions = vec![format!("{} = ANY({keys})", quoted(&matched.born))];
+                    let mut conditions = vec![text::any(&matched.born, &keys)];
                     for line in &include.filter {
                         conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
@@ -328,17 +317,8 @@ impl Planner<'_> {
                         Reach::Read
                     };
                     conditions.extend(self.access(&mut statement, target, reach)?);
-                    let mut sql = format!(
-                        "SELECT {}\nFROM {}",
-                        columns
-                            .names
-                            .iter()
-                            .map(|f| quoted(&born(target, f)))
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        quoted(&target.table)
-                    );
-                    where_clause(&mut sql, &conditions, "");
+                    let mut sql = text::select(&borns(target, &columns.names), &target.table, "");
+                    text::where_clause(&mut sql, &conditions, "");
                     sql
                 }
                 IncludeKind::Children => {
@@ -347,52 +327,30 @@ impl Planner<'_> {
                         let f = field(target, &order.field)?;
                         columns.add(&f.name, self.column(target, f)?);
                     }
-                    let mut conditions =
-                        vec![format!("{} = \"key\".\"id\"", quoted(&matched.born))];
+                    let mut conditions = vec![text::matches_key(&matched.born)];
                     for line in &include.filter {
                         conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
                     conditions.extend(self.access(&mut statement, target, Reach::Read)?);
-                    let inner_columns: Vec<String> = columns
-                        .names
-                        .iter()
-                        .map(|f| quoted(&born(target, f)))
-                        .collect();
-                    let mut inner = format!(
-                        "  SELECT {}\n  FROM {}",
-                        inner_columns.join(", "),
-                        quoted(&target.table)
-                    );
-                    where_clause(&mut inner, &conditions, "  ");
-                    inner.push_str(&format!(
-                        "\n  ORDER BY {}",
-                        self.order_by(target, &include.order, "")?
-                    ));
+                    let inner_columns = borns(target, &columns.names);
+                    let mut inner = text::select(&inner_columns, &target.table, "  ");
+                    text::where_clause(&mut inner, &conditions, "  ");
+                    let order = self.order(target, &include.order)?;
+                    text::order_by(&mut inner, &order, "  ");
                     match &include.limit {
-                        Some(Bound::Literal(n)) => inner.push_str(&format!("\n  LIMIT {n}")),
+                        Some(Bound::Literal(n)) => text::limit(&mut inner, &n.to_string(), "  "),
                         Some(Bound::Value(value)) => {
                             let source = self.source(value)?;
                             let n = statement.param(source, SqlType::Int8);
-                            inner.push_str(&format!("\n  LIMIT {n}"));
+                            text::limit(&mut inner, &n, "  ");
                         }
                         None => return None,
                     }
                     // The outer statement gives the key, then each of the
                     // inner columns but the first, which is the key again.
-                    let outer_columns: Vec<String> = std::iter::once("\"key\".\"id\"".to_string())
-                        .chain(
-                            columns
-                                .names
-                                .iter()
-                                .skip(1)
-                                .map(|f| format!("\"row\".{}", quoted(&born(target, f)))),
-                        )
-                        .collect();
-                    format!(
-                        "SELECT {}\nFROM unnest({keys}) AS \"key\"(\"id\")\nCROSS JOIN LATERAL (\n{inner}\n) AS \"row\"\nORDER BY \"key\".\"id\", {}",
-                        outer_columns.join(", "),
-                        self.order_by(target, &include.order, "\"row\".")?
-                    )
+                    let rest: Vec<&str> =
+                        inner_columns.iter().skip(1).map(String::as_str).collect();
+                    text::children(&keys, &rest, &inner, &order)
                 }
             };
             let includes = self.includes(target, &include.includes, &columns)?;
@@ -427,7 +385,7 @@ impl Planner<'_> {
         if reach != Reach::Parent
             && let Some(visible) = entity.lifecycle.as_ref().and_then(|l| l.visible.as_ref())
         {
-            out.push(sql::condition(bind, entity, visible, false)?);
+            out.push(jadpo_sql::condition(bind, entity, visible, false)?);
         }
         Some(out)
     }
@@ -443,7 +401,7 @@ impl Planner<'_> {
         condition: &Condition,
         negated: bool,
     ) -> Option<String> {
-        sql::condition(statement, entity, condition, negated)
+        jadpo_sql::condition(statement, entity, condition, negated)
     }
 
     /// Where a value that isn't written into the text comes from.
@@ -471,78 +429,29 @@ impl Planner<'_> {
         for (i, order) in order.iter().enumerate() {
             let field = field(entity, &order.field)?;
             let ty = column_type(field)?.param();
-            let n = statement.param(Source::Cursor(i as u32), ty);
-            let collate = if self.is_text(entity, field) {
-                " COLLATE \"C\""
-            } else {
-                ""
-            };
-            parts.push((
-                format!("{}{collate}", quoted(&field.born)),
-                format!("{n}{collate}"),
-                order.descending,
-                n,
-            ));
+            let param = statement.param(Source::Cursor(i as u32), ty);
+            parts.push(After {
+                column: &field.born,
+                param,
+                collate: self.is_text(entity, field),
+                descending: order.descending,
+            });
         }
-        let first = parts.first()?.3.clone();
-        let same = parts.iter().all(|p| p.2 == parts[0].2);
-        let past = if same {
-            let op = if parts[0].2 { "<" } else { ">" };
-            if parts.len() == 1 {
-                format!("{} {op} {}", parts[0].0, parts[0].1)
-            } else {
-                format!(
-                    "({}) {op} ({})",
-                    parts
-                        .iter()
-                        .map(|p| p.0.clone())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    parts
-                        .iter()
-                        .map(|p| p.1.clone())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-        } else {
-            // Mixed directions: past on the first field, or equal on it and
-            // past on the next, and so on.
-            let mut alternatives = Vec::new();
-            for i in 0..parts.len() {
-                let mut terms: Vec<String> = parts[..i]
-                    .iter()
-                    .map(|p| format!("{} = {}", p.0, p.1))
-                    .collect();
-                let op = if parts[i].2 { "<" } else { ">" };
-                terms.push(format!("{} {op} {}", parts[i].0, parts[i].1));
-                alternatives.push(if terms.len() == 1 {
-                    terms.remove(0)
-                } else {
-                    format!("({})", terms.join(" AND "))
-                });
-            }
-            format!("({})", alternatives.join(" OR "))
-        };
-        Some(format!("({first} IS NULL OR {past})"))
+        text::after(&parts)
     }
 
-    fn order_by(&self, entity: &EntityModel, order: &[OrderField], prefix: &str) -> Option<String> {
+    /// An order's fields as their columns, text sorted by code point.
+    fn order<'e>(&self, entity: &'e EntityModel, order: &[OrderField]) -> Option<Vec<Order<'e>>> {
         let mut out = Vec::new();
         for order in order {
             let field = field(entity, &order.field)?;
-            let collate = if self.is_text(entity, field) {
-                " COLLATE \"C\""
-            } else {
-                ""
-            };
-            out.push(format!(
-                "{prefix}{}{collate} {}",
-                quoted(&field.born),
-                if order.descending { "DESC" } else { "ASC" }
-            ));
+            out.push(Order {
+                column: &field.born,
+                collate: self.is_text(entity, field),
+                descending: order.descending,
+            });
         }
-        Some(out.join(", "))
+        Some(out)
     }
 
     fn is_text(&self, entity: &EntityModel, field: &FieldModel) -> bool {
@@ -602,13 +511,10 @@ impl Planner<'_> {
                     path: path.clone(),
                 },
                 Value::Now => MissingValue::Now,
-                Value::Literal(constant) => {
-                    let literal = constant.literal()?;
-                    MissingValue::Constant(
-                        self.types
-                            .literal(&literal, &jadpo_graph::TypeRef::Field(field_key))?,
-                    )
-                }
+                Value::Literal(literal) => MissingValue::Constant(
+                    self.types
+                        .literal(literal, &jadpo_graph::TypeRef::Field(field_key))?,
+                ),
                 Value::Variant { ty, variant } => {
                     let shape = self
                         .types
@@ -649,19 +555,10 @@ impl Planner<'_> {
             },
             SqlType::Uuid,
         );
-        let mut conditions = vec![format!("\"id\" = {id}")];
+        let mut conditions = vec![text::equal("id", &id)];
         conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
-        let mut sql = format!(
-            "SELECT {}\nFROM {}",
-            columns
-                .names
-                .iter()
-                .map(|f| quoted(&born(entity, f)))
-                .collect::<Vec<_>>()
-                .join(", "),
-            quoted(&entity.table)
-        );
-        where_clause(&mut sql, &conditions, "");
+        let mut sql = text::select(&borns(entity, &columns.names), &entity.table, "");
+        text::where_clause(&mut sql, &conditions, "");
         let not_found = self.not_found(
             entity,
             MissingValue::Arg {
@@ -713,21 +610,16 @@ impl Planner<'_> {
     }
 }
 
-// --- text -----------------------------------------------------------------------
+// --- columns ----------------------------------------------------------------------
 
-pub use sql::quoted;
-pub(crate) use sql::{column_type, field};
+pub(crate) use jadpo_check::data::{field, sql_type as column_type};
 
-/// A field's column name: its born name, which survives a rename.
-fn born(entity: &EntityModel, name: &str) -> String {
-    field(entity, name).map_or_else(|| name.to_string(), |f| f.born.clone())
-}
-
-pub(crate) fn where_clause(sql: &mut String, conditions: &[String], indent: &str) {
-    for (i, condition) in conditions.iter().enumerate() {
-        let word = if i == 0 { "WHERE" } else { "  AND" };
-        sql.push_str(&format!("\n{indent}{word} {condition}"));
-    }
+/// Fields' column names: each its born name, which survives a rename.
+fn borns(entity: &EntityModel, names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .map(|name| field(entity, name).map_or_else(|| name.to_string(), |f| f.born.clone()))
+        .collect()
 }
 
 /// Which query made a cursor: the first eight bytes of its key's digest,

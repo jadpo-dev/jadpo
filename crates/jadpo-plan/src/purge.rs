@@ -13,14 +13,14 @@
 //! `FOR UPDATE SKIP LOCKED`, so a purge never waits on, or undoes, a
 //! request changing one of them.
 
-use jadpo_check::data::queries::Value;
-use jadpo_check::data::sql::{self, Bind};
 use jadpo_check::data::{DataModel, EntityModel};
+use jadpo_sql::statement::{self as text, Cascade, Hold};
+use jadpo_sql::{Bind, Value};
 use jadpo_std::OnDelete;
 use jadpo_std::read::SqlType;
 use jadpo_std::write::{PURGE_BATCH, PurgeParam, PurgePlan, PurgeSource};
 
-use crate::queries::{column_type, field, quoted};
+use crate::queries::{column_type, field};
 
 /// A purge statement's parameters.
 #[derive(Default)]
@@ -38,7 +38,7 @@ impl Purging {
                 self.params.len() - 1
             }
         };
-        format!("${}", at + 1)
+        jadpo_sql::placeholder(at)
     }
 }
 
@@ -57,15 +57,13 @@ pub(crate) fn plan(model: &DataModel, entity: &EntityModel) -> Option<PurgePlan>
     let purge = lifecycle.purge.as_ref()?;
     let visible = lifecycle.visible.as_ref()?;
     let store = entity.store.clone()?;
-    let table = quoted(&entity.table);
     let since = field(entity, &purge.since)?;
-    let since_column = quoted(&since.born);
     let mut purging = Purging::default();
     let cutoff = purging.param(PurgeSource::Cutoff, column_type(since)?.param());
     let mut conditions = vec![
         // Hidden: `visible:` doesn't hold.
-        sql::condition(&mut purging, entity, visible, true)?,
-        format!("{since_column} <= {cutoff}"),
+        jadpo_sql::condition(&mut purging, entity, visible, true)?,
+        text::at_most(&since.born, &cutoff),
     ];
     match held_by(model, &entity.name) {
         Some(paths) => {
@@ -75,12 +73,7 @@ pub(crate) fn plan(model: &DataModel, entity: &EntityModel) -> Option<PurgePlan>
         }
         None => conditions.push(not_held_anywhere(model, entity)?),
     }
-    let mut inner = format!("  SELECT \"id\"\n  FROM {table}");
-    crate::queries::where_clause(&mut inner, &conditions, "  ");
-    inner.push_str(&format!(
-        "\n  ORDER BY {since_column} ASC, \"id\" ASC\n  LIMIT {PURGE_BATCH}\n  FOR UPDATE SKIP LOCKED"
-    ));
-    let sql = format!("DELETE FROM {table}\nWHERE \"id\" IN (\n{inner}\n)\nRETURNING \"id\"");
+    let sql = text::purge(&entity.table, &conditions, &since.born, PURGE_BATCH);
     Some(PurgePlan {
         entity: entity.name.clone(),
         store,
@@ -144,14 +137,14 @@ fn referring(model: &DataModel, target: &str) -> Vec<(String, String, Option<OnD
 fn not_held_anywhere(model: &DataModel, entity: &EntityModel) -> Option<String> {
     // The entities deleting one cascades to, the record's own first.
     let mut reached: Vec<String> = vec![entity.name.clone()];
-    let mut edges: Vec<String> = Vec::new();
-    let mut holds: Vec<String> = Vec::new();
+    let mut cascades: Vec<Cascade<'_>> = Vec::new();
+    let mut holds: Vec<Hold<'_>> = Vec::new();
     let mut at = 0;
     while let Some(current) = reached.get(at).cloned() {
         for (child, field_name, on_delete) in referring(model, &current) {
             let holder = model.entity(&child)?;
-            let column = quoted(&field(holder, &field_name)?.born);
-            let table = quoted(&holder.table);
+            let column = field(holder, &field_name)?.born.as_str();
+            let table = holder.table.as_str();
             match on_delete {
                 Some(OnDelete::Cascade) => {
                     let number = match reached.iter().position(|name| *name == child) {
@@ -161,53 +154,35 @@ fn not_held_anywhere(model: &DataModel, entity: &EntityModel) -> Option<String> 
                             reached.len() - 1
                         }
                     };
-                    let alias = format!("\"edge{}\"", edges.len() + 1);
-                    edges.push(format!(
-                        "SELECT {at} AS \"parent\", {alias}.{column} AS \"parent_id\", {number} AS \"entity\", {alias}.\"id\" AS \"id\" FROM {table} AS {alias}"
-                    ));
+                    cascades.push(Cascade {
+                        from: at,
+                        to: number,
+                        table,
+                        column,
+                    });
                 }
-                Some(OnDelete::Restricted) | None => {
-                    let alias = format!("\"held{}\"", holds.len() + 1);
-                    holds.push(format!(
-                        "(\"reach\".\"entity\" = {at} AND EXISTS (SELECT 1 FROM {table} AS {alias} WHERE {alias}.{column} = \"reach\".\"id\"))"
-                    ));
-                }
+                Some(OnDelete::Restricted) | None => holds.push(Hold {
+                    entity: at,
+                    table,
+                    column,
+                }),
                 Some(OnDelete::Cleared) => {}
             }
         }
         at += 1;
     }
-    if holds.is_empty() {
-        return Some("TRUE".to_string());
-    }
-    Some(format!(
-        "NOT EXISTS (\n      WITH RECURSIVE \"reach\" (\"entity\", \"id\") AS (\n        SELECT 0, {}.\"id\"\n        UNION\n        SELECT \"edge\".\"entity\", \"edge\".\"id\"\n        FROM \"reach\"\n        JOIN (\n          {}\n        ) AS \"edge\" ON \"edge\".\"parent\" = \"reach\".\"entity\" AND \"edge\".\"parent_id\" = \"reach\".\"id\"\n      )\n      SELECT 1\n      FROM \"reach\"\n      WHERE {}\n    )",
-        quoted(&entity.table),
-        edges.join("\n          UNION ALL\n          "),
-        holds.join("\n        OR "),
-    ))
+    Some(text::not_held_anywhere(&entity.table, &cascades, &holds))
 }
 
 /// `NOT EXISTS` a record holding this one through `path`.
 fn not_held(model: &DataModel, entity: &EntityModel, path: &[(String, String)]) -> Option<String> {
-    let mut from = Vec::new();
-    let mut first_link = String::new();
-    for (i, (holder, field_name)) in path.iter().enumerate() {
+    let mut steps = Vec::new();
+    for (holder, field_name) in path {
         let holder = model.entity(holder)?;
-        let column = quoted(&field(holder, field_name)?.born);
-        let alias = format!("\"held{}\"", i + 1);
-        if i == 0 {
-            from.push(format!("{} AS {alias}", quoted(&holder.table)));
-            first_link = format!("{alias}.{column} = {}.\"id\"", quoted(&entity.table));
-        } else {
-            from.push(format!(
-                "JOIN {} AS {alias} ON {alias}.{column} = \"held{i}\".\"id\"",
-                quoted(&holder.table)
-            ));
-        }
+        steps.push((
+            holder.table.as_str(),
+            field(holder, field_name)?.born.as_str(),
+        ));
     }
-    Some(format!(
-        "NOT EXISTS (\n      SELECT 1\n      FROM {}\n      WHERE {first_link}\n    )",
-        from.join("\n      ")
-    ))
+    Some(text::not_held(&entity.table, &steps))
 }

@@ -383,6 +383,7 @@ dependencies = [
  "jadpo-diag",
  "jadpo-fmt",
  "jadpo-graph",
+ "jadpo-sql",
  "jadpo-std",
  "jadpo-syntax",
  "salsa",
@@ -495,6 +496,7 @@ dependencies = [
  "jadpo-check",
  "jadpo-db",
  "jadpo-graph",
+ "jadpo-sql",
  "jadpo-std",
 ]
 

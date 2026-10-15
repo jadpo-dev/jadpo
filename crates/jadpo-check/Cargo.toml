@@ -14,6 +14,7 @@ jadpo-db.workspace = true
 jadpo-diag.workspace = true
 jadpo-fmt.workspace = true
 jadpo-graph.workspace = true
+jadpo-sql.workspace = true
 jadpo-std.workspace = true
 jadpo-syntax.workspace = true
 salsa.workspace = true
