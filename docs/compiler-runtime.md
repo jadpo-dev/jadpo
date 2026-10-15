@@ -746,10 +746,10 @@ callee, constants and type plans by number: a plan relinked from
 memoised pieces, in `jadpo-plan` and the interpreter that reads it. For
 the scale test's project, after a body edit, it takes 5 ms against 11 ms
 to check and 6 ms to build the graph (release, measured once, not
-asserted), spread evenly across collecting the bodies, the query and
-entity SQL, the write sites and the sites' decoding, so no one part is
-worth memoising alone. It is worth revisiting if watch-mode timings
-show it.
+asserted), spread across collecting the bodies, the queries' and
+entities' SQL, the write sites and decoding the sites, none over 2 ms, so
+no one part is worth memoising alone. It is worth revisiting if
+watch-mode timings show it.
 
 Inputs carry durability: standard library and packages high, root files
 medium, domain files low, so a keystroke never revalidates packages.
