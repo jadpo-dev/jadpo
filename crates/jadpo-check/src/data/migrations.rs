@@ -859,32 +859,24 @@ fn required(
     )
 }
 
-/// One migration's SQL for one store, as `migrate apply` and the test
-/// database run it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Step {
-    /// The migration's folder name.
-    pub name: String,
-    /// The digest a store records for it.
-    pub digest: String,
-    pub sql: String,
-}
-
 /// Each store's steps, in the order they apply: every migration's section
-/// for that store. Migrations whose records can't be read give none, and
+/// for that store, as `migrate apply` and the test database hand them to
+/// the runtime. Migrations whose records can't be read give none, and
 /// `jadpo check` reports them.
-pub fn store_steps(set: &Migrations) -> BTreeMap<String, Vec<Step>> {
-    let mut out: BTreeMap<String, Vec<Step>> = BTreeMap::new();
+pub fn store_steps(set: &Migrations) -> BTreeMap<String, Vec<jadpo_std::Migration>> {
+    let mut out: BTreeMap<String, Vec<jadpo_std::Migration>> = BTreeMap::new();
     for migration in &set.list {
         let Some(Ok(sql)) = &migration.sql else {
             continue;
         };
         for section in jadpo_graph::migration::sections(sql) {
-            out.entry(section.store).or_default().push(Step {
-                name: migration.name.clone(),
-                digest: jadpo_graph::migration::section_digest(&section.sql),
-                sql: section.sql,
-            });
+            out.entry(section.store)
+                .or_default()
+                .push(jadpo_std::Migration {
+                    name: migration.name.clone(),
+                    digest: jadpo_graph::migration::section_digest(&section.sql),
+                    sql: section.sql,
+                });
         }
     }
     out

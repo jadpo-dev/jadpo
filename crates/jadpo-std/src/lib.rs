@@ -14,7 +14,8 @@
 //!   library's enums that Rust code interprets, declared once.
 //! - [`read`] and [`write`]: what a read and a write run, SQL and codecs,
 //!   decided by `jadpo-plan` and run by `jadpo-runtime` for both executors
-//!   (area 6), and the [`Isolation`] an action's transaction runs at.
+//!   (area 6), the [`Isolation`] an action's transaction runs at, and
+//!   each store's share of a [`Migration`].
 //! - [`OPERATIONS`]: every standard-library operation with its parameters'
 //!   kinds, its result and the Rust function that runs it in
 //!   `jadpo-value`, which the Jadpo stubs in `jadpo-check` are tested
@@ -41,6 +42,7 @@
 mod builtin;
 mod enums;
 mod isolation;
+mod migration;
 mod num;
 mod operations;
 pub mod read;
@@ -55,6 +57,7 @@ pub use enums::{
     ZONE, enums, variant_ordinal,
 };
 pub use isolation::Isolation;
+pub use migration::Migration;
 pub use num::{Num, compare_exact};
 pub use operations::{Kind, OPERATIONS, Op, Operation, Param, operation};
 pub use read::SqlType;

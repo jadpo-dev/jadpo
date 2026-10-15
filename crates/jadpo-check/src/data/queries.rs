@@ -56,29 +56,9 @@ const PAGE: &str = "Page";
 
 // --- the model ---------------------------------------------------------------
 
-/// How many records a query returns, from its result type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Cardinality {
-    /// `T`: exactly one, or the `missing:` failure.
-    One,
-    /// `T?`: zero or one.
-    Optional,
-    /// `List<T>`: up to `limit:`.
-    List,
-    /// `Page<T>`: one page and a cursor for the next.
-    Page,
-}
-
-impl Cardinality {
-    pub fn word(self) -> &'static str {
-        match self {
-            Cardinality::One => "one",
-            Cardinality::Optional => "optional",
-            Cardinality::List => "list",
-            Cardinality::Page => "page",
-        }
-    }
-}
+/// How many records a query returns, from its result type: the read
+/// plans' own, decided once in `jadpo-std`.
+pub use jadpo_std::read::Cardinality;
 
 /// A value a query reads: never computed.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

@@ -164,13 +164,8 @@ impl Planner<'_> {
     pub fn query(&mut self, query: &QueryModel) -> Option<QueryPlan> {
         let entity = self.model.entity(&query.entity)?;
         let store = entity.store.clone()?;
-        let cardinality = match query.cardinality {
-            model::Cardinality::One => Cardinality::One,
-            model::Cardinality::Optional => Cardinality::Optional,
-            model::Cardinality::List => Cardinality::List,
-            model::Cardinality::Page => Cardinality::Page,
-        };
-        let page = query.cardinality == model::Cardinality::Page;
+        let cardinality = query.cardinality;
+        let page = cardinality == Cardinality::Page;
         let mut statement = Statement::default();
         let mut columns = Columns::default();
         // The record's own columns first, in its type's order.

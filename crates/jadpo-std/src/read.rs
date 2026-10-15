@@ -88,16 +88,30 @@ impl SqlType {
     }
 }
 
-/// How many records a read gives (area 6, "Named queries").
+/// How many records a read gives (area 6, "Named queries"), from a
+/// query's result type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Cardinality {
-    /// Exactly one, or the read's not-found failure.
+    /// `T`: exactly one, or the read's not-found failure.
     One,
-    /// At most one: `none` when nothing matches.
+    /// `T?`: at most one, `none` when nothing matches.
     Optional,
+    /// `List<T>`: up to `limit:`.
     List,
-    /// One page and a cursor for the next.
+    /// `Page<T>`: one page and a cursor for the next.
     Page,
+}
+
+impl Cardinality {
+    /// As the manifest and `jadpo sql` write it: `one`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Cardinality::One => "one",
+            Cardinality::Optional => "optional",
+            Cardinality::List => "list",
+            Cardinality::Page => "page",
+        }
+    }
 }
 
 /// Where a parameter's value comes from when the statement runs.

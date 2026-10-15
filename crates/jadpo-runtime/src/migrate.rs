@@ -20,17 +20,9 @@ pub const MIGRATIONS_TABLE: &str = "jadpo_migrations";
 
 const CREATE: &str = "CREATE TABLE IF NOT EXISTS jadpo_migrations (\n    name text PRIMARY KEY,\n    digest text NOT NULL,\n    applied_at timestamptz NOT NULL DEFAULT now()\n)";
 
-/// One migration of one store, as its folder holds it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Migration {
-    /// The folder's name, `20261020T1400_add_priority`: names sort in the
-    /// order migrations apply.
-    pub name: String,
-    /// The digest of what the migration does to this store.
-    pub digest: String,
-    /// The store's SQL, run as one batch.
-    pub sql: String,
-}
+/// One migration of one store, as its folder holds it and `jadpo-check`
+/// reads it.
+pub use jadpo_std::Migration;
 
 /// Where a store stands against the project's migrations.
 #[derive(Clone, Debug, PartialEq, Eq)]

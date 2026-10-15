@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use jadpo_db::{Database, File, Layout, Project};
 use jadpo_plan::{Decoded, Plan, PurgePlan, Refusal, WriteSitePlan};
-use jadpo_std::read::{Cardinality, Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
+use jadpo_std::read::{Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
 use jadpo_std::write::WriteSource;
 
 fn folder() -> PathBuf {
@@ -97,12 +97,7 @@ fn select(out: &mut String, select: &Select, depth: usize) {
 }
 
 fn read(name: &str, read: &ReadPlan) -> String {
-    let cardinality = match read.cardinality {
-        Cardinality::One => "one",
-        Cardinality::Optional => "optional",
-        Cardinality::List => "list",
-        Cardinality::Page => "page",
-    };
+    let cardinality = read.cardinality.word();
     let mut out = format!("-- {name}: {cardinality}, store {}\n", read.store);
     if let Some(page) = &read.page {
         let size = match &page.size {

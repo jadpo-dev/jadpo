@@ -580,18 +580,17 @@ fn migrations_apply_once_in_order_and_refuse_a_changed_one() {
 
 use std::collections::BTreeMap;
 
-use jadpo_check::data::migrations::Step;
 use jadpo_runtime::Host;
 use jadpo_test::database::{TestDatabases, TestHost};
 
 /// One store's migration: a table of notes, with a unique rule.
-fn note_steps(table: &str) -> BTreeMap<String, Vec<Step>> {
+fn note_steps(table: &str) -> BTreeMap<String, Vec<Migration>> {
     let sql = format!(
         "CREATE TABLE \"{table}\" (\"id\" uuid NOT NULL, \"body\" text NOT NULL, CONSTRAINT \"{table}_pkey\" PRIMARY KEY (\"id\"));\nALTER TABLE \"{table}\" ADD CONSTRAINT \"{table}_body_key\" UNIQUE (\"body\");"
     );
     BTreeMap::from([(
         "main".to_string(),
-        vec![Step {
+        vec![Migration {
             name: "20260101T0000_initial".into(),
             digest: jadpo_graph::migration::section_digest(&sql),
             sql,
@@ -693,10 +692,10 @@ fn a_test_that_never_uses_a_store_starts_nothing() {
 }
 
 /// One store whose migration is `sql`.
-fn steps_of(sql: &str) -> BTreeMap<String, Vec<Step>> {
+fn steps_of(sql: &str) -> BTreeMap<String, Vec<Migration>> {
     BTreeMap::from([(
         "main".to_string(),
-        vec![Step {
+        vec![Migration {
             name: "20260101T0000_initial".into(),
             digest: jadpo_graph::migration::section_digest(sql),
             sql: sql.to_string(),
