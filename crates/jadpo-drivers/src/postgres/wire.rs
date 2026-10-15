@@ -162,7 +162,9 @@ fn array_to_wire(element: SqlType, items: &[SqlValue], out: &mut Vec<u8>) -> Res
         }
         let length = i32::try_from(out.len() - at - 4)
             .map_err(|_| "an array element too long to send".to_string())?;
-        out[at..at + 4].copy_from_slice(&length.to_be_bytes());
+        if let Some(prefix) = out.get_mut(at..at + 4) {
+            prefix.copy_from_slice(&length.to_be_bytes());
+        }
     }
     Ok(())
 }

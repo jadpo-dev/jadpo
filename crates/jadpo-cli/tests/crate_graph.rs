@@ -257,8 +257,13 @@ fn the_rules_catch_each_kind_of_wrong_edge_however_far_away() {
     );
 }
 
+/// The crate attribute each shared and runtime crate's `lib.rs` carries,
+/// without whitespace, however rustfmt wraps it.
+const PANIC_LINTS: &str = "#![cfg_attr(not(test),deny(clippy::unwrap_used,clippy::expect_used,clippy::panic,clippy::indexing_slicing,clippy::unreachable,clippy::unimplemented))]";
+
 /// A panic aborts a Workers instance, so every shared and runtime crate
-/// that exists denies `unwrap`, `expect` and `panic!` outside its tests
+/// that exists denies `unwrap`, `expect`, `panic!`, indexing and slicing
+/// that can panic, `unreachable!` and `unimplemented!` outside its tests
 /// (docs/compiler-runtime.md §2.6).
 #[test]
 fn runtime_crates_deny_panics() {
@@ -276,16 +281,14 @@ fn runtime_crates_deny_panics() {
         let text = std::fs::read_to_string(&lib).unwrap_or_default();
         // The crate attribute, however rustfmt wraps it.
         let flat: String = text.split_whitespace().collect();
-        let denies = flat.contains(
-            "#![cfg_attr(not(test),deny(clippy::unwrap_used,clippy::expect_used,clippy::panic))]",
-        );
+        let denies = flat.contains(PANIC_LINTS);
         if !denies {
             missing.push(name.clone());
         }
     }
     assert!(
         missing.is_empty(),
-        "these crates don't deny unwrap, expect and panic!: {missing:?}"
+        "these crates don't deny every way to panic, `{PANIC_LINTS}`: {missing:?}"
     );
 }
 

@@ -91,17 +91,20 @@ const fn divisor(name: &'static str, kind: Kind) -> Param {
 
 const ROUNDING: Kind = Kind::Enum(Rounding::NAME);
 
+/// `collection.contains`, the table's first entry.
+const CONTAINS: Operation = Operation {
+    op: Op::CollectionContains,
+    namespace: "collection",
+    name: "contains",
+    params: &[param("items", Kind::List), param("item", Kind::Any)],
+    result: Kind::Builtin(Builtin::Bool),
+    at_least: None,
+    rust: "collection::contains",
+};
+
 /// Every operation, sorted by namespace and name.
 pub const OPERATIONS: &[Operation] = &[
-    Operation {
-        op: Op::CollectionContains,
-        namespace: "collection",
-        name: "contains",
-        params: &[param("items", Kind::List), param("item", Kind::Any)],
-        result: Kind::Builtin(Builtin::Bool),
-        at_least: None,
-        rust: "collection::contains",
-    },
+    CONTAINS,
     Operation {
         op: Op::CollectionCount,
         namespace: "collection",
@@ -170,7 +173,8 @@ impl Op {
         OPERATIONS
             .iter()
             .find(|operation| operation.op == self)
-            .unwrap_or(&OPERATIONS[0])
+            // The table lists every operation, which its test holds it to.
+            .unwrap_or(&CONTAINS)
     }
 }
 
