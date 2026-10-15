@@ -96,7 +96,10 @@ const LITERALS: &[&str] = &[
     "template_text",
 ];
 
-const TRIVIA: &[&str] = &["WHITESPACE", "COMMENT", "DOC_COMMENT"];
+/// `SKIPPED` is text a habit from another language left behind that the
+/// parser reads as nothing (a `;` at the end of a line, `await`), so the
+/// tree is the one the Jadpo form gives.
+const TRIVIA: &[&str] = &["WHITESPACE", "COMMENT", "DOC_COMMENT", "SKIPPED"];
 
 fn crate_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -391,7 +394,7 @@ fn generate_kinds(defs: &[NodeDef]) -> String {
     out.push_str("impl SyntaxKind {\n");
     out.push_str("    /// The kind with this raw value; `ERROR` for a value no kind has.\n");
     out.push_str("    pub fn from_raw(raw: u16) -> SyntaxKind {\n        ALL.get(usize::from(raw)).copied().unwrap_or(ERROR)\n    }\n\n");
-    out.push_str("    pub fn is_trivia(self) -> bool {\n        matches!(self, WHITESPACE | COMMENT | DOC_COMMENT)\n    }\n\n");
+    out.push_str("    pub fn is_trivia(self) -> bool {\n        matches!(self, WHITESPACE | COMMENT | DOC_COMMENT | SKIPPED)\n    }\n\n");
     out.push_str("    /// Reserved words, which can never be names.\n    pub fn is_keyword(self) -> bool {\n        matches!(self, ");
     out.push_str(
         &KEYWORDS

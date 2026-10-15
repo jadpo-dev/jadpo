@@ -2,6 +2,8 @@
 
 use jadpo_diag::{Diagnostic, Rule, Span};
 
+use crate::habits::Habit;
+
 /// A replacement of `start..end` with `text`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextEdit {
@@ -42,6 +44,11 @@ pub struct SyntaxError {
     pub reason: String,
     pub next: String,
     pub edits: Vec<TextEdit>,
+    /// Whether parsing carried on as if the edit had been made, so the
+    /// tree is the one the Jadpo form gives and checking can go on: a
+    /// habit from another language whose Jadpo form only renames or drops
+    /// tokens.
+    pub clean: bool,
 }
 
 impl SyntaxError {
@@ -61,7 +68,30 @@ impl SyntaxError {
             reason: String::new(),
             next: String::new(),
             edits: Vec::new(),
+            clean: false,
         }
+    }
+
+    /// The error for a habit from another language, written `written`
+    /// where Jadpo writes `jadpo`, with the habit's headline, label,
+    /// reason and next step.
+    pub fn habit(
+        habit: &'static Habit,
+        written: &str,
+        jadpo: &str,
+        start: u32,
+        end: u32,
+    ) -> SyntaxError {
+        SyntaxError::new(habit.rule, habit.message(written, jadpo), start, end)
+            .label(habit.label_for(written, jadpo))
+            .reason(habit.reason)
+            .next(habit.next_for(written, jadpo))
+    }
+
+    /// Marks the tree as the one the Jadpo form gives (the `clean` field).
+    pub fn clean_recovery(mut self) -> SyntaxError {
+        self.clean = true;
+        self
     }
 
     pub fn label(mut self, label: impl Into<String>) -> SyntaxError {

@@ -1,8 +1,10 @@
 Account
+Address
 ApiKey
 Batches
 Broken
 Choice
+Code
 Comment
 Count
 Currency
@@ -27,6 +29,7 @@ Missing
 Money
 Name
 Note
+Open
 Order
 Pair
 Percent

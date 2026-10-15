@@ -87,6 +87,7 @@ pub enum SyntaxKind {
     WHITESPACE,
     COMMENT,
     DOC_COMMENT,
+    SKIPPED,
     ERROR,
     SOURCE_FILE,
     USE_DECL,
@@ -184,7 +185,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 174] = [
+const ALL: [SyntaxKind; 175] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -266,6 +267,7 @@ const ALL: [SyntaxKind; 174] = [
     WHITESPACE,
     COMMENT,
     DOC_COMMENT,
+    SKIPPED,
     ERROR,
     SOURCE_FILE,
     USE_DECL,
@@ -368,7 +370,7 @@ impl SyntaxKind {
     }
 
     pub fn is_trivia(self) -> bool {
-        matches!(self, WHITESPACE | COMMENT | DOC_COMMENT)
+        matches!(self, WHITESPACE | COMMENT | DOC_COMMENT | SKIPPED)
     }
 
     /// Reserved words, which can never be names.

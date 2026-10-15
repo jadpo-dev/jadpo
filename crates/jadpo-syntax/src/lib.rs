@@ -11,6 +11,7 @@ pub mod ast;
 mod error;
 mod generated;
 mod grammar;
+pub mod habits;
 mod lexer;
 mod parser;
 mod sink;
@@ -52,6 +53,8 @@ pub type SyntaxNodeChildren = rowan::SyntaxNodeChildren<JadpoLanguage>;
 pub struct Parse {
     green: GreenNode,
     errors: Vec<SyntaxError>,
+    /// Whether a second mistake on a line with an error went unreported.
+    suppressed: bool,
 }
 
 impl Parse {
@@ -65,6 +68,14 @@ impl Parse {
 
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
+    }
+
+    /// Whether the tree reads as the file would with every error's edit
+    /// made: each error is a habit from another language whose Jadpo form
+    /// only renames or drops tokens, and nothing else went wrong, so the
+    /// rest of the project can still be checked.
+    pub fn checkable(&self) -> bool {
+        !self.suppressed && self.errors.iter().all(|error| error.clean)
     }
 }
 
@@ -115,7 +126,33 @@ fn parse(text: &str, entry: Entry) -> Parse {
     let mut errors = std::mem::take(&mut parser.errors);
     let green = sink::build(text, &tokens, std::mem::take(&mut parser.events));
     errors.sort_by_key(|error| (error.start, error.end));
-    Parse { green, errors }
+    // A syntax error never brings a second on its line: whatever else the
+    // line holds is reported once the first is fixed (decision register,
+    // 2026-10-15).
+    let mut suppressed = parser.suppressed;
+    let mut line = None;
+    errors.retain(|error| {
+        let at = line_of(text, error.start);
+        let first = line != Some(at);
+        line = Some(at);
+        // A clean habit left unreported still reads as its Jadpo form.
+        suppressed |= !first && !error.clean;
+        first
+    });
+    Parse {
+        green,
+        errors,
+        suppressed,
+    }
+}
+
+/// The zero-based line `offset` is on.
+fn line_of(text: &str, offset: u32) -> usize {
+    let end = (offset as usize).min(text.len());
+    text.as_bytes()[..end]
+        .iter()
+        .filter(|&&b| b == b'\n')
+        .count()
 }
 
 fn lex_error(text: &str, error: &LexError) -> SyntaxError {
@@ -130,26 +167,6 @@ fn lex_error(text: &str, error: &LexError) -> SyntaxError {
             )
             .label("not Jadpo");
             let (reason, next, replacement): (&str, String, Option<&str>) = match found.as_str() {
-                ";" => (
-                    "Statements and members end at the end of their line, so Jadpo has no `;`.",
-                    "Remove `;`".into(),
-                    Some(""),
-                ),
-                "!" => (
-                    "Jadpo writes negation as the word `not`.",
-                    "Use `not` instead of `!`".into(),
-                    Some("not "),
-                ),
-                "&&" => (
-                    "Jadpo writes logical operators as words.",
-                    "Use `and` instead of `&&`".into(),
-                    Some("and"),
-                ),
-                "||" => (
-                    "Jadpo writes logical operators as words.",
-                    "Use `or` instead of `||`".into(),
-                    Some("or"),
-                ),
                 "'" | "`" => (
                     "Strings are written in double quotes: `\"text\"`.",
                     "Use double quotes around the text".into(),
@@ -172,18 +189,19 @@ fn lex_error(text: &str, error: &LexError) -> SyntaxError {
                 None => error,
             }
         }
-        LexErrorKind::StrictEquality(written) => {
-            let meant = if *written == "===" { "==" } else { "!=" };
-            SyntaxError::new(
-                &rule::SYNTAX_EQUALITY_OPERATOR,
-                format!("Jadpo compares with `{meant}`, not `{written}`"),
-                start,
-                end,
-            )
-            .label(format!("write `{meant}`"))
-            .reason("`==` and `!=` already compare two values of the same type, with no conversion between types, so there is no stricter form to ask for.")
-            .next(format!("Use `{meant}` instead of `{written}`"))
-            .edit(TextEdit::replace(start, end, meant))
+        LexErrorKind::Habit(found) => {
+            let mut error =
+                SyntaxError::habit(found.habit, &found.written, &found.jadpo, start, end);
+            if let Some(next) = &found.next {
+                error = error.next(next.clone());
+            }
+            for edit in &found.edits {
+                error = error.edit(edit.clone());
+            }
+            if found.clean {
+                error = error.clean_recovery();
+            }
+            error
         }
         LexErrorKind::LoneCarriageReturn => SyntaxError::new(
             &rule::SYNTAX_UNEXPECTED_CHARACTER,

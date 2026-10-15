@@ -1,0 +1,59 @@
+// Habits a TypeScript or JavaScript author brings. Each broken line ends
+// with the one error it gives; every other line gives none.
+import { Pence, Quantity } from "./shared/types"  // error: syntax.import_statement
+
+type Pence = Int {
+    min: 0;  // error: syntax.semicolon
+}
+
+interface Basket {  // error: syntax.type_keyword
+    total: Pence,  // error: syntax.member_comma
+    lines: Line[]  // error: syntax.collection_type
+    note: Note | null  // error: syntax.nullable_type
+}
+
+/** The basket's total, in pence.  // error: syntax.comment_style
+ * Lines with no price count as nothing. */
+export function total(basket: Basket): Pence {  // error: syntax.export_keyword
+    const count: Quantity = 1  // error: syntax.variable_keyword
+    if (count === 0) {  // error: syntax.equality_operator
+        return 0
+    }
+    if (!basket.open || basket.empty) {  // error: syntax.logical_operator
+        return 0
+    }
+    if (basket.open && basket.full) {  // error: syntax.logical_operator
+        return 1
+    }
+    var name: Text = 'hello'  // error: syntax.string_quotes
+    var label: Label = basket.note ?? "none"  // error: syntax.null_coalescing
+    var size: Size = basket.lines?.length  // error: syntax.optional_chaining
+    var cost: Pence = big ? 10 : 5  // error: syntax.ternary_operator
+    var made: Thing = new Thing(1)  // error: syntax.new_keyword
+    var got: Thing = await load(1)  // error: syntax.async_await
+    var names: List<Name> = collection.map(items, item => item.name)  // error: syntax.inline_function_arrow
+    var ages: List<Age> = collection.map(items, (item) => item.age)  // error: syntax.inline_function_arrow
+    switch (basket.status) {  // error: syntax.switch_statement
+        case Status.open:  // error: syntax.switch_statement
+            return 1
+            break;
+        default:  // error: syntax.switch_statement
+            return 2
+    }
+    for (const line of basket.lines) {  // error: syntax.for_loop
+        count++  // error: syntax.increment_operator
+    }
+    if (count !== 2) {  // error: syntax.equality_operator
+        throw new BasketEmpty()  // error: syntax.unsupported_throw
+    }
+    return `total`  // error: syntax.string_quotes
+}
+
+async function refresh(basket: Basket) -> Unit {  // error: syntax.async_await
+    expect(total(basket)).toBe(3)  // error: syntax.assertion_form
+    assert.equal(total(basket), 3)  // error: syntax.assertion_form
+}
+
+export default function empty() -> Pence {  // error: syntax.export_keyword
+    return 0
+}

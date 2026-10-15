@@ -38,7 +38,8 @@ impl Input {
             let start = offset;
             offset += token.len;
             if token.kind.is_trivia() {
-                if token.kind == WHITESPACE
+                // A `/* */` comment from another language may span lines.
+                if matches!(token.kind, WHITESPACE | COMMENT | DOC_COMMENT)
                     && text
                         .get(start as usize..offset as usize)
                         .is_some_and(|piece| piece.contains('\n'))
@@ -94,9 +95,18 @@ pub(crate) struct Parser<'a> {
     /// the `attempt`'s mappings, not a value built from the call.
     pub(crate) attempted: bool,
     pub(crate) snippet: bool,
+    /// While a statement's first value is parsed: `=` after it assigns,
+    /// rather than being SQL's comparison.
+    pub(crate) assigning: bool,
+    /// Where the current statement's value starts, so Rust's `call()?`
+    /// can be rewritten as `attempt call()`.
+    pub(crate) stmt_value_start: Option<u32>,
     depth: u32,
     too_deep: bool,
     error_starts: std::collections::HashSet<u32>,
+    /// Whether an error was dropped because another starts at the same
+    /// place: the tree then holds more than one mistake there.
+    pub(crate) suppressed: bool,
 }
 
 impl std::fmt::Debug for Parser<'_> {
@@ -118,9 +128,12 @@ impl<'a> Parser<'a> {
             records_allowed: true,
             attempted: false,
             snippet,
+            assigning: false,
+            stmt_value_start: None,
             depth: 0,
             too_deep: false,
             error_starts: std::collections::HashSet::new(),
+            suppressed: false,
         }
     }
 
@@ -350,12 +363,14 @@ impl<'a> Parser<'a> {
         allowed: bool,
         f: impl FnOnce(&mut Parser<'a>) -> T,
     ) -> T {
-        let saved = (self.records_allowed, self.attempted);
+        let saved = (self.records_allowed, self.attempted, self.assigning);
         self.records_allowed = allowed;
-        // Inside brackets or braces, a call is no longer the attempted one.
+        // Inside brackets or braces, a call is no longer the attempted one,
+        // and `=` no longer assigns.
         self.attempted = false;
+        self.assigning = false;
         let out = f(self);
-        (self.records_allowed, self.attempted) = saved;
+        (self.records_allowed, self.attempted, self.assigning) = saved;
         out
     }
 
@@ -396,9 +411,43 @@ impl<'a> Parser<'a> {
             return;
         }
         if !self.error_starts.insert(error.start) {
+            // A clean habit left unreported still reads as its Jadpo form.
+            self.suppressed |= !error.clean;
             return;
         }
         self.errors.push(error);
+    }
+
+    /// Records `error` in place of the errors already found from `start`
+    /// to `end`: the lexer's `!` in `assert_eq!(` or `|` in `Tag | null`,
+    /// which are one habit with what the parser then reads.
+    pub(crate) fn replace_errors(&mut self, start: u32, end: u32, error: SyntaxError) {
+        let (gone, kept): (Vec<SyntaxError>, Vec<SyntaxError>) = std::mem::take(&mut self.errors)
+            .into_iter()
+            .partition(|e| e.start >= start && e.start < end);
+        self.errors = kept;
+        for e in gone {
+            self.error_starts.remove(&e.start);
+        }
+        self.push_error(error);
+    }
+
+    /// Forgets the errors that start from `start` to `end`: text an edit
+    /// removes, such as a `break;` line in a `switch` arm.
+    pub(crate) fn remove_errors(&mut self, start: u32, end: u32) {
+        let (gone, kept): (Vec<SyntaxError>, Vec<SyntaxError>) = std::mem::take(&mut self.errors)
+            .into_iter()
+            .partition(|e| e.start >= start && e.start < end);
+        self.errors = kept;
+        for e in gone {
+            self.error_starts.remove(&e.start);
+        }
+    }
+
+    /// Consumes the current token as text the Jadpo form doesn't have
+    /// (`await`, `new`, `export`): it stays in the tree, read as nothing.
+    pub(crate) fn skip_token(&mut self) {
+        self.bump_remap(SKIPPED);
     }
 
     /// An error at the current token.

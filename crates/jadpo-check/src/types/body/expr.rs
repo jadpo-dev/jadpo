@@ -1065,6 +1065,17 @@ impl Body<'_> {
     /// A lower-case name used as a value: a local, or a mistake.
     pub(super) fn name_value(&mut self, name: &ast::NameRef) -> Ty {
         let written = text(name);
+        // Python's `None` and `True`, SQL's `NULL`, unless the project
+        // declares the name.
+        if starts_upper(&written)
+            && self.symbols.get(&written).is_none()
+            && !StdNames::get().is_type(&written)
+            && let Some(problem) = crate::foreign_value(&written, self.span(name))
+        {
+            self.unknown_name = true;
+            self.out.push(problem);
+            return Ty::Error;
+        }
         if starts_upper(&written) {
             // A type or a failure as a value: resolved here, and the type
             // checks have nothing to add (area 1).
@@ -1075,7 +1086,13 @@ impl Body<'_> {
         match self.read(name) {
             Some(ty) => ty,
             None => {
-                self.unknown_value(name);
+                // `null`, `nil` and `undefined` from other languages.
+                if let Some(problem) = crate::foreign_value(&written, self.span(name)) {
+                    self.unknown_name = true;
+                    self.out.push(problem);
+                } else {
+                    self.unknown_value(name);
+                }
                 Ty::Error
             }
         }

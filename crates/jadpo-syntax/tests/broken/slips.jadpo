@@ -1,0 +1,19 @@
+// Common slips that aren't another language's habits: still one error each.
+type Count = Int {
+    min 0  // error: syntax.colon_required
+}
+
+type OrderId = Uuid  // error: syntax.type_block_required
+
+function free(count: Count -> Count {  // error: syntax.unexpected_token
+    var price = Price(0.00)  // error: syntax.variable_type_required
+    if count > 10 {  // error: syntax.condition_brackets
+        return count
+    }
+    return attempt Count(count * 2) invalid: TooBig  // error: syntax.mapping_block_required
+}
+
+function check(title: Title) -> Title fails TitleBlank {  // error: syntax.fails_after_result
+    var label: Label = "a\qb"  // error: syntax.invalid_escape
+    return title
+}
