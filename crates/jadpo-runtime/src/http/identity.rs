@@ -180,7 +180,11 @@ pub(crate) async fn authenticate(
     let Some(identity) = &table.identity else {
         return Err(Refused::new(INVALID_CREDENTIALS));
     };
-    let Some(user) = &identity.user else {
+    let Some((user, lookup)) = identity
+        .user
+        .as_ref()
+        .and_then(|user| Some((user, user.session.as_deref()?)))
+    else {
         return Err(Refused::new(INVALID_CREDENTIALS));
     };
     let invalid = Refused {
@@ -198,7 +202,7 @@ pub(crate) async fn authenticate(
     };
     let rows = transaction
         .query(
-            &user.session,
+            lookup,
             &[
                 SqlValue::Text(verifier(token)),
                 SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
@@ -577,6 +581,7 @@ mod tests {
     fn a_session_sets_both_cookies_and_ending_it_clears_them() {
         let plan = IdentityPlan {
             store: "main".into(),
+            signs_in: true,
             cookie: Some("todo_session".into()),
             user: None,
             service: None,

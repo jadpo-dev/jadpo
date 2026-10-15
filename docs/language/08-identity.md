@@ -63,8 +63,9 @@ principal {
 
 - `subject:` names a unique field of a stored entity. Authentication looks
   the caller up by it on every check that needs current data.
-- `active:` is a condition on that entity. A caller whose record is not
-  active is refused (see Failures below).
+- `active:` is a condition on that entity, naming its fields as a query
+  does. A caller whose record is not active is refused (see Failures
+  below); left out, every record is active.
 - The principal's fields are built in (question 2): `id` (a `User.id` or
   `Service.id`), `subject` and `strength` (`primary` or `multi_factor`). Code
   that needs a role, tenant or email reads it from the entity, which is where
@@ -296,8 +297,8 @@ suspended member. The principal and its one sign-in method:
 
 
 ```jadpo check project=sign-in file=app.jadpo
-use notes/entities { Member }
-use notes/types { MemberStatus }
+use journal/entities { Member }
+use journal/types { MemberStatus }
 
 application {}
 
@@ -317,37 +318,37 @@ authentication {
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/types/handle.jadpo hidden
+```jadpo check project=sign-in file=domains/journal/types/handle.jadpo hidden
 type Handle = Text {
     min_length: 3
     max_length: 40
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/types/member_status.jadpo hidden
+```jadpo check project=sign-in file=domains/journal/types/member_status.jadpo hidden
 type MemberStatus = Enum {
     active
     suspended
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/types/note_text.jadpo hidden
+```jadpo check project=sign-in file=domains/journal/types/note_text.jadpo hidden
 type NoteText = Text {
     min_length: 1
     max_length: 500
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/types/note_view.jadpo hidden
-use notes/types { NoteText }
+```jadpo check project=sign-in file=domains/journal/types/note_view.jadpo hidden
+use journal/types { NoteText }
 
 type NoteView = Output {
     text: NoteText
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/entities/member.jadpo hidden
-use notes/types { Handle, MemberStatus }
+```jadpo check project=sign-in file=domains/journal/entities/member.jadpo hidden
+use journal/types { Handle, MemberStatus }
 
 entity Member {
     id: Uuid
@@ -358,9 +359,9 @@ entity Member {
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/entities/note.jadpo hidden
-use notes/entities { Member }
-use notes/types { NoteText }
+```jadpo check project=sign-in file=domains/journal/entities/note.jadpo hidden
+use journal/entities { Member }
+use journal/types { NoteText }
 
 entity Note {
     id: Uuid
@@ -371,17 +372,17 @@ entity Note {
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/failures/handle_taken.jadpo hidden
+```jadpo check project=sign-in file=domains/journal/failures/handle_taken.jadpo hidden
 type HandleTaken = Failure {
     kind: FailureKind.conflict
     message: "That handle is taken."
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/actions/register.jadpo hidden
-use notes/entities { Member }
-use notes/types { Handle, MemberStatus }
-use notes/failures { HandleTaken }
+```jadpo check project=sign-in file=domains/journal/actions/register.jadpo hidden
+use journal/entities { Member }
+use journal/types { Handle, MemberStatus }
+use journal/failures { HandleTaken }
 
 action register(handle: Handle) fails HandleTaken -> Member {
     return attempt Member.create {
@@ -396,9 +397,9 @@ action register(handle: Handle) fails HandleTaken -> Member {
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/actions/suspend.jadpo hidden
-use notes/entities { Member, MemberNotFound }
-use notes/types { MemberStatus }
+```jadpo check project=sign-in file=domains/journal/actions/suspend.jadpo hidden
+use journal/entities { Member, MemberNotFound }
+use journal/types { MemberStatus }
 
 action suspend(member_id: Member.id) fails MemberNotFound -> Member {
     return attempt Member.update(member_id) {
@@ -411,11 +412,11 @@ action suspend(member_id: Member.id) fails MemberNotFound -> Member {
 
 Signing up checks the handle, starts a session and answers with no content; its response sets the cookies. Writing a note takes the signed-in member as a parameter:
 
-```jadpo check project=sign-in file=domains/notes/actions/sign_up.jadpo
-use notes/entities { Member }
-use notes/types { Handle }
-use notes/failures { HandleTaken }
-use notes/actions { register }
+```jadpo check project=sign-in file=domains/journal/actions/sign_up.jadpo
+use journal/entities { Member }
+use journal/types { Handle }
+use journal/failures { HandleTaken }
+use journal/actions { register }
 
 /// Registers a member and signs them in.
 action sign_up(input: SignUp) fails HandleTaken -> Unit {
@@ -429,16 +430,16 @@ type SignUp = Input {
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/actions/sign_out.jadpo
+```jadpo check project=sign-in file=domains/journal/actions/sign_out.jadpo
 /// Ends the session the request came with.
 action sign_out() -> Unit {
     sessions.end()
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/actions/write_note.jadpo
-use notes/entities { Note }
-use notes/types { NoteText, NoteView }
+```jadpo check project=sign-in file=domains/journal/actions/write_note.jadpo
+use journal/entities { Note }
+use journal/types { NoteText, NoteView }
 
 /// Writes a note as the signed-in member.
 action write_note(input: WriteNote, author: Principal.user) -> NoteView {
@@ -461,8 +462,8 @@ type WriteNote = Input {
 
 Signing up is the one route anyone may call; every other needs the session:
 
-```jadpo check project=sign-in file=domains/notes/routes/account.jadpo
-use notes/actions { SignUp, sign_out, sign_up }
+```jadpo check project=sign-in file=domains/journal/routes/account.jadpo
+use journal/actions { SignUp, sign_out, sign_up }
 
 /// Signing up and out.
 routes Account {
@@ -484,9 +485,9 @@ routes Account {
 }
 ```
 
-```jadpo check project=sign-in file=domains/notes/routes/notes.jadpo migrate=initial
-use notes/types { NoteView }
-use notes/actions { WriteNote, write_note }
+```jadpo check project=sign-in file=domains/journal/routes/notes.jadpo migrate=initial
+use journal/types { NoteView }
+use journal/actions { WriteNote, write_note }
 
 /// The signed-in member's notes.
 routes Notes {
@@ -534,9 +535,9 @@ failure handle_taken 409 "That handle is taken."
 
 A route test signs in with `as:` through the real browser session (a session kept for the member, its cookie, its CSRF token and an `Origin`), so a suspended member is refused exactly as a browser would be:
 
-```jadpo check project=sign-in file=domains/notes/routes/notes.test.jadpo
-use notes/entities { Member }
-use notes/actions { WriteNote, register, suspend }
+```jadpo check project=sign-in file=domains/journal/routes/notes.test.jadpo
+use journal/entities { Member }
+use journal/actions { WriteNote, register, suspend }
 
 test "a note needs someone signed in" {
     var response: Response = request {

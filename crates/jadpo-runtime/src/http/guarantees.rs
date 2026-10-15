@@ -330,7 +330,7 @@ impl Executor for Program {
     }
 }
 
-/// `POST /notes`, answering 204, keeping its keys in `keys`; its API
+/// `POST /widgets`, answering 204, keeping its keys in `keys`; its API
 /// requires a key when `required`.
 fn table(keys: Option<&str>, required: bool) -> RouteTable {
     RouteTable {
@@ -345,9 +345,9 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             methods: Vec::new(),
         }],
         routes: vec![RoutePlan {
-            key: "route POST /notes".into(),
+            key: "route POST /widgets".into(),
             method: HttpMethod::Post,
-            segments: vec![Segment::Fixed("notes".into())],
+            segments: vec![Segment::Fixed("widgets".into())],
             api: 0,
             input: None,
             output: None,
@@ -358,7 +358,7 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,
             caller: None,
-            file: "domains/notes/routes/notes.jadpo".into(),
+            file: "domains/widgets/routes/widgets.jadpo".into(),
             line: 1,
         }],
         stores: vec!["main".into()],
@@ -393,7 +393,7 @@ fn send(
 fn post(key: Option<&str>, body: &str) -> Request {
     let mut request = Request {
         method: "POST".into(),
-        path: "/notes".into(),
+        path: "/widgets".into(),
         body: body.as_bytes().to_vec(),
         ..Request::default()
     };

@@ -256,7 +256,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Check one file on its own",
-                command: "jadpo check notes.jadpo",
+                command: "jadpo check main.jadpo",
             },
             Example {
                 description: "Print the problems as data for tools",

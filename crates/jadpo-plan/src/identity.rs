@@ -23,26 +23,40 @@ impl Bind for Lookup {
 }
 
 impl Planner<'_> {
-    /// The project's identity plan; `None` when nothing signs anyone in.
+    /// The project's identity plan; `None` when it declares no caller.
     pub(crate) fn identity(&self, db: &dyn Db, project: Project) -> Option<IdentityPlan> {
         let identity = jadpo_check::identity::identity(db, project);
-        let store = identity.sessions_store()?.to_string();
-        let user = identity
-            .variant(PrincipalKind::User)
-            .and_then(|variant| self.principal(variant));
-        user.as_ref()?;
+        let signs_in = identity.sessions_store().is_some();
+        let user = identity.variant(PrincipalKind::User);
+        let service = identity.variant(PrincipalKind::Service);
+        let store = user.or(service)?.store.clone();
         Some(IdentityPlan {
             store,
+            signs_in,
             cookie: identity.cookie().map(str::to_string),
-            user,
-            service: None,
+            user: user.and_then(|variant| self.principal(variant, signs_in)),
+            service: service.and_then(|variant| self.principal(variant, false)),
         })
     }
 
-    fn principal(&self, variant: &jadpo_check::identity::Variant) -> Option<PrincipalPlan> {
+    /// How one kind of caller is made and, when `sessions` says something
+    /// signs it in, looked up.
+    fn principal(
+        &self,
+        variant: &jadpo_check::identity::Variant,
+        sessions: bool,
+    ) -> Option<PrincipalPlan> {
         let entity = self.model.entity(&variant.entity)?;
         let subject = entity.fields.iter().find(|f| f.name == variant.subject)?;
         let column = self.column(entity, subject)?;
+        if !sessions {
+            return Some(PrincipalPlan {
+                entity: entity.name.clone(),
+                subject: subject.name.clone(),
+                column,
+                session: None,
+            });
+        }
         let mut bind = Lookup;
         let active = match &variant.active {
             Some(condition) => {
@@ -73,7 +87,7 @@ impl Planner<'_> {
             entity: entity.name.clone(),
             subject: subject.name.clone(),
             column,
-            session,
+            session: Some(session),
         })
     }
 }

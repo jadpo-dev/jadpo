@@ -244,6 +244,9 @@ pub struct IdentityPlan {
     /// The store `jadpo_sessions` lives in: the user entity's, so a
     /// session is read with its user's record.
     pub store: String,
+    /// Whether anything signs a caller in; without, the plan only makes
+    /// callers from records in tests.
+    pub signs_in: bool,
     /// The browser session's cookie, when `browser_session` is declared;
     /// its CSRF token travels in the same name with `_csrf` after it.
     pub cookie: Option<String>,
@@ -278,8 +281,9 @@ pub struct PrincipalPlan {
     /// A session's lookup, `$1` its verifier and `$2` the time now: one
     /// row of the session's id, its CSRF token's verifier, the record's
     /// `id` and subject, and whether its `active:` holds, or none when no
-    /// live session or visible record has it.
-    pub session: String,
+    /// live session or visible record has it. `None` when nothing signs
+    /// this kind of caller in.
+    pub session: Option<String>,
 }
 
 /// One argument: a placeholder or the input, or a field read through them.

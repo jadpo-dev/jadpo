@@ -18,7 +18,7 @@ Done
 Doubled
 Draft
 Flag
-Health
+Handle
 Item
 Label
 Listing
@@ -50,4 +50,3 @@ Tag
 Title
 User
 UserDisabled
-Visitor
