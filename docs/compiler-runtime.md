@@ -1266,9 +1266,10 @@ the watch-mode latency test last, alone, since it measures time. A binary
 a named step runs whole is left out of `compiler tests`, so no test runs
 twice. Each step prints `ok` or `FAILED` as it finishes, then the
 failures' output with a command that reruns each failing binary. `--profile
-quick` leaves out the live PostgreSQL steps and the wasm32 build; on this
-machine it takes about 15 s when nothing needs rebuilding, and the full
-gate about 16 s, plus the build. `--group lint|docs|tests|wasm32` runs one
+quick` leaves out the live PostgreSQL steps and the wasm32 build, so it
+needs no PostgreSQL. On a ten-core Mac with nothing to rebuild, the full
+gate takes about 16 s and quick about 13 s; a change to a crate low in the
+graph adds about 20 s of building to either. `--group lint|docs|tests|wasm32` runs one
 CI job's share, and `--require-examples` makes the coverage test fail on a
 feature no example uses (above).
 
