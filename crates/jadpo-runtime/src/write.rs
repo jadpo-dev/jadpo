@@ -10,9 +10,9 @@
 //! reference the store refuses comes back as which of the plan's
 //! constraints it was, which [`crate::store`] turns into what the plan
 //! says it raises; a write by `id` that finds no row is the entity's
-//! not-found failure. A caller that handles the failure carries on in a transaction
-//! the refusal didn't end: the action it called ran inside a savepoint
-//! ([`crate::action`]).
+//! not-found failure. A caller that handles the failure carries on in a
+//! transaction the refusal didn't end: the action it called ran inside a
+//! savepoint ([`crate::action`]).
 
 use jadpo_std::read::Field;
 use jadpo_std::write::{WriteParam, WritePlan, WriteSource};

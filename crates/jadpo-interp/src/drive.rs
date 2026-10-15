@@ -6,10 +6,10 @@
 //! machine) inside the caller's transaction or one of its own; the caller
 //! then resumes with what the callee gave. A read or a write goes to the
 //! runtime's one entry point ([`jadpo_runtime::store`]), which gives its
-//! value, its failure or the `conflict:` arm a refusal maps to. The future of a nested call is
-//! the only one boxed, so a body that never pauses never allocates one, and
-//! functions, which never pause, run on the machine without awaiting
-//! anything.
+//! value, its failure or the `conflict:` arm a refusal maps to. The future
+//! of a nested call is the only one boxed, so a body that never pauses
+//! never allocates one, and functions, which never pause, run on the
+//! machine without awaiting anything.
 
 use jadpo_graph::body::SiteId;
 use jadpo_runtime::{

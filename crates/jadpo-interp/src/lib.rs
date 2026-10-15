@@ -11,8 +11,9 @@
 //! functions synchronously, and actions, fixtures and tests until a site
 //! the typed body says can pause, where it waits on the runtime (a call
 //! into the action boundary, or a read or write through its store entry
-//! point) and carries on. [`Program::call`] runs one callable on a host with no store,
-//! and [`Program::report`] renders what it gave as a person reads it.
+//! point) and carries on. [`Program::call`] runs one callable on a host
+//! with no store, and [`Program::report`] renders what it gave as a person
+//! reads it.
 //!
 //! Built in chunk 2.1 for pure logic and reshaped in chunk 2.10 for Phase
 //! 3, which added queries, `get`, writes, lifecycles and `clock.now`.
