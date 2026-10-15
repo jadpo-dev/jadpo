@@ -31,6 +31,10 @@ merged and anything that needs Richard.
 ## Working rules
 
 - `python3 tools/verify.py` is the gate. It must pass before a chunk merges.
+  Run the full gate once per chunk, where the building happens; the session
+  that merges doesn't run it again. After merging `main` into the branch it
+  runs `--profile quick` only if the merge brought in code, then pushes and
+  lets CI run the full gate on the result (Richard, 2026-10-15).
 - Branch from `main` per chunk, commit and push often, merge through a pull
   request when CI passes. Never create worktrees under `/private/tmp`.
 - Plan each chunk in the session from its area pages; write their examples
@@ -43,3 +47,14 @@ merged and anything that needs Richard.
   [CLI design language](docs/language/research/14-cli-design-language.md) and
   is designed with the design skills in `.agents/skills/` before it is built.
 - Update the roadmap only when a chunk finishes or the order changes.
+- Keep the process lean (Richard, 2026-10-15):
+  - Open each chunk's pull request with `gh pr merge --merge --auto`, so it
+    merges itself when CI passes.
+  - Run chunks that touch different crates and pages at the same time, each
+    in its own worktree beside the repository; otherwise take them in order.
+  - Teaching examples are brought up to date once per phase, in the phase's
+    examples chunk. Other chunks keep every example passing but don't have
+    to add new ones; the coverage step only blocks with `--require-examples`.
+  - One independent review per phase, by two reviewers: soundness, and
+    architecture for the phases ahead.
+  - Building subagents report in a few short lines.

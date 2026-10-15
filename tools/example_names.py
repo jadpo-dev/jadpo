@@ -171,11 +171,14 @@ RUST_TOKEN = re.compile(r'''
 def rust_tokens(text: str):
     """Yield (line, kind, text) for identifiers and string contents, skipping comments."""
     pos = 0
+    # Lines are counted from the previous token, not from the start.
+    line, counted = 1, 0
     while True:
         match = RUST_TOKEN.search(text, pos)
         if not match:
             return
-        line = text.count('\n', 0, match.start()) + 1
+        line += text.count('\n', counted, match.start())
+        counted = match.start()
         kind = match.lastgroup
         if kind == 'block_comment':
             depth, i = 1, match.end()
@@ -262,8 +265,26 @@ def sources_to_scan():
 
 
 def scan(banned: list[str], type_names: list[str]) -> list[str]:
-    needles = [(name, tuple(name.split('_'))) for name in banned]
+    # Each banned name, by its first word, so a token is only compared with
+    # the names that could start at each of its words.
+    by_first: dict[str, list[tuple[int, tuple[str, ...]]]] = {}
+    for index, name in enumerate(banned):
+        needle = tuple(name.split('_'))
+        by_first.setdefault(needle[0], []).append((index, needle))
     exact = set(type_names)
+    uses: dict[str, list[str]] = {}
+
+    def names_used(piece: str) -> list[str]:
+        """The banned names `piece` contains, in the list's order."""
+        if piece not in uses:
+            key = words(piece)
+            hits = {index
+                    for i, word in enumerate(key)
+                    for index, needle in by_first.get(word, ())
+                    if key[i:i + len(needle)] == needle}
+            uses[piece] = [banned[index] for index in sorted(hits)]
+        return uses[piece]
+
     found = []
     for path, tokens in sources_to_scan():
         for line, kind, text in tokens:
@@ -272,10 +293,8 @@ def scan(banned: list[str], type_names: list[str]) -> list[str]:
                     found.append(f'{path.relative_to(ROOT)}:{line}: string {text} names the example type `{piece}`')
             pieces = re.findall(IDENT, text) if kind == 'string' else [text]
             for piece in pieces:
-                key = words(piece)
-                for name, needle in needles:
-                    if contains(key, needle):
-                        found.append(f'{path.relative_to(ROOT)}:{line}: {kind} `{piece}` uses the example name `{name}`')
+                for name in names_used(piece):
+                    found.append(f'{path.relative_to(ROOT)}:{line}: {kind} `{piece}` uses the example name `{name}`')
     return found
 
 
