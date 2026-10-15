@@ -223,6 +223,17 @@ reference only).
   Jadpo form were written; no syntax error followed by a second on the same
   line, checked over a corpus of broken files; each rule with a checked
   example on its area page.
+- [ ] **3.9 One declaration and what it uses** `opus · high` (area 1,
+  "Files and names", 2026-10-15): a supporting type, failure or helper the
+  file's primary declaration doesn't use, directly or through one another,
+  is `layout.unused_declaration`, tests not counting; `jadpo fmt` puts the
+  primary declaration first, after any opening comment, and leaves the
+  rest in order. Every example that breaks either rule is rewritten so
+  each helper does a real job for its action, starting with
+  `examples/05-logic/domains/kitchen/actions/set_oven.jadpo`, and the
+  example gate still finds every built feature. Done when the error has a
+  checked example on area 1 and no example or page example breaks either
+  rule.
 
 ## Phase 4 — HTTP, identity and policy (areas 7–9)
 

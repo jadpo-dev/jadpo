@@ -17,7 +17,8 @@ files and folders, and all application code lives in business areas
 (domains) under `domains/`, one level deep. Every domain holds the same
 fixed folders, named after the declarations they hold (`entities/`,
 `actions/`, `queries/` and so on), with one primary declaration per file,
-named after it. A file's path follows from its domain and what it declares.
+named after it, first in the file, and nothing else in the file that it
+doesn't use. A file's path follows from its domain and what it declares.
 [Decided layout](#decided-layout) gives the full rules, which the compiler
 builds (chunks 1.3 and 1.9).
 
@@ -1429,6 +1430,7 @@ rule's real output under [Errors](#errors).
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built (chunk 1.7): the `library.similar_exists` warning. |
 | Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
+| A file holds only what its primary declaration uses, primary first | Decided, not built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, and `jadpo fmt` moving the primary declaration to the top. |
 | Referenced assets | Decided, not built: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
 
 ### Consistency with the rest of the language
@@ -1604,6 +1606,15 @@ build/
   file uses (its own test file aside) has a file of its own, named after it,
   so every name a `use` line brings in is `<folder>/<name>.jadpo`
   (2026-10-14, see [Imports](#imports)).
+- Everything in a file besides its primary declaration is used by the
+  primary declaration, directly or through one another. One that only the
+  file's tests use, or nothing uses, is dead code, reported as
+  `layout.unused_declaration` like an unused shared declaration, so a file
+  never collects helpers for something else (2026-10-15, Richard).
+- The primary declaration comes first in its file, after any opening
+  comment. `jadpo fmt` moves it there and leaves everything else in the
+  order it was written, so opening a file shows what it is for
+  (2026-10-15, Richard).
 - A name must convert to its file name and back unchanged, so consecutive
   capitals are not allowed: `VatRate`, not `VATRate` (Rust's guideline too).
 - Names are unique across the whole project and across kinds, so every file
