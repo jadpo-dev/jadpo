@@ -645,7 +645,7 @@ store that holds an entity, since any of them can be written:
 |---|---|---|
 | `jadpo_outbox` | Each event an action emitted, with its trace context | Area 12, chunk 6.1 |
 | `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure | Area 12, chunk 6.1 |
-| `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7, chunk 4.2 |
+| `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7, built in chunk 4.2 |
 
 Schedule state, sessions and the stores system features name explicitly
 (`schedules: { store: main }`) join them with their chunks. The manifest

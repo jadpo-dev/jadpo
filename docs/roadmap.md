@@ -274,7 +274,7 @@ reference only).
 
 - [x] **4.1 Routes:** `opus · high` groups, inputs, outputs, statuses, OpenAPI, the API
   record, default rate limits.
-- [ ] **4.2 Request guarantees:** `opus · high` idempotency (a lookup ignores
+- [x] **4.2 Request guarantees:** `opus · high` idempotency (a lookup ignores
   keys past 24 hours; deleting them comes with 6.2), deadlines, body limits,
   health.
 - [ ] **4.3 Sign-in:** `opus · high` sessions, API tokens, service keys.
