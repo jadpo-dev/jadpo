@@ -1160,7 +1160,7 @@ project also needs its own `README.md` and a line in `examples/README.md`.
 `build/spec-corpus/examples/<project>/`, beside the pages' projects, and
 the determinism test and format idempotence cover the examples too. The
 coverage test (`crates/jadpo-check/tests/examples.rs`) loads each project,
-reads its parse trees, graph and typed bodies, and fails naming any built
+reads its parse trees, graph and typed bodies, and names any built
 feature no example uses. The features come from the compiler's own tables
 (the grammar's node kinds, graph node and edge kinds by status and area,
 type bases, constraints, input field settings, failure members and
@@ -1168,8 +1168,16 @@ declarable kinds, the copying lines, the operation table and the enums its
 operations take, the generated namespaces' built members, the layout's
 root files and folders) and from exhaustive matches over the typed body;
 an exemption names a feature that can't appear in runnable code yet, with
-its reason, and fails once an example uses that feature. Every chunk adds
-or extends examples for what it builds.
+its reason, and fails once an example uses that feature. The examples are
+brought up to date once per phase, by an examples chunk at its end
+(Richard, 2026-10-15), so in an ordinary chunk a built feature no example
+uses is printed as a `note:` under the step and the step passes;
+`python3 tools/verify.py --require-examples` (`JADPO_REQUIRE_EXAMPLES=1`
+for the test alone) fails on it, as the examples chunk runs it, and so does
+a CI run started by hand with `require-examples` ticked. Everything else
+about the examples blocks every chunk: each still checks, formats, passes
+its tests and its README's Try-next edits, and the coverage test's own
+lists (exemptions, built features) must stay in step with the compiler.
 
 **Proof holes** (chunk 2.7). Compiled code never checks a construction
 the checker proved follows its type's rules, so a hole in a proof would
@@ -1247,9 +1255,32 @@ it), may use them.
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |
 
-**CI.** One GitHub Actions job on Linux runs `python3 tools/verify.py` with
-a PostgreSQL service, the pinned toolchain and a cargo cache. Benchmarks
-(Phase 9) are a separate command, not the gate.
+**How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
+and every test binary once (`cargo test --workspace --no-run`, which also
+builds `jadpo`), then runs the steps concurrently: each test binary
+straight from that build, from its package's folder, a processor's worth
+at a time; the Python checks beside them, given that `jadpo` through
+`JADPO_BIN` and checking their projects concurrently; cargo's own steps
+(clippy, the documentation tests, the wasm32 build) one after another; and
+the watch-mode latency test last, alone, since it measures time. A binary
+a named step runs whole is left out of `compiler tests`, so no test runs
+twice. Each step prints `ok` or `FAILED` as it finishes, then the
+failures' output with a command that reruns each failing binary. `--profile
+quick` leaves out the live PostgreSQL steps and the wasm32 build, so it
+needs no PostgreSQL. On a ten-core Mac with nothing to rebuild, the full
+gate takes about 16 s and quick about 13 s; a change to a crate low in the
+graph adds about 20 s of building to either. `--group lint|docs|tests|wasm32` runs one
+CI job's share, and `--require-examples` makes the coverage test fail on a
+feature no example uses (above).
+
+**CI.** GitHub Actions on Linux runs the gate's four groups as parallel
+jobs, each with the pinned toolchain and its own cargo cache: `lint`
+(formatting, clippy, the name ban, the editor grammar), `docs` (the pages
+and the teaching examples), `tests` (every test, with the live PostgreSQL
+steps taking turns on a `postgres:16` service) and `wasm32`. The
+`supported-language` job needs all four and passes only when each did; it
+is the check branch protection requires. Benchmarks (Phase 9) are a
+separate command, not the gate.
 
 ### 2.8 Determinism and the build stamp
 

@@ -22,6 +22,13 @@
 //! feature an example now uses, fails the test, so the list only shrinks
 //! as later chunks build what it names.
 //!
+//! The examples are brought up to date once per phase, by an examples chunk
+//! at its end (Richard, 2026-10-15), so a built feature no example uses yet
+//! is only noted (`note:` lines, which the gate shows) unless
+//! `JADPO_REQUIRE_EXAMPLES=1` is set (`tools/verify.py --require-examples`),
+//! which fails on it. The other problems below fail either way: they are
+//! this test's own lists falling out of step with the compiler's.
+//!
 //! `JADPO_SHOW_COVERAGE=1 cargo test -p jadpo-check --test examples`
 //! prints every built feature with the examples that use it.
 
@@ -1249,12 +1256,15 @@ fn the_examples_use_every_built_feature() {
         }
     }
     let exempt: BTreeMap<&str, &str> = EXEMPT.iter().copied().collect();
+    let required = std::env::var("JADPO_REQUIRE_EXAMPLES").is_ok_and(|value| value == "1");
     let mut problems = Vec::new();
+    let mut unused = Vec::new();
     for feature in &built {
         match (used.get(feature), exempt.get(feature.as_str())) {
-            (None, None) => problems.push(format!(
+            (None, None) if required => problems.push(format!(
                 "{feature}: no example uses it; add it to an example in examples/, or exempt it in crates/jadpo-check/tests/examples.rs with the reason it can't run yet"
             )),
+            (None, None) => unused.push(feature.as_str()),
             (Some(by), Some(_)) => problems.push(format!(
                 "{feature}: exempt, but {} now uses it; remove the exemption",
                 by.join(", ")
@@ -1274,6 +1284,16 @@ fn the_examples_use_every_built_feature() {
             problems.push(format!(
                 "{feature}: an example uses it, but the built features don't list it; add it to the list in crates/jadpo-check/tests/examples.rs"
             ));
+        }
+    }
+    if !unused.is_empty() {
+        println!(
+            "note: {} built feature(s) no example uses yet; the phase's examples chunk adds them \
+             (JADPO_REQUIRE_EXAMPLES=1 fails on them):",
+            unused.len()
+        );
+        for feature in &unused {
+            println!("note:   {feature}");
         }
     }
     assert!(

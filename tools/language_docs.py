@@ -59,6 +59,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -107,14 +108,28 @@ def run(args, cwd=None):
 _jadpo_built = False
 
 
+# Projects are checked this many at a time; each is a few `jadpo` runs.
+WORKERS = os.cpu_count() or 4
+
+
+def ensure_jadpo():
+    """The new `jadpo`, built from this checkout: the binary JADPO_BIN names
+    (tools/verify.py builds it once), or else one built here. Called before
+    any threads run it."""
+    global _jadpo_built, JADPO
+    if not _jadpo_built:
+        if os.environ.get('JADPO_BIN'):
+            JADPO = Path(os.environ['JADPO_BIN'])
+        else:
+            code, out = run(['cargo', 'build', '--quiet', '--locked', '-p', 'jadpo-cli'], cwd=ROOT)
+            if code:
+                sys.exit(f'could not build jadpo:\n{out}')
+        _jadpo_built = True
+
+
 def jadpo(args, cwd=None, env=None):
     """Runs the new `jadpo`, built from this checkout, in plain mode."""
-    global _jadpo_built
-    if not _jadpo_built:
-        code, out = run(['cargo', 'build', '--quiet', '--locked', '-p', 'jadpo-cli'], cwd=ROOT)
-        if code:
-            sys.exit(f'could not build jadpo:\n{out}')
-        _jadpo_built = True
+    ensure_jadpo()
     extra = env or {}
     env = {k: v for k, v in os.environ.items() if k not in ('FORCE_COLOR', 'CLICOLOR_FORCE', 'COLUMNS')}
     env['JADPO_PLAIN'] = '1'
@@ -236,14 +251,20 @@ class Page:
         for block in self.blocks:
             if block['attrs'].get('check'):
                 projects.setdefault(block['attrs']['project'], []).append(block)
-        for name, blocks in projects.items():
+        def expectation(blocks):
             expected = {b['attrs']['expect'] for b in blocks if 'expect' in b['attrs']} or {'pass'}
-            if len(expected) > 1:
-                self.problems.append(f'{name}: blocks disagree on expect=')
-            expected = expected.pop()
             has_tests = any(TEST_DECLARATION.search(b['source']) for b in blocks
                             if b['attrs']['file'].endswith('.jadpo'))
-            runs = expected == 'pass' and has_tests or expected.startswith('test.')
+            agreed = len(expected) == 1
+            expected = expected.pop()
+            return agreed, expected, expected == 'pass' and has_tests or expected.startswith('test.')
+
+        def compile_one(item):
+            """Runs jadpo over one project: its migrations' problems, and
+            what `check`, `fmt` and, when it has tests, `test` said."""
+            name, blocks = item
+            runs = expectation(blocks)[2]
+            problems, test_code, test_out, test_json_code, test_json = [], None, None, None, None
             with tempfile.TemporaryDirectory() as tmp:
                 steps = 0
                 for block in blocks:
@@ -256,7 +277,7 @@ class Page:
                                                env={'SOURCE_DATE_EPOCH': str(MIGRATION_EPOCH + 60 * steps)})
                         steps += 1
                         if migrated:
-                            self.problems.append(f'{name}: jadpo migrate new {purpose} failed:\n{said}')
+                            problems.append(f'{name}: jadpo migrate new {purpose} failed:\n{said}')
                 code, out = jadpo(['check', tmp])
                 json_code, json_out = jadpo(['check', '--json', tmp])
                 formatted, _ = jadpo(['fmt', '--check', tmp])
@@ -268,6 +289,17 @@ class Page:
             out = without_run_time(out.replace(tmp + '/', '').replace(tmp, '.'))
             if runs:
                 test_out = without_run_time(test_out)
+            return problems, code, out, json_code, json_out, formatted, test_code, test_out, test_json_code, test_json
+
+        with ThreadPoolExecutor(WORKERS) as pool:
+            compiled = list(pool.map(compile_one, projects.items()))
+        for (name, blocks), ran in zip(projects.items(), compiled):
+            agreed, expected, runs = expectation(blocks)
+            if not agreed:
+                self.problems.append(f'{name}: blocks disagree on expect=')
+            (problems, code, out, json_code, json_out, formatted,
+             test_code, test_out, test_json_code, test_json) = ran
+            self.problems += problems
             if runs:
                 self.run_tests(name, blocks, expected, code, formatted,
                                (test_code, test_out, test_json_code, test_json), bless)
@@ -472,12 +504,15 @@ class Page:
             if reason is None:
                 self.problems.append(f'{block["attrs"]["project"]} (line {block["line"] + self.offset + 1}) is on the '
                                      'archived compiler\'s result with no note saying why; make it a check block or say why')
-        for block in self.blocks:
-            if not block['attrs'].get('fragment'):
-                continue
+        def check_fragment(block):
             with tempfile.TemporaryDirectory() as tmp:
                 (Path(tmp) / 'main.jadpo').write_text(block['source'])
-                code, _ = jadpo(['check', tmp])
+                return jadpo(['check', tmp])[0]
+
+        fragments = [block for block in self.blocks if block['attrs'].get('fragment')]
+        with ThreadPoolExecutor(WORKERS) as pool:
+            codes = list(pool.map(check_fragment, fragments))
+        for block, code in zip(fragments, codes):
             if code == 0:
                 self.problems.append(f'the fragment at line {block["line"] + self.offset + 1} checks cleanly: '
                                      'make it a check block')
