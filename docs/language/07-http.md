@@ -16,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2. Route authentication comes with 4.3, policy with 4.4 and `settle:` with 6.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8). Policy comes with 4.4 and `settle:` with 6.3.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -432,6 +432,7 @@ routes Todos {
 
     /// Creates a todo.
     POST / {
+        authentication: RouteAuthentication.none
         input: CreateTodo
         output: TodoView
         status: SuccessStatus.created
@@ -440,6 +441,7 @@ routes Todos {
 
     /// One todo.
     GET /{todo_id: Todo.id} {
+        authentication: RouteAuthentication.none
         output: TodoView
         run: find_todo(todo_id)
     }
@@ -452,11 +454,13 @@ routes Todos {
 version: 1
 
 POST /todos
+    authentication: none
     input: CreateTodo (body)
     output: TodoView
     status: 201
 
 GET /todos/{todo_id: Uuid}
+    authentication: none
     output: TodoView
     status: 200
     fails: todo_not_found 404
@@ -542,7 +546,7 @@ check failed: 1 error, 1 file
 
 ### `route.item_unknown`
 
-A route holds `input:`, `output:`, `status:`, `deadline:` and `run:` (with `authentication:`, `rate_limit:` and `settle:` from later chunks); the old `success:`, `query:`, `path:` and `headers:` items are gone:
+A route holds `authentication:` (area 8), `input:`, `output:`, `status:`, `deadline:` and `run:` (with `rate_limit:` and `settle:` from later chunks); the old `success:`, `query:`, `path:` and `headers:` items are gone:
 
 ```jadpo check project=e-item-unknown expect=route.item_unknown
 type Memo = Text {
@@ -1322,6 +1326,52 @@ error: `90s` can't be a route's deadline
 check failed: 1 error, 1 file
 ```
 
+### `route.authentication_invalid`
+
+A route says only when it differs from needing a signed-in caller, and an
+unclear value is refused without a guess, since one fix keeps the route
+protected and the other opens it (area 8):
+
+```jadpo check project=e-route-authentication expect=route.authentication_invalid
+type Memo = Text {
+    max_length: 200
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> Unit {
+    var text: Memo = input.text
+    assert text != ""
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        authentication: none
+        input: AddMemo
+        status: SuccessStatus.no_content
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `none` isn't a `RouteAuthentication`
+ --> main.jadpo:18:25
+   |
+18 |         authentication: none
+   |                         ^^^^ not `.none` or `.fresh`
+  reason: Every route needs a signed-in caller unless it says otherwise: `RouteAuthentication.none` lets anyone call it, and `RouteAuthentication.fresh` checks the caller's record on this request. One opens the route and the other keeps it protected, so neither is guessed.
+  next: Write `RouteAuthentication.fresh` to keep the route signed in, `RouteAuthentication.none` to let anyone call it, or remove `authentication:` (human)
+  rule: route.authentication_invalid
+  help: docs/language/07-http.html#route-authentication-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `route.placeholder_type`
 
 A placeholder is typed with a named scalar or an `X.id`, never optional:
@@ -1471,12 +1521,14 @@ routes Memos {
     prefix: /memos
 
     POST /{memo_id: MemoId} {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: tag_memo(memo_id, input)
     }
 
     POST /{shelf_id: MemoId} {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: tag_memo(shelf_id, input)
@@ -1486,11 +1538,11 @@ routes Memos {
 
 ```text output
 error: `POST /memos/{shelf_id}` could answer the same requests as `POST /memos/{memo_id}`
- --> main.jadpo:36:5
+ --> main.jadpo:37:5
    |
 30 |     POST /{memo_id: MemoId} {
    |     ----------------------- already answered here
-36 |     POST /{shelf_id: MemoId} {
+37 |     POST /{shelf_id: MemoId} {
    |     ^^^^^^^^^^^^^^^^^^^^^^^^ answers the same requests
   reason: A request such as `/memos/…` matches both `POST /memos/{memo_id}` and `POST /memos/{shelf_id}`: where two paths differ, one must have fixed text where the other has a placeholder, since a fixed segment beats a placeholder.
   next: Give one of the paths fixed text where the other has a placeholder (agent)
@@ -1578,6 +1630,7 @@ routes Memos {
     api: admin
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: add_memo(input)
@@ -1642,6 +1695,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: TaggedMemo
         output: MemoView
         run: add_tagged_memo(input)
@@ -1705,6 +1759,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: TaggedMemo
         output: MemoView
         run: add_tagged_memo(input)
@@ -1719,7 +1774,7 @@ error: `Authorization` belongs to authentication
 24 |         header: "Authorization"
    |                 ^^^^^^^^^^^^^^^ read by authentication
   reason: Credentials (`Authorization`, cookies) and Jadpo's own `X-Jadpo-` headers are read by authentication (area 8), so a route never sees them as input.
-  next: Remove the field, and take the caller as the route's `current_principal` once sign-in is built (agent)
+  next: Remove the field, and take the caller as the route's `current_principal` (agent)
   rule: route.header_credential
   help: docs/language/07-http.html#route-header-credential
 
@@ -1773,6 +1828,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: TaggedMemo
         output: MemoView
         run: add_tagged_memo(input)
@@ -1839,6 +1895,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: TaggedMemo
         output: MemoView
         run: add_tagged_memo(input)
@@ -1911,6 +1968,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: add_memo(input)
@@ -2021,6 +2079,36 @@ error: `true` isn't an `Idempotency`
 check failed: 1 error, 1 file
 ```
 
+### `api.authentication_invalid`
+
+An API lists the sign-in methods it accepts, each one `authentication.jadpo`
+declares (area 8):
+
+```jadpo check project=e-api-authentication file=app.jadpo expect=api.authentication_invalid
+application {
+    apis: {
+        main: {
+            prefix: /v1
+            authentication: [AuthenticationMethod.browser_session]
+        }
+    }
+}
+```
+
+```text output
+error: API `main` accepts `browser_session`, which isn't declared
+ --> app.jadpo:5:30
+  |
+5 |             authentication: [AuthenticationMethod.browser_session]
+  |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not declared
+  reason: An API accepts only the ways to sign in the application declares; `authentication.jadpo` declares no way to sign in yet.
+  next: List the methods the API accepts, each one `authentication.jadpo` declares (agent)
+  rule: api.authentication_invalid
+  help: docs/language/07-http.html#api-authentication-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `api.setting_unknown`
 
 ```jadpo check project=e-api-setting file=app.jadpo expect=api.setting_unknown
@@ -2040,7 +2128,7 @@ error: `version` isn't an API setting
   |
 5 |             version: 2
   |             ^^^^^^^ unknown setting
-  reason: An API in `apis:` holds its `prefix:` and `idempotency:`, and later its `authentication:` and `rate_limit:`.
+  reason: An API in `apis:` holds its `prefix:`, `idempotency:` and `authentication:`, and later its `rate_limit:`.
   next: Remove `version` (agent)
   rule: api.setting_unknown
   help: docs/language/07-http.html#api-setting-unknown
@@ -2093,6 +2181,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: add_memo(input)
@@ -2132,8 +2221,13 @@ answers `/health/live` and `/health/ready`, and keeps each write's
 save, `jadpo routes` lists the routes and `jadpo api update` writes the
 records.
 
-Not yet: route authentication and `current_principal` (4.3), which also
-scope idempotency keys to the signed-in caller; policy (4.4); deleting
+Since chunk 4.3 (area 8) every route needs a signed-in caller unless it
+says `authentication: RouteAuthentication.none`, each API lists the sign-in
+methods it accepts, a route passes `current_principal` to what it runs, a
+signed-in caller's requests count against its own rate limit, and its
+idempotency keys are its own.
+
+Not yet: policy (4.4); deleting
 expired idempotency keys from the runtime's minute tick (6.2), and the
 `events: { store: }` an action that writes no store needs before it keeps a
 key (area 12); `settle:` (6.3); a route's own `rate_limit:` and the Redis
@@ -2350,9 +2444,10 @@ is written.
 | Route readings (chosen in chunk 4.1) | `output:` may also be a `List` or `Page` of an `Output`, as a query returns them; a placeholder or `input` a route never passes to what it runs is an error (`route.binding_unused`); a header field may not read `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie` or `X-Jadpo-*`; besides a type's own rules, input problems name `required`, `unknown_field`, `type` (the wrong JSON kind), `variant` and `duplicate`, and text that isn't a UUID, an instant or a date breaks `format`; an `Int` is a JSON number only when its declared range has both ends within JavaScript's safe integers, a string otherwise, as area 2 decides, and a number is accepted for it either way | 2026-10-15 |
 | Runtime answers (chosen in chunk 4.1) | Unmatched paths answer 404 `route_not_found`, a known path with another method 405 `method_not_allowed` with `Allow`; defects answer 500 `internal_fault` with "The server failed to answer the request."; a declared failure without a `message:` gets its kind's message; `request_id` is `req_` and 16 hexadecimal digits, on every response as `x-request-id` | 2026-10-15 |
 | OpenAPI and the record (chosen in chunk 4.1) | The record is the wire contract: routes in path order, then each `input`, `output`, object and enum by name with each field's wire type and rules, then each failure code with its status, message and client fields; `version:` rises by one when `jadpo api update` changes it and starts at 1. An OpenAPI document's title is the project folder's name until `app.jadpo` names the application, and its version the record's (0 before one exists). A record out of date fails `jadpo check` but doesn't stop `jadpo test` or `jadpo dev` | 2026-10-15 |
-| Default rate limits until sign-in (chosen in chunk 4.1) | With no one signed in yet, every request counts against its address: 120 a minute, in memory per process within 16 MB, the oldest counters dropped first; the native host sends each address's connections to one worker thread, so no lock is taken. The `jadpo check` warning about per-instance limits comes with the Redis store, since until then nothing could silence it | 2026-10-15 |
+| Default rate limits until sign-in (chosen in chunk 4.1) | (Amended in chunk 4.3: a signed-in caller's requests count against its own allowance, 600 a minute, and the rest against their address; area 8's Decisions.) With no one signed in yet, every request counts against its address: 120 a minute, in memory per process within 16 MB, the oldest counters dropped first; the native host sends each address's connections to one worker thread, so no lock is taken. The `jadpo check` warning about per-instance limits comes with the Redis store, since until then nothing could silence it | 2026-10-15 |
 | Request guarantees (chosen in chunk 4.2) | A body over 1 MB answers 413 before routing; the host stops holding it there, reading and dropping up to 16 MB more so the client reads the answer. A route's deadline counts from when it is matched: when it passes, the running work is dropped with its open transaction, which the store rolls back, and a claimed key is given up; an action's commit runs after its body, outside the deadline, so a request that committed never answers 504, and its message is "The request ran out of time, and nothing it did was kept." A `GET` never takes part, whatever headers it sends | 2026-10-15 |
 | Health (chosen in chunk 4.2) | `/health/live` answers 200 `{"status":"live"}`; `/health/ready` runs `SELECT 1` on each PostgreSQL store an entity lives in, within two seconds in all, and answers 200 `{"status":"ready","stores":{"main":"ready"},"integrations":{}}`, or 503 with `not_ready` and each store that didn't answer as `unavailable`; integrations appear by name as `unchecked` once area 11 builds them. Both answer `HEAD` and `OPTIONS`, any other method 405, with `Cache-Control: no-store`; they are answered before the rate limits, so probes are never refused; a route on either path is `route.path_overlap` | 2026-10-15 |
-| Idempotency keys (chosen in chunk 4.2) | `Idempotency.optional` (the default) and `Idempotency.required`, which an API's record shows as `idempotency: required` and OpenAPI as a required header on every write; any other value is `api.idempotency_invalid`. A key is 1 to 255 printable ASCII characters, else 400 `invalid_request`, as is a missing one where it is required. Until sign-in (4.3) every caller is the scope `anonymous`. The request's digest covers its method, path, query string, the headers its input reads and its body, byte for byte. A key is claimed in a transaction of its own before the action runs, with no response and kept only for the route's deadline and five seconds, so a request that never finished leaves a claim that lapses; the response (status, the body exactly as sent and its code) is written over it in the action's transaction, or in one of its own for a failure the action returned, kept 24 hours from the request. A repeat answers with the stored response under its own `x-request-id`. Keys go in the store the action writes; an action that writes no store keeps none, since running it again changes nothing, until area 12's `events: { store: }` names one | 2026-10-15 |
+| Idempotency keys (chosen in chunk 4.2) | `Idempotency.optional` (the default) and `Idempotency.required`, which an API's record shows as `idempotency: required` and OpenAPI as a required header on every write; any other value is `api.idempotency_invalid`. A key is 1 to 255 printable ASCII characters, else 400 `invalid_request`, as is a missing one where it is required. Until sign-in (4.3) every caller is the scope `anonymous` (amended in chunk 4.3: a signed-in caller's keys are kept under `user <id>`, and a route anyone may call keeps `anonymous`). The request's digest covers its method, path, query string, the headers its input reads and its body, byte for byte. A key is claimed in a transaction of its own before the action runs, with no response and kept only for the route's deadline and five seconds, so a request that never finished leaves a claim that lapses; the response (status, the body exactly as sent and its code) is written over it in the action's transaction, or in one of its own for a failure the action returned, kept 24 hours from the request. A repeat answers with the stored response under its own `x-request-id`. Keys go in the store the action writes; an action that writes no store keeps none, since running it again changes nothing, until area 12's `events: { store: }` names one | 2026-10-15 |
 | `jadpo dev` (chosen in chunk 4.1) | Listens on 127.0.0.1, port 3000 unless `--port`; the database is the one `--url` names (until configuration, area 10) or a disposable PostgreSQL for the session, and pending migrations are applied when it starts and after each save that adds one | 2026-10-15 |
 | Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |
+| Route authentication (chosen in chunk 4.3) | A route's `authentication:` takes `RouteAuthentication.none` or `.fresh`; anything else is `route.authentication_invalid`, which offers both without an edit, since one opens the route. An API's `authentication:` is a list of `AuthenticationMethod`s `authentication.jadpo` declares, each once, else `api.authentication_invalid`; an API that names none accepts every declared method. Area 8's Decisions hold the rest | 2026-10-16 |

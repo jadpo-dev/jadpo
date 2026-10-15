@@ -1416,6 +1416,19 @@ impl<'a> Reader<'a> {
                 );
                 return None;
             }
+            // A caller's field (area 8): `caller.id`.
+            if let Ty::Opaque(name, _) = &ty
+                && let Some(kind) = [
+                    jadpo_std::http::PrincipalKind::User,
+                    jadpo_std::http::PrincipalKind::Service,
+                ]
+                .into_iter()
+                .find(|kind| kind.type_name() == name)
+                && let Some(found) = self.lookup.identity().field_type(kind, field)
+            {
+                ty = found;
+                continue;
+            }
             let Some(host) = self.object_of(&ty) else {
                 self.value_unsupported(scope, &expr);
                 return None;
@@ -2826,7 +2839,7 @@ impl<'a> Reader<'a> {
 
 // --- helpers -------------------------------------------------------------------
 
-pub(super) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
+pub(crate) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
     matches!(
         lookup.representation(ty),
         Some(
@@ -2843,7 +2856,7 @@ pub(super) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
 /// Whether a value of type `a` can be compared with field type `b`:
 /// the same type after widening, or two named types with a common
 /// ancestor, as `==` allows in a body (area 3).
-pub(super) fn comparable(lookup: &dyn TypeView, a: &Ty, b: &Ty) -> bool {
+pub(crate) fn comparable(lookup: &dyn TypeView, a: &Ty, b: &Ty) -> bool {
     let (a, b) = (a.strip_nullable(), b.strip_nullable());
     if a.has_error() || b.has_error() {
         return true;

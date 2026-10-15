@@ -54,6 +54,10 @@ pub(crate) enum Reach {
         entity: String,
         operation: String,
     },
+    /// `Principal.user(record)` (area 8).
+    Caller(jadpo_std::http::PrincipalKind),
+    /// `sessions.start(user_id)` or `sessions.end()` (area 8).
+    Session(jadpo_std::http::SessionOp),
     Unknown,
 }
 

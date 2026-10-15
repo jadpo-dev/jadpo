@@ -12,7 +12,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 
-use jadpo_std::http::{ADDRESS_LIMIT, RATE_LIMIT_MEMORY, RateLimit};
+use jadpo_std::http::{ADDRESS_LIMIT, CALLER_LIMIT, RATE_LIMIT_MEMORY, RateLimit};
 
 /// About how much memory one counter takes: its key, its window and count,
 /// and its place in the eviction queue.
@@ -40,6 +40,8 @@ struct Counters {
 #[derive(Debug)]
 pub struct RateLimits {
     limit: RateLimit,
+    /// A signed-in caller's (area 8): 600 a minute.
+    caller: RateLimit,
     capacity: usize,
     counters: RefCell<Counters>,
 }
@@ -55,15 +57,32 @@ impl RateLimits {
     pub fn new(limit: RateLimit, memory: usize) -> RateLimits {
         RateLimits {
             limit,
+            caller: CALLER_LIMIT,
             capacity: (memory / ENTRY_BYTES).max(1),
             counters: RefCell::new(Counters::default()),
         }
     }
 
-    /// Counts a request from `key` at `now` (milliseconds) and says
-    /// whether it may go ahead.
+    /// The same, with `caller` as a signed-in caller's limit.
+    pub fn with_caller(mut self, caller: RateLimit) -> RateLimits {
+        self.caller = caller;
+        self
+    }
+
+    /// Counts a request from address `key` at `now` (milliseconds) and
+    /// says whether it may go ahead.
     pub fn allow(&self, key: &str, now: i64) -> Allowed {
-        let window = i64::from(self.limit.window_ms);
+        self.count(key, self.limit, now)
+    }
+
+    /// Counts a request from signed-in caller `key`, against a caller's
+    /// limit.
+    pub fn allow_caller(&self, key: &str, now: i64) -> Allowed {
+        self.count(key, self.caller, now)
+    }
+
+    fn count(&self, key: &str, limit: RateLimit, now: i64) -> Allowed {
+        let window = i64::from(limit.window_ms);
         let mut counters = self.counters.borrow_mut();
         if !counters.counts.contains_key(key) {
             while counters.counts.len() >= self.capacity {
@@ -78,7 +97,7 @@ impl RateLimits {
         if now - entry.0 >= window || now < entry.0 {
             *entry = (now, 0);
         }
-        if entry.1 >= self.limit.requests {
+        if entry.1 >= limit.requests {
             let left = (entry.0 + window - now).max(1);
             return Allowed::No {
                 retry_after: u64::try_from((left + 999) / 1000).unwrap_or(1),

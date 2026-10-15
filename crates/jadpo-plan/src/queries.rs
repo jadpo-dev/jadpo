@@ -636,7 +636,11 @@ pub(crate) fn plans(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
     types: &mut Types,
-) -> (Vec<QueryPlan>, Vec<EntityPlan>) {
+) -> (
+    Vec<QueryPlan>,
+    Vec<EntityPlan>,
+    Option<jadpo_std::http::IdentityPlan>,
+) {
     let model = jadpo_check::data::data_model(db, project);
     let queries = jadpo_check::data::queries::query_models(db, project);
     let lookup = Lookup::new(db, project);
@@ -657,5 +661,6 @@ pub(crate) fn plans(
         .filter_map(|entity| planner.entity(entity))
         .collect();
     entity_plans.sort_by(|a, b| a.key.cmp(&b.key));
-    (query_plans, entity_plans)
+    let identity = planner.identity(db, project);
+    (query_plans, entity_plans, identity)
 }

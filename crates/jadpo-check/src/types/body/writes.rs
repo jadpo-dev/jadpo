@@ -1177,6 +1177,21 @@ impl Body<'_> {
             return false;
         };
         let name = name.clone();
+        // A caller's `id` (area 8): authentication read its record for
+        // this request, as a record passed in was read before it.
+        if let Some(kind) = [
+            jadpo_std::http::PrincipalKind::User,
+            jadpo_std::http::PrincipalKind::Service,
+        ]
+        .into_iter()
+        .find(|kind| kind.type_name() == holder)
+        {
+            return name == "id"
+                && self
+                    .identity()
+                    .variant(kind)
+                    .is_some_and(|variant| variant.entity == target);
+        }
         if self.callable_kind(holder) != Some(ItemKind::Entity) {
             return false;
         }

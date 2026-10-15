@@ -277,7 +277,16 @@ reference only).
 - [x] **4.2 Request guarantees:** `opus · high` idempotency (a lookup ignores
   keys past 24 hours; deleting them comes with 6.2), deadlines, body limits,
   health.
-- [ ] **4.3 Sign-in:** `opus · high` sessions, API tokens, service keys.
+- [x] **4.3 Sign-in:** `opus · high` the principal, browser sessions,
+  routes signed in by default, `current_principal`, starting and ending a
+  session, signing in from route tests. Split: API tokens and service keys
+  are 4.3b, the revocation delay 5.1b.
+- [ ] **4.3b API tokens and service keys** `opus · high`: `service_key:`
+  with `Service.issue_key`, `.keys` and `.revoke_key` and a
+  `jadpo_service_keys` table, service callers (`service_disabled`,
+  `Principal.service`, a route test signing in as a service), and
+  `api_token:`. **Needs Richard** to decide how an application issues an
+  API token (area 8, "Status", with a recommendation).
 - [ ] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
   report.
 - [ ] **4.6 Teaching examples for Phase 4** `opus · high`: bring
@@ -288,6 +297,12 @@ reference only).
 
 - [ ] **5.1 Configuration:** `sonnet · high` `config.jadpo`, environments, secrets, signing
   keys.
+- [ ] **5.1b Signed sessions** `opus · high`: area 8's
+  `revocation_delay:` once 5.1 gives signing keys: sessions and tokens
+  signed and checked without a read, expiring within the delay and
+  renewed against the record; `RouteAuthentication.fresh` reading the
+  record; `POST /auth/exchange` for service keys; a browser session's
+  `origin:` from configuration.
 - [ ] **5.2 Time:** `opus · high` durations, instants, formatting.
 - [ ] **5.3 Translations and locales.** `sonnet · high`
 - [ ] **5.4 Standard library: the plan** `opus · high`. Only `collection`

@@ -728,6 +728,14 @@ pub trait TypeView {
                     [host, rest @ ..] if self.field(host, rest).is_some() => {
                         Ty::Field(host.clone(), rest.to_vec())
                     }
+                    // A kind of caller (area 8): `Principal.user`.
+                    [host, kind]
+                        if host == crate::identity::PRINCIPAL
+                            && args.is_empty()
+                            && jadpo_std::http::PrincipalKind::from_name(kind).is_some() =>
+                    {
+                        Ty::Opaque(format!("{host}.{kind}"), Vec::new())
+                    }
                     _ => Ty::Error,
                 }
             }

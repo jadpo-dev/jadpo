@@ -8,7 +8,10 @@
 //! and 422 a key's repeat can answer, all with the `///` descriptions. Its
 //! title is the application's name and its version the API record's
 //! version. Health (`/health/live`, `/health/ready`) is the runtime's own
-//! and in no document.
+//! and in no document. The sign-in methods the API accepts are its
+//! security schemes (area 8; area 7, question 12): a route anyone may call
+//! says `security: []`, and every other answers 401, 403 and 503 for the
+//! ways signing in fails.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -74,6 +77,54 @@ const SHARED: [(&str, &str, &str, &str); 8] = [
     ),
 ];
 
+/// What signing in can answer (area 8, "Failures"): each status, schema
+/// name and code, its description, and whether only a write that came with
+/// a cookie answers it.
+const SIGN_IN: [(&str, &str, &str, &str, bool); 6] = [
+    (
+        "401",
+        "AuthenticationRequired",
+        "authentication_required",
+        "The request carries no credential.",
+        false,
+    ),
+    (
+        "401",
+        "InvalidCredentials",
+        "invalid_credentials",
+        "The credential is malformed, expired or unknown; a browser session's cookies are cleared.",
+        false,
+    ),
+    (
+        "401",
+        "AmbiguousCredentials",
+        "ambiguous_credentials",
+        "The request carries more than one credential, such as a cookie and a bearer token.",
+        false,
+    ),
+    (
+        "403",
+        "AccountDisabled",
+        "user_disabled",
+        "The signed-in user's record isn't active.",
+        false,
+    ),
+    (
+        "403",
+        "CsrfRejected",
+        "csrf_rejected",
+        "A write that came with the session's cookie has no `Origin` naming this server, or no `X-Jadpo-CSRF` matching the session.",
+        true,
+    ),
+    (
+        "503",
+        "AuthenticationUnavailable",
+        "authentication_unavailable",
+        "The store sessions are kept in can't be reached.",
+        false,
+    ),
+];
+
 /// The OpenAPI document of `api`, titled `title` at `version`; `None`
 /// while a route has a problem or the API has no routes.
 pub fn document(
@@ -97,14 +148,23 @@ pub fn document(
         return None;
     }
     let wire = Wire { graph };
-    let required = super::api_table(db, project)
-        .get(api)
-        .is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required);
+    let declared = super::api_table(db, project).get(api);
+    let required = declared.is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required);
+    let identity = crate::identity::identity(db, project);
+    // The methods it accepts: its own list, or every declared one.
+    let methods: Vec<jadpo_std::AuthenticationMethod> = match declared {
+        Some(api) if !api.methods.is_empty() => api.methods.clone(),
+        _ => identity
+            .methods
+            .iter()
+            .map(|method| method.method)
+            .collect(),
+    };
     let mut refs: BTreeSet<Key> = BTreeSet::new();
     let mut failure_schemas: BTreeMap<String, Value> = BTreeMap::new();
     let mut paths: BTreeMap<String, Value> = BTreeMap::new();
     for (_, route) in &routes {
-        let operation = operation(
+        let mut operation = operation(
             &wire,
             &lookup,
             route,
@@ -112,6 +172,9 @@ pub fn document(
             &mut refs,
             &mut failure_schemas,
         );
+        if !route.authentication.needs_caller() {
+            operation.set("security", Vec::<Value>::new());
+        }
         let entry = paths.entry(route.path()).or_insert_with(Value::object);
         entry.set(&route.method.word().to_ascii_lowercase(), operation);
     }
@@ -144,9 +207,33 @@ pub fn document(
     let mut components = Value::object();
     components.set("schemas", Value::Object(schemas));
     components.set("responses", responses);
+    let mut security = Vec::new();
+    let mut schemes = Value::object();
+    for method in &methods {
+        if *method == jadpo_std::AuthenticationMethod::BrowserSession
+            && let Some(cookie) = identity.cookie()
+        {
+            let mut scheme = Value::object();
+            scheme.set("type", "apiKey");
+            scheme.set("in", "cookie");
+            scheme.set("name", cookie);
+            scheme.set(
+                "description",
+                "A browser session, which a route whose action calls `sessions.start` begins. A write also sends `X-Jadpo-CSRF` with the token from the `_csrf` cookie, and an `Origin` naming this server.",
+            );
+            schemes.set(method.name(), scheme);
+            let mut requirement = Value::object();
+            requirement.set(method.name(), Vec::<Value>::new());
+            security.push(requirement);
+        }
+    }
+    if !security.is_empty() {
+        components.set("securitySchemes", schemes);
+    }
     let mut out = Value::object();
     out.set("openapi", "3.1.0");
     out.set("info", info);
+    out.set_some("security", security);
     out.set("paths", Value::Object(paths));
     out.set("components", components);
     Some(out)
@@ -385,6 +472,19 @@ fn operation(
             .entry(status.to_string())
             .or_default()
             .push((detail.code.clone(), name));
+    }
+    // Signing in (area 8).
+    if route.authentication.needs_caller() {
+        for (status, name, code, description, cookie_write) in SIGN_IN {
+            if cookie_write && !writes {
+                continue;
+            }
+            failure_schemas.insert(name.to_string(), envelope(code, description, None));
+            by_status
+                .entry(status.to_string())
+                .or_default()
+                .push((code.to_string(), name.to_string()));
+        }
     }
     let has_input = route.input.is_some() || route.params().next().is_some();
     if writes {

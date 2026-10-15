@@ -32,6 +32,7 @@
 //! every thread that runs the project.
 
 mod constant;
+mod identity;
 mod purge;
 mod queries;
 mod routes;
@@ -145,7 +146,7 @@ impl Plan {
             .map(|(i, (key, ..))| (key.clone(), i as u32))
             .collect();
         let mut types = Types::new(Arc::clone(&graph));
-        let (queries, entities) = queries::plans(db, project, &mut types);
+        let (queries, entities, identity) = queries::plans(db, project, &mut types);
         let query_ids: HashMap<Key, u32> = queries
             .iter()
             .enumerate()
@@ -205,13 +206,14 @@ impl Plan {
                 isolation,
             });
         }
-        let routes = routes::table(
+        let mut routes = routes::table(
             db,
             project,
             &mut types,
             &|key: &Key| by_key.get(key).copied(),
             &queries,
         );
+        routes.identity = identity;
         Plan {
             callables,
             by_key,

@@ -2,6 +2,7 @@ a_days_flour
 accepted_at
 account_id
 acme_couriers
+act_as
 ada
 ada_borrows_two
 add_copy
@@ -22,7 +23,6 @@ already_archived
 amendment
 amount_off
 animal_free
-api_bearer
 app_role
 application_configuration
 applies_to
@@ -39,7 +39,6 @@ article_not_found
 article_title
 asked_words
 attachment
-auth_config
 author
 author_id
 author_view
@@ -92,7 +91,6 @@ bread
 browned
 browse_books
 browser_origin
-browser_session
 budget
 build_product
 bumped
@@ -192,7 +190,6 @@ create_test_message
 create_todo
 created_at
 created_on
-credential_status
 crust
 crust_on
 cupcake
@@ -268,7 +265,6 @@ entry_id
 eur
 every_name
 expected_delivery
-expires_at
 export_my_data
 expose_secret
 exposed_secret
@@ -292,7 +288,6 @@ follow_up
 forget_memos
 formatted_price
 fragile
-fresh
 from_count
 from_flag
 gbp
@@ -306,6 +301,7 @@ guest_list
 guest_name
 guests
 half_price
+handle_taken
 handover
 handover_charge
 has_urgent
@@ -435,9 +431,12 @@ member_id
 member_loans
 member_not_found
 member_page
+member_status
+member_view
 members_named
 memo
 memo_id
+memo_locked
 memo_record
 memo_summary
 memo_view
@@ -474,7 +473,10 @@ note_not_found
 note_refused
 note_rejected
 note_role
+note_text
+note_view
 note_was_edited
+notes
 nothing_to_bake
 notify_owner
 nut_free
@@ -649,7 +651,6 @@ return_book
 returned_at
 review_stage
 revoke_card
-revoked_at
 rye
 sack_count
 sacks
@@ -669,7 +670,6 @@ scone
 search_todos
 seated
 second_loan
-second_session
 second_use
 secret_to_public
 send_completion_email
@@ -678,11 +678,7 @@ send_order_confirmation
 send_overdue_reminder
 send_reminder
 send_reminders
-service_credential
-service_disabled
 service_fake_identity
-service_id
-service_status
 set_oven
 severe
 shelf
@@ -701,6 +697,7 @@ shortbread
 shout
 show_on_menu
 sign_in_link
+sign_up
 signed_in
 signup_ip
 size_of
@@ -741,6 +738,8 @@ supplier_contact
 supplier_desk
 supplier_label
 supplier_site
+suspend
+suspended
 tag_all
 tag_memo
 tagged_memo
@@ -765,11 +764,9 @@ times_lent
 title_blank
 titles
 todo
-todo_application
 todo_by_id
 todo_changes
 todo_completed
-todo_configuration
 todo_conflict
 todo_count
 todo_cursor
@@ -808,13 +805,10 @@ update_profile
 update_statistics
 updated_at
 use_count
-user_disabled
 user_id
-user_missing
 user_name
 user_not_found
 user_stage
-user_status
 user_todos
 user_view
 usual_contacts
@@ -843,6 +837,7 @@ weight_of
 welcome_email
 wet_enough
 white
+whoami
 whole_batch
 wholemeal
 wildcard_failure
@@ -853,5 +848,6 @@ work_address
 work_email
 worn
 wrapper
+write_note
 written_at
 wrong_total

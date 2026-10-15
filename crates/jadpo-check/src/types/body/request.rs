@@ -5,7 +5,8 @@
 //! given in `params:`, typed by the placeholder; `input:` is the route's
 //! `Input`. It gives a `Response`: `status`, the failure's `code` (`none`
 //! on success) and the route's `output` (`none` unless it succeeded).
-//! Signing in with `as:` comes with area 8.
+//! `as:` signs in as a caller (area 8) through the route's real
+//! authentication: a user with a browser session.
 
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_std::HttpMethod;
@@ -70,6 +71,7 @@ impl Body<'_> {
         let mut path = None;
         let mut params: Vec<(String, Expr, jadpo_diag::Span)> = Vec::new();
         let mut input = None;
+        let mut caller: Option<(Expr, jadpo_diag::Span)> = None;
         for (key, member) in tree::members(record.member_list()) {
             let Some(item) = tree::name_text(&key) else {
                 continue;
@@ -125,28 +127,28 @@ impl Body<'_> {
                 }
                 "input" => input = member.value(),
                 "as" => {
-                    self.out.push(
-                        Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "Signing in with `as:` isn't built yet")
-                            .at(key_span, "decided, not built")
-                            .reason("A route test signs in with `as:` through the application's real authentication, which comes with sign-in (area 8, roadmap chunk 4.3).")
-                            .next("Leave `as:` out for now"),
-                    );
-                    self.skip_members(record);
-                    return Ty::Error;
+                    if let Some(value) = member.value() {
+                        caller = Some((value, key_span));
+                    }
                 }
                 other => {
                     let near = jadpo_diag::nearest(other, ITEMS.iter().copied());
                     self.out.push(
-                        Diagnostic::new(&rule::SEMANTIC_REQUEST_INVALID, format!("`{other}` isn't something a request holds"))
-                            .at(key_span, "unknown item")
-                            .reason(format!(
-                                "A request holds `method:`, `path:`, `params:`, `input:` and later `as:`.{}",
-                                near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
+                        Diagnostic::new(
+                            &rule::SEMANTIC_REQUEST_INVALID,
+                            format!("`{other}` isn't something a request holds"),
+                        )
+                        .at(key_span, "unknown item")
+                        .reason(format!(
+                            "A request holds `method:`, `path:`, `params:`, `input:` and `as:`.{}",
+                            near.map_or_else(String::new, |near| format!(
+                                " Did you mean `{near}`?"
                             ))
-                            .next(match near {
-                                Some(near) => format!("Use `{near}` instead of `{other}`"),
-                                None => format!("Remove `{other}`"),
-                            }),
+                        ))
+                        .next(match near {
+                            Some(near) => format!("Use `{near}` instead of `{other}`"),
+                            None => format!("Remove `{other}`"),
+                        }),
                     );
                     return Ty::Error;
                 }
@@ -243,6 +245,41 @@ impl Body<'_> {
                 );
             }
             (None, None) => {}
+        }
+        if let Some((value, key_span)) = caller {
+            let ty = self.infer(&value);
+            match super::identity::caller_kind(&ty) {
+                _ if ty.has_error() => ok = false,
+                _ if !route.authentication.needs_caller() => {
+                    ok = false;
+                    self.request_problem(
+                        key_span,
+                        &format!(
+                            "`{}` reads no credential, so no one signs in to call it",
+                            route.label()
+                        ),
+                    );
+                }
+                Some(jadpo_std::http::PrincipalKind::User) => {}
+                Some(jadpo_std::http::PrincipalKind::Service) => {
+                    ok = false;
+                    self.out.push(
+                        Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "Signing in as a service isn't built yet")
+                            .at(key_span, "decided, not built")
+                            .reason("A route test signs in as a service with a key from `Service.issue_key`, which comes with service keys (area 8, roadmap chunk 4.3b).")
+                            .next("Sign in as a user for now"),
+                    );
+                }
+                None => {
+                    ok = false;
+                    self.out.push(
+                        Diagnostic::new(&rule::SEMANTIC_REQUEST_INVALID, format!("`as:` takes a caller, not a `{ty}`"))
+                            .at(self.span(&value), format!("a `{ty}`"))
+                            .reason("A request signs in as a caller made with `Principal.user(user)`, through the route's real authentication.")
+                            .next("Pass a `Principal.user`, made from the user's record with `Principal.user(user)`"),
+                    );
+                }
+            }
         }
         if !ok {
             return Ty::Error;

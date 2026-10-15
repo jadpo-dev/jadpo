@@ -32,6 +32,7 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         table: &lookup,
         out: Vec::new(),
         headers: Vec::new(),
+        failure: false,
     };
     for decl in source.decls() {
         checker.decl(&decl);
@@ -53,6 +54,9 @@ pub(super) struct Decls<'a> {
     /// The headers the `Input` being checked reads so far, lower case, and
     /// where (area 7, "One input").
     pub headers: Vec<(String, Span)>,
+    /// Whether the fields being checked are a failure's (area 8: a caller
+    /// is never put in one).
+    pub failure: bool,
 }
 
 impl Decls<'_> {
@@ -351,7 +355,9 @@ impl Decls<'_> {
                     }
                     let block = section.block();
                     let lines = shape::lines(block.clone(), FieldsBase::Object);
+                    self.failure = true;
                     self.lines(block, FieldsBase::Object, &shape.name, &lines);
+                    self.failure = false;
                 }
             }
             ShapeKind::Fields { base, lines } => {
@@ -458,12 +464,16 @@ impl Decls<'_> {
                     let Some(value) = member.value() else {
                         continue;
                     };
-                    let node = TypeNode::Expr(value);
+                    let node = TypeNode::Expr(value.clone());
                     if !self.type_node(&node, false) {
                         continue;
                     }
                     let declared = self.table.resolve(ty);
                     if declared.has_error() {
+                        continue;
+                    }
+                    if holds_principal(&declared) {
+                        self.principal_field(base, host, name, &value);
                         continue;
                     }
                     let field = FieldCtx {
@@ -1235,7 +1245,7 @@ impl Decls<'_> {
                 )
                 .at(span, "read by authentication")
                 .reason("Credentials (`Authorization`, cookies) and Jadpo's own `X-Jadpo-` headers are read by authentication (area 8), so a route never sees them as input.")
-                .next("Remove the field, and take the caller as the route's `current_principal` once sign-in is built"),
+                .next("Remove the field, and take the caller as the route's `current_principal`"),
             );
             return;
         }
@@ -1300,6 +1310,57 @@ const LATER_FIELD_SETTINGS: [&str; 8] = [
     "role",
     "unique",
 ];
+
+/// Whether a type is a caller, or holds one (area 8).
+fn holds_principal(ty: &Ty) -> bool {
+    match ty {
+        Ty::Opaque(name, _) => {
+            name == crate::identity::PRINCIPAL
+                || name.starts_with(&format!("{}.", crate::identity::PRINCIPAL))
+        }
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_principal(inner),
+        Ty::Map(key, value) => holds_principal(key) || holds_principal(value),
+        _ => false,
+    }
+}
+
+impl Decls<'_> {
+    /// A field typed with a caller, where none may go (area 8): a caller
+    /// never reaches a client, never comes from a request and never sits
+    /// in a failure.
+    fn principal_field(&mut self, base: FieldsBase, host: &str, name: &str, value: &Expr) {
+        let span = self.span(value.syntax());
+        let (rule, why, next) = if self.failure {
+            (
+                &rule::TYPE_AUTH_PRINCIPAL_FAILURE_CONTEXT,
+                "A failure is logged and its client fields reach the client, while a caller value holds who signed in, so a failure carries the caller's `id` instead.",
+                format!("Type `{name}` with the entity's id, such as `User.id`"),
+            )
+        } else {
+            match base {
+                FieldsBase::Input => (
+                    &rule::TYPE_AUTH_PRINCIPAL_INPUT,
+                    "A caller comes only from signing in, never from what a request sends, so a route takes it as `current_principal` and passes it on.",
+                    format!("Remove `{name}`, and pass `current_principal` to what the route runs"),
+                ),
+                FieldsBase::Output => (
+                    &rule::TYPE_AUTH_PRINCIPAL_OUTPUT,
+                    "A caller value is who signed in, as the runtime holds it, and is never sent to a client; an output sends the fields a client needs.",
+                    format!(
+                        "Type `{name}` with the entity's id, such as `User.id`, or send the fields a client needs"
+                    ),
+                ),
+                _ => return,
+            }
+        };
+        self.out.push(
+            Diagnostic::new(rule, format!("`{host}.{name}` holds a caller"))
+                .at(span, "a caller")
+                .reason(why)
+                .next(next),
+        );
+    }
+}
 
 fn optional_outside(host: &str, span: Span) -> Diagnostic {
     Diagnostic::new(

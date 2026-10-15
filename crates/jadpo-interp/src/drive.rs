@@ -40,7 +40,10 @@ async fn body(
                         let caught = machine.catching();
                         invoke(program, ctx, callee, args, at.0, caught).await
                     }
-                    Target::Request(route) => request(program, ctx, route, &args).await,
+                    Target::Request { route, signed } => {
+                        request(program, ctx, route, &args, signed).await
+                    }
+                    Target::Session(op) => session(program, ctx, op, &args, at.0).await,
                     effect => store(program, ctx, effect, args, at.0).await,
                 };
                 step = machine.resume(ctx, result);
@@ -96,14 +99,16 @@ fn store<'a, 'p: 'a>(
             Target::Query(id) => plan.query(id).map(|query| StoreOp::Read(&query.read)),
             Target::Get(id) => plan.entity(id).map(|entity| StoreOp::Read(&entity.get)),
             Target::Write(id) => plan.write(id).map(|write| StoreOp::Write(&write.plan)),
-            Target::Callable(_) | Target::Request(_) => None,
+            Target::Callable(_) | Target::Request { .. } | Target::Session(_) => None,
         };
         let Some(op) = op else {
             let what = match target {
                 Target::Query(_) => "a query with no plan",
                 Target::Get(_) => "an entity with no plan",
                 Target::Write(_) => "a write with no plan",
-                Target::Callable(_) | Target::Request(_) => "a call run as a read",
+                Target::Callable(_) | Target::Request { .. } | Target::Session(_) => {
+                    "a call run as a read"
+                }
             };
             return Err(Stop::Fault(
                 ctx.fault(FaultKind::Defect(what.to_string()), at),
@@ -128,17 +133,62 @@ async fn request(
     ctx: &mut Ctx<'_>,
     route: u32,
     args: &[Value],
+    signed: bool,
 ) -> Result<Value, Stop> {
     let app = program.app();
-    let Some(request) = jadpo_runtime::http::test_request(&app, route, args) else {
+    let (args, caller) = match (signed, args.split_last()) {
+        (true, Some((caller, rest))) => (rest, Some(caller)),
+        _ => (args, None),
+    };
+    let Some(mut request) = jadpo_runtime::http::test_request(&app, route, args) else {
         return Ok(Value::None);
     };
+    if let Some(caller) = caller {
+        // `as:` signs in through the application's real authentication.
+        let headers = jadpo_runtime::http::identity::test_credentials(ctx, app.table, caller)
+            .await
+            .map_err(Stop::Fault)?;
+        request.headers.extend(headers);
+    }
     let id = jadpo_runtime::http::request_id(ctx, u64::from(ctx.actions()));
     let mut response = jadpo_runtime::http::handle(&app, program, ctx, &request, &id, None).await;
     if let Some(fault) = response.fault.take() {
         return Err(Stop::Fault(fault));
     }
     Ok(jadpo_runtime::http::response_value(&app, route, &response))
+}
+
+/// `sessions.start(user_id)` or `sessions.end()` at site `at` (area 8): the
+/// runtime keeps or deletes the session in the running action's
+/// transaction.
+async fn session(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    op: jadpo_std::http::SessionOp,
+    args: &[Value],
+    at: u32,
+) -> Result<Value, Stop> {
+    let plan = program.plan().routes().identity.as_ref();
+    let stored = match (op, args.first()) {
+        (jadpo_std::http::SessionOp::Start, Some(user)) => {
+            jadpo_runtime::http::identity::start(ctx, plan, user, at).await
+        }
+        (jadpo_std::http::SessionOp::End, _) => {
+            jadpo_runtime::http::identity::end(ctx, plan, at).await
+        }
+        (jadpo_std::http::SessionOp::Start, None) => {
+            return Err(Stop::Fault(ctx.fault(
+                FaultKind::Defect("a session started for no one".into()),
+                at,
+            )));
+        }
+    };
+    match stored {
+        Stored::Value(value) => Ok(value),
+        Stored::Failed(failure) => Err(Stop::Failed(failure)),
+        Stored::Conflict { cause, .. } => Err(Stop::Failed(cause)),
+        Stored::Fault(fault) => Err(Stop::Fault(fault)),
+    }
 }
 
 /// An action's body as the runtime's boundary runs it, once or, after a

@@ -205,7 +205,7 @@ test "a due date in the past is rejected" {
 }
 ```
 
-Built in chunk 4.1, without `as:`, which comes with sign-in (area 8). The
+Built in chunk 4.1, and `as:` in chunk 4.3: it signs in through the application's real browser session, as area 8's end-to-end example shows. The route below lets anyone call it, so this test signs no one in. The
 request names its route by `method:` and its path as `jadpo routes` prints
 it, each placeholder given in `params:` (`path: "/todos/{todo_id}"` with
 `params: { todo_id: todo.id }`), and `input:` is the route's `Input`. It
@@ -237,6 +237,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         status: SuccessStatus.created
@@ -853,6 +854,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         status: SuccessStatus.created
@@ -874,9 +876,9 @@ test "a memo comes back" {
 
 ```text output
 error: No route answers `POST /memo`
- --> main.jadpo:33:15
+ --> main.jadpo:34:15
    |
-33 |         path: "/memo"
+34 |         path: "/memo"
    |               ^^^^^^^ no such route
   reason: A request names a route by its method and its path as `jadpo routes` prints it, placeholders by name; the `POST` routes are `/memos`.
   next: Write the path of the route this test exercises, as `jadpo routes` lists it (agent)
@@ -914,6 +916,7 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         status: SuccessStatus.created
@@ -932,9 +935,9 @@ test "a memo comes back" {
 
 ```text output
 error: `POST /memos` takes `input:`, a `AddMemo`
- --> main.jadpo:31:30
+ --> main.jadpo:32:30
    |
-31 |     var response: Response = request {
+32 |     var response: Response = request {
    |                              ^^^^^^^ doesn't fit the route
   reason: A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`.
   next: Give the request what its route takes (agent)
@@ -1381,7 +1384,7 @@ with when it comes.
 |---|---|
 | Pure and action tests | Work in the new compiler (run, chunk 2.2): `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Since chunk 2.10 each test gets its own environment (its seed and clock, and the places its database and fakes will take), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
 | Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test), and the footer and `--json` count each kind. Schedule tests come with area 12; `--kind schedule` says so (`toolchain.not_built_yet`). |
-| Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` comes with sign-in (area 8, roadmap 4.3). |
+| Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session (chunk 4.3); as a service with chunk 4.3b. |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Clock | Decided, not built: the test clock comes with time (area 10, roadmap 5.2). |
@@ -1420,7 +1423,7 @@ with when it comes.
 | Item | Area | Status |
 |---|---|---|
 | The `request { }` form in route tests, the `Response` type, its `status`, `code` and typed output | 7 | Input to area 7 |
-| `Principal.user(user)` in tests, fixtures and seeds, and `as:` signing in through the real authentication method (question 10); a service caller in tests | 8 | Input to area 8 |
+| `Principal.user(user)` in tests, fixtures and seeds, and `as:` signing in through the real authentication method (question 10); a service caller in tests | 8 | Built in chunk 4.3 for users; services with chunk 4.3b |
 | Policy tests are ordinary tests: call as another user and `assert … fails` with the failure policy reports | 9 | Follows from question 6 |
 | `test:` values on configuration fields, and the `5m` duration literal | 10 | Input to area 10 |
 | Fake responses name the provider conditions in the integration's `failures:` block; checking a fake against the provider's contract or sandbox | 11 | Input to area 11 |

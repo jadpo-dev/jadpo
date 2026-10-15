@@ -3,6 +3,7 @@ Address
 ApiKey
 Batches
 Broken
+BrowserSession
 Choice
 Code
 Comment
@@ -17,7 +18,7 @@ Done
 Doubled
 Draft
 Flag
-Health
+Handle
 Item
 Label
 Listing
@@ -48,4 +49,4 @@ Size
 Tag
 Title
 User
-Visitor
+UserDisabled

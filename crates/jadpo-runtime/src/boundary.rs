@@ -94,6 +94,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
             ctx.held = Some(crate::ctx::Held {
                 transaction: boundary.transaction,
                 outbox: boundary.outbox,
+                session: boundary.session,
             });
             return outcome;
         }
@@ -150,6 +151,7 @@ pub async fn commit_held(
     let crate::ctx::Held {
         mut transaction,
         outbox,
+        ..
     } = held;
     if let Some((store, sql, params)) = then {
         if transaction.is_none() {

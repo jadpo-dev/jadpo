@@ -29,7 +29,8 @@ use std::sync::Arc;
 use jadpo_db::{Db, File, ItemKind, Project, Symbol, item_tree, location};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_graph::{Key, Kind};
-use jadpo_std::{HttpMethod, SuccessStatus};
+use jadpo_std::http::{Authentication, PrincipalKind};
+use jadpo_std::{HttpMethod, RouteAuthentication, SuccessStatus};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 
 pub use apis::{Api, Apis, api_problems, api_table};
@@ -57,11 +58,7 @@ pub const ROUTE_ITEMS: [&str; 8] = [
 pub const GROUP_ITEMS: [&str; 2] = ["prefix", "api"];
 
 /// The route items a later chunk builds, with what builds them.
-const LATER_ITEMS: [(&str, &str); 3] = [
-    (
-        "authentication",
-        "Route authentication comes with sign-in (area 8, roadmap chunk 4.3)",
-    ),
+const LATER_ITEMS: [(&str, &str); 2] = [
     (
         "rate_limit",
         "A route's own `rate_limit:` comes with the rest of area 16's rate limits; every route already has the default limits",
@@ -109,6 +106,9 @@ pub enum ArgRoot {
     /// A placeholder, by name.
     Param(String),
     Input,
+    /// `current_principal`, the signed-in caller (area 8); the variant a
+    /// route selects is its [`RouteModel::caller`], left out of the path.
+    Caller,
 }
 
 /// One argument: a placeholder or the input, or a field read through them.
@@ -140,6 +140,10 @@ pub struct RouteModel {
     pub output: Option<Ty>,
     pub status: SuccessStatus,
     pub deadline_ms: u32,
+    /// Whether it needs a signed-in caller (area 8).
+    pub authentication: Authentication,
+    /// The kind of caller it passes on (`current_principal.user`).
+    pub caller: Option<PrincipalKind>,
     pub run: Run,
     /// The failures what it runs can produce, its `fails` list, in order.
     pub fails: Vec<String>,
@@ -249,8 +253,12 @@ pub fn group_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         library: None,
     };
     let mut reader = Reader {
+        db,
+        project,
         lookup: &lookup,
         names: &names,
+        caller: None,
+        authentication: Authentication::Required,
         apis: api_table(db, project),
         path: &symbol.path,
         out: Vec::new(),
@@ -287,6 +295,7 @@ pub fn groups(db: &dyn Db, project: Project) -> Arc<Groups> {
 pub fn routes_clean(db: &dyn Db, project: Project) -> bool {
     api_problems(db, project).is_empty()
         && table_problems(db, project).is_empty()
+        && signin_problems(db, project).is_empty()
         && group_names(db, project).iter().all(|name| {
             group_read(db, project, Name::new(db, name.clone()))
                 .as_ref()
@@ -411,6 +420,54 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     out
 }
 
+/// Routes that need a signed-in caller when nothing signs anyone in (area
+/// 8; area 14, question 11: `jadpo check` reports what couldn't run),
+/// reported once, at the first in file order.
+#[salsa::tracked(returns(ref))]
+pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    if crate::identity::identity(db, project).signs_in() {
+        return Vec::new();
+    }
+    let mut protected: Vec<(String, Span)> = Vec::new();
+    for name in group_names(db, project) {
+        let Some(read) = group_read(db, project, Name::new(db, name.clone())) else {
+            continue;
+        };
+        let Some(model) = &read.model else { continue };
+        for route in &model.routes {
+            if !route.authentication.needs_caller() {
+                continue;
+            }
+            if let Some((label, span)) =
+                read.spans.iter().find(|(label, _)| *label == route.label())
+            {
+                protected.push((label.clone(), span.clone()));
+            }
+        }
+    }
+    protected.sort_by(|a, b| (&a.1.path, a.1.start).cmp(&(&b.1.path, b.1.start)));
+    let Some((label, span)) = protected.first() else {
+        return Vec::new();
+    };
+    let others = protected.len() - 1;
+    let reach = match others {
+        0 => "this route".to_string(),
+        1 => "this route or the other one that needs a caller".to_string(),
+        n => format!("this route or the {n} others that need a caller"),
+    };
+    vec![
+        Diagnostic::new(
+            &rule::SEMANTIC_AUTH_NOT_SET_UP,
+            format!("`{label}` needs a signed-in caller, but nothing signs anyone in"),
+        )
+        .at(span.clone(), "needs a signed-in caller")
+        .reason(format!(
+            "Every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`, and `authentication.jadpo` declares no way to sign in that is built, so no request could reach {reach}."
+        ))
+        .next("Declare how callers sign in, `authentication { browser_session: { cookie: \"<name>\" } }`, or let anyone call the route with `authentication: RouteAuthentication.none`"),
+    ]
+}
+
 /// Whether one request could match both paths, a fixed segment beating a
 /// placeholder.
 fn overlaps(a: &[Segment], b: &[Segment]) -> bool {
@@ -436,8 +493,14 @@ fn example(segments: &[Segment]) -> String {
 // --- reading a group ---------------------------------------------------------
 
 struct Reader<'a> {
+    db: &'a dyn Db,
+    project: Project,
     lookup: &'a Lookup<'a>,
     names: &'a Names<'a>,
+    /// The route being read: the caller variant its call selects, and
+    /// whether it needs a signed-in caller.
+    caller: Option<(PrincipalKind, Span)>,
+    authentication: Authentication,
     apis: &'a Apis,
     path: &'a str,
     out: Vec<Diagnostic>,
@@ -935,6 +998,12 @@ impl Reader<'_> {
             }
         }
 
+        // `authentication:`.
+        self.caller = None;
+        self.authentication = match items.get("authentication") {
+            Some(member) => self.authentication(member)?,
+            None => Authentication::Required,
+        };
         // `input:`.
         let input = items
             .get("input")
@@ -1077,10 +1146,50 @@ impl Reader<'_> {
             output,
             status,
             deadline_ms,
+            authentication: self.authentication,
+            caller: self.caller.as_ref().map(|(kind, _)| *kind),
             run,
             fails: sig.fails.clone(),
             doc: crate::graph::text::doc(entry.syntax()),
         })
+    }
+
+    /// `authentication:`: `RouteAuthentication.none` or `.fresh` (area 8).
+    /// Anything else is refused without a guess, since one fix keeps the
+    /// route protected and the other opens it to anyone.
+    fn authentication(&mut self, member: &ast::Member) -> Option<Authentication> {
+        let value = member.value();
+        let read = value.as_ref().and_then(|value| {
+            let (first, rest) = tree::dotted(value)?;
+            let [variant] = rest.as_slice() else {
+                return None;
+            };
+            (tree::name_ref_text(&first)? == RouteAuthentication::NAME).then_some(())?;
+            RouteAuthentication::from_name(&tree::name_ref_text(variant)?)
+        });
+        match read {
+            Some(RouteAuthentication::None) => Some(Authentication::Public),
+            Some(RouteAuthentication::Fresh) => Some(Authentication::Fresh),
+            None => {
+                let written = value
+                    .as_ref()
+                    .map(|v| tree::written(v.syntax()))
+                    .unwrap_or_default();
+                let span = value
+                    .as_ref()
+                    .map_or_else(|| self.span(member), |v| self.span(v));
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::ROUTE_AUTHENTICATION_INVALID,
+                        format!("`{written}` isn't a `RouteAuthentication`"),
+                    )
+                    .at(span, "not `.none` or `.fresh`")
+                    .reason("Every route needs a signed-in caller unless it says otherwise: `RouteAuthentication.none` lets anyone call it, and `RouteAuthentication.fresh` checks the caller's record on this request. One opens the route and the other keeps it protected, so neither is guessed.")
+                    .next("Write `RouteAuthentication.fresh` to keep the route signed in, `RouteAuthentication.none` to let anyone call it, or remove `authentication:`"),
+                );
+                None
+            }
+        }
     }
 
     fn input(&mut self, method: HttpMethod, member: &ast::Member) -> Option<String> {
@@ -1479,6 +1588,145 @@ impl Reader<'_> {
         })
     }
 
+    /// `current_principal`, a kind of caller selected from it
+    /// (`current_principal.user`) or a field read through that: the
+    /// signed-in caller (area 8). Selecting a kind narrows the route: a
+    /// caller of the other kind is refused before it runs.
+    fn caller_argument(
+        &mut self,
+        expr: &Expr,
+        first: &ast::NameRef,
+        rest: &[ast::NameRef],
+        used: &mut BTreeSet<String>,
+    ) -> Option<(Arg, Ty)> {
+        let _ = expr;
+        let span = self.span(first);
+        if self.authentication == Authentication::Public {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_AUTH_PUBLIC_PRINCIPAL,
+                    "A route anyone may call passes `current_principal`",
+                )
+                .at(span, "no one is signed in here")
+                .reason("`authentication: RouteAuthentication.none` reads no credential, so the route has no caller to pass on, and nothing it runs may use one.")
+                .next("Remove `authentication: RouteAuthentication.none` so callers sign in, or stop passing `current_principal`"),
+            );
+            return None;
+        }
+        used.insert("current_principal".to_string());
+        // Read only by a route that passes its caller, so an edit to the
+        // principal reads again only those.
+        let identity = std::sync::Arc::clone(crate::identity::identity(self.db, self.project));
+        let mut names = rest.iter();
+        let Some(selected) = names.next() else {
+            return Some((
+                Arg {
+                    root: ArgRoot::Caller,
+                    path: Vec::new(),
+                },
+                Ty::Opaque(crate::identity::PRINCIPAL.to_string(), Vec::new()),
+            ));
+        };
+        let written = tree::name_ref_text(selected)?;
+        let kind =
+            PrincipalKind::from_name(&written).filter(|kind| identity.written.contains(kind));
+        let Some(kind) = kind else {
+            let reason = match PrincipalKind::from_name(&written) {
+                Some(kind) => format!(
+                    "`principal {{ }}` declares no `{}:`, so no {} ever signs in; it declares {}.",
+                    kind.name(),
+                    kind.name(),
+                    identity.kinds_line()
+                ),
+                None if crate::identity::PRINCIPAL_FIELDS.contains(&written.as_str()) => format!(
+                    "`current_principal` is either kind of caller, so a route selects one before reading its fields: `current_principal.user.{written}`."
+                ),
+                None => format!(
+                    "A route selects a kind of caller the principal declares, {}: `current_principal.user` is the signed-in user.",
+                    identity.kinds_line()
+                ),
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_AUTH_PRINCIPAL_VARIANT_UNKNOWN,
+                    format!("`current_principal.{written}` isn't a kind of caller"),
+                )
+                .at(self.span(selected), "not declared")
+                .reason(reason)
+                .next(if identity.written.contains(&PrincipalKind::User) {
+                    format!(
+                        "Write `current_principal.user` instead of `current_principal.{written}`"
+                    )
+                } else {
+                    "Select a kind of caller `principal { }` declares".to_string()
+                }),
+            );
+            return None;
+        };
+        if let Some((other, other_span)) = &self.caller
+            && *other != kind
+        {
+            let other_span = other_span.clone();
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_AUTH_PRINCIPAL_VARIANT_UNKNOWN,
+                    "A route passes both a user and a service",
+                )
+                .at(self.span(selected), "the other kind")
+                .also(other_span, "selected here")
+                .reason("A request comes from one caller, a user or a service, so a route that needs both could never run.")
+                .next("Select one kind of caller"),
+            );
+            return None;
+        }
+        self.caller = Some((kind, span));
+        let mut ty = Ty::Opaque(kind.type_name().to_string(), Vec::new());
+        let mut path = Vec::new();
+        if let Some(field) = names.next() {
+            let name = tree::name_ref_text(field)?;
+            let Some(found) = identity.field_type(kind, &name) else {
+                let listed: Vec<String> = crate::identity::PRINCIPAL_FIELDS
+                    .iter()
+                    .map(|f| format!("`{f}`"))
+                    .collect();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_UNKNOWN_FIELD,
+                        format!("`{}` has no field `{name}`", kind.type_name()),
+                    )
+                    .at(self.span(field), "not a caller's field")
+                    .reason(format!(
+                        "A caller's fields are {}; anything else is read from its entity by what the route runs.",
+                        crate::and_list(&listed)
+                    ))
+                    .next(format!("Pass `current_principal.{}` and read the rest in what the route runs", kind.name())),
+                );
+                return None;
+            };
+            ty = found;
+            path.push(name);
+            if let Some(more) = names.next() {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_FIELD_ON_NON_RECORD,
+                        format!("`{ty}` has no fields"),
+                    )
+                    .at(self.span(more), "no fields")
+                    .reason("Only objects have fields to read.")
+                    .next("Pass the value itself"),
+                );
+                return None;
+            }
+        }
+        Some((
+            Arg {
+                root: ArgRoot::Caller,
+                path,
+            },
+            ty,
+        ))
+    }
+
     fn argument_invalid(&self, expr: &Expr, what: &str) -> Diagnostic {
         Diagnostic::new(
             &rule::ROUTE_ARGUMENT_INVALID,
@@ -1514,13 +1762,7 @@ impl Reader<'_> {
         } else if let Some((_, ty)) = params.iter().find(|(name, _)| *name == root) {
             (ArgRoot::Param(root.clone()), (*ty).clone())
         } else if root == "current_principal" {
-            self.out.push(
-                Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "`current_principal` isn't built yet")
-                    .at(self.span(&first), "decided, not built")
-                    .reason("A route passes its caller as `current_principal` once sign-in is built (area 8, roadmap chunk 4.3).")
-                    .next("Leave the caller out for now"),
-            );
-            return None;
+            return self.caller_argument(expr, &first, &rest, used);
         } else {
             let mut known: Vec<&str> = params.iter().map(|(name, _)| *name).collect();
             if input.is_some() {

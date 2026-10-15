@@ -206,6 +206,48 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// What a route says about signing in (area 8, "Routes: signed in by
+    /// default"): every route needs a signed-in caller unless it says one
+    /// of these.
+    RouteAuthentication: "RouteAuthentication" {
+        /// Anyone may call it; no credential is read.
+        None: "none",
+        /// The caller's record is checked now, even with a revocation
+        /// delay.
+        Fresh: "fresh",
+    }
+}
+
+std_enum! {
+    /// The ways a caller can sign in (area 8, "Ways to sign in"), each one
+    /// named block in `authentication.jadpo`; an API lists the ones it
+    /// accepts.
+    AuthenticationMethod: "AuthenticationMethod" {
+        /// A session cookie, for the application's own pages.
+        BrowserSession: "browser_session",
+        /// A bearer token, for the application's own mobile and
+        /// command-line clients.
+        ApiToken: "api_token",
+        /// A bearer token another service issued (OpenID Connect).
+        ExternalToken: "external_token",
+        /// A service's key.
+        ServiceKey: "service_key",
+        /// A token the application issued as an OAuth provider.
+        OauthToken: "oauth_token",
+    }
+}
+
+std_enum! {
+    /// How strongly a caller proved who they are (area 8, "The principal").
+    AuthenticationStrength: "AuthenticationStrength" {
+        /// One factor: a session, a token or a key.
+        Primary: "primary",
+        /// More than one factor.
+        MultiFactor: "multi_factor",
+    }
+}
+
 impl HttpMethod {
     /// As a route entry and HTTP write it: `GET`.
     pub fn word(self) -> &'static str {
@@ -250,6 +292,18 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (SuccessStatus::NAME, SuccessStatus::NAMES.to_vec()),
         (HttpMethod::NAME, HttpMethod::NAMES.to_vec()),
         (Idempotency::NAME, Idempotency::NAMES.to_vec()),
+        (
+            RouteAuthentication::NAME,
+            RouteAuthentication::NAMES.to_vec(),
+        ),
+        (
+            AuthenticationMethod::NAME,
+            AuthenticationMethod::NAMES.to_vec(),
+        ),
+        (
+            AuthenticationStrength::NAME,
+            AuthenticationStrength::NAMES.to_vec(),
+        ),
         (ZONE, names(crate::zones::ZONES)),
         (LOCALE, names(crate::zones::LOCALES)),
     ]
@@ -272,6 +326,9 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         SuccessStatus::NAME => position(SuccessStatus::NAMES),
         HttpMethod::NAME => position(HttpMethod::NAMES),
         Idempotency::NAME => position(Idempotency::NAMES),
+        RouteAuthentication::NAME => position(RouteAuthentication::NAMES),
+        AuthenticationMethod::NAME => position(AuthenticationMethod::NAMES),
+        AuthenticationStrength::NAME => position(AuthenticationStrength::NAMES),
         ZONE => crate::zones::ZONES.iter().position(|(v, _)| *v == variant),
         LOCALE => crate::zones::LOCALES
             .iter()

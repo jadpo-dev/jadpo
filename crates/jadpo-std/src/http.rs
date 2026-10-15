@@ -14,9 +14,9 @@
 //! - [`RouteTable`] holds them all, numbered, with each declared failure's
 //!   client fields' codecs and the default rate limits (area 16).
 
-use crate::read::ReadPlan;
+use crate::read::{Column, ReadPlan};
 use crate::types::{ShapeId, ValidatorId};
-use crate::{Builtin, HttpMethod, SuccessStatus};
+use crate::{AuthenticationMethod, Builtin, HttpMethod, SuccessStatus};
 
 /// A route's deadline when it says none (area 7, "Time limits").
 pub const DEFAULT_DEADLINE_MS: u32 = 10_000;
@@ -141,6 +141,149 @@ pub enum ArgRoot {
     /// A placeholder, by its place among the path's placeholders.
     Param(u32),
     Input,
+    /// The signed-in caller, `current_principal` (area 8); a variant the
+    /// route selects is the route's [`RoutePlan::caller`].
+    Caller,
+}
+
+/// Whether a route needs a signed-in caller (area 8, "Routes: signed in
+/// by default").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Authentication {
+    /// Every route's unless it says otherwise.
+    #[default]
+    Required,
+    /// `RouteAuthentication.none`: no credential is read.
+    Public,
+    /// `RouteAuthentication.fresh`: the caller's record is read now, even
+    /// with a revocation delay.
+    Fresh,
+}
+
+impl Authentication {
+    /// Whether a caller must be signed in.
+    pub fn needs_caller(self) -> bool {
+        !matches!(self, Authentication::Public)
+    }
+}
+
+/// The two kinds of caller (area 8, "The principal").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum PrincipalKind {
+    /// A person.
+    User,
+    /// Another system.
+    Service,
+}
+
+impl PrincipalKind {
+    /// As code selects it: `current_principal.user`.
+    pub fn name(self) -> &'static str {
+        match self {
+            PrincipalKind::User => "user",
+            PrincipalKind::Service => "service",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<PrincipalKind> {
+        match name {
+            "user" => Some(PrincipalKind::User),
+            "service" => Some(PrincipalKind::Service),
+            _ => None,
+        }
+    }
+
+    /// The caller value's type name: `Principal.user`.
+    pub fn type_name(self) -> &'static str {
+        match self {
+            PrincipalKind::User => "Principal.user",
+            PrincipalKind::Service => "Principal.service",
+        }
+    }
+}
+
+/// What an action does to the request's session (area 8, "Starting and
+/// ending a session").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SessionOp {
+    /// `sessions.start(user_id)`.
+    Start,
+    /// `sessions.end()`.
+    End,
+}
+
+impl SessionOp {
+    pub fn name(self) -> &'static str {
+        match self {
+            SessionOp::Start => "start",
+            SessionOp::End => "end",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<SessionOp> {
+        match name {
+            "start" => Some(SessionOp::Start),
+            "end" => Some(SessionOp::End),
+            _ => None,
+        }
+    }
+}
+
+/// How long a browser session lasts from when it starts (area 8, chosen
+/// in chunk 4.3): 30 days, after which the caller signs in again.
+pub const SESSION_LIFETIME_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
+/// The header a browser sends its session's CSRF token back in (area 8).
+pub const CSRF_HEADER: &str = "x-jadpo-csrf";
+
+/// Who can sign in and how (area 8): the store sessions are kept in, the
+/// cookie a browser session travels in, and how each kind of caller is
+/// looked up.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IdentityPlan {
+    /// The store `jadpo_sessions` lives in: the user entity's, so a
+    /// session is read with its user's record.
+    pub store: String,
+    /// Whether anything signs a caller in; without, the plan only makes
+    /// callers from records in tests.
+    pub signs_in: bool,
+    /// The browser session's cookie, when `browser_session` is declared;
+    /// its CSRF token travels in the same name with `_csrf` after it.
+    pub cookie: Option<String>,
+    pub user: Option<PrincipalPlan>,
+    pub service: Option<PrincipalPlan>,
+}
+
+impl IdentityPlan {
+    /// The cookie the CSRF token travels in: `todo_session_csrf`.
+    pub fn csrf_cookie(&self) -> Option<String> {
+        self.cookie.as_ref().map(|cookie| format!("{cookie}_csrf"))
+    }
+
+    pub fn principal(&self, kind: PrincipalKind) -> Option<&PrincipalPlan> {
+        match kind {
+            PrincipalKind::User => self.user.as_ref(),
+            PrincipalKind::Service => self.service.as_ref(),
+        }
+    }
+}
+
+/// How one kind of caller is looked up (area 8, "The principal").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrincipalPlan {
+    /// The entity it is: `User`.
+    pub entity: String,
+    /// The field `subject:` names, which a caller made from a record in a
+    /// test reads (`Principal.user(user)`).
+    pub subject: String,
+    /// How the subject's column reads back.
+    pub column: Column,
+    /// A session's lookup, `$1` its verifier and `$2` the time now: one
+    /// row of the session's id, its CSRF token's verifier, the record's
+    /// `id` and subject, and whether its `active:` holds, or none when no
+    /// live session or visible record has it. `None` when nothing signs
+    /// this kind of caller in.
+    pub session: Option<String>,
 }
 
 /// One argument: a placeholder or the input, or a field read through them.
@@ -172,6 +315,11 @@ pub struct RoutePlan {
     /// a repeat can run again without changing anything.
     pub keys: Option<String>,
     pub args: Vec<Arg>,
+    /// Whether it needs a signed-in caller (area 8).
+    pub authentication: Authentication,
+    /// The kind of caller its call selects (`current_principal.user`): a
+    /// caller of the other kind is refused before it runs.
+    pub caller: Option<PrincipalKind>,
     /// Where it is written, for logs and `jadpo dev`.
     pub file: String,
     pub line: u32,
@@ -212,6 +360,9 @@ pub struct ApiPlan {
     /// Whether its writes need an `Idempotency-Key`
     /// (`idempotency: Idempotency.required`).
     pub idempotency: crate::Idempotency,
+    /// The sign-in methods it accepts (area 8): its `authentication:`, or
+    /// every declared one.
+    pub methods: Vec<AuthenticationMethod>,
 }
 
 /// A declared failure's client fields as they reach a client (area 4):
@@ -258,6 +409,8 @@ pub struct RouteTable {
     /// The PostgreSQL stores the application's entities live in, in name
     /// order: what `GET /health/ready` checks.
     pub stores: Vec<String>,
+    /// Who can sign in and how; `None` when nothing is declared.
+    pub identity: Option<IdentityPlan>,
 }
 
 impl RouteTable {

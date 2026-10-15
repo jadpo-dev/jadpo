@@ -31,6 +31,7 @@ pub(crate) fn table(
 ) -> RouteTable {
     let groups = routes::groups(db, project);
     let apis = routes::api_table(db, project);
+    let identity = jadpo_check::identity::identity(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
     let mut codecs = Codecs {
         types,
@@ -45,6 +46,16 @@ pub(crate) fn table(
                 name: api.name.clone(),
                 prefix: api.prefix.clone(),
                 idempotency: api.idempotency,
+                // An API that names none accepts every declared method.
+                methods: if api.methods.is_empty() {
+                    identity
+                        .methods
+                        .iter()
+                        .map(|method| method.method)
+                        .collect()
+                } else {
+                    api.methods.clone()
+                },
             })
             .collect(),
         ..RouteTable::default()
@@ -140,6 +151,7 @@ pub(crate) fn table(
                     ArgRoot::Param(name) => jadpo_std::http::ArgRoot::Param(
                         params.iter().position(|p| p == name).unwrap_or(0) as u32,
                     ),
+                    ArgRoot::Caller => jadpo_std::http::ArgRoot::Caller,
                 },
                 path: arg.path.clone(),
             })
@@ -197,6 +209,8 @@ pub(crate) fn table(
             run,
             keys,
             args,
+            authentication: route.authentication,
+            caller: route.caller,
             file: group.path.clone(),
             line,
         });

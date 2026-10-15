@@ -99,6 +99,8 @@ macro_rules! rules {
 }
 
 rules! {
+    API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
+        "07-http.html#api-authentication-invalid", "API authentication is not a list of declared sign-in methods";
     API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
         "07-http.html#api-idempotency-invalid", "API idempotency is not an Idempotency";
     API_PREFIX_OVERLAP: "api.prefix_overlap", area 7, Error, Agent,
@@ -409,6 +411,8 @@ rules! {
         "07-http.html#route-api-unknown", "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
         "07-http.html#route-argument-invalid", "Route passes something other than a placeholder, the input or their fields";
+    ROUTE_AUTHENTICATION_INVALID: "route.authentication_invalid", area 7, Error, Human,
+        "07-http.html#route-authentication-invalid", "Route authentication is not RouteAuthentication.none or .fresh";
     ROUTE_BINDING_UNUSED: "route.binding_unused", area 7, Error, Agent,
         "07-http.html#route-binding-unused", "Route reads a placeholder or input it never passes on";
     ROUTE_DEADLINE_INVALID: "route.deadline_invalid", area 7, Error, Agent,
@@ -455,20 +459,50 @@ rules! {
         "07-http.html#route-run-required", "Route does not say what it runs";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
         "07-http.html#route-status-invalid", "Route status is not a `SuccessStatus`";
+    SEMANTIC_AUTH_METHOD_DUPLICATE: "semantic.auth_method_duplicate", area 8, Error, Agent,
+        "08-identity.html#semantic-auth-method-duplicate", "Sign-in method is declared twice";
+    SEMANTIC_AUTH_METHOD_UNKNOWN: "semantic.auth_method_unknown", area 8, Error, Agent,
+        "08-identity.html#semantic-auth-method-unknown", "Sign-in method is not one the language has";
+    SEMANTIC_AUTH_NOT_SET_UP: "semantic.auth_not_set_up", area 8, Error, Human,
+        "08-identity.html#semantic-auth-not-set-up", "Routes need a signed-in caller, but nothing signs anyone in";
+    SEMANTIC_AUTH_PRINCIPAL_REQUIRED: "semantic.auth_principal_required", area 8, Error, Agent,
+        "08-identity.html#semantic-auth-principal-required", "Sign-in method has no principal variant to sign in";
+    SEMANTIC_AUTH_SETTING_INVALID: "semantic.auth_setting_invalid", area 8, Error, Agent,
+        "08-identity.html#semantic-auth-setting-invalid", "Sign-in setting has a value it can't take";
+    SEMANTIC_AUTH_SETTING_REQUIRED: "semantic.auth_setting_required", area 8, Error, Agent,
+        "08-identity.html#semantic-auth-setting-required", "Sign-in method is missing a setting it needs";
+    SEMANTIC_AUTH_SETTING_UNKNOWN: "semantic.auth_setting_unknown", area 8, Error, Agent,
+        "08-identity.html#semantic-auth-setting-unknown", "Sign-in setting is not one the method takes";
     SEMANTIC_DUPLICATE_DECLARATION: "semantic.duplicate_declaration", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-duplicate-declaration", "Name is declared more than once";
     SEMANTIC_MISSING_RETURN: "semantic.missing_return", area 3, Error, Agent,
         "03-logic.html#semantic-missing-return", "Callable can end without returning its result";
+    SEMANTIC_MULTIPLE_APPLICATIONS: "semantic.multiple_applications", area 8, Error, Agent,
+        "08-identity.html#semantic-multiple-applications", "Project declares more than one application";
+    SEMANTIC_MULTIPLE_AUTHENTICATION: "semantic.multiple_authentication", area 8, Error, Agent,
+        "08-identity.html#semantic-multiple-authentication", "Project declares more than one authentication block";
+    SEMANTIC_MULTIPLE_PRINCIPALS: "semantic.multiple_principals", area 8, Error, Agent,
+        "08-identity.html#semantic-multiple-principals", "Project declares more than one principal";
     SEMANTIC_NAME_CASE: "semantic.name_case", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-name-case", "Name has the wrong case for its kind";
     SEMANTIC_NOT_CALLABLE: "semantic.not_callable", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-not-callable", "Name cannot be called";
     SEMANTIC_OWN_DOMAIN_QUALIFICATION: "semantic.own_domain_qualification", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-own-domain-qualification", "Own-domain call is qualified";
+    SEMANTIC_PRINCIPAL_VARIANT_DUPLICATE: "semantic.principal_variant_duplicate", area 8, Error, Agent,
+        "08-identity.html#semantic-principal-variant-duplicate", "Principal declares a variant twice";
+    SEMANTIC_PRINCIPAL_VARIANT_INVALID: "semantic.principal_variant_invalid", area 8, Error, Agent,
+        "08-identity.html#semantic-principal-variant-invalid", "Principal variant is not a subject and an optional active condition";
+    SEMANTIC_PRINCIPAL_VARIANT_REQUIRED: "semantic.principal_variant_required", area 8, Error, Agent,
+        "08-identity.html#semantic-principal-variant-required", "Principal declares neither a user nor a service";
+    SEMANTIC_PRINCIPAL_VARIANT_UNKNOWN: "semantic.principal_variant_unknown", area 8, Error, Agent,
+        "08-identity.html#semantic-principal-variant-unknown", "Principal variant is not user or service";
     SEMANTIC_REQUEST_INVALID: "semantic.request_invalid", area 13, Error, Agent,
         "13-testing.html#semantic-request-invalid", "Route test request doesn't fit its route";
     SEMANTIC_REQUEST_ROUTE_UNKNOWN: "semantic.request_route_unknown", area 13, Error, Agent,
         "13-testing.html#semantic-request-route-unknown", "No route answers a route test's request";
+    SEMANTIC_REVOCATION_DELAY_INVALID: "semantic.revocation_delay_invalid", area 8, Error, Agent,
+        "08-identity.html#semantic-revocation-delay-invalid", "Revocation delay is not a positive duration";
     SEMANTIC_STANDARD_NAMESPACE_RESERVED: "semantic.standard_namespace_reserved", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-standard-namespace-reserved", "Name belongs to a standard-library namespace";
     SEMANTIC_STANDARD_OPERATION_QUALIFICATION: "semantic.standard_operation_qualification", area 1, Error, Agent,
@@ -617,6 +651,20 @@ rules! {
         "03-logic.html#type-assign-immutable", "Value that never changes is assigned";
     TYPE_ASSIGN_UNKNOWN: "type.assign_unknown", area 3, Error, Agent,
         "03-logic.html#type-assign-unknown", "Assignment target is not declared";
+    TYPE_AUTH_PRINCIPAL_CONSTRUCTION: "type.auth_principal_construction", area 8, Error, Agent,
+        "08-identity.html#type-auth-principal-construction", "Caller is made from a record outside tests, fixtures and seeds";
+    TYPE_AUTH_PRINCIPAL_FAILURE_CONTEXT: "type.auth_principal_failure_context", area 8, Error, Agent,
+        "08-identity.html#type-auth-principal-failure-context", "Failure field holds a caller";
+    TYPE_AUTH_PRINCIPAL_INPUT: "type.auth_principal_input", area 8, Error, Agent,
+        "08-identity.html#type-auth-principal-input", "Input field holds a caller";
+    TYPE_AUTH_PRINCIPAL_OUTPUT: "type.auth_principal_output", area 8, Error, Agent,
+        "08-identity.html#type-auth-principal-output", "Output field holds a caller";
+    TYPE_AUTH_PRINCIPAL_VARIANT_UNKNOWN: "type.auth_principal_variant_unknown", area 8, Error, Agent,
+        "08-identity.html#type-auth-principal-variant-unknown", "Caller variant is not one the principal declares";
+    TYPE_AUTH_PUBLIC_PRINCIPAL: "type.auth_public_principal", area 8, Error, Human,
+        "08-identity.html#type-auth-public-principal", "Public route passes a caller it never reads";
+    TYPE_AUTH_SESSIONS_CONTEXT: "type.auth_sessions_context", area 8, Error, Agent,
+        "08-identity.html#type-auth-sessions-context", "Session started or ended outside an action";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
         "02-values-and-types.html#type-base-outside-declaration", "Base is used outside a type declaration";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
@@ -711,6 +759,12 @@ rules! {
         "03-logic.html#type-ordering-operand", "Values cannot be ordered";
     TYPE_PRIMITIVE_SIGNATURE: "type.primitive_signature", area 2, Error, Agent,
         "02-values-and-types.html#type-primitive-signature", "Signature uses a built-in type directly";
+    TYPE_PRINCIPAL_ACTIVE_INVALID: "type.principal_active_invalid", area 8, Error, Agent,
+        "08-identity.html#type-principal-active-invalid", "Principal's active condition is not a test of the record's own fields";
+    TYPE_PRINCIPAL_SUBJECT_INVALID: "type.principal_subject_invalid", area 8, Error, Agent,
+        "08-identity.html#type-principal-subject-invalid", "Principal's subject is not a field of a stored entity";
+    TYPE_PRINCIPAL_SUBJECT_NOT_UNIQUE: "type.principal_subject_not_unique", area 8, Error, Agent,
+        "08-identity.html#type-principal-subject-not-unique", "Principal's subject field is not unique";
     TYPE_REDUNDANT_NULLABILITY: "type.redundant_nullability", area 2, Error, Agent,
         "02-values-and-types.html#type-redundant-nullability", "Type is already nullable";
     TYPE_RESERVED_FIELD_NAME: "type.reserved_field_name", area 2, Error, Agent,

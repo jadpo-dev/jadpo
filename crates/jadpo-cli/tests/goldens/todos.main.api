@@ -3,16 +3,19 @@
 version: 1
 
 GET /todos
+    authentication: none
     input: ListTodos (query)
     output: List<TodoView>
     status: 200
 
 POST /todos
+    authentication: none
     input: CreateTodo (body)
     output: TodoView
     status: 201
 
 GET /todos/{todo_id: Uuid}
+    authentication: none
     output: TodoView
     status: 200
     fails: todo_not_found 404

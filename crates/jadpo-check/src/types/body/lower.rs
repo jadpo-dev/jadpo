@@ -291,7 +291,11 @@ impl Lower<'_> {
             typed::Node::Stmt(TypedStmt::Emit { .. }) => true,
             typed::Node::Expr(typed::Expr::Call { callee, .. }) => matches!(
                 callee,
-                Callee::Action(_) | Callee::Fixture(_) | Callee::Query(_) | Callee::Entity { .. }
+                Callee::Action(_)
+                    | Callee::Fixture(_)
+                    | Callee::Query(_)
+                    | Callee::Entity { .. }
+                    | Callee::Session(_)
             ),
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
@@ -700,6 +704,8 @@ impl Lower<'_> {
                 },
                 None => Callee::Unknown,
             },
+            Reach::Caller(kind) => Callee::Caller(*kind),
+            Reach::Session(op) => Callee::Session(*op),
             Reach::Unknown => Callee::Unknown,
         };
         if let Some(head) = call.expr() {
@@ -772,7 +778,10 @@ impl Lower<'_> {
                 }
                 self.node(last.syntax(), callee.key().cloned(), false);
             }
-            Reach::Std(_) => {}
+            Reach::Std(_) | Reach::Session(_) => {}
+            Reach::Caller(_) => {
+                self.scan(head.syntax());
+            }
             Reach::Unknown => {
                 if self.facts.reads.contains_key(&node_key(first.syntax())) {
                     self.read(&first);
@@ -888,6 +897,9 @@ impl Lower<'_> {
         let input = value("input")
             .and_then(|member| member.value())
             .map(|expr| self.expr(&expr));
+        let caller = value("as")
+            .and_then(|member| member.value())
+            .map(|expr| self.expr(&expr));
         if let Some(method) = value("method").and_then(|member| member.value()) {
             self.scan(method.syntax());
         }
@@ -895,6 +907,7 @@ impl Lower<'_> {
             route: fact.route.clone(),
             params,
             input,
+            caller,
         }
     }
 

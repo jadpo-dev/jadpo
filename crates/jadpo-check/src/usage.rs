@@ -95,7 +95,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 Callee::Construct(ty) => {
                     found.names.extend(ty.keys().into_iter().map(host_of));
                 }
-                Callee::Std(_) | Callee::Unknown => {}
+                Callee::Std(_) | Callee::Caller(_) | Callee::Session(_) | Callee::Unknown => {}
             }
         }
         for site in &body.sites {

@@ -189,9 +189,12 @@ impl Decoder<'_> {
                 Callee::Entity { entity, operation } => {
                     Decoded::Written(format!("{}.{operation}", self.types.name(entity)))
                 }
-                Callee::Std(_) | Callee::Object(_) | Callee::Variant(_) | Callee::Unknown => {
-                    Decoded::Nothing
-                }
+                Callee::Std(_)
+                | Callee::Object(_)
+                | Callee::Variant(_)
+                | Callee::Caller(_)
+                | Callee::Session(_)
+                | Callee::Unknown => Decoded::Nothing,
             },
             Node::Expr(Expr::Build {
                 callee: Callee::Object(key) | Callee::Variant(key),
