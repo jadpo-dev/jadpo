@@ -1989,6 +1989,35 @@ error: APIs `main` and `partners` share the prefix `/v1`
 check failed: 1 error, 1 file
 ```
 
+### `api.idempotency_invalid`
+
+An API that refuses writes without an `Idempotency-Key` says so with an `Idempotency`:
+
+```jadpo check project=e-api-idempotency file=app.jadpo expect=api.idempotency_invalid
+application {
+    apis: {
+        main: {
+            prefix: /v1
+            idempotency: true
+        }
+    }
+}
+```
+
+```text output
+error: `true` isn't an `Idempotency`
+ --> app.jadpo:5:26
+  |
+5 |             idempotency: true
+  |                          ^^^^ not an `Idempotency`
+  reason: `idempotency:` takes `Idempotency.required`, so a write without an `Idempotency-Key` header is refused, or `Idempotency.optional`, the default, where a client may send one.
+  next: Write `Idempotency.required`, or leave `idempotency:` out (agent)
+  rule: api.idempotency_invalid
+  help: docs/language/07-http.html#api-idempotency-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `api.setting_unknown`
 
 ```jadpo check project=e-api-setting file=app.jadpo expect=api.setting_unknown
@@ -2008,7 +2037,7 @@ error: `version` isn't an API setting
   |
 5 |             version: 2
   |             ^^^^^^^ unknown setting
-  reason: An API in `apis:` holds its `prefix:`, and later its `authentication:`, `idempotency:` and `rate_limit:`.
+  reason: An API in `apis:` holds its `prefix:` and `idempotency:`, and later its `authentication:` and `rate_limit:`.
   next: Remove `version` (agent)
   rule: api.setting_unknown
   help: docs/language/07-http.html#api-setting-unknown

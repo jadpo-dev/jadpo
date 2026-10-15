@@ -1,13 +1,15 @@
 //! The APIs an application declares (area 7, "APIs and versions"): an
 //! `apis: { }` block in `application { }`, each API with its prefix. With
 //! nothing declared there is one API, `main`, at `/`. Each API has its own
-//! OpenAPI document and record; its authentication, idempotency and rate
-//! limits come with their chunks.
+//! OpenAPI document and record, and may require an `Idempotency-Key` on its
+//! writes (`idempotency: Idempotency.required`); its authentication and
+//! rate limits come with their chunks.
 
 use std::collections::BTreeMap;
 
 use jadpo_db::{Db, Project};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
+use jadpo_std::Idempotency;
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr};
 
 use crate::tree::{self, node_span};
@@ -24,6 +26,8 @@ pub struct Api {
     pub name: String,
     /// Its prefix's segments; empty for `/`.
     pub prefix: Vec<String>,
+    /// Whether its writes need an `Idempotency-Key`.
+    pub idempotency: Idempotency,
 }
 
 impl Api {
@@ -81,7 +85,7 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
                         continue;
                     };
                     let span = node_span(path, name.syntax());
-                    if let Some(prefix) =
+                    if let Some((prefix, idempotency)) =
                         read_api(path, &api, span, entry.block(), &mut out.problems)
                     {
                         let overlap = declared
@@ -91,6 +95,7 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
                         let made = Api {
                             name: api.clone(),
                             prefix,
+                            idempotency,
                         };
                         if let Some(other) = overlap {
                             out.problems.push(
@@ -115,6 +120,7 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
         vec![Api {
             name: MAIN.to_string(),
             prefix: Vec::new(),
+            idempotency: Idempotency::Optional,
         }]
     };
     out
@@ -131,8 +137,9 @@ fn read_api(
     span: Span,
     list: Option<ast::MemberList>,
     out: &mut Vec<Diagnostic>,
-) -> Option<Vec<String>> {
+) -> Option<(Vec<String>, Idempotency)> {
     let mut prefix = None;
+    let mut idempotency = Idempotency::Optional;
     for (key, member) in tree::members(list) {
         let Some(setting) = tree::name_text(&key) else {
             continue;
@@ -164,7 +171,25 @@ fn read_api(
                     return None;
                 }
             },
-            "authentication" | "idempotency" | "rate_limit" => out.push(
+            "idempotency" => match read_idempotency(member.value().as_ref()) {
+                Ok(read) => idempotency = read,
+                Err(written) => {
+                    let span = member
+                        .value()
+                        .map_or_else(|| key_span.clone(), |value| node_span(path, value.syntax()));
+                    out.push(
+                        Diagnostic::new(
+                            &rule::API_IDEMPOTENCY_INVALID,
+                            format!("`{written}` isn't an `Idempotency`"),
+                        )
+                        .at(span.clone(), "not an `Idempotency`")
+                        .reason("`idempotency:` takes `Idempotency.required`, so a write without an `Idempotency-Key` header is refused, or `Idempotency.optional`, the default, where a client may send one.")
+                        .next("Write `Idempotency.required`, or leave `idempotency:` out")
+                        .edit(span, "Idempotency.required"),
+                    );
+                }
+            },
+            "authentication" | "rate_limit" => out.push(
                 Diagnostic::new(
                     &rule::TOOLCHAIN_NOT_BUILT_YET,
                     format!("An API's `{setting}:` isn't built yet"),
@@ -172,7 +197,6 @@ fn read_api(
                 .at(key_span, "decided, not built")
                 .reason(match setting.as_str() {
                     "authentication" => "An API's authentication methods come with sign-in (area 8, roadmap chunk 4.3).",
-                    "idempotency" => "Requiring `Idempotency-Key` comes with request guarantees (area 7, roadmap chunk 4.2).",
                     _ => "An API's own `rate_limit:` comes with the rest of area 16's rate limits; every API already has the default limits.",
                 })
                 .next(format!("Leave `{setting}:` out for now")),
@@ -185,7 +209,7 @@ fn read_api(
                 )
                 .at(key_span.clone(), "unknown setting")
                 .reason(format!(
-                    "An API in `apis:` holds its `prefix:`, and later its `authentication:`, `idempotency:` and `rate_limit:`.{}",
+                    "An API in `apis:` holds its `prefix:` and `idempotency:`, and later its `authentication:` and `rate_limit:`.{}",
                     near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
                 ));
                 problem = match near {
@@ -206,5 +230,21 @@ fn read_api(
                 .next(format!("Add `prefix: /{api}` to `{api}`")),
         );
     }
-    prefix
+    prefix.map(|prefix| (prefix, idempotency))
+}
+
+/// An `idempotency:` value: `Idempotency.required` or `.optional`, or
+/// what was written instead.
+fn read_idempotency(value: Option<&Expr>) -> Result<Idempotency, String> {
+    let written = || value.map(|v| tree::written(v.syntax())).unwrap_or_default();
+    let (first, rest) = value.and_then(tree::dotted).ok_or_else(written)?;
+    let [variant] = rest.as_slice() else {
+        return Err(written());
+    };
+    if tree::name_ref_text(&first).as_deref() != Some(Idempotency::NAME) {
+        return Err(written());
+    }
+    tree::name_ref_text(variant)
+        .and_then(|name| Idempotency::from_name(&name))
+        .ok_or_else(written)
 }

@@ -9,19 +9,38 @@
 //!
 //! The runtime answers `HEAD` (as `GET`, without the body) and `OPTIONS`
 //! (with `Allow`) itself, and every route has the default rate limits
-//! ([`crate::RateLimits`]). Deadlines, body limits, idempotency and health
-//! come with chunk 4.2, sign-in with 4.3 and policy with 4.4.
+//! ([`crate::RateLimits`]). Its request guarantees (chunk 4.2):
+//!
+//! - a body over 1 MB is refused with 413 `request_too_large`;
+//! - every route has a deadline: when it passes, whatever is running is
+//!   dropped, its transaction with it, so nothing commits, and the answer
+//!   is 504 `deadline_exceeded`. An action's commit happens after its body,
+//!   outside the deadline ([`crate::Ctx::hold`]), so a request that
+//!   committed is never answered 504;
+//! - `GET /health/live` and `GET /health/ready` ([`health`]);
+//! - `Idempotency-Key` on every route but a `GET` ([`idempotency`]).
+//!
+//! Sign-in comes with 4.3 and policy with 4.4.
 
+#[cfg(test)]
+mod guarantees;
+mod health;
+pub mod idempotency;
+
+use std::cell::Cell;
 use std::collections::BTreeMap;
 
-use jadpo_std::HttpMethod;
+pub use jadpo_std::http::BODY_LIMIT;
 use jadpo_std::http::{ArgRoot, Codec, CodecId, RoutePlan, RouteTable, Run, Segment};
 use jadpo_std::types::FailurePlan;
+use jadpo_std::{HttpMethod, Idempotency};
 use jadpo_value::Value;
 use jadpo_value::json::{Codecs, Path, Problem, write_string};
 
+use crate::race::{First, race};
 use crate::ratelimit::{Allowed, RateLimits};
 use crate::{Ctx, Executor, Failure, Frame, Outcome, StoreOp, Stored};
+use idempotency::{Claim, Guard};
 
 /// A request, as a host hands it over.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -36,6 +55,9 @@ pub struct Request {
     /// The client's address, which rate limits count by when no one is
     /// signed in.
     pub address: Option<String>,
+    /// The host stopped reading the body once it passed [`BODY_LIMIT`]:
+    /// `body` holds what it read, and the request is refused with 413.
+    pub too_large: bool,
 }
 
 impl Request {
@@ -90,12 +112,47 @@ const INVALID_REQUEST: (u16, &str, &str) = (400, "invalid_request", "Request cou
 const INVALID_INPUT: (u16, &str, &str) = (422, "invalid_input", "Request input is invalid.");
 const ROUTE_NOT_FOUND: (u16, &str, &str) =
     (404, "route_not_found", "No route matches this request.");
-const METHOD_NOT_ALLOWED: (u16, &str, &str) = (
+pub(crate) const METHOD_NOT_ALLOWED: (u16, &str, &str) = (
     405,
     "method_not_allowed",
     "This path doesn't answer this method.",
 );
 const RATE_LIMITED: (u16, &str, &str) = (429, "rate_limited", "Too many requests.");
+const REQUEST_TOO_LARGE: (u16, &str, &str) = (
+    413,
+    "request_too_large",
+    "The request body is larger than 1 MB.",
+);
+const DEADLINE_EXCEEDED: (u16, &str, &str) = (
+    504,
+    "deadline_exceeded",
+    "The request ran out of time, and nothing it did was kept.",
+);
+const KEY_REQUIRED: (u16, &str, &str) = (
+    400,
+    "invalid_request",
+    "This request needs an Idempotency-Key header.",
+);
+const KEY_INVALID: (u16, &str, &str) = (
+    400,
+    "invalid_request",
+    "An Idempotency-Key is 1 to 255 visible ASCII characters.",
+);
+const KEY_REUSED: (u16, &str, &str) = (
+    422,
+    "idempotency_key_reused",
+    "This Idempotency-Key was already used with a different request.",
+);
+const KEY_IN_FLIGHT: (u16, &str, &str) = (
+    409,
+    "conflict",
+    "A request with this Idempotency-Key is still running.",
+);
+const UNAVAILABLE: (u16, &str, &str) = (
+    503,
+    "unavailable",
+    "A dependency is temporarily unavailable.",
+);
 const INTERNAL_FAULT: (u16, &str, &str) = (
     500,
     "internal_fault",
@@ -167,6 +224,12 @@ async fn respond(
     request_id: &str,
     limits: Option<&RateLimits>,
 ) -> Response {
+    let segments = split_path(&request.path);
+    if let Some(segments) = &segments
+        && let Some(response) = health::answer(app.table, ctx, request, request_id, segments).await
+    {
+        return response;
+    }
     if let Some(limits) = limits {
         let key = format!(
             "address {}",
@@ -180,9 +243,12 @@ async fn respond(
             return response;
         }
     }
-    let Some(segments) = split_path(&request.path) else {
+    let Some(segments) = segments else {
         return runtime_failure(INVALID_REQUEST, request_id, None);
     };
+    if request.too_large || request.body.len() > BODY_LIMIT {
+        return runtime_failure(REQUEST_TOO_LARGE, request_id, None);
+    }
     let matching: Vec<&RoutePlan> = app
         .table
         .routes
@@ -307,6 +373,9 @@ async fn run_route(
     route: &RoutePlan,
     segments: &[String],
 ) -> Response {
+    // The deadline counts from here; the timer is made at once.
+    let host = ctx.host();
+    let deadline = host.sleep(u64::from(route.deadline_ms));
     let codecs = &app.codecs;
     let mut problems: Vec<Problem> = Vec::new();
     // Placeholders, each decoded once and checked.
@@ -401,22 +470,119 @@ async fn run_route(
         }
         args.push(value);
     }
-    let outcome = match &route.run {
-        Run::Action(callable) => executor.run(ctx, *callable, args).await,
-        Run::Query(plan) => {
-            match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY).await {
-                Stored::Value(value) => Outcome::Value(value),
-                Stored::Failed(failure) => Outcome::Failed(failure),
-                Stored::Conflict { cause, .. } => Outcome::Failed(cause),
-                Stored::Fault(fault) => Outcome::Fault(fault),
+    // The key, on every route but a `GET`.
+    let mut guard = None;
+    if route.method != HttpMethod::Get {
+        let key = match idempotency::key(request) {
+            Ok(key) => key,
+            Err(()) => return runtime_failure(KEY_INVALID, request_id, None),
+        };
+        let required = app
+            .table
+            .apis
+            .get(route.api as usize)
+            .is_some_and(|api| api.idempotency == Idempotency::Required);
+        if key.is_none() && required {
+            return runtime_failure(KEY_REQUIRED, request_id, None);
+        }
+        if let (Some(key), Some(store)) = (key, &route.keys) {
+            guard = Some(Guard {
+                store: store.clone(),
+                scope: idempotency::ANONYMOUS.to_string(),
+                key,
+                digest: idempotency::digest(request, route),
+                at: ctx.now(),
+            });
+        }
+    }
+    let claimed = Cell::new(false);
+    let work = async {
+        if let Some(guard) = &guard {
+            match idempotency::claim(ctx, guard, route.deadline_ms).await {
+                Claim::Claimed => claimed.set(true),
+                Claim::Replay(response) => return Err(response),
+                Claim::Reused => return Err(runtime_failure(KEY_REUSED, request_id, None)),
+                Claim::InFlight => return Err(runtime_failure(KEY_IN_FLIGHT, request_id, None)),
+                Claim::Unavailable => return Err(runtime_failure(UNAVAILABLE, request_id, None)),
             }
         }
+        Ok(match &route.run {
+            Run::Action(callable) => {
+                // Its commit waits until the deadline can't interrupt it.
+                ctx.hold();
+                executor.run(ctx, *callable, args).await
+            }
+            Run::Query(plan) => {
+                match crate::store(ctx, StoreOp::Read(plan), app.failures, &args, Frame::ENTRY)
+                    .await
+                {
+                    Stored::Value(value) => Outcome::Value(value),
+                    Stored::Failed(failure) => Outcome::Failed(failure),
+                    Stored::Conflict { cause, .. } => Outcome::Failed(cause),
+                    Stored::Fault(fault) => Outcome::Fault(fault),
+                }
+            }
+        })
     };
+    let outcome = match race(work, deadline).await {
+        First::Left(Ok(outcome)) => outcome,
+        First::Left(Err(response)) => return response,
+        First::Right(()) => {
+            // Whatever was running is dropped, its transaction with it.
+            ctx.abandon();
+            if claimed.get()
+                && let Some(guard) = &guard
+            {
+                idempotency::release(ctx, guard).await;
+            }
+            return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
+        }
+    };
+    let held = ctx.take_held();
+    // Successes and the failures the action returns are kept for a
+    // repeat; `unavailable` and faults are not, so a retry runs again.
+    let storable = match &outcome {
+        Outcome::Value(_) => true,
+        Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
+        Outcome::Fault(_) | Outcome::Assertion(_) => false,
+    };
+    let response = answer(app, route, request_id, outcome);
+    let guard = guard.filter(|_| claimed.get());
+    let keep = guard.as_ref().filter(|_| storable);
+    let params = keep.map(|guard| idempotency::store_params(guard, &response));
+    let then = match (keep, &params) {
+        (Some(guard), Some(params)) => {
+            Some((guard.store.as_str(), idempotency::STORE, params.as_slice()))
+        }
+        _ => None,
+    };
+    let committed = match held {
+        Some(held) => crate::commit_held(ctx, held, then).await,
+        None if then.is_some() => crate::commit_held(ctx, crate::Held::default(), then).await,
+        None => Ok(()),
+    };
+    if committed.is_err() {
+        if let Some(guard) = &guard {
+            idempotency::release(ctx, guard).await;
+        }
+        return runtime_failure(UNAVAILABLE, request_id, None);
+    }
+    if keep.is_none()
+        && let Some(guard) = &guard
+    {
+        idempotency::release(ctx, guard).await;
+    }
+    response
+}
+
+/// The response `outcome` gives: the output with the route's status, or
+/// the failure envelope.
+fn answer(app: &App<'_>, route: &RoutePlan, request_id: &str, outcome: Outcome) -> Response {
     match outcome {
         Outcome::Value(value) => match route.output {
             Some(codec) => {
                 let mut body = String::new();
-                codecs.write(codec, &value, &mut body);
+                app.codecs.write(codec, &value, &mut body);
                 Response {
                     status: route.status.code(),
                     headers: vec![("content-type".to_string(), "application/json".to_string())],

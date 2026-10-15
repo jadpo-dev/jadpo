@@ -194,6 +194,18 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// Whether an API's writes need an `Idempotency-Key` (area 7, question
+    /// 17): every route but a `GET` honours one a client sends; an API
+    /// that says `Idempotency.required` refuses a write without one.
+    Idempotency: "Idempotency" {
+        /// A client may send the key; the default.
+        Optional: "optional",
+        /// A write without the key is refused.
+        Required: "required",
+    }
+}
+
 impl HttpMethod {
     /// As a route entry and HTTP write it: `GET`.
     pub fn word(self) -> &'static str {
@@ -237,6 +249,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (Driver::NAME, Driver::NAMES.to_vec()),
         (SuccessStatus::NAME, SuccessStatus::NAMES.to_vec()),
         (HttpMethod::NAME, HttpMethod::NAMES.to_vec()),
+        (Idempotency::NAME, Idempotency::NAMES.to_vec()),
         (ZONE, names(crate::zones::ZONES)),
         (LOCALE, names(crate::zones::LOCALES)),
     ]
@@ -258,6 +271,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         Driver::NAME => position(Driver::NAMES),
         SuccessStatus::NAME => position(SuccessStatus::NAMES),
         HttpMethod::NAME => position(HttpMethod::NAMES),
+        Idempotency::NAME => position(Idempotency::NAMES),
         ZONE => crate::zones::ZONES.iter().position(|(v, _)| *v == variant),
         LOCALE => crate::zones::LOCALES
             .iter()

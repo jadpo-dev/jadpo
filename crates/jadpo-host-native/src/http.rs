@@ -24,7 +24,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use jadpo_runtime::LocalFuture;
-use jadpo_runtime::http::{Request, Response};
+use jadpo_runtime::http::{BODY_LIMIT, Request, Response};
 
 use crate::Runtime;
 
@@ -161,10 +161,31 @@ fn worker(
     });
 }
 
-/// A hyper request as the runtime's, its body read whole.
+/// A hyper request as the runtime's, its body read whole, or only until
+/// it passes the runtime's limit (area 7, question 5), which the runtime
+/// answers with 413, so a larger body is never held.
 async fn read(request: hyper::Request<Incoming>, peer: Option<SocketAddr>) -> Option<Request> {
-    let (parts, body) = request.into_parts();
-    let body = body.collect().await.ok()?.to_bytes();
+    let (parts, mut body) = request.into_parts();
+    let mut bytes = Vec::new();
+    let mut too_large = false;
+    let declared = parts
+        .headers
+        .get(hyper::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok());
+    if declared.is_some_and(|length| length > BODY_LIMIT) {
+        too_large = true;
+    } else {
+        while let Some(frame) = body.frame().await {
+            if let Ok(data) = frame.ok()?.into_data() {
+                bytes.extend_from_slice(&data);
+                if bytes.len() > BODY_LIMIT {
+                    too_large = true;
+                    break;
+                }
+            }
+        }
+    }
     let headers = parts
         .headers
         .iter()
@@ -177,8 +198,9 @@ async fn read(request: hyper::Request<Incoming>, peer: Option<SocketAddr>) -> Op
         path: parts.uri.path().to_string(),
         query: parts.uri.query().map(str::to_string),
         headers,
-        body: body.to_vec(),
+        body: bytes,
         address: peer.map(|peer| peer.ip().to_string()),
+        too_large,
     })
 }
 

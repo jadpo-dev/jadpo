@@ -341,6 +341,30 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     routes.sort_by(|a, b| (&a.2.path, a.2.start).cmp(&(&b.2.path, b.2.start)));
     let mut out = Vec::new();
     for (i, (group, route, span)) in routes.iter().enumerate() {
+        // The runtime answers its health checks before any route (area 7,
+        // "Health").
+        let fixed: Vec<&str> = route
+            .segments
+            .iter()
+            .map_while(|segment| match segment {
+                Segment::Fixed(text) => Some(text.as_str()),
+                Segment::Param { .. } => None,
+            })
+            .collect();
+        if fixed.len() == route.segments.len()
+            && (fixed == jadpo_std::http::HEALTH_LIVE || fixed == jadpo_std::http::HEALTH_READY)
+        {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!("`{}` is the runtime's health check", route.path()),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .reason("The runtime answers `/health/live` and `/health/ready` itself, before any route, so this route would never run.")
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
         let earlier = routes[..i].iter().find(|(_, other, _)| {
             other.method == route.method && overlaps(&other.segments, &route.segments)
         });

@@ -15,6 +15,9 @@ jadpo-std.workspace = true
 jadpo-value.workspace = true
 # Reads a request's JSON body (area 7).
 serde_json.workspace = true
+# The digest an idempotency key is stored with, which a repeat must match
+# (area 7, question 17); pure Rust, so it builds for wasm32.
+blake3.workspace = true
 
 [lints]
 workspace = true

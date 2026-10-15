@@ -9,14 +9,14 @@
 //!   Unix sockets.
 //! - [`postgres`]: a PostgreSQL store over that transport.
 //! - [`NativeHost`]: the runtime's `Host` for a deployable or `jadpo dev`:
-//!   each store by its connection's name, and the operating system's
-//!   randomness.
+//!   each store by its connection's name, the operating system's
+//!   randomness, and tokio's timer for deadlines (chunk 4.2).
 //! - [`http`]: the listener and its worker threads, each a current-thread
 //!   runtime answering with its own handler (chunk 4.1).
 //!
 //! Built so far: the runtime and the transport the PostgreSQL driver needs
-//! (chunk 3.1), and serving HTTP (chunk 4.1). Timers, delivery workers,
-//! local disk and inbox come with their areas.
+//! (chunk 3.1), and serving HTTP (chunk 4.1). Delivery workers, local disk
+//! and inbox come with their areas.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); the native host holds itself to
@@ -57,10 +57,11 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    /// A runtime with tokio's I/O driver, on this thread.
+    /// A runtime with tokio's I/O driver and timer, on this thread.
     pub fn new() -> io::Result<Runtime> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_io()
+            .enable_time()
             .build()?;
         Ok(Runtime {
             runtime,
@@ -157,6 +158,11 @@ impl Host for NativeHost {
         std::fs::File::open("/dev/urandom")
             .and_then(|mut source| source.read_exact(bytes))
             .is_ok()
+    }
+
+    /// tokio's timer, which runs inside [`Runtime::block_on`].
+    fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
+        Box::pin(tokio::time::sleep(std::time::Duration::from_millis(millis)))
     }
 }
 
