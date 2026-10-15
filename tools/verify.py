@@ -173,8 +173,8 @@ def steps(profile: str) -> list[Step]:
     # the server JADPO_TEST_DATABASE_URL names, or a disposable one from the
     # machine's PostgreSQL tools.
     if profile == 'full':
-        # A server JADPO_TEST_DATABASE_URL names (CI's service) has fewer
-        # connections than a disposable one, so its steps take turns.
+        # Locally each binary starts a disposable server of its own; on the
+        # one server JADPO_TEST_DATABASE_URL names (CI's), they take turns.
         shared = 'postgres' if os.environ.get('JADPO_TEST_DATABASE_URL') else None
         checks += [Step(name, 'tests', tests=tests, args=args, show='--nocapture' in args, lane=shared)
                    for name, tests, args in postgres]

@@ -43,31 +43,29 @@ jobs:
   docs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    # `jadpo test` runs projects with tables against this server.
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: jadpo
-          POSTGRES_PASSWORD: jadpo
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U jadpo -d postgres"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 30
+    # `jadpo test` runs projects with tables against a PostgreSQL server.
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Durability off, as the disposable servers local runs start have it
+      # (docs/compiler-runtime.md §2.7); a service container can't be given
+      # the settings. It starts while the toolchain installs.
+      - name: Start PostgreSQL
+        run: >-
+          docker run --detach --name postgres --publish 5432:5432
+          --env POSTGRES_USER=jadpo --env POSTGRES_PASSWORD=jadpo --env POSTGRES_DB=postgres
+          postgres:16 -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+          -c max_connections=300
       # Everything rust-toolchain.toml lists, which rustup would add anyway.
       - name: Install the pinned Rust toolchain
         run: |
           channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
           rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Wait for PostgreSQL
+        timeout-minutes: 2
+        run: until docker exec postgres pg_isready -h 127.0.0.1 -U jadpo -d postgres; do sleep 1; done
       - name: The language pages and the teaching examples
         env:
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
@@ -76,32 +74,30 @@ jobs:
   tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # The live PostgreSQL steps run against this server through
+    # The live PostgreSQL steps run against one server through
     # JADPO_TEST_DATABASE_URL; local runs start disposable ones instead.
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: jadpo
-          POSTGRES_PASSWORD: jadpo
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U jadpo -d postgres"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 30
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Durability off, as the disposable servers local runs start have it
+      # (docs/compiler-runtime.md §2.7); a service container can't be given
+      # the settings. It starts while the toolchain installs.
+      - name: Start PostgreSQL
+        run: >-
+          docker run --detach --name postgres --publish 5432:5432
+          --env POSTGRES_USER=jadpo --env POSTGRES_PASSWORD=jadpo --env POSTGRES_DB=postgres
+          postgres:16 -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+          -c max_connections=300
       # Everything rust-toolchain.toml lists, which rustup would add anyway.
       - name: Install the pinned Rust toolchain
         run: |
           channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
           rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Wait for PostgreSQL
+        timeout-minutes: 2
+        run: until docker exec postgres pg_isready -h 127.0.0.1 -U jadpo -d postgres; do sleep 1; done
       - name: Every test, with live PostgreSQL
         env:
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
