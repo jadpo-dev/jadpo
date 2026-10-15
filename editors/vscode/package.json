@@ -1,0 +1,88 @@
+{
+  "name": "jadpo",
+  "displayName": "Jadpo",
+  "description": "Jadpo language support: highlighting, and the compiler's own errors, hover and go to definition through jadpo lsp.",
+  "version": "0.1.0",
+  "publisher": "jadpo",
+  "license": "UNLICENSED",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/richardwillars/jadpo.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.91.0",
+    "node": ">=22"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "scripts": {
+    "package": "vsce package --skip-license",
+    "test": "node --test test/*.test.js"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "jadpo",
+        "aliases": [
+          "Jadpo",
+          "jadpo"
+        ],
+        "extensions": [
+          ".jadpo"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "jadpo",
+        "scopeName": "source.jadpo",
+        "path": "./syntaxes/jadpo.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "jadpo.restartServer",
+        "title": "Jadpo: Restart Language Server"
+      },
+      {
+        "command": "jadpo.showServerLog",
+        "title": "Jadpo: Show Language Server Log"
+      }
+    ],
+    "configuration": {
+      "title": "Jadpo",
+      "properties": {
+        "jadpo.server.path": {
+          "type": "string",
+          "default": "jadpo",
+          "scope": "machine-overridable",
+          "markdownDescription": "The `jadpo` binary that runs `jadpo lsp`. A bare name (the default, `jadpo`) is looked up on `PATH`. To use a build from a checkout of the Jadpo repository, give its path, for example `${workspaceFolder}/target/release/jadpo` (`${workspaceFolder}` is the first folder open in the window; a leading `~` is your home folder)."
+        },
+        "jadpo.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Logs the messages between the editor and the language server to the Jadpo output channel."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "10.1.2"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.0.0",
+    "vscode-jsonrpc": "9.0.3",
+    "vscode-languageserver-protocol": "3.18.4"
+  }
+}
