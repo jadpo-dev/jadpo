@@ -465,7 +465,7 @@ pub static COMMANDS: &[Command] = &[
         name: "sql",
         synonyms: &[],
         group: "Data",
-        summary: "Show the SQL a query or an action's writes send",
+        summary: "Show the SQL a query or action sends",
         description: "Print the PostgreSQL a query compiles to (area 6): its statement, then one more \
                       for each include, however many records it is included in, each with the \
                       parameters that fill it and where their values come from. Given an action, \

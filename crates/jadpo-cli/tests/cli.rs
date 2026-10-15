@@ -63,7 +63,7 @@ Build and check
 
 Data
   migrate       Write and apply migrations    new, apply, status
-  sql           Show the SQL a query or an action's writes send
+  sql           Show the SQL a query or action sends
 
 Set up
   completions   Turn on Tab completion        zsh, bash, fish
@@ -114,7 +114,7 @@ Build and check
 
 Data
   migrate       Write and apply migrations    new · apply · status
-  sql           Show the SQL a query or an action's writes send
+  sql           Show the SQL a query or action sends
 
 Set up
   completions   Turn on Tab completion        zsh · bash · fish
@@ -647,7 +647,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "test\tRun tests",
             "fmt\tFormat source files",
             "migrate\tWrite and apply migrations",
-            "sql\tShow the SQL a query or an action's writes send",
+            "sql\tShow the SQL a query or action sends",
             "completions\tTurn on Tab completion",
             "lsp\tRun the language server for editors",
             "help\tShow commands, flags and examples",

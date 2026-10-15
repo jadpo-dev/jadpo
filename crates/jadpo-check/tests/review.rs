@@ -533,10 +533,10 @@ fn an_entity_has_only_its_operations() {
     );
     assert_eq!(
         check(&format!(
-            "{entity}action f(id: Order.id) -> Order.id {{\n    Order.archive(id)\n    return Order.id(id)\n}}\n"
+            "{entity}action f(id: Order.id) fails OrderNotFound -> Order.id {{\n    var archived: Order = attempt Order.archive(id)\n    return archived.id\n}}\n"
         )),
-        // A transition is an operation; running it comes with chunk 3.4.
-        ["toolchain.not_built_yet"]
+        // A transition is an operation (chunk 3.4).
+        Vec::<String>::new()
     );
 }
 

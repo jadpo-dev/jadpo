@@ -295,6 +295,7 @@ impl Body<'_> {
     /// `Entity.create { ... }`, `Entity.update(target) { ... }` or
     /// `Entity.delete(target) { ... }`: `node` is the record for a create
     /// and the call otherwise, `block` the block after it. Its type.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn write(
         &mut self,
         entity: &str,
