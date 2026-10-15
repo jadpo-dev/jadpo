@@ -170,7 +170,14 @@ fn a_cursor_from_another_query_is_invalid_input() {
     assert!(shown.contains("test.unexpected_failure"), "{shown}");
 }
 
-const TESTS_FILE: &str = "test \"not keeps a field that is none\" {
+const TESTS_FILE: &str = "use planning/entities { Project }
+use planning/types { Board, Filter, Status, TaskView }
+use planning/failures { ProjectNotFound }
+use planning/actions { add_and_count, find_project }
+use planning/queries { boards, project_board, tasks_not_on, tasks_page }
+use planning/fixtures { two_projects }
+
+test \"not keeps a field that is none\" {
     var garden: Project = two_projects().garden
     var due: List<TaskView> = tasks_due(garden.id, \"2026-11-01\")
     assert collection.map(due, task -> task.title) == [\"Dig\", \"Water\"]

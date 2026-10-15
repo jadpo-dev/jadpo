@@ -329,3 +329,99 @@ fn tab_completes_jadpo_files_and_folders_for_the_path() {
     let output = jadpo(&root, &["__complete", "--", "fmt", "domains/pl"]);
     assert_eq!(output.stdout, "domains/planning/\tFolder\n");
 }
+
+/// Area 1, Imports: inside a project, `jadpo fmt` adds a missing `use`
+/// line, removes an unused one and sorts them; `--check` fails on a file
+/// whose imports it would change.
+#[test]
+fn fmt_fixes_and_sorts_imports() {
+    let root = folder("imports");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "shared/types/pence.jadpo",
+        "type Pence = Int {\n    min: 0\n}\n",
+    );
+    write(
+        &root,
+        "shared/types/percent.jadpo",
+        "type Percent = Int {\n    min: 0\n    max: 100\n}\n",
+    );
+    write(
+        &root,
+        "domains/bakery/types/loaf.jadpo",
+        "type Loaf = Object {\n    price: Pence\n}\n",
+    );
+    write(
+        &root,
+        "domains/bakery/actions/price_loaf.jadpo",
+        "use shared/types { Percent }\n\naction price_loaf(loaf: Loaf, each: Pence) -> Pence {\n    return each\n}\n",
+    );
+    write(
+        &root,
+        "domains/bakery/actions/discount_loaf.jadpo",
+        "use shared/types { Percent }\n\naction discount_loaf(reduction: Percent) -> Unit {}\n",
+    );
+    let checked = jadpo(&root, &["fmt", "--check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    let output = jadpo(&root, &["fmt"]);
+    assert_eq!(output.code, 0, "{}", output.stdout);
+    assert_eq!(
+        read(&root, "domains/bakery/actions/price_loaf.jadpo"),
+        "use shared/types { Pence }\nuse bakery/types { Loaf }\n\naction price_loaf(loaf: Loaf, each: Pence) -> Pence {\n    return each\n}\n"
+    );
+    assert_eq!(
+        read(&root, "domains/bakery/types/loaf.jadpo"),
+        "use shared/types { Pence }\n\ntype Loaf = Object {\n    price: Pence\n}\n"
+    );
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    assert_eq!(jadpo(&root, &["fmt", "--check"]).code, 0);
+}
+
+/// `jadpo fmt --layout` makes the moves `layout.promotion_required` asks
+/// for and fixes the imports they touch, in one step (area 1, "Sharing and
+/// promotion"); `--check --layout` only reports them.
+#[test]
+fn fmt_layout_moves_a_shared_type_into_a_file_of_its_own() {
+    let root = folder("layout");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/planning/actions/snooze_todo.jadpo",
+        "/// Days to snooze for.\ntype SnoozeDays = Int {\n    min: 1\n    max: 30\n}\n\naction snooze_todo(days: SnoozeDays) -> Unit {}\n",
+    );
+    write(
+        &root,
+        "domains/planning/actions/postpone_all.jadpo",
+        "action postpone_all(days: SnoozeDays) -> Unit {}\n",
+    );
+    let pending = jadpo(&root, &["fmt", "--check", "--layout"]);
+    assert_eq!(pending.code, 1);
+    assert!(
+        pending.stdout.contains("1 move to make"),
+        "{}",
+        pending.stdout
+    );
+    assert!(
+        !root
+            .join("domains/planning/types/snooze_days.jadpo")
+            .exists(),
+        "--check changes nothing"
+    );
+    let output = jadpo(&root, &["fmt", "--layout"]);
+    assert_eq!(output.code, 0, "{}", output.stdout);
+    assert_eq!(
+        read(&root, "domains/planning/types/snooze_days.jadpo"),
+        "/// Days to snooze for.\ntype SnoozeDays = Int {\n    min: 1\n    max: 30\n}\n"
+    );
+    assert_eq!(
+        read(&root, "domains/planning/actions/snooze_todo.jadpo"),
+        "use planning/types { SnoozeDays }\n\naction snooze_todo(days: SnoozeDays) -> Unit {}\n"
+    );
+    assert_eq!(
+        read(&root, "domains/planning/actions/postpone_all.jadpo"),
+        "use planning/types { SnoozeDays }\n\naction postpone_all(days: SnoozeDays) -> Unit {}\n"
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+}

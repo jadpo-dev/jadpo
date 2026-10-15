@@ -34,7 +34,7 @@ pub const FOLDERS: [&str; 12] = [
 pub(crate) struct Rank {
     group: u8,
     /// The root file's position, or the domain's name.
-    owner: (usize, String),
+    holder: (usize, String),
     /// The folder's position in the layout, then its name.
     folder: (usize, String),
     /// The line as written, so equal lines keep a stable order.
@@ -73,7 +73,7 @@ pub(crate) fn rank(node: &SyntaxNode) -> Rank {
     let names = node.children().any(|child| child.kind() == USE_NAMES);
     let written = text_of(node);
     let none = (0, String::new());
-    let (group, owner, folder) = match (parts.as_slice(), names) {
+    let (group, holder, folder) = match (parts.as_slice(), names) {
         ([root], true) if ROOT_FILES.contains(&root.as_str()) => (
             0,
             (
@@ -92,7 +92,7 @@ pub(crate) fn rank(node: &SyntaxNode) -> Rank {
     };
     Rank {
         group,
-        owner,
+        holder,
         folder,
         written,
     }

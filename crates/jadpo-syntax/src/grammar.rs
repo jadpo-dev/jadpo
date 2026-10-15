@@ -288,7 +288,7 @@ fn use_names(p: &mut Parser<'_>) {
                     .reason(format!(
                         "The braces of a `use` line hold the names it brings in, separated by commas; found {found}."
                     ))
-                    .next("Write the names the file uses, such as `{ Pence, Percent }`");
+                    .next("Write the names the file takes from the folder, separated by commas");
                 p.push_error(error);
                 if p.at(L_BRACE) || at_decl(p) || at_use(p) {
                     return;

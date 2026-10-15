@@ -95,7 +95,7 @@ fn an_edit_rechecks_only_what_it_changes() {
     server.handle(notify(
         "textDocument/didOpen",
         json!({"textDocument": {"uri": save, "languageId": "jadpo", "version": 1,
-            "text": "action save_note(body: Body) -> Body {\n    var kept: Body = body\n    return kept\n}\n"}}),
+            "text": "use notes/types { Body }\n\naction save_note(body: Body) -> Body {\n    var kept: Body = body\n    return kept\n}\n"}}),
     ));
     let second = server.flush();
     assert!(
@@ -116,6 +116,8 @@ fn an_edit_rechecks_only_what_it_changes() {
     assert_eq!(count(&log, "symbols"), 0, "{log:?}");
     assert_eq!(count(&log, "type_table"), 0, "{log:?}");
     assert_eq!(count(&log, "resolve_file"), 1, "{log:?}");
+    // Its imports, read from its own text, are the only ones checked again.
+    assert_eq!(count(&log, "import_problems"), 1, "{log:?}");
 
     // Hover builds the graph once; after another edit, only that file's
     // part is built again.
@@ -123,7 +125,7 @@ fn an_edit_rechecks_only_what_it_changes() {
         server.handle(Message::Request(Request::new(
             RequestId::from(id),
             "textDocument/hover".to_string(),
-            json!({"textDocument": {"uri": save}, "position": {"line": 0, "character": 9}}),
+            json!({"textDocument": {"uri": save}, "position": {"line": 2, "character": 9}}),
         )))
     };
     let answer = hover(&mut server, 1);
@@ -142,7 +144,7 @@ fn an_edit_rechecks_only_what_it_changes() {
     server.handle(notify(
         "textDocument/didChange",
         json!({"textDocument": {"uri": save, "version": 2},
-            "contentChanges": [{"text": "action save_note(body: Body) -> Body {\n    return body\n}\n"}]}),
+            "contentChanges": [{"text": "use notes/types { Body }\n\naction save_note(body: Body) -> Body {\n    return body\n}\n"}]}),
     ));
     hover(&mut server, 2);
     let log = server.loaded().expect("project").db.take_executions();
@@ -166,7 +168,7 @@ fn a_long_else_if_chain_is_served() {
         (
             "domains/notes/actions/save_note.jadpo",
             format!(
-                "action save_note(body: Body) -> Body {{\n    if (body == \"a\") {{\n        return body\n    }}{chain}\n    return body\n}}\n"
+                "use notes/types {{ Body }}\n\naction save_note(body: Body) -> Body {{\n    if (body == \"a\") {{\n        return body\n    }}{chain}\n    return body\n}}\n"
             ),
         ),
     ];

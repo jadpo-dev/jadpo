@@ -210,7 +210,13 @@ entity Member {
     ),
 ];
 
-const TESTS: &str = "test \"a member who leaves is hidden from every read and write\" {
+const TESTS: &str = "use club/entities { Member, Notice, Visit }
+use club/types { MemberPage, Stage, VisitPage }
+use club/failures { MemberNotFound, NotActive, NotPending }
+use club/actions { activate, lapse, leave, look_up, post_notice, record_visit, rename }
+use club/queries { member_with_visits, members_named, notices, visit_with_member }
+
+test \"a member who leaves is hidden from every read and write\" {
     var ada: Member = join(\"Ada\")
     assert ada.stage == Stage.pending
     assert ada.left_at == none

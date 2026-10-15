@@ -754,7 +754,7 @@ type Percent = Int {
 ```jadpo check project=e-import-unused file=domains/bakery/actions/discount_loaf.jadpo hidden
 use shared/types { Percent }
 
-action discount_loaf(off: Percent) -> Unit {}
+action discount_loaf(reduction: Percent) -> Unit {}
 ```
 
 ```jadpo check project=e-import-unused file=domains/bakery/actions/price_loaf.jadpo expect=import.unused
@@ -852,7 +852,7 @@ type Percent = Int {
 use shared/types { Pence }
 use shared/types { Percent }
 
-action price_loaf(each: Pence, off: Percent) -> Pence {
+action price_loaf(each: Pence, reduction: Percent) -> Pence {
     return each
 }
 ```
@@ -1693,9 +1693,9 @@ Built in chunk 3.5, with these readings (each on the
 - **Before a promotion.** A declaration in a file named after another, such
   as `SnoozeDays` beside `snooze_todo`, comes in from the folder its file
   is in (`use planning/actions { SnoozeDays }`) while
-  `layout.promotion_required` asks for the move. The move's edit, or
-  `jadpo fmt --layout`, makes it, and `jadpo fmt` then moves each import to
-  the name's new folder.
+  `layout.promotion_required` asks for the move. The move's edit makes
+  it, and `jadpo fmt` then moves each import to the name's new folder;
+  `jadpo fmt --layout` does both in one step.
 - **An entity's provided not-found failure** (area 6) comes in from the
   entity's folder: `use planning/entities { Todo, TodoNotFound }`.
 - **Loose files** have no layout, so no folders to import from: every name

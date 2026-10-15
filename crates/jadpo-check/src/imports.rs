@@ -56,7 +56,7 @@ enum Role {
     /// A bare call: `price_lines(...)`.
     Call,
     /// The name before a dot: `menu.price_item(...)`, `money.round(...)`.
-    Owner,
+    Qualifier,
 }
 
 /// The first place a file writes a name that may come from elsewhere.
@@ -66,6 +66,9 @@ struct Written {
     role: Role,
     start: u32,
     end: u32,
+    /// For a name before a dot: whether what follows is called,
+    /// `money.round(...)`, so the name can't be a local.
+    called: bool,
 }
 
 /// One `use` line, read from the tree.
@@ -182,11 +185,19 @@ fn written(source: &SyntaxNode) -> Vec<Written> {
         if let Some((name, role, start, end)) = found
             && seen.insert((name.clone(), role))
         {
+            let called = role == Role::Qualifier
+                && node.parent().is_some_and(|field| {
+                    field.kind() == FIELD_EXPR
+                        && field.parent().is_some_and(|call| {
+                            call.kind() == CALL_EXPR && call.first_child().as_ref() == Some(&field)
+                        })
+                });
             out.push(Written {
                 name,
                 role,
                 start,
                 end,
+                called,
             });
         }
     }
@@ -211,7 +222,7 @@ fn name_ref_use(node: &SyntaxNode) -> Option<(String, Role, u32, u32)> {
             if parent.first_child().as_ref() != Some(node) {
                 return None;
             }
-            if upper { Role::Type } else { Role::Owner }
+            if upper { Role::Type } else { Role::Qualifier }
         }
         CALL_EXPR if !upper => Role::Call,
         _ if upper => Role::Type,
@@ -233,7 +244,7 @@ fn member_key_use(node: &SyntaxNode) -> Option<(String, Role, u32, u32)> {
     let role = if starts_upper(&name) {
         Role::Type
     } else {
-        Role::Owner
+        Role::Qualifier
     };
     Some((name, role, start, end))
 }
@@ -326,10 +337,10 @@ pub fn import_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
 
 /// Every edit `jadpo fmt` makes to a file's imports, from the problems
 /// [`import_problems`] gives: the edits of each, leaving out any that
-/// overlap one already taken. Applying them and checking again converges
+/// overlap one already chosen. Applying them and checking again converges
 /// in a few rounds; the formatter then sorts the lines.
 pub fn import_edits(problems: &[Diagnostic]) -> Vec<(u32, u32, String)> {
-    let mut taken: Vec<(u32, u32, String)> = Vec::new();
+    let mut chosen: Vec<(u32, u32, String)> = Vec::new();
     for problem in problems {
         if !FIXED_BY_FORMAT.contains(&problem.rule.id) {
             continue;
@@ -341,15 +352,15 @@ pub fn import_edits(problems: &[Diagnostic]) -> Vec<(u32, u32, String)> {
             .map(|edit| (edit.span.start, edit.span.end, edit.replacement.clone()))
             .collect();
         let clashes = edits.iter().any(|(start, end, _)| {
-            taken
+            chosen
                 .iter()
                 .any(|(s, e, _)| clash((*start, *end), (*s, *e)))
         });
         if !clashes {
-            taken.extend(edits);
+            chosen.extend(edits);
         }
     }
-    taken
+    chosen
 }
 
 /// Where a file's first `use` line goes: after the comments that open the
@@ -486,7 +497,7 @@ impl Here<'_> {
                 })?;
                 Some(Need::Name(Box::new(symbol.clone())))
             }
-            Role::Owner => {
+            Role::Qualifier => {
                 if self.std.reserved(name) {
                     return None;
                 }
@@ -537,7 +548,13 @@ impl Here<'_> {
             Role::Call => {
                 self.table.declared(&w.name).is_empty() && self.std.namespace_of(&w.name).is_none()
             }
-            Role::Owner => false,
+            Role::Qualifier => {
+                w.called
+                    && !self.std.reserved(&w.name)
+                    && !self.table.is_domain(&w.name)
+                    && !self.table.is_connection(&w.name)
+                    && self.table.declared(&w.name).is_empty()
+            }
         });
         let mut out = Vec::new();
         let mut imported: BTreeMap<String, (u32, u32)> = BTreeMap::new();
@@ -718,15 +735,15 @@ impl Here<'_> {
             _ if first == "shared" || roots.contains(&first) || domain => Err(fail(
                 format!("`{folder}` isn't a folder Jadpo imports from"),
                 "not a folder",
-                "A `use` line names a domain (`use menu`), a domain's folder (`use menu/types { ... }`), a folder of `shared/` (`use shared/types { ... }`) or a root file (`use app { ... }`).".to_string(),
+                "A `use` line names a domain (`use <domain>`), a domain's folder (`use <domain>/types { ... }`), a folder of `shared/` (`use shared/types { ... }`) or a root file (`use app { ... }`).".to_string(),
                 "Name the folder that holds the names".to_string(),
             )),
             _ => {
                 let all = self.table.all();
-                let mut owners: Vec<String> = all.domains.iter().cloned().collect();
-                owners.push("shared".to_string());
-                owners.extend(roots.iter().map(|root| root.to_string()));
-                let near = nearest(first, owners.iter().map(String::as_str)).map(str::to_string);
+                let mut starts: Vec<String> = all.domains.iter().cloned().collect();
+                starts.push("shared".to_string());
+                starts.extend(roots.iter().map(|root| root.to_string()));
+                let near = nearest(first, starts.iter().map(String::as_str)).map(str::to_string);
                 let domains: Vec<String> =
                     all.domains.iter().map(|domain| format!("`{domain}`")).collect();
                 let listed = match domains.len() {
@@ -1171,7 +1188,7 @@ impl Here<'_> {
 }
 
 /// The edits that move declaration `decl` of `file`, called `name`, to a
-/// new file at `target` (area 1, "Sharing and promotion"): taken out of
+/// new file at `target` (area 1, "Sharing and promotion"): chosen out of
 /// its file with the comments attached to it, written into the new file
 /// below the `use` lines it needs, and imported back into its old file
 /// when that still uses it. Files that import it from its old folder are

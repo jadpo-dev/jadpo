@@ -2477,7 +2477,7 @@ type Count = Int {
 
 type Done = Bool {}
 
-function is_empty(count: Count) -> Done {
+function sold_out(count: Count) -> Done {
     return Done(count === 0)
 }
 ```

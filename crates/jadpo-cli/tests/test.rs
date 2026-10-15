@@ -357,7 +357,7 @@ fn paths_are_never_cut_and_long_paths_wrap() {
     );
     assert!(
         narrow
-            .contains("  at\n  domains/stock/actions/reserve_every_cake_on_the_shelf.jadpo:4:9\n"),
+            .contains("  at\n  domains/stock/actions/reserve_every_cake_on_the_shelf.jadpo:6:9\n"),
         "{narrow}"
     );
     assert!(!narrow.contains('…'), "{narrow}");

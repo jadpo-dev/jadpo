@@ -119,7 +119,12 @@ const FILES: &[(&str, &str)] = &[
     ),
 ];
 
-const TESTS: &str = "test \"a unique rule is a conflict\" {
+const TESTS: &str = "use shop/entities { Item, Shelf, ShelfNotFound }
+use shop/types { ItemChanges }
+use shop/failures { ShelfInUse, ShelfTaken }
+use shop/actions { add_item, edit_item, remove_shelf, rename_shelf, shelf_named, visit }
+
+test \"a unique rule is a conflict\" {
     var a: Shelf = attempt add_shelf(\"A\")
     assert add_shelf(\"A\") fails ShelfTaken
     var b: Shelf = attempt add_shelf(\"B\")
