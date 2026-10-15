@@ -1222,8 +1222,8 @@ budget.
 Built in chunk 4.1: the HTTP component (`jadpo_runtime::http`). A host
 hands it a `Request` (method, path, query string, headers, body, the
 client's address) and sends the `Response` it gives. It counts the request
-against the default rate limits (`RateLimits`: 120 a minute per address
-until sign-in, fixed windows in a bounded amount of memory, the oldest
+against the default rate limits (`RateLimits`: 120 a minute per address,
+and since chunk 4.3 600 a minute per signed-in caller, fixed windows in a bounded amount of memory, the oldest
 counters dropped first), routes by the route table (a fixed segment beats
 a placeholder; 404 `route_not_found`, 405 `method_not_allowed` with
 `Allow`; `HEAD` as `GET` without the body, `OPTIONS` with `Allow`),
@@ -1262,6 +1262,30 @@ request's idempotency key into the same transaction. Keys
 before the action runs and kept in the `jadpo_idempotency_keys` table of
 the store the action writes, as the plan's `RoutePlan::keys` names it; the
 SQL for that table is the runtime's own, like `jadpo_migrations`'.
+
+Built in chunk 4.3: sign-in (area 8). `jadpo-check`'s `identity` module
+reads `application { }`, `principal { }` and `authentication { }` once per
+project into an `Identity` (each variant's entity, subject and `active:`
+condition, each declared method), read lazily by the route groups and the
+bodies that name a caller, so an edit to it checks again only those. The
+route model says whether a route needs a caller (`Authentication`) and
+which kind it selects; `Principal`, `Principal.user` and
+`Principal.service` are types whose fields (`id`, `subject`, `strength`)
+the identity gives; `Principal.user(record)` and `sessions.start` and
+`.end` are callees of their own (`Callee::Caller`, `Callee::Session`) and
+a request's `as:` is the last value of `Expr::Request`. `jadpo-plan`
+writes the one statement each kind of caller is looked up with: the
+session by its token's verifier, joined laterally to the user's record
+with its `active:` and lifecycle's `visible:`, into the route table's
+`IdentityPlan`. The HTTP component (`http::identity`) authenticates a
+route's request after routing and before its input, inside the deadline:
+one credential, the session's lookup, the CSRF check on a cookie write,
+the kind the route selects; the caller rides on `Ctx` for what the route
+runs and for `sessions.end`. `sessions.start` writes `jadpo_sessions` in
+the action's transaction and records a `SessionEffect` on the boundary,
+which a held commit hands back so the response sets or clears the cookies
+once the action commits. A signed-in caller counts against
+`RateLimits::allow_caller`, and keys its idempotency as `user <id>`.
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`

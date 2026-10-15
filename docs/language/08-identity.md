@@ -1346,7 +1346,7 @@ error: `MemoLocked.caller` holds a caller
    |
 21 |         caller: Principal.user
    |                 ^^^^^^^^^^^^^^ a caller
-  reason: A failure is logged and its client fields reach the caller, and a caller value holds who signed in, so a failure carries the caller's `id` instead.
+  reason: A failure is logged and its client fields reach the client, while a caller value holds who signed in, so a failure carries the caller's `id` instead.
   next: Type `caller` with the entity's id, such as `User.id` (agent)
   rule: type.auth_principal_failure_context
   help: docs/language/08-identity.html#type-auth-principal-failure-context
@@ -1574,8 +1574,51 @@ check failed: 1 error, 1 file
 
 ### Status
 
-The new compiler builds none of this area yet. Roadmap chunk 4.3 builds
-sessions, API tokens and service keys.
+Built in chunk 4.3. `jadpo check` reads `application { }`'s
+`revocation_delay:`, `principal { }` and `authentication { }` (each declared
+once), with each variant's `subject:` and `active:`, and `browser_session:`
+with its cookie; routes need a signed-in caller unless they say
+`authentication: RouteAuthentication.none` (or `.fresh`), an API lists the
+methods it accepts, and protected routes with nothing to sign anyone in are
+`semantic.auth_not_set_up`. A route passes `current_principal`, or the kind
+it selects, to what it runs, and actions, queries and functions take
+`Principal.user` parameters whose `id`, `subject` and `strength` they read;
+a caller never sits in an `Input`, an `Output` or a failure. Tests,
+fixtures and seeds make a caller with `Principal.user(record)`, and a route
+test signs in with `as:`. The runtime authenticates a request before its
+input is read, refuses it as "Failures" lists, checks a cookie write's
+`Origin` and CSRF token, starts and ends sessions from actions, and keeps
+sessions in the `jadpo_sessions` system table beside the principal's
+users. OpenAPI shows each API's security scheme, the API record marks the
+routes anyone may call, and `jadpo routes` lists each route's
+authentication.
+
+Not yet, each `toolchain.not_built_yet` where it is written:
+
+- `api_token` and `service_key`, with `Service.issue_key`, `Service.keys`,
+  `Service.revoke_key`, `service_disabled` and signing in as a service in a
+  route test (roadmap chunk 4.3b). How an application issues an API token
+  is open (below).
+- `revocation_delay:`, signed sessions and tokens, `POST /auth/exchange`,
+  and `origin:` and `signing_key:` from configuration (chunk 5.1b, after
+  configuration in 5.1). Until then every request checks the caller's
+  record, which `RouteAuthentication.fresh` asks for anyway.
+- `external_token`, `sign_in_providers:` and `oauth_provider:`, after the
+  first build.
+- Deleting ended sessions from the runtime's minute tick (area 12, chunk
+  6.2): a lookup ignores a session past its 30 days.
+
+**Needs Richard: how is an API token issued?** The page says `api_token`
+travels as `Authorization: Bearer` for the application's own mobile and
+command-line clients, but not how a client gets one: `sessions.start` sets a
+cookie, and nothing hands a token to a client. *Recommendation:* a
+generated `sessions.issue_token(user_id) -> ApiToken`, called by an action
+a sign-in route runs and returned in its output once (shown once, stored as
+a verifier, like `Service.issue_key` and Laravel Sanctum's `createToken`),
+with `sessions.end()` ending the token a request came with, and
+`sessions.tokens(user_id)` and `sessions.revoke_token(token_id)` beside
+`Service.keys` and `Service.revoke_key` for an application's own "signed-in
+devices" screen. Chunk 4.3b builds API tokens once this is decided.
 
 ### Consistency with the rest of the language
 
@@ -1611,8 +1654,10 @@ sessions, API tokens and service keys.
 | Verifying a person before `sessions.start` (magic links, OIDC code exchange) as integrations | 11 | Depends on question 9 |
 | Schedules and subscribers run with no caller | 12 | Input to area 12 |
 | Signing in as a user or service in tests | 13 | Input to area 13 |
-| `toolchain.target_auth_not_implemented`, raised only by `jadpo build`; moving the "protected routes but no authentication" check into `jadpo check` | 14 | Input to area 14 |
+| `toolchain.target_auth_not_implemented`, raised only by `jadpo build`; moving the "protected routes but no authentication" check into `jadpo check` | 14 | Built in chunk 4.3: `semantic.auth_not_set_up` |
 | A `lifecycle { }` block on an entity written `id: Uuid identity` is silently ignored | 5 | Raised |
+| Sessions in the principal's user store, rather than a `sessions: { store: }` setting (chosen in chunk 4.3, below) | 5 | Recorded on area 5's system tables |
+| Deleting ended sessions from the minute tick | 12 | Chunk 6.2 |
 
 ### Open questions
 
@@ -1753,3 +1798,11 @@ sessions, API tokens and service keys.
 | Sign-in providers | Built-in `sign_in_providers:` with presets and generic OpenID Connect; generated start and callback routes; linked accounts stored by the language; `on_first_sign_in:` action decides create or link, email linking only when verified; `oidc` renamed `external_token`; acting as an OAuth provider built in (question 13) | 2026-10-12 |
 | Caching authentication | Never: authentication always reads the database; `revocation_delay` is the speed setting | 2026-10-12 |
 | Acting as an OAuth provider | Built in, no third-party server: OAuth 2.1 and OpenID Connect endpoints generated; authorization code with PKCE, rotating refresh tokens, client credentials; clients stored by the language (`OAuthClient.register`, `.list`, `.revoke`); consent screen is an application route calling `oauth.approve`; `AuthenticationMethod.oauth_token`; scopes from any token narrow policy; built after the golden todo (Richard) | 2026-10-12 |
+| Declarations (chosen in chunk 4.3) | `application`, `principal` and `authentication` are each declared once (`semantic.multiple_*`), in any file of a single-file project and in `app.jadpo` and `authentication.jadpo` otherwise. A variant holds `subject:`, a required `unique: true` field of an entity kept in a PostgreSQL store, and an optional `active:`; left out, every record of the entity is active. `active:` is a condition on that entity's own fields named as a query names them (`Member.status == MemberStatus.active`): comparisons with literals, enum values, `none` and `clock.now`, joined with `and` and `or`. A record the entity's lifecycle hides can't sign in. `oidc:` is refused with its rename to `external_token:` | 2026-10-16 |
+| Browser sessions (chosen in chunk 4.3) | `browser_session:` requires `cookie:` (1 to 64 letters, digits, `_` and `-`, starting with a letter). The token is 32 random bytes in hexadecimal in that cookie (`HttpOnly; Secure; SameSite=Strict; Path=/`), the CSRF token the same in `<cookie>_csrf`, readable by the application's scripts; both are kept only as BLAKE3 verifiers. A session lasts 30 days from its start, with no sliding renewal. Every method but `GET` that comes with the cookie needs an `Origin` whose host is the request's `Host` (until configuration gives `origin:`) and `X-Jadpo-CSRF` matching the session, else 403 `csrf_rejected`. An unknown or ended session is 401 `invalid_credentials` and its response clears both cookies. A cookie is read only on an API that accepts `browser_session`; an `Authorization` header where no bearer method is built is 401 `invalid_credentials` | 2026-10-16 |
+| Where sessions live (chosen in chunk 4.3) | `jadpo_sessions` is a system table in the store the principal's user entity lives in, in its migration snapshots, read with the user's record in one statement (question 12); area 5's `sessions:` store setting isn't needed while that holds, and a store of their own (Redis) would bring it back | 2026-10-16 |
+| Signing in on a request (chosen in chunk 4.3) | Authentication runs after routing, inside the route's deadline and before its input is read; a route that selects `current_principal.user` refuses a service with 403 `not_permitted`. A signed-in caller's requests count against its own allowance, 600 a minute (area 16), counted per worker thread natively until the Redis store; a request with a credential that is refused counts against its address, and every other against its address as before. Idempotency keys are kept per caller (`user <id>`), and per `anonymous` on routes anyone may call. A response whose action started or ended a session isn't kept for a repeat, so a retry signs in again | 2026-10-16 |
+| Starting and ending sessions (chosen in chunk 4.3) | `sessions.start(user_id)` takes the user entity's `id`, `sessions.end()` nothing; only actions call them, not functions, queries, tests, fixtures or seeds. Each writes the sessions' store, so the action writes that store (one store per action, area 6). A test that calls such an action keeps the session with no response to set it on. `sessions.end()` on a request with no session ends none and still clears the cookies | 2026-10-16 |
+| The caller in code (chosen in chunk 4.3) | `current_principal` alone is a `Principal`, whose fields aren't read until a kind is selected; a route passes `current_principal`, `current_principal.user` or one of its fields, never both kinds. A caller's `id` counts as a record loaded earlier, so writing a record that refers to it needs no not-found failure. `as:` signs in a user through a real browser session (a session kept in its own transaction, the cookie, the CSRF token and an `Origin`); `as:` on a route anyone may call is `semantic.request_invalid` | 2026-10-16 |
+| Reports (chosen in chunk 4.3) | Each API's OpenAPI document lists the accepted methods as security schemes (`browser_session` as an `apiKey` cookie) and requires them at the top; a route anyone may call says `security: []`, and every other answers 401 (`authentication_required`, `invalid_credentials`, `ambiguous_credentials`), 403 (`user_disabled`, and `csrf_rejected` on a write) and 503 (`authentication_unavailable`). The API record writes `authentication: none` under a route anyone may call. `jadpo routes` shows `required`, `none` or `fresh`. Wrong route and API values are `route.authentication_invalid` and `api.authentication_invalid` (area 7) | 2026-10-16 |
+| Not built yet (chosen in chunk 4.3) | `revocation_delay:` is checked for a positive duration, then `toolchain.not_built_yet` until signing keys (chunk 5.1b), as are `origin:` and a `signing_key:` read from configuration; a `signing_key:` written as a literal is `semantic.auth_setting_invalid`. `api_token:` and `service_key:` wait for chunk 4.3b, `external_token:`, `sign_in_providers:` and `oauth_provider:` for after the first build | 2026-10-16 |

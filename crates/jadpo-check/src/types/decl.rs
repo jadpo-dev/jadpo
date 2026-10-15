@@ -1245,7 +1245,7 @@ impl Decls<'_> {
                 )
                 .at(span, "read by authentication")
                 .reason("Credentials (`Authorization`, cookies) and Jadpo's own `X-Jadpo-` headers are read by authentication (area 8), so a route never sees them as input.")
-                .next("Remove the field, and take the caller as the route's `current_principal` once sign-in is built"),
+                .next("Remove the field, and take the caller as the route's `current_principal`"),
             );
             return;
         }
