@@ -274,7 +274,7 @@ reference only).
 
 - [x] **4.1 Routes:** `opus · high` groups, inputs, outputs, statuses, OpenAPI, the API
   record, default rate limits.
-- [ ] **4.2 Request guarantees:** `opus · high` idempotency (a lookup ignores
+- [x] **4.2 Request guarantees:** `opus · high` idempotency (a lookup ignores
   keys past 24 hours; deleting them comes with 6.2), deadlines, body limits,
   health.
 - [ ] **4.3 Sign-in:** `opus · high` sessions, API tokens, service keys.
@@ -313,7 +313,9 @@ reference only).
 ## Phase 6 — Events and schedules (area 12)
 
 - [ ] **6.1 Events:** `opus · high` outbox, subscribers, retries, `Access.system`, trace
-  context.
+  context, and `events: { store: }`, with the compile error for an action
+  that writes no store but needs one for its outbox or idempotency keys
+  (until then such an action keeps no key, chunk 4.2).
 - [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
   keys (area 7).

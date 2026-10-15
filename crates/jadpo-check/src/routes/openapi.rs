@@ -2,9 +2,13 @@
 //! check` into `build/openapi/<api>.json`: every route with its
 //! placeholders, input, output and success status, the failures it can
 //! reach under their statuses, the 400 and 422 input responses, rate
-//! limits' 429 and the 500 every route can answer, with the `///`
-//! descriptions. Its title is the application's name and its version the
-//! API record's version.
+//! limits' 429, the 413 a body past the limit gets, the 500 and the 504
+//! every route can answer, and on every route but a `GET` the
+//! `Idempotency-Key` header (required when the API says so) with the 409
+//! and 422 a key's repeat can answer, all with the `///` descriptions. Its
+//! title is the application's name and its version the API record's
+//! version. Health (`/health/live`, `/health/ready`) is the runtime's own
+//! and in no document.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,18 +23,36 @@ use crate::lookups::Lookup;
 
 /// The responses every route shares, by status, with the code and message
 /// each sends (area 7, "How failures reach the client").
-const SHARED: [(&str, &str, &str, &str); 4] = [
+const SHARED: [(&str, &str, &str, &str); 8] = [
     (
         "400",
         "InvalidRequest",
         "invalid_request",
-        "The body is not JSON, or the query string can't be read.",
+        "The body is not JSON, the query string can't be read, or the `Idempotency-Key` header is missing where the API requires it or isn't 1 to 255 printable ASCII characters.",
+    ),
+    (
+        "409",
+        "IdempotencyKeyInFlight",
+        "conflict",
+        "A request with this `Idempotency-Key` is still running; retry once it has finished.",
+    ),
+    (
+        "413",
+        "RequestTooLarge",
+        "request_too_large",
+        "The body is over 1 MB.",
     ),
     (
         "422",
         "InvalidInput",
         "invalid_input",
         "A field is missing, unknown or breaks a rule; each problem names the field and the rule, never the value.",
+    ),
+    (
+        "422",
+        "IdempotencyKeyReused",
+        "idempotency_key_reused",
+        "This `Idempotency-Key` was already used with a different request.",
     ),
     (
         "429",
@@ -43,6 +65,12 @@ const SHARED: [(&str, &str, &str, &str); 4] = [
         "InternalFault",
         "internal_fault",
         "The server failed to answer; the `request_id` traces it.",
+    ),
+    (
+        "504",
+        "DeadlineExceeded",
+        "deadline_exceeded",
+        "The route's deadline passed; nothing the request did was kept.",
     ),
 ];
 
@@ -69,11 +97,21 @@ pub fn document(
         return None;
     }
     let wire = Wire { graph };
+    let required = super::api_table(db, project)
+        .get(api)
+        .is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required);
     let mut refs: BTreeSet<Key> = BTreeSet::new();
     let mut failure_schemas: BTreeMap<String, Value> = BTreeMap::new();
     let mut paths: BTreeMap<String, Value> = BTreeMap::new();
     for (_, route) in &routes {
-        let operation = operation(&wire, &lookup, route, &mut refs, &mut failure_schemas);
+        let operation = operation(
+            &wire,
+            &lookup,
+            route,
+            required,
+            &mut refs,
+            &mut failure_schemas,
+        );
         let entry = paths.entry(route.path()).or_insert_with(Value::object);
         entry.set(&route.method.word().to_ascii_lowercase(), operation);
     }
@@ -201,6 +239,7 @@ fn operation(
     wire: &Wire<'_>,
     lookup: &Lookup<'_>,
     route: &RouteModel,
+    key_required: bool,
     refs: &mut BTreeSet<Key>,
     failure_schemas: &mut BTreeMap<String, Value>,
 ) -> Value {
@@ -263,6 +302,24 @@ fn operation(
             out.set("requestBody", body);
             refs.insert(key.clone());
         }
+    }
+    // Every write honours an `Idempotency-Key` (area 7, question 17).
+    let writes = route.method != jadpo_std::HttpMethod::Get;
+    if writes {
+        let mut parameter = Value::object();
+        parameter.set("name", "Idempotency-Key");
+        parameter.set("in", "header");
+        parameter.set(
+            "description",
+            "Makes a retry safe: a repeat with the same key and request gets the first response for 24 hours instead of running again.",
+        );
+        parameter.set_some("required", key_required);
+        let mut schema = Value::object();
+        schema.set("type", "string");
+        schema.set("minLength", 1u32);
+        schema.set("maxLength", jadpo_std::http::IDEMPOTENCY_KEY_MAX);
+        parameter.set("schema", schema);
+        parameters.push(parameter);
     }
     out.set_some("parameters", parameters);
 
@@ -330,6 +387,16 @@ fn operation(
             .push((detail.code.clone(), name));
     }
     let has_input = route.input.is_some() || route.params().next().is_some();
+    if writes {
+        by_status
+            .entry("409".to_string())
+            .or_default()
+            .push(("conflict".to_string(), "IdempotencyKeyInFlight".to_string()));
+        by_status.entry("422".to_string()).or_default().push((
+            "idempotency_key_reused".to_string(),
+            "IdempotencyKeyReused".to_string(),
+        ));
+    }
     for (status, mut failures) in by_status {
         failures.sort();
         let mut schemas: Vec<Value> = failures.iter().map(|(_, name)| reference(name)).collect();
@@ -355,14 +422,18 @@ fn operation(
             ),
         );
     }
-    if route.input.is_some() {
+    if route.input.is_some() || writes {
         responses.set("400", shared_response("InvalidRequest"));
+    }
+    if route.input.is_some() && !route.method.reads_query() {
+        responses.set("413", shared_response("RequestTooLarge"));
     }
     if has_input && responses.get("422").is_none() {
         responses.set("422", shared_response("InvalidInput"));
     }
     responses.set("429", shared_response("RateLimited"));
     responses.set("500", shared_response("InternalFault"));
+    responses.set("504", shared_response("DeadlineExceeded"));
     out.set("responses", responses);
     out
 }

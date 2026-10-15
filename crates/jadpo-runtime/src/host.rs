@@ -197,6 +197,16 @@ pub trait Host {
     /// when it has none to give, as a test's host, whose invocations run
     /// under a seed instead ([`crate::Env::seed`]).
     fn random(&self, bytes: &mut [u8]) -> bool;
+
+    /// A future that finishes `millis` milliseconds after it is made, on
+    /// the platform's timer: what a route's deadline and the readiness
+    /// check wait with (area 7, "Time limits" and "Health"). A host with no
+    /// timer, as a test's, gives one that never finishes, so nothing runs
+    /// out of time there.
+    fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
+        let _ = millis;
+        Box::pin(std::future::pending())
+    }
 }
 
 /// A store that holds nothing: its transactions begin, commit and roll back

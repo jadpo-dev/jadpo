@@ -47,6 +47,27 @@ pub(crate) struct Boundary {
     pub concurrent_change: bool,
 }
 
+/// An action's transaction and outbox, kept open after its body succeeded
+/// for whoever asked the boundary to hold it ([`Ctx::hold`]): the HTTP
+/// component, which writes the request's idempotency key into the same
+/// transaction and commits it once the route's deadline can no longer
+/// interrupt it.
+#[derive(Default)]
+pub struct Held {
+    /// `None` when the body did no store operation.
+    pub transaction: Option<Box<dyn Transaction>>,
+    pub outbox: Vec<Event>,
+}
+
+impl fmt::Debug for Held {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Held")
+            .field("transaction", &self.transaction.is_some())
+            .field("outbox", &self.outbox)
+            .finish()
+    }
+}
+
 /// One invocation's context.
 pub struct Ctx<'p> {
     places: &'p Places,
@@ -60,6 +81,10 @@ pub struct Ctx<'p> {
     pub(crate) actions: u32,
     /// How many identities it has made.
     ids: u64,
+    /// The next action to open a boundary of its own holds its commit.
+    pub(crate) hold: bool,
+    /// What a held boundary left open.
+    pub(crate) held: Option<Held>,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -87,6 +112,8 @@ impl<'p> Ctx<'p> {
             boundary: None,
             actions: 0,
             ids: 0,
+            hold: false,
+            held: None,
         }
     }
 
@@ -345,6 +372,33 @@ impl<'p> Ctx<'p> {
             }
             None => false,
         }
+    }
+
+    /// Asks the next action that opens a boundary of its own not to commit
+    /// when its body succeeds, but to leave its transaction and outbox for
+    /// [`Ctx::take_held`]. A body that fails, or runs out of reruns, ends
+    /// as it always does.
+    pub fn hold(&mut self) {
+        self.hold = true;
+    }
+
+    /// What the held boundary left open, once; `None` when no action held
+    /// one, or it didn't succeed.
+    pub fn take_held(&mut self) -> Option<Held> {
+        self.hold = false;
+        self.held.take()
+    }
+
+    /// Gives up whatever is running: an open or held transaction is
+    /// dropped without a commit, which aborts it in the store, and the
+    /// stack is emptied. What a route does when its deadline passes
+    /// (area 7, "Time limits").
+    pub fn abandon(&mut self) {
+        self.boundary = None;
+        self.held = None;
+        self.hold = false;
+        self.frames.clear();
+        self.recording = None;
     }
 
     /// A store operation found what this action read changed by another

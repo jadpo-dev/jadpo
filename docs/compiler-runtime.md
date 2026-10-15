@@ -1241,10 +1241,27 @@ tests (§2.5) drive it with a request built from typed values.
 hands each connection to a worker chosen by the client's address, and one
 current-thread tokio runtime per worker, each with its own handler, stores
 and rate-limit counters, so an address is always counted on one thread;
-hyper reads and writes HTTP/1.1. `NativeHost` gives each store by name and
-the operating system's randomness. `jadpo dev` runs the interpreter on it,
-swapping in each save that checks cleanly; deadlines, the body limit,
-health and idempotency come with chunk 4.2.
+hyper reads and writes HTTP/1.1. `NativeHost` gives each store by name,
+the operating system's randomness and tokio's timer. `jadpo dev` runs the
+interpreter on it, swapping in each save that checks cleanly.
+
+Built in chunk 4.2: the request guarantees, in the same component. A body
+over `BODY_LIMIT` (1 MB) is 413 before routing; the native host stops
+holding a body there and marks the request `too_large`. Health
+(`/health/live`, `/health/ready`) is answered before the rate limits, the
+readiness check racing `SELECT 1` on each store against `Host::sleep`.
+Each route races what it runs against `Host::sleep(deadline)`: when the
+timer wins, the work is dropped with its open transaction (`Ctx::abandon`;
+a dropped transaction closes its connection, which aborts it) and the
+answer is 504. So that a request that committed is never answered 504, the
+route asks the boundary to hold an action's commit (`Ctx::hold`): the
+boundary leaves a succeeding body's transaction and outbox open, and the
+component commits them (`commit_held`) after the race, first writing the
+request's idempotency key into the same transaction. Keys
+(`http::idempotency`) are claimed in a short transaction of their own
+before the action runs and kept in the `jadpo_idempotency_keys` table of
+the store the action writes, as the plan's `RoutePlan::keys` names it; the
+SQL for that table is the runtime's own, like `jadpo_migrations`'.
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
@@ -1256,7 +1273,7 @@ doubles the async signatures and lets bugs hide on one target.
 
 | Component | Does | On Workers |
 |---|---|---|
-| HTTP | Router from the route table, input decoding, body limit, deadline, health, failure envelope, `request_id` | fetch event |
+| HTTP | Router from the route table, input decoding, body limit, deadline, health, idempotency keys, failure envelope, `request_id` | fetch event |
 | Identity | Sessions, CSRF, API tokens, service keys, OIDC sign-in, revocation delay | same |
 | Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
 | Transactions | Read committed or repeatable read by what the action does, revision checks, rerun within the budget | same |

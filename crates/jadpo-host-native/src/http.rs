@@ -24,7 +24,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use jadpo_runtime::LocalFuture;
-use jadpo_runtime::http::{Request, Response};
+use jadpo_runtime::http::{BODY_LIMIT, Request, Response};
 
 use crate::Runtime;
 
@@ -161,10 +161,42 @@ fn worker(
     });
 }
 
-/// A hyper request as the runtime's, its body read whole.
+/// How much of a body past the runtime's limit is read and dropped before
+/// answering 413.
+const DRAIN_LIMIT: usize = 16 * BODY_LIMIT;
+
+/// A hyper request as the runtime's, its body read whole, or, once it
+/// passes the runtime's limit (area 7, question 5), marked too large and
+/// never held: the runtime answers it with 413.
 async fn read(request: hyper::Request<Incoming>, peer: Option<SocketAddr>) -> Option<Request> {
-    let (parts, body) = request.into_parts();
-    let body = body.collect().await.ok()?.to_bytes();
+    let (parts, mut body) = request.into_parts();
+    let mut bytes = Vec::new();
+    let declared = parts
+        .headers
+        .get(hyper::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok());
+    // Past the limit the rest is read and thrown away, up to a bound, so a
+    // client still sending reads the 413 rather than a broken connection;
+    // past the bound the connection is closed.
+    let mut seen = 0usize;
+    if declared.is_none_or(|length| length <= DRAIN_LIMIT) {
+        while let Some(frame) = body.frame().await {
+            if let Ok(data) = frame.ok()?.into_data() {
+                seen = seen.saturating_add(data.len());
+                if seen > DRAIN_LIMIT {
+                    break;
+                }
+                if seen <= BODY_LIMIT {
+                    bytes.extend_from_slice(&data);
+                }
+            }
+        }
+    }
+    let too_large = seen > BODY_LIMIT || declared.is_some_and(|length| length > BODY_LIMIT);
+    if too_large {
+        bytes.clear();
+    }
     let headers = parts
         .headers
         .iter()
@@ -177,8 +209,9 @@ async fn read(request: hyper::Request<Incoming>, peer: Option<SocketAddr>) -> Op
         path: parts.uri.path().to_string(),
         query: parts.uri.query().map(str::to_string),
         headers,
-        body: body.to_vec(),
+        body: bytes,
         address: peer.map(|peer| peer.ip().to_string()),
+        too_large,
     })
 }
 

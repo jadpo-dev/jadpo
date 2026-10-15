@@ -2,7 +2,7 @@
 title: HTTP
 area: 7
 status: decided
-checked-with: jadpo chunk-4.1 (2026-10-15)
+checked-with: jadpo chunk-4.2 (2026-10-15)
 rules:
   - route.*
   - api.*
@@ -16,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`. Deadlines are checked but enforced with request guarantees in chunk 4.2 (with body limits, health and idempotency); route authentication comes with 4.3, policy with 4.4 and `settle:` with 6.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2. Route authentication comes with 4.3, policy with 4.4 and `settle:` with 6.3.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -314,6 +314,9 @@ numbers (question 9):
 | The path exists but not for this method | 405 `method_not_allowed`, with `Allow` |
 | The body is over the limit | 413 `request_too_large` |
 | The deadline passed | 504 `deadline_exceeded` |
+| An `Idempotency-Key` is missing where the API requires one, or isn't 1 to 255 printable ASCII characters | 400 `invalid_request` |
+| An `Idempotency-Key` comes again with a different request | 422 `idempotency_key_reused` |
+| An `Idempotency-Key` comes again while its first request is running | 409 `conflict` |
 
 ## OpenAPI
 
@@ -1989,6 +1992,35 @@ error: APIs `main` and `partners` share the prefix `/v1`
 check failed: 1 error, 1 file
 ```
 
+### `api.idempotency_invalid`
+
+An API that refuses writes without an `Idempotency-Key` says so with an `Idempotency`:
+
+```jadpo check project=e-api-idempotency file=app.jadpo expect=api.idempotency_invalid
+application {
+    apis: {
+        main: {
+            prefix: /v1
+            idempotency: true
+        }
+    }
+}
+```
+
+```text output
+error: `true` isn't an `Idempotency`
+ --> app.jadpo:5:26
+  |
+5 |             idempotency: true
+  |                          ^^^^ not an `Idempotency`
+  reason: `idempotency:` takes `Idempotency.required`, so a write without an `Idempotency-Key` header is refused, or `Idempotency.optional`, the default, where a client may send one.
+  next: Write `Idempotency.required`, or leave `idempotency:` out (agent)
+  rule: api.idempotency_invalid
+  help: docs/language/07-http.html#api-idempotency-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `api.setting_unknown`
 
 ```jadpo check project=e-api-setting file=app.jadpo expect=api.setting_unknown
@@ -2008,7 +2040,7 @@ error: `version` isn't an API setting
   |
 5 |             version: 2
   |             ^^^^^^^ unknown setting
-  reason: An API in `apis:` holds its `prefix:`, and later its `authentication:`, `idempotency:` and `rate_limit:`.
+  reason: An API in `apis:` holds its `prefix:` and `idempotency:`, and later its `authentication:` and `rate_limit:`.
   next: Remove `version` (agent)
   rule: api.setting_unknown
   help: docs/language/07-http.html#api-setting-unknown
@@ -2083,25 +2115,32 @@ check failed: 1 error, 5 files
 
 ### Status
 
-Built in chunk 4.1. `jadpo check` checks route groups, their prefixes and
-APIs, methods and typed placeholders, the one input (from the query string
-for `GET` and `DELETE`, the JSON body otherwise, and `header:` fields),
-`output:` and `status:`, `deadline:`'s range and what `run:` calls, every
-route of the project against the others, and each API's record; it writes
-one OpenAPI document per API to `build/openapi/`. The runtime's HTTP
-component routes a request, decodes and checks its input (each problem as
-`{ field, rule }`), runs the action or query, and answers with the output
-or the failure envelope, its `request_id` and `x-request-id`, with the
-status the failure's kind sets; it answers `HEAD` and `OPTIONS` itself and
-counts the default rate limits. `jadpo dev` serves it and reloads on save,
-`jadpo routes` lists the routes and `jadpo api update` writes the records.
+Built in chunks 4.1 and 4.2. `jadpo check` checks route groups, their
+prefixes and APIs (with `idempotency:`), methods and typed placeholders,
+the one input (from the query string for `GET` and `DELETE`, the JSON body
+otherwise, and `header:` fields), `output:` and `status:`, `deadline:`'s
+range and what `run:` calls, every route of the project against the others
+and the health paths, and each API's record; it writes one OpenAPI document
+per API to `build/openapi/`. The runtime's HTTP component routes a request,
+decodes and checks its input (each problem as `{ field, rule }`), runs the
+action or query, and answers with the output or the failure envelope, its
+`request_id` and `x-request-id`, with the status the failure's kind sets; it
+answers `HEAD` and `OPTIONS` itself and counts the default rate limits. It
+refuses a body over 1 MB, stops a route at its deadline without committing,
+answers `/health/live` and `/health/ready`, and keeps each write's
+`Idempotency-Key` with its response. `jadpo dev` serves it and reloads on
+save, `jadpo routes` lists the routes and `jadpo api update` writes the
+records.
 
-Not yet: enforcing deadlines, the body limit, health and idempotency
-(chunk 4.2); route authentication and `current_principal` (4.3); policy
-(4.4); `settle:` (6.3); a route's own `rate_limit:` and the Redis store for
-rate limits (area 16); classifying breaking changes and their acceptances
-(after the first build, area 18); the `Jadpo-Revision` header, which comes
-with caches (area 6). Each is `toolchain.not_built_yet` where it is written.
+Not yet: route authentication and `current_principal` (4.3), which also
+scope idempotency keys to the signed-in caller; policy (4.4); deleting
+expired idempotency keys from the runtime's minute tick (6.2), and the
+`events: { store: }` an action that writes no store needs before it keeps a
+key (area 12); `settle:` (6.3); a route's own `rate_limit:` and the Redis
+store for rate limits (area 16); classifying breaking changes and their
+acceptances (after the first build, area 18); the `Jadpo-Revision` header,
+which comes with caches (area 6). Each is `toolchain.not_built_yet` where it
+is written.
 
 ### Consistency with the rest of the language
 
@@ -2312,5 +2351,8 @@ with caches (area 6). Each is `toolchain.not_built_yet` where it is written.
 | Runtime answers (chosen in chunk 4.1) | Unmatched paths answer 404 `route_not_found`, a known path with another method 405 `method_not_allowed` with `Allow`; defects answer 500 `internal_fault` with "The server failed to answer the request."; a declared failure without a `message:` gets its kind's message; `request_id` is `req_` and 16 hexadecimal digits, on every response as `x-request-id` | 2026-10-15 |
 | OpenAPI and the record (chosen in chunk 4.1) | The record is the wire contract: routes in path order, then each `input`, `output`, object and enum by name with each field's wire type and rules, then each failure code with its status, message and client fields; `version:` rises by one when `jadpo api update` changes it and starts at 1. An OpenAPI document's title is the project folder's name until `app.jadpo` names the application, and its version the record's (0 before one exists). A record out of date fails `jadpo check` but doesn't stop `jadpo test` or `jadpo dev` | 2026-10-15 |
 | Default rate limits until sign-in (chosen in chunk 4.1) | With no one signed in yet, every request counts against its address: 120 a minute, in memory per process within 16 MB, the oldest counters dropped first; the native host sends each address's connections to one worker thread, so no lock is taken. The `jadpo check` warning about per-instance limits comes with the Redis store, since until then nothing could silence it | 2026-10-15 |
+| Request guarantees (chosen in chunk 4.2) | A body over 1 MB answers 413 before routing; the host stops holding it there, reading and dropping up to 16 MB more so the client reads the answer. A route's deadline counts from when it is matched: when it passes, the running work is dropped with its open transaction, which the store rolls back, and a claimed key is given up; an action's commit runs after its body, outside the deadline, so a request that committed never answers 504, and its message is "The request ran out of time, and nothing it did was kept." A `GET` never takes part, whatever headers it sends | 2026-10-15 |
+| Health (chosen in chunk 4.2) | `/health/live` answers 200 `{"status":"live"}`; `/health/ready` runs `SELECT 1` on each PostgreSQL store an entity lives in, within two seconds in all, and answers 200 `{"status":"ready","stores":{"main":"ready"},"integrations":{}}`, or 503 with `not_ready` and each store that didn't answer as `unavailable`; integrations appear by name as `unchecked` once area 11 builds them. Both answer `HEAD` and `OPTIONS`, any other method 405, with `Cache-Control: no-store`; they are answered before the rate limits, so probes are never refused; a route on either path is `route.path_overlap` | 2026-10-15 |
+| Idempotency keys (chosen in chunk 4.2) | `Idempotency.optional` (the default) and `Idempotency.required`, which an API's record shows as `idempotency: required` and OpenAPI as a required header on every write; any other value is `api.idempotency_invalid`. A key is 1 to 255 printable ASCII characters, else 400 `invalid_request`, as is a missing one where it is required. Until sign-in (4.3) every caller is the scope `anonymous`. The request's digest covers its method, path, query string, the headers its input reads and its body, byte for byte. A key is claimed in a transaction of its own before the action runs, with no response and kept only for the route's deadline and five seconds, so a request that never finished leaves a claim that lapses; the response (status, the body exactly as sent and its code) is written over it in the action's transaction, or in one of its own for a failure the action returned, kept 24 hours from the request. A repeat answers with the stored response under its own `x-request-id`. Keys go in the store the action writes; an action that writes no store keeps none, since running it again changes nothing, until area 12's `events: { store: }` names one | 2026-10-15 |
 | `jadpo dev` (chosen in chunk 4.1) | Listens on 127.0.0.1, port 3000 unless `--port`; the database is the one `--url` names (until configuration, area 10) or a disposable PostgreSQL for the session, and pending migrations are applied when it starts and after each save that adds one | 2026-10-15 |
 | Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |

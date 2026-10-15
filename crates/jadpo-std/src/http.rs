@@ -26,6 +26,18 @@ pub const MAX_DEADLINE_MS: u32 = 60_000;
 /// past it.
 pub const BODY_LIMIT: usize = 1024 * 1024;
 
+/// How long a stored response answers a repeat of its request (area 7,
+/// question 17): a lookup ignores a key kept longer.
+pub const IDEMPOTENCY_KEEP_MS: i64 = 24 * 60 * 60 * 1000;
+/// The longest `Idempotency-Key` the runtime takes, in characters.
+pub const IDEMPOTENCY_KEY_MAX: usize = 255;
+/// How long `GET /health/ready` waits for the stores (area 7, "Health").
+pub const READY_WITHIN_MS: u32 = 2_000;
+/// The paths the runtime answers itself (area 7, "Health"): whether the
+/// process runs, and whether its stores answer.
+pub const HEALTH_LIVE: [&str; 2] = ["health", "live"];
+pub const HEALTH_READY: [&str; 2] = ["health", "ready"];
+
 /// The largest whole number JavaScript holds exactly: an `Int` whose
 /// declared range stays within it is a JSON number, any other a string
 /// (area 2, question 8).
@@ -154,6 +166,11 @@ pub struct RoutePlan {
     pub status: SuccessStatus,
     pub deadline_ms: u32,
     pub run: Run,
+    /// The store an action keeps this route's `Idempotency-Key`s in: the
+    /// one it writes, so a key commits with the writes it answers for.
+    /// `None` for a `GET`, and for an action that writes no store, which
+    /// a repeat can run again without changing anything.
+    pub keys: Option<String>,
     pub args: Vec<Arg>,
     /// Where it is written, for logs and `jadpo dev`.
     pub file: String,
@@ -192,6 +209,9 @@ pub struct ApiPlan {
     pub name: String,
     /// Its prefix's segments; empty for `/`.
     pub prefix: Vec<String>,
+    /// Whether its writes need an `Idempotency-Key`
+    /// (`idempotency: Idempotency.required`).
+    pub idempotency: crate::Idempotency,
 }
 
 /// A declared failure's client fields as they reach a client (area 4):
@@ -235,6 +255,9 @@ pub struct RouteTable {
     pub codecs: Vec<Codec>,
     /// The client fields of every declared failure a route can reach.
     pub failures: Vec<FailureCodec>,
+    /// The PostgreSQL stores the application's entities live in, in name
+    /// order: what `GET /health/ready` checks.
+    pub stores: Vec<String>,
 }
 
 impl RouteTable {

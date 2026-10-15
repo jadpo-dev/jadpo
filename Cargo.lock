@@ -592,6 +592,7 @@ dependencies = [
 name = "jadpo-runtime"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "jadpo-std",
  "jadpo-value",
  "serde_json",

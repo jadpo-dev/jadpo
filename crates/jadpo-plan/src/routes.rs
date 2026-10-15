@@ -44,11 +44,23 @@ pub(crate) fn table(
             .map(|api| ApiPlan {
                 name: api.name.clone(),
                 prefix: api.prefix.clone(),
+                idempotency: api.idempotency,
             })
             .collect(),
         ..RouteTable::default()
     };
     let graph = std::sync::Arc::clone(jadpo_check::graph::graph(db, project));
+    let written = jadpo_check::types::written_stores(db, project);
+    let databases = jadpo_check::data::connections(db, project).databases();
+    let mut stores: Vec<String> = jadpo_check::data::data_model(db, project)
+        .entities
+        .iter()
+        .filter_map(|entity| entity.store.clone())
+        .filter(|store| databases.contains(store))
+        .collect();
+    stores.sort();
+    stores.dedup();
+    out.stores = stores;
     for (group, route) in groups.routes() {
         let Some(api) = out.apis.iter().position(|api| api.name == group.api) else {
             continue;
@@ -100,18 +112,23 @@ pub(crate) fn table(
             .output
             .as_ref()
             .map(|ty| codecs.codec(&jadpo_check::graph::type_ref(&lookup, ty)));
-        let run = if route.run.query {
+        let (run, keys) = if route.run.query {
             let Some(query) = queries.iter().find(|query| query.name == route.run.name) else {
                 continue;
             };
-            Run::Query(Box::new(query.read.clone()))
+            (Run::Query(Box::new(query.read.clone())), None)
         } else {
-            let Some(id) = jadpo_check::graph::declaration_key(&lookup, &route.run.name)
-                .and_then(|key| callable(&key))
-            else {
+            let Some(key) = jadpo_check::graph::declaration_key(&lookup, &route.run.name) else {
                 continue;
             };
-            Run::Action(id)
+            let Some(id) = callable(&key) else {
+                continue;
+            };
+            // Its keys go in the store it writes (area 5, "System tables").
+            let keys = written
+                .get(key.name())
+                .and_then(|stores| stores.keys().next().cloned());
+            (Run::Action(id), keys)
         };
         let args = route
             .run
@@ -178,6 +195,7 @@ pub(crate) fn table(
             status: route.status,
             deadline_ms: route.deadline_ms,
             run,
+            keys,
             args,
             file: group.path.clone(),
             line,

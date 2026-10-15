@@ -67,7 +67,9 @@ enum Ended {
 /// Runs `body` as an action: inside the running action's boundary when
 /// there is one, otherwise in a boundary of its own, which commits or
 /// rolls back, reruns on a concurrent change, and delivers what the body
-/// emitted after it commits.
+/// emitted after it commits. Asked to hold ([`Ctx::hold`]), a boundary of
+/// its own leaves a succeeding body's transaction and outbox open for
+/// [`commit_held`] instead.
 pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     if ctx.in_action() {
         return if body.caught() {
@@ -77,6 +79,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
         };
     }
     ctx.actions += 1;
+    let hold = std::mem::take(&mut ctx.hold);
     let isolation = body.isolation();
     let mut attempt = 1;
     loop {
@@ -87,6 +90,13 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
         let outcome = body.run(ctx).await;
         let boundary = ctx.boundary.take().unwrap_or_default();
         let succeeded = matches!(outcome, Outcome::Value(_));
+        if hold && succeeded && !boundary.concurrent_change {
+            ctx.held = Some(crate::ctx::Held {
+                transaction: boundary.transaction,
+                outbox: boundary.outbox,
+            });
+            return outcome;
+        }
         let ended = match boundary.transaction {
             _ if boundary.concurrent_change => {
                 if let Some(transaction) = boundary.transaction {
@@ -125,6 +135,50 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
             }
         }
     }
+}
+
+/// Commits what a held boundary left open, first running `then` in its
+/// transaction (beginning one in `store` when the body began none and
+/// `then` has something to write), and delivers its events once it has
+/// committed. `Err` when the store couldn't commit: nothing it wrote is
+/// kept, and the caller answers `unavailable`.
+pub async fn commit_held(
+    ctx: &mut Ctx<'_>,
+    held: crate::ctx::Held,
+    then: Option<(&str, &str, &[crate::SqlValue])>,
+) -> Result<(), StoreError> {
+    let crate::ctx::Held {
+        mut transaction,
+        outbox,
+    } = held;
+    if let Some((store, sql, params)) = then {
+        if transaction.is_none() {
+            let database = ctx
+                .host()
+                .database(store)
+                .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
+            transaction = Some(database.begin_at(Isolation::ReadCommitted).await?);
+        }
+        if let Some(open) = transaction.as_mut() {
+            let changed = open.execute(sql, params).await;
+            if !matches!(changed, Ok(1)) {
+                if let Some(open) = transaction {
+                    let _ = open.rollback().await;
+                }
+                return Err(match changed {
+                    Err(error) => error,
+                    Ok(_) => StoreError::ConcurrentChange,
+                });
+            }
+        }
+    }
+    if let Some(open) = transaction {
+        open.commit().await?;
+    }
+    if !outbox.is_empty() {
+        ctx.host().deliver(outbox).await;
+    }
+    Ok(())
 }
 
 /// Runs `body`, called inside a running action by a caller that handles

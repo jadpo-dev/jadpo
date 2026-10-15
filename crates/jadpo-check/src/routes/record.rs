@@ -4,6 +4,9 @@
 //! record disagrees with the routes ([`record_problems`]) and `jadpo api
 //! update` rewrites it, so every change to the API is a diff of one file.
 //!
+//! An API that requires an `Idempotency-Key` on its writes says so at the
+//! top (`idempotency: required`), since every write must then send one.
+//!
 //! The record is the wire contract, so a field shows what a client sends
 //! or reads (`Text { max_length: 200 }`), not the name of the type behind
 //! it; objects and enums have a section of their own, by name. Its
@@ -75,9 +78,20 @@ pub fn record_bodies(db: &dyn Db, project: Project) -> BTreeMap<String, String> 
             .push((group, route));
     }
     let wire = Wire { graph };
+    let apis = super::api_table(db, project);
     by_api
         .into_iter()
-        .map(|(api, routes)| (api, write(&wire, &lookup, routes)))
+        .map(|(api, routes)| {
+            let mut body = write(&wire, &lookup, routes);
+            // Requiring a key changes what every write must send.
+            if apis
+                .get(&api)
+                .is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required)
+            {
+                body.insert_str(0, "idempotency: required\n\n");
+            }
+            (api, body)
+        })
         .collect()
 }
 

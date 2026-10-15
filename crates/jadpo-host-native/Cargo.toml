@@ -13,7 +13,7 @@ license.workspace = true
 [dependencies]
 jadpo-runtime.workspace = true
 jadpo-drivers = { workspace = true, features = ["postgres"] }
-tokio = { workspace = true, features = ["rt", "net", "sync"] }
+tokio = { workspace = true, features = ["rt", "net", "sync", "time"] }
 bytes.workspace = true
 # HTTP/1.1 (docs/compiler-runtime.md §2.6), pinned exactly: hyper reads and
 # writes requests, hyper-util adapts tokio's sockets, http-body-util reads a

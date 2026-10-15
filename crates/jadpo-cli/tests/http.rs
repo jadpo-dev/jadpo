@@ -5,8 +5,11 @@
 //! envelope with its `request_id` and `x-request-id`, input problems as
 //! `{ field, rule }`, a `GET`'s input from the query string and a header,
 //! `HEAD` and `OPTIONS`, unknown routes and methods, the default rate limit,
-//! and a save swapping in a new version while the last good one keeps
-//! serving through an error. The project's OpenAPI document is compared
+//! a save swapping in a new version while the last good one keeps
+//! serving through an error, and the request guarantees (chunk 4.2):
+//! health, the body limit, a retried write answered from its
+//! `Idempotency-Key`, and a write held past its deadline by another
+//! transaction's lock, which commits nothing. The project's OpenAPI document is compared
 //! with its golden copy (`JADPO_BLESS=1` rewrites it).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
@@ -284,6 +287,8 @@ impl Buffer {
 /// A running `jadpo dev --json` on a database of its own.
 struct Dev {
     port: u16,
+    /// The database it serves.
+    url: String,
     out: Buffer,
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<u8>>,
@@ -298,7 +303,7 @@ impl Dev {
         let args = DevArgs {
             cwd: root.to_path_buf(),
             port: 0,
-            url: Some(url),
+            url: Some(url.clone()),
             no_run: false,
             json: true,
             choice: ColorChoice::Never,
@@ -334,6 +339,7 @@ impl Dev {
         };
         Dev {
             port,
+            url,
             out,
             stop,
             thread: Some(thread),
@@ -639,4 +645,291 @@ fn the_openapi_document_matches_its_golden_copy() {
             "{name} changed; JADPO_BLESS=1 cargo test -p jadpo-cli --test integration http:: rewrites it"
         );
     }
+}
+
+#[test]
+fn health_is_the_runtimes_and_a_body_past_the_limit_is_refused() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = project();
+    let dev = Dev::start(&root);
+    let live = dev.send("GET", "/health/live", &[], "");
+    assert_eq!(live.status, 200, "{live:?}");
+    assert_eq!(live.json(), serde_json::json!({ "status": "live" }));
+    let ready = dev.send("GET", "/health/ready", &[], "");
+    assert_eq!(ready.status, 200, "{ready:?}");
+    assert_eq!(
+        ready.json(),
+        serde_json::json!({ "status": "ready", "stores": { "main": "ready" }, "integrations": {} })
+    );
+    let big = format!(r#"{{"title":"{}"}}"#, "x".repeat(1024 * 1024));
+    let refused = dev.send("POST", "/todos", &[], &big);
+    assert_eq!(refused.status, 413, "{}", refused.body);
+    assert_eq!(refused.json()["error"]["code"], "request_too_large");
+    let listed = dev.send("GET", "/todos", &[], "");
+    assert_eq!(listed.json(), serde_json::json!([]));
+}
+
+#[test]
+fn a_retried_write_is_answered_from_its_idempotency_key() {
+    if skipped() {
+        return;
+    }
+    let (_dir, root) = project();
+    let dev = Dev::start(&root);
+    let key = [("Idempotency-Key", "order-1")];
+    let first = dev.send("POST", "/todos", &key, r#"{"title":"Buy milk"}"#);
+    assert_eq!(first.status, 201, "{first:?}");
+    let again = dev.send("POST", "/todos", &key, r#"{"title":"Buy milk"}"#);
+    assert_eq!(again.status, 201, "{again:?}");
+    assert_eq!(again.body, first.body, "the first response, as it was sent");
+    assert_ne!(
+        again.header("x-request-id"),
+        first.header("x-request-id"),
+        "a request of its own"
+    );
+    let listed = dev.send("GET", "/todos", &[], "");
+    assert_eq!(listed.json().as_array().map(Vec::len), Some(1), "one todo");
+    let other = dev.send("POST", "/todos", &key, r#"{"title":"Buy eggs"}"#);
+    assert_eq!(other.status, 422, "{other:?}");
+    assert_eq!(other.json()["error"]["code"], "idempotency_key_reused");
+    let bad = dev.send(
+        "POST",
+        "/todos",
+        &[("Idempotency-Key", "")],
+        r#"{"title":"x"}"#,
+    );
+    assert_eq!(bad.status, 400);
+    // A `GET` ignores a key.
+    let read = dev.send("GET", "/todos", &key, "");
+    assert_eq!(read.status, 200);
+}
+
+const NOTES: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "domains/notes/entities/note.jadpo",
+        "use notes/types { NoteText }\n\nentity Note {\n    id: Uuid\n    text: NoteText\n}\n",
+    ),
+    (
+        "domains/notes/types/note_text.jadpo",
+        "type NoteText = Text {\n    min_length: 1\n    max_length: 200\n}\n",
+    ),
+    (
+        "domains/notes/types/note_input.jadpo",
+        "use notes/types { NoteText }\n\n/// What a note says.\ntype NoteInput = Input {\n    text: NoteText\n}\n",
+    ),
+    (
+        "domains/notes/types/note_view.jadpo",
+        "use notes/entities { Note }\n\n/// A note as clients see it.\ntype NoteView = Output {\n    pick: [Note.id, Note.text]\n}\n",
+    ),
+    (
+        "domains/notes/actions/add_note.jadpo",
+        "use notes/entities { Note }\nuse notes/types { NoteInput, NoteView }\n\n/// Adds a note.\naction add_note(input: NoteInput) -> NoteView {\n    var note: Note = Note.create {\n        set: {\n            text: input.text\n        }\n    }\n    return NoteView {\n        id: note.id\n        text: note.text\n    }\n}\n",
+    ),
+    (
+        "domains/notes/actions/edit_note.jadpo",
+        "use notes/entities { Note, NoteNotFound }\nuse notes/types { NoteInput, NoteView }\n\n/// Rewrites a note in one step.\naction edit_note(note_id: Note.id, input: NoteInput) fails NoteNotFound -> NoteView {\n    var note: Note = attempt Note.update(note_id) {\n        set: {\n            text: input.text\n        }\n    }\n    return NoteView {\n        id: note.id\n        text: note.text\n    }\n}\n",
+    ),
+    (
+        "domains/notes/routes/notes.jadpo",
+        "use notes/entities { Note }\nuse notes/types { NoteInput, NoteView }\nuse notes/actions { add_note, edit_note }\n\n/// Notes.\nroutes Notes {\n    prefix: /notes\n\n    /// Adds a note.\n    POST / {\n        input: NoteInput\n        output: NoteView\n        status: SuccessStatus.created\n        run: add_note(input)\n    }\n\n    /// Rewrites a note, within a second.\n    PUT /{note_id: Note.id} {\n        input: NoteInput\n        output: NoteView\n        deadline: 1s\n        run: edit_note(note_id, input)\n    }\n}\n",
+    ),
+];
+
+/// A UUID's text as its bytes.
+fn uuid(text: &str) -> [u8; 16] {
+    let hex: String = text.chars().filter(|c| *c != '-').collect();
+    let mut out = [0u8; 16];
+    for (at, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&hex[at * 2..at * 2 + 2], 16).expect("hex");
+    }
+    out
+}
+
+/// Runs `sql` with `params` on a connection of its own, giving the rows.
+fn query(url: &str, sql: &str, params: Vec<jadpo_runtime::SqlValue>) -> Vec<jadpo_runtime::Row> {
+    use jadpo_runtime::Database as _;
+    let runtime = jadpo_host_native::Runtime::new().expect("a runtime");
+    let store = jadpo_host_native::postgres(url).expect("a store");
+    runtime.block_on(async {
+        let mut transaction = store.begin().await.expect("begins");
+        let rows = transaction.query(sql, &params).await.expect("runs");
+        transaction.commit().await.expect("commits");
+        rows
+    })
+}
+
+#[test]
+fn a_write_past_its_deadline_commits_nothing_and_answers_504() {
+    if skipped() {
+        return;
+    }
+    let dir = tempdir::Dir::new("deadline");
+    let root = dir.path().to_path_buf();
+    for (path, text) in NOTES {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let dev = Dev::start(&root);
+    let created = dev.send("POST", "/notes", &[], r#"{"text":"first"}"#);
+    assert_eq!(created.status, 201, "{created:?}");
+    let id = created.json()["id"].as_str().expect("an id").to_string();
+
+    // Another transaction holds the note's row until the test lets go.
+    let (locked_tx, locked) = std::sync::mpsc::channel::<()>();
+    let (release, released) = std::sync::mpsc::channel::<()>();
+    let holder = {
+        let url = dev.url.clone();
+        let id = uuid(&id);
+        std::thread::spawn(move || {
+            use jadpo_runtime::Database as _;
+            let runtime = jadpo_host_native::Runtime::new().expect("a runtime");
+            let store = jadpo_host_native::postgres(&url).expect("a store");
+            runtime.block_on(async {
+                let mut transaction = store.begin().await.expect("begins");
+                transaction
+                    .execute(
+                        "UPDATE \"note\" SET \"text\" = 'held' WHERE \"id\" = $1",
+                        &[jadpo_runtime::SqlValue::Uuid(id)],
+                    )
+                    .await
+                    .expect("locks the row");
+                locked_tx.send(()).expect("says so");
+                released.recv().expect("let go");
+                transaction.rollback().await.expect("rolls back");
+            });
+        })
+    };
+    locked.recv().expect("the row is locked");
+
+    let path = format!("/notes/{id}");
+    let key = [("Idempotency-Key", "edit-1")];
+    let started = Instant::now();
+    let late = {
+        let port = dev.port;
+        let path = path.clone();
+        std::thread::spawn(move || {
+            send(
+                port,
+                "PUT",
+                &path,
+                &[("Idempotency-Key", "edit-1")],
+                r#"{"text":"late"}"#,
+            )
+        })
+    };
+    std::thread::sleep(Duration::from_millis(300));
+    let busy = dev.send("PUT", &path, &key, r#"{"text":"late"}"#);
+    assert_eq!(busy.status, 409, "{busy:?}");
+    assert_eq!(busy.json()["error"]["code"], "conflict");
+    let late = late.join().expect("answered");
+    assert_eq!(late.status, 504, "{late:?}");
+    assert_eq!(late.json()["error"]["code"], "deadline_exceeded");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "answered at the deadline, not when the lock went: {:?}",
+        started.elapsed()
+    );
+    release.send(()).expect("lets go");
+    holder.join().expect("the holder ends");
+
+    let text = || {
+        let rows = query(
+            &dev.url,
+            "SELECT \"text\" FROM \"note\" WHERE \"id\" = $1",
+            vec![jadpo_runtime::SqlValue::Uuid(uuid(&id))],
+        );
+        match rows.first().and_then(|row| row.first()) {
+            Some(jadpo_runtime::SqlValue::Text(text)) => text.clone(),
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(text(), "first", "the late write committed nothing");
+    // Its key was given up, so a retry runs.
+    let retried = dev.send("PUT", &path, &key, r#"{"text":"late"}"#);
+    assert_eq!(retried.status, 200, "{retried:?}");
+    assert_eq!(text(), "late");
+}
+
+#[test]
+fn an_api_that_requires_keys_says_so_in_its_record_and_openapi() {
+    let dir = tempdir::Dir::new("required");
+    let root = dir.path().join("notes");
+    for (path, text) in NOTES {
+        write(&root, path, text);
+    }
+    write(
+        &root,
+        "app.jadpo",
+        "application {\n    apis: {\n        main: {\n            prefix: /\n            idempotency: Idempotency.required\n        }\n    }\n}\n",
+    );
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["api", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let record = std::fs::read_to_string(root.join("api/main.api")).expect("the record");
+    assert!(
+        record.contains("version: 1\n\nidempotency: required\n\nPOST /notes\n"),
+        "{record}"
+    );
+    let document: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("build/openapi/main.json")).expect("the document"),
+    )
+    .expect("JSON");
+    for (path, method) in [("/notes", "post"), ("/notes/{note_id}", "put")] {
+        let operation = &document["paths"][path][method];
+        let header = operation["parameters"]
+            .as_array()
+            .and_then(|parameters| {
+                parameters
+                    .iter()
+                    .find(|parameter| parameter["name"] == "Idempotency-Key")
+            })
+            .unwrap_or_else(|| panic!("{method} {path} lists the key"));
+        assert_eq!(header["in"], "header");
+        assert_eq!(header["required"], true);
+        for status in ["400", "409", "422", "504"] {
+            assert!(
+                operation["responses"].get(status).is_some(),
+                "{method} {path} answers {status}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_route_on_a_health_path_is_refused() {
+    let dir = tempdir::Dir::new("health-path");
+    let root = dir.path().join("notes");
+    for (path, text) in NOTES {
+        write(&root, path, text);
+    }
+    write(
+        &root,
+        "domains/notes/routes/health.jadpo",
+        "use notes/types { NoteInput, NoteView }\nuse notes/actions { add_note }\n\n/// Not the runtime's.\nroutes Health {\n    prefix: /health\n\n    POST /ready {\n        input: NoteInput\n        output: NoteView\n        run: add_note(input)\n    }\n}\n",
+    );
+    let checked = jadpo(&root, &["check", "--color", "never"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    assert!(
+        checked
+            .stdout
+            .contains("error: `/health/ready` is the runtime's health check"),
+        "{}",
+        checked.stdout
+    );
+    assert!(checked.stdout.contains("rule: route.path_overlap"));
 }

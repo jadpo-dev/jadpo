@@ -99,6 +99,8 @@ macro_rules! rules {
 }
 
 rules! {
+    API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
+        "07-http.html#api-idempotency-invalid", "API idempotency is not an Idempotency";
     API_PREFIX_OVERLAP: "api.prefix_overlap", area 7, Error, Agent,
         "07-http.html#api-prefix-overlap", "Two APIs share a prefix";
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
