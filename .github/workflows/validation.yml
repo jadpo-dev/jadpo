@@ -17,6 +17,12 @@ concurrency:
 # once (docs/compiler-runtime.md §2.7). Each job keeps its own cargo cache,
 # since each builds something different. `supported-language`, the check
 # branch protection requires, passes only when every job passed.
+
+# Line tables keep backtraces' file and line and spare the linker the rest
+# of the debug information, for the eighty-odd test binaries.
+env:
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
 jobs:
   lint:
     runs-on: ubuntu-24.04

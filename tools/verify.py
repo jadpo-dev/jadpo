@@ -345,9 +345,11 @@ def main() -> int:
             lanes.setdefault(step.lane, []).append(step)
     rest = [step for step in pending if not step.lane and not step.alone]
     with ThreadPoolExecutor(JOBS) as tests_pool, ThreadPoolExecutor(len(rest) + len(lanes) + 1) as steps_pool:
+        # A lane runs its own test binaries, so it never waits behind the
+        # pool's queue.
         def in_turn(lane: list[Step]) -> None:
             for step in lane:
-                run_step(step, binaries, tests_pool, report, jadpo)
+                run_step(step, binaries, None, report, jadpo)
         futures = [steps_pool.submit(in_turn, lane) for lane in lanes.values()]
         futures += [steps_pool.submit(run_step, step, binaries, tests_pool, report, jadpo) for step in rest]
         for future in futures:

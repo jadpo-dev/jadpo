@@ -1247,9 +1247,30 @@ it), may use them.
 | 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |
 
-**CI.** One GitHub Actions job on Linux runs `python3 tools/verify.py` with
-a PostgreSQL service, the pinned toolchain and a cargo cache. Benchmarks
-(Phase 9) are a separate command, not the gate.
+**How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
+and every test binary once (`cargo test --workspace --no-run`, which also
+builds `jadpo`), then runs the steps concurrently: each test binary
+straight from that build, from its package's folder, a processor's worth
+at a time; the Python checks beside them, given that `jadpo` through
+`JADPO_BIN` and checking their projects concurrently; cargo's own steps
+(clippy, the documentation tests, the wasm32 build) one after another; and
+the watch-mode latency test last, alone, since it measures time. A binary
+a named step runs whole is left out of `compiler tests`, so no test runs
+twice. Each step prints `ok` or `FAILED` as it finishes, then the
+failures' output with a command that reruns each failing binary. `--profile
+quick` leaves out the live PostgreSQL steps and the wasm32 build; on this
+machine it takes about 15 s when nothing needs rebuilding, and the full
+gate about 16 s, plus the build. `--group lint|docs|tests|wasm32` runs one
+CI job's share.
+
+**CI.** GitHub Actions on Linux runs the gate's four groups as parallel
+jobs, each with the pinned toolchain and its own cargo cache: `lint`
+(formatting, clippy, the name ban, the editor grammar), `docs` (the pages
+and the teaching examples), `tests` (every test, with the live PostgreSQL
+steps taking turns on a `postgres:16` service) and `wasm32`. The
+`supported-language` job needs all four and passes only when each did; it
+is the check branch protection requires. Benchmarks (Phase 9) are a
+separate command, not the gate.
 
 ### 2.8 Determinism and the build stamp
 

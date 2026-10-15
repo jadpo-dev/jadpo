@@ -18,10 +18,13 @@ cargo build --release -p jadpo-cli
 ```
 
 The gate needs Python 3 and Rust, and PostgreSQL for its live database
-tests (`--profile quick` leaves them out):
+tests. It builds once, runs its steps concurrently and prints `ok` or
+`FAILED` for each; `--profile quick` leaves out the live database tests and
+the wasm32 build:
 
 ```sh
 python3 tools/verify.py
+python3 tools/verify.py --profile quick
 ```
 
 To render the language specification as web pages into
