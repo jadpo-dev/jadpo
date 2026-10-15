@@ -49,7 +49,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/ordering/routes/checkouts.jadpo",
-        "routes Checkouts {\n    prefix: /checkouts\n\n    POST / {}\n}\n",
+        "routes Checkouts {\n    prefix: /checkouts\n}\n",
     ),
     (
         "tests/checkout_reserves_stock.test.jadpo",
@@ -541,6 +541,13 @@ fn declarations_move_when_a_second_file_or_domain_uses_them() {
 
 #[test]
 fn a_route_counts_as_a_user_only_when_nothing_else_uses_the_type() {
+    // The routes run nothing: only how they use the type is checked here.
+    let with = |files: &[(&str, &str)]| -> Vec<String> {
+        with(files)
+            .into_iter()
+            .filter(|problem| !problem.contains(" route."))
+            .collect()
+    };
     let route = (
         "domains/ordering/routes/quotes.jadpo",
         "use ordering/actions { CheckoutTotal }\n\nroutes Quotes {\n    prefix: /quotes\n\n    GET / {\n        output: CheckoutTotal\n    }\n}\n",

@@ -133,7 +133,8 @@ fn the_schema_lists_every_kind_with_reserved_ones_marked() {
             .map(str::to_string)
     };
     assert_eq!(status("action").as_deref(), Some("built"));
-    assert_eq!(status("route").as_deref(), Some("reserved"));
+    assert_eq!(status("route").as_deref(), Some("built"));
+    assert_eq!(status("grant").as_deref(), Some("reserved"));
     assert_eq!(status("entity").as_deref(), Some("built"));
     assert_eq!(status("query").as_deref(), Some("built"));
     assert_eq!(status("fixture").as_deref(), Some("declared"));

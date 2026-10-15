@@ -931,7 +931,7 @@ test "a memo comes back" {
 ```
 
 ```text output
-error: `POST /memos` takes `input:` (AddMemo)
+error: `POST /memos` takes `input:`, a `AddMemo`
  --> main.jadpo:31:30
    |
 31 |     var response: Response = request {

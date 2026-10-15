@@ -193,7 +193,7 @@ fn help_json_documents_the_manifest_schema() {
     assert!(
         kinds
             .iter()
-            .any(|k| k["kind"] == "route" && k["status"] == "reserved")
+            .any(|k| k["kind"] == "grant" && k["status"] == "reserved")
     );
     assert!(schema["nodeFields"]["digest"].is_string());
 }

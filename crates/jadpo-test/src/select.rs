@@ -282,25 +282,12 @@ pub(crate) fn choose(
     Ok(chosen)
 }
 
-/// `--kind route` and `--kind schedule`, which come with later areas.
-pub(crate) fn kind_not_built(kind: TestKind) -> Diagnostic {
-    let (kinds, reason) = match kind {
-        TestKind::Route => (
-            "Route tests",
-            "A route test sends a request through a route (area 7), and this toolchain runs pure and action tests so far.",
-        ),
-        _ => (
-            "Schedule tests",
-            "A schedule test runs a schedule once (area 12), and this toolchain runs pure, action and route tests so far.",
-        ),
-    };
-    Diagnostic::new(
-        &rule::TOOLCHAIN_NOT_BUILT_YET,
-        format!("{kinds} aren't built yet"),
-    )
-    .reason(reason)
-    .next("Run `jadpo test --kind pure` or `jadpo test --kind action`")
-    .help_at("13-testing.html#kinds-of-test")
+/// `--kind schedule`, which comes with area 12.
+pub(crate) fn kind_not_built(_kind: TestKind) -> Diagnostic {
+    Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "Schedule tests aren't built yet")
+        .reason("A schedule test runs a schedule once (area 12), and this toolchain runs pure, action and route tests so far.")
+        .next("Run `jadpo test --kind pure`, `--kind action` or `--kind route`")
+        .help_at("13-testing.html#kinds-of-test")
 }
 
 /// A seed for a run that wasn't given one: short enough to type.

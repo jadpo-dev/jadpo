@@ -326,11 +326,11 @@ fn standard_library_calls_take_their_types_from_the_arguments() {
 
 #[test]
 fn types_later_areas_define_are_left_to_them() {
-    // `Response` (area 13) and `Page<T>` (area 6) are known by name only:
-    // reading their fields or passing them around reports nothing yet.
+    // `Page<T>` (area 6) passes around as itself; `Response`'s fields are
+    // typed since chunk 4.1 (area 13), so a status is an `Int`.
     assert_eq!(
         with_names(
-            "function status(response: Response) -> Pence {\n    var code: Pence = response.status\n    return code\n}\n\nfunction first(page: Page<ProductName>) -> Page<ProductName> {\n    return page\n}\n"
+            "function first(page: Page<ProductName>) -> Page<ProductName> {\n    return page\n}\n"
         ),
         Vec::<String>::new()
     );

@@ -382,7 +382,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--url",
                 value: Some("url"),
-                description: "Use this database instead of a disposable one",
+                description: "Use this database, not a disposable one",
                 values: &[],
             },
             Flag {

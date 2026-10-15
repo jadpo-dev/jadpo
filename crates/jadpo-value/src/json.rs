@@ -701,6 +701,96 @@ mod tests {
     }
 
     #[test]
+    fn values_read_with_their_rules_and_write_as_area_2_says() {
+        use jadpo_std::types::{FieldPlan, ShapeId, ShapePlan, ValidatorId};
+        use jadpo_std::{Num, Rules};
+        let quantity = Validator::new(
+            Some(Builtin::Int),
+            vec![Rules {
+                min: Num::parse("1"),
+                max: Num::parse("100"),
+                ..Rules::default()
+            }],
+        );
+        let any_int = Validator::new(Some(Builtin::Int), Vec::new());
+        let field = |name: &str, validator: u32, absent: Option<jadpo_std::Constant>| FieldPlan {
+            key: format!("field Line.{name}"),
+            name: name.to_string(),
+            validator: ValidatorId(validator),
+            omittable: absent.is_some(),
+            absent,
+            none_left_out: false,
+            section: None,
+        };
+        let shape = Shape::new(&ShapePlan {
+            ty: "Line".to_string(),
+            variant: None,
+            fields: vec![
+                field("quantity", 0, None),
+                field("total", 1, Some(jadpo_std::Constant::None)),
+            ],
+        });
+        let codecs = [
+            Codec::Scalar {
+                builtin: Builtin::Int,
+                validator: ValidatorId(0),
+                int_as_number: true,
+            },
+            Codec::Scalar {
+                builtin: Builtin::Int,
+                validator: ValidatorId(1),
+                int_as_number: false,
+            },
+            Codec::Object {
+                shape: ShapeId(0),
+                fields: vec![CodecId(0), CodecId(1)],
+            },
+        ];
+        let validators = [quantity, any_int];
+        let shapes = [shape];
+        let codecs = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &shapes,
+        };
+        let read = |text: &str| {
+            let mut problems = Vec::new();
+            let json: serde_json::Value = serde_json::from_str(text).unwrap();
+            let value = codecs.read(CodecId(2), &json, &Path::default(), &mut problems);
+            (value, problems)
+        };
+        let (value, problems) = read(r#"{"quantity": 3, "total": "12"}"#);
+        assert!(problems.is_empty(), "{problems:?}");
+        let mut out = String::new();
+        codecs.write(CodecId(2), &value.unwrap(), &mut out);
+        assert_eq!(
+            out, r#"{"quantity":3,"total":"12"}"#,
+            "an unbounded Int is text"
+        );
+        let (value, problems) = read(r#"{"quantity": 0, "colour": "red"}"#);
+        assert!(value.is_none());
+        let shown: Vec<(String, String)> =
+            problems.into_iter().map(|p| (p.field, p.rule)).collect();
+        assert_eq!(
+            shown,
+            [
+                ("quantity".to_string(), "min".to_string()),
+                ("colour".to_string(), "unknown_field".to_string())
+            ]
+        );
+        let (_, problems) = read(r#"{"total": true}"#);
+        let shown: Vec<(String, String)> =
+            problems.into_iter().map(|p| (p.field, p.rule)).collect();
+        assert_eq!(
+            shown,
+            [
+                ("quantity".to_string(), "required".to_string()),
+                ("total".to_string(), "type".to_string())
+            ]
+        );
+    }
+
+    #[test]
     fn strings_escape_what_json_requires() {
         let mut out = String::new();
         write_string("say \"hi\"\n\u{1}", &mut out);
