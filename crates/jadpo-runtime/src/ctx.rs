@@ -303,26 +303,35 @@ impl<'p> Ctx<'p> {
     }
 
     /// A new identity: a version 7 UUID (area 5), its first 48 bits the
-    /// clock's milliseconds and the rest from the invocation's seed, so a
-    /// test that makes records reproduces with its seed.
-    pub fn new_id(&mut self) -> [u8; 16] {
+    /// clock's milliseconds and the rest random: in a deployable, from the
+    /// host's random bytes; under a seed (a test's), from a generator the
+    /// seed starts, so a test that makes records reproduces with its seed.
+    /// `None` when there is no seed and the host has no randomness to give.
+    pub fn new_id(&mut self) -> Option<[u8; 16]> {
         self.ids += 1;
-        let mut state = self.env.seed ^ self.ids.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        let mut next = || {
-            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-            let mut z = state;
-            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-            z ^ (z >> 31)
+        let (a, b) = match self.env.seed {
+            Some(seed) => {
+                let mut state = seed ^ self.ids.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                let mut next = || {
+                    state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+                    let mut z = state;
+                    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+                    z ^ (z >> 31)
+                };
+                (next(), next())
+            }
+            None => {
+                let mut random = [0u8; 16];
+                if !self.host.random(&mut random) {
+                    return None;
+                }
+                let [a @ .., _, _, _, _, _, _, _, _] = random;
+                let [_, _, _, _, _, _, _, _, b @ ..] = random;
+                (u64::from_be_bytes(a), u64::from_be_bytes(b))
+            }
         };
-        let (a, b) = (next(), next());
-        let millis = u64::try_from(self.env.clock.now()).unwrap_or(0) & 0xFFFF_FFFF_FFFF;
-        let mut bytes = [0u8; 16];
-        bytes[..6].copy_from_slice(&millis.to_be_bytes()[2..]);
-        bytes[6..8].copy_from_slice(&((a & 0x0FFF) as u16 | 0x7000).to_be_bytes());
-        bytes[8..].copy_from_slice(&b.to_be_bytes());
-        bytes[8] = (bytes[8] & 0x3F) | 0x80;
-        bytes
+        Some(uuid_v7(self.env.clock.now(), a, b))
     }
 
     /// Queues `event` in the running action's outbox, delivered once it
@@ -345,6 +354,33 @@ impl<'p> Ctx<'p> {
             boundary.concurrent_change = true;
         }
     }
+}
+
+/// A version 7 UUID made at `millis` (milliseconds since the epoch), its
+/// 12 bits of `rand_a` from `a` and 62 of `rand_b` from `b` (RFC 9562).
+fn uuid_v7(millis: i64, a: u64, b: u64) -> [u8; 16] {
+    let millis = u64::try_from(millis).unwrap_or(0) & 0xFFFF_FFFF_FFFF;
+    let [_, _, m0, m1, m2, m3, m4, m5] = millis.to_be_bytes();
+    let [a0, a1] = ((a & 0x0FFF) as u16 | 0x7000).to_be_bytes();
+    let [b0, b1, b2, b3, b4, b5, b6, b7] = b.to_be_bytes();
+    [
+        m0,
+        m1,
+        m2,
+        m3,
+        m4,
+        m5,
+        a0,
+        a1,
+        (b0 & 0x3F) | 0x80,
+        b1,
+        b2,
+        b3,
+        b4,
+        b5,
+        b6,
+        b7,
+    ]
 }
 
 #[cfg(test)]
@@ -403,6 +439,57 @@ mod tests {
                 site: 0
             })
         );
+    }
+
+    /// A host whose random bytes are all `byte`.
+    struct Random(u8);
+
+    impl Host for Random {
+        fn database(&self, _store: &str) -> Option<&dyn crate::Database> {
+            None
+        }
+
+        fn deliver(&self, _events: Vec<Event>) -> crate::LocalFuture<'_, ()> {
+            Box::pin(async {})
+        }
+
+        fn random(&self, bytes: &mut [u8]) -> bool {
+            bytes.fill(self.0);
+            true
+        }
+    }
+
+    #[test]
+    fn a_new_identity_takes_the_hosts_random_bytes_unless_a_seed_reproduces_it() {
+        let places = places();
+        let seeded = Env {
+            seed: Some(7),
+            clock: crate::Clock::fixed(0x0102_0304_0506),
+        };
+        let random = Random(0xFF);
+        let mut ctx = Ctx::new(&places, &random, seeded);
+        let first = ctx.new_id().expect("seeded");
+        let mut again = Ctx::new(&places, &random, seeded);
+        assert_eq!(
+            again.new_id(),
+            Some(first),
+            "a seed reproduces its identities"
+        );
+        assert_ne!(ctx.new_id(), Some(first), "each identity is new");
+        assert_eq!(first[..6], [1, 2, 3, 4, 5, 6], "the clock's milliseconds");
+        let live = Env {
+            seed: None,
+            ..seeded
+        };
+        let mut ctx = Ctx::new(&places, &random, live);
+        assert_eq!(
+            crate::uuid_text(&ctx.new_id().expect("random")),
+            "01020304-0506-7fff-bfff-ffffffffffff",
+            "version 7 and RFC 9562's variant around the host's bytes"
+        );
+        let none = MemoryHost::new();
+        let mut ctx = Ctx::new(&places, &none, live);
+        assert_eq!(ctx.new_id(), None, "no seed and no randomness");
     }
 
     #[test]

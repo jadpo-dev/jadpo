@@ -174,7 +174,16 @@ fn params_of(
                 }
                 _ => return Err(defect(ctx, "a patch that isn't a record", site)),
             },
-            WriteSource::NewId => Value::uuid(&uuid_text(&ctx.new_id())),
+            WriteSource::NewId => match ctx.new_id() {
+                Some(id) => Value::uuid(&uuid_text(&id)),
+                None => {
+                    return Err(defect(
+                        ctx,
+                        "a new identity on a host with no randomness and no seed",
+                        site,
+                    ));
+                }
+            },
             WriteSource::Now => Value::Instant(now),
         };
         match to_sql(&value, param.ty) {

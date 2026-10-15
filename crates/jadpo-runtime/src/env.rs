@@ -9,14 +9,18 @@ pub struct Env {
     /// Seeds what an invocation decides at random, such as new identities,
     /// so a test that uses them reproduces. A test's comes from the run's
     /// order seed and the test's key, never from the order tests run in.
-    pub seed: u64,
+    /// `None` in a deployable: what it decides at random takes the host's
+    /// random bytes ([`crate::Host::random`]), since the seeded generator
+    /// can be run backwards from what it gave.
+    pub seed: Option<u64>,
     pub clock: Clock,
 }
 
 impl Default for Env {
+    /// A test's environment: seed 0 and the test clock.
     fn default() -> Env {
         Env {
-            seed: 0,
+            seed: Some(0),
             clock: Clock::TEST,
         }
     }

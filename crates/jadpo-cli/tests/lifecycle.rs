@@ -300,6 +300,10 @@ impl Host for Store {
     fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
         Box::pin(async {})
     }
+
+    fn random(&self, _bytes: &mut [u8]) -> bool {
+        false
+    }
 }
 
 /// Runs `action` with `args`, as one invocation at the test clock.
@@ -308,7 +312,7 @@ async fn call(program: &Program, host: &Store, action: &str, args: Vec<Value>) -
     // Each invocation its own seed, so each makes new identities.
     host.1.set(host.1.get() + 1);
     let env = Env {
-        seed: host.1.get(),
+        seed: Some(host.1.get()),
         clock: Clock::TEST,
     };
     let mut ctx = Ctx::new(program.places(), host, env);

@@ -292,6 +292,10 @@ impl Host for Interfering {
     fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
         Box::pin(async {})
     }
+
+    fn random(&self, _bytes: &mut [u8]) -> bool {
+        false
+    }
 }
 
 impl Database for Interfering {
@@ -381,7 +385,7 @@ impl Transaction for Watched {
 async fn call(program: &Program, host: &dyn Host, action: &str, args: Vec<Value>) -> Outcome {
     let id = program.plan().find(action).expect("the action");
     let env = Env {
-        seed: 7,
+        seed: Some(7),
         clock: Clock::TEST,
     };
     let mut ctx = Ctx::new(program.places(), host, env);
@@ -569,6 +573,10 @@ impl Host for Racer {
 
     fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    fn random(&self, _bytes: &mut [u8]) -> bool {
+        false
     }
 }
 
