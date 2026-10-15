@@ -2,6 +2,8 @@
 // entity's: `optional: all` makes every picked field one a request may
 // leave out.
 
+use lending/entities { Loan }
+
 /// What a member may change about a loan.
 type LoanChanges = Input {
     pick: [Loan.due_on]

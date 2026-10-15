@@ -1,6 +1,10 @@
 // The basket's lines at the menu's prices. An action, not a function,
 // because it asks `menu` for each price through its public action.
 
+use shared/types { Pence }
+use sales/types { Basket }
+use menu
+
 /// What `basket`'s lines cost at the menu's prices, before any discount.
 action price_lines(basket: Basket) -> Pence {
     var mut subtotal: Pence = 0

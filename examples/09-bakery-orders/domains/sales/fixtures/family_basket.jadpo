@@ -1,5 +1,8 @@
 // Test data several of the `sales` domain's test files share.
 
+use shared/types { Grain, MenuItem }
+use sales/types { Basket, BasketLine, DiscountCode }
+
 /// Two white loaves, half a cake and two coffees: 2 x 250 + 2800 + 2 x
 /// 280 = 3860 pence, with `code` if one is given.
 fixture family_basket(code: DiscountCode?) -> Basket {

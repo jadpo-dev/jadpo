@@ -1,3 +1,8 @@
+use lending/types { Borrower, LoanView }
+use lending/failures { MemberNotFound }
+use lending/queries { loans_due, member_by_email, member_loans, members_named }
+use lending/fixtures { ada_borrows_two }
+
 test "a member who leaves is hidden, and their loans stay on record" {
     var ada: Borrower = ada_borrows_two()
     attempt leave(ada.member.id)

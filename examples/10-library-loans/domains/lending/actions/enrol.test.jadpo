@@ -1,3 +1,6 @@
+use lending/entities { Member }
+use lending/failures { EmailTaken }
+
 test "two members can't share an address" {
     var ada: Member = attempt enrol("ada@example.test", "Ada")
     assert ada.name == "Ada"

@@ -2,6 +2,9 @@
 // record has it. A loan's `book_id` is `restricted`, so deleting a copy
 // with loans on record is refused, and `conflict:` maps that reference.
 
+use lending/entities { Book, Loan }
+use lending/failures { BookHasLoans, BookNotFound }
+
 /// Takes a copy out of the catalogue.
 action withdraw_copy(book_id: Book.id) fails BookNotFound, BookHasLoans -> Unit {
     attempt Book.delete(book_id) {

@@ -335,6 +335,10 @@ pub struct QueryModel {
 pub struct Queries {
     pub queries: Vec<QueryModel>,
     pub problems: Vec<Diagnostic>,
+    /// Whether a query has no model: its error is reported, here or by
+    /// resolution (a type that names nothing), so the indexes the queries
+    /// ask for aren't all known.
+    pub incomplete: bool,
 }
 
 impl Queries {
@@ -364,6 +368,7 @@ pub fn query_models(db: &dyn Db, project: Project) -> Arc<Queries> {
         out: Vec::new(),
     };
     let mut queries = Vec::new();
+    let mut incomplete = false;
     let mut seen = BTreeSet::new();
     for symbols in table.declarations.values() {
         let Some(symbol) = symbols.iter().find(|s| s.kind == ItemKind::Query) else {
@@ -381,14 +386,16 @@ pub fn query_models(db: &dyn Db, project: Project) -> Arc<Queries> {
         let Some(Decl::QueryDecl(decl)) = tree::decl_at(&source, symbol.index) else {
             continue;
         };
-        if let Some(query) = reader.query(symbol, &decl) {
-            queries.push(query);
+        match reader.query(symbol, &decl) {
+            Some(query) => queries.push(query),
+            None => incomplete = true,
         }
     }
     queries.sort_by(|a, b| a.name.cmp(&b.name));
     Arc::new(Queries {
         queries,
         problems: reader.out,
+        incomplete,
     })
 }
 
@@ -941,7 +948,7 @@ impl<'a> Reader<'a> {
         let optional = value_expr
             .as_ref()
             .and_then(|rhs| self.value_type(scope, rhs))
-            .is_some_and(|ty| self.lookup.is_nullable(&ty));
+            .is_some_and(|ty| ty.has_error() || self.lookup.is_nullable(&ty));
         if !optional {
             let written = value_expr
                 .as_ref()
@@ -1269,6 +1276,10 @@ impl<'a> Reader<'a> {
     /// A field's type as a condition compares it: `Todo.status`, or
     /// `Todo.status?` for a nullable field.
     fn field_ty(&self, entity: &EntityModel, field: &FieldModel) -> Ty {
+        // A field whose type names nothing absorbs what is compared with it.
+        if field.ty.has_error() {
+            return Ty::Error;
+        }
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         if field.nullable { ty.nullable() } else { ty }
     }
@@ -1524,7 +1535,7 @@ impl<'a> Reader<'a> {
                 );
                 return None;
             };
-            let next = Ty::Field(host, vec![field.clone()]);
+            let next = self.lookup.field_type(&host, std::slice::from_ref(field));
             ty = if found.optional {
                 next.nullable()
             } else {
@@ -1548,7 +1559,7 @@ impl<'a> Reader<'a> {
         for field in rest.iter().filter_map(tree::name_ref_text) {
             let host = self.object_of(&ty)?;
             let found = self.lookup.field(&host, std::slice::from_ref(&field))?;
-            let next = Ty::Field(host, vec![field]);
+            let next = self.lookup.field_type(&host, &[field]);
             ty = if found.optional {
                 next.nullable()
             } else {
@@ -2152,6 +2163,14 @@ impl<'a> Reader<'a> {
             found = Some((kind, other, f));
         }
         let Some((kind, target, via)) = found else {
+            // A reference whose type names nothing is resolution's error.
+            if model
+                .entity(&qualifier)
+                .and_then(|e| e.fields.iter().find(|f| f.name == field))
+                .is_some_and(|f| f.ty.has_error())
+            {
+                return None;
+            }
             let written = shown(via_expr.syntax());
             let mut options: Vec<String> = entity
                 .fields
@@ -2741,7 +2760,9 @@ impl<'a> Reader<'a> {
             let Some(value) = field_member.value() else {
                 continue;
             };
-            let expected = Ty::Field(failure.clone(), vec![field.clone()]);
+            let expected = self
+                .lookup
+                .field_type(&failure, std::slice::from_ref(&field));
             let Some((value_ref, ty)) = self.value(scope, &value, &expected) else {
                 ok = false;
                 continue;

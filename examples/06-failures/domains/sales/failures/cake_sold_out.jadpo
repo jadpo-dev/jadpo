@@ -8,6 +8,8 @@
 // translate by code. `client` fields are sent to the caller; `internal`
 // fields never leave the server, and only reach the log.
 
+use sales/types { CakeCount, Stock }
+
 /// There aren't enough cakes left for the order.
 type CakeSoldOut = Failure {
     kind: FailureKind.conflict

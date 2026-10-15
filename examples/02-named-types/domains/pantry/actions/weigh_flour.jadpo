@@ -1,5 +1,7 @@
 // Whole numbers (`Int`) and yes-or-no values (`Bool`).
 
+use pantry/types { Grams }
+
 /// How many sacks of flour arrived. `min` and `max` are inclusive, so a
 /// delivery holds from 1 to 40 sacks.
 type SackCount = Int {

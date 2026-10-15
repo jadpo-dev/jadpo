@@ -15,7 +15,7 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/notes/types/note.jadpo",
-        "type Note = Object {\n    body: Body\n    pinned: Bool\n}\n",
+        "use notes/types { Body }\n\ntype Note = Object {\n    body: Body\n    pinned: Bool\n}\n",
     ),
     (
         "domains/notes/types/shade.jadpo",
@@ -27,15 +27,15 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/notes/libraries/wording.jadpo",
-        "library wording {\n    function keep(body: Body) -> Body {\n        return body\n    }\n}\n",
+        "use notes/types { Body }\n\nlibrary wording {\n    function keep(body: Body) -> Body {\n        return body\n    }\n}\n",
     ),
     (
         "domains/notes/actions/save_note.jadpo",
-        "action save_note(body: Body) fails NoteRefused -> Note {\n    if (body == Body(\"no\")) {\n        reject NoteRefused {\n            length: 2\n        }\n    }\n    var kept: Body = wording.keep(body)\n    return Note {\n        body: kept\n        pinned: false\n    }\n}\n",
+        "use notes/types { Body, Note }\nuse notes/failures { NoteRefused }\nuse notes/libraries { wording }\n\naction save_note(body: Body) fails NoteRefused -> Note {\n    if (body == Body(\"no\")) {\n        reject NoteRefused {\n            length: 2\n        }\n    }\n    var kept: Body = wording.keep(body)\n    return Note {\n        body: kept\n        pinned: false\n    }\n}\n",
     ),
     (
         "domains/notes/actions/shade_of.jadpo",
-        "action shade_of(note: Note) -> Shade {\n    if (note.pinned) {\n        return Shade.plain\n    }\n    return Shade.plain\n}\n",
+        "use notes/types { Note, Shade }\n\naction shade_of(note: Note) -> Shade {\n    if (note.pinned) {\n        return Shade.plain\n    }\n    return Shade.plain\n}\n",
     ),
 ];
 
@@ -80,6 +80,67 @@ fn declarations_where_they_are_written_and_used() {
         node("domains/notes/types/body.jadpo", "Body", 0),
         "type Body"
     );
+}
+
+#[test]
+fn names_on_use_lines() {
+    assert_eq!(node(SAVE, "Body, Note }", 0), "type Body");
+    assert_eq!(node(SAVE, "Note }", 0), "type Note");
+    assert_eq!(node(SAVE, "NoteRefused }", 0), "type NoteRefused");
+    assert_eq!(node(SAVE, "wording }", 0), "library wording");
+    // The folder isn't a node.
+    assert_eq!(at(SAVE, "failures {", 0), None);
+}
+
+/// Area 1: every name clicks through. Each name a file writes that the
+/// project declares, wherever it stands (a `use` line, a signature, a
+/// type's block, a body), leads to a node of the graph with a place in a
+/// file.
+#[test]
+fn every_use_of_a_declared_name_leads_to_its_declaration() {
+    use jadpo_check::graph::graph;
+    use jadpo_syntax::SyntaxKind;
+
+    let db = Database::default();
+    let project = support::project(&db, Layout::Project, FILES);
+    assert!(jadpo_check::check(&db, project).is_empty(), "checks clean");
+    let built = graph(&db, project);
+    let declared: Vec<&str> = [
+        "Body",
+        "Note",
+        "Shade",
+        "NoteRefused",
+        "wording",
+        "keep",
+        "save_note",
+        "shade_of",
+    ]
+    .to_vec();
+    let mut seen = 0;
+    for file in project.files(&db).iter().copied() {
+        let tree = jadpo_db::parse(&db, file).syntax();
+        for token in tree
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| token.kind() == SyntaxKind::IDENT)
+            .filter(|token| declared.contains(&token.text()))
+        {
+            let offset = u32::from(token.text_range().start()) + 1;
+            let found = lookup(&db, project, file, offset).map(|(found, _)| found);
+            let Some(Found::Node(key)) = found else {
+                panic!("`{}` in {}: {found:?}", token.text(), file.path(&db));
+            };
+            let place = built.get(&key).and_then(|node| node.place.clone());
+            assert!(
+                place.is_some(),
+                "`{}` in {}: no place",
+                token.text(),
+                file.path(&db)
+            );
+            seen += 1;
+        }
+    }
+    assert!(seen > 20, "{seen}");
 }
 
 #[test]

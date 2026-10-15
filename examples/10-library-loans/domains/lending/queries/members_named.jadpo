@@ -2,6 +2,8 @@
 // records, so the index this query needs holds only those: the migration
 // creates it `WHERE "left_at" IS NULL`.
 
+use lending/entities { Member }
+
 /// The members with a name, for the desk's search.
 query members_named(name: Member.name) -> List<Member> {
     from: Member

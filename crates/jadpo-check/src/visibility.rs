@@ -29,7 +29,12 @@ use crate::usage::mentions;
 fn named_in(db: &dyn Db, project: Project, file: File) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     if let Some(source) = tree::source(db, file) {
-        for name in source.syntax().descendants().filter_map(ast::NameRef::cast) {
+        // A `use` line says where a name comes from; only its uses count.
+        for name in source
+            .decls()
+            .flat_map(|decl| decl.syntax().descendants().collect::<Vec<_>>())
+            .filter_map(ast::NameRef::cast)
+        {
             if let Some(text) = tree::name_ref_text(&name) {
                 names.insert(text);
             }

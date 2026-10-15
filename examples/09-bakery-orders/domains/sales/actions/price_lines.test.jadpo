@@ -1,3 +1,5 @@
+use sales/fixtures { family_basket }
+
 test "the lines cost the menu's prices" {
     assert price_lines(family_basket(none)) == 3860
 }

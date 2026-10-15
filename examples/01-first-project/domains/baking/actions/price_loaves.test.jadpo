@@ -7,6 +7,12 @@
 // such as `250` take the type of the parameter they are passed to, and the
 // compiler checks them against its rules: passing `0` loaves would not
 // compile, because `LoafCount` starts at 1.
+//
+// A test file sees everything the file it tests declares, so it calls
+// `price_loaves` without importing it; anything else it uses, such as
+// `Pence`, comes in on a `use` line.
+
+use baking/types { Pence }
 
 test "one loaf costs its price" {
     assert price_loaves(250, 1) == 250

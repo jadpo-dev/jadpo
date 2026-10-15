@@ -5,6 +5,10 @@
 // another domain shares its caller's transaction, so both commit or
 // neither does.
 
+use shared/types { Grams, SackCount }
+use pantry/failures { FlourShort }
+use pantry/libraries { sacks }
+
 /// Takes `asked` grams from the `in_store` full sacks, and says how much
 /// flour went.
 public action take_flour(asked: Grams, in_store: SackCount) fails FlourShort -> Grams {

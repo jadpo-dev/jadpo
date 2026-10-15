@@ -6,7 +6,8 @@ A ```jadpo check block is compiled by the new `jadpo` (docs/compiler-runtime.md
 `expect=` must check cleanly, exit 0 and be canonically formatted (`jadpo fmt
 --check`), and an `expect=rule.id` block must report exactly one diagnostic,
 with that rule, read from `jadpo check --json`, exit 1 (0 for a warning), be
-formatted unless the rule is a syntax error, and be followed by a
+formatted unless the rule is a syntax or import error (`jadpo fmt` fixes
+imports), and be followed by a
 ```text output block holding the exact plain output, which `--bless`
 rewrites. A project with an `app.jadpo` block is checked as a project, with
 the layout rules on; one without is checked as loose files.
@@ -297,7 +298,9 @@ class Page:
                     self.problems.append(f'{name}: expected exactly one {expected} but got {rules[:4] or "a pass"}')
                 elif code != exit_code:
                     self.problems.append(f'{name}: gives {expected} but exits {code}, not {exit_code}')
-                elif formatted and not expected.startswith('syntax.'):
+                # `jadpo fmt` fixes imports, so an import mistake is
+                # never formatted as written.
+                elif formatted and not expected.startswith(('syntax.', 'import.')):
                     ok = False
                     self.problems.append(f'{name}: not canonically formatted (run jadpo fmt)')
                 written = last.get('output', {}).get('text')

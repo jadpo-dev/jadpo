@@ -11,6 +11,7 @@ DatabaseUrl
 Day
 Difference
 Dimensions
+Done
 Doubled
 Draft
 Flag

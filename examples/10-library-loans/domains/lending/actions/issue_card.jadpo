@@ -4,6 +4,9 @@
 // a member that is there: the create can't fail with `MemberNotFound`,
 // only break the unique reference.
 
+use lending/entities { Card, Member }
+use lending/failures { CardAlreadyIssued, MemberNotFound }
+
 /// Gives a member their library card.
 action issue_card(
     member_id: Member.id,

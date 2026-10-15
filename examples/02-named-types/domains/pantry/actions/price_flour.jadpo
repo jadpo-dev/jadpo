@@ -1,6 +1,8 @@
 // Exact decimal numbers (`Decimal`). Decimals are exact, never binary
 // floating point, so money adds up to the penny.
 
+use pantry/types { Grams }
+
 /// A price per kilogram. `scale: 2` says a value has at most two decimal
 /// places; it also decides how the value is stored and sent. A decimal
 /// literal for it is written with a point: `0.00`, never `0`.

@@ -10,6 +10,10 @@
 // up to two levels: each loan includes the book its own `book_id`
 // points at.
 
+use lending/entities { Card, Loan, Member }
+use lending/types { MemberPage }
+use lending/failures { MemberNotFound }
+
 /// A member's page: their card, and their loans soonest due first.
 query member_loans(member_id: Member.id) fails MemberNotFound -> MemberPage {
     from: Member

@@ -1,3 +1,5 @@
+use shared/types { Grain, MenuItem }
+
 test "loaves are priced by their grain" {
     var rye: MenuItem = MenuItem.loaf {
         grain: Grain.rye

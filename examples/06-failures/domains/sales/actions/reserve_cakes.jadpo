@@ -5,6 +5,9 @@
 // happen, so the list is always true. `reject` raises a failure: it names
 // a declared failure and gives every client and internal field.
 
+use sales/types { CakeCount, Stock }
+use sales/failures { CakeSoldOut }
+
 /// `asked`, if the shelf has that many left. Functions can fail too:
 /// they declare `fails` and `reject` exactly as actions do.
 function check_shelf(left: Stock, asked: CakeCount) fails CakeSoldOut -> CakeCount {

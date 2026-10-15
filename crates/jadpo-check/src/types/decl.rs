@@ -234,7 +234,7 @@ impl Decls<'_> {
                 } else if self.table.contains(first)
                     && self
                         .table
-                        .resolve(&TypeRef::Path(names.clone(), Vec::new()))
+                        .resolve_with(&TypeRef::Path(names.clone(), Vec::new()), false)
                         .is_error()
                 {
                     return self.unknown_field_type(&names, &head);

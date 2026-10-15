@@ -3,6 +3,9 @@
 // is out, so it can be refused, and `conflict:` maps that refusal, keyed
 // by the transition, as it maps a unique rule.
 
+use lending/entities { Loan }
+use lending/failures { LoanNotOut }
+
 /// Takes a copy back.
 action return_book(loan: Loan) fails LoanNotOut -> Loan {
     return attempt Loan.check_in(loan) {

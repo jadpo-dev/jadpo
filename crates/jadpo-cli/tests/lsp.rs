@@ -23,17 +23,18 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/notes/libraries/wording.jadpo",
-        "library wording {\n    /// Keeps a body as it is.\n    function keep(body: Body) -> Body {\n        return body\n    }\n}\n",
+        "use notes/types { Body }\n\nlibrary wording {\n    /// Keeps a body as it is.\n    function keep(body: Body) -> Body {\n        return body\n    }\n}\n",
     ),
     (
         "domains/notes/actions/save_note.jadpo",
-        "/// Saves a note.\naction save_note(body: Body) fails NoteRefused -> Body {\n    if (body == Body(\"no\")) {\n        reject NoteRefused\n    }\n    return wording.keep(body)\n}\n",
+        "use notes/types { Body }\nuse notes/failures { NoteRefused }\nuse notes/libraries { wording }\n\n/// Saves a note.\naction save_note(body: Body) fails NoteRefused -> Body {\n    if (body == Body(\"no\")) {\n        reject NoteRefused\n    }\n    return wording.keep(body)\n}\n",
     ),
     ("domains/notes/actions/broken.jadpo", BROKEN),
 ];
 
-const BROKEN: &str = "action broken(body: Body) -> Body {\n    return kepe(body)\n}\n";
-const FIXED: &str = "action broken(body: Body) -> Body {\n    return wording.keep(body)\n}\n";
+const BROKEN: &str =
+    "use notes/types { Body }\n\naction broken(body: Body) -> Body {\n    return kepe(body)\n}\n";
+const FIXED: &str = "use notes/types { Body }\nuse notes/libraries { wording }\n\naction broken(body: Body) -> Body {\n    return wording.keep(body)\n}\n";
 
 fn project(name: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -187,8 +188,8 @@ fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
     assert_eq!(problem["code"], "semantic.unknown_callee");
     assert_eq!(problem["source"], "jadpo");
     assert_eq!(problem["severity"], 1);
-    assert_eq!(problem["range"]["start"], position(1, 11));
-    assert_eq!(problem["range"]["end"], position(1, 15));
+    assert_eq!(problem["range"]["start"], position(3, 11));
+    assert_eq!(problem["range"]["end"], position(3, 15));
     let message = problem["message"].as_str().expect("message");
     assert!(
         message.starts_with("`kepe` isn't a function, action or query\n"),
@@ -220,7 +221,7 @@ fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
     let hover = editor.request(
         2,
         "textDocument/hover",
-        json!({"textDocument": {"uri": save}, "position": position(5, 21)}),
+        json!({"textDocument": {"uri": save}, "position": position(9, 21)}),
     );
     let value = hover["result"]["contents"]["value"]
         .as_str()
@@ -232,13 +233,13 @@ fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
         "{value}"
     );
     assert!(value.contains("called by `save_note`"), "{value}");
-    assert_eq!(hover["result"]["range"]["start"], position(5, 19));
+    assert_eq!(hover["result"]["range"]["start"], position(9, 19));
 
     // Hover over an action names the failures it can produce.
     let hover = editor.request(
         3,
         "textDocument/hover",
-        json!({"textDocument": {"uri": save}, "position": position(1, 9)}),
+        json!({"textDocument": {"uri": save}, "position": position(5, 9)}),
     );
     let value = hover["result"]["contents"]["value"]
         .as_str()
@@ -254,24 +255,36 @@ fn an_editor_gets_diagnostics_hover_and_definitions_over_stdio() {
         "{value}"
     );
 
-    // Go to definition lands on the declaration.
+    // Go to definition lands on the declaration, from a use of the name
+    // and from the `use` line that brings it in (area 1, Imports).
+    for (id, at) in [(4, position(5, 25)), (40, position(0, 19))] {
+        let found = editor.request(
+            id,
+            "textDocument/definition",
+            json!({"textDocument": {"uri": save}, "position": at}),
+        );
+        assert_eq!(
+            found["result"]["uri"],
+            uri(&root, "domains/notes/types/body.jadpo")
+        );
+        assert_eq!(found["result"]["range"]["start"], position(1, 0));
+    }
     let found = editor.request(
-        4,
+        41,
         "textDocument/definition",
-        json!({"textDocument": {"uri": save}, "position": position(1, 25)}),
+        json!({"textDocument": {"uri": save}, "position": position(2, 24)}),
     );
     assert_eq!(
         found["result"]["uri"],
-        uri(&root, "domains/notes/types/body.jadpo")
+        uri(&root, "domains/notes/libraries/wording.jadpo")
     );
-    assert_eq!(found["result"]["range"]["start"], position(1, 0));
 
     // A file written behind the editor's back is checked when the watcher
     // reports it, and forgotten when it is deleted.
     let extra = "domains/notes/actions/extra.jadpo";
     std::fs::write(
         root.join(extra),
-        "action extra(body: Body) -> Body {\n    return nothing(body)\n}\n",
+        "use notes/types { Body }\n\naction extra(body: Body) -> Body {\n    return nothing(body)\n}\n",
     )
     .expect("write");
     editor.notify(
@@ -360,7 +373,7 @@ fn diagnostics_use_the_paths_the_editor_gave() {
     let found = editor.request(
         2,
         "textDocument/definition",
-        json!({"textDocument": {"uri": save}, "position": position(1, 25)}),
+        json!({"textDocument": {"uri": save}, "position": position(5, 25)}),
     );
     assert_eq!(
         found["result"]["uri"],

@@ -1,3 +1,6 @@
+use lending/entities { Book, Member }
+use lending/types { LoanStatus }
+
 /// A book lent to a member until a date.
 entity Loan {
     id: Uuid

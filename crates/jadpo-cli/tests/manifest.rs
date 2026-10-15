@@ -20,11 +20,11 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/notes/libraries/wording.jadpo",
-        "library wording {\n    /// Keeps a body as it is.\n    function keep(body: Body) -> Body {\n        return body\n    }\n}\n",
+        "use notes/types { Body }\n\nlibrary wording {\n    /// Keeps a body as it is.\n    function keep(body: Body) -> Body {\n        return body\n    }\n}\n",
     ),
     (
         "domains/notes/actions/save_note.jadpo",
-        "action save_note(body: Body) fails NoteRefused -> Body {\n    if (body == Body(\"no\")) {\n        reject NoteRefused {\n            length: 2\n        }\n    }\n    return wording.keep(body)\n}\n",
+        "use notes/types { Body }\nuse notes/failures { NoteRefused }\nuse notes/libraries { wording }\n\naction save_note(body: Body) fails NoteRefused -> Body {\n    if (body == Body(\"no\")) {\n        reject NoteRefused {\n            length: 2\n        }\n    }\n    return wording.keep(body)\n}\n",
     ),
 ];
 
@@ -97,13 +97,13 @@ fn check_writes_the_manifest_and_the_catalogues() {
         .find(|node| node["id"] == "action save_note")
         .expect("the action");
     assert_eq!(save["file"], "domains/notes/actions/save_note.jadpo");
-    assert_eq!(save["lines"], serde_json::json!([1, 8]));
+    assert_eq!(save["lines"], serde_json::json!([5, 12]));
     assert_eq!(save["calls"], serde_json::json!(["function wording.keep"]));
     assert_eq!(save["raises"], serde_json::json!(["type NoteRefused"]));
     let libraries = read(&root, "build/catalogue/libraries.md");
     assert!(libraries.contains("### wording.keep\n\n```jadpo\nfunction keep(body: Body) -> Body\n```\n\nKeeps a body as it is."), "{libraries}");
     assert!(
-        libraries.contains("Called by `save_note` (domains/notes/actions/save_note.jadpo:1)."),
+        libraries.contains("Called by `save_note` (domains/notes/actions/save_note.jadpo:5)."),
         "{libraries}"
     );
     let failures = read(&root, "build/catalogue/failures.md");
@@ -143,7 +143,7 @@ fn a_project_with_errors_still_writes_and_says_so() {
     let mut files: Vec<(&str, &str)> = FILES.to_vec();
     files.push((
         "domains/notes/actions/broken.jadpo",
-        "action broken(body: Body) -> Body {\n    return missing(body)\n}\n",
+        "use notes/types { Body }\n\naction broken(body: Body) -> Body {\n    return missing(body)\n}\n",
     ));
     let root = project("errors", &files);
     let output = jadpo(&root, &["check", "--json"]);

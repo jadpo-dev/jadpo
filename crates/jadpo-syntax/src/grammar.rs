@@ -31,6 +31,10 @@ pub(crate) const SINGLETONS: &[&str] = &[
 pub(crate) fn source_file(p: &mut Parser<'_>) {
     let m = p.start();
     while !p.at_eof() {
+        if at_use(p) {
+            use_decl(p);
+            continue;
+        }
         if at_decl(p) {
             let before = p.events.len();
             decl(p);
@@ -49,7 +53,9 @@ pub(crate) fn snippet(p: &mut Parser<'_>) {
     let m = p.start();
     while !p.at_eof() {
         let before = p.position();
-        if at_decl(p) {
+        if at_use(p) {
+            use_decl(p);
+        } else if at_decl(p) {
             decl(p);
         } else if at_route_entry(p) {
             route_entry(p);
@@ -150,7 +156,7 @@ fn recover_to_declaration(p: &mut Parser<'_>) {
     let m = p.start();
     loop {
         skip_balanced(p);
-        if p.at_eof() || (p.on_new_line() && at_decl(p)) {
+        if p.at_eof() || (p.on_new_line() && (at_decl(p) || at_use(p))) {
             break;
         }
     }
@@ -201,6 +207,142 @@ fn skip_line(p: &mut Parser<'_>) {
     m.complete(p, ERROR);
 }
 
+// --- imports -------------------------------------------------------------------
+
+/// `use` starting a line, followed on the same line by a folder or domain:
+/// `use shared/types { Pence }`, `use menu` (area 1, Imports). Anywhere
+/// else `use` is an ordinary word, which naming reserves.
+pub(crate) fn at_use(p: &Parser<'_>) -> bool {
+    p.at_word("use")
+        && p.on_new_line()
+        && (p.nth(1) == IDENT || p.nth(1).is_keyword())
+        && !p.nth_on_new_line(1)
+}
+
+fn use_decl(p: &mut Parser<'_>) {
+    let m = p.start();
+    p.bump_remap(USE_KW);
+    let path = p.start();
+    use_segment(p);
+    while p.at(SLASH) && !p.on_new_line() {
+        p.bump(SLASH);
+        if (p.at(IDENT) || p.current().is_keyword()) && !p.on_new_line() {
+            use_segment(p);
+        } else {
+            let found = p.found();
+            let error = p
+                .error_here(&rule::SYNTAX_EXPECTED_NAME, "Expected a folder after `/`")
+                .label("expected a folder")
+                .reason(format!(
+                    "A `use` line names a domain's or `shared/`'s folder, such as `shared/types`; found {found}."
+                ))
+                .next("Name the folder after `/`, or remove `/`");
+            p.push_error(error);
+            break;
+        }
+    }
+    path.complete(p, USE_PATH);
+    if p.at(L_BRACE) && !p.on_new_line() {
+        use_names(p);
+    }
+    if !p.at_eof() && !p.on_new_line() {
+        let found = p.found();
+        let error = p
+            .error_here(&rule::SYNTAX_UNEXPECTED_TOKEN, "Expected the end of the `use` line")
+            .label("expected the end of the line")
+            .reason(format!(
+                "A `use` line is `use <folder> {{ Names }}` or `use <domain>`, alone on its line; found {found}."
+            ))
+            .next("Put the names in braces after the folder, and anything else on its own line");
+        p.push_error(error);
+        skip_line(p);
+    }
+    m.complete(p, USE_DECL);
+}
+
+/// One name in a `use` path. A folder may be a word a declaration starts
+/// with (`routes`), so keywords are read as names here.
+fn use_segment(p: &mut Parser<'_>) {
+    let m = p.start();
+    p.bump_remap(IDENT);
+    m.complete(p, NAME_REF);
+}
+
+/// `{ Pence, Percent }`: the names a `use` line brings in, separated by
+/// commas, on one line or across several.
+fn use_names(p: &mut Parser<'_>) {
+    let m = p.start();
+    let open = p.range();
+    p.bump(L_BRACE);
+    p.with_newlines(true, |p| {
+        while !p.at(R_BRACE) && !p.at_eof() {
+            if p.at(IDENT) {
+                let name = p.start();
+                p.bump(IDENT);
+                name.complete(p, NAME_REF);
+            } else {
+                let found = p.found();
+                let error = p
+                    .error_here(&rule::SYNTAX_EXPECTED_NAME, "Expected a name to import")
+                    .label("expected a name")
+                    .reason(format!(
+                        "The braces of a `use` line hold the names it brings in, separated by commas; found {found}."
+                    ))
+                    .next("Write the names the file takes from the folder, separated by commas");
+                p.push_error(error);
+                if p.at(L_BRACE) || at_decl(p) || at_use(p) {
+                    return;
+                }
+                p.bump_error();
+                continue;
+            }
+            if p.eat(COMMA) || p.at(R_BRACE) {
+                continue;
+            }
+            if p.at(IDENT) {
+                let error = p
+                    .error_here(&rule::SYNTAX_UNEXPECTED_TOKEN, "Expected `,` between names")
+                    .label("expected `,` before this name")
+                    .reason("The names a `use` line brings in are separated by commas.")
+                    .next("Add `,` between the names")
+                    .edit(p.insert_after_prev(","));
+                p.push_error(error);
+                continue;
+            }
+            if !p.at_eof() && !at_decl(p) && !at_use(p) {
+                let found = p.found();
+                let error = p
+                    .error_here(&rule::SYNTAX_UNEXPECTED_TOKEN, "Expected `,` or `}`")
+                    .label("expected `,` or `}`")
+                    .reason(format!(
+                        "The names a `use` line brings in are separated by commas and end with `}}`; found {found}."
+                    ))
+                    .next("Separate the names with commas and close the braces");
+                p.push_error(error);
+                p.bump_error();
+            } else {
+                break;
+            }
+        }
+    });
+    if !p.eat(R_BRACE) {
+        let (start, end) = p.range();
+        let error = SyntaxError::new(
+            &rule::SYNTAX_UNEXPECTED_TOKEN,
+            "This list of names isn't closed",
+            start,
+            end,
+        )
+        .label("expected `}`")
+        .also(open.0, open.1, "opened here")
+        .reason("The names a `use` line brings in end with `}`.")
+        .next("Add `}` after the last name")
+        .edit(p.insert_after_prev(" }"));
+        p.push_error(error);
+    }
+    m.complete(p, USE_NAMES);
+}
+
 // --- declarations -------------------------------------------------------------
 
 fn contextual_decl(p: &Parser<'_>, n: usize) -> Option<SyntaxKind> {
@@ -226,6 +368,9 @@ fn contextual_decl(p: &Parser<'_>, n: usize) -> Option<SyntaxKind> {
 /// only sometimes starts one (`config {`, `test "..."`) written at the
 /// start of a line. Indented, such a word is a member of the block.
 pub(crate) fn ends_block(p: &Parser<'_>) -> bool {
+    if p.on_new_line() && p.at_column_zero() && at_use(p) {
+        return true;
+    }
     if !p.on_new_line() || !at_decl(p) {
         return false;
     }
@@ -621,7 +766,7 @@ fn ret_type(p: &mut Parser<'_>) {
 /// Declaration words the lexer reads as names, because a setting may use
 /// them as its key (`package: Stripe.v2024_06_20`, `test: "..."`): they
 /// are reserved wherever something is named (area 1, question 7).
-pub const RESERVED_NAMES: &[&str] = &["package", "provide", "resource", "seed", "test"];
+pub const RESERVED_NAMES: &[&str] = &["package", "provide", "resource", "seed", "test", "use"];
 
 fn name(p: &mut Parser<'_>, what: &str) {
     match p.current() {

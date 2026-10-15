@@ -1,3 +1,8 @@
+use lending/entities { Book, Loan, Member }
+use lending/types { LoanStatus, Wear }
+use lending/failures { LoanNotOut }
+use lending/actions { add_copy, enrol, lend }
+
 test "a loan is checked in once" {
     var ada: Member = attempt enrol("ada@example.test", "Ada")
     var dune: Book = add_copy("9780441013593", "Dune", Wear.worn)

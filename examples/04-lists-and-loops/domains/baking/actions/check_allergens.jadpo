@@ -1,5 +1,7 @@
 // Searching a list, and a `Set`.
 
+use baking/types { Allergen, Recipe }
+
 /// Whether a recipe is safe for someone.
 type SafeToEat = Bool {}
 

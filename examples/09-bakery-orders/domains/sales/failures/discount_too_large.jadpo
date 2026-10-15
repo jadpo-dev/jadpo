@@ -1,3 +1,5 @@
+use shared/types { Pence }
+
 /// A fixed discount would take the total below zero.
 type DiscountTooLarge = Failure {
     kind: FailureKind.invalid_value

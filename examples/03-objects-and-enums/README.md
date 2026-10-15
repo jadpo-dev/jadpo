@@ -29,7 +29,7 @@ this project:
 cargo build --release -p jadpo-cli
 target/release/jadpo check examples/03-objects-and-enums
 target/release/jadpo test examples/03-objects-and-enums
-target/release/jadpo test examples/03-objects-and-enums/domains/sales/actions/quote_cake.test.jadpo:24
+target/release/jadpo test examples/03-objects-and-enums/domains/sales/actions/quote_cake.test.jadpo:26
 target/release/jadpo test examples/03-objects-and-enums --watch
 target/release/jadpo fmt --check examples/03-objects-and-enums
 ```

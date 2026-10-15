@@ -11,6 +11,7 @@ use jadpo_syntax::{SyntaxElement, SyntaxNode, SyntaxToken};
 use rowan::{NodeOrToken, TextSize};
 
 use crate::doc::{Doc, concat, group, indent, nil, text};
+use crate::imports;
 use crate::sections::Order;
 
 /// The gap before a trailing comment.
@@ -190,6 +191,7 @@ fn tight(kind: SyntaxKind) -> bool {
             | NULLABLE_TYPE
             | GENERIC_ARG_LIST
             | ROUTE_PATH_EXPR
+            | USE_PATH
     )
 }
 
@@ -302,6 +304,7 @@ impl Formatter {
             SNIPPET => self.file(node, true),
             MEMBER_LIST | BLOCK | MATCH_ARM_LIST => self.braces(node),
             PARAM_LIST | ARG_LIST | LIST_EXPR => self.bracketed(node),
+            USE_NAMES => self.use_names(node),
             _ => self.sequence(node),
         }
     }
@@ -324,11 +327,39 @@ impl Formatter {
         concat(docs)
     }
 
-    /// Declarations, one blank line apart; in a snippet, other items keep
-    /// one blank line where the source had any.
+    /// `use` lines first, sorted, with no blank line between them; then
+    /// declarations, one blank line apart; in a snippet, other items keep
+    /// one blank line where the source had any. The comments that open the
+    /// file, up to its first blank line, stay above the `use` lines.
     fn file(&mut self, node: &SyntaxNode, snippet: bool) -> Doc {
-        let items: Vec<SyntaxNode> = node.children().collect();
+        let (mut uses, items): (Vec<SyntaxNode>, Vec<SyntaxNode>) =
+            node.children().partition(|child| child.kind() == USE_DECL);
         let mut docs = Vec::new();
+        if !uses.is_empty() {
+            uses.sort_by_key(imports::rank);
+            if let Some(first) = first_token(node) {
+                let comments = leading_comments(&first);
+                if let Some(last) = comments.iter().rposition(|comment| comment.blank_after) {
+                    for comment in &comments[..=last] {
+                        docs.push(self.comment(&comment.token));
+                        docs.push(Doc::HardLine);
+                        if comment.blank_after {
+                            docs.push(Doc::HardLine);
+                        }
+                    }
+                }
+            }
+            for (i, line) in uses.iter().enumerate() {
+                if i > 0 {
+                    docs.push(Doc::HardLine);
+                }
+                docs.push(self.node(line));
+            }
+            if !items.is_empty() {
+                docs.push(Doc::HardLine);
+                docs.push(Doc::HardLine);
+            }
+        }
         for (i, item) in items.iter().enumerate() {
             if i > 0 {
                 let blank = !snippet
@@ -439,6 +470,58 @@ impl Formatter {
             Doc::HardLine,
             close_doc,
         ])
+    }
+
+    /// A `use` line's names, sorted: `{ Pence, Percent }` on one line when
+    /// it fits, otherwise one name per line; no trailing comma either way.
+    fn use_names(&mut self, node: &SyntaxNode) -> Doc {
+        let children = significant_children(node);
+        let mut open = None;
+        let mut close = None;
+        // Each name with the comma written after it, whose comments stay
+        // with the name when the names are sorted.
+        let mut names: Vec<(SyntaxNode, Option<SyntaxToken>)> = Vec::new();
+        for child in &children {
+            match child {
+                NodeOrToken::Token(token) if token.kind() == L_BRACE => open = Some(token.clone()),
+                NodeOrToken::Token(token) if token.kind() == R_BRACE => close = Some(token.clone()),
+                NodeOrToken::Token(token) if token.kind() == COMMA => {
+                    if let Some((_, comma)) = names.last_mut()
+                        && comma.is_none()
+                    {
+                        *comma = Some(token.clone());
+                    }
+                }
+                NodeOrToken::Node(name) => names.push((name.clone(), None)),
+                NodeOrToken::Token(_) => {}
+            }
+        }
+        names.sort_by_key(|(name, _)| imports::name_key(name));
+        let open_doc = open.as_ref().map_or_else(nil, |token| self.token(token));
+        let close_doc = close.as_ref().map_or_else(nil, |token| self.token(token));
+        if names.is_empty() {
+            return concat([open_doc, close_doc]);
+        }
+        let commented = node
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .any(|token| is_comment(token.kind()));
+        let line = || if commented { Doc::HardLine } else { Doc::Line };
+        let count = names.len();
+        let mut inner = vec![line()];
+        for (index, (name, comma)) in names.iter().enumerate() {
+            inner.push(self.node(name));
+            if index + 1 < count {
+                inner.push(text(","));
+            }
+            if let Some(comma) = comma {
+                inner.push(self.comments_only(comma));
+            }
+            if index + 1 < count {
+                inner.push(line());
+            }
+        }
+        group(concat([open_doc, indent(concat(inner)), line(), close_doc]))
     }
 
     /// `( ... )` or `[ ... ]`: on one line when it fits, otherwise one item

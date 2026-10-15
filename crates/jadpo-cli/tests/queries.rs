@@ -51,75 +51,75 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/planning/entities/project.jadpo",
-        "/// A project.\nentity Project {\n    id: Uuid\n    name: Name\n}\n",
+        "use planning/types { Name }\n\n/// A project.\nentity Project {\n    id: Uuid\n    name: Name\n}\n",
     ),
     (
         "domains/planning/entities/task.jadpo",
-        "/// A task.\nentity Task {\n    id: Uuid\n    project_id: Project.id {\n        on_delete: OnDelete.cascade\n    }\n    title: Name\n    status: Status\n    due_on: Day?\n}\n",
+        "use planning/entities { Project }\nuse planning/types { Day, Name, Status }\n\n/// A task.\nentity Task {\n    id: Uuid\n    project_id: Project.id {\n        on_delete: OnDelete.cascade\n    }\n    title: Name\n    status: Status\n    due_on: Day?\n}\n",
     ),
     (
         "domains/planning/failures/project_not_found.jadpo",
-        "/// No such project.\ntype ProjectNotFound = Failure {\n    kind: FailureKind.not_found\n    client: {\n        project_id: Project.id\n    }\n}\n",
+        "use planning/entities { Project }\n\n/// No such project.\ntype ProjectNotFound = Failure {\n    kind: FailureKind.not_found\n    client: {\n        project_id: Project.id\n    }\n}\n",
     ),
     (
         "domains/planning/types/task_view.jadpo",
-        "/// A task in a list.\ntype TaskView = Output {\n    pick: [Task.title]\n}\n",
+        "use planning/entities { Task }\n\n/// A task in a list.\ntype TaskView = Output {\n    pick: [Task.title]\n}\n",
     ),
     (
         "domains/planning/types/board.jadpo",
-        "/// A project and its first open task.\ntype Board = Output {\n    pick: [Project.name]\n    tasks: List<TaskView>\n}\n",
+        "use planning/entities { Project }\nuse planning/types { TaskView }\n\n/// A project and its first open task.\ntype Board = Output {\n    pick: [Project.name]\n    tasks: List<TaskView>\n}\n",
     ),
     (
         "domains/planning/types/filter.jadpo",
-        "/// Which tasks.\ntype Filter = Input {\n    status: Status {\n        optional: true\n    }\n    size: PageSize {\n        default: 2\n    }\n    after: PageCursor {\n        optional: true\n    }\n}\n",
+        "use planning/types { Status }\n\n/// Which tasks.\ntype Filter = Input {\n    status: Status {\n        optional: true\n    }\n    size: PageSize {\n        default: 2\n    }\n    after: PageCursor {\n        optional: true\n    }\n}\n",
     ),
     (
         "domains/planning/types/plan.jadpo",
-        "/// Two projects and their tasks, as the tests set them up.\ntype Plan = Object {\n    garden: Project\n    house: Project\n    tasks: List<Task>\n}\n",
+        "use planning/entities { Project, Task }\n\n/// Two projects and their tasks, as the tests set them up.\ntype Plan = Object {\n    garden: Project\n    house: Project\n    tasks: List<Task>\n}\n",
     ),
     (
         "domains/planning/actions/add_project.jadpo",
-        "/// Adds a project.\naction add_project(name: Project.name) -> Project {\n    return Project.create {\n        set: {\n            name: name\n        }\n    }\n}\n",
+        "use planning/entities { Project }\n\n/// Adds a project.\naction add_project(name: Project.name) -> Project {\n    return Project.create {\n        set: {\n            name: name\n        }\n    }\n}\n",
     ),
     (
         "domains/planning/actions/add_task.jadpo",
-        "/// Adds a task.\naction add_task(project: Project, title: Task.title, status: Status, due_on: Task.due_on) -> Task {\n    return Task.create {\n        set: {\n            project_id: project.id\n            title: title\n            status: status\n            due_on: due_on\n        }\n    }\n}\n",
+        "use planning/entities { Project, Task }\nuse planning/types { Status }\n\n/// Adds a task.\naction add_task(project: Project, title: Task.title, status: Status, due_on: Task.due_on) -> Task {\n    return Task.create {\n        set: {\n            project_id: project.id\n            title: title\n            status: status\n            due_on: due_on\n        }\n    }\n}\n",
     ),
     (
         "domains/planning/actions/add_and_count.jadpo",
-        "/// Adds a task and reads the project's tasks in the same action.\naction add_and_count(project: Project) -> List<TaskView> {\n    var task: Task = add_task(project, \"Later\", Status.open, none)\n    return tasks_due(task.project_id, \"2000-01-01\")\n}\n",
+        "use planning/entities { Project, Task }\nuse planning/types { Status, TaskView }\nuse planning/actions { add_task }\nuse planning/queries { tasks_due }\n\n/// Adds a task and reads the project's tasks in the same action.\naction add_and_count(project: Project) -> List<TaskView> {\n    var task: Task = add_task(project, \"Later\", Status.open, none)\n    return tasks_due(task.project_id, \"2000-01-01\")\n}\n",
     ),
     (
         "domains/planning/actions/find_project.jadpo",
-        "/// A project by id.\naction find_project(project_id: Project.id) fails ProjectNotFound -> Project {\n    return attempt Project.get(project_id)\n}\n",
+        "use planning/entities { Project }\nuse planning/failures { ProjectNotFound }\n\n/// A project by id.\naction find_project(project_id: Project.id) fails ProjectNotFound -> Project {\n    return attempt Project.get(project_id)\n}\n",
     ),
     (
         "domains/planning/fixtures/two_projects.jadpo",
-        "/// Garden with three tasks and House with two.\nfixture two_projects() -> Plan {\n    var garden: Project = add_project(\"Garden\")\n    var house: Project = add_project(\"House\")\n    return Plan {\n        garden: garden\n        house: house\n        tasks: [\n            add_task(garden, \"Dig\", Status.open, \"2026-11-01\"),\n            add_task(garden, \"Plant\", Status.done, \"2026-11-02\"),\n            add_task(garden, \"Water\", Status.open, none),\n            add_task(house, \"Paint\", Status.open, \"2026-12-01\"),\n            add_task(house, \"Sweep\", Status.open, none),\n        ]\n    }\n}\n",
+        "use planning/entities { Project }\nuse planning/types { Plan, Status }\nuse planning/actions { add_project, add_task }\n\n/// Garden with three tasks and House with two.\nfixture two_projects() -> Plan {\n    var garden: Project = add_project(\"Garden\")\n    var house: Project = add_project(\"House\")\n    return Plan {\n        garden: garden\n        house: house\n        tasks: [\n            add_task(garden, \"Dig\", Status.open, \"2026-11-01\"),\n            add_task(garden, \"Plant\", Status.done, \"2026-11-02\"),\n            add_task(garden, \"Water\", Status.open, none),\n            add_task(house, \"Paint\", Status.open, \"2026-12-01\"),\n            add_task(house, \"Sweep\", Status.open, none),\n        ]\n    }\n}\n",
     ),
     (
         "domains/planning/queries/tasks_due.jadpo",
-        "/// A project's tasks not due after a day, an undated one included.\nquery tasks_due(project_id: Project.id, day: Day) -> List<TaskView> {\n    from: Task\n    where: Task.project_id == project_id\n    where: not (Task.due_on > day)\n    order: [Task.title asc]\n    limit: 10\n}\n",
+        "use planning/entities { Project, Task }\nuse planning/types { Day, TaskView }\n\n/// A project's tasks not due after a day, an undated one included.\nquery tasks_due(project_id: Project.id, day: Day) -> List<TaskView> {\n    from: Task\n    where: Task.project_id == project_id\n    where: not (Task.due_on > day)\n    order: [Task.title asc]\n    limit: 10\n}\n",
     ),
     (
         "domains/planning/queries/tasks_not_on.jadpo",
-        "/// A project's tasks due any day but this one, an undated one included.\nquery tasks_not_on(project_id: Project.id, day: Day) -> List<TaskView> {\n    from: Task\n    where: Task.project_id == project_id\n    where: Task.due_on != day\n    order: [Task.title asc]\n    limit: 10\n}\n",
+        "use planning/entities { Project, Task }\nuse planning/types { Day, TaskView }\n\n/// A project's tasks due any day but this one, an undated one included.\nquery tasks_not_on(project_id: Project.id, day: Day) -> List<TaskView> {\n    from: Task\n    where: Task.project_id == project_id\n    where: Task.due_on != day\n    order: [Task.title asc]\n    limit: 10\n}\n",
     ),
     (
         "domains/planning/queries/tasks_page.jadpo",
-        "/// Every task, a page at a time.\nquery tasks_page(filter: Filter) -> Page<TaskView> {\n    from: Task\n    where_present: Task.status == filter.status\n    order: [Task.title desc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
+        "use planning/entities { Task }\nuse planning/types { Filter, TaskView }\n\n/// Every task, a page at a time.\nquery tasks_page(filter: Filter) -> Page<TaskView> {\n    from: Task\n    where_present: Task.status == filter.status\n    order: [Task.title desc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
     ),
     (
         "domains/planning/queries/other_page.jadpo",
-        "/// Every task by status, a page at a time.\nquery other_page(filter: Filter) -> Page<TaskView> {\n    from: Task\n    order: [Task.title asc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
+        "use planning/entities { Task }\nuse planning/types { Filter, TaskView }\n\n/// Every task by status, a page at a time.\nquery other_page(filter: Filter) -> Page<TaskView> {\n    from: Task\n    order: [Task.title asc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
     ),
     (
         "domains/planning/queries/boards.jadpo",
-        "/// Every project with its first open task.\nquery boards() -> List<Board> {\n    from: Project\n    order: [Project.name asc]\n    limit: 10\n    include: {\n        tasks: {\n            via: Task.project_id\n            where: Task.status == Status.open\n            order: [Task.title asc]\n            limit: 1\n        }\n    }\n}\n",
+        "use planning/entities { Project, Task }\nuse planning/types { Board, Status }\n\n/// Every project with its first open task.\nquery boards() -> List<Board> {\n    from: Project\n    order: [Project.name asc]\n    limit: 10\n    include: {\n        tasks: {\n            via: Task.project_id\n            where: Task.status == Status.open\n            order: [Task.title asc]\n            limit: 1\n        }\n    }\n}\n",
     ),
     (
         "domains/planning/queries/project_board.jadpo",
-        "/// One project.\nquery project_board(project_id: Project.id) fails ProjectNotFound -> Board {\n    from: Project\n    where: Project.id == project_id\n    missing: ProjectNotFound {\n        project_id: project_id\n    }\n    include: {\n        tasks: {\n            via: Task.project_id\n            order: [Task.title asc]\n            limit: 1\n        }\n    }\n}\n",
+        "use planning/entities { Project, Task }\nuse planning/types { Board }\nuse planning/failures { ProjectNotFound }\n\n/// One project.\nquery project_board(project_id: Project.id) fails ProjectNotFound -> Board {\n    from: Project\n    where: Project.id == project_id\n    missing: ProjectNotFound {\n        project_id: project_id\n    }\n    include: {\n        tasks: {\n            via: Task.project_id\n            order: [Task.title asc]\n            limit: 1\n        }\n    }\n}\n",
     ),
 ];
 
@@ -159,7 +159,7 @@ fn a_cursor_from_another_query_is_invalid_input() {
     write(
         &root,
         "domains/planning/queries/other_page.test.jadpo",
-        "test \"a cursor names its query\" {\n    assert collection.count(two_projects().tasks) == 5\n    var first: Page<TaskView> = tasks_page(Filter {})\n    var wrong: Page<TaskView> = other_page(Filter { after: first.next })\n    assert collection.count(wrong.items) == 2\n}\n",
+        "use planning/types { Filter, TaskView }\nuse planning/queries { tasks_page }\nuse planning/fixtures { two_projects }\n\ntest \"a cursor names its query\" {\n    assert collection.count(two_projects().tasks) == 5\n    var first: Page<TaskView> = tasks_page(Filter {})\n    var wrong: Page<TaskView> = other_page(Filter { after: first.next })\n    assert collection.count(wrong.items) == 2\n}\n",
     );
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
@@ -170,7 +170,14 @@ fn a_cursor_from_another_query_is_invalid_input() {
     assert!(shown.contains("test.unexpected_failure"), "{shown}");
 }
 
-const TESTS_FILE: &str = "test \"not keeps a field that is none\" {
+const TESTS_FILE: &str = "use planning/entities { Project }
+use planning/types { Board, Filter, Status, TaskView }
+use planning/failures { ProjectNotFound }
+use planning/actions { add_and_count, find_project }
+use planning/queries { boards, project_board, tasks_not_on, tasks_page }
+use planning/fixtures { two_projects }
+
+test \"not keeps a field that is none\" {
     var garden: Project = two_projects().garden
     var due: List<TaskView> = tasks_due(garden.id, \"2026-11-01\")
     assert collection.map(due, task -> task.title) == [\"Dig\", \"Water\"]

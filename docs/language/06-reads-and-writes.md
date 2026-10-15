@@ -1433,6 +1433,8 @@ application {}
 ```
 
 ```jadpo check project=e-other-domain file=domains/lending/actions/check_out.jadpo hidden
+use catalogue/entities { Book }
+
 /// Lends a copy.
 action check_out(book: Book) -> Unit {}
 ```
@@ -1445,6 +1447,8 @@ public entity Book {
 ```
 
 ```jadpo check project=e-other-domain file=domains/lending/queries/shelf.jadpo expect=query.other_domain
+use catalogue/entities { Book }
+
 /// Every copy.
 query shelf() -> List<Book> {
     from: Book
@@ -1455,9 +1459,9 @@ query shelf() -> List<Book> {
 
 ```text output
 error: `shelf` reads `Book`, an entity of domain `catalogue`
- --> domains/lending/queries/shelf.jadpo:3:11
+ --> domains/lending/queries/shelf.jadpo:5:11
   |
-3 |     from: Book
+5 |     from: Book
   |           ^^^^ domain `catalogue`
   reason: A query reads its own domain's entities only; another domain's data comes from that domain's public queries, so `catalogue` decides what it shares.
   next: Call a public query of `catalogue`, or move `shelf` into `catalogue` (human)
@@ -2870,12 +2874,17 @@ entity Cart {
 ```
 
 ```jadpo check project=e-action-spans-stores file=domains/ordering/actions/clear_cart.jadpo hidden
+use ordering/entities { Cart }
+
 action clear_cart(cart: Cart) -> Unit {
     Cart.delete(cart)
 }
 ```
 
 ```jadpo check project=e-action-spans-stores file=domains/ordering/actions/checkout.jadpo expect=store.action_spans_stores
+use ordering/entities { Cart, Order }
+use ordering/actions { clear_cart }
+
 action checkout(cart: Cart) -> Order {
     var order: Order = Order.create {
         set: {}
@@ -2887,9 +2896,9 @@ action checkout(cart: Cart) -> Order {
 
 ```text output
 error: `checkout` writes two stores
- --> domains/ordering/actions/checkout.jadpo:5:5
+ --> domains/ordering/actions/checkout.jadpo:8:5
   |
-5 |     clear_cart(cart)
+8 |     clear_cart(cart)
   |     ^^^^^^^^^^^^^^^^ store `carts`
   reason: An action's writes, and those of the actions it calls, commit as one, in one store's transaction; `checkout` writes `Order` (store `main`), and here it calls `clear_cart`, which writes `Cart` (store `carts`).
   next: Write `Cart` in a subscriber to an event `checkout` emits, or keep `Cart` in store `main` (human)

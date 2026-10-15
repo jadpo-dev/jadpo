@@ -12,6 +12,7 @@ mod case;
 pub mod data;
 mod failures;
 pub mod graph;
+pub mod imports;
 mod layout;
 pub mod lookups;
 mod naming;
@@ -26,6 +27,7 @@ pub use failures::{
     DECLARABLE_KINDS, FailureInfo, FailureTable, MEMBERS as FAILURE_MEMBERS, failure_problems,
     failure_table,
 };
+pub use imports::{import_edits, import_problems};
 pub use layout::layout_problems;
 pub use naming::{domain_problems, naming_problems};
 pub use resolve::resolve_file;
@@ -71,6 +73,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(layout_problems(db, project, file).iter().cloned());
             out.extend(naming_problems(db, project, file).iter().cloned());
             out.extend(resolve_file(db, project, file).iter().cloned());
+            out.extend(import_problems(db, project, file).iter().cloned());
             out.extend(usage_problems(db, project, file).iter().cloned());
             out.extend(
                 visibility::public_problems(db, project, file)

@@ -1,3 +1,8 @@
+use shared/types { MenuItem }
+use sales/types { Basket, BasketLine, Receipt }
+use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
+use sales/fixtures { family_basket }
+
 test "a basket without a code pays its subtotal" {
     var receipt: Receipt = attempt price_basket(family_basket(none))
     assert receipt == Receipt {

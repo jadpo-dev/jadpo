@@ -7,6 +7,9 @@
 // `attempt CakeCount(n) { max: OrderTooLarge }`. Every failure named there
 // has the kind `invalid_value`: a value broke a type's rule.
 
+use sales/types { CakeCount }
+use sales/failures { OrderTooLarge }
+
 /// A number of cakes counted for the kitchen, never negative.
 type KitchenCount = Int {
     min: 0

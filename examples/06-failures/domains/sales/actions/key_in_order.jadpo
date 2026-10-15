@@ -1,5 +1,8 @@
 // `invalid:` on its own: one failure for every rule that can break.
 
+use sales/types { CakeCount }
+use sales/failures { CountOutOfRange }
+
 /// A number of cakes as a counter assistant keys it in at the till: any
 /// whole number at all, until it is checked.
 type KeyedCount = Int {}

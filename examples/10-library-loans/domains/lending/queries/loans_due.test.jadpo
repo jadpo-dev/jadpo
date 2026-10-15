@@ -1,3 +1,6 @@
+use lending/types { Borrower, LoanView }
+use lending/fixtures { ada_borrows_two }
+
 test "loans due by a date come with their books" {
     var ada: Borrower = ada_borrows_two()
     var due: List<LoanView> = loans_due(

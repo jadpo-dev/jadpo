@@ -1,3 +1,6 @@
+use lending/entities { Member }
+use lending/types { CardView, LoanView }
+
 /// A member with their card and their loans, soonest due first.
 type MemberPage = Output {
     pick: [Member.id, Member.name]

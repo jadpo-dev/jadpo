@@ -474,7 +474,7 @@ impl TypeTable {
                 raws.iter()
                     .map(|raw| FieldDef {
                         declared: match &raw.source {
-                            Source::Written { ty, .. } => table.resolve(ty),
+                            Source::Written { ty, .. } => table.resolve_with(ty, false),
                             Source::Copied { host } => {
                                 Ty::Field(host.clone(), vec![raw.name.clone()])
                             }
@@ -485,7 +485,7 @@ impl TypeTable {
             };
             let def = match kind {
                 ShapeKind::Scalar { parent, .. } => Def::Scalar {
-                    parent: table.resolve(parent),
+                    parent: table.resolve_with(parent, false),
                     rules: Box::default(),
                 },
                 ShapeKind::Fields { base, .. } => Def::Fields {
@@ -661,13 +661,43 @@ pub trait TypeView {
     /// The type a written type stands for; `Error` for anything not a type,
     /// which the declaration check or resolution reports.
     fn resolve(&self, written: &TypeRef) -> Ty {
-        self.resolve_with(written, false)
+        self.absorbing(self.resolve_with(written, false))
     }
 
     /// As [`TypeTable::resolve`], reading single capital letters and
     /// `Function<T, U>` as a standard-library signature does.
     fn resolve_std(&self, written: &TypeRef) -> Ty {
-        self.resolve_with(written, true)
+        self.absorbing(self.resolve_with(written, true))
+    }
+
+    /// The type of field `path` of `host` as code reads it, `Host.field`,
+    /// or `Error` when the field's own type names nothing.
+    fn field_type(&self, host: &str, path: &[String]) -> Ty {
+        self.absorbing(Ty::Field(host.to_string(), path.to_vec()))
+    }
+
+    /// `ty` with each field type whose field's own type names nothing made
+    /// `Error`: that name is the one mistake, reported where it is
+    /// written, and what is built from the field absorbs it (compiler-runtime
+    /// §2.2). Only once the table is built, when the fields have their types.
+    fn absorbing(&self, ty: Ty) -> Ty {
+        match ty {
+            Ty::Field(host, path) => match self.field(&host, &path) {
+                Some(field) if field.declared.has_error() => Ty::Error,
+                _ => Ty::Field(host, path),
+            },
+            Ty::Nullable(inner) => match self.absorbing(*inner) {
+                Ty::Error => Ty::Error,
+                inner => inner.nullable(),
+            },
+            Ty::List(inner) => Ty::List(Box::new(self.absorbing(*inner))),
+            Ty::Set(inner) => Ty::Set(Box::new(self.absorbing(*inner))),
+            Ty::Map(key, value) => Ty::Map(
+                Box::new(self.absorbing(*key)),
+                Box::new(self.absorbing(*value)),
+            ),
+            other => other,
+        }
     }
 
     fn resolve_with(&self, written: &TypeRef, stub: bool) -> Ty {

@@ -3,6 +3,8 @@
 // there is no way to read a delivery address on an order collected in
 // the shop.
 
+use sales/types { Pence }
+
 /// A street address for deliveries.
 type StreetAddress = Text {
     min_length: 5

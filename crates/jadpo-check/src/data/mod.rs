@@ -615,6 +615,22 @@ impl Reader<'_> {
             reference: None,
         };
         if ty.has_error() {
+            // A type that names nothing is resolution's one error: the
+            // field keeps what its settings say, and whether it was written
+            // optional, so no rule that reads it reports a second.
+            field.nullable = matches!(written, TypeRef::Nullable(_))
+                || matches!(value, Expr::NullableExpr(_))
+                || matches!(value, Expr::RecordExpr(record)
+                    if matches!(record.expr(), Some(Expr::NullableExpr(_))));
+            if let Expr::RecordExpr(record) = value {
+                field.unique = tree::members(record.member_list())
+                    .iter()
+                    .any(|(key, member)| {
+                        tree::name_text(key).as_deref() == Some("unique")
+                            && member.value().as_ref().map(Const::from_expr)
+                                == Some(Const::Bool(true))
+                    });
+            }
             return Some(field);
         }
         if let Some(inner) = holds_entity(self.lookup, &ty) {

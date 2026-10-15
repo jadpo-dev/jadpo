@@ -1,6 +1,10 @@
 // A test beside its subject can call anything in its own domain, private
 // or not: here the private library `sacks` as well as the action.
 
+use shared/types { Grams }
+use pantry/failures { FlourShort }
+use pantry/libraries { sacks }
+
 test "the pantry gives flour it holds" {
     var taken: Grams = attempt take_flour(20000, 2)
     assert taken == 20000

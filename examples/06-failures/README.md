@@ -33,7 +33,7 @@ this project:
 cargo build --release -p jadpo-cli
 target/release/jadpo check examples/06-failures
 target/release/jadpo test examples/06-failures
-target/release/jadpo test examples/06-failures/domains/sales/actions/change_order.test.jadpo:21
+target/release/jadpo test examples/06-failures/domains/sales/actions/change_order.test.jadpo:23
 target/release/jadpo test examples/06-failures --watch
 target/release/jadpo fmt --check examples/06-failures
 ```
@@ -64,6 +64,6 @@ target/release/jadpo fmt --check examples/06-failures
   <!-- try {"file": "domains/sales/actions/double_if_room.jadpo", "replace": "if (count <= 12)", "with": "if (count <= 13)", "check": ["failure.attempt_required"]} -->
 - In `order_shelf.jadpo`, delete the `if (left == 0) { ... }` check. `jadpo check` reports `failure.rule_unmapped`: without the check `left` can be 0, which breaks `min: 1`, and no arm maps it.
   <!-- try {"file": "domains/sales/actions/order_shelf.jadpo", "replace": "    if (left == 0) {\n        reject ShelfEmpty\n    }\n", "with": "", "check": ["failure.rule_unmapped"]} -->
-- In `fill_tray.jadpo`, change `waiting: List<CakeCount>` to `waiting: List<Stock>`. `jadpo check` reports `type.constructor_input`: building a `Tray` never converts its items, so each number becomes a `CakeCount` where it is made, with its own arms, as `order_shelf.jadpo` does.
-  <!-- try {"file": "domains/sales/actions/fill_tray.jadpo", "replace": "waiting: List<CakeCount>", "with": "waiting: List<Stock>", "check": ["type.constructor_input"]} -->
+- In `fill_tray.jadpo`, change `waiting: List<CakeCount>` to `waiting: List<Stock>`, and add `Stock` to `use sales/types { ... }`. `jadpo check` reports `type.constructor_input`: building a `Tray` never converts its items, so each number becomes a `CakeCount` where it is made, with its own arms, as `order_shelf.jadpo` does.
+  <!-- try {"file": "domains/sales/actions/fill_tray.jadpo", "replace": "waiting: List<CakeCount>", "with": "waiting: List<Stock>", "also": [{"replace": "use sales/types { CakeCount }", "with": "use sales/types { CakeCount, Stock }"}], "check": ["type.constructor_input"]} -->
 - Then read [07-testing](../07-testing/README.md).

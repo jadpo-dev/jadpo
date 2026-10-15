@@ -1,3 +1,7 @@
+use shared/types { Grams }
+use shared/libraries { portions }
+use pantry
+
 test "a small bake still uses the mixer's 2000 grams" {
     // `flour_for` can fail, so even in a test its value comes through
     // `attempt` (or `match`), never by calling it bare.

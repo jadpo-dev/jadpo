@@ -2,6 +2,8 @@
 // never lets anyone else change it, and fields can't be assigned: to
 // change an object, build a new one from the old one's fields.
 
+use sales/types { CakeLine }
+
 /// A price change: the line to change and its new price per cake.
 type Reprice = Object {
     line: CakeLine

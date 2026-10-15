@@ -16,7 +16,9 @@ manifest `jadpo check` writes never lands in the repository, and must:
     <!-- try {"file": "domains/x/actions/y.jadpo", "replace": "a", "with": "b",
               "check": ["type.mismatch"]} -->
 
-  `replace` must occur exactly once in the file; `check` lists the rules
+  `replace` must occur exactly once in the file, as must each further
+  `{"replace": …, "with": …}` in an optional `also` list (the `use` line a
+  new name needs, say); `check` lists the rules
   `jadpo check --json` then reports (each at least once, nothing else), or
   `test` the codes the failed tests of `jadpo test --json --seed 1` have,
   with `failed` the number of failed tests when the bullet counts them.
@@ -140,10 +142,16 @@ def try_outcomes(project: Path) -> list[str]:
                 problems.append(f'{label}: no such file')
                 continue
             text = target.read_text()
-            if text.count(edit.get('replace', '')) != 1 or not edit.get('replace'):
-                problems.append(f'{label}: the text to replace must occur exactly once, and occurs {text.count(edit.get("replace", "")) if edit.get("replace") else 0} times')
+            # `also` lists further replacements in the same file, such as
+            # the `use` line a new name needs.
+            replacements = [edit] + list(edit.get('also', []))
+            bad = [r for r in replacements if not r.get('replace') or text.count(r['replace']) != 1]
+            if bad:
+                problems.append(f'{label}: the text to replace must occur exactly once: {bad[0].get("replace")!r}')
                 continue
-            target.write_text(text.replace(edit['replace'], edit.get('with', '')))
+            for replacement in replacements:
+                text = text.replace(replacement['replace'], replacement.get('with', ''))
+            target.write_text(text)
             if 'check' in edit:
                 _, out = jadpo(['check', '--json', '.'], cwd=copy)
                 try:

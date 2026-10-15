@@ -471,6 +471,8 @@ type Priority = Enum {
 ```
 
 ```jadpo check project=migrations file=domains/planning/entities/todo.jadpo hidden migrate=add_priority
+use planning/types { Priority }
+
 entity Todo {
     id: Uuid
     priority: Priority
@@ -877,6 +879,8 @@ entity User {
 ```
 
 ```jadpo check project=e-across-stores file=domains/planning/entities/old_todo.jadpo expect=data.reference_across_stores
+use planning/entities { User }
+
 entity OldTodo {
     id: Uuid
     owner_id: User.id {
@@ -889,9 +893,9 @@ entity OldTodo {
 
 ```text output
 error: `OldTodo.owner_id` refers to a `User` in another store
- --> domains/planning/entities/old_todo.jadpo:3:5
+ --> domains/planning/entities/old_todo.jadpo:5:5
   |
-3 |     owner_id: User.id {
+5 |     owner_id: User.id {
   |     ^^^^^^^^ `OldTodo` is in `archive`
   reason: A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber.
   next: Keep `OldTodo` and `User` in one store, or store the id as a plain `Uuid` (human)
@@ -1598,6 +1602,8 @@ type Stars = Int {
 ```
 
 ```jadpo check project=e-decision-required file=domains/notes/entities/note.jadpo hidden migrate=add_stars
+use notes/types { Stars }
+
 entity Note {
     id: Uuid
     stars: Stars
@@ -1644,6 +1650,8 @@ type Stars = Int {
 ```
 
 ```jadpo check project=e-decision-invalid file=domains/notes/entities/note.jadpo hidden migrate=add_stars
+use notes/types { Stars }
+
 entity Note {
     id: Uuid
     stars: Stars
@@ -1692,6 +1700,8 @@ type Stars = Int {
 ```
 
 ```jadpo check project=e-decision-unknown file=domains/notes/entities/note.jadpo hidden migrate=add_stars
+use notes/types { Stars }
+
 entity Note {
     id: Uuid
     stars: Stars
@@ -1743,6 +1753,8 @@ type Stars = Int {
 ```
 
 ```jadpo check project=e-unfinished file=domains/notes/entities/note.jadpo hidden migrate=add_stars
+use notes/types { Stars }
+
 entity Note {
     id: Uuid
     stars: Stars

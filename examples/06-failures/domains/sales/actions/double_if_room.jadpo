@@ -4,6 +4,8 @@
 // fail. Here the condition doesn't raise anything: it chooses between two
 // answers, and each is safe on its own path.
 
+use sales/types { CakeCount }
+
 /// Twice the order, as a party often asks, when one order can hold that
 /// many; otherwise the order as it was, and the party places a second.
 action double_if_room(count: CakeCount) -> CakeCount {

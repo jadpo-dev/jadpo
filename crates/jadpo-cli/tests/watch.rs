@@ -97,7 +97,10 @@ fn generate(root: &Path, domains: usize, steps: usize, actions: usize) {
         write(
             root,
             &format!("domains/{d}/libraries/{d}_maths.jadpo"),
-            &format!("library {d}_maths {{\n{}}}\n", functions.join("\n")),
+            &format!(
+                "use {d}/types {{ {ty} }}\n\nlibrary {d}_maths {{\n{}}}\n",
+                functions.join("\n")
+            ),
         );
         let tests: Vec<String> = (0..steps)
             .map(|k| {
@@ -118,14 +121,14 @@ fn generate(root: &Path, domains: usize, steps: usize, actions: usize) {
                 root,
                 &format!("domains/{d}/actions/{d}_settle_{j}.jadpo"),
                 &format!(
-                    "action {d}_settle_{j}(x: {ty}, n: Count) -> {ty} {{\n    return {d}_maths.{d}_step_{k}(x, 1)\n}}\n"
+                    "use shared/types {{ Count }}\nuse {d}/types {{ {ty} }}\nuse {d}/libraries {{ {d}_maths }}\n\naction {d}_settle_{j}(x: {ty}, n: Count) -> {ty} {{\n    return {d}_maths.{d}_step_{k}(x, 1)\n}}\n"
                 ),
             );
             write(
                 root,
                 &format!("domains/{d}/actions/{d}_settle_{j}.test.jadpo"),
                 &format!(
-                    "test \"{d} settles {j}\" {{\n    var got: {ty} = {d}_settle_{j}(1, 0)\n    assert got == {}\n}}\n\ntest \"{d} settles {j} from zero\" {{\n    var got: {ty} = {d}_settle_{j}(0, 0)\n    assert got == {}\n}}\n",
+                    "use {d}/types {{ {ty} }}\n\ntest \"{d} settles {j}\" {{\n    var got: {ty} = {d}_settle_{j}(1, 0)\n    assert got == {}\n}}\n\ntest \"{d} settles {j} from zero\" {{\n    var got: {ty} = {d}_settle_{j}(0, 0)\n    assert got == {}\n}}\n",
                     2 + k,
                     1 + k
                 ),
@@ -383,7 +386,7 @@ fn files_added_and_removed_and_failures_are_tracked() {
     write(
         &root,
         action,
-        "action north_settle_9(x: NorthAmount, n: Count) -> NorthAmount {\n    return north_maths.north_step_2(x, 1)\n}\n",
+        "use shared/types { Count }\nuse north/types { NorthAmount }\nuse north/libraries { north_maths }\n\naction north_settle_9(x: NorthAmount, n: Count) -> NorthAmount {\n    return north_maths.north_step_2(x, 1)\n}\n",
     );
     write(
         &root,
@@ -426,17 +429,17 @@ fn a_rule_on_a_field_reaches_the_tests_using_its_record() {
     write(
         &root,
         "domains/plots/types/corner.jadpo",
-        "type Corner = Object {\n    x: Size\n    y: Size\n}\n",
+        "use plots/types { Size }\n\ntype Corner = Object {\n    x: Size\n    y: Size\n}\n",
     );
     write(
         &root,
         "domains/plots/actions/shift.jadpo",
-        "action shift(corner: Corner) -> Corner {\n    return corner\n}\n",
+        "use plots/types { Corner }\n\naction shift(corner: Corner) -> Corner {\n    return corner\n}\n",
     );
     write(
         &root,
         "domains/plots/actions/shift.test.jadpo",
-        "test \"a corner stays put\" {\n    var start: Corner = Corner {\n        x: 1\n        y: 2\n    }\n    assert shift(start) == start\n}\n",
+        "use plots/types { Corner }\n\ntest \"a corner stays put\" {\n    var start: Corner = Corner {\n        x: 1\n        y: 2\n    }\n    assert shift(start) == start\n}\n",
     );
     let (mut watch, first) = Watch::start(options(&root)).expect("starts");
     assert_eq!(run_of(&first).results.len(), 1);
@@ -667,9 +670,9 @@ watch: 14:03:40, saved domains/north/types/north_amount.jadpo, nothing to rerun
 watch: 14:04:02, saved domains/north/libraries/north_maths.jadpo
 
 error: `north_step_0` isn't used
- --> domains/north/libraries/north_maths.jadpo:2:14
+ --> domains/north/libraries/north_maths.jadpo:4:14
   |
-2 |     function north_step_0(a: NorthAmount, b: NorthAmount) -> NorthAmount {
+4 |     function north_step_0(a: NorthAmount, b: NorthAmount) -> NorthAmount {
   |              ^^^^^^^^^^^^ nothing uses this
   reason: A library function exists to be used by several files; one that nothing uses is dead code. Tests don't count as users.
   next: Remove `north_step_0` (agent)
@@ -677,9 +680,9 @@ error: `north_step_0` isn't used
   help: docs/language/01-project-layout-and-modules.html#layout-unused-declaration
 
 error: `north_stp_0` isn't a function, action or query
- --> domains/north/libraries/north_maths.jadpo:7:28
+ --> domains/north/libraries/north_maths.jadpo:9:28
   |
-7 |         return NorthAmount(north_stp_0(a, b) + 1)
+9 |         return NorthAmount(north_stp_0(a, b) + 1)
   |                            ^^^^^^^^^^^ not declared
   reason: Nothing in this project called `north_stp_0` can be called.
   next: Declare `north_stp_0`, or call an existing function (agent)
@@ -803,9 +806,9 @@ watching 12 files · 1 failing  ctrl-c quit"#,
             r#"── 14:04:02 · saved domains/north/libraries/north_maths.jadpo ──
 
 ✗ error  `north_step_0` isn't used
-  domains/north/libraries/north_maths.jadpo:2:14
+  domains/north/libraries/north_maths.jadpo:4:14
     │
-  2 │     function north_step_0(a: NorthAmount, b: NorthAmount) -> NorthAmount {
+  4 │     function north_step_0(a: NorthAmount, b: NorthAmount) -> NorthAmount {
     │              ^^^^^^^^^^^^ nothing uses this
     │
   reason    A library function exists to be used by several files; one that
@@ -815,9 +818,9 @@ watching 12 files · 1 failing  ctrl-c quit"#,
   help      docs/language/01-project-layout-and-modules.html#layout-unused-declaration
 
 ✗ error  `north_stp_0` isn't a function, action or query
-  domains/north/libraries/north_maths.jadpo:7:28
+  domains/north/libraries/north_maths.jadpo:9:28
     │
-  7 │         return NorthAmount(north_stp_0(a, b) + 1)
+  9 │         return NorthAmount(north_stp_0(a, b) + 1)
     │                            ^^^^^^^^^^^ not declared
     │
   reason    Nothing in this project called `north_stp_0` can be called.

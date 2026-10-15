@@ -8,6 +8,9 @@
 // fields. Every rule a write can break needs an arm; there is no
 // catch-all.
 
+use lending/entities { Member }
+use lending/failures { EmailTaken }
+
 /// Makes someone a member.
 action enrol(email: Member.email, name: Member.name) fails EmailTaken -> Member {
     return attempt Member.create {

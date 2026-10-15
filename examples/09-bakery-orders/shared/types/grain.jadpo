@@ -1,0 +1,6 @@
+/// A grain a loaf can be baked from.
+type Grain = Enum {
+    white
+    wholemeal
+    rye
+}

@@ -456,13 +456,19 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         return out;
     }
     let model = data_model(db, project);
-    if !model.problems.is_empty()
-        || !super::queries::query_models(db, project)
-            .problems
-            .is_empty()
+    let unknown_type = model
+        .entities
+        .iter()
+        .any(|entity| entity.fields.iter().any(|field| field.ty.has_error()));
+    let queries = super::queries::query_models(db, project);
+    if unknown_type
+        || !model.problems.is_empty()
+        || !queries.problems.is_empty()
+        || queries.incomplete
     {
         // The schema is partial until the entities and the queries, which
-        // ask for indexes, check: their own errors come first.
+        // ask for indexes, check, and while a field's type names nothing:
+        // their own errors come first.
         return out;
     }
     let source = super::schema(db, project);

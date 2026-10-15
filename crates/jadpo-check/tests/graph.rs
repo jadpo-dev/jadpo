@@ -20,13 +20,18 @@ const BODY_PATH: &str = "domains/notes/types/body.jadpo";
 const BODY: &str =
     "/// The text of a note.\ntype Body = Text {\n    min_length: 1\n    max_length: 500\n}\n";
 const NOTE_PATH: &str = "domains/notes/types/note.jadpo";
-const NOTE: &str = "type Note = Object {\n    body: Body\n    pinned: Bool\n}\n";
+const NOTE: &str =
+    "use notes/types { Body }\n\ntype Note = Object {\n    body: Body\n    pinned: Bool\n}\n";
 const REFUSED_PATH: &str = "domains/notes/failures/note_refused.jadpo";
 const REFUSED: &str = "/// The note was refused.\ntype NoteRefused = Failure {\n    kind: FailureKind.rejected\n    message: \"The note was refused.\"\n    client: {\n        length: Int\n    }\n}\n";
 const WORDING_PATH: &str = "domains/notes/libraries/wording.jadpo";
-const WORDING: &str = "library wording {\n    /// Keeps a body as it is.\n    function keep(body: Body) -> Body {\n        return body\n    }\n}\n";
+const WORDING: &str = "use notes/types { Body }\n\nlibrary wording {\n    /// Keeps a body as it is.\n    function keep(body: Body) -> Body {\n        return body\n    }\n}\n";
 const SAVE_PATH: &str = "domains/notes/actions/save_note.jadpo";
-const SAVE: &str = "action save_note(body: Body) fails NoteRefused -> Note {
+const SAVE: &str = "use notes/types { Body, Note }
+use notes/failures { NoteRefused }
+use notes/libraries { wording }
+
+action save_note(body: Body) fails NoteRefused -> Note {
     if (body == Body(\"no\")) {
         reject NoteRefused {
             length: 2
@@ -41,9 +46,9 @@ const SAVE: &str = "action save_note(body: Body) fails NoteRefused -> Note {
 const KIND_PATH: &str = "domains/notes/types/shade.jadpo";
 const KIND: &str = "type Shade = Enum {\n    plain\n    tinted: {\n        level: Int\n    }\n}\n";
 const SUMMARY_PATH: &str = "domains/notes/types/summary.jadpo";
-const SUMMARY: &str = "type Summary = Object {\n    pick: [Note.body]\n    shade: Shade\n}\n";
+const SUMMARY: &str = "use notes/types { Note, Shade }\n\ntype Summary = Object {\n    pick: [Note.body]\n    shade: Shade\n}\n";
 const SUMMARISE_PATH: &str = "domains/notes/actions/summarise_note.jadpo";
-const SUMMARISE: &str = "action summarise_note(note: Note) -> Summary {\n    return Summary {\n        body: note.body\n        shade: Shade.plain\n    }\n}\n";
+const SUMMARISE: &str = "use notes/types { Note, Shade, Summary }\n\naction summarise_note(note: Note) -> Summary {\n    return Summary {\n        body: note.body\n        shade: Shade.plain\n    }\n}\n";
 
 fn fixture() -> Vec<(&'static str, String)> {
     [
@@ -192,10 +197,10 @@ fn formatting_changes_no_key_and_no_digest() {
                 "/// The note was refused.\ntype   NoteRefused = Failure {\n  client: { length: Int }\n\n\n  message: \"The note was refused.\"\n  kind:    FailureKind.rejected\n}\n",
             ),
             NOTE_PATH,
-            "type Note = Object { body: Body pinned: Bool }\n",
+            "use  notes/types {Body,}\ntype Note = Object { body: Body pinned: Bool }\n",
         ),
         WORDING_PATH,
-        "library wording {\n/// Keeps a body as it is.\nfunction keep(body: Body,) -> Body { return body }\n}\n",
+        "library wording {\n/// Keeps a body as it is.\nfunction keep(body: Body,) -> Body { return body }\n}\nuse notes/types { Body }\n",
     );
     let (tidy, _) = build(&files);
     let (untidy, _) = build(&messy);

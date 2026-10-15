@@ -1,3 +1,7 @@
+use shared/types { Grams, SackCount }
+use shared/failures { TooHeavy }
+use pantry/libraries { sacks }
+
 /// How many grams of flour the pantry holds once `delivered` sacks join
 /// the `in_store` ones.
 action restock(in_store: SackCount, delivered: SackCount) fails TooHeavy -> Grams {

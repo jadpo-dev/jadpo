@@ -227,7 +227,10 @@ Operators work on the representation, so their result is a plain `Int`,
 `Decimal`, `Text` or `Bool`, and turning it back into a named type is a
 constructor (area 2). Parentheses group. `and` and `or` stop as soon as the
 answer is known. `a < b < c` is an error, because `a < b` is a `Bool`.
-Logical operators are words; `!`, `&&` and `||` are not Jadpo.
+Logical operators are words; `!`, `&&` and `||` are not Jadpo. Nor are
+`===` and `!==`: `==` and `!=` already compare values of one type, so each
+is one error whose edit writes `==` or `!=` (`syntax.equality_operator`,
+chunk 3.5).
 
 Questions 6 and 7 decided operator typing and division:
 
@@ -2461,6 +2464,34 @@ error: `result` has no value
   next: Write `result`'s value after `=` (agent)
   rule: syntax.expected_expression
   help: docs/language/03-logic.html#syntax-expected-expression
+
+check failed: 1 error, 1 file
+```
+
+### `syntax.equality_operator`
+
+```jadpo check project=e-equality expect=syntax.equality_operator
+type Count = Int {
+    min: 0
+}
+
+type Done = Bool {}
+
+function sold_out(count: Count) -> Done {
+    return Done(count === 0)
+}
+```
+
+```text output
+error: Jadpo compares with `==`, not `===`
+ --> main.jadpo:8:23
+  |
+8 |     return Done(count === 0)
+  |                       ^^^ write `==`
+  reason: `==` and `!=` already compare two values of the same type, with no conversion between types, so there is no stricter form to ask for.
+  next: Use `==` instead of `===` (agent)
+  rule: syntax.equality_operator
+  help: docs/language/03-logic.html#syntax-equality-operator
 
 check failed: 1 error, 1 file
 ```

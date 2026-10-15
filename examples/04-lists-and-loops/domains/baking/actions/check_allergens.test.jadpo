@@ -1,3 +1,5 @@
+use baking/types { Allergen, Recipe }
+
 test "a recipe with milk isn't safe for someone avoiding milk" {
     var scone: Recipe = Recipe {
         ingredients: []

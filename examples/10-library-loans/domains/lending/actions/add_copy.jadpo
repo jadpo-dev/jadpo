@@ -1,3 +1,6 @@
+use lending/entities { Book }
+use lending/types { Wear }
+
 /// Puts a new copy on the shelves.
 action add_copy(isbn: Book.isbn, title: Book.title, wear: Wear) -> Book {
     return Book.create {

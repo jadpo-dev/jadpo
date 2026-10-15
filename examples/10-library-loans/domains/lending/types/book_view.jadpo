@@ -1,6 +1,8 @@
 // A query returns the entity or a type derived from it: `pick` copies
 // the fields a screen needs, and the query reads only those columns.
 
+use lending/entities { Book }
+
 /// A copy as the catalogue lists it.
 type BookView = Output {
     pick: [Book.id, Book.title, Book.wear]

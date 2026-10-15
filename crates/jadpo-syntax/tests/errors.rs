@@ -356,3 +356,35 @@ fn recovery_keeps_later_declarations() {
     let file = SourceFile::cast(parse.syntax()).expect("a source file");
     assert_eq!(file.decls().count(), 3);
 }
+
+/// Operators other languages spell differently (area 3, "Expressions and
+/// operators"): each is one error whose edit writes Jadpo's spelling, and
+/// the rest of the line parses as meant, so nothing follows from it.
+#[test]
+fn other_languages_operators_are_one_error_each() {
+    let cases = [
+        ("a === b", "syntax.equality_operator", "===", "a == b"),
+        ("a !== b", "syntax.equality_operator", "!==", "a != b"),
+        ("a && b", "syntax.unexpected_character", "&&", "a and b"),
+        ("a || b", "syntax.unexpected_character", "||", "a or b"),
+        ("!a", "syntax.unexpected_character", "!", "not a"),
+    ];
+    for (written, rule, covered, meant) in cases {
+        let text = format!(
+            "type Flag = Bool {{}}\n\nfunction f(a: Flag, b: Flag) -> Flag {{\n    return {written}\n}}\n"
+        );
+        let (error, carets) = one_error(&text);
+        assert_eq!(
+            (error.rule.id, carets.as_str()),
+            (rule, covered),
+            "{written}"
+        );
+        let fixed = fixed_by_edits(&text, &error);
+        assert!(fixed.contains(&format!("return {meant}\n")), "{fixed}");
+    }
+    // In a query's condition too, with the rest of the line kept.
+    let (error, _) = one_error(
+        "query q(filter: Filter) -> Page<View> {\n    from: Book\n    where_present: Book.wear === filter.wear\n}\n",
+    );
+    assert_eq!(error.message, "Jadpo compares with `==`, not `===`");
+}

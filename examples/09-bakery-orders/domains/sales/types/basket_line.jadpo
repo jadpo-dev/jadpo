@@ -1,3 +1,5 @@
+use shared/types { ItemCount, MenuItem }
+
 /// One line of a basket: an item and how many of it.
 public type BasketLine = Object {
     item: MenuItem

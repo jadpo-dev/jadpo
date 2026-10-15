@@ -4,6 +4,8 @@
 // An enum is a closed list of named alternatives, its variants. A variant
 // is always written with its enum's name: `CakeSize.large`.
 
+use sales/types { CakeLine, CakeName }
+
 /// How big a cake is.
 type CakeSize = Enum {
     small

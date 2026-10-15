@@ -1,6 +1,8 @@
 // A list literal is written in square brackets, and its items take the
 // list's element type, so `"Flour"` here is an `IngredientName`.
 
+use baking/types { Allergen, Ingredient, Recipe }
+
 test "a recipe weighs as much as its ingredients" {
     var bread: Recipe = Recipe {
         ingredients: [

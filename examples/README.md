@@ -10,7 +10,7 @@ Read them in order. Each one assumes the ones before it, and each has a
 README saying what it teaches, how to run it and what to try next.
 
 1. [01-first-project/](01-first-project/README.md): the project root, a
-   domain, a named type, a function, an action and a test.
+   domain, named types, `use` lines, a function, actions and tests.
 2. [02-named-types/](02-named-types/README.md): every built-in
    representation, the rules a type can add, refinements, literals and
    conversions.
@@ -28,8 +28,8 @@ README saying what it teaches, how to run it and what to try next.
 7. [07-testing/](07-testing/README.md): test kinds, fixtures, and
    asserting failures.
 8. [08-domains-and-sharing/](08-domains-and-sharing/README.md): several
-   domains, `public`, `shared/`, libraries, a public fixture, and a
-   scenario in `tests/`.
+   domains, `public`, `shared/`, libraries, `use <domain>`, a public
+   fixture, and a scenario in `tests/`.
 9. [09-bakery-orders/](09-bakery-orders/README.md): a fuller project
    that puts all of it together.
 10. [10-library-loans/](10-library-loans/README.md): stored records:

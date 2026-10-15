@@ -7,6 +7,10 @@
 // is lost. Its values may use only parameters, constants, `clock.now` and
 // the stored fields.
 
+use lending/entities { Book, Loan, Member }
+use lending/types { LendCount }
+use lending/failures { BookAlreadyLent, BookNotFound }
+
 /// Lends a copy to a member until a date.
 action lend(
     book_id: Book.id,

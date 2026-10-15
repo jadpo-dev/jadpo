@@ -5,6 +5,10 @@
 // different. Every test starts from nothing, so tests never depend on
 // each other and run in any order: the order changes with `--seed`.
 
+use loyalty/types { Card }
+use loyalty/failures { CardFull }
+use loyalty/fixtures { new_card, stamped_once }
+
 test "a stamp adds one to the card" {
     var card: Card = attempt stamp_card(new_card(3))
     assert card.stamp_count == 4

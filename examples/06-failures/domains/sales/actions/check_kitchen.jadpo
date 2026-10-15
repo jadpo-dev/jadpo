@@ -2,6 +2,9 @@
 // is rejected by its name alone, and a bare `return` leaves a `Unit`
 // action early.
 
+use sales/types { HourlyLoad, OvensLit }
+use sales/failures { KitchenBusy, OvenDown }
+
 /// Whether the kitchen can take another order now.
 action check_kitchen(load: HourlyLoad, ovens: OvensLit) fails KitchenBusy, OvenDown -> Unit {
     if (ovens == 0) {

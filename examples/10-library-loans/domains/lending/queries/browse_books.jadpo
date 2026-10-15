@@ -6,6 +6,9 @@
 // `where_present:` applies its condition only when the value is there,
 // which is how a request's optional filters are written.
 
+use lending/entities { Book }
+use lending/types { BookView, CatalogueFilter }
+
 /// The catalogue, by title, a page at a time.
 query browse_books(filter: CatalogueFilter) -> Page<BookView> {
     from: Book

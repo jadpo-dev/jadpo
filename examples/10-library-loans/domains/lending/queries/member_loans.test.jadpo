@@ -1,3 +1,7 @@
+use lending/types { Borrower, CardView, MemberPage }
+use lending/failures { MemberNotFound }
+use lending/fixtures { ada_borrows_two }
+
 test "a member's page holds their card and loans, soonest first" {
     var ada: Borrower = ada_borrows_two()
     var page: MemberPage = attempt member_loans(ada.member.id)

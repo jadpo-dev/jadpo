@@ -1447,7 +1447,7 @@ impl Body<'_> {
         self.table.field(head, std::slice::from_ref(&field))?;
         if self.stored.as_deref() == Some(head) {
             self.facts.stored.insert(node_key(expr.syntax()));
-            return Some(Ty::Field(head.to_string(), vec![field]));
+            return Some(self.table.field_type(head, &[field]));
         }
         let span = self.span(expr);
         let snake = crate::case::to_snake(head);

@@ -1,3 +1,5 @@
+use lending/entities { Book, Card, Loan, Member }
+
 /// A member with their card, the copies on the shelves and the loans the
 /// tests set up.
 type Borrower = Object {

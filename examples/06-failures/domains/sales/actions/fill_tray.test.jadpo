@@ -1,3 +1,5 @@
+use sales/failures { NothingToBake, TrayFull }
+
 test "waiting orders fill a tray in the order they came" {
     var tray: Tray = attempt fill_tray([2, 12, 24])
     assert tray == [2, 12, 24]

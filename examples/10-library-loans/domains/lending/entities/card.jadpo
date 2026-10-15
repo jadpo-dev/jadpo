@@ -2,6 +2,9 @@
 // one card, so a query reading members can include the card as one
 // record rather than a list.
 
+use lending/entities { Member }
+use lending/types { CardNumber }
+
 /// A member's library card.
 entity Card {
     id: Uuid

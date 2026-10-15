@@ -32,7 +32,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 |---|---|---|
 | `jadpo new <name>` | Creates a project that passes `check`, `fmt --check` and `test` | Decided (question 9), not built: `jadpo new` is `cli.unknown_command` |
 | `jadpo check` | Checks everything and writes the derived files in `build/` | Built (chunks 1.1–1.8): writes `build/manifest.json` and the catalogues in `build/catalogue/`; writing files is question 3 |
-| `jadpo fmt` | Formats; `--check` only reports; `--layout` also applies promotion moves | Built (chunk 1.2): formats, and `--check` only reports; `--layout` decided in area 1, not built |
+| `jadpo fmt` | Formats; `--check` only reports; `--layout` also applies promotion moves | Built (chunk 1.2): formats, and `--check` only reports; since chunk 3.5 it fixes each file's imports first, and `--layout` makes promotion moves |
 | `jadpo test` | Runs every test | Built (chunk 2.2): pure and action tests, in the interpreter |
 | `jadpo test <file>` / `<file>:<line>` | Runs one test file, or the test at that line | Built (chunk 2.2); a folder runs the tests under it |
 | `jadpo test --name <text>` / `--kind route` / `--failed` / `--affected` | Runs tests whose names match, one kind, last run's failures, or the tests a change reaches | `--name`, `--kind pure` and `--kind action`, and `--failed` built (chunk 2.2); route and schedule kinds come with areas 7 and 12; `--affected` decided in question 7, not built: a change is measured against the merge-base with `main` (Richard, 2026-10-14) |
@@ -57,7 +57,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo provider add` / `import` / `record` / `update` | Adds, imports, confirms and upgrades provider packages | Decided in area 11; question 15 |
 | `jadpo trace <id>` / `jadpo why <name>` / `jadpo call` / `jadpo console` | Debugging (area 17) | Proposed in area 17 |
 | `jadpo incident [file \| -]` | Explains a runtime event: from a file, from standard input (`pbpaste \| jadpo incident -`, or a log stream piped in), or, with no argument in a terminal, from text pasted at a prompt; it finds the Jadpo events inside surrounding log text and groups them by request | Decided 2026-10-13, not built: comes with debugging (area 17) |
-| `jadpo lsp` | Runs the language server for editors | Built (chunk 1.7): diagnostics, hover and go to definition; the VS Code extension in `editors/vscode` starts it (chunk 3.6) |
+| `jadpo lsp` | Runs the language server for editors | Built (chunk 1.7): diagnostics, hover and go to definition, from every use of a name and from a `use` line since chunk 3.5; the VS Code extension in `editors/vscode` starts it (chunk 3.6) |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere | Built (chunk 1.1): `jadpo help [command]`, `--help` with examples on every command, and `jadpo help --json` with the rule catalogue and the schemas of the manifest and of `jadpo test --json` |
 | `jadpo completions <shell>` / `jadpo version` | Prints the Tab-completion script for zsh, bash or fish; prints the version | Built (chunk 1.1) |
 
@@ -92,11 +92,23 @@ Sections go in one order: a failure's `kind`, `code`, `message`, `client`,
 `person`. Anything else keeps its written order after these, fields are never
 reordered, and a section's comments move with it.
 
+Inside a project, `jadpo fmt` fixes each file's `use` lines before it lays
+the file out (area 1, Imports): it adds a missing import, removes an unused
+one and moves a name imported from the wrong folder, by applying the edits
+`jadpo check`'s import problems carry, then sorts the lines. That needs the
+project's names resolved, so it waits until every file parses. `jadpo fmt
+--check` fails on a file whose imports it would change, as on one it would
+lay out differently. Built in chunk 3.5.
+
 Promotion is the one layout change that moves code between files: when a
 second file uses a type or helper, the compiler reports
 `layout.promotion_required` with a one-step fix. That fix is applied through
 the editor's quick fix or `jadpo fmt --layout`, never on save, so a move is
-always a visible, separate change (decided in area 1).
+always a visible, separate change (decided in area 1). `jadpo fmt --layout`
+makes every such move a type needs (out of its file with its comments, into
+a file of its own below the `use` lines it needs), then fixes the imports
+the moves touched; a helper function's move into a library changes its
+calls, so it stays a change to make by hand (built in chunk 3.5).
 
 ```jadpo fragment
 type Flags = Object {
@@ -134,6 +146,8 @@ with the generated files.
 > rechecks only what it changes; hover with a declaration written as Jadpo,
 > its `///` description, the failures a callable can produce, a failure's
 > code, kind and status, and who calls or uses it; and go to definition.
+> Since chunk 3.5 go to definition works from every use of a name, in a
+> body, a signature or a `use` line (area 1, Imports).
 
 Decided in area 1 and not built: promotion and the similar-helper warning come
 with quick fixes; rename goes through the same code as `jadpo rename`, so an
@@ -452,11 +466,11 @@ is decided but not built yet.
 | Command help | Built (chunk 1.1): every command has `--help` with examples, `jadpo help [command]` explains one, and `jadpo help --json` describes them all. |
 | Project path | Built (chunk 1.1): every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed (chunk 2.8). |
 | Scaffold | Decided (question 9), not built: `jadpo new` is `cli.unknown_command`. |
-| Formatter | Built (chunk 1.2): one member per line, one blank line between declarations, and `fmt --check` counts the files it read; `--layout` is decided, not built. |
+| Formatter | Built (chunk 1.2): one member per line, one blank line between declarations, and `fmt --check` counts the files it read; since chunk 3.5 it keeps `use` lines at the top, sorted, fixes imports inside a project, and `--layout` makes promotion moves. |
 | Error messages | Built (chunks 1.1 on): one error per mistake in area 14's field order, `impact` only when it says something, edits on the next step where one exists, and help links to the language pages. |
 | JSON output | Built (chunk 1.1 on): every command takes `--json` and prints one envelope (`schemaVersion` 2 since chunk 2.8) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. |
 | `build/` | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. |
-| Language server | Built (chunk 1.7): diagnostics, hover and go to definition. |
+| Language server | Built (chunk 1.7): diagnostics, hover and go to definition, from a `use` line too since chunk 3.5. |
 | Agent tools | The catalogues and the similar-helper warning are built (chunk 1.7); `migrate` is built (chunk 3.1); `impact`, `domain`, `rename` and `seed` are decided, not built. |
 | Build-only errors | Not applicable yet: there is no `jadpo build` until Phase 8. |
 

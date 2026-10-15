@@ -1,3 +1,6 @@
+use sales/types { CakeCount }
+use sales/failures { OrderTooLarge, ShelfEmpty }
+
 test "a shelf of 10 is one order" {
     var count: CakeCount = attempt order_shelf(10)
     assert count == 10

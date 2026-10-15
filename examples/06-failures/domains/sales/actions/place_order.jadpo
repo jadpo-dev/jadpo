@@ -7,6 +7,10 @@
 // can't call actions: a function is pure, while an action is an
 // operation that, in later areas, reads and writes data.
 
+use sales/types { CakeCount, HourlyLoad, OvensLit, Stock }
+use sales/failures { CakeSoldOut, KitchenBusy, OvenDown }
+use sales/actions { check_kitchen, reserve_cakes }
+
 /// Takes an order for `asked` cakes, if the kitchen can bake them and
 /// the shelf has them.
 action place_order(

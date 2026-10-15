@@ -1,3 +1,8 @@
+use shared/types { MenuItem, Pence }
+use sales/types { Basket, BasketLine }
+use sales/failures { DiscountTooLarge }
+use sales/fixtures { family_basket }
+
 test "the till charges full price when a code is unknown" {
     var charged: Pence = attempt till_total(family_basket("OLDCODE"))
     assert charged == 3860

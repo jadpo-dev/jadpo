@@ -2,6 +2,9 @@
 // hidden from then on, and their row stays until purge removes it. By
 // `id`, a member who isn't there, or has left already, is `MemberNotFound`.
 
+use lending/entities { Member }
+use lending/failures { MemberNotFound }
+
 /// A member leaves the library.
 action leave(member_id: Member.id) fails MemberNotFound -> Unit {
     attempt Member.delete(member_id)

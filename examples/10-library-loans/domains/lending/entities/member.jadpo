@@ -2,6 +2,8 @@
 // its domain's `entities/` folder. Its first field is always `id`: a
 // `Uuid` the store generates when the record is created.
 
+use lending/types { Nickname }
+
 /// Someone who may borrow books.
 entity Member {
     id: Uuid

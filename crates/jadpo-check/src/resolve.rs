@@ -97,6 +97,7 @@ pub fn resolve_file(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
                     );
                 }
             }
+            Decl::EntityDecl(d) => names.entity(d, &mut out),
             _ => {}
         }
     }
@@ -253,6 +254,33 @@ impl Names<'_> {
             base if base.has_fields() => self.fields(list, out),
             _ => {}
         }
+    }
+
+    /// An entity's fields, with the names in their settings, and the names
+    /// in its lifecycle (areas 5 and 6). Its other sections name its own
+    /// fields, which the data rules check.
+    fn entity(&self, decl: &ast::EntityDecl, out: &mut Vec<Diagnostic>) {
+        let outer = |_: &str| None;
+        let mut walk = Walk::new(self, &outer);
+        for (name, member) in tree::members(decl.member_list()) {
+            match tree::name_text(&name).as_deref() {
+                Some("store" | "unique" | "indexes" | "policy" | "caches") | None => {}
+                Some("lifecycle") => walk.member_values(member.block()),
+                Some(_) => {
+                    let Some(value) = member.value() else {
+                        continue;
+                    };
+                    if !crate::types::looks_like_type(&value) {
+                        continue;
+                    }
+                    self.type_expr(&value, Want::Type, &mut walk.out);
+                    if let Expr::RecordExpr(record) = &value {
+                        walk.member_values(record.member_list());
+                    }
+                }
+            }
+        }
+        out.append(&mut walk.out);
     }
 
     /// A block of fields: `name: Type`, and the lines that copy fields

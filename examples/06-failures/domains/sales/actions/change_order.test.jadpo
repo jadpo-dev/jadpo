@@ -1,3 +1,5 @@
+use sales/failures { NotYourOrder, OrderLocked, OrderNotFound }
+
 test "a waiting order changes to the new count" {
     var order: Order = Order {
         owner: 7

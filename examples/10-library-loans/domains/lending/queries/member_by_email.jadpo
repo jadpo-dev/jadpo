@@ -4,6 +4,8 @@
 // records come back. `Member?` is at most one, so the condition tests a
 // unique field with `==`.
 
+use lending/entities { Member }
+
 /// The member with this address, if there is one.
 query member_by_email(email: Member.email) -> Member? {
     from: Member

@@ -1,6 +1,9 @@
 // The menu's prices. `sales` asks for them through this public action
 // rather than keeping prices of its own, so a price changes in one place.
 
+use shared/types { Grain, MenuItem, Pence, SliceCount }
+use shared/libraries { money }
+
 /// What one of `item` costs.
 public action price_item(item: MenuItem) -> Pence {
     return match item {

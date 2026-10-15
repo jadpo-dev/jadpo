@@ -8,9 +8,11 @@
 mod canonical;
 mod doc;
 mod format;
+mod imports;
 mod sections;
 
 pub use canonical::canonical_tokens;
+pub use imports::{FOLDERS, ROOT_FILES};
 use jadpo_syntax::{SyntaxError, SyntaxNode, parse_file, parse_snippet};
 
 /// The longest line the formatter writes where it has a choice.

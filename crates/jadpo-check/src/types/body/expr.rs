@@ -644,7 +644,7 @@ impl Body<'_> {
                 self.facts
                     .fields
                     .insert(node_key(node.syntax()), (host.clone(), vec![field.clone()]));
-                let ty = Ty::Field(host, vec![field]);
+                let ty = self.table.field_type(&host, &[field]);
                 if found.optional { ty.nullable() } else { ty }
             }
             None => {
@@ -951,7 +951,7 @@ impl Body<'_> {
             let Some(value) = value else { continue };
             let mut path = variant.to_vec();
             path.push(name);
-            let field_ty = Ty::Field(host.to_string(), path);
+            let field_ty = self.table.field_type(host, &path);
             if is_literal(&value) || matches!(value, Expr::ListExpr(_)) {
                 // A literal takes the field type, so the field's own rules
                 // are checked too.
@@ -1157,10 +1157,9 @@ impl Body<'_> {
             .and_then(|v| v.fields.clone())
             .unwrap_or_default();
         if fields.iter().any(|f| f.name == field) {
-            return Ty::Field(
-                host.to_string(),
-                vec![variant.to_string(), field.to_string()],
-            );
+            return self
+                .table
+                .field_type(host, &[variant.to_string(), field.to_string()]);
         }
         self.unknown_field(&format!("{host}.{variant}"), field, &fields, span, true);
         Ty::Error

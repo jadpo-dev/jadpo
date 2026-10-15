@@ -340,12 +340,12 @@ fn paths_are_never_cut_and_long_paths_wrap() {
     write(
         &root,
         "domains/stock/actions/reserve_every_cake_on_the_shelf.jadpo",
-        "function check_the_shelf_has_plenty_left(n: Count) fails TooMany -> Count {\n    if (n > 20) {\n        reject TooMany\n    }\n    return n\n}\n\naction reserve_every_cake_on_the_shelf(n: Count) fails TooMany -> Count {\n    return attempt check_the_shelf_has_plenty_left(n)\n}\n",
+        "use stock/types { Count }\nuse stock/failures { TooMany }\n\nfunction check_the_shelf_has_plenty_left(n: Count) fails TooMany -> Count {\n    if (n > 20) {\n        reject TooMany\n    }\n    return n\n}\n\naction reserve_every_cake_on_the_shelf(n: Count) fails TooMany -> Count {\n    return attempt check_the_shelf_has_plenty_left(n)\n}\n",
     );
     write(
         &root,
         "domains/stock/actions/reserve_every_cake_on_the_shelf.test.jadpo",
-        "test \"reserving more cakes than the shelf holds\" {\n    var n: Count = attempt reserve_every_cake_on_the_shelf(30)\n    assert n == 30\n}\n",
+        "use stock/types { Count }\n\ntest \"reserving more cakes than the shelf holds\" {\n    var n: Count = attempt reserve_every_cake_on_the_shelf(30)\n    assert n == 30\n}\n",
     );
     let narrow = strip_ansi(
         &jadpo_in(
@@ -357,7 +357,7 @@ fn paths_are_never_cut_and_long_paths_wrap() {
     );
     assert!(
         narrow
-            .contains("  at\n  domains/stock/actions/reserve_every_cake_on_the_shelf.jadpo:3:9\n"),
+            .contains("  at\n  domains/stock/actions/reserve_every_cake_on_the_shelf.jadpo:6:9\n"),
         "{narrow}"
     );
     assert!(!narrow.contains('…'), "{narrow}");
@@ -809,7 +809,7 @@ fn paths_and_rerun_commands_work_from_where_the_command_ran() {
     write(
         &root,
         "domains/stock/actions/overflow.jadpo",
-        "action overflow(count: Count) -> Count {\n    return Count(count * 9223372036854775807)\n}\n",
+        "use stock/types { Count }\n\naction overflow(count: Count) -> Count {\n    return Count(count * 9223372036854775807)\n}\n",
     );
     write(
         &root,
@@ -823,8 +823,8 @@ fn paths_and_rerun_commands_work_from_where_the_command_ran() {
     for line in [
         format!(" --> {name}/domains/stock/actions/tally.test.jadpo:6\n"),
         format!("rerun: jadpo test {name}/domains/stock/actions/tally.test.jadpo:6 --seed 1\n"),
-        format!("  at: {name}/domains/stock/actions/overflow.jadpo:2:18\n"),
-        format!("  stack: {name}/domains/stock/actions/overflow.jadpo:2"),
+        format!("  at: {name}/domains/stock/actions/overflow.jadpo:4:18\n"),
+        format!("  stack: {name}/domains/stock/actions/overflow.jadpo:4"),
     ] {
         assert!(output.stdout.contains(&line), "{line}\n{}", output.stdout);
     }
@@ -879,12 +879,12 @@ fn paths_and_rerun_commands_work_from_where_the_command_ran() {
     write(
         &root,
         TALLY,
-        "action tally(count: Count) -> Count {\n    return cont\n}\n",
+        "use stock/types { Count }\n\naction tally(count: Count) -> Count {\n    return cont\n}\n",
     );
     let refused = jadpo(parent, &["test", name]);
     assert!(
         refused.stdout.contains(&format!(
-            " --> {name}/domains/stock/actions/tally.jadpo:2:12\n"
+            " --> {name}/domains/stock/actions/tally.jadpo:4:12\n"
         )),
         "{}",
         refused.stdout
@@ -892,7 +892,7 @@ fn paths_and_rerun_commands_work_from_where_the_command_ran() {
     let checked = jadpo(parent, &["check", name]);
     assert!(
         checked.stdout.contains(&format!(
-            " --> {name}/domains/stock/actions/tally.jadpo:2:12\n"
+            " --> {name}/domains/stock/actions/tally.jadpo:4:12\n"
         )),
         "{}",
         checked.stdout
@@ -915,7 +915,7 @@ fn project(name: &str, tests: &str) -> PathBuf {
     write(
         &root,
         TALLY,
-        "action tally(count: Count) -> Count {\n    return count\n}\n",
+        "use stock/types { Count }\n\naction tally(count: Count) -> Count {\n    return count\n}\n",
     );
     write(&root, TALLY_TEST, tests);
     root
@@ -1120,12 +1120,12 @@ fn a_public_fixture_runs_from_another_domains_test_and_a_scenario() {
     // domain from another domain's tests and from root `tests/`.
     let root = project(
         "public-fixture",
-        "test \"tallies a stocked count\" {\n    assert tally(stocked()) == 5\n}\n",
+        "use stock/fixtures { stocked }\n\ntest \"tallies a stocked count\" {\n    assert tally(stocked()) == 5\n}\n",
     );
     write(
         &root,
         "domains/stock/fixtures/stocked.jadpo",
-        "public fixture stocked() -> Count {\n    return tally(5)\n}\n",
+        "use stock/types { Count }\nuse stock/actions { tally }\n\npublic fixture stocked() -> Count {\n    return tally(5)\n}\n",
     );
     write(
         &root,
@@ -1135,12 +1135,12 @@ fn a_public_fixture_runs_from_another_domains_test_and_a_scenario() {
     write(
         &root,
         "domains/orders/actions/place.test.jadpo",
-        "test \"an order sees stocked items\" {\n    place()\n    assert stock.stocked() == 5\n}\n",
+        "use stock\n\ntest \"an order sees stocked items\" {\n    place()\n    assert stock.stocked() == 5\n}\n",
     );
     write(
         &root,
         "tests/stock_is_stocked.test.jadpo",
-        "test \"a scenario starts from stocked items\" {\n    assert stock.stocked() == 5\n}\n",
+        "use stock\n\ntest \"a scenario starts from stocked items\" {\n    assert stock.stocked() == 5\n}\n",
     );
     let output = jadpo(&root, &["test", "."]);
     assert_eq!(output.stdout, "tested: 3 passed, 3 action tests\n");

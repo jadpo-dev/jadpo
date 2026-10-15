@@ -7,6 +7,8 @@
 // as it does for a customer. A failure inside a fixture fails the test
 // that called it, so a fixture has no `fails` list.
 
+use loyalty/types { Card, StampCount }
+
 /// A card for Ada with `stamp_count` stamps on it.
 fixture new_card(stamp_count: StampCount) -> Card {
     return Card {

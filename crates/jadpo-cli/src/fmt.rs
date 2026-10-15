@@ -3,6 +3,12 @@
 //! project is found by walking up to `app.jadpo` (area 14). Paths in output
 //! are relative to the project, or to the folder named when there is no
 //! project around it.
+//!
+//! Inside a project it fixes each file's imports first (area 1, Imports):
+//! it adds a missing `use` line or name, removes an unused one and moves a
+//! name to the folder that holds it, by applying the edits `jadpo check`'s
+//! import problems carry, then formats, which sorts the lines. That needs
+//! the whole project resolved, so it waits until every file parses.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -44,6 +50,18 @@ impl Status {
 pub fn fmt(call: &Call) -> Reply {
     let check = call.flag("--check");
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
+    let mut moves = Vec::new();
+    if call.flag("--layout") {
+        let start = cwd.join(call.arguments.first().map_or(".", String::as_str));
+        let Some(root) = jadpo_db::find_root(&start) else {
+            return project_not_found("fmt");
+        };
+        if check {
+            moves = pending_moves(&root);
+        } else {
+            make_moves(&root);
+        }
+    }
     let (root, files) = match call.arguments.first() {
         Some(argument) => match named(&cwd, argument) {
             Ok(found) => found,
@@ -60,12 +78,132 @@ pub fn fmt(call: &Call) -> Reply {
     let mut diagnostics = Vec::new();
     let mut sources = BTreeMap::new();
     let mut results = Vec::new();
+    let fixed = fixed_imports(&root, &files);
     for file in files {
         let shown = display(&root, &file);
-        let status = format_one(&file, &shown, check, &mut diagnostics, &mut sources);
+        let imports = fixed.get(&shown).map(String::as_str);
+        let status = format_one(
+            &file,
+            &shown,
+            imports,
+            check,
+            &mut diagnostics,
+            &mut sources,
+        );
         results.push((shown, status));
     }
-    report(check, results, diagnostics, sources)
+    let moved = moves.len();
+    diagnostics.extend(moves);
+    report(check, results, moved, diagnostics, sources)
+}
+
+/// The moves the compiler asks for (`layout.promotion_required`) that
+/// carry the edits making them, in the order `jadpo check` reports them.
+fn pending_moves(root: &Path) -> Vec<Diagnostic> {
+    let loaded = jadpo_db::load(root);
+    jadpo_check::check(&loaded.db, loaded.project)
+        .into_iter()
+        .filter(|problem| {
+            problem.rule.id == rule::LAYOUT_PROMOTION_REQUIRED.id
+                && problem
+                    .next
+                    .as_ref()
+                    .is_some_and(|next| !next.edits.is_empty())
+        })
+        .collect()
+}
+
+/// Makes every move `jadpo check` asks for, one at a time, checking again
+/// after each, since a move can bring the next to light: a declaration
+/// the moved one names, now used from its new file.
+fn make_moves(root: &Path) {
+    for _ in 0..64 {
+        let Some(first) = pending_moves(root).into_iter().next() else {
+            return;
+        };
+        let Some(next) = first.next else { return };
+        let mut by_file: BTreeMap<String, Vec<(u32, u32, String)>> = BTreeMap::new();
+        for edit in next.edits {
+            by_file.entry(edit.span.path.clone()).or_default().push((
+                edit.span.start,
+                edit.span.end,
+                edit.replacement,
+            ));
+        }
+        for (path, edits) in by_file {
+            let file = root.join(&path);
+            let text = std::fs::read_to_string(&file).unwrap_or_default();
+            if let Some(folder) = file.parent()
+                && std::fs::create_dir_all(folder).is_err()
+            {
+                return;
+            }
+            if std::fs::write(&file, apply(&text, edits)).is_err() {
+                return;
+            }
+        }
+    }
+}
+
+/// Each named file's text with its imports fixed, by its path as shown,
+/// where fixing changed it. Nothing when the root holds no project, or
+/// when a file in it doesn't read or parse: resolving names then would
+/// take a name declared in that file for one that doesn't exist.
+fn fixed_imports(root: &Path, files: &[PathBuf]) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    if !root.join(jadpo_db::PROJECT_FILE).is_file() {
+        return out;
+    }
+    let mut loaded = jadpo_db::load(root);
+    let project = loaded.project;
+    let all = project.files(&loaded.db).clone();
+    if !loaded.unreadable.is_empty()
+        || all
+            .iter()
+            .any(|file| jadpo_db::parse(&loaded.db, *file).has_errors())
+    {
+        return out;
+    }
+    let wanted: Vec<String> = files.iter().map(|file| display(root, file)).collect();
+    for file in all {
+        let path = file.path(&loaded.db).clone();
+        if !wanted.contains(&path) {
+            continue;
+        }
+        let original = file.text(&loaded.db).clone();
+        // Each round applies the edits that don't overlap; what's left,
+        // such as two names for one new line, the next round finishes.
+        for _ in 0..16 {
+            let problems = jadpo_check::import_problems(&loaded.db, project, file);
+            let edits = jadpo_check::import_edits(problems);
+            if edits.is_empty() {
+                break;
+            }
+            let text = apply(file.text(&loaded.db), edits);
+            if jadpo_syntax::parse_file(&text).has_errors() {
+                break;
+            }
+            loaded.set_text(&path, text);
+        }
+        if *file.text(&loaded.db) != original {
+            out.insert(path, file.text(&loaded.db).clone());
+        }
+    }
+    out
+}
+
+/// `text` with each `(start, end, replacement)` applied, from the end
+/// back so earlier offsets stay right.
+fn apply(text: &str, mut edits: Vec<(u32, u32, String)>) -> String {
+    edits.sort_by_key(|a| std::cmp::Reverse((a.0, a.1)));
+    let mut out = text.to_string();
+    for (start, end, replacement) in edits {
+        let (start, end) = (start as usize, end as usize);
+        if start <= end && end <= out.len() {
+            out.replace_range(start..end, &replacement);
+        }
+    }
+    out
 }
 
 /// The root paths are shown from, and the files to format, for a named
@@ -148,6 +286,7 @@ fn display(root: &Path, file: &Path) -> String {
 fn format_one(
     file: &Path,
     shown: &str,
+    imports: Option<&str>,
     check: bool,
     diagnostics: &mut Vec<Diagnostic>,
     sources: &mut BTreeMap<String, String>,
@@ -179,7 +318,7 @@ fn format_one(
         }
     };
     sources.insert(shown.to_string(), text.clone());
-    let formatted = match jadpo_fmt::format_file(&text) {
+    let formatted = match jadpo_fmt::format_file(imports.unwrap_or(&text)) {
         Ok(formatted) => formatted,
         Err(errors) => {
             let refused = errors
@@ -273,6 +412,7 @@ fn count(n: usize, what: &str) -> String {
 fn report(
     check: bool,
     results: Vec<(String, Status)>,
+    moves: usize,
     diagnostics: Vec<Diagnostic>,
     sources: BTreeMap<String, String>,
 ) -> Reply {
@@ -289,6 +429,11 @@ fn report(
         .filter(|(status, _)| tally(*status) > 0)
         .map(|(status, what)| Fact::problem(count(tally(*status), what)))
         .collect();
+    match moves {
+        0 => {}
+        1 => facts.push(Fact::problem("1 move to make")),
+        n => facts.push(Fact::problem(format!("{n} moves to make"))),
+    }
     let failed = !facts.is_empty();
     let changed = tally(Status::Formatted);
     let unchanged = tally(Status::Unchanged);

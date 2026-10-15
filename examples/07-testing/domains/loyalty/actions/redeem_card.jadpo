@@ -1,3 +1,6 @@
+use loyalty/types { Card, StampCount }
+use loyalty/failures { CardNotFull }
+
 /// `card` emptied, once its free coffee has been given.
 action redeem_card(card: Card) fails CardNotFull -> Card {
     if (stamps_to_go(card) > 0) {

@@ -29,7 +29,7 @@ this project:
 cargo build --release -p jadpo-cli
 target/release/jadpo check examples/07-testing
 target/release/jadpo test examples/07-testing
-target/release/jadpo test examples/07-testing/domains/loyalty/actions/stamp_card.test.jadpo:18
+target/release/jadpo test examples/07-testing/domains/loyalty/actions/stamp_card.test.jadpo:22
 target/release/jadpo test examples/07-testing --watch
 target/release/jadpo fmt --check examples/07-testing
 ```
@@ -48,8 +48,8 @@ target/release/jadpo fmt --check examples/07-testing
 
 ## Try next
 
-- In `stamp_card.test.jadpo`, change `fails CardFull` to `fails CardNotFull`. `jadpo test` fails with `test.assertion_failed` and shows the failure that happened instead.
-  <!-- try {"file": "domains/loyalty/actions/stamp_card.test.jadpo", "replace": "fails CardFull", "with": "fails CardNotFull", "test": ["test.assertion_failed"]} -->
+- In `stamp_card.test.jadpo`, change `new_card(10)` to `new_card(9)`. `jadpo test` fails with `test.assertion_failed` and shows the card the call returned instead, since a card with nine stamps has room for one more.
+  <!-- try {"file": "domains/loyalty/actions/stamp_card.test.jadpo", "replace": "new_card(10)", "with": "new_card(9)", "test": ["test.assertion_failed"]} -->
 - While that test fails, run `target/release/jadpo test examples/07-testing --failed`: only the tests that failed last time run again.
 - Run `target/release/jadpo test examples/07-testing --kind pure`: only the one pure test runs. Then `--name "full card"`: the two tests whose names contain those words.
 - Then read [08-domains-and-sharing](../08-domains-and-sharing/README.md).

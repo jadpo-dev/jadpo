@@ -3,6 +3,12 @@
 // type in `failures/`, and `menu` is reached only through its public
 // action.
 
+use shared/types { Pence, Percent }
+use shared/libraries { money }
+use sales/types { Basket, DiscountCode, Receipt }
+use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
+use sales/actions { price_lines }
+
 /// What a discount code is worth: a share of the basket, or an amount.
 type Discount = Enum {
     percent: {

@@ -24,6 +24,7 @@ app_role
 application_configuration
 applies_to
 apply_change
+apply_code
 apply_discount
 approved
 archive_todo
@@ -216,6 +217,7 @@ disabled_at
 discount
 discount_code
 discount_for
+discount_loaf
 discount_too_large
 display_name
 display_word
@@ -524,6 +526,7 @@ price_basket
 price_flour
 price_item
 price_lines
+price_loaf
 price_loaves
 price_per_kilo
 price_text
@@ -568,6 +571,7 @@ recipe
 record_payment
 record_payment_webhook
 redeem_card
+reduction
 register_and_record
 register_both
 register_customer
@@ -671,6 +675,7 @@ slot_taken
 small
 snooze_days
 snooze_todo
+sold_out
 source_company_id
 split_evenly
 sponge
@@ -770,6 +775,7 @@ user_status
 user_todos
 user_view
 usual_contacts
+usual_order
 vegan
 vegetarian
 video

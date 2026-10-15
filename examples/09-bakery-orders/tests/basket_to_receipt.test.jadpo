@@ -1,6 +1,11 @@
 // A scenario across both domains, through their public actions only: the
 // menu's price for each item is what the basket charges.
 
+use shared/types { Grain, MenuItem }
+use sales/types { Basket, BasketLine, Receipt }
+use menu
+use sales
+
 test "a basket charges the menu's prices" {
     var loaf: MenuItem = MenuItem.loaf {
         grain: Grain.wholemeal

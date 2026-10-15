@@ -3,6 +3,11 @@
 // fixtures, called through their domain, and everything in `shared/`. It
 // can't call `pantry`'s private `sacks` library.
 
+use shared/types { Grams }
+use pantry/failures { FlourShort }
+use pantry
+use sales
+
 test "a bake bigger than the sacks in store is refused" {
     // One 16-kilogram sack covers 30 loaves of 450 grams, but not 40.
     var used: Grams = attempt sales.bake_loaves(30, 1)

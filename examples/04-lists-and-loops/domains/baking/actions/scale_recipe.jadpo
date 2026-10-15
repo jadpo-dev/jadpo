@@ -6,6 +6,8 @@
 // functions are not values, so they can't be stored or passed to your own
 // functions.
 
+use baking/types { Grams, Ingredient, IngredientName, Recipe }
+
 /// How many times a recipe is made at once.
 type Batches = Int {
     min: 1

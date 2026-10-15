@@ -2,6 +2,8 @@
 // lifecycle, so its row goes, and nothing refers to a card, so nothing can
 // refuse it.
 
+use lending/entities { Card }
+
 /// Takes a member's card away.
 action revoke_card(card: Card) -> Unit {
     Card.delete(card)

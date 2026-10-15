@@ -4,6 +4,8 @@
 // call it through its domain: `pantry.a_days_flour()`. Application code
 // never calls a fixture, public or not.
 
+use shared/types { SackCount }
+
 /// The full sacks a pantry holds for a day's baking.
 public fixture a_days_flour() -> SackCount {
     return 2

@@ -36,8 +36,8 @@ project, so a second `Count` in another file is an error (see
 There are no modules. A domain owns everything in it and is the visibility
 boundary: a declaration is private to its domain unless marked `public`,
 and a call into another domain names it (`inventory.reserve_stock(...)`).
-Each file will name where its other names come from on `use` lines
-(decided 2026-10-14, built in roadmap chunk 3.5). See
+Each file names where its other names come from on `use` lines
+(decided 2026-10-14, built in chunk 3.5). See
 [Ownership and calls replace modules](#ownership-and-calls-replace-modules)
 and [Imports](#imports).
 
@@ -63,8 +63,8 @@ names a declaration, field, parameter, variable or variant, and using one is
 `else`, `emit`, `entity`, `fails`, `false`, `fixture`, `for`, `function`,
 `if`, `in`, `library`, `match`, `mut`, `none`, `not`, `or`, `package`,
 `propagate`, `provide`, `public`, `query`, `reject`, `resource`, `return`,
-`routes`, `schedule`, `seed`, `subscriber`, `test`, `true`, `type` and
-`var`. A setting the language defines may still use one as its key
+`routes`, `schedule`, `seed`, `subscriber`, `test`, `true`, `type`, `use`
+and `var`. A setting the language defines may still use one as its key
 (`package: Stripe.v2024_06_20` in a connection, `test:` in configuration).
 
 These words mean something only where the language expects them, and stay
@@ -392,18 +392,25 @@ type TodoCount = Int {
 ```
 
 ```jadpo check project=e-fixture-from-action file=domains/planning/fixtures/two_open_todos.jadpo hidden
+use planning/types { TodoCount }
+
 public fixture two_open_todos() -> TodoCount {
     return 2
 }
 ```
 
 ```jadpo check project=e-fixture-from-action file=tests/open_todos.test.jadpo hidden
+use planning
+
 test "planning starts with two open todos" {
     assert planning.two_open_todos() == 2
 }
 ```
 
 ```jadpo check project=e-fixture-from-action file=domains/planning/actions/count_todos.jadpo expect=semantic.not_callable
+use planning/types { TodoCount }
+use planning/fixtures { two_open_todos }
+
 action count_todos() -> TodoCount {
     return two_open_todos()
 }
@@ -411,9 +418,9 @@ action count_todos() -> TodoCount {
 
 ```text output
 error: An action can't call fixture `two_open_todos`
- --> domains/planning/actions/count_todos.jadpo:2:12
+ --> domains/planning/actions/count_todos.jadpo:5:12
   |
-2 |     return two_open_todos()
+5 |     return two_open_todos()
   |            ^^^^^^^^^^^^^^ test data
   reason: A fixture builds test data: only tests, other fixtures and seeds call it, and it is never compiled into a deployable.
   next: Call the actions `two_open_todos` calls, or move this call into a test, fixture or seed (agent)
@@ -466,10 +473,15 @@ type Quantity = Int {
 ```
 
 ```jadpo check project=e-private file=domains/inventory/actions/reserve_stock.jadpo
+use shared/types { Quantity }
+
 action reserve_stock(quantity: Quantity) -> Unit {}
 ```
 
 ```jadpo check project=e-private file=domains/ordering/actions/checkout.jadpo expect=visibility.private_cross_domain
+use shared/types { Quantity }
+use inventory
+
 action checkout(quantity: Quantity) -> Unit {
     inventory.reserve_stock(quantity)
 }
@@ -477,9 +489,9 @@ action checkout(quantity: Quantity) -> Unit {
 
 ```text output
 error: `reserve_stock` is private to domain `inventory`
- --> domains/ordering/actions/checkout.jadpo:2:15
+ --> domains/ordering/actions/checkout.jadpo:5:15
   |
-2 |     inventory.reserve_stock(quantity)
+5 |     inventory.reserve_stock(quantity)
   |               ^^^^^^^^^^^^^ private
   reason: Another domain may use only what a domain marks `public`; `reserve_stock` is an action in `domains/inventory/actions/reserve_stock.jadpo`.
   next: Mark `reserve_stock` `public` if `inventory` should offer it to other domains (human)
@@ -503,6 +515,8 @@ type TodoCount = Int {
 ```
 
 ```jadpo check project=e-private-fixture file=domains/planning/fixtures/two_open_todos.jadpo hidden
+use planning/types { TodoCount }
+
 fixture two_open_todos() -> TodoCount {
     return 2
 }
@@ -513,6 +527,8 @@ action send_reminders() -> Unit {}
 ```
 
 ```jadpo check project=e-private-fixture file=domains/reminders/actions/send_reminders.test.jadpo expect=visibility.private_cross_domain
+use planning
+
 test "reminders start from planning's open todos" {
     send_reminders()
     assert planning.two_open_todos() == 2
@@ -521,9 +537,9 @@ test "reminders start from planning's open todos" {
 
 ```text output
 error: `two_open_todos` is private to domain `planning`
- --> domains/reminders/actions/send_reminders.test.jadpo:3:21
+ --> domains/reminders/actions/send_reminders.test.jadpo:5:21
   |
-3 |     assert planning.two_open_todos() == 2
+5 |     assert planning.two_open_todos() == 2
   |                     ^^^^^^^^^^^^^^ private
   reason: Another domain may use only what a domain marks `public`; `two_open_todos` is a fixture in `domains/planning/fixtures/two_open_todos.jadpo`.
   next: Mark `two_open_todos` `public` if `planning` should offer it to other domains' tests (human)
@@ -588,6 +604,8 @@ test "two todos are open" {
 ```
 
 ```jadpo check project=e-public-unused file=domains/planning/actions/count_todos.jadpo expect=visibility.public_unused
+use planning/types { TodoCount }
+
 public action count_todos() -> TodoCount {
     return 2
 }
@@ -595,9 +613,9 @@ public action count_todos() -> TodoCount {
 
 ```text output
 error: `count_todos` is `public`, but nothing outside `planning` uses it
- --> domains/planning/actions/count_todos.jadpo:1:1
+ --> domains/planning/actions/count_todos.jadpo:3:1
   |
-1 | public action count_todos() -> TodoCount {
+3 | public action count_todos() -> TodoCount {
   | ^^^^^^ offered to no one
   reason: `public` offers a declaration to other domains, and no other domain's code or tests, no root `tests/` scenario and no public declaration they use names `count_todos`; `planning`'s own tests don't count.
   next: Remove `public` (agent)
@@ -638,6 +656,221 @@ error: `snooze_todo` is in this file's own domain
   help: docs/language/01-project-layout-and-modules.html#semantic-own-domain-qualification
 
 check failed: 1 error, 3 files
+```
+
+### `import.missing`
+
+Every name a file uses that it doesn't declare comes in on a `use` line
+(see [Imports](#imports)). The edit adds it, and `jadpo fmt` adds every
+missing import at once:
+
+```jadpo check project=e-import-missing file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-import-missing file=shared/types/pence.jadpo hidden
+type Pence = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-import-missing file=domains/bakery/actions/price_loaf.jadpo expect=import.missing
+action price_loaf(each: Pence) -> Pence {
+    return each
+}
+```
+
+```text output
+error: `Pence` isn't imported
+ --> domains/bakery/actions/price_loaf.jadpo:1:25
+  |
+1 | action price_loaf(each: Pence) -> Pence {
+  |                         ^^^^^ not imported
+  reason: Every name a file uses that it doesn't declare comes in on a `use` line, so a reader sees where it lives; `Pence` is a type in `shared/types/pence.jadpo`.
+  next: Add `use shared/types { Pence }`, or run `jadpo fmt`, which adds every missing import (agent)
+  rule: import.missing
+  help: docs/language/01-project-layout-and-modules.html#import-missing
+
+check failed: 1 error, 3 files
+```
+
+### `import.unknown`
+
+A `use` line names a domain, a folder of a domain or of `shared/`, or a
+root file, and only names that are there. A name imported from the wrong
+folder gets the edit that moves it:
+
+```jadpo check project=e-import-unknown file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-import-unknown file=shared/types/pence.jadpo hidden
+type Pence = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-import-unknown file=domains/bakery/actions/price_loaf.jadpo expect=import.unknown
+use shared/failures { Pence }
+
+action price_loaf(each: Pence) -> Pence {
+    return each
+}
+```
+
+```text output
+error: `Pence` isn't in `shared/failures`
+ --> domains/bakery/actions/price_loaf.jadpo:1:23
+  |
+1 | use shared/failures { Pence }
+  |                       ^^^^^ not in this folder
+  reason: A `use` line brings in names from the folder it names; `Pence` is a type in `shared/types/pence.jadpo`, so it comes in from `shared/types`.
+  next: Import `Pence` from `shared/types` (agent)
+  rule: import.unknown
+  help: docs/language/01-project-layout-and-modules.html#import-unknown
+
+check failed: 1 error, 3 files
+```
+
+### `import.unused`
+
+```jadpo check project=e-import-unused file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-import-unused file=shared/types/pence.jadpo hidden
+type Pence = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-import-unused file=shared/types/percent.jadpo hidden
+type Percent = Int {
+    min: 0
+    max: 100
+}
+```
+
+```jadpo check project=e-import-unused file=domains/bakery/actions/discount_loaf.jadpo hidden
+use shared/types { Percent }
+
+action discount_loaf(reduction: Percent) -> Unit {}
+```
+
+```jadpo check project=e-import-unused file=domains/bakery/actions/price_loaf.jadpo expect=import.unused
+use shared/types { Pence, Percent }
+
+action price_loaf(each: Pence) -> Pence {
+    return each
+}
+```
+
+```text output
+error: `Percent` is imported but not used
+ --> domains/bakery/actions/price_loaf.jadpo:1:27
+  |
+1 | use shared/types { Pence, Percent }
+  |                           ^^^^^^^ not used
+  reason: A `use` line lists only the names its file uses, so each says where it comes from; nothing here uses `Percent`.
+  next: Remove `Percent` from this line (agent)
+  rule: import.unused
+  help: docs/language/01-project-layout-and-modules.html#import-unused
+
+check failed: 1 error, 5 files
+```
+
+### `import.unneeded`
+
+Built-ins, what the file declares, what a test file's subject declares and
+the file's own domain are seen without an import:
+
+```jadpo check project=e-import-unneeded file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-import-unneeded file=shared/types/pence.jadpo hidden
+type Pence = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-import-unneeded file=domains/menu/actions/price_item.jadpo
+use shared/types { Pence }
+
+/// A loaf's price before any choices.
+function loaf_price() -> Pence {
+    return 250
+}
+
+action price_item() -> Pence {
+    return loaf_price()
+}
+```
+
+```jadpo check project=e-import-unneeded file=domains/menu/actions/price_item.test.jadpo expect=import.unneeded
+use menu/actions { loaf_price }
+
+test "a loaf costs 250 pence" {
+    assert loaf_price() == 250
+}
+```
+
+```text output
+error: `loaf_price` is declared in this test's subject
+ --> domains/menu/actions/price_item.test.jadpo:1:20
+  |
+1 | use menu/actions { loaf_price }
+  |                    ^^^^^^^^^^ needs no import
+  reason: A test file sees everything its subject declares without importing it, and `loaf_price` is in `price_item.jadpo`.
+  next: Remove this line (agent)
+  rule: import.unneeded
+  help: docs/language/01-project-layout-and-modules.html#import-unneeded
+
+check failed: 1 error, 4 files
+```
+
+### `import.duplicate`
+
+```jadpo check project=e-import-duplicate file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-import-duplicate file=shared/types/pence.jadpo hidden
+type Pence = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-import-duplicate file=shared/types/percent.jadpo hidden
+type Percent = Int {
+    min: 0
+    max: 100
+}
+```
+
+```jadpo check project=e-import-duplicate file=domains/bakery/actions/price_loaf.jadpo expect=import.duplicate
+use shared/types { Pence }
+use shared/types { Percent }
+
+action price_loaf(each: Pence, reduction: Percent) -> Pence {
+    return each
+}
+```
+
+```text output
+error: `shared/types` has two `use` lines
+ --> domains/bakery/actions/price_loaf.jadpo:2:5
+  |
+1 | use shared/types { Pence }
+  |     ------------ first line
+2 | use shared/types { Percent }
+  |     ^^^^^^^^^^^^ a second line
+  reason: Each folder has one `use` line, listing every name the file takes from it; `use shared/types` is written twice.
+  next: Move its names onto the first `shared/types` line (agent)
+  rule: import.duplicate
+  help: docs/language/01-project-layout-and-modules.html#import-duplicate
+
+check failed: 1 error, 4 files
 ```
 
 ### `layout.unknown_location`
@@ -700,6 +933,8 @@ application {}
 ```
 
 ```jadpo check project=e-file-name file=domains/planning/actions/snooze_todo.jadpo hidden
+use planning/types { DueDate }
+
 action snooze_todo(due: DueDate) -> Unit {}
 ```
 
@@ -728,6 +963,8 @@ application {}
 ```
 
 ```jadpo check project=e-promotion file=domains/planning/actions/postpone_all.jadpo
+use planning/actions { SnoozeDays }
+
 action postpone_all(days: SnoozeDays) -> Unit {}
 ```
 
@@ -746,12 +983,51 @@ error: `SnoozeDays` is used beyond this file
   |
 1 | type SnoozeDays = Int {
   |      ^^^^^^^^^^ used by another file
-  reason: A type used by one file lives in it; once another file uses it, it moves to `domains/planning/types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
-  next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo` (agent)
+  reason: A type used by one file lives in it; once another file uses it, it moves to a file of its own in `domains/planning/types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
+  next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
   rule: layout.promotion_required
   help: docs/language/01-project-layout-and-modules.html#layout-promotion-required
 
 check failed: 1 error, 3 files
+```
+
+Moving to the right folder is not enough: a second declaration in a file
+moves to a file of its own once another file uses it, so every name a `use`
+line brings in is `<folder>/<name>.jadpo`. The edit makes the move, and
+`jadpo fmt --layout` makes it and updates the imports:
+
+```jadpo check project=e-promotion-file file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-promotion-file file=domains/sales/types/basket.jadpo expect=layout.promotion_required
+type Basket = Object {
+    code: DiscountCode
+}
+
+type DiscountCode = Text {
+    max_length: 12
+}
+```
+
+```text output
+error: `DiscountCode` is used beyond this file
+ --> domains/sales/types/basket.jadpo:5:6
+  |
+5 | type DiscountCode = Text {
+  |      ^^^^^^^^^^^^ used by another file
+  reason: A declaration another file uses has a file of its own named after it, so its `use` line says where it is; `DiscountCode` is in `basket.jadpo`, named after another declaration, and moves to `domains/sales/types/`. `domains/sales/actions/apply_code.jadpo` uses it too.
+  next: Move `DiscountCode` to `domains/sales/types/discount_code.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
+  rule: layout.promotion_required
+  help: docs/language/01-project-layout-and-modules.html#layout-promotion-required
+
+check failed: 1 error, 3 files
+```
+
+```jadpo check project=e-promotion-file file=domains/sales/actions/apply_code.jadpo
+use sales/types { Basket, DiscountCode }
+
+action apply_code(basket: Basket, code: DiscountCode) -> Unit {}
 ```
 
 ### `layout.unused_declaration`
@@ -840,6 +1116,8 @@ type OrderTotal = Int {
 ```
 
 ```jadpo check project=e-direction file=domains/ordering/actions/apply_discount.jadpo hidden
+use shared/types { Discount }
+
 action apply_discount(discount: Discount) -> Unit {}
 ```
 
@@ -1059,7 +1337,7 @@ rule's real output under [Errors](#errors).
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built (chunk 1.7): the `library.similar_exists` warning. |
-| Imports | Decided 2026-10-14, not built: roadmap chunk 3.5. |
+| Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | Referenced assets | Decided, not built: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
 
 ### Consistency with the rest of the language
@@ -1079,17 +1357,16 @@ rule's real output under [Errors](#errors).
 - **Declaration headers differ.** `type Name = Base { }` uses `=`, while
   `entity Name { }`, `failure Name { }` and `service Name { }` do not. This
   spans several areas and is flagged for the end-of-review syntax pass.
-- **Separation risks duplication, not breakage.** With no imports every
-  reference resolves wherever it lives, but an agent working in one domain
-  can write a helper that already exists in another. Placement cannot prevent
+- **Separation risks duplication, not breakage.** Names are unique, so
+  every reference resolves to one declaration wherever it lives, but an
+  agent working in one domain can write a helper that already exists in
+  another. Placement cannot prevent
   two copies. Mitigations: agents look things up in the compiler's project map
   (`jadpo inspect`, the language server) rather than browsing folders, and a
   possible compiler warning for near-identical functions or types.
   The compiler also generates a catalogue of every library function with its
   signature and documentation comment; the Jadpo agent skill tells agents to
   consult it before writing a helper. Nothing is maintained by hand.
-- **The formatter keeps your blank lines and import order.** Two people can
-  format the same file differently and both pass `jadpo fmt --check`.
 
 ### Decided layout
 
@@ -1331,7 +1608,7 @@ build/
 
 #### Imports
 
-Decided by Richard on 2026-10-14; not built yet (roadmap chunk 3.5). With
+Decided by Richard on 2026-10-14 and built in chunk 3.5. With
 no imports, a name read in one file could be declared in that file, in its
 domain's `types/`, `failures/` or `entities/`, in `shared/`, or in another
 domain: an agent had to search for it and a reader had to click through
@@ -1387,6 +1664,50 @@ use menu
 This brings back the one comma-separated `{ }` list in the language (see
 [Consistency](#consistency-with-the-rest-of-the-language)), accepted because
 the names have to appear exactly as the code writes them.
+
+Built in chunk 3.5, with these readings (each on the
+[Decisions](#decisions) table):
+
+- **Where the lines go.** `use` lines open the file, below the comments
+  that open it up to a blank line. `jadpo fmt` sorts them as the example
+  above is: names before domains, from the root files through `shared/` to
+  each domain's folders by domain name, with a domain's or `shared/`'s
+  folders in the order the layout lists them (`entities/`, `types/`,
+  `failures/` ...), then the `use <domain>` lines; the names in the braces
+  are sorted, and a line too long for 100 columns puts one name per line.
+  `use` is a reserved word, so nothing is named `use`.
+- **What `jadpo check` reports**, each with the edit that fixes it:
+  `import.missing` for a name used without its import, `import.unknown`
+  for a line naming a folder, domain or name that isn't there (a name
+  imported from the wrong folder gets the edit moving it to the right
+  one), `import.unused` for one the file doesn't use, `import.unneeded`
+  for a built-in, the file's own declaration, its test subject's or its
+  own domain, and `import.duplicate` for a name or folder written twice. A
+  private name of another domain is still `visibility.private_cross_domain`
+  where the file uses it, and a call that reaches nothing is still
+  resolution's to report: an import is never asked for what the file can't
+  use.
+- **`jadpo fmt` fixes imports, then formats**, by applying those edits, once
+  every file in the project parses; `jadpo fmt --check` fails on a file
+  whose imports it would change.
+- **Before a promotion.** A declaration in a file named after another, such
+  as `SnoozeDays` beside `snooze_todo`, comes in from the folder its file
+  is in (`use planning/actions { SnoozeDays }`) while
+  `layout.promotion_required` asks for the move. The move's edit makes
+  it, and `jadpo fmt` then moves each import to the name's new folder;
+  `jadpo fmt --layout` does both in one step.
+- **An entity's provided not-found failure** (area 6) comes in from the
+  entity's folder: `use planning/entities { Todo, TodoNotFound }`.
+- **Loose files** have no layout, so no folders to import from: every name
+  in them is seen without a `use` line, and a `use` line there is
+  `import.unknown`. A migration's `changes.jadpo`, which `jadpo migrate
+  new` writes and which names what changed (`Todo.rank: { ... }`), imports
+  nothing either.
+- **A misspelling is one error.** While a name the file writes names
+  nothing, no import is called unused, since the name may be a misspelt
+  import; `jadpo fmt` removes none either.
+- **The generated namespaces** (`clock`, `config`) are called through
+  their names, as the standard library is, and need no import.
 
 #### Database
 
@@ -1575,3 +1896,8 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Unused `public` | `public` on a declaration nothing outside its domain uses is the error `visibility.public_unused`, whose edit removes `public`. Users are another domain's code, root `tests/` scenarios, and the signature of another public declaration that is itself used outside; the domain's own tests don't count. A package's public members are its interface to other projects and are exempt (area 11) (Richard) | 2026-10-14 |
 | Imports | Every name not declared in a file is imported with `use <folder> { Names }`, own domain included; built-ins are never imported; another domain is brought in with `use <domain>` and its calls keep the domain's name; a test file sees its subject's declarations; the formatter adds and removes imports; go to definition works from every use of a name. Reverses "no imports" (Richard) | 2026-10-14 |
 | A file per shared name | A declaration any other file uses has a file of its own named after it; supporting declarations used only by their file (and its test) stay in it (Richard) | 2026-10-14 |
+| Imports: where and in what order | `use` lines open the file, below its opening comments up to a blank line; sorted names before domains, root files, then `shared/`, then each domain's folders by domain name, folders in the layout's order, then `use <domain>` lines; names in the braces sorted; one name per line past 100 columns; `use` is reserved (chunk 3.5) | 2026-10-15 |
+| Imports: errors | Five rules, each with its edit: `import.missing`, `import.unknown` (folder, domain or name not there, or the wrong folder), `import.unused`, `import.unneeded` (built-in, own declaration, test subject's, own domain) and `import.duplicate`; privacy stays `visibility.private_cross_domain` at the use, and nothing the file can't use is asked to be imported (chunk 3.5) | 2026-10-15 |
+| Imports: fixing | `jadpo fmt` applies the import edits once every file parses, then formats; `--check` fails on a file whose imports would change; `--layout` makes the moves `layout.promotion_required` asks for (chunk 3.5) | 2026-10-15 |
+| Imports: before a promotion, provided failures, loose files, migrations, generated namespaces | A declaration beside another file's main one is imported from that file's folder until promoted; an entity's provided not-found failure comes from the entity's folder; loose files have no imports, and a `use` line there is `import.unknown`; a migration's `changes.jadpo`, which `jadpo migrate new` writes and which names what changed (`Todo.rank:`), imports nothing; `clock` and `config` need no import; while a name the file writes names nothing, no import is called unused (chunk 3.5) | 2026-10-15 |
+| A file per shared name: where it applies | A second declaration in any domain or `shared/` file, `types/` and `libraries/` included, moves to a file of its own once another file uses it; one only its own file uses stays; the edit makes the move, and `jadpo fmt --layout` makes it and updates the imports (chunk 3.5) | 2026-10-15 |

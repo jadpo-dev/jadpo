@@ -1,3 +1,5 @@
+use loyalty/types { CardName, StampCount }
+
 /// A loyalty card.
 type Card = Object {
     name: CardName
