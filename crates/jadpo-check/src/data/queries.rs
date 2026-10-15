@@ -1462,6 +1462,12 @@ impl<'a> Reader<'a> {
             return Some((Value::Now, Ty::Prim(Prim::Instant)));
         }
         let Some(index) = scope.params.iter().position(|(name, _)| *name == head) else {
+            if rest.is_empty()
+                && let Some(problem) = crate::foreign_value(&head, Self::span(scope.path, &first))
+            {
+                self.out.push(problem);
+                return None;
+            }
             let names: Vec<&str> = scope.params.iter().map(|(n, _)| n.as_str()).collect();
             let near = nearest(&head, names.iter().copied());
             let span = Self::span(scope.path, &first);

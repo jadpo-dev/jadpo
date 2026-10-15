@@ -21,6 +21,7 @@
 use jadpo_db::{Base, Db, File, ItemKind, Ownership, Project, Symbol, item_tree, location};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, BlockItem, Decl, Expr, MemberItem, Pat, Stmt, Type};
+use jadpo_syntax::habits;
 
 use crate::case::{is_lower_snake, starts_upper, to_snake};
 use crate::lookups::{Lookup, NameView};
@@ -399,6 +400,18 @@ impl Names<'_> {
                     .into_iter()
                     .flat_map(|path| path.name_refs())
                     .collect();
+                let args: Vec<Type> = path_type
+                    .generic_arg_list()
+                    .into_iter()
+                    .flat_map(|list| list.types())
+                    .collect();
+                // Rust's `Option<Tag>` and Java's `Optional<Tag>`.
+                if let ([first], [arg]) = (names.as_slice(), args.as_slice())
+                    && self.nullable_habit(first, path_type.syntax(), arg.syntax(), out)
+                {
+                    self.ty(Some(arg.clone()), Want::Type, out);
+                    return;
+                }
                 if let Some(first) = names.first() {
                     let packaged = names.len() > 1 && self.table.is_package(&text(first));
                     if !packaged {
@@ -431,6 +444,17 @@ impl Names<'_> {
                 }
             }
             Expr::GenericExpr(generic) => {
+                let args: Vec<Type> = generic
+                    .generic_arg_list()
+                    .into_iter()
+                    .flat_map(|list| list.types())
+                    .collect();
+                if let (Some(Expr::NameRef(first)), [arg]) = (generic.expr(), args.as_slice())
+                    && self.nullable_habit(&first, generic.syntax(), arg.syntax(), out)
+                {
+                    self.ty(Some(arg.clone()), Want::Type, out);
+                    return;
+                }
                 if let Some(inner) = generic.expr() {
                     self.type_expr(&inner, Want::Type, out);
                 }
@@ -489,9 +513,47 @@ impl Names<'_> {
             out.push(not_a_type(&text, &format!("a {what}"), span));
             return;
         }
+        // `string`, `int`, `Vec`: another language's name for a type Jadpo
+        // has (decision register, 2026-10-15).
+        if let Some((meaning, jadpo)) = habits::foreign_type(&text) {
+            let shown = if jadpo == "?" { "T?" } else { jadpo };
+            let mut problem = foreign_type(&text, meaning, jadpo, shown, span.clone());
+            if jadpo != "?" {
+                problem = problem.edit(span, jadpo);
+            }
+            out.push(problem);
+            return;
+        }
         let candidates = self.type_names(want);
         let near = nearest(&text, candidates.iter().map(String::as_str)).map(str::to_string);
         out.push(unknown_name(&text, near.as_deref(), span));
+    }
+
+    /// `Option<Tag>` written for `Tag?`: reported, with the edit that
+    /// writes `Tag?` over `whole`, when `name` is `Option` or `Optional`
+    /// and the project declares no such type.
+    fn nullable_habit(
+        &self,
+        name: &ast::NameRef,
+        whole: &jadpo_syntax::SyntaxNode,
+        arg: &jadpo_syntax::SyntaxNode,
+        out: &mut Vec<Diagnostic>,
+    ) -> bool {
+        let text = text(name);
+        let Some((meaning, "?")) = habits::foreign_type(&text) else {
+            return false;
+        };
+        if self.std.is_type(&text) || self.table.get(&text).is_some() {
+            return false;
+        }
+        let whole_span = node_span(self.path, whole);
+        let written = whole.text().to_string();
+        let shown = format!("{}?", arg.text());
+        out.push(
+            foreign_type(&written, meaning, "?", &shown, self.span(name))
+                .edit(whole_span, shown.clone()),
+        );
+        true
     }
 
     /// Every type name a position could have meant.
@@ -1541,6 +1603,17 @@ pub(crate) fn record_head(names: &Names<'_>, record: &ast::RecordExpr, out: &mut
         Some(head @ (Expr::NameRef(_) | Expr::FieldExpr(_))) => names.value_name(&head, out),
         _ => {}
     }
+}
+
+/// `type.foreign_type`: `written` names a type the way another language
+/// does, `meaning` says where, and Jadpo writes `shown` (decision register,
+/// 2026-10-15). The caller adds the edit.
+fn foreign_type(written: &str, meaning: &str, jadpo: &str, shown: &str, span: Span) -> Diagnostic {
+    let habit = &habits::FOREIGN_TYPE;
+    Diagnostic::new(habit.rule, habit.message(written, shown))
+        .at(span, habit.label_for(written, shown))
+        .reason(habits::foreign_reason(written, meaning, jadpo, "calls it"))
+        .next(habit.next_for(written, shown))
 }
 
 fn unknown_name(name: &str, near: Option<&str>, span: Span) -> Diagnostic {
