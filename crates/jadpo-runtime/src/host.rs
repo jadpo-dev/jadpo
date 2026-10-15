@@ -8,7 +8,9 @@
 //! [`MemoryHost`], which holds no store (chunk 2.10); since chunk 3.1 a
 //! transaction runs SQL with [`SqlValue`] parameters and rows, and a host
 //! gives each store by its connection's name, so the PostgreSQL driver in
-//! `jadpo-drivers` plugs in. Delivery to subscribers comes with area 12.
+//! `jadpo-drivers` plugs in; since chunk 3.12 a host gives random bytes
+//! for a deployable's new identities. Delivery to subscribers comes with
+//! area 12.
 
 use std::future::Future;
 use std::pin::Pin;

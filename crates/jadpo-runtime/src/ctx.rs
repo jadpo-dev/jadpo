@@ -4,8 +4,9 @@
 //! that capture the stack, the recording of a failed `assert`'s parts, and
 //! the state of the action boundary the runtime runs ([`crate::action`]):
 //! the transaction it opens at the first store operation and the events
-//! waiting to be delivered once it commits. Effects (`read`, `write`,
-//! `call`) join it with their areas.
+//! waiting to be delivered once it commits; and the effects with one
+//! source each, the clock and new identities. Reads and writes run through
+//! [`crate::store`] against it; integration calls join it with their area.
 
 use std::fmt;
 
