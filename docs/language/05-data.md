@@ -1839,6 +1839,35 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   `jadpo migrate` takes it with `--url`, and the application's refusal to
   start against a database that doesn't match comes with the compiled
   deployables (Phase 8).
+- Structured fields (an enum with data, an object, a list, a set or a
+  map) on an entity: their `jsonb` holds the API's JSON, which comes with
+  area 7, so until then the field is refused where it is declared rather
+  than every read and write of it failing as it runs (chunk 3.10):
+
+```jadpo check project=e-structured-field expect=toolchain.not_built_yet
+type Tag = Text {
+    max_length: 20
+}
+
+entity Box {
+    id: Uuid
+    tags: List<Tag>
+}
+```
+
+```text output
+error: Storing a `List<Tag>` field isn't built yet
+ --> main.jadpo:7:11
+  |
+7 |     tags: List<Tag>
+  |           ^^^^^^^^^ structured, stored as `jsonb`
+  reason: Area 5 stores an enum with data, an object, a list, a set or a map as `jsonb` holding the API's JSON, and that JSON comes with area 7; until then this compiler can't read or write `Box.tags`.
+  next: Store what `Box.tags` holds in fields of its own, or as records of an entity that refers to `Box`, for now (agent)
+  rule: toolchain.not_built_yet
+  help: docs/language/05-data.html#storage-types
+
+check failed: 1 error, 1 file
+```
 
 ### Carried to later areas
 

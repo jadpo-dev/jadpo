@@ -648,6 +648,26 @@ impl Reader<'_> {
             return Some(field);
         }
         match column_type(self.lookup, &ty) {
+            // A structured field is stored as `jsonb` in the API's JSON
+            // (area 5), whose codec comes with area 7.
+            Ok(sql) if sql == "jsonb" => {
+                let shown = ty.strip_nullable().to_string();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("Storing a `{shown}` field isn't built yet"),
+                    )
+                    .at(node_span(path, value.syntax()), "structured, stored as `jsonb`")
+                    .reason(format!(
+                        "Area 5 stores an enum with data, an object, a list, a set or a map as `jsonb` holding the API's JSON, and that JSON comes with area 7; until then this compiler can't read or write `{entity}.{name}`."
+                    ))
+                    .next(format!(
+                        "Store what `{entity}.{name}` holds in fields of its own, or as records of an entity that refers to `{entity}`, for now"
+                    ))
+                    .help_at("05-data.html#storage-types"),
+                );
+                field.sql_type = Some(sql);
+            }
             Ok(sql) => field.sql_type = Some(sql),
             Err(what) => {
                 self.out.push(
