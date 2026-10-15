@@ -9,6 +9,7 @@ mod check;
 mod cli;
 mod crate_graph;
 mod fmt;
+mod http;
 mod lifecycle;
 mod lsp;
 mod manifest;

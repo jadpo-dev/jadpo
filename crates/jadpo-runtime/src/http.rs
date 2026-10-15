@@ -117,7 +117,7 @@ fn kind_message(kind: Option<&str>) -> &'static str {
 /// A new request id: `req_` and 16 hexadecimal digits, from the host's
 /// randomness, or from the invocation's seed in a test, so a test's ids
 /// reproduce.
-pub fn request_id(ctx: &Ctx<'_>, counter: u64) -> String {
+pub fn request_id(ctx: &Ctx<'_>, sequence: u64) -> String {
     let mut bytes = [0u8; 8];
     let n = if ctx.host().random(&mut bytes) {
         u64::from_be_bytes(bytes)
@@ -126,7 +126,7 @@ pub fn request_id(ctx: &Ctx<'_>, counter: u64) -> String {
             .env()
             .seed
             .unwrap_or(0)
-            .wrapping_add(counter.wrapping_mul(0x9E37_79B9_7F4A_7C15))
+            .wrapping_add(sequence.wrapping_mul(0x9E37_79B9_7F4A_7C15))
             .wrapping_add(0x9E37_79B9_7F4A_7C15);
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
         z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);

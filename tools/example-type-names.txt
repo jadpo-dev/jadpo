@@ -46,6 +46,6 @@ Session
 Settings
 Size
 Tag
-TraceId
+Title
 User
 Visitor

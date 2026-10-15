@@ -1,0 +1,436 @@
+{
+  "components": {
+    "responses": {
+      "InternalFault": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/InternalFault"
+            }
+          }
+        },
+        "description": "The server failed to answer; the `request_id` traces it."
+      },
+      "InvalidInput": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/InvalidInput"
+            }
+          }
+        },
+        "description": "A field is missing, unknown or breaks a rule; each problem names the field and the rule, never the value."
+      },
+      "InvalidRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/InvalidRequest"
+            }
+          }
+        },
+        "description": "The body is not JSON, or the query string can't be read."
+      },
+      "RateLimited": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RateLimited"
+            }
+          }
+        },
+        "description": "Too many requests from this caller; wait as `Retry-After` says."
+      }
+    },
+    "schemas": {
+      "CreateTodo": {
+        "additionalProperties": false,
+        "description": "What creating a todo takes.",
+        "properties": {
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "InternalFault": {
+        "description": "The server failed to answer; the `request_id` traces it.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "internal_fault",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "InvalidInput": {
+        "description": "A field is missing, unknown or breaks a rule; each problem names the field and the rule, never the value.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "invalid_input",
+                "type": "string"
+              },
+              "details": {
+                "properties": {
+                  "problems": {
+                    "items": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "rule": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "rule"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "problems"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id",
+              "details"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "InvalidRequest": {
+        "description": "The body is not JSON, or the query string can't be read.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "invalid_request",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "RateLimited": {
+        "description": "Too many requests from this caller; wait as `Retry-After` says.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "rate_limited",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "TodoNotFound": {
+        "description": "Todo not found.",
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "const": "todo_not_found",
+                "type": "string"
+              },
+              "details": {
+                "properties": {
+                  "todo_id": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "todo_id"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id",
+              "details"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "TodoStatus": {
+        "description": "Where a todo is.",
+        "enum": [
+          "open",
+          "done"
+        ],
+        "type": "string"
+      },
+      "TodoView": {
+        "additionalProperties": false,
+        "description": "A todo as clients see it.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TodoStatus"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "todos",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/todos": {
+      "get": {
+        "description": "Todos, by title.",
+        "operationId": "get_todos",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/TodoStatus"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Request-Tag",
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TodoView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalFault"
+          }
+        }
+      },
+      "post": {
+        "description": "Creates a todo.",
+        "operationId": "post_todos",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTodo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoView"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalFault"
+          }
+        }
+      }
+    },
+    "/todos/{todo_id}": {
+      "get": {
+        "description": "One todo.",
+        "operationId": "get_todos_by_todo_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "todo_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoView"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoNotFound"
+                }
+              }
+            },
+            "description": "Fails with `todo_not_found`."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalFault"
+          }
+        }
+      }
+    }
+  }
+}

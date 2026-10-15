@@ -2,18 +2,11 @@
 title: HTTP
 area: 7
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
+checked-with: jadpo chunk-4.1 (2026-10-15)
 rules:
   - route.*
+  - api.*
   - syntax.expected_http_method
-  - syntax.expected_invocation
-  - syntax.expected_route_item
-  - type.route_binding_collision
-  - type.route_header_name_invalid
-  - type.route_header_scalar_required
-  - type.route_header_wire_duplicate
-  - type.route_query_field_unsupported
-  - type.route_query_object_required
 ---
 
 # HTTP
@@ -23,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. The new compiler does not build HTTP yet: roadmap chunks 4.1 (routes) and 4.2 (request guarantees) build it.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`. Deadlines are checked but enforced with request guarantees in chunk 4.2 (with body limits, health and idempotency); route authentication comes with 4.3, policy with 4.4 and `settle:` with 6.3.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -338,462 +331,1777 @@ fields and failure codes. `jadpo check` fails while it disagrees with the
 source and `jadpo api update` rewrites it, so every API change is a diff of
 one file.
 
-A change that can break a client (a route removed, a required input field
-added, an output field removed, a failure code changed) also needs an
-acceptance written by a person. The same form accepts a database drop
-(area 5), a policy weakening (area 9) and a new domain (area 1):
+A whole group, with what it runs and the record `jadpo api update` writes
+for it. The record is the wire contract: a field shows what a client sends
+or reads, objects and enums have a section of their own, and each failure
+code shows its status, message and client fields. Its `version:` rises by
+one each time the record changes, and is the OpenAPI document's version:
 
-```jadpo fragment
-// acceptances/20261020T1400_remove_todo_priority.jadpo
-/// Priority was never shown by any client.
-acceptance {
-    change: ApiChange.output_field_removed
-    subject: main.TodoView.priority
+```jadpo check project=todos file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=todos file=domains/planning/types/todo_title.jadpo hidden
+type TodoTitle = Text {
+    min_length: 1
+    max_length: 200
 }
 ```
 
-Each acceptance is used once: the record notes which one allowed each
-change. `acceptances/` is owned in CODEOWNERS, so the host's review shows who
-approved it.
+```jadpo check project=todos file=domains/planning/entities/todo.jadpo hidden migrate=initial
+use planning/types { TodoTitle }
 
-## Errors
-
-> These examples predate the decisions above and are rewritten when the area is built (roadmap Phase 4).
-
-Every error this area can produce, with an example that triggers it.
-
-### `syntax.expected_http_method`
-
-```jadpo project=e-http-method expect=syntax.expected_http_method
-output Trace {
-    ok: Bool
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    done: Bool
 }
+```
 
-route FETCH /trace {
-    auth: none
-    output: Trace
-    action: {
-        return Trace { ok: true }
+```jadpo check project=todos file=domains/planning/types/todo_view.jadpo hidden
+use planning/entities { Todo }
+
+/// A todo as clients see it.
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.done]
+}
+```
+
+```jadpo check project=todos file=domains/planning/failures/todo_not_found.jadpo hidden
+use planning/entities { Todo }
+
+type TodoNotFound = Failure {
+    kind: FailureKind.not_found
+    message: "Todo not found."
+    client: {
+        todo_id: Todo.id
     }
 }
 ```
 
-### `syntax.expected_route_item`
+```jadpo check project=todos file=domains/planning/queries/find_todo.jadpo hidden
+use planning/entities { Todo }
+use planning/types { TodoView }
+use planning/failures { TodoNotFound }
 
-A status written as a number:
+query find_todo(todo_id: Todo.id) fails TodoNotFound -> TodoView {
+    from: Todo
+    where: Todo.id == todo_id
+    missing: TodoNotFound {
+        todo_id: todo_id
+    }
+}
+```
 
-```jadpo project=e-route-item expect=syntax.expected_route_item
-output Trace {
-    ok: Bool
+```jadpo check project=todos file=domains/planning/actions/create_todo.jadpo hidden
+use planning/entities { Todo }
+use planning/types { TodoTitle, TodoView }
+
+action create_todo(input: CreateTodo) -> TodoView {
+    var todo: Todo = Todo.create {
+        set: {
+            title: input.title
+            done: false
+        }
+    }
+    return TodoView {
+        id: todo.id
+        title: todo.title
+        done: todo.done
+    }
 }
 
-action trace() -> Trace {
-    return Trace { ok: true }
+/// What creating a todo takes.
+type CreateTodo = Input {
+    title: TodoTitle
 }
+```
 
-route GET /trace {
-    auth: none
+```jadpo check project=todos file=domains/planning/routes/todos.jadpo
+use planning/entities { Todo }
+use planning/types { TodoView }
+use planning/actions { CreateTodo, create_todo }
+use planning/queries { find_todo }
+
+/// Todos: making one and reading one back.
+routes Todos {
+    prefix: /todos
+
+    /// Creates a todo.
+    POST / {
+        input: CreateTodo
+        output: TodoView
+        status: SuccessStatus.created
+        run: create_todo(input)
+    }
+
+    /// One todo.
+    GET /{todo_id: Todo.id} {
+        output: TodoView
+        run: find_todo(todo_id)
+    }
+}
+```
+
+```jadpo check project=todos file=api/main.api
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+POST /todos
+    input: CreateTodo (body)
+    output: TodoView
+    status: 201
+
+GET /todos/{todo_id: Uuid}
+    output: TodoView
     status: 200
-    output: Trace
-    run: trace()
+    fails: todo_not_found 404
+
+input CreateTodo
+    title: Text { min_length: 1, max_length: 200 }
+
+output TodoView
+    id: Uuid
+    title: Text { min_length: 1, max_length: 200 }
+    done: Bool
+
+failure todo_not_found 404 "Todo not found."
+    todo_id: Uuid
+```
+
+A change that can break a client (a route removed, a required input field
+added, an output field removed, a failure code changed) also needs an
+acceptance written by a person, in the form area 18 decides for every
+change that needs one (a database drop, a policy weakening, a new domain):
+one file in `acceptances/` per decision, listing the changes it allows,
+counted only in the change that adds it. `acceptances/` and `api/` are owned
+in CODEOWNERS, so the host's review shows who approved it. Telling breaking
+changes apart and requiring their acceptance come after the first build
+(area 18, "Status"); until then the record's diff is what a reviewer reads.
+
+## Errors
+
+Every error this area can produce, with an example that triggers it and the
+new compiler's real output. Most examples are one loose file (area 1), so
+the route sits beside what it runs; in a project each lives in its own
+folder.
+
+### `syntax.expected_http_method`
+
+A route is written with `GET`, `POST`, `PUT`, `PATCH` or `DELETE`; a word another framework uses is read as the method it means:
+
+```jadpo check project=e-expected-http-method expect=syntax.expected_http_method
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    CREATE / {
+        input: AddMemo
+        output: MemoView
+        run: add_memo(input)
+    }
 }
 ```
 
-### `syntax.expected_invocation`
+```text output
+error: `CREATE` isn't a method a route is written with
+ --> main.jadpo:24:5
+   |
+24 |     CREATE / {
+   |     ^^^^^^ not a route method
+  reason: Routes are written with `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+  next: Use `POST` instead of `CREATE` (agent)
+  rule: syntax.expected_http_method
+  help: docs/language/07-http.html#syntax-expected-http-method
 
-```jadpo project=e-invocation expect=syntax.expected_invocation
-output Trace {
-    ok: Bool
+check failed: 1 error, 1 file
+```
+
+### `route.item_unknown`
+
+A route holds `input:`, `output:`, `status:`, `deadline:` and `run:` (with `authentication:`, `rate_limit:` and `settle:` from later chunks); the old `success:`, `query:`, `path:` and `headers:` items are gone:
+
+```jadpo check project=e-item-unknown expect=route.item_unknown
+type Memo = Text {
+    max_length: 200
 }
 
-route GET /trace {
-    auth: none
-    output: Trace
-    run: true
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        run: add_memo(input)
+        success: SuccessStatus.created
+    }
 }
 ```
 
-### `route.item_colon_required`
+```text output
+error: `success` isn't something a route holds
+ --> main.jadpo:28:9
+   |
+28 |         success: SuccessStatus.created
+   |         ^^^^^^^ unknown item
+  reason: `success:` is now `status:`, which takes a `SuccessStatus`. A route holds `authentication`, `rate_limit`, `input`, `output`, `status`, `deadline`, `run` and `settle`.
+  next: Use `status` instead of `success` (agent)
+  rule: route.item_unknown
+  help: docs/language/07-http.html#route-item-unknown
 
-```jadpo project=e-item-colon expect=route.item_colon_required
-input RegisterCustomer {
-    email: Text
-}
-
-output RegistrationAccepted {
-    accepted: Bool
-}
-
-action register_customer(input: RegisterCustomer) -> RegistrationAccepted {
-    return RegistrationAccepted { accepted: true }
-}
-
-route POST /registrations {
-    auth: none
-    input RegisterCustomer
-    output: RegistrationAccepted
-    run: register_customer(input)
-}
+check failed: 1 error, 1 file
 ```
 
 ### `route.item_duplicate`
 
-```jadpo project=e-item-duplicate expect=route.item_duplicate
-output Health {
-    ok: Bool
+Each item is given once:
+
+```jadpo check project=e-item-duplicate expect=route.item_duplicate
+type Memo = Text {
+    max_length: 200
 }
 
-action health() -> Health {
-    return Health { ok: true }
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
 }
 
-route GET /health {
-    auth: none
-    output: Health
-    run: health()
-    run: health()
-}
-```
-
-### `route.auth_value_invalid`
-
-```jadpo project=e-auth-value expect=route.auth_value_invalid
-input RegisterCustomer {
-    email: Text
+type MemoView = Output {
+    text: Memo
 }
 
-output RegistrationAccepted {
-    accepted: Bool
-}
-
-action register_customer(input: RegisterCustomer) -> RegistrationAccepted {
-    return RegistrationAccepted { accepted: true }
-}
-
-route POST /registrations {
-    auth: nonke
-    input: RegisterCustomer
-    output: RegistrationAccepted
-    run: register_customer(input)
-}
-```
-
-### `route.behaviour_required`
-
-```jadpo project=e-behaviour-required expect=route.behaviour_required
-route GET /health {
-    auth: none
-}
-```
-
-### `route.behaviour_conflict`
-
-```jadpo project=e-behaviour-conflict expect=route.behaviour_conflict
-value Result {
-    ok: Bool
-}
-
-action complete() -> Result {
-    return Result { ok: true }
-}
-
-route GET /result {
-    auth: none
-    output: Result
-    run: complete()
-    action: {
-        return Result { ok: true }
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
     }
 }
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        run: add_memo(input)
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `run:` is given twice
+ --> main.jadpo:28:9
+   |
+27 |         run: add_memo(input)
+   |         --- first given here
+28 |         run: add_memo(input)
+   |         ^^^ given again
+  reason: A route has one `run:`, so there is never a question of which counts.
+  next: Remove one `run:` (agent)
+  rule: route.item_duplicate
+  help: docs/language/07-http.html#route-item-duplicate
+
+check failed: 1 error, 1 file
+```
+
+### `route.run_required`
+
+A route runs a named action, or a named query for a `GET`:
+
+```jadpo check project=e-run-required expect=route.run_required
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+    }
+}
+```
+
+```text output
+error: `POST /memos` doesn't say what it runs
+ --> main.jadpo:24:5
+   |
+24 |     POST / {
+   |     ^^^^^^ no `run:`
+  reason: A route runs one named action, or a named query for a `GET`, with `run:`; the logic lives there, not in the route.
+  next: Add `run: <action>(...)` (agent)
+  rule: route.run_required
+  help: docs/language/07-http.html#route-run-required
+
+check failed: 1 error, 1 file
+```
+
+### `route.run_invalid`
+
+There is no inline action in a route, and a function is called from an action, not run by a route:
+
+```jadpo check project=e-run-invalid expect=route.run_invalid
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        run: true
+    }
+}
+```
+
+```text output
+error: `run: true` isn't a call
+ --> main.jadpo:27:14
+   |
+27 |         run: true
+   |              ^^^^ not a call
+  reason: `run:` calls one named action, or a named query for a `GET`, passing the route's placeholders and `input`; there is no inline action in a route.
+  next: Write `run: <name>(...)`, moving any logic into an action (agent)
+  rule: route.run_invalid
+  help: docs/language/07-http.html#route-run-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `route.run_kind`
+
+A `GET` never writes, so it runs a query; every other method runs an action:
+
+```jadpo check project=e-run-kind expect=route.run_kind
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    GET / {
+        input: AddMemo
+        output: MemoView
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `GET /memos` runs action `add_memo`
+ --> main.jadpo:27:14
+   |
+27 |         run: add_memo(input)
+   |              ^^^^^^^^ an action
+  reason: A `GET` is safe to repeat and never writes, so it runs a named query; every other method runs an action.
+  next: Run a query here, or answer `/memos` with another method (agent)
+  rule: route.run_kind
+  help: docs/language/07-http.html#route-run-kind
+
+check failed: 1 error, 1 file
+```
+
+### `route.argument_invalid`
+
+A route passes its placeholders, `input` and their fields; anything worked out goes in what it runs:
+
+```jadpo check project=e-argument-invalid expect=route.argument_invalid
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        output: MemoView
+        run: add_memo(
+            AddMemo {
+                text: "Hello"
+            }
+        )
+    }
+}
+```
+
+```text output
+error: A route passes its placeholders and input, not an expression
+ --> main.jadpo:27:13
+   |
+27 |             AddMemo {
+   |             ^^^^^^^^^ an expression
+  reason: A route is a thin door: what it runs gets the route's placeholders, its `input` and their fields as written, and works out anything else itself.
+  next: Pass a placeholder, `input` or a field of them, and move the rest into what the route runs (agent)
+  rule: route.argument_invalid
+  help: docs/language/07-http.html#route-argument-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `route.binding_unused`
+
+Everything a route reads from a request reaches what it runs:
+
+```jadpo check project=e-binding-unused expect=route.binding_unused
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST /{memo_id: MemoId} {
+        input: AddMemo
+        output: MemoView
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `POST /memos/{memo_id}` reads placeholder `memo_id` and never passes it on
+ --> main.jadpo:27:14
+   |
+27 |         run: add_memo(input)
+   |              ^^^^^^^^ `memo_id` not passed
+  reason: Everything a route reads from a request reaches what it runs by name; a value read and ignored is a URL or a field that does nothing.
+  next: Pass `memo_id` to `add_memo`, or remove it from the route (agent)
+  rule: route.binding_unused
+  help: docs/language/07-http.html#route-binding-unused
+
+check failed: 1 error, 1 file
+```
+
+### `route.output_required`
+
+A route shows its contract without opening what it runs:
+
+```jadpo check project=e-output-required expect=route.output_required
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `POST /memos` has no `output:`
+ --> main.jadpo:24:5
+   |
+24 |     POST / {
+   |     ^^^^^^ no `output:`
+  reason: A route shows its contract without opening what it runs: `output:` names what it sends, exactly what `add_memo` returns (`MemoView`).
+  next: Add `output: MemoView` (agent)
+  rule: route.output_required
+  help: docs/language/07-http.html#route-output-required
+
+check failed: 1 error, 1 file
+```
+
+### `route.output_mismatch`
+
+`output:` is exactly what the route runs returns:
+
+```jadpo check project=e-output-mismatch expect=route.output_mismatch
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+type MemoSummary = Output {
+    text: Memo
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoSummary
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `POST /memos` sends `MemoSummary`, but `add_memo` returns `MemoView`
+ --> main.jadpo:30:17
+   |
+30 |         output: MemoSummary
+   |                 ^^^^^^^^^^^ not `MemoView`
+  reason: A route's `output:` is exactly what it runs returns, so the route shows its contract and never sends a field its type doesn't declare.
+  next: Write `output: MemoView` (agent)
+  rule: route.output_mismatch
+  help: docs/language/07-http.html#route-output-mismatch
+
+check failed: 1 error, 1 file
+```
+
+### `route.output_not_output`
+
+A route sends only an `Output`, so only fields declared for clients leave the server:
+
+```jadpo check project=e-output-not-output expect=route.output_not_output
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+type MemoRecord = Object {
+    text: Memo
+}
+
+action keep_memo(input: AddMemo) -> MemoRecord {
+    return MemoRecord {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoRecord
+        run: keep_memo(input)
+    }
+}
+```
+
+```text output
+error: `MemoRecord` isn't an `Output`
+ --> main.jadpo:36:17
+   |
+36 |         output: MemoRecord
+   |                 ^^^^^^^^^^ not an `Output`
+  reason: A route returns only an `Output` type (area 2), or a `List` or `Page` of one as a query gives them, so only fields declared for clients are ever sent.
+  next: Declare `type <Name> = Output { ... }` with the fields clients see, and return it (agent)
+  rule: route.output_not_output
+  help: docs/language/07-http.html#route-output-not-output
+
+check failed: 1 error, 1 file
+```
+
+### `route.output_unexpected`
+
+A `no_content` route sends no body:
+
+```jadpo check project=e-output-unexpected expect=route.output_unexpected
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        status: SuccessStatus.no_content
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `POST /memos` answers with no content
+ --> main.jadpo:26:9
+   |
+26 |         output: MemoView
+   |         ^^^^^^^^^^^^^^^^ no body is sent
+  reason: `SuccessStatus.no_content` answers 204 with no body, so the route has no `output:` and what it runs returns `Unit`.
+  next: Remove `output:`, or choose another status (agent)
+  rule: route.output_unexpected
+  help: docs/language/07-http.html#route-output-unexpected
+
+check failed: 1 error, 1 file
+```
+
+### `route.input_not_input`
+
+A route accepts only an `Input`:
+
+```jadpo check project=e-input-not-input expect=route.input_not_input
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: MemoView
+        output: MemoView
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `MemoView` isn't an `Input`
+ --> main.jadpo:25:16
+   |
+25 |         input: MemoView
+   |                ^^^^^^^^ not an `Input`
+  reason: A route accepts only an `Input` type (area 2): the only objects that may leave fields out or fill them by default, and the ones a request's fields are checked against.
+  next: Declare `type <Name> = Input { ... }` and take it here (agent)
+  rule: route.input_not_input
+  help: docs/language/07-http.html#route-input-not-input
+
+check failed: 1 error, 1 file
+```
+
+### `route.query_field_unsupported`
+
+A `GET` or `DELETE` reads its input from the query string, which holds scalars, enums and lists of them:
+
+```jadpo check project=e-query-field-unsupported expect=route.query_field_unsupported
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+type ForgetMemos = Input {
+    tags: Map<Memo, Memo>
+}
+
+action forget_memos(input: ForgetMemos) -> MemoView {
+    return MemoView {
+        text: "forgotten"
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    DELETE / {
+        input: ForgetMemos
+        output: MemoView
+        run: forget_memos(input)
+    }
+}
+```
+
+```text output
+error: `ForgetMemos.tags` can't come in a query string
+ --> main.jadpo:35:16
+   |
+35 |         input: ForgetMemos
+   |                ^^^^^^^^^^^ `tags` is `Map<Memo, Memo>`
+  reason: A `DELETE` route reads its input from the query string, which holds scalars, enums and lists of them (`?status=open&status=done`); nested objects and maps need a body.
+  next: Give `tags` a scalar type, or take this input on a `POST` (agent)
+  rule: route.query_field_unsupported
+  help: docs/language/07-http.html#route-query-field-unsupported
+
+check failed: 1 error, 1 file
+```
+
+### `route.status_invalid`
+
+A success status is a `SuccessStatus`; failure statuses come from failure kinds:
+
+```jadpo check project=e-status-invalid expect=route.status_invalid
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        status: 201
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `201` isn't a success status
+ --> main.jadpo:27:17
+   |
+27 |         status: 201
+   |                 ^^^ not a `SuccessStatus`
+  reason: `status:` takes `SuccessStatus.ok`, `.created`, `.accepted` or `.no_content`; failure statuses come from the kinds of the failures the route can produce, never from the route.
+  next: Write `SuccessStatus.created` (agent)
+  rule: route.status_invalid
+  help: docs/language/07-http.html#route-status-invalid
+
+check failed: 1 error, 1 file
 ```
 
 ### `route.deadline_invalid`
 
-```jadpo project=e-deadline expect=route.deadline_invalid
-route GET /deadline {
-    auth: none
-    deadline: 0s
-    action: {}
-}
-```
+A deadline is above zero and at most 60 seconds:
 
-### `route.path_placeholder_invalid`
-
-```jadpo project=e-placeholder-invalid expect=route.path_placeholder_invalid
-output Health {
-    ok: Bool
+```jadpo check project=e-deadline-invalid expect=route.deadline_invalid
+type Memo = Text {
+    max_length: 200
 }
 
-route GET /health/{bad-name} {
-    auth: none
-    output: Health
-    action: {
-        return Health { ok: true }
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        deadline: 90s
+        run: add_memo(input)
     }
 }
 ```
 
-### `route.path_placeholder_duplicate`
+```text output
+error: `90s` can't be a route's deadline
+ --> main.jadpo:27:19
+   |
+27 |         deadline: 90s
+   |                   ^^^ outside 1 ms to 60 s
+  reason: A route's deadline is a duration above zero and at most 60 seconds; longer work answers `SuccessStatus.accepted` and carries on in a subscriber.
+  next: Write a duration such as `30s`, or leave `deadline:` out for the 10-second default (agent)
+  rule: route.deadline_invalid
+  help: docs/language/07-http.html#route-deadline-invalid
 
-```jadpo project=e-placeholder-duplicate expect=route.path_placeholder_duplicate
-type CustomerId = Uuid {}
+check failed: 1 error, 1 file
+```
 
-output CustomerView {
-    id: CustomerId
+### `route.placeholder_type`
+
+A placeholder is typed with a named scalar or an `X.id`, never optional:
+
+```jadpo check project=e-placeholder-type expect=route.placeholder_type
+type Memo = Text {
+    max_length: 200
 }
 
-route GET /customers/{id}/related/{id} {
-    auth: none
-    path: {
-        id: CustomerId
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
     }
-    output: CustomerView
-    action: {
-        return CustomerView { id: path.id }
+}
+
+action tag_memo(memo_id: MemoId, input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST /{memo_id: MemoId?} {
+        input: AddMemo
+        output: MemoView
+        run: tag_memo(memo_id, input)
     }
 }
 ```
 
-### `route.path_binding_missing`
+```text output
+error: `memo_id` can't be typed `MemoId?`
+ --> main.jadpo:30:21
+   |
+30 |     POST /{memo_id: MemoId?} {
+   |                     ^^^^^^^ not a named scalar
+  reason: A placeholder's type is a named scalar or an `X.id`: a placeholder is always there, so it is never optional.
+  next: Type it with a named type built on a scalar, or a field type such as `Todo.id` (agent)
+  rule: route.placeholder_type
+  help: docs/language/07-http.html#route-placeholder-type
 
-```jadpo project=e-binding-missing expect=route.path_binding_missing
-type CustomerId = Uuid {}
+check failed: 1 error, 1 file
+```
 
-output CustomerView {
-    id: CustomerId
+### `route.placeholder_duplicate`
+
+Each placeholder is named once in a path, its group's prefix included:
+
+```jadpo check project=e-placeholder-duplicate expect=route.placeholder_duplicate
+type Memo = Text {
+    max_length: 200
 }
 
-route GET /customers/{customer_id}/orders/{order_id} {
-    auth: none
-    path: {
-        customer_id: CustomerId
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
     }
-    output: CustomerView
-    action: {
-        return CustomerView { id: path.customer_id }
+}
+
+action tag_memo(memo_id: MemoId, input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos/{memo_id: MemoId}
+
+    POST /{memo_id: MemoId} {
+        input: AddMemo
+        output: MemoView
+        run: tag_memo(memo_id, input)
     }
 }
 ```
 
-### `route.path_binding_extra`
+```text output
+error: Placeholder `memo_id` appears twice
+ --> main.jadpo:30:12
+   |
+28 |     prefix: /memos/{memo_id: MemoId}
+   |                     ------- first named here
+30 |     POST /{memo_id: MemoId} {
+   |            ^^^^^^^ named again
+  reason: Each placeholder reaches what the route runs by its name, so a path names each once, its group's prefix included.
+  next: Rename one `memo_id` (agent)
+  rule: route.placeholder_duplicate
+  help: docs/language/07-http.html#route-placeholder-duplicate
 
-```jadpo project=e-binding-extra expect=route.path_binding_extra
-type CustomerId = Uuid {}
+check failed: 1 error, 1 file
+```
 
-output CustomerView {
-    id: CustomerId
+### `route.path_overlap`
+
+Two routes that could answer one request are an error; a fixed segment beats a placeholder, so `/memos/archived` could sit beside `/memos/{memo_id}`:
+
+```jadpo check project=e-path-overlap expect=route.path_overlap
+type Memo = Text {
+    max_length: 200
 }
 
-route GET /customers/{customer_id} {
-    auth: none
-    path: {
-        customer_id: CustomerId
-        order_id: CustomerId
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
     }
-    output: CustomerView
-    action: {
-        return CustomerView { id: path.customer_id }
+}
+
+action tag_memo(memo_id: MemoId, input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST /{memo_id: MemoId} {
+        input: AddMemo
+        output: MemoView
+        run: tag_memo(memo_id, input)
+    }
+
+    POST /{shelf_id: MemoId} {
+        input: AddMemo
+        output: MemoView
+        run: tag_memo(shelf_id, input)
     }
 }
 ```
 
-### `route.path_binding_duplicate`
+```text output
+error: `POST /memos/{shelf_id}` could answer the same requests as `POST /memos/{memo_id}`
+ --> main.jadpo:36:5
+   |
+30 |     POST /{memo_id: MemoId} {
+   |     ----------------------- already answered here
+36 |     POST /{shelf_id: MemoId} {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^ answers the same requests
+  reason: A request such as `/memos/…` matches both `POST /memos/{memo_id}` and `POST /memos/{shelf_id}`: where two paths differ, one must have fixed text where the other has a placeholder, since a fixed segment beats a placeholder.
+  next: Give one of the paths fixed text where the other has a placeholder (agent)
+  rule: route.path_overlap
+  help: docs/language/07-http.html#route-path-overlap
 
-```jadpo project=e-binding-duplicate expect=route.path_binding_duplicate
-type CustomerId = Uuid {}
+check failed: 1 error, 1 file
+```
 
-output CustomerView {
-    id: CustomerId
+### `route.prefix_required`
+
+Every group has a prefix, which names its file:
+
+```jadpo check project=e-prefix-required expect=route.prefix_required
+type Memo = Text {
+    max_length: 200
 }
 
-route GET /customers/{id} {
-    auth: none
-    path: {
-        id: CustomerId
-        id: CustomerId
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
     }
-    output: CustomerView
-    action: {
-        return CustomerView { id: path.id }
+}
+
+routes Memos {
+    POST / {
+        input: AddMemo
+        output: MemoView
+        run: add_memo(input)
     }
 }
 ```
 
-### `route.path_field_modifier_invalid`
+```text output
+error: `Memos` has no prefix
+ --> main.jadpo:21:8
+   |
+21 | routes Memos {
+   |        ^^^^^ no `prefix:`
+  reason: Every route in a group follows the group's prefix, and the prefix's fixed segments give the file its name, so a URL from a log leads to one file.
+  next: Add `prefix: /<path>` as the group's first line (agent)
+  rule: route.prefix_required
+  help: docs/language/07-http.html#route-prefix-required
 
-```jadpo project=e-path-modifier expect=route.path_field_modifier_invalid
-output Health {
-    ok: Bool
+check failed: 1 error, 1 file
+```
+
+### `route.api_unknown`
+
+A group names an API `app.jadpo` declares; with none declared there is one, `main`:
+
+```jadpo check project=e-api-unknown expect=route.api_unknown
+type Memo = Text {
+    max_length: 200
 }
 
-route GET /health/{probe_id} {
-    auth: none
-    path: {
-        probe_id: Uuid index
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
     }
-    output: Health
-    action: {
-        return Health { ok: true }
+}
+
+routes Memos {
+    prefix: /memos
+    api: admin
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        run: add_memo(input)
     }
 }
 ```
 
-### `type.route_query_object_required`
+```text output
+error: `Memos` belongs to API `admin`, which isn't declared
+ --> main.jadpo:23:10
+   |
+23 |     api: admin
+   |          ^^^^^ not declared
+  reason: With no `apis:` in `app.jadpo` there is one API, `main`, at `/`.
+  next: Declare `admin` under `apis:` in `app.jadpo` (agent)
+  rule: route.api_unknown
+  help: docs/language/07-http.html#route-api-unknown
 
-```jadpo project=e-query-object expect=type.route_query_object_required
-output Trace {
-    ok: Bool
+check failed: 1 error, 1 file
+```
+
+### `route.header_name_invalid`
+
+A field read from a header names it as HTTP writes it:
+
+```jadpo check project=e-header-name-invalid expect=route.header_name_invalid
+type Memo = Text {
+    max_length: 200
 }
 
-route GET /trace {
-    auth: none
-    query: Text
-    output: Trace
-    action: {
-        return Trace { ok: true }
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+type TaggedMemo = Input {
+    text: Memo
+    tag: Memo {
+        header: "Request Tag"
+        optional: true
+    }
+}
+
+action add_tagged_memo(input: TaggedMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: TaggedMemo
+        output: MemoView
+        run: add_tagged_memo(input)
     }
 }
 ```
 
-### `type.route_query_field_unsupported`
+```text output
+error: `Request Tag` isn't a header name
+ --> main.jadpo:24:17
+   |
+24 |         header: "Request Tag"
+   |                 ^^^^^^^^^^^^^ not a header name
+  reason: A header name is letters, digits and `-` (HTTP allows a few more symbols), with no spaces: `X-Request-Tag`.
+  next: Write the header's name without spaces (agent)
+  rule: route.header_name_invalid
+  help: docs/language/07-http.html#route-header-name-invalid
 
-```jadpo project=e-query-field expect=type.route_query_field_unsupported
-value Filter {
-    tags: List<Text>
+check failed: 1 error, 1 file
+```
+
+### `route.header_credential`
+
+Credentials and Jadpo's own headers belong to authentication (area 8):
+
+```jadpo check project=e-header-credential expect=route.header_credential
+type Memo = Text {
+    max_length: 200
 }
 
-output Trace {
-    ok: Bool
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
 }
 
-route GET /trace {
-    auth: none
-    query: Filter
-    output: Trace
-    action: {
-        return Trace { ok: true }
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+type TaggedMemo = Input {
+    text: Memo
+    token: Memo {
+        header: "Authorization"
+    }
+}
+
+action add_tagged_memo(input: TaggedMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: TaggedMemo
+        output: MemoView
+        run: add_tagged_memo(input)
     }
 }
 ```
 
-### `type.route_binding_collision`
+```text output
+error: `Authorization` belongs to authentication
+ --> main.jadpo:24:17
+   |
+24 |         header: "Authorization"
+   |                 ^^^^^^^^^^^^^^^ read by authentication
+  reason: Credentials (`Authorization`, cookies) and Jadpo's own `X-Jadpo-` headers are read by authentication (area 8), so a route never sees them as input.
+  next: Remove the field, and take the caller as the route's `current_principal` once sign-in is built (agent)
+  rule: route.header_credential
+  help: docs/language/07-http.html#route-header-credential
 
-The placeholder `id` and the query field `id` would both be called `id`:
-
-```jadpo project=e-binding-collision expect=type.route_binding_collision
-type TraceId = Uuid {}
-
-value Filter {
-    id: TraceId
-}
-
-output Trace {
-    ok: Bool
-}
-
-route GET /trace/{id} {
-    auth: none
-    path: {
-        id: TraceId
-    }
-    query: Filter
-    output: Trace
-    action: {
-        return Trace { ok: true }
-    }
-}
+check failed: 1 error, 1 file
 ```
 
-### `route.header_from_required`
-
-```jadpo project=e-header-from expect=route.header_from_required
-output Trace {
-    ok: Bool
-}
-
-route GET /trace {
-    auth: none
-    headers: {
-        trace: Text wire "X-Trace"
-    }
-    output: Trace
-    action: {
-        return Trace { ok: true }
-    }
-}
-```
-
-### `type.route_header_name_invalid`
-
-```jadpo project=e-header-name expect=type.route_header_name_invalid
-output Trace {
-    ok: Bool
-}
-
-route GET /trace {
-    auth: none
-    headers: {
-        trace: Text from "Bad Header" optional
-    }
-    output: Trace
-    action: {
-        return Trace { ok: true }
-    }
-}
-```
-
-### `type.route_header_wire_duplicate`
+### `route.header_duplicate`
 
 Header names are compared without case:
 
-```jadpo project=e-header-duplicate expect=type.route_header_wire_duplicate
-output Trace {
-    ok: Bool
+```jadpo check project=e-header-duplicate expect=route.header_duplicate
+type Memo = Text {
+    max_length: 200
 }
 
-route GET /trace {
-    auth: none
-    headers: {
-        first: Text from "X-Trace" optional
-        second: Text from "x-trace" optional
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
     }
-    output: Trace
-    action: {
-        return Trace { ok: true }
+}
+
+type TaggedMemo = Input {
+    text: Memo
+    first: Memo {
+        header: "X-Request-Tag"
+        optional: true
+    }
+    second: Memo {
+        header: "x-request-tag"
+        optional: true
+    }
+}
+
+action add_tagged_memo(input: TaggedMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: TaggedMemo
+        output: MemoView
+        run: add_tagged_memo(input)
     }
 }
 ```
 
-### `type.route_header_scalar_required`
+```text output
+error: Header `x-request-tag` is read twice
+ --> main.jadpo:28:17
+   |
+24 |         header: "X-Request-Tag"
+   |                 --------------- first read here
+28 |         header: "x-request-tag"
+   |                 ^^^^^^^^^^^^^^^ read again
+  reason: Header names are compared without case, so two fields reading one header would always hold the same value.
+  next: Remove one of the fields (agent)
+  rule: route.header_duplicate
+  help: docs/language/07-http.html#route-header-duplicate
 
-```jadpo project=e-header-scalar expect=type.route_header_scalar_required
-value Nested {
-    id: Uuid
+check failed: 1 error, 1 file
+```
+
+### `route.header_not_scalar`
+
+A header holds one value:
+
+```jadpo check project=e-header-not-scalar expect=route.header_not_scalar
+type Memo = Text {
+    max_length: 200
 }
 
-output Trace {
-    ok: Bool
+type MemoId = Uuid {}
+
+type AddMemo = Input {
+    text: Memo
 }
 
-route GET /trace {
-    auth: none
-    headers: {
-        nested: Nested from "X-Nested" optional
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
     }
-    output: Trace
-    action: {
-        return Trace { ok: true }
+}
+
+type TaggedMemo = Input {
+    text: Memo
+    tags: List<Memo> {
+        header: "X-Tags"
+        optional: true
     }
 }
+
+action add_tagged_memo(input: TaggedMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: TaggedMemo
+        output: MemoView
+        run: add_tagged_memo(input)
+    }
+}
+```
+
+```text output
+error: A header can't hold `List<Memo>`
+ --> main.jadpo:24:17
+   |
+24 |         header: "X-Tags"
+   |                 ^^^^^^^^ one value per header
+  reason: A header holds one value, so a field read from one is a scalar or an enum without data; lists and objects come in the body.
+  next: Move the field to the body, or give it a scalar type (agent)
+  rule: route.header_not_scalar
+  help: docs/language/07-http.html#route-header-not-scalar
+
+check failed: 1 error, 1 file
+```
+
+### `route.prefix_api`
+
+A group's prefix starts with its API's, so each API's routes, OpenAPI
+document and record stay its own:
+
+```jadpo check project=e-prefix-api file=app.jadpo
+application {
+    apis: {
+        main: {
+            prefix: /v1
+        }
+    }
+}
+```
+
+```jadpo check project=e-prefix-api file=domains/memos/actions/add_memo.jadpo hidden
+use memos/types { Memo, MemoView }
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+```
+
+```jadpo check project=e-prefix-api file=domains/memos/types/memo.jadpo hidden
+type Memo = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=e-prefix-api file=domains/memos/types/memo_view.jadpo hidden
+use memos/types { Memo }
+
+type MemoView = Output {
+    text: Memo
+}
+```
+
+```jadpo check project=e-prefix-api file=domains/memos/routes/memos.jadpo expect=route.prefix_api
+use memos/types { MemoView }
+use memos/actions { AddMemo, add_memo }
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `Memos`'s prefix doesn't start with API `main`'s
+ --> domains/memos/routes/memos.jadpo:5:13
+  |
+5 |     prefix: /memos
+  |             ^^^^^^ outside `/v1`
+  reason: A group's prefix starts with its API's (`/v1` for `main`), so each API's routes, OpenAPI document and record stay its own.
+  next: Start the prefix with `/v1`, or name the group's API with `api:` (agent)
+  rule: route.prefix_api
+  help: docs/language/07-http.html#route-prefix-api
+
+check failed: 1 error, 5 files
+```
+
+### `api.prefix_required`
+
+Every declared API says the path its routes start with:
+
+```jadpo check project=e-api-prefix file=app.jadpo expect=api.prefix_required
+application {
+    apis: {
+        main: {
+            prefix: /v1
+        }
+        admin: {}
+    }
+}
+```
+
+```text output
+error: API `admin` has no prefix
+ --> app.jadpo:6:9
+  |
+6 |         admin: {}
+  |         ^^^^^ no `prefix:`
+  reason: Every declared API says the path its routes start with, so a URL says which API it belongs to: `main: { prefix: /v1 }`.
+  next: Add `prefix: /admin` to `admin` (agent)
+  rule: api.prefix_required
+  help: docs/language/07-http.html#api-prefix-required
+
+check failed: 1 error, 1 file
+```
+
+### `api.prefix_overlap`
+
+Each API has a prefix of its own:
+
+```jadpo check project=e-api-overlap file=app.jadpo expect=api.prefix_overlap
+application {
+    apis: {
+        main: {
+            prefix: /v1
+        }
+        partners: {
+            prefix: /v1
+        }
+    }
+}
+```
+
+```text output
+error: APIs `main` and `partners` share the prefix `/v1`
+ --> app.jadpo:6:9
+  |
+6 |         partners: {
+  |         ^^^^^^^^ same prefix
+  reason: Each API's routes start with its own prefix, so a URL says which API, OpenAPI document and record it belongs to.
+  next: Give `partners` a prefix of its own (agent)
+  rule: api.prefix_overlap
+  help: docs/language/07-http.html#api-prefix-overlap
+
+check failed: 1 error, 1 file
+```
+
+### `api.setting_unknown`
+
+```jadpo check project=e-api-setting file=app.jadpo expect=api.setting_unknown
+application {
+    apis: {
+        main: {
+            prefix: /v1
+            version: 2
+        }
+    }
+}
+```
+
+```text output
+error: `version` isn't an API setting
+ --> app.jadpo:5:13
+  |
+5 |             version: 2
+  |             ^^^^^^^ unknown setting
+  reason: An API in `apis:` holds its `prefix:`, and later its `authentication:`, `idempotency:` and `rate_limit:`.
+  next: Remove `version` (agent)
+  rule: api.setting_unknown
+  help: docs/language/07-http.html#api-setting-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `api.record_out_of_date`
+
+Each API with routes has a committed record; `jadpo api update` writes it.
+Here the project has routes and no `api/main.api` yet:
+
+```jadpo check project=e-record file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-record file=domains/memos/actions/add_memo.jadpo hidden
+use memos/types { Memo, MemoView }
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+```
+
+```jadpo check project=e-record file=domains/memos/types/memo.jadpo hidden
+type Memo = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=e-record file=domains/memos/types/memo_view.jadpo hidden
+use memos/types { Memo }
+
+type MemoView = Output {
+    text: Memo
+}
+```
+
+```jadpo check project=e-record file=domains/memos/routes/memos.jadpo expect=api.record_out_of_date
+use memos/types { MemoView }
+use memos/actions { AddMemo, add_memo }
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        run: add_memo(input)
+    }
+}
+```
+
+```text output
+error: `api/main.api` is missing
+ --> api/main.api
+  reason: Each API with routes has a committed record of its routes, fields and failure codes, so every change to API `main` shows as a diff of one file.
+  next: Run `jadpo api update`, and commit the record with the code (agent)
+  rule: api.record_out_of_date
+  help: docs/language/07-http.html#api-record-out-of-date
+
+check failed: 1 error, 5 files
 ```
 
 ## Review
 
 ### Status
 
-The new compiler builds none of this area yet. Roadmap chunk 4.1 builds
-route groups, inputs, outputs, statuses, OpenAPI and the API record; chunk
-4.2 builds deadlines, body limits and health.
+Built in chunk 4.1. `jadpo check` checks route groups, their prefixes and
+APIs, methods and typed placeholders, the one input (from the query string
+for `GET` and `DELETE`, the JSON body otherwise, and `header:` fields),
+`output:` and `status:`, `deadline:`'s range and what `run:` calls, every
+route of the project against the others, and each API's record; it writes
+one OpenAPI document per API to `build/openapi/`. The runtime's HTTP
+component routes a request, decodes and checks its input (each problem as
+`{ field, rule }`), runs the action or query, and answers with the output
+or the failure envelope, its `request_id` and `x-request-id`, with the
+status the failure's kind sets; it answers `HEAD` and `OPTIONS` itself and
+counts the default rate limits. `jadpo dev` serves it and reloads on save,
+`jadpo routes` lists the routes and `jadpo api update` writes the records.
+
+Not yet: enforcing deadlines, the body limit, health and idempotency
+(chunk 4.2); route authentication and `current_principal` (4.3); policy
+(4.4); `settle:` (6.3); a route's own `rate_limit:` and the Redis store for
+rate limits (area 16); classifying breaking changes and their acceptances
+(after the first build, area 18); the `Jadpo-Revision` header, which comes
+with caches (area 6). Each is `toolchain.not_built_yet` where it is written.
 
 ### Consistency with the rest of the language
 
@@ -1000,4 +2308,9 @@ route groups, inputs, outputs, statuses, OpenAPI and the API record; chunk
 | Route declaration form | `GET /path { }` entries inside a `routes` group, keyed by method and path; the one exception to the colon rule | 2026-10-12 |
 | Idempotent writes | Every non-`GET` route honours `Idempotency-Key`, handled entirely by the runtime: stored with the response in the action's transaction for 24 hours, scoped to the caller; reuse with a different request is 422, in flight is 409; `unavailable` and internal failures not stored; `idempotency: Idempotency.required` per API | 2026-10-12 |
 | Expired idempotency keys | A lookup ignores a key older than 24 hours; the runtime deletes expired keys in batches from its own minute tick (area 12), so the table holds about a day of keys (Richard, from an outside review) | 2026-10-15 |
+| Route readings (chosen in chunk 4.1) | `output:` may also be a `List` or `Page` of an `Output`, as a query returns them; a placeholder or `input` a route never passes to what it runs is an error (`route.binding_unused`); a header field may not read `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie` or `X-Jadpo-*`; besides a type's own rules, input problems name `required`, `unknown_field`, `type` (the wrong JSON kind), `variant` and `duplicate`, and text that isn't a UUID, an instant or a date breaks `format`; an `Int` is a JSON number only when its declared range has both ends within JavaScript's safe integers, a string otherwise, as area 2 decides, and a number is accepted for it either way | 2026-10-15 |
+| Runtime answers (chosen in chunk 4.1) | Unmatched paths answer 404 `route_not_found`, a known path with another method 405 `method_not_allowed` with `Allow`; defects answer 500 `internal_fault` with "The server failed to answer the request."; a declared failure without a `message:` gets its kind's message; `request_id` is `req_` and 16 hexadecimal digits, on every response as `x-request-id` | 2026-10-15 |
+| OpenAPI and the record (chosen in chunk 4.1) | The record is the wire contract: routes in path order, then each `input`, `output`, object and enum by name with each field's wire type and rules, then each failure code with its status, message and client fields; `version:` rises by one when `jadpo api update` changes it and starts at 1. An OpenAPI document's title is the project folder's name until `app.jadpo` names the application, and its version the record's (0 before one exists). A record out of date fails `jadpo check` but doesn't stop `jadpo test` or `jadpo dev` | 2026-10-15 |
+| Default rate limits until sign-in (chosen in chunk 4.1) | With no one signed in yet, every request counts against its address: 120 a minute, in memory per process within 16 MB, the oldest counters dropped first; the native host sends each address's connections to one worker thread, so no lock is taken. The `jadpo check` warning about per-instance limits comes with the Redis store, since until then nothing could silence it | 2026-10-15 |
+| `jadpo dev` (chosen in chunk 4.1) | Listens on 127.0.0.1, port 3000 unless `--port`; the database is the one `--url` names (until configuration, area 10) or a disposable PostgreSQL for the session, and pending migrations are applied when it starts and after each save that adds one | 2026-10-15 |
 | Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |

@@ -1,0 +1,38 @@
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+GET /todos
+    input: ListTodos (query)
+    output: List<TodoView>
+    status: 200
+
+POST /todos
+    input: CreateTodo (body)
+    output: TodoView
+    status: 201
+
+GET /todos/{todo_id: Uuid}
+    output: TodoView
+    status: 200
+    fails: todo_not_found 404
+
+input CreateTodo
+    title: Text { min_length: 1, max_length: 200 }
+
+input ListTodos
+    status: List<TodoStatus> optional
+    limit: Int { min: 1, max: 50 } default 20
+    request_tag: Text { min_length: 1, max_length: 200 } header "X-Request-Tag" optional
+
+enum TodoStatus
+    open
+    done
+
+output TodoView
+    id: Uuid
+    title: Text { min_length: 1, max_length: 200 }
+    status: TodoStatus
+
+failure todo_not_found 404 "Todo not found."
+    todo_id: Uuid

@@ -562,13 +562,13 @@ pub fn write_string(text: &str, out: &mut String) {
 /// `P1DT2H`, `PT0.5S`), in milliseconds.
 fn iso_duration(text: &str) -> Option<i64> {
     let rest = text.strip_prefix('P')?;
-    let (days, time) = match rest.split_once('T') {
-        Some((days, time)) => (days, time),
+    let (date_part, time) = match rest.split_once('T') {
+        Some((date_part, time)) => (date_part, time),
         None => (rest, ""),
     };
     let mut total: i64 = 0;
-    if !days.is_empty() {
-        let count: i64 = days.strip_suffix('D')?.parse().ok()?;
+    if !date_part.is_empty() {
+        let count: i64 = date_part.strip_suffix('D')?.parse().ok()?;
         total = total.checked_add(count.checked_mul(86_400_000)?)?;
     }
     let mut number = String::new();

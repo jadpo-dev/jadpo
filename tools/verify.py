@@ -146,6 +146,10 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # their guards; then purge through the runtime's entry point, with
         # cascades, restricted references and batches (area 5).
         ('live PostgreSQL: lifecycles and purge', [('jadpo-cli', 'lifecycle')], []),
+        # Routes over real HTTP: `jadpo dev` on the native host, requests
+        # over TCP, the failure envelope, query and header input, rate
+        # limits and reloading; and the golden OpenAPI document (area 7).
+        ('live PostgreSQL: routes over HTTP', [('jadpo-cli', 'http')], []),
     ]
     latency_test = 'a_save_shows_the_tests_it_reaches_within_the_target'
     own_steps = [

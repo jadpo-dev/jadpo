@@ -355,15 +355,11 @@ fn operation(
             ),
         );
     }
-    if has_input {
-        if !route.method.reads_query() || route.input.is_none() {
-            responses.set("400", shared_response("InvalidRequest"));
-        } else {
-            responses.set("400", shared_response("InvalidRequest"));
-        }
-        if responses.get("422").is_none() {
-            responses.set("422", shared_response("InvalidInput"));
-        }
+    if route.input.is_some() {
+        responses.set("400", shared_response("InvalidRequest"));
+    }
+    if has_input && responses.get("422").is_none() {
+        responses.set("422", shared_response("InvalidInput"));
     }
     responses.set("429", shared_response("RateLimited"));
     responses.set("500", shared_response("InternalFault"));

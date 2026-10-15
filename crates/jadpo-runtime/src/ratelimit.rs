@@ -16,7 +16,7 @@ use jadpo_std::http::{ADDRESS_LIMIT, RATE_LIMIT_MEMORY, RateLimit};
 
 /// About how much memory one counter takes: its key, its window and count,
 /// and its place in the eviction queue.
-const COUNTER_BYTES: usize = 96;
+const ENTRY_BYTES: usize = 96;
 
 /// What a limiter decided about one request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,7 +55,7 @@ impl RateLimits {
     pub fn new(limit: RateLimit, memory: usize) -> RateLimits {
         RateLimits {
             limit,
-            capacity: (memory / COUNTER_BYTES).max(1),
+            capacity: (memory / ENTRY_BYTES).max(1),
             counters: RefCell::new(Counters::default()),
         }
     }
@@ -120,7 +120,7 @@ mod tests {
                 requests: 1,
                 window_ms: 60_000,
             },
-            COUNTER_BYTES * 2,
+            ENTRY_BYTES * 2,
         );
         assert_eq!(limits.allow("a", 0), Allowed::Yes);
         assert_eq!(limits.allow("b", 0), Allowed::Yes);

@@ -558,7 +558,7 @@ impl Reader<'_> {
                     self.out.push(
                         Diagnostic::new(&rule::ROUTE_PREFIX_REQUIRED, "`prefix:` takes a path")
                             .at(span, "not a path")
-                            .reason("A group's prefix is the path its routes follow, written as a path: `prefix: /todos`.")
+                            .reason("A group's prefix is the path its routes follow, written as a path starting with `/`.")
                             .next("Write the prefix as a path starting with `/`"),
                     );
                     None
@@ -786,7 +786,7 @@ impl Reader<'_> {
             self.out.push(
                 Diagnostic::new(&rule::ROUTE_PLACEHOLDER_TYPE, format!("`{name}` has no type"))
                     .at(span, "untyped")
-                    .reason("A placeholder is typed where it appears, so its segment is decoded and checked once: `{todo_id: Todo.id}`.")
+                    .reason("A placeholder is typed where it appears, so its segment is decoded and checked once: `{<name>: <Type>}`.")
                     .next(format!("Write `{{{name}: <Type>}}`")),
             );
             return None;
@@ -823,7 +823,7 @@ impl Reader<'_> {
                 .reason(format!(
                     "A placeholder's type is a named scalar or an `X.id`: {why}."
                 ))
-                .next("Type it with a named type built on a scalar, or a field type such as `Todo.id`"),
+                .next("Type it with a named type built on a scalar, or an `X.id`"),
             );
             return None;
         }
@@ -1478,6 +1478,7 @@ impl Reader<'_> {
             let what = match expr {
                 Expr::Literal(_) => "a literal",
                 Expr::CallExpr(_) => "a call",
+                Expr::RecordExpr(_) => "a value built in the route",
                 _ => "an expression",
             };
             self.out.push(self.argument_invalid(expr, what));

@@ -399,7 +399,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Serve it on another port, with your own database",
-                command: "jadpo dev --port 8080 --url postgresql://localhost/todo_dev",
+                command: "jadpo dev --port 8080 --url postgresql://localhost/app_dev",
             },
             Example {
                 description: "Print each request as a line of data for tools",

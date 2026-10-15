@@ -80,7 +80,7 @@ FENCE = re.compile(r'^```(\S*)(.*)$')
 # The areas the new compiler builds, whose pages own the new compiler's
 # rules: areas 1-4 from Phase 1, area 5 from chunk 3.1 and area 6 from
 # chunk 3.2.
-PHASE_ONE = 6
+PHASE_ONE = 7
 # `migrate=<purpose>` on a block runs `jadpo migrate new <purpose>` once
 # the project's blocks up to it are written, at a fixed time per step, so
 # migration folders are named the same on every run.

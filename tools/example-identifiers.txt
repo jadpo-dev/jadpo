@@ -7,6 +7,8 @@ ada_borrows_two
 add_copy
 add_delivery
 add_interest
+add_memo
+add_tagged_memo
 add_todo
 admin_orders
 administrative_health
@@ -205,7 +207,6 @@ customer_not_found
 customer_note
 customer_number
 customer_reference
-customer_view
 day_count
 days
 days_left
@@ -220,7 +221,6 @@ delivery_cost
 delivery_id
 delivery_state
 destination_company_id
-details
 disable_user
 disabled_at
 discount
@@ -278,6 +278,7 @@ fill_tray
 fill_trays
 find_books
 find_customer
+find_todo
 finish_magic_link
 first_loan
 first_quantity
@@ -288,6 +289,7 @@ flour
 flour_for
 flour_short
 follow_up
+forget_memos
 formatted_price
 fragile
 fresh
@@ -353,6 +355,7 @@ jar_name
 job_run_at
 joined_at
 jot_down
+keep_memo
 keeper
 key_in_order
 keyed_count
@@ -433,6 +436,12 @@ member_loans
 member_not_found
 member_page
 members_named
+memo
+memo_id
+memo_record
+memo_summary
+memo_view
+memos
 menu
 menu_entry
 menu_item
@@ -598,8 +607,6 @@ redeem_card
 reduction
 register_and_record
 register_both
-register_customer
-registration_accepted
 registration_closed
 remind_at
 remind_if_overdue
@@ -735,6 +742,8 @@ supplier_desk
 supplier_label
 supplier_site
 tag_all
+tag_memo
+tagged_memo
 take_flour
 taken
 team
@@ -753,7 +762,6 @@ tier_name
 tiers_above
 till_total
 times_lent
-title
 title_blank
 titles
 todo
