@@ -1203,6 +1203,12 @@ pub(super) fn infix(
             expr_bp(p, 0);
             let end = p.prev_end().max(b_start);
             let b = source(p, b_start, end);
+            // A condition reads best in brackets, as an `if`'s is.
+            let subject = if subject.contains(' ') {
+                format!("({subject})")
+            } else {
+                subject
+            };
             let jadpo = match_text(p, start, &subject, [("true", &a), ("false", &b)]);
             let summary = arms_summary(
                 &subject,
@@ -1610,18 +1616,17 @@ pub(super) fn switch_arm(p: &mut Parser<'_>) -> bool {
     let m = p.start();
     let (arm_start, word_end) = p.range();
     let mut edits = Vec::new();
-    let pattern_text;
-    if case {
+    let pattern_text = if case {
         p.skip_token();
         let pattern_start = p.range().0;
         pattern(p);
-        pattern_text = source(p, pattern_start, p.prev_end());
+        source(p, pattern_start, p.prev_end())
     } else {
         let w = p.start();
         p.bump_remap(UNDERSCORE);
         w.complete(p, WILDCARD_PAT);
-        pattern_text = "_".to_string();
-    }
+        "_".to_string()
+    };
     let (arrow_start, arrow_end) = p.range();
     let arrow = p.current();
     if !matches!(arrow, COLON | THIN_ARROW | FAT_ARROW) {

@@ -416,7 +416,7 @@ rules! {
     SYNTAX_ASSERTION_FORM: "syntax.assertion_form", area 13, Error, Agent,
         "13-testing.html#syntax-assertion-form", "Assertion written in another language's form";
     SYNTAX_ASYNC_AWAIT: "syntax.async_await", area 3, Error, Agent,
-        "03-logic.html#syntax-async-await", "`async` or `await` from another language";
+        "03-logic.html#syntax-async-await", "Code marked `async` or `await`";
     SYNTAX_ATTEMPT_PLACEMENT: "syntax.attempt_placement", area 3, Error, Agent,
         "03-logic.html#syntax-attempt-placement", "Attempt is used inside an expression";
     SYNTAX_COLLECTION_TYPE: "syntax.collection_type", area 2, Error, Agent,
@@ -428,7 +428,7 @@ rules! {
     SYNTAX_CONDITION_BRACKETS: "syntax.condition_brackets", area 3, Error, Agent,
         "03-logic.html#syntax-condition-brackets", "Condition is not in brackets";
     SYNTAX_ELSE_IF: "syntax.else_if", area 3, Error, Agent,
-        "03-logic.html#syntax-else-if", "`elif` or `elsif` instead of `else if`";
+        "03-logic.html#syntax-else-if", "Else-if written as `elif` or `elsif`";
     SYNTAX_EQUALITY_OPERATOR: "syntax.equality_operator", area 3, Error, Agent,
         "03-logic.html#syntax-equality-operator", "Comparison written with another language's operator";
     SYNTAX_EXPECTED_DECLARATION: "syntax.expected_declaration", area 1, Error, Agent,
@@ -450,7 +450,7 @@ rules! {
     SYNTAX_IMPORT_STATEMENT: "syntax.import_statement", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-import-statement", "Import written in another language's form";
     SYNTAX_INCREMENT_OPERATOR: "syntax.increment_operator", area 3, Error, Agent,
-        "03-logic.html#syntax-increment-operator", "`++`, `--` or a compound assignment";
+        "03-logic.html#syntax-increment-operator", "Variable changed with `++`, `--` or `+=`";
     SYNTAX_INLINE_FUNCTION_ARROW: "syntax.inline_function_arrow", area 3, Error, Agent,
         "03-logic.html#syntax-inline-function-arrow", "Inline function written in another language's form";
     SYNTAX_INVALID_ESCAPE: "syntax.invalid_escape", area 1, Error, Agent,
@@ -472,11 +472,11 @@ rules! {
     SYNTAX_NEW_KEYWORD: "syntax.new_keyword", area 2, Error, Agent,
         "02-values-and-types.html#syntax-new-keyword", "Value created with `new`";
     SYNTAX_NULL_COALESCING: "syntax.null_coalescing", area 2, Error, Agent,
-        "02-values-and-types.html#syntax-null-coalescing", "`??` instead of a `match`";
+        "02-values-and-types.html#syntax-null-coalescing", "Default for a missing value written with `??`";
     SYNTAX_NULLABLE_TYPE: "syntax.nullable_type", area 2, Error, Agent,
         "02-values-and-types.html#syntax-nullable-type", "Nullable type written in another language's form";
     SYNTAX_OPTIONAL_CHAINING: "syntax.optional_chaining", area 2, Error, Agent,
-        "02-values-and-types.html#syntax-optional-chaining", "`?.` instead of a `match`";
+        "02-values-and-types.html#syntax-optional-chaining", "Field of a missing value read with `?.`";
     SYNTAX_POSITIONAL_AFTER_NAMED: "syntax.positional_after_named", area 3, Error, Agent,
         "03-logic.html#syntax-positional-after-named", "Positional argument follows a named one";
     SYNTAX_RETURN_TYPE_ARROW: "syntax.return_type_arrow", area 3, Error, Agent,
@@ -486,9 +486,9 @@ rules! {
     SYNTAX_STRING_QUOTES: "syntax.string_quotes", area 2, Error, Agent,
         "02-values-and-types.html#syntax-string-quotes", "String in single quotes or backticks";
     SYNTAX_SWITCH_STATEMENT: "syntax.switch_statement", area 3, Error, Agent,
-        "03-logic.html#syntax-switch-statement", "`switch` or `when` instead of `match`";
+        "03-logic.html#syntax-switch-statement", "Choice written with `switch` or `when`";
     SYNTAX_TERNARY_OPERATOR: "syntax.ternary_operator", area 3, Error, Agent,
-        "03-logic.html#syntax-ternary-operator", "`? :` instead of a `match`";
+        "03-logic.html#syntax-ternary-operator", "Value chosen with `? :`";
     SYNTAX_TRY_CATCH: "syntax.try_catch", area 3, Error, Agent,
         "03-logic.html#syntax-try-catch", "Failure handled with `try`, `catch` or `?`";
     SYNTAX_TYPE_BLOCK_REQUIRED: "syntax.type_block_required", area 2, Error, Agent,
@@ -502,7 +502,7 @@ rules! {
     SYNTAX_UNEXPECTED_TOKEN: "syntax.unexpected_token", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-unexpected-token", "Something else was expected here";
     SYNTAX_UNSUPPORTED_THROW: "syntax.unsupported_throw", area 3, Error, Agent,
-        "03-logic.html#syntax-unsupported-throw", "`throw` or `raise` instead of `reject`";
+        "03-logic.html#syntax-unsupported-throw", "Failure raised with `throw` or `raise`";
     SYNTAX_UNTERMINATED_STRING: "syntax.unterminated_string", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-unterminated-string", "String is not closed";
     SYNTAX_VARIABLE_KEYWORD: "syntax.variable_keyword", area 3, Error, Agent,

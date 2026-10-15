@@ -573,7 +573,7 @@ impl Lexer<'_> {
     /// `'text'` or a backtick string without `${`, closed on its line: read
     /// as a string, and its edit writes it in double quotes. Anything else
     /// is a character Jadpo doesn't have.
-    fn quoted(&mut self, quote: char) {
+    fn quoted(&mut self, delimiter: char) {
         let start = self.pos;
         let line = self.rest_of_line(start + 1).to_string();
         let mut close = None;
@@ -583,19 +583,19 @@ impl Lexer<'_> {
                 escaped = false;
             } else if c == '\\' {
                 escaped = true;
-            } else if c == quote {
+            } else if c == delimiter {
                 close = Some(i);
                 break;
             }
         }
         let inner = close.map(|i| line[..i].to_string());
-        let Some(inner) = inner.filter(|inner| !(quote == '`' && inner.contains("${"))) else {
+        let Some(inner) = inner.filter(|inner| !(delimiter == '`' && inner.contains("${"))) else {
             self.pos += 1;
             self.push(ERROR, start);
             self.error(
                 start,
                 self.pos,
-                LexErrorKind::UnexpectedCharacter(quote.to_string()),
+                LexErrorKind::UnexpectedCharacter(delimiter.to_string()),
             );
             return;
         };
@@ -606,8 +606,8 @@ impl Lexer<'_> {
         let mut chars = inner.chars().peekable();
         while let Some(c) = chars.next() {
             match c {
-                '\\' if chars.peek() == Some(&quote) => {
-                    text.push(quote);
+                '\\' if chars.peek() == Some(&delimiter) => {
+                    text.push(delimiter);
                     chars.next();
                 }
                 '\\' => {

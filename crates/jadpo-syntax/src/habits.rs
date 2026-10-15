@@ -185,7 +185,7 @@ habits! {
         "Use `$J` instead of `$W`";
     COLON_RESULT: SYNTAX_RETURN_TYPE_ARROW, Parser, ": T" -> "-> T",
         "Jadpo writes the result type after `->`, not `:`", "write `->`",
-        "`: Type` after the parameters is the result type in TypeScript and Kotlin; Jadpo writes `-> Type`, as in `function total(order: Order) -> Pence {`.",
+        "`: Type` after the parameters is the result type in TypeScript and Kotlin; Jadpo writes `-> Type`, as in `function total(order: Order) -> Amount {`.",
         "Use `->` instead of `:`";
     ASYNC: SYNTAX_ASYNC_AWAIT, Parser, "async" -> "",
         "Jadpo has no `async`", "remove `async`",
@@ -275,7 +275,7 @@ habits! {
         "$J";
     PATH_COLONS: SYNTAX_IMPORT_STATEMENT, Parser, "::" -> "/",
         "Jadpo writes `$J`, not `$W`", "write `$J`",
-        "`::` separates a path in Rust; a Jadpo `use` line names a folder with `/`, as in `use shared/types { Pence }`.",
+        "`::` separates a path in Rust; a Jadpo `use` line names a folder with `/`, as in `use shared/types { Amount }`.",
         "Write `$J`";
     EXPORT: SYNTAX_EXPORT_KEYWORD, Parser, "export" -> "",
         "Jadpo has no `$W`", "remove `$W`",
