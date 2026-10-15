@@ -4,7 +4,7 @@
 //! and a restricting reference refused as the failures their `conflict:`
 //! arms name, a reference to a record that isn't there as its not-found
 //! failure, an update and a delete by `id`, a patch keeping what it leaves
-//! out, a counter, and an action that handles a refusal from an action it
+//! out (and a required field it sends as `none`), a counter, and an action that handles a refusal from an action it
 //! calls and carries on, keeping none of what the failed action wrote
 //! (a savepoint per called action whose failure is handled). Then,
 //! through the interpreter with a second connection changing a record
@@ -184,6 +184,15 @@ test \"a patch keeps what it leaves out and clears what it sends as none\" {
     var relabelled: Item = edit_item(cleared, ItemChanges { label: \"Marmalade\" })
     assert relabelled.note == none
     assert relabelled.label == \"Marmalade\"
+    var kept: Item = edit_item(
+        relabelled,
+        ItemChanges {
+            label: none
+            note: \"kept\"
+        }
+    )
+    assert kept.label == \"Marmalade\"
+    assert kept.note == \"kept\"
 }
 
 test \"a restricted reference refuses a delete, and a delete by id finds nothing twice\" {

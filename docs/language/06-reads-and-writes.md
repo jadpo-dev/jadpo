@@ -783,7 +783,11 @@ The statement's text is fixed: each field of the input is written `CASE
 WHEN <supplied> THEN <value> ELSE <column> END`, and an `on_change` field
 changes only when one was supplied. A value built without one of its
 optional `Input` fields remembers it was left out, which only a patch
-reads; it still equals one given `none`.
+reads; it still equals one given `none`. A field whose type isn't nullable
+(`title` above) can't be cleared, so `none` given to it is the same as
+leaving it out and the patch keeps the stored value (chosen in chunk 3.10:
+a check error can't tell, since forwarding an optional value such as a
+page's `next` cursor into an optional field is ordinary code).
 
 ::: today
 
@@ -3410,6 +3414,7 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Provided not-found failure | Chosen in chunk 3.3: kind `not_found`, public, no fields, placed at its entity | 2026-10-14 |
 | References that hold | Chosen in chunk 3.3: a reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure | 2026-10-14 |
 | Stored values | Chosen in chunk 3.3: an update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove | 2026-10-14 |
+| `none` to a field that can't be cleared | Chosen in chunk 3.10: `none` given to an optional `Input` field whose type isn't nullable is the same as leaving it out, so a patch keeps the stored value | 2026-10-15 |
 | Refusals in a called action | Chosen in chunk 3.3, widened in chunk 3.10: an action whose failure its caller handles with `match` runs inside a savepoint, so its failure undoes all it wrote, a refusal among it, and the caller carries on | 2026-10-15 |
 | Transitions as operations | Chosen in chunk 3.4: `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records | 2026-10-15 |
 | A transition's `when:` refusing | Chosen in chunk 3.4: a `when:` that asks more than `visible:` can refuse a record that is there, a conflict mapped in `conflict:` keyed by the transition (`User.disable: UserDisabled`), with no catch-all; one that asks only what `visible:` asks can't, since a hidden record is not found | 2026-10-15 |

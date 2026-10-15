@@ -1012,7 +1012,9 @@ both return the row (`RETURNING`), decoded with the read plans' codecs. A
 patch writes each field of its input as `CASE WHEN <supplied> THEN <value>
 ELSE <column> END`, so its text is fixed and a field left out keeps its
 value (a record built without an optional `Input` field remembers it,
-`Record::omitted`). An update by `id` works out a stored field
+`Record::omitted`; since chunk 3.10 `none` given to one whose type isn't
+nullable counts as left out, `FieldPlan::none_left_out`, so a patch never
+sends `NULL` to a required column). An update by `id` works out a stored field
 (`Post.view_count + 1`) in the statement, with `+` and `-` only. A delete
 removes the row; by `id`, no row is `Missing`, and of a loaded record it is
 a fault, since a record changed by another transaction is a concurrent

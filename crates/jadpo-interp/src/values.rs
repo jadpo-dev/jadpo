@@ -19,6 +19,9 @@ pub(crate) struct Shape {
     /// The places of the optional `Input` fields without a default: a
     /// value built without one remembers it was left out (area 6, patch).
     omittable: Vec<u32>,
+    /// The places of those whose type isn't nullable: `none` given to one
+    /// is the same as leaving it out.
+    none_left_out: Vec<u32>,
 }
 
 impl Shape {
@@ -46,6 +49,13 @@ impl Shape {
                 .filter(|(_, field)| field.omittable)
                 .map(|(at, _)| at as u32)
                 .collect(),
+            none_left_out: plan
+                .fields
+                .iter()
+                .enumerate()
+                .filter(|(_, field)| field.none_left_out)
+                .map(|(at, _)| at as u32)
+                .collect(),
         }
     }
 
@@ -55,6 +65,9 @@ impl Shape {
     pub fn build(&self, given: impl IntoIterator<Item = (Option<u32>, Value)>) -> Option<Value> {
         let mut values: Vec<Option<Value>> = vec![None; self.fields.len()];
         for (slot, value) in given {
+            if value == Value::None && slot.is_some_and(|slot| self.none_left_out.contains(&slot)) {
+                continue;
+            }
             if let Some(place) = slot.and_then(|slot| values.get_mut(slot as usize))
                 && place.is_none()
             {
