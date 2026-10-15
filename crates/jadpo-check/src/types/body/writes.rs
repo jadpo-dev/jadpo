@@ -736,9 +736,12 @@ impl Body<'_> {
         );
         self.stored = outer;
         if by_id {
-            for (_, member) in &given {
+            for (name, member) in &given {
                 if let Some(value) = member.value() {
                     self.one_step(entity, &value, written);
+                    if let Some(field) = tree::name_text(name) {
+                        self.stored_scale(entity, &field, &value, written);
+                    }
                 }
             }
         }
@@ -1119,9 +1122,12 @@ impl Body<'_> {
                 &skip,
             );
             if by_id {
-                for (_, field_member) in tree::members(member.block()) {
+                for (name, field_member) in tree::members(member.block()) {
                     if let Some(value) = field_member.value() {
                         self.one_step(entity, &value, &written);
+                        if let Some(field) = tree::name_text(&name) {
+                            self.stored_scale(entity, &field, &value, &written);
+                        }
                     }
                 }
             }
@@ -1232,6 +1238,110 @@ impl Body<'_> {
             if self.facts.stored.contains(&node_key(&node)) {
                 self.stored_operand(&node, &root, entity, written);
             }
+        }
+    }
+
+    /// A decimal the database adds to, or subtracts from, a stored field
+    /// keeps no more places than the field's `scale` (area 6, "Counters"):
+    /// PostgreSQL rounds the sum half away from zero, Jadpo half to even,
+    /// so a value with more places could be stored differently from how
+    /// Jadpo would keep it.
+    fn stored_scale(&mut self, entity: &str, field: &str, value: &Expr, written: &str) {
+        let target = Ty::Field(entity.to_string(), vec![field.to_string()]);
+        if self.table.representation(&target) != Some(Prim::Decimal) {
+            return;
+        }
+        let Some(scale) = self
+            .table
+            .rule_chain(&target)
+            .into_iter()
+            .find_map(|(_, rules)| rules.scale)
+        else {
+            return;
+        };
+        let root = value.syntax().clone();
+        let holds_stored = |node: &SyntaxNode| {
+            std::iter::once(node.clone())
+                .chain(node.descendants())
+                .any(|n| self.facts.stored.contains(&node_key(&n)))
+        };
+        let mut found: Option<(Expr, Option<u32>)> = None;
+        for node in std::iter::once(root.clone()).chain(root.descendants()) {
+            let Some(binary) = ast::BinExpr::cast(node.clone()) else {
+                continue;
+            };
+            if !binary.op().is_some_and(|op| matches!(op.text(), "+" | "-")) {
+                continue;
+            }
+            let (Some(lhs), Some(rhs)) = (binary.lhs(), binary.rhs()) else {
+                continue;
+            };
+            if !holds_stored(lhs.syntax()) && !holds_stored(rhs.syntax()) {
+                continue;
+            }
+            for operand in [lhs, rhs] {
+                if holds_stored(operand.syntax()) {
+                    continue;
+                }
+                let places = self.decimal_places(&operand);
+                if places.is_none_or(|places| places > scale) {
+                    found = Some((operand, places));
+                    break;
+                }
+            }
+            if found.is_some() {
+                break;
+            }
+        }
+        let Some((operand, places)) = found else {
+            return;
+        };
+        let shown = tree::written(operand.syntax());
+        let span = self.span(&operand);
+        let (label, how) = match places {
+            Some(places) => (
+                format!("{places} decimal places"),
+                format!("`{shown}` has {places}"),
+            ),
+            None => (
+                "any number of places".to_string(),
+                format!("`{shown}` is a decimal whose type sets no `scale`"),
+            ),
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::DATA_STORED_DECIMAL_SCALE,
+                format!("`{written}` adds a decimal with more places than `{entity}.{field}` keeps"),
+            )
+            .at(span, label)
+            .reason(format!(
+                "The database works `{entity}.{field}` out in one step, and keeps it at `scale: {scale}`; {how}, and PostgreSQL would round the result half away from zero where Jadpo rounds half to even, so the stored value could differ from Jadpo's."
+            ))
+            .next(format!(
+                "Give the value at most {scale} decimal places, or a type with `scale: {scale}` or fewer"
+            )),
+        );
+    }
+
+    /// How many decimal places a value can have: a literal's own, a whole
+    /// number's none, or its type's `scale`; `None` when nothing bounds it.
+    fn decimal_places(&self, expr: &Expr) -> Option<u32> {
+        let inner = match expr {
+            Expr::ParenExpr(paren) => paren.expr()?,
+            other => other.clone(),
+        };
+        if let crate::types::Const::Number { value, .. } = crate::types::Const::from_expr(&inner) {
+            return Some(value.scale);
+        }
+        let ty = self.facts.types.get(&node_key(inner.syntax()))?;
+        match self.table.representation(ty) {
+            Some(Prim::Int) => Some(0),
+            Some(Prim::Decimal) => self
+                .table
+                .rule_chain(ty)
+                .into_iter()
+                .find_map(|(_, rules)| rules.scale),
+            _ => None,
         }
     }
 

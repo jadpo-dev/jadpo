@@ -80,7 +80,7 @@ pub enum Values {
     Path,
     /// A test file or a folder: `.test.jadpo` files, and folders.
     TestPath,
-    /// The name of one of the project's queries.
+    /// The name of one of the project's queries or actions.
     Query,
 }
 
@@ -465,16 +465,19 @@ pub static COMMANDS: &[Command] = &[
         name: "sql",
         synonyms: &[],
         group: "Data",
-        summary: "Show the SQL a query sends",
+        summary: "Show the SQL a query or an action's writes send",
         description: "Print the PostgreSQL a query compiles to (area 6): its statement, then one more \
                       for each include, however many records it is included in, each with the \
-                      parameters that fill it and where their values come from. The statements are \
-                      fixed when the project is compiled, so the same query always sends the same \
-                      text. The project must check without errors first. --explain, which runs the \
-                      query on a disposable database and shows PostgreSQL's plan, comes later.",
+                      parameters that fill it and where their values come from. Given an action, \
+                      print the statement each of its writes sends, with what each refusal raises: \
+                      the failure a conflict: arm names, the not-found failure or a fault. The \
+                      statements are fixed when the project is compiled, so the same query always \
+                      sends the same text. The project must check without errors first. --explain, \
+                      which runs the query on a disposable database and shows PostgreSQL's plan, \
+                      comes later.",
         arguments: &[Argument {
-            name: "query",
-            description: "The query's name",
+            name: "name",
+            description: "The query's or action's name",
             required: false,
             values: Values::Query,
         }],
@@ -484,10 +487,16 @@ pub static COMMANDS: &[Command] = &[
             description: "Show PostgreSQL's plan (not built yet)",
             values: &[],
         }],
-        examples: &[Example {
-            description: "Show the statements a page query sends",
-            command: "jadpo sql latest_entries",
-        }],
+        examples: &[
+            Example {
+                description: "Show the statements a page query sends",
+                command: "jadpo sql latest_entries",
+            },
+            Example {
+                description: "Show the statements an action's writes send",
+                command: "jadpo sql archive_entry",
+            },
+        ],
         arguments_rule: &rule::CLI_SQL_ARGUMENTS,
         raises: &[
             &rule::TOOLCHAIN_NOT_BUILT_YET,

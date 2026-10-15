@@ -1,21 +1,32 @@
-//! `jadpo sql <query>` (area 6; area 14's command table): the PostgreSQL a
-//! query sends, statement by statement, each with the parameters that fill
-//! it. One statement for the query, and one more for each include however
-//! many records it is included in.
+//! `jadpo sql <query>` and `jadpo sql <action>` (area 6; area 14's
+//! command table, "Write SQL"): the PostgreSQL a query sends, statement by
+//! statement, each with the parameters that fill it, or the statements an
+//! action's writes send. A query sends one statement, and one more for
+//! each include however many records it is included in; an action sends
+//! one for each `create`, `update`, `delete` and lifecycle transition it
+//! writes, in the order they are written.
 //!
-//! The screen: a bold `query <name>` heading over the statement, whole and
-//! never cut, then on the label grid what it reads, where it is declared,
-//! how many statements it sends and each `$n` with where its value comes
-//! from and its type; each include repeats the shape under `include
-//! <field>`. A success prints nothing more, as the design language's calm
-//! default asks; `--json` gives the same as data.
+//! The screen: a bold heading over the statement, whole and never cut,
+//! then on the label grid what it does, where it is written, how many
+//! statements there are and each `$n` with where its value comes from and
+//! its type. A query's heading is `query <name>`, each include's `include
+//! <field>`; an action's writes are `write <Entity>.<operation>`, and the
+//! grid ends with what each refusal raises: the constraint and the
+//! failure its `conflict:` arm names, the not-found failure, or the fault.
+//! A transition whose `when:` can refuse a record shows the statement that
+//! asks, under `when no row changed`. A success prints nothing more, as
+//! the design language's calm default asks; `--json` gives the same as
+//! data.
 
 use std::path::PathBuf;
 
 use jadpo_check::data::queries::{Include, IncludeKind, QueryModel, query_models};
 use jadpo_diag::{Diagnostic, Severity, rule};
-use jadpo_plan::{Plan, QueryPlan};
+use jadpo_graph::Kind;
+use jadpo_graph::body::{Body, Expr, Node, SiteId};
+use jadpo_plan::{CallablePlan, Decoded, Plan, QueryPlan, Refusal, WriteSitePlan};
 use jadpo_std::read::{IncludeRead, Select, Source, SqlType};
+use jadpo_std::write::{WriteOp, WriteSource};
 use jadpo_term::{Block, Json, Screen};
 
 use crate::fmt::project_not_found;
@@ -42,23 +53,26 @@ pub fn sql(call: &Call) -> Reply {
     let queries = query_models(db, loaded.project);
     let mut names: Vec<String> = queries.queries.iter().map(|q| q.name.clone()).collect();
     names.sort();
+    let actions: Vec<String> = action_names(&root);
     let Some(name) = call.arguments.first() else {
-        let reason = if names.is_empty() {
-            "It prints the statements a query sends, and this project declares no query."
-                .to_string()
-        } else {
-            format!(
-                "It prints the statements a query sends; this project's queries are {}.",
-                crate::run::both(&quoted(&names))
-            )
+        let reason = match (names.is_empty(), actions.is_empty()) {
+            (true, true) => "It prints the statements a query or an action's writes send, and this project declares neither.".to_string(),
+            _ => format!(
+                "It prints the statements a query or an action's writes send; this project's queries are {}, and its actions {}.",
+                listed(&names),
+                listed(&actions)
+            ),
         };
         return Reply::failed(
-            Diagnostic::new(&rule::CLI_SQL_ARGUMENTS, "`jadpo sql` needs a query")
-                .reason(reason)
-                .next(match names.first() {
-                    Some(first) => format!("Name a query, for example `jadpo sql {first}`"),
-                    None => "Declare a query in a domain's `queries/` folder".to_string(),
-                }),
+            Diagnostic::new(
+                &rule::CLI_SQL_ARGUMENTS,
+                "`jadpo sql` needs a query or an action",
+            )
+            .reason(reason)
+            .next(match names.first().or(actions.first()) {
+                Some(first) => format!("Name one, for example `jadpo sql {first}`"),
+                None => "Declare a query in a domain's `queries/` folder".to_string(),
+            }),
         );
     };
     let errors: Vec<Diagnostic> = jadpo_check::check(db, loaded.project)
@@ -68,21 +82,35 @@ pub fn sql(call: &Call) -> Reply {
     if !errors.is_empty() {
         return crate::migrate::blocked(&loaded, &cwd, errors, "sql not shown");
     }
+    let root_shown = jadpo_db::shown_root(&cwd, &loaded.root);
     let Some(query) = queries.get(name) else {
-        let diagnostic =
-            Diagnostic::new(&rule::CLI_SQL_ARGUMENTS, format!("`{name}` isn't a query"));
-        return Reply::failed(match nearest(name, names.iter().map(String::as_str)) {
+        let plan = Plan::build(db, loaded.project);
+        if let Some(action) = plan
+            .callables()
+            .iter()
+            .find(|c| c.kind == Kind::Action && c.key.name() == name.as_str())
+        {
+            let file = jadpo_term::shown_path(root_shown.as_deref(), &action.file);
+            return render_action(&plan, action, &file);
+        }
+        let diagnostic = Diagnostic::new(
+            &rule::CLI_SQL_ARGUMENTS,
+            format!("`{name}` isn't a query or an action"),
+        );
+        let all: Vec<&str> = names.iter().chain(&actions).map(String::as_str).collect();
+        return Reply::failed(match nearest(name, all.iter().copied()) {
             Some(near) => diagnostic
                 .reason(format!(
-                    "This project declares no query called `{name}`. Did you mean `{near}`?"
+                    "This project declares no query or action called `{name}`. Did you mean `{near}`?"
                 ))
                 .next(format!("Run `jadpo sql {near}`")),
             None => diagnostic
                 .reason(format!(
-                    "This project declares no query called `{name}`; its queries are {}.",
-                    crate::run::both(&quoted(&names))
+                    "This project declares no query or action called `{name}`; its queries are {}, and its actions {}.",
+                    listed(&names),
+                    listed(&actions)
                 ))
-                .next("Name one of the project's queries"),
+                .next("Name one of the project's queries or actions"),
         });
     };
     let plan = Plan::build(db, loaded.project);
@@ -99,9 +127,233 @@ pub fn sql(call: &Call) -> Reply {
         .get(&query.key)
         .and_then(|node| node.place.as_ref())
         .map_or(1, |place| place.lines.0);
-    let root_shown = jadpo_db::shown_root(&cwd, &loaded.root);
     let file = jadpo_term::shown_path(root_shown.as_deref(), &query.path);
     render(query, planned, &format!("{file}:{line}"))
+}
+
+/// Names as a list for a sentence: "`a` and `b`", or "none".
+fn listed(names: &[String]) -> String {
+    if names.is_empty() {
+        "none".to_string()
+    } else {
+        crate::run::both(&quoted(names))
+    }
+}
+
+// --- an action's writes -----------------------------------------------------------
+
+/// The statements an action's writes send, as a screen and as data.
+fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
+    let text = plan.text(&action.file).unwrap_or_default();
+    let writes: Vec<(SiteId, &WriteSitePlan)> = action
+        .sites
+        .iter()
+        .enumerate()
+        .filter_map(|(at, site)| match &site.decoded {
+            Decoded::Write { plan: Some(id), .. } => Some((SiteId(at as u32), plan.write(*id)?)),
+            _ => None,
+        })
+        .collect();
+    let name = action.key.name().to_string();
+    if writes.is_empty() {
+        return Reply::failed(
+            Diagnostic::new(&rule::CLI_SQL_ARGUMENTS, format!("`{name}` writes nothing"))
+                .reason(format!(
+                    "`jadpo sql` shows the statements an action's writes send, and `{name}` has no `create`, `update`, `delete` or transition; the queries it calls are shown by name."
+                ))
+                .next("Name a query, or an action that writes"),
+        );
+    }
+    let mut screen = Screen::new();
+    let mut statements = Vec::new();
+    let count = writes.len();
+    for (i, (site, write)) in writes.iter().enumerate() {
+        let body = action.body.as_ref();
+        let found = body.site(*site);
+        let Node::Expr(Expr::Write {
+            entity,
+            op,
+            transition,
+            by_id,
+            conflicts,
+            ..
+        }) = &found.node
+        else {
+            continue;
+        };
+        let entity = entity.name().to_string();
+        let operation = match transition {
+            Some(key) => key.name().to_string(),
+            None => format!("{entity}.{}", op.word()),
+        };
+        let target = if *by_id {
+            format!("the {entity} with that id")
+        } else {
+            format!("the {entity} loaded earlier")
+        };
+        let does = match (op, transition) {
+            (WriteOp::Create, _) => format!("creates a {entity}"),
+            (WriteOp::Delete, Some(_)) => {
+                format!("runs {operation} on {target}, which keeps the record")
+            }
+            (_, Some(_)) => format!("runs {operation} on {target}"),
+            (WriteOp::Update, None) => format!("updates {target}"),
+            (WriteOp::Delete, None) => format!("removes {target}"),
+        };
+        let inputs = |source: &WriteSource| input_name(source, write, body, text);
+        let mut fields = vec![
+            ("writes".to_string(), does),
+            ("file".to_string(), format!("{file}:{}", found.line)),
+        ];
+        if i == 0 {
+            fields.push((
+                "sends".to_string(),
+                if count == 1 {
+                    "1 statement".to_string()
+                } else {
+                    format!("{count} statements, one for each write")
+                },
+            ));
+        }
+        let mut params = Vec::new();
+        for (n, param) in write.plan.params.iter().enumerate() {
+            let source = inputs(&param.source);
+            let ty = pg_type(param.ty);
+            fields.push((format!("${}", n + 1), format!("{source} · {ty}")));
+            params.push(param_json(n, &source, &ty));
+        }
+        let mut refusals = Vec::new();
+        for (constraint, refusal) in write.plan.refusals.iter().zip(&write.refusals) {
+            let raises = match refusal {
+                Refusal::Arm(at) => conflicts.get(*at as usize).map_or_else(
+                    || "the failure its arm names".to_string(),
+                    |arm| format!("{}, mapped in conflict:", arm.failure.name()),
+                ),
+                Refusal::NotFound(missing) => plan
+                    .types()
+                    .failure(missing.failure)
+                    .map_or_else(|| "not found".to_string(), |f| f.name.clone()),
+                Refusal::Gone(what) => format!("a fault: {what}"),
+            };
+            let shown = match constraint.strip_prefix("when: ") {
+                Some(rule) => format!("when: of {rule} → {raises}"),
+                None => format!("{constraint} → {raises}"),
+            };
+            fields.push(("refused".to_string(), shown));
+            refusals.push(jadpo_term::Json::object([
+                ("constraint", constraint.as_str().into()),
+                ("raises", raises.into()),
+            ]));
+        }
+        let not_found = write
+            .missing
+            .as_ref()
+            .and_then(|missing| plan.types().failure(missing.failure))
+            .map(|failure| failure.name.clone());
+        if let Some(failure) = &not_found {
+            fields.push(("no row".to_string(), failure.clone()));
+        }
+        let heading = format!("write {operation}");
+        screen.push(Block::section(heading.clone(), write.plan.sql.lines()));
+        screen.push(Block::fields(fields));
+        let mut statement = vec![
+            ("for", heading.as_str().into()),
+            ("line", i64::from(found.line).into()),
+            ("sql", write.plan.sql.as_str().into()),
+            ("params", Json::array(params)),
+            ("refusals", Json::array(refusals)),
+        ];
+        if let Some(failure) = not_found {
+            statement.push(("noRow", failure.into()));
+        }
+        if let Some(guard) = &write.plan.guard {
+            let refused = write
+                .plan
+                .refusals
+                .iter()
+                .zip(&write.refusals)
+                .find(|(constraint, _)| constraint.starts_with("when: "))
+                .and_then(|(_, refusal)| match refusal {
+                    Refusal::Arm(at) => conflicts.get(*at as usize),
+                    _ => None,
+                })
+                .map_or_else(String::new, |arm| format!(" → {}", arm.failure.name()));
+            let mut asked = vec![(
+                "then".to_string(),
+                format!("a row means the record is there, so when: refused it{refused}"),
+            )];
+            let mut guard_params = Vec::new();
+            for (n, param) in guard.params.iter().enumerate() {
+                let source = inputs(&param.source);
+                let ty = pg_type(param.ty);
+                asked.push((format!("${}", n + 1), format!("{source} · {ty}")));
+                guard_params.push(param_json(n, &source, &ty));
+            }
+            screen.push(Block::section("when no row changed", guard.sql.lines()));
+            screen.push(Block::fields(asked));
+            statement.push((
+                "whenNoRowChanged",
+                Json::object([
+                    ("sql", guard.sql.as_str().into()),
+                    ("params", Json::array(guard_params)),
+                ]),
+            ));
+        }
+        statements.push(Json::object(statement));
+    }
+    let data = Json::object([
+        ("action", name.as_str().into()),
+        ("file", action.file.as_str().into()),
+        ("engine", "postgres".into()),
+        ("statements", Json::array(statements)),
+    ]);
+    Reply::screen(screen, data)
+}
+
+fn param_json(n: usize, source: &str, ty: &str) -> Json {
+    Json::object([
+        ("name", format!("${}", n + 1).into()),
+        ("from", source.into()),
+        ("type", ty.into()),
+    ])
+}
+
+/// Where a write's parameter comes from, as the action writes it.
+fn input_name(source: &WriteSource, write: &WriteSitePlan, body: &Body, text: &str) -> String {
+    let input = |at: u32| {
+        write
+            .inputs
+            .get(at as usize)
+            .map(|(site, _)| {
+                let site = body.site(*site);
+                text.get(site.start as usize..site.end as usize)
+                    .unwrap_or("?")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_else(|| "?".to_string())
+    };
+    match source {
+        WriteSource::Input(at) => input(*at),
+        WriteSource::Field { input: at, field } => format!("{}.{field}", input(*at)),
+        WriteSource::Supplied { input: at, field } => {
+            format!("whether {} supplies {field}", input(*at))
+        }
+        WriteSource::AnySupplied { input: at, fields } => format!(
+            "whether {} supplies any of {}",
+            input(*at),
+            fields.join(", ")
+        ),
+        WriteSource::NewId => "a new identity".to_string(),
+        WriteSource::Now => "clock.now".to_string(),
+    }
+}
+
+/// The names of the actions in the project at `root`: each action is its
+/// file in a domain's `actions/` folder.
+fn action_names(root: &std::path::Path) -> Vec<String> {
+    names_in(root, "actions")
 }
 
 /// The statements, as a screen and as data.
@@ -297,18 +549,33 @@ fn pg_type(ty: SqlType) -> String {
     }
 }
 
-/// The names of the queries in the project around `cwd`, for Tab
-/// completion: each query is its file in a domain's `queries/` folder.
-pub fn query_names(cwd: &std::path::Path) -> Vec<String> {
+/// The names of the queries and actions in the project around `cwd`, for
+/// Tab completion of `jadpo sql`.
+pub fn query_and_action_names(cwd: &std::path::Path) -> Vec<(String, &'static str)> {
     let Some(root) = jadpo_db::find_root(cwd) else {
         return Vec::new();
     };
+    let mut out: Vec<(String, &'static str)> = names_in(&root, "queries")
+        .into_iter()
+        .map(|name| (name, "Query"))
+        .collect();
+    out.extend(
+        names_in(&root, "actions")
+            .into_iter()
+            .map(|name| (name, "Action")),
+    );
+    out.sort();
+    out
+}
+
+/// The declarations in each domain's `folder`, by file name.
+fn names_in(root: &std::path::Path, folder: &str) -> Vec<String> {
     let mut out = Vec::new();
     let Ok(domains) = std::fs::read_dir(root.join("domains")) else {
         return out;
     };
     for domain in domains.filter_map(Result::ok) {
-        let Ok(files) = std::fs::read_dir(domain.path().join("queries")) else {
+        let Ok(files) = std::fs::read_dir(domain.path().join(folder)) else {
             continue;
         };
         for file in files.filter_map(Result::ok) {

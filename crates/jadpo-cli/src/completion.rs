@@ -114,11 +114,8 @@ pub fn candidates(words: &[String], cwd: Option<&Path>) -> String {
             Some(Values::Path) => paths(current, cwd, ".jadpo"),
             Some(Values::TestPath) => paths(current, cwd, ".test.jadpo"),
             Some(Values::Query) => cwd
-                .map(crate::sql::query_names)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|name| (name, "Query"))
-                .collect(),
+                .map(crate::sql::query_and_action_names)
+                .unwrap_or_default(),
             None => Vec::new(),
         }
     } else {

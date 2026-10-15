@@ -43,7 +43,7 @@ fn project(name: &str) -> PathBuf {
     write(
         &root,
         "domains/notes/entities/note.jadpo",
-        "/// A note.\nentity Note {\n    id: Uuid\n    author_id: Author.id {\n        on_delete: OnDelete.cascade\n    }\n    body: NoteBody\n}\n",
+        "/// A note.\nentity Note {\n    id: Uuid\n    author_id: Author.id {\n        on_delete: OnDelete.cascade\n    }\n    body: NoteBody\n    archived_at: Instant?\n\n    lifecycle: {\n        transitions: {\n            archive: {\n                when: archived_at == none\n                set: {\n                    archived_at: clock.now\n                }\n            }\n        }\n    }\n}\n",
     );
     write(
         &root,
@@ -69,6 +69,26 @@ fn project(name: &str) -> PathBuf {
         &root,
         "domains/notes/queries/notes_by_author.jadpo",
         "/// An author's notes.\nquery notes_by_author(author_id: Author.id) -> List<NoteView> {\n    from: Note\n    where: Note.author_id == author_id\n    order: [Note.body asc]\n    limit: 20\n    include: {\n        author: Note.author_id\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/notes/failures/note_archived.jadpo",
+        "/// The note is archived already.\ntype NoteArchived = Failure {\n    kind: FailureKind.conflict\n}\n",
+    );
+    write(
+        &root,
+        "domains/notes/actions/add_note.jadpo",
+        "/// Adds a note.\naction add_note(author: Author, body: Note.body) -> Note {\n    return Note.create {\n        set: {\n            author_id: author.id\n            body: body\n        }\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/notes/actions/archive_note.jadpo",
+        "/// Archives a note, by id.\naction archive_note(note_id: Note.id) fails NoteNotFound, NoteArchived -> Note {\n    return attempt Note.archive(note_id) {\n        conflict: {\n            Note.archive: NoteArchived\n        }\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/notes/actions/count_author.jadpo",
+        "/// Reads an author and writes nothing.\naction count_author(author_id: Author.id) fails AuthorNotFound -> Author {\n    return attempt Author.get(author_id)\n}\n",
     );
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}", migrated.stdout);
@@ -99,7 +119,9 @@ fn a_missing_or_unknown_query_lists_the_ones_there_are() {
     let missing = jadpo(&root, &["sql"]);
     assert_eq!(missing.code, 2);
     assert!(
-        missing.stderr.contains("`jadpo sql` needs a query"),
+        missing
+            .stderr
+            .contains("`jadpo sql` needs a query or an action"),
         "{}",
         missing.stderr
     );
@@ -142,4 +164,44 @@ fn a_project_with_errors_shows_them_and_no_sql() {
     );
     assert!(out.stdout.contains("sql not shown"), "{}", out.stdout);
     assert!(!out.stdout.contains("SELECT"));
+}
+
+#[test]
+fn an_action_prints_the_statement_each_write_sends() {
+    let root = project("action");
+    let out = jadpo(&root, &["sql", "archive_note"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert_eq!(
+        out.stdout,
+        "write Note.archive\n  UPDATE \"note\"\n  SET \"archived_at\" = $1\n  WHERE \"id\" = $2\n    AND \"archived_at\" IS NULL\n  RETURNING \"id\", \"author_id\", \"body\", \"archived_at\"\n\n  writes: runs Note.archive on the Note with that id\n  file: domains/notes/actions/archive_note.jadpo:3\n  sends: 1 statement\n  $1: clock.now · timestamptz\n  $2: note_id · uuid\n  refused: when: of Note.archive → NoteArchived, mapped in conflict:\n  no row: NoteNotFound\n\nwhen no row changed\n  SELECT 1\n  FROM \"note\"\n  WHERE \"id\" = $1\n\n  then: a row means the record is there, so when: refused it → NoteArchived\n  $1: note_id · uuid\n"
+    );
+    let created = jadpo(&root, &["sql", "add_note", "--json"]);
+    assert_eq!(created.code, 0, "{}", created.stderr);
+    let value: serde_json::Value = serde_json::from_str(&created.stdout).expect("json");
+    let statement = &value["data"]["statements"][0];
+    assert_eq!(value["data"]["action"], "add_note");
+    assert_eq!(statement["for"], "write Note.create");
+    assert_eq!(statement["params"][1]["from"], "author.id");
+    assert_eq!(
+        statement["refusals"][0]["constraint"],
+        "note_author_id_fkey"
+    );
+    let reads = jadpo(&root, &["sql", "count_author"]);
+    assert_eq!(reads.code, 2);
+    assert!(
+        reads.stderr.contains("`count_author` writes nothing"),
+        "{}",
+        reads.stderr
+    );
+}
+
+#[test]
+fn tab_completes_queries_and_actions() {
+    let root = project("complete");
+    let out = jadpo(&root, &["__complete", "--", "sql", ""]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(
+        out.stdout,
+        "add_note\tAction\narchive_note\tAction\ncount_author\tAction\nnotes_by_author\tQuery\n"
+    );
 }
