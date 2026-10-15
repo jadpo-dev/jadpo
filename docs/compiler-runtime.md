@@ -1160,7 +1160,7 @@ project also needs its own `README.md` and a line in `examples/README.md`.
 `build/spec-corpus/examples/<project>/`, beside the pages' projects, and
 the determinism test and format idempotence cover the examples too. The
 coverage test (`crates/jadpo-check/tests/examples.rs`) loads each project,
-reads its parse trees, graph and typed bodies, and fails naming any built
+reads its parse trees, graph and typed bodies, and names any built
 feature no example uses. The features come from the compiler's own tables
 (the grammar's node kinds, graph node and edge kinds by status and area,
 type bases, constraints, input field settings, failure members and
@@ -1168,8 +1168,16 @@ declarable kinds, the copying lines, the operation table and the enums its
 operations take, the generated namespaces' built members, the layout's
 root files and folders) and from exhaustive matches over the typed body;
 an exemption names a feature that can't appear in runnable code yet, with
-its reason, and fails once an example uses that feature. Every chunk adds
-or extends examples for what it builds.
+its reason, and fails once an example uses that feature. The examples are
+brought up to date once per phase, by an examples chunk at its end
+(Richard, 2026-10-15), so in an ordinary chunk a built feature no example
+uses is printed as a `note:` under the step and the step passes;
+`python3 tools/verify.py --require-examples` (`JADPO_REQUIRE_EXAMPLES=1`
+for the test alone) fails on it, as the examples chunk runs it, and so does
+a CI run started by hand with `require-examples` ticked. Everything else
+about the examples blocks every chunk: each still checks, formats, passes
+its tests and its README's Try-next edits, and the coverage test's own
+lists (exemptions, built features) must stay in step with the compiler.
 
 **Proof holes** (chunk 2.7). Compiled code never checks a construction
 the checker proved follows its type's rules, so a hole in a proof would
@@ -1261,7 +1269,8 @@ failures' output with a command that reruns each failing binary. `--profile
 quick` leaves out the live PostgreSQL steps and the wasm32 build; on this
 machine it takes about 15 s when nothing needs rebuilding, and the full
 gate about 16 s, plus the build. `--group lint|docs|tests|wasm32` runs one
-CI job's share.
+CI job's share, and `--require-examples` makes the coverage test fail on a
+feature no example uses (above).
 
 **CI.** GitHub Actions on Linux runs the gate's four groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`

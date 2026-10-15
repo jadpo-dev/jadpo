@@ -8,6 +8,7 @@ here, so this script stays the single gate that CI and every session run
   python3 tools/verify.py                  # everything
   python3 tools/verify.py --profile quick  # without live PostgreSQL or the wasm32 build
   python3 tools/verify.py --group lint     # one CI job's share (repeatable)
+  python3 tools/verify.py --require-examples  # fail on a feature no example uses
 
 It builds the workspace and its tests once, then runs every step that
 needs nothing else concurrently: each test binary straight from that build,
@@ -72,8 +73,9 @@ class Step:
     jadpo: bool = False
     # Measures time, so runs after everything else, by itself.
     alone: bool = False
-    # Prints its output even when it passes (timings).
-    show: bool = False
+    # Prints its output even when it passes (timings), or only the lines
+    # that start with this text.
+    show: bool | str = False
     # For `everything`: the binaries other steps run.
     owned: set[tuple[str, str]] = field(default_factory=set)
     # Filled in as it runs.
@@ -91,7 +93,7 @@ class TestBinary:
     manifest_dir: str
 
 
-def steps(profile: str) -> list[Step]:
+def steps(profile: str, require_examples: bool = False) -> list[Step]:
     python = sys.executable
     checks = [
         # Runs jadpo over the `check` blocks; projects that declare tests
@@ -138,7 +140,9 @@ def steps(profile: str) -> list[Step]:
         ('manifest determinism', [('jadpo-check', 'determinism')]),
         # The examples use every feature the compiler builds, read from its
         # own tables; the exemptions are listed with their reasons in the
-        # test (crates/jadpo-check/tests/examples.rs).
+        # test (crates/jadpo-check/tests/examples.rs). A feature no example
+        # uses yet is a note unless --require-examples (the phase's
+        # examples chunk) makes it a failure.
         ('teaching examples cover every built feature', [('jadpo-check', 'examples')]),
         # Every construction the checker proved, across the spec corpus,
         # checked again as it runs (docs/compiler-runtime.md §2.7).
@@ -188,6 +192,10 @@ def steps(profile: str) -> list[Step]:
         checks.append(Step('shared and runtime crates for wasm32', 'wasm32',
                            ['cargo', 'build', '--locked', '--target', WASM, *packages, *features],
                            lane='cargo'))
+    coverage = next(step for step in checks if step.name == 'teaching examples cover every built feature')
+    coverage.args, coverage.show = ['--nocapture'], 'note:'
+    if require_examples:
+        coverage.env['JADPO_REQUIRE_EXAMPLES'] = '1'
     # Binaries another step runs whole are left out of `compiler tests`.
     owned = {test for _, tests in own_steps for test in tests}
     if profile == 'full':
@@ -265,8 +273,11 @@ class Report:
         with self.lock:
             word = 'ok' if step.ok else 'FAILED'
             print(f'{word:<6} {step.seconds:6.1f} s  {step.name}', flush=True)
-            if step.show and step.ok and step.output.strip():
-                print(indent(step.output.strip('\n')), flush=True)
+            shown = step.output.strip('\n')
+            if isinstance(step.show, str):
+                shown = '\n'.join(line for line in shown.splitlines() if line.startswith(step.show))
+            if step.show and step.ok and shown.strip():
+                print(indent(shown), flush=True)
 
 
 def indent(text: str) -> str:
@@ -308,9 +319,13 @@ def main() -> int:
     parser.add_argument(
         '--group', choices=GROUPS, action='append',
         help='run only this CI job\'s steps; repeatable (default: every group)')
+    parser.add_argument(
+        '--require-examples', action='store_true',
+        help='fail on a built feature no teaching example uses, as the phase\'s examples chunk does '
+             '(default: note it)')
     args = parser.parse_args()
     groups = set(args.group or GROUPS)
-    chosen = [step for step in steps(args.profile) if step.group in groups]
+    chosen = [step for step in steps(args.profile, args.require_examples) if step.group in groups]
     report = Report()
     started = time.monotonic()
 

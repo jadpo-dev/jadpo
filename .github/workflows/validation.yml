@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      require-examples:
+        description: Fail on a built feature no teaching example uses, as the phase's examples chunk does
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -101,7 +106,10 @@ jobs:
       - name: Every test, with live PostgreSQL
         env:
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
-        run: python3 tools/verify.py --group tests
+          # Pull requests note a feature no example uses yet; a run started
+          # by hand with require-examples fails on it.
+          REQUIRE_EXAMPLES: ${{ inputs.require-examples && '--require-examples' || '' }}
+        run: python3 tools/verify.py --group tests $REQUIRE_EXAMPLES
 
   wasm32:
     runs-on: ubuntu-24.04
