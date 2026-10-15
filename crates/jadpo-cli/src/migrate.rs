@@ -12,8 +12,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use jadpo_check::data::migrations::{
-    self as records, Decision, Migration, Migrations, Step, decided, example_backfill, field_type,
-    read_decisions, store_steps,
+    self as records, Decision, Migration, Migrations, Step, decided, decision_misfit,
+    example_backfill, field_type, read_decisions, store_steps,
 };
 use jadpo_check::data::{DataModel, data_model, schema};
 use jadpo_db::Loaded;
@@ -210,7 +210,13 @@ fn new(call: &Call) -> Reply {
         .iter()
         .filter(|need| decide(need).is_none())
         .collect();
-    let written = match write(&folder, &name, &after, &sql, &needed, model, &lookup) {
+    let misfits: BTreeMap<String, String> = pending
+        .iter()
+        .filter_map(|need| {
+            decision_misfit(&lookup, model, &decisions, need).map(|why| (need.key(), why))
+        })
+        .collect();
+    let written = match write(&folder, &name, &after, &sql, &needed, pending.len(), model, &lookup) {
         Ok(written) => written,
         Err(error) => {
             return Reply::failed(
@@ -224,8 +230,8 @@ fn new(call: &Call) -> Reply {
         }
     };
     screen_for_new(
-        set, latest, &before, &after, &relative, &name, &sql, &pending, written, unfinished, model,
-        &lookup,
+        set, latest, &before, &after, &relative, &name, &sql, &pending, &misfits, written,
+        unfinished, model, &lookup,
     )
 }
 
@@ -388,6 +394,7 @@ fn write(
     after: &Schema,
     sql: &Sql,
     needed: &[Needed],
+    open: usize,
     model: &DataModel,
     lookup: &dyn jadpo_check::types::TypeView,
 ) -> std::io::Result<Written> {
@@ -424,7 +431,7 @@ fn write(
     if !needed.is_empty() {
         let path = folder.join("changes.jadpo");
         let existing = std::fs::read_to_string(&path).ok();
-        let (text, open) = changes_file(existing.as_deref(), needed, model, lookup);
+        let (text, _) = changes_file(existing.as_deref(), needed, model, lookup);
         std::fs::write(&path, &text)?;
         for (number, line) in (1u32..).zip(text.lines()) {
             for need in needed {
@@ -435,6 +442,7 @@ fn write(
         }
         files.push((
             "changes.jadpo".to_string(),
+            // A decision written but not one that fits is still open.
             match open {
                 0 => "every decision made".to_string(),
                 1 => "1 decision to make".to_string(),
@@ -522,6 +530,7 @@ fn screen_for_new(
     name: &str,
     sql: &Sql,
     pending: &[&Needed],
+    misfits: &BTreeMap<String, String>,
     written: Written,
     finishing: bool,
     model: &DataModel,
@@ -555,7 +564,7 @@ fn screen_for_new(
     let mut decisions = Vec::new();
     for need in pending {
         let key = need.key();
-        let (subject, next) = match need.kind {
+        let (mut subject, next) = match need.kind {
             NeededKind::Backfill => {
                 let example = field_type(model, &need.entity, &need.field)
                     .and_then(|ty| example_backfill(lookup, ty));
@@ -590,6 +599,14 @@ fn screen_for_new(
                 )
             }
         };
+        if let Some(why) = misfits.get(&key) {
+            // `This value can't fill …: why.` as a subject line.
+            let why = why.trim_end_matches('.');
+            let mut chars = why.chars();
+            subject = chars.next().map_or_else(String::new, |first| {
+                first.to_lowercase().chain(chars).collect::<String>()
+            });
+        }
         let line = written.lines.get(&key).copied();
         screen.push(Block::Decision {
             subject,

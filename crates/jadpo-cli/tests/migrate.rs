@@ -449,3 +449,31 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
         [vec!["medium", "relabel"], vec!["small", "short"]]
     );
 }
+
+#[test]
+fn a_decision_that_doesnt_fit_says_why_and_stays_open() {
+    let root = project("misfit");
+    assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
+    write(&root, "domains/planning/types/initials.jadpo", "type Initials = Text {\n    max_length: 3\n}\n");
+    write(
+        &root,
+        TODO,
+        "use planning/types { Initials }\n\nentity Todo {\n    id: Uuid\n    title: Text\n    owner: Initials\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "add_owner"]).code, 0);
+    let latest = migrations(&root).pop().expect("the migration");
+    write(
+        &root,
+        &format!("database/migrations/{latest}/changes.jadpo"),
+        "/// Adds an owner.\nmigration {\n    Todo.owner: {\n        backfill: \"nobody\"\n    }\n}\n",
+    );
+    let again = jadpo(&root, &["migrate", "new", "add_owner"]);
+    assert!(again.stdout.contains("changes.jadpo  1 decision to make"), "{}", again.stdout);
+    assert!(
+        again.stdout.contains(
+            "decision: this value can't fill `Todo.owner`: it is longer than the field's `max_length`"
+        ),
+        "{}",
+        again.stdout
+    );
+}

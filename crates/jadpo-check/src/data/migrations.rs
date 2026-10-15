@@ -749,6 +749,21 @@ fn decision_problems(
     out
 }
 
+/// Why the decision written about `need` doesn't fit its change, when one
+/// is written and doesn't: what `jadpo migrate new` shows beside it.
+pub fn decision_misfit(
+    lookup: &dyn TypeView,
+    model: &DataModel,
+    decisions: &[Decision],
+    need: &Needed,
+) -> Option<String> {
+    let decision = decisions.iter().find(|d| d.key == need.key())?;
+    if matches!(decision.value, DecisionValue::Pending) {
+        return None;
+    }
+    misfit(lookup, model, need, decision).map(|(_, why)| why)
+}
+
 /// Why a written decision doesn't fit the change it is about, with where.
 fn misfit(
     lookup: &dyn TypeView,
