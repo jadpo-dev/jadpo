@@ -1204,6 +1204,7 @@ fn page_fields(item: &Ty) -> Vec<FieldDef> {
         rules: Rules::default(),
         optional: false,
         default: None,
+        header: None,
         copied: false,
         replaces: None,
         generated: false,

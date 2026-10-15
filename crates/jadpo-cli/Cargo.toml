@@ -20,6 +20,7 @@ jadpo-diag.workspace = true
 jadpo-fmt.workspace = true
 jadpo-graph.workspace = true
 jadpo-host-native.workspace = true
+jadpo-interp.workspace = true
 jadpo-runtime.workspace = true
 jadpo-std.workspace = true
 jadpo-lsp.workspace = true
@@ -27,10 +28,9 @@ jadpo-plan.workspace = true
 jadpo-syntax.workspace = true
 jadpo-term.workspace = true
 jadpo-test.workspace = true
+jadpo-value.workspace = true
 
 [dev-dependencies]
-jadpo-interp.workspace = true
-jadpo-value.workspace = true
 serde_json.workspace = true
 
 [lints]

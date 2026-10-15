@@ -29,6 +29,9 @@ pub struct FieldDef {
     pub optional: bool,
     /// An `Input` field's `default:`, filled in when it is left out.
     pub default: Option<Const>,
+    /// An `Input` field read from a request header, by the header's name
+    /// as written (area 7, "One input").
+    pub header: Option<String>,
     /// Brought in by `include` or `pick`.
     pub copied: bool,
     /// For a written field that replaces one an `include` or `pick` above
@@ -118,6 +121,8 @@ pub struct RawField {
     pub source: Source,
     pub optional: bool,
     pub default: Option<Const>,
+    /// An `Input` field's `header:`, as written.
+    pub header: Option<String>,
     /// The type a copied field it replaced came from.
     pub replaces: Option<String>,
 }
@@ -191,6 +196,13 @@ pub fn derive(
                         .iter()
                         .find(|(key, _)| input && key == "default")
                         .map(|(_, value)| value.clone()),
+                    header: settings
+                        .iter()
+                        .find(|(key, _)| input && key == "header")
+                        .and_then(|(_, value)| match value {
+                            rules::Const::Str(text) => Some(text.clone()),
+                            _ => None,
+                        }),
                     replaces: None,
                 };
                 match fields.iter().position(|f| f.name == *name) {
@@ -329,6 +341,7 @@ fn copy(fields: &mut Vec<RawField>, host: &str, name: &str, problem: &mut dyn Fn
         },
         optional: false,
         default: None,
+        header: None,
         replaces: None,
     });
 }
@@ -411,6 +424,7 @@ impl TypeTable {
             rules: Rules::default(),
             optional: raw.optional,
             default: raw.default.clone(),
+            header: raw.header.clone(),
             copied: matches!(raw.source, Source::Copied { .. }),
             replaces: raw.replaces.clone(),
         };

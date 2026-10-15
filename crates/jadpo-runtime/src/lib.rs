@@ -30,6 +30,11 @@
 //!   its site maps a refusal to (chunk 3.12); [`purge`], a lifecycle's
 //!   permanent deletion of hidden records (chunk 3.4), outside any action.
 //!
+//! - [`http`]: the HTTP component (chunk 4.1): a request routed by the
+//!   route table, its placeholders and input decoded, what the route runs
+//!   run, and the output or the failure envelope written, with the default
+//!   rate limits ([`RateLimits`]).
+//!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
 //! with their areas.
@@ -55,11 +60,13 @@ mod executor;
 mod failure;
 mod fault;
 mod host;
+pub mod http;
 mod limits;
 mod migrate;
 mod outcome;
 mod places;
 mod purge;
+mod ratelimit;
 mod read;
 mod report;
 mod store;
@@ -81,6 +88,7 @@ pub use migrate::{MIGRATIONS_TABLE, MigrateError, Migration, Standing, migrate, 
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
 pub use purge::{PURGE_BATCHES, Purged, purge};
+pub use ratelimit::{Allowed, RateLimits};
 pub use read::{PAGE, cursor, from_sql, invalid_cursor, to_sql, uuid_text};
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};
 pub use store::{StoreOp, Stored, store};

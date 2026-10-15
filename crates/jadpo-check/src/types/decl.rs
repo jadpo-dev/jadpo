@@ -31,6 +31,7 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         path: file.path(db),
         table: &lookup,
         out: Vec::new(),
+        headers: Vec::new(),
     };
     for decl in source.decls() {
         checker.decl(&decl);
@@ -49,6 +50,9 @@ pub(super) struct Decls<'a> {
     pub path: &'a str,
     pub table: &'a dyn TypeView,
     pub out: Vec<Diagnostic>,
+    /// The headers the `Input` being checked reads so far, lower case, and
+    /// where (area 7, "One input").
+    pub headers: Vec<(String, Span)>,
 }
 
 impl Decls<'_> {
@@ -430,6 +434,7 @@ impl Decls<'_> {
             _ => None,
         };
         let area_two = base.is_area_two();
+        self.headers.clear();
         for (index, line) in lines.iter().enumerate() {
             let Some(member) = member(index) else {
                 continue;
@@ -1141,6 +1146,10 @@ impl Decls<'_> {
             self.out.push(optional_outside(&host, key_span));
             return;
         }
+        if key == "header" {
+            self.header(value, value_span, field);
+            return;
+        }
         if key == "optional" {
             if !matches!(value, Const::Bool(_)) {
                 self.out.push(
@@ -1180,6 +1189,92 @@ impl Decls<'_> {
                 self.table, problem, &written, &expected, value_span, false,
             ));
         }
+    }
+}
+
+impl Decls<'_> {
+    /// An `Input` field's `header:` (area 7, "One input"): a header named
+    /// once, by a valid name, holding one value, and never one
+    /// authentication owns (area 8).
+    fn header(&mut self, value: &Const, span: Span, field: &FieldCtx) {
+        let Const::Str(name) = value else {
+            self.out.push(
+                Diagnostic::new(&rule::TYPE_SETTING_VALUE, "`header` takes the header's name")
+                    .at(span, format!("{} here", value.describe()))
+                    .reason("`header:` names the request header the field is read from, as text: `header: \"X-Request-Tag\"`.")
+                    .next("Write the header's name in quotes"),
+            );
+            return;
+        };
+        let valid = !name.is_empty()
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b));
+        if !valid {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_HEADER_NAME_INVALID,
+                    format!("`{name}` isn't a header name"),
+                )
+                .at(span, "not a header name")
+                .reason("A header name is letters, digits and `-` (HTTP allows a few more symbols), with no spaces: `X-Request-Tag`.")
+                .next("Write the header's name without spaces"),
+            );
+            return;
+        }
+        let lower = name.to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "authorization" | "proxy-authorization" | "cookie" | "set-cookie"
+        ) || lower.starts_with("x-jadpo-")
+        {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_HEADER_CREDENTIAL,
+                    format!("`{name}` belongs to authentication"),
+                )
+                .at(span, "read by authentication")
+                .reason("Credentials (`Authorization`, cookies) and Jadpo's own `X-Jadpo-` headers are read by authentication (area 8), so a route never sees them as input.")
+                .next("Remove the field, and take the caller as the route's `current_principal` once sign-in is built"),
+            );
+            return;
+        }
+        let structure = self.table.structure(&field.declared);
+        let scalar = match structure.strip_nullable() {
+            Ty::Prim(_) | Ty::Error => true,
+            Ty::Named(name) => self
+                .table
+                .variants(name)
+                .is_some_and(|variants| variants.iter().all(|v| v.fields.is_none())),
+            _ => false,
+        };
+        if !scalar {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_HEADER_NOT_SCALAR,
+                    format!("A header can't hold `{}`", field.declared),
+                )
+                .at(span, "one value per header")
+                .reason("A header holds one value, so a field read from one is a scalar or an enum without data; lists and objects come in the body.")
+                .next("Move the field to the body, or give it a scalar type"),
+            );
+            return;
+        }
+        if let Some((_, first)) = self.headers.iter().find(|(seen, _)| *seen == lower) {
+            let first = first.clone();
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_HEADER_DUPLICATE,
+                    format!("Header `{name}` is read twice"),
+                )
+                .at(span, "read again")
+                .also(first, "first read here")
+                .reason("Header names are compared without case, so two fields reading one header would always hold the same value.")
+                .next("Remove one of the fields"),
+            );
+            return;
+        }
+        self.headers.push((lower, span));
     }
 }
 

@@ -13,6 +13,8 @@ license.workspace = true
 [dependencies]
 jadpo-std.workspace = true
 jadpo-value.workspace = true
+# Reads a request's JSON body (area 7).
+serde_json.workspace = true
 
 [lints]
 workspace = true

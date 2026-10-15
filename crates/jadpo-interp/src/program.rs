@@ -10,7 +10,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use jadpo_db::{Db, Project};
-use jadpo_diag::{Diagnostic, Severity};
+use jadpo_diag::Diagnostic;
 use jadpo_graph::Key;
 use jadpo_plan::{ConstId, FailureId, Plan, ShapeId, ValidatorId};
 use jadpo_runtime::{
@@ -33,10 +33,12 @@ pub struct Prepared {
 
 impl Prepared {
     /// Reads `project` if it checks without errors; its errors otherwise.
+    /// An API record out of date doesn't stop the program running: it is a
+    /// promise to clients, which `jadpo check` and CI hold to (area 7).
     pub fn load(db: &dyn Db, project: Project) -> Result<Arc<Prepared>, Vec<Diagnostic>> {
         let errors: Vec<Diagnostic> = jadpo_check::check(db, project)
             .into_iter()
-            .filter(|d| d.severity() == Severity::Error)
+            .filter(jadpo_check::blocks_running)
             .collect();
         if !errors.is_empty() {
             return Err(errors);
@@ -244,6 +246,22 @@ impl Program {
                 Frame::ENTRY,
             ))
         }))
+    }
+
+    /// What the runtime's HTTP component answers this program's routes
+    /// with (area 7): the route table and its codecs, with this thread's
+    /// validators and shapes.
+    pub fn app(&self) -> jadpo_runtime::http::App<'_> {
+        let table = self.plan().routes();
+        jadpo_runtime::http::App {
+            table,
+            codecs: jadpo_value::json::Codecs {
+                codecs: &table.codecs,
+                validators: &self.prepared.validators,
+                shapes: &self.shapes,
+            },
+            failures: self.plan().types().failures(),
+        }
     }
 
     /// The report a person reads for an outcome that isn't a value.

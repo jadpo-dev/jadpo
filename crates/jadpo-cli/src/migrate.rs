@@ -111,9 +111,11 @@ pub(crate) fn blocked(
 
 // --- new ----------------------------------------------------------------
 
-/// The rules `migrate new` itself answers; any other error stops it.
+/// The rules `migrate new` itself answers, and an API record out of date,
+/// another record with its own command; any other error stops it.
 fn answers(diagnostic: &Diagnostic) -> bool {
     [
+        rule::API_RECORD_OUT_OF_DATE.id,
         rule::MIGRATION_OUT_OF_DATE.id,
         rule::MIGRATION_DECISION_REQUIRED.id,
         rule::MIGRATION_DECISION_INVALID.id,
@@ -962,7 +964,7 @@ fn run<T>(
     Ok(runtime.block_on(work(&database)))
 }
 
-fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) -> Diagnostic {
+pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) -> Diagnostic {
     use jadpo_runtime::{MigrateError, StoreError};
     match error {
         MigrateError::Unknown { name } => Diagnostic::new(

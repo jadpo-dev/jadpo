@@ -116,6 +116,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             ty,
             optional,
             default,
+            header,
             section,
             copied_from,
             replaces,
@@ -125,6 +126,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set("type", ty.render(name));
             out.set_some("optional", *optional);
             out.set_some("default", default.as_ref().map(|d| d.render(name)));
+            out.set_some("header", header.as_deref());
             out.set_some("section", section.map(|s| s.word()));
             out.set_some("copiedFrom", copied_from.as_ref().map(|key| key.as_str()));
             out.set_some("replaces", replaces.as_ref().map(|key| key.as_str()));
@@ -186,6 +188,20 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("visible", visible.as_deref());
             out.set_some("purge", purge.as_deref());
         }
+        Detail::Route {
+            api,
+            status,
+            input,
+            output,
+            deadline_ms,
+        } => {
+            out.set("api", api.as_str());
+            out.set("status", *status);
+            out.set_some("input", input.as_ref().map(|ty| ty.render(name)));
+            out.set_some("output", output.as_ref().map(|ty| ty.render(name)));
+            out.set("deadline", i64::from(*deadline_ms));
+        }
+        Detail::Api { prefix } => out.set("prefix", prefix.as_str()),
         Detail::Transition {
             when,
             guarded,
@@ -229,6 +245,7 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ("type", "A field's declared type"),
     ("optional", "An input field the sender may leave out"),
     ("default", "An input field's default, as written"),
+    ("header", "The request header an input field is read from"),
     ("section", "A failure field's block: client or internal"),
     ("copiedFrom", "The field an include or pick line copied"),
     ("replaces", "The copied field a written field replaces"),
@@ -273,6 +290,12 @@ const NODE_FIELDS: &[(&str, &str)] = &[
         "A transition whose `when:` can refuse a visible record, a conflict its callers map",
     ),
     ("sets", "The fields a lifecycle transition sets"),
+    ("api", "The API a route belongs to"),
+    ("status", "A route's success status"),
+    ("input", "A route's input type"),
+    ("output", "A route's output type"),
+    ("deadline", "A route's deadline, in milliseconds"),
+    ("prefix", "The path an API's routes start with"),
 ];
 
 /// The manifest's schema, for `jadpo help --json`.

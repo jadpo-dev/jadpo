@@ -170,6 +170,9 @@ pub enum Detail {
         optional: bool,
         /// An input field's `default:`, filled in when it is left out.
         default: Option<FieldDefault>,
+        /// An input field read from a request header: the header's name as
+        /// written (area 7).
+        header: Option<String>,
         section: Option<Section>,
         /// For a field brought in by `include` or `pick`: where it comes from.
         copied_from: Option<Key>,
@@ -221,6 +224,17 @@ pub enum Detail {
         visible: Option<String>,
         purge: Option<String>,
     },
+    /// A route (area 7): its API, success status, input and output, and
+    /// deadline. Its method and full path are its name.
+    Route {
+        api: String,
+        status: u16,
+        input: Option<TypeRef>,
+        output: Option<TypeRef>,
+        deadline_ms: u32,
+    },
+    /// An API (area 7): the prefix its routes start with.
+    Api { prefix: String },
     /// A lifecycle transition (area 5): when it is allowed, as written,
     /// whether that can refuse a visible record (a conflict its callers
     /// map), and the fields it sets.

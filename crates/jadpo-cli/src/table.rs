@@ -204,6 +204,12 @@ pub const MIGRATE_ACTIONS: &[Value] = &[
     },
 ];
 
+/// What `jadpo api` does (areas 7 and 18).
+pub const API_ACTIONS: &[Value] = &[Value {
+    name: "update",
+    description: "Rewrite each API's record from the routes",
+}];
+
 /// The kinds of test (area 13, "Kinds of test"); route and schedule tests
 /// come with their areas.
 pub const KINDS: &[Value] = &[
@@ -352,6 +358,61 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::test,
+    },
+    Command {
+        name: "dev",
+        synonyms: &[],
+        group: "Build and check",
+        summary: "Run the app and reload on every save",
+        description: "Run the application in the interpreter and serve its routes on a local port \
+                      (3000 unless --port says otherwise). Each save is checked again, and once it \
+                      checks cleanly the new version serves the next request; while a save has \
+                      errors, the last good version keeps serving. Each request is one line, with its \
+                      request id. The database is the one --url names, or else a disposable \
+                      PostgreSQL started for the session; pending migrations are applied as they \
+                      appear. With --no-run it only checks on every save and writes build/.",
+        arguments: &[],
+        flags: &[
+            Flag {
+                name: "--port",
+                value: Some("port"),
+                description: "Listen on this port; 0 picks a free one",
+                values: &[],
+            },
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "Use this database instead of a disposable one",
+                values: &[],
+            },
+            Flag {
+                name: "--no-run",
+                value: None,
+                description: "Only check on every save; serve nothing",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "Serve the project you are in on http://localhost:3000",
+                command: "jadpo dev",
+            },
+            Example {
+                description: "Serve it on another port, with your own database",
+                command: "jadpo dev --port 8080 --url postgresql://localhost/todo_dev",
+            },
+            Example {
+                description: "Print each request as a line of data for tools",
+                command: "jadpo dev --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_DEV_ARGUMENTS,
+        raises: &[
+            &rule::CLI_DEV_PORT_INVALID,
+            &rule::CLI_DEV_START_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::dev,
     },
     Command {
         name: "fmt",
@@ -518,6 +579,60 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::sql,
+    },
+    Command {
+        name: "routes",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "List every route",
+        description: "List every route the project answers (area 7), grouped by API: its method and \
+                      full path, the query or action it runs, its authentication and the file it is \
+                      written in. Routes have no authentication until sign-in is built, so each \
+                      shows none.",
+        arguments: &[],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "List the routes of the project you are in",
+                command: "jadpo routes",
+            },
+            Example {
+                description: "Print them as data for tools",
+                command: "jadpo routes --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_ROUTES_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::routes,
+    },
+    Command {
+        name: "api",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "Rewrite the API records",
+        description: "`update` rewrites each API's committed record, api/<api>.api, from the routes \
+                      (areas 7 and 18): every route, the fields it takes and sends, and the failure \
+                      codes it can answer with. Its version rises by one when its text changes, and \
+                      becomes the OpenAPI document's version. jadpo check fails while a record \
+                      disagrees with the routes, so every change to an API is a diff of one file to \
+                      review and commit with the code.",
+        arguments: &[Argument {
+            name: "action",
+            description: "What to do: update",
+            required: true,
+            values: Values::Fixed(API_ACTIONS),
+        }],
+        flags: &[],
+        examples: &[Example {
+            description: "Bring every API record up to date with the routes",
+            command: "jadpo api update",
+        }],
+        arguments_rule: &rule::CLI_API_ARGUMENTS,
+        raises: &[
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::api,
     },
     Command {
         name: "completions",

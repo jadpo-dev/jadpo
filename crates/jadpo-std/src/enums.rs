@@ -156,6 +156,70 @@ pub const ZONE: &str = "Zone";
 /// The name of the built-in enum of standard locales (area 10).
 pub const LOCALE: &str = "Locale";
 
+std_enum! {
+    /// A route's success status (area 7, "Output and status").
+    SuccessStatus: "SuccessStatus" {
+        /// 200, with the output.
+        Ok: "ok",
+        /// 201, with the output.
+        Created: "created",
+        /// 202, with the output; the work continues in the background.
+        Accepted: "accepted",
+        /// 204, with no output.
+        NoContent: "no_content",
+    }
+}
+
+impl SuccessStatus {
+    /// The HTTP status it answers with.
+    pub fn code(self) -> u16 {
+        match self {
+            SuccessStatus::Ok => 200,
+            SuccessStatus::Created => 201,
+            SuccessStatus::Accepted => 202,
+            SuccessStatus::NoContent => 204,
+        }
+    }
+}
+
+std_enum! {
+    /// The methods a route is written with, as a route test names them
+    /// (areas 7 and 13); the runtime answers `HEAD` and `OPTIONS` itself.
+    HttpMethod: "HttpMethod" {
+        Get: "get",
+        Post: "post",
+        Put: "put",
+        Patch: "patch",
+        Delete: "delete",
+    }
+}
+
+impl HttpMethod {
+    /// As a route entry and HTTP write it: `GET`.
+    pub fn word(self) -> &'static str {
+        match self {
+            HttpMethod::Get => "GET",
+            HttpMethod::Post => "POST",
+            HttpMethod::Put => "PUT",
+            HttpMethod::Patch => "PATCH",
+            HttpMethod::Delete => "DELETE",
+        }
+    }
+
+    pub fn from_word(word: &str) -> Option<HttpMethod> {
+        HttpMethod::ALL
+            .iter()
+            .copied()
+            .find(|method| method.word() == word)
+    }
+
+    /// Whether its input comes from the query string (`GET` and
+    /// `DELETE`), rather than the JSON body (area 7, "One input").
+    pub fn reads_query(self) -> bool {
+        matches!(self, HttpMethod::Get | HttpMethod::Delete)
+    }
+}
+
 /// Every enum declared here, by name, with its variants in order: the
 /// ones Rust interprets, then `Zone` and `Locale` from their tables.
 pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
@@ -171,6 +235,8 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (OnDelete::NAME, OnDelete::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
         (Driver::NAME, Driver::NAMES.to_vec()),
+        (SuccessStatus::NAME, SuccessStatus::NAMES.to_vec()),
+        (HttpMethod::NAME, HttpMethod::NAMES.to_vec()),
         (ZONE, names(crate::zones::ZONES)),
         (LOCALE, names(crate::zones::LOCALES)),
     ]
@@ -190,6 +256,8 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         OnDelete::NAME => position(OnDelete::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),
         Driver::NAME => position(Driver::NAMES),
+        SuccessStatus::NAME => position(SuccessStatus::NAMES),
+        HttpMethod::NAME => position(HttpMethod::NAMES),
         ZONE => crate::zones::ZONES.iter().position(|(v, _)| *v == variant),
         LOCALE => crate::zones::LOCALES
             .iter()

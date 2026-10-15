@@ -99,10 +99,26 @@ macro_rules! rules {
 }
 
 rules! {
+    API_PREFIX_OVERLAP: "api.prefix_overlap", area 7, Error, Agent,
+        "07-http.html#api-prefix-overlap", "Two APIs share a prefix";
+    API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
+        "07-http.html#api-prefix-required", "Declared API has no prefix";
+    API_RECORD_OUT_OF_DATE: "api.record_out_of_date", area 7, Error, Agent,
+        "07-http.html#api-record-out-of-date", "API record disagrees with the routes";
+    API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
+        "07-http.html#api-setting-unknown", "API setting is not one an API takes";
+    CLI_API_ARGUMENTS: "cli.api_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Api command has invalid arguments";
     CLI_CHECK_ARGUMENTS: "cli.check_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Check command has invalid arguments";
     CLI_COMPLETIONS_ARGUMENTS: "cli.completions_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Completions command has invalid arguments";
+    CLI_DEV_ARGUMENTS: "cli.dev_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Dev command has invalid arguments";
+    CLI_DEV_PORT_INVALID: "cli.dev_port_invalid", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Development port is invalid";
+    CLI_DEV_START_FAILED: "cli.dev_start_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Development server could not start";
     CLI_FMT_ARGUMENTS: "cli.fmt_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Format command has invalid arguments";
     CLI_HELP_ARGUMENTS: "cli.help_arguments", area 14, Error, Agent,
@@ -113,6 +129,8 @@ rules! {
         "14-tooling.html#command-errors", "Migrate command has invalid arguments";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Terminal presentation option is invalid";
+    CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Routes command has invalid arguments";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Sql command has invalid arguments";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
@@ -385,6 +403,56 @@ rules! {
         "06-reads-and-writes.html#query-unknown-section", "Query has a section Jadpo does not know";
     QUERY_VALUE_UNSUPPORTED: "query.value_unsupported", area 6, Error, Agent,
         "06-reads-and-writes.html#query-value-unsupported", "Query value is computed rather than a parameter, literal or enum value";
+    ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
+        "07-http.html#route-api-unknown", "Route group names an API the application doesn't declare";
+    ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
+        "07-http.html#route-argument-invalid", "Route passes something other than a placeholder, the input or their fields";
+    ROUTE_BINDING_UNUSED: "route.binding_unused", area 7, Error, Agent,
+        "07-http.html#route-binding-unused", "Route reads a placeholder or input it never passes on";
+    ROUTE_DEADLINE_INVALID: "route.deadline_invalid", area 7, Error, Agent,
+        "07-http.html#route-deadline-invalid", "Route deadline is not a duration up to 60 seconds";
+    ROUTE_HEADER_CREDENTIAL: "route.header_credential", area 7, Error, Agent,
+        "07-http.html#route-header-credential", "Input field reads a header authentication owns";
+    ROUTE_HEADER_DUPLICATE: "route.header_duplicate", area 7, Error, Agent,
+        "07-http.html#route-header-duplicate", "Two input fields read the same header";
+    ROUTE_HEADER_NAME_INVALID: "route.header_name_invalid", area 7, Error, Agent,
+        "07-http.html#route-header-name-invalid", "Header name is not a valid HTTP header name";
+    ROUTE_HEADER_NOT_SCALAR: "route.header_not_scalar", area 7, Error, Agent,
+        "07-http.html#route-header-not-scalar", "Header field is not a single value";
+    ROUTE_INPUT_NOT_INPUT: "route.input_not_input", area 7, Error, Agent,
+        "07-http.html#route-input-not-input", "Route input is not an `Input` type";
+    ROUTE_ITEM_DUPLICATE: "route.item_duplicate", area 7, Error, Agent,
+        "07-http.html#route-item-duplicate", "Route item is given twice";
+    ROUTE_ITEM_UNKNOWN: "route.item_unknown", area 7, Error, Agent,
+        "07-http.html#route-item-unknown", "Route or route group item is not one it takes";
+    ROUTE_OUTPUT_MISMATCH: "route.output_mismatch", area 7, Error, Agent,
+        "07-http.html#route-output-mismatch", "Route output is not exactly what it runs returns";
+    ROUTE_OUTPUT_NOT_OUTPUT: "route.output_not_output", area 7, Error, Agent,
+        "07-http.html#route-output-not-output", "Route output is not an `Output` type";
+    ROUTE_OUTPUT_REQUIRED: "route.output_required", area 7, Error, Agent,
+        "07-http.html#route-output-required", "Route has no `output:`";
+    ROUTE_OUTPUT_UNEXPECTED: "route.output_unexpected", area 7, Error, Agent,
+        "07-http.html#route-output-unexpected", "A `no_content` route has an output";
+    ROUTE_PATH_OVERLAP: "route.path_overlap", area 7, Error, Agent,
+        "07-http.html#route-path-overlap", "Two routes could answer the same request";
+    ROUTE_PLACEHOLDER_DUPLICATE: "route.placeholder_duplicate", area 7, Error, Agent,
+        "07-http.html#route-placeholder-duplicate", "Placeholder name is used twice in a route's path";
+    ROUTE_PLACEHOLDER_TYPE: "route.placeholder_type", area 7, Error, Agent,
+        "07-http.html#route-placeholder-type", "Placeholder is not typed with a named scalar or an `X.id`";
+    ROUTE_PREFIX_API: "route.prefix_api", area 7, Error, Agent,
+        "07-http.html#route-prefix-api", "Route group prefix does not start with its API's prefix";
+    ROUTE_PREFIX_REQUIRED: "route.prefix_required", area 7, Error, Agent,
+        "07-http.html#route-prefix-required", "Route group has no prefix";
+    ROUTE_QUERY_FIELD_UNSUPPORTED: "route.query_field_unsupported", area 7, Error, Agent,
+        "07-http.html#route-query-field-unsupported", "Query-string input field is not a scalar, an enum or a list of them";
+    ROUTE_RUN_INVALID: "route.run_invalid", area 7, Error, Agent,
+        "07-http.html#route-run-invalid", "Route `run:` is not a call of a named action or query";
+    ROUTE_RUN_KIND: "route.run_kind", area 7, Error, Agent,
+        "07-http.html#route-run-kind", "A `GET` route runs a query and other methods run an action";
+    ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
+        "07-http.html#route-run-required", "Route does not say what it runs";
+    ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
+        "07-http.html#route-status-invalid", "Route status is not a `SuccessStatus`";
     SEMANTIC_DUPLICATE_DECLARATION: "semantic.duplicate_declaration", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-duplicate-declaration", "Name is declared more than once";
     SEMANTIC_MISSING_RETURN: "semantic.missing_return", area 3, Error, Agent,
@@ -435,6 +503,8 @@ rules! {
         "01-project-layout-and-modules.html#syntax-expected-declaration", "Expected a declaration";
     SYNTAX_EXPECTED_EXPRESSION: "syntax.expected_expression", area 3, Error, Agent,
         "03-logic.html#syntax-expected-expression", "Expected a value";
+    SYNTAX_EXPECTED_HTTP_METHOD: "syntax.expected_http_method", area 7, Error, Agent,
+        "07-http.html#syntax-expected-http-method", "Route method is not one a route is written with";
     SYNTAX_EXPECTED_NAME: "syntax.expected_name", area 1, Error, Agent,
         "01-project-layout-and-modules.html#syntax-expected-name", "Expected a name";
     SYNTAX_EXPECTED_STATEMENT: "syntax.expected_statement", area 3, Error, Agent,

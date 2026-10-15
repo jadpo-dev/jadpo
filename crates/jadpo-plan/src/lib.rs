@@ -34,6 +34,7 @@
 mod constant;
 mod purge;
 mod queries;
+mod routes;
 mod sites;
 mod types;
 mod writes;
@@ -46,6 +47,7 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::body::Body;
 use jadpo_graph::{Key, Kind};
 pub use jadpo_std::Isolation;
+pub use jadpo_std::http::RouteTable;
 
 pub use constant::Constant;
 pub use jadpo_std::read::{MissingPlan, MissingValue};
@@ -108,6 +110,9 @@ pub struct Plan {
     writes: Vec<WriteSitePlan>,
     /// Every lifecycle's purge, by entity name.
     purges: Vec<PurgePlan>,
+    /// Every route, with the codecs its types cross the boundary with
+    /// (area 7, chunk 4.1).
+    routes: RouteTable,
 }
 
 impl Plan {
@@ -200,6 +205,13 @@ impl Plan {
                 isolation,
             });
         }
+        let routes = routes::table(
+            db,
+            project,
+            &mut types,
+            &|key: &Key| by_key.get(key).copied(),
+            &queries,
+        );
         Plan {
             callables,
             by_key,
@@ -210,6 +222,7 @@ impl Plan {
             entities,
             writes,
             purges,
+            routes,
         }
     }
 
@@ -297,6 +310,11 @@ impl Plan {
     /// purge schedule runs (area 12).
     pub fn purges(&self) -> &[PurgePlan] {
         &self.purges
+    }
+
+    /// Every route and the codecs its types use (area 7).
+    pub fn routes(&self) -> &RouteTable {
+        &self.routes
     }
 
     /// The purge of the entity called `entity`, when its lifecycle has one.

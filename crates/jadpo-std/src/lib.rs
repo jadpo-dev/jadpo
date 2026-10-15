@@ -47,6 +47,7 @@
 mod builtin;
 mod constant;
 mod enums;
+pub mod http;
 mod isolation;
 mod literal;
 mod migration;
@@ -62,8 +63,8 @@ mod zones;
 pub use builtin::Builtin;
 pub use constant::Constant;
 pub use enums::{
-    Driver, FieldChange, Generated, LOCALE, OnDelete, Rounding, TextFormat, UuidVersion, Weekday,
-    ZONE, enums, variant_ordinal,
+    Driver, FieldChange, Generated, HttpMethod, LOCALE, OnDelete, Rounding, SuccessStatus,
+    TextFormat, UuidVersion, Weekday, ZONE, enums, variant_ordinal,
 };
 pub use isolation::Isolation;
 pub use literal::Literal;

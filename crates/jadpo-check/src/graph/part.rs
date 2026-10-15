@@ -162,8 +162,12 @@ impl Part<'_> {
                     && let Some(kind) = super::kind_of(&item.kind)
                 {
                     let key = self.lookup.registry().key(kind, &item.name, None);
-                    let node = self.node(key, kind, item.name.clone(), decl.syntax().clone());
+                    let node =
+                        self.node(key.clone(), kind, item.name.clone(), decl.syntax().clone());
                     self.out.nodes.push(node);
+                    if let Decl::RoutesDecl(group) = decl {
+                        self.routes(group, item, &key);
+                    }
                 }
             }
             Decl::SeedDecl(d) => {
@@ -183,6 +187,77 @@ impl Part<'_> {
             | Decl::ResourceDecl(_)
             | Decl::ProvideDecl(_)
             | Decl::SingletonDecl(_) => {}
+        }
+    }
+
+    /// A group's routes (area 7), each a node under it with what it runs
+    /// and the types it takes and sends; only the routes that read
+    /// cleanly, from the group's model.
+    fn routes(&mut self, decl: &ast::RoutesDecl, item: &Item, group: &Key) {
+        let Some(read) =
+            crate::routes::group_read(self.db, self.project, Name::new(self.db, item.name.clone()))
+                .as_ref()
+        else {
+            return;
+        };
+        let Some(model) = &read.model else { return };
+        if read.path != *self.path {
+            return;
+        }
+        let entries: Vec<ast::RouteEntry> = decl
+            .member_list()
+            .iter()
+            .flat_map(|list| list.member_items())
+            .filter_map(|member| match member {
+                MemberItem::RouteEntry(entry) => Some(entry),
+                _ => None,
+            })
+            .collect();
+        for route in &model.routes {
+            let Some((_, span)) = read.spans.iter().find(|(label, _)| *label == route.label())
+            else {
+                continue;
+            };
+            let Some(entry) = entries.iter().find(|entry| {
+                let range = entry.syntax().text_range();
+                u32::from(range.start()) <= span.start && span.start < u32::from(range.end())
+            }) else {
+                continue;
+            };
+            let mut node = self.node(
+                route.key.clone(),
+                Kind::Route,
+                route.label(),
+                entry.syntax().clone(),
+            );
+            node.parent = Some(group.clone());
+            let input = route
+                .input
+                .as_ref()
+                .and_then(|input| declaration_key(self.lookup, input));
+            let output = route.output.as_ref().map(|ty| type_ref(self.lookup, ty));
+            node.detail = Detail::Route {
+                api: model.api.clone(),
+                status: route.status.code(),
+                input: input.clone().map(TypeRef::Node),
+                output: output.clone(),
+                deadline_ms: route.deadline_ms,
+            };
+            self.out.nodes.push(node);
+            if let Some(callee) = declaration_key(self.lookup, &route.run.name) {
+                self.out
+                    .edges
+                    .push((route.key.clone(), EdgeKind::Runs, callee));
+            }
+            let mut uses: BTreeSet<Key> = BTreeSet::new();
+            uses.extend(input);
+            if let Some(output) = &output {
+                uses.extend(output.keys().into_iter().cloned());
+            }
+            for (_, ty) in route.params() {
+                uses.extend(type_ref(self.lookup, ty).keys().into_iter().cloned());
+            }
+            self.edges(&route.key, EdgeKind::Uses, uses);
         }
     }
 
@@ -818,6 +893,7 @@ impl Part<'_> {
             optional: def.is_some_and(|def| def.optional),
             default: def
                 .and_then(|def| field_default(self.lookup.registry(), def.default.as_ref()?)),
+            header: def.and_then(|def| def.header.clone()),
             section,
             copied_from: None,
             replaces: def.and_then(|def| def.replaces.as_ref()).map(|source| {
@@ -875,6 +951,7 @@ impl Part<'_> {
                 .default
                 .as_ref()
                 .and_then(|value| field_default(self.lookup.registry(), value)),
+            header: field.header.clone(),
             section: None,
             copied_from: from.clone(),
             replaces: None,

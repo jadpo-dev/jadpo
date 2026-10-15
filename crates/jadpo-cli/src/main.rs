@@ -24,6 +24,9 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Some(Session::Dev(args)) => {
+            ExitCode::from(jadpo_cli::dev::serve(&args, &Environment::from_process()))
+        }
         Some(Session::Watch(args)) => {
             ExitCode::from(jadpo_cli::watch::serve(&args, &Environment::from_process()))
         }

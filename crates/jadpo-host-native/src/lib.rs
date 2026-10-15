@@ -8,10 +8,15 @@
 //! - [`NativeTransport`]: the drivers' [`Transport`] over tokio's TCP and
 //!   Unix sockets.
 //! - [`postgres`]: a PostgreSQL store over that transport.
+//! - [`NativeHost`]: the runtime's `Host` for a deployable or `jadpo dev`:
+//!   each store by its connection's name, and the operating system's
+//!   randomness.
+//! - [`http`]: the listener and its worker threads, each a current-thread
+//!   runtime answering with its own handler (chunk 4.1).
 //!
 //! Built so far: the runtime and the transport the PostgreSQL driver needs
-//! (chunk 3.1). The listener, timers, delivery workers, local disk and
-//! inbox come with their areas.
+//! (chunk 3.1), and serving HTTP (chunk 4.1). Timers, delivery workers,
+//! local disk and inbox come with their areas.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); the native host holds itself to
@@ -28,12 +33,16 @@
     )
 )]
 
+pub mod http;
+
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::io;
+use std::io::Read as _;
 use std::rc::Rc;
 
 use jadpo_drivers::{Endpoint, Stream, Transport};
-use jadpo_runtime::{LocalFuture, StoreError};
+use jadpo_runtime::{Database, Event, Host, LocalFuture, StoreError};
 use tokio::task::LocalSet;
 
 pub use jadpo_drivers::postgres::Postgres;
@@ -112,6 +121,43 @@ async fn unix(endpoint: &Endpoint) -> io::Result<Box<dyn Stream>> {
 /// its first transaction begins, inside [`Runtime::block_on`].
 pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
     Postgres::new(url, Rc::new(NativeTransport))
+}
+
+/// The runtime's host natively: each store by its connection's name, and
+/// the operating system's randomness for new identities and request ids.
+/// Events are delivered by area 12's workers; until then a committed
+/// action's events go nowhere.
+#[derive(Debug, Default)]
+pub struct NativeHost {
+    stores: BTreeMap<String, Postgres>,
+}
+
+impl NativeHost {
+    pub fn new() -> NativeHost {
+        NativeHost::default()
+    }
+
+    /// Adds store `name`, a PostgreSQL database.
+    pub fn with_store(mut self, name: impl Into<String>, store: Postgres) -> NativeHost {
+        self.stores.insert(name.into(), store);
+        self
+    }
+}
+
+impl Host for NativeHost {
+    fn database(&self, store: &str) -> Option<&dyn Database> {
+        self.stores.get(store).map(|store| store as &dyn Database)
+    }
+
+    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
+        Box::pin(async {})
+    }
+
+    fn random(&self, bytes: &mut [u8]) -> bool {
+        std::fs::File::open("/dev/urandom")
+            .and_then(|mut source| source.read_exact(bytes))
+            .is_ok()
+    }
 }
 
 #[cfg(test)]

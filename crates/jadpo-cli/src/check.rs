@@ -86,7 +86,9 @@ pub fn check(call: &Call) -> Reply {
             .filter(|d| d.severity() == Severity::Error)
             .count();
         let graph = jadpo_check::graph::graph(db, loaded.project);
-        match derived::write(&loaded.root, graph, errors) {
+        let openapi =
+            jadpo_check::routes::openapi::documents(db, loaded.project, &title(&loaded.root));
+        match derived::write(&loaded.root, graph, errors, &openapi) {
             Ok(paths) => written = paths,
             Err(problem) => diagnostics.push(*problem),
         }
@@ -107,6 +109,15 @@ pub fn check(call: &Call) -> Reply {
         loaded.unreadable.len(),
         (layout, written),
         elapsed,
+    )
+}
+
+/// The application's name, which titles its OpenAPI documents: its
+/// folder's name until `app.jadpo` gives one.
+pub(crate) fn title(root: &std::path::Path) -> String {
+    root.file_name().map_or_else(
+        || "Jadpo application".to_string(),
+        |name| name.to_string_lossy().into_owned(),
     )
 }
 

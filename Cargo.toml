@@ -82,6 +82,10 @@ lsp-types = "=0.97.0"
 tokio = { version = "=1.53.3", default-features = false }
 tokio-postgres = { version = "=0.7.18", default-features = false }
 bytes = "=1.12.1"
+# HTTP for the native host (jadpo-host-native only; docs/compiler-runtime.md §2.6).
+hyper = { version = "=1.12.0", default-features = false }
+hyper-util = { version = "=0.1.21", default-features = false }
+http-body-util = "=0.1.3"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -49,7 +49,8 @@ pub struct File {
 }
 
 /// A committed record beside the source that isn't a `.jadpo` file (area
-/// 18): a migration's `snapshot.json` and `postgres.sql`, read whole.
+/// 18): a migration's `snapshot.json` and `postgres.sql`, and an API's
+/// record, `api/<api>.api` (area 7), read whole.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Record {
     /// Project-relative, with `/`.
@@ -61,6 +62,9 @@ pub struct Record {
 /// Whether a project-relative path is a record [`Record`] holds: a file in
 /// a migration's folder that isn't source.
 pub fn is_record(path: &str) -> bool {
+    if let ["api", name] = path.split('/').collect::<Vec<_>>().as_slice() {
+        return name.ends_with(".api");
+    }
     matches!(
         path.split('/').collect::<Vec<_>>().as_slice(),
         [

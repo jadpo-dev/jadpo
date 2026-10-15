@@ -186,6 +186,24 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                 sets.join(", ")
             )
         }
+        Detail::Route {
+            api,
+            status,
+            input,
+            output,
+            ..
+        } => {
+            let mut lines = vec![format!("{}  // API `{api}`", node.name)];
+            if let Some(input) = input {
+                lines.push(format!("input: {}", input.render(&name)));
+            }
+            if let Some(output) = output {
+                lines.push(format!("output: {}", output.render(&name)));
+            }
+            lines.push(format!("answers {status}"));
+            lines.join("\n")
+        }
+        Detail::Api { prefix } => format!("API {} at {prefix}", node.name),
         Detail::None => match node.kind {
             Kind::Entity => {
                 let fields = fields_of(graph, id, true);

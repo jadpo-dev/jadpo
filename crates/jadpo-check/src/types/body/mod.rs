@@ -946,6 +946,7 @@ impl Body<'_> {
                         path: self.path,
                         table: self.table,
                         out: Vec::new(),
+                        headers: Vec::new(),
                     };
                     let ok = decls.type_node(&TypeNode::Type(ty.clone()), false);
                     self.out.append(&mut decls.out);

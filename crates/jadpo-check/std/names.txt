@@ -12,9 +12,9 @@ InstantRange
 Page
 File Principal Response Access
 TimeFormat LocalGap LocalOverlap
-Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol HttpMethod
+Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 AuthenticationMethod RouteAuthentication FieldAccess OnDelete Generated FieldChange
-ApiChange PersonalData Erasure FileType SuccessStatus SearchLanguage RateLimitKey
+ApiChange PersonalData Erasure FileType SearchLanguage RateLimitKey
 ComponentStyle
 
 # Standard-library namespaces and the operations the pages name so far,

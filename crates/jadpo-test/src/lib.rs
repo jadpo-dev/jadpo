@@ -43,7 +43,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use jadpo_diag::{Diagnostic, Severity, Span, rule};
+use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::{EdgeKind, Graph, Kind};
 use jadpo_interp::Prepared;
 
@@ -295,10 +295,7 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded, cwd: &std::path::Path) -> Resul
         });
     }
     let diagnostics = jadpo_check::check(db, loaded.project);
-    if diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity() == Severity::Error)
-    {
+    if diagnostics.iter().any(jadpo_check::blocks_running) {
         return Err(Ran::Refused {
             diagnostics,
             sources: sources(loaded),
