@@ -238,6 +238,37 @@ reference only).
   example gate still finds every built feature. Done when the error has a
   checked example on area 1 and no example or page example breaks either
   rule.
+- [ ] **3.10 Phase 3 review: soundness** `opus · high`. A called action
+  that fails rolls back its own writes (a savepoint per called action whose
+  failure the caller handles); purge follows self and cyclic cascades so a
+  held record never stops the batch; a patch can't send `none` to a
+  required field; joining text onto a stored field is `||` or refused;
+  structured fields, reading a second store and direct entity writes in
+  tests are each built or a check-time `not_built_yet`, never a run-time
+  fault; enum variants and validation rules are in migration snapshots so
+  changing them needs a migration; a query limit or page size can't be
+  below 1; misleading messages (a backfill's reason, faults blamed on the
+  database) fixed; text-order indexes `COLLATE "C"`.
+- [ ] **3.11 Test databases that scale** `opus · high`: several copy
+  workers or reused copies; one PostgreSQL server per gate run shared
+  through `JADPO_TEST_DATABASE_URL`; the language pages run `jadpo test`
+  once; the CI PostgreSQL steps no longer take turns; `--profile quick`
+  truly needs no PostgreSQL; one integration-test binary per crate.
+- [ ] **3.12 The runtime owns what both executors need** `opus · xhigh`,
+  before 4.1: failure shapes, refusals, missing plans and field and type
+  plans move into `jadpo-std` as plain data; one runtime entry point runs a
+  read or write (opening its own boundary outside an action) and returns
+  the value, failure or conflict arm, leaving the interpreter only the arm
+  dispatch. PostgreSQL text rendered by one leaf crate (conditions,
+  statements, table definitions). Production ids from host randomness;
+  purge given a time budget; the panic lints cover `indexing_slicing`,
+  `unreachable` and `unimplemented`; the duplicated migration and import
+  code merged; stale crate docs corrected.
+- [ ] **3.13 Incremental data checking** `opus · xhigh`, before 4.4:
+  per-name entity and query models without positions, diagnostics per
+  file, so an edit rechecks only what reads the changed name; the plan
+  built incrementally per callable and entity (or §2.4 corrected to what is
+  built); entities, queries and writes in the scale test.
 
 ## Phase 4 — HTTP, identity and policy (areas 7–9)
 
@@ -314,7 +345,9 @@ reference only).
 ## Phase 8 — Compiled deployables
 
 - [ ] **8.1 Native:** `opus · xhigh` graph to Rust; every test passes interpreted and
-  compiled.
+  compiled. Includes TLS for database connections (a hook on the driver's
+  `Transport`, rustls natively), and an outcome and effect record (SQL, row
+  counts, events) both executors write, for the differential comparison.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling.
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
