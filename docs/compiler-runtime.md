@@ -339,8 +339,9 @@ operation takes and gives, is decided once (decided 2026-10-13, Phase 1
 review). The layers are a table in the root `Cargo.toml`
 (`[workspace.metadata.layers]`); a workspace test reads it and `cargo
 metadata` and fails on anything a crate reaches, directly or through other
-crates, against these rules, and on salsa anywhere but `jadpo-db` and
-`jadpo-check`. *Rejected:* v0's single `core` crate, which grew to
+crates, against these rules, on salsa anywhere but `jadpo-db` and
+`jadpo-check`, and, since chunk 3.12, on `jadpo-sql` reaching anything
+but the shared leaf. *Rejected:* v0's single `core` crate, which grew to
 everything and let the generator read the syntax tree.
 
 **The standard library** (`collection`, `temporal`, `decimal` and the rest)

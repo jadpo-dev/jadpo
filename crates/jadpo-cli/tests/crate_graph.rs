@@ -13,7 +13,10 @@
 //! - runtime crates reach only runtime and shared crates, so a generated
 //!   application needs nothing else;
 //! - nothing depends on `jadpo-cli`, the binary;
-//! - salsa is confined to `jadpo-db` and `jadpo-check` (§2.4).
+//! - salsa is confined to `jadpo-db` and `jadpo-check` (§2.4);
+//! - `jadpo-sql`, which writes the compiler's PostgreSQL text, is a leaf:
+//!   it reaches only shared crates, so the graph, the checker and the plan
+//!   may all depend on it.
 //!
 //! Each crate's integration tests are one binary, `integration`, whose
 //! modules are every file in its `tests/` folder (§2.7), so no test file is
@@ -38,6 +41,9 @@ use Layer::{Compiler, Runtime, Shared, Tooling};
 
 /// The crates salsa may be a dependency of.
 const SALSA: [&str; 2] = ["jadpo-db", "jadpo-check"];
+
+/// Compiler crates that reach nothing but shared crates.
+const LEAVES: [&str; 1] = ["jadpo-sql"];
 
 /// The workspace as `cargo metadata` sees it.
 struct Workspace {
@@ -144,6 +150,11 @@ fn violation(layers: &BTreeMap<String, Layer>, from: &str, to: &str) -> Option<S
             "{from} depends on jadpo-cli, the binary, which nothing may depend on"
         ));
     }
+    if LEAVES.contains(&from) && to_layer != Shared {
+        return Some(format!(
+            "{from} reaches {to}; it is a leaf, which reaches only shared crates"
+        ));
+    }
     match (from_layer, to_layer) {
         (Shared, _) => Some(format!(
             "shared crate {from} reaches {to}; shared crates depend on no workspace crate"
@@ -233,6 +244,11 @@ fn the_rules_catch_each_kind_of_wrong_edge_however_far_away() {
         ("jadpo-value", "jadpo-diag", "runtime crate jadpo-value"),
         ("jadpo-check", "jadpo-term", "compiler crate jadpo-check"),
         ("jadpo-lsp", "jadpo-cli", "jadpo-cli, the binary"),
+        (
+            "jadpo-sql",
+            "jadpo-graph",
+            "jadpo-sql reaches jadpo-graph; it is a leaf",
+        ),
         (
             "jadpo-core",
             "jadpo-diag",
