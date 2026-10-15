@@ -365,9 +365,9 @@ fn other_languages_operators_are_one_error_each() {
     let cases = [
         ("a === b", "syntax.equality_operator", "===", "a == b"),
         ("a !== b", "syntax.equality_operator", "!==", "a != b"),
-        ("a && b", "syntax.unexpected_character", "&&", "a and b"),
-        ("a || b", "syntax.unexpected_character", "||", "a or b"),
-        ("!a", "syntax.unexpected_character", "!", "not a"),
+        ("a && b", "syntax.logical_operator", "&&", "a and b"),
+        ("a || b", "syntax.logical_operator", "||", "a or b"),
+        ("!a", "syntax.logical_operator", "!", "not a"),
     ];
     for (written, rule, covered, meant) in cases {
         let text = format!(

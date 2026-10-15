@@ -13,6 +13,8 @@
 //!   read until the matching `}}`.
 
 use crate::SyntaxKind::{self, *};
+use crate::error::TextEdit;
+use crate::habits::{self, Habit};
 
 /// One token: its kind and length in bytes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,12 +26,25 @@ pub(crate) struct LexToken {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum LexErrorKind {
     UnexpectedCharacter(String),
-    /// `===` or `!==`, read as `==` or `!=` so the rest parses.
-    StrictEquality(&'static str),
+    /// A habit from another language (`===`, `&&`, `;`, `#`), read as its
+    /// Jadpo form so the rest parses as meant.
+    Habit(Box<LexHabit>),
     /// A carriage return not followed by a line feed.
     LoneCarriageReturn,
     UnterminatedString,
     InvalidEscape(char),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LexHabit {
+    pub(crate) habit: &'static Habit,
+    pub(crate) written: String,
+    pub(crate) jadpo: String,
+    pub(crate) edits: Vec<TextEdit>,
+    /// Whether the token now reads exactly as the Jadpo form.
+    pub(crate) clean: bool,
+    /// A next step in place of the habit's own.
+    pub(crate) next: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -121,6 +136,23 @@ impl Lexer<'_> {
             end: end as u32,
             kind,
         });
+    }
+
+    fn habit(&mut self, start: usize, end: usize, habit: LexHabit) {
+        self.error(start, end, LexErrorKind::Habit(Box::new(habit)));
+    }
+
+    /// The text from `at` to the end of its line.
+    fn rest_of_line(&self, at: usize) -> &str {
+        let rest = &self.text[at..];
+        &rest[..rest.find('\n').unwrap_or(rest.len())]
+    }
+
+    /// The spaces and tabs that start the line `at` is on.
+    fn indent_at(&self, at: usize) -> &str {
+        let line = self.text[..at].rfind('\n').map_or(0, |i| i + 1);
+        let rest = &self.text[line..];
+        &rest[..rest.len() - rest.trim_start_matches([' ', '\t']).len()]
     }
 
     fn bump_while(&mut self, pred: impl Fn(char) -> bool) {
@@ -233,6 +265,27 @@ impl Lexer<'_> {
                 self.pos = start + trimmed;
                 self.push(if doc { DOC_COMMENT } else { COMMENT }, start);
             }
+            '/' if self.rest().starts_with("/*") && !self.in_template_code => self.block_comment(),
+            '#' if !self.in_template_code && !matches!(self.peek_at(1), Some('[' | '!')) => {
+                self.bump_while(|c| c != '\n');
+                let trimmed = self.text[start..self.pos].trim_end().len();
+                self.pos = start + trimmed;
+                self.push(COMMENT, start);
+                self.habit(
+                    start,
+                    start + 1,
+                    LexHabit {
+                        habit: &habits::HASH_COMMENT,
+                        written: "#".into(),
+                        jadpo: "//".into(),
+                        edits: vec![TextEdit::replace(start as u32, start as u32 + 1, "//")],
+                        clean: true,
+                        next: None,
+                    },
+                );
+            }
+            '\'' | '`' => self.quoted(c),
+            ';' => self.semicolon(),
             '/' if self.param_depth == 0 && self.path_starts_here() => self.route_path(),
             '"' => self.string(),
             c if c.is_ascii_digit() => self.number(),
@@ -267,13 +320,29 @@ impl Lexer<'_> {
             self.in_template_code = false;
             return;
         }
-        // `===` and `!==` from other languages: one mistake each, read as
-        // `==` and `!=` so the rest of the line parses as meant.
-        for (text, kind) in [("===", EQ2), ("!==", NEQ)] {
+        // `===`, `!==` and `<>` from other languages: one mistake each, read
+        // as `==` and `!=` so the rest of the line parses as meant.
+        for (text, kind, habit) in [
+            ("===", EQ2, &habits::STRICT_EQUAL),
+            ("!==", NEQ, &habits::STRICT_NOT_EQUAL),
+            ("<>", NEQ, &habits::SQL_NOT_EQUAL),
+        ] {
             if self.rest().starts_with(text) {
                 self.pos += text.len();
                 self.push(kind, start);
-                self.error(start, self.pos, LexErrorKind::StrictEquality(text));
+                let meant = if kind == EQ2 { "==" } else { "!=" };
+                self.habit(
+                    start,
+                    self.pos,
+                    LexHabit {
+                        habit,
+                        written: text.into(),
+                        jadpo: meant.into(),
+                        edits: vec![TextEdit::replace(start as u32, self.pos as u32, meant)],
+                        clean: true,
+                        next: None,
+                    },
+                );
                 return;
             }
         }
@@ -306,16 +375,43 @@ impl Lexer<'_> {
             _ => ERROR,
         };
         if kind == ERROR {
-            // `&&` and `||` are reported as one mistake each.
-            let width = if self.rest().starts_with("&&") || self.rest().starts_with("||") {
-                2
+            // `&&` and `||` are one mistake each, and so is `!` before what
+            // it negates; the parser reads them as `and`, `or` and `not`.
+            let symbol = if self.rest().starts_with("&&") {
+                Some(("&&", "and", &habits::SYMBOL_AND))
+            } else if self.rest().starts_with("||") {
+                Some(("||", "or", &habits::SYMBOL_OR))
+            } else if c == '!' && !self.ends_operand_here() {
+                Some(("!", "not", &habits::SYMBOL_NOT))
             } else {
-                c.len_utf8()
+                None
             };
-            self.pos += width;
+            self.pos += symbol.map_or(c.len_utf8(), |(text, _, _)| text.len());
             let found = self.text[start..self.pos].to_string();
             self.push(ERROR, start);
-            self.error(start, self.pos, LexErrorKind::UnexpectedCharacter(found));
+            match symbol {
+                Some((written, jadpo, habit)) => {
+                    // `!a` becomes `not a`, with the space a word needs.
+                    let replacement = if written == "!" { "not " } else { jadpo };
+                    self.habit(
+                        start,
+                        self.pos,
+                        LexHabit {
+                            habit,
+                            written: written.into(),
+                            jadpo: jadpo.into(),
+                            edits: vec![TextEdit::replace(
+                                start as u32,
+                                self.pos as u32,
+                                replacement,
+                            )],
+                            clean: true,
+                            next: None,
+                        },
+                    );
+                }
+                None => self.error(start, self.pos, LexErrorKind::UnexpectedCharacter(found)),
+            }
             return;
         }
         self.pos += 1;
@@ -339,6 +435,189 @@ impl Lexer<'_> {
         if closes_placeholder && self.peek() == Some('/') && self.peek_at(1) != Some('/') {
             self.route_path();
         }
+    }
+
+    /// Whether the last token touches the current position and ends an
+    /// operand, so a `!` here follows a value (`x!`, `assert_eq!`) rather
+    /// than negating what comes next.
+    fn ends_operand_here(&self) -> bool {
+        matches!(self.last, Some((IDENT | R_PAREN | R_BRACK | STRING | INT_NUMBER, _, end)) if end == self.pos)
+    }
+
+    /// `;`, which Jadpo doesn't have: read as nothing. At the end of a line
+    /// (or before the `}` that closes a one-line block) the line then reads
+    /// as meant; with more on the line, what follows goes on a line of its
+    /// own.
+    fn semicolon(&mut self) {
+        let start = self.pos;
+        self.pos += 1;
+        self.push(SKIPPED, start);
+        let after = self.rest_of_line(self.pos);
+        let code = after.split("//").next().unwrap_or("").trim();
+        let ends = code.is_empty() || code.starts_with('}') || code.chars().all(|c| c == ';');
+        let (edit, next) = if ends {
+            // Spaces before the `;` go with it.
+            let before = self.text[..start].trim_end_matches([' ', '\t']).len();
+            (TextEdit::replace(before as u32, self.pos as u32, ""), None)
+        } else {
+            let spaces = after.len() - after.trim_start_matches([' ', '\t']).len();
+            let indent = self.indent_at(start).to_string();
+            (
+                TextEdit::replace(
+                    start as u32,
+                    (self.pos + spaces) as u32,
+                    format!("\n{indent}"),
+                ),
+                Some("Put what follows `;` on a line of its own".to_string()),
+            )
+        };
+        self.habit(
+            start,
+            self.pos,
+            LexHabit {
+                habit: &habits::SEMICOLON,
+                written: ";".into(),
+                jadpo: String::new(),
+                edits: vec![edit],
+                clean: true,
+                next,
+            },
+        );
+    }
+
+    /// `/* ... */` or `/** ... */`: a comment, or a documentation comment,
+    /// from another language. The edit writes it as `//` or `///` lines
+    /// when nothing follows it on its last line.
+    fn block_comment(&mut self) {
+        let start = self.pos;
+        let doc = self.rest().starts_with("/**") && !self.rest().starts_with("/**/");
+        let end = self.text[start + 2..]
+            .find("*/")
+            .map_or(self.text.len(), |i| start + 2 + i + 2);
+        self.pos = end;
+        self.push(if doc { DOC_COMMENT } else { COMMENT }, start);
+        let marker = if doc { "///" } else { "//" };
+        let closed = self.text[start..end].ends_with("*/") && end - start >= 4;
+        let alone_after = self.rest_of_line(end).trim().is_empty();
+        let mut edits = Vec::new();
+        if closed && alone_after {
+            let inner = &self.text[start + if doc { 3 } else { 2 }..end - 2];
+            let lines: Vec<String> = inner
+                .lines()
+                .map(|line| {
+                    let line = line.trim();
+                    let line = line.strip_prefix('*').unwrap_or(line);
+                    line.trim().to_string()
+                })
+                .collect();
+            let first = lines.iter().position(|l| !l.is_empty()).unwrap_or(0);
+            let last = lines.iter().rposition(|l| !l.is_empty()).unwrap_or(0);
+            let indent = self.indent_at(start).to_string();
+            let body: Vec<String> = lines
+                .get(first..=last.max(first))
+                .unwrap_or(&[])
+                .iter()
+                .map(|l| {
+                    if l.is_empty() {
+                        marker.to_string()
+                    } else {
+                        format!("{marker} {l}")
+                    }
+                })
+                .collect();
+            let body = if body.is_empty() {
+                vec![marker.to_string()]
+            } else {
+                body
+            };
+            edits.push(TextEdit::replace(
+                start as u32,
+                end as u32,
+                body.join(&format!("\n{indent}")),
+            ));
+        }
+        let next = edits.is_empty().then(|| {
+            format!(
+                "Write the comment after `{marker}` at the end of the line, or on lines of its own"
+            )
+        });
+        self.habit(
+            start,
+            start + if doc { 3 } else { 2 },
+            LexHabit {
+                habit: &habits::BLOCK_COMMENT,
+                written: if doc { "/** */" } else { "/* */" }.into(),
+                jadpo: marker.into(),
+                edits,
+                clean: true,
+                next,
+            },
+        );
+    }
+
+    /// `'text'` or a backtick string without `${`, closed on its line: read
+    /// as a string, and its edit writes it in double quotes. Anything else
+    /// is a character Jadpo doesn't have.
+    fn quoted(&mut self, quote: char) {
+        let start = self.pos;
+        let line = self.rest_of_line(start + 1).to_string();
+        let mut close = None;
+        let mut escaped = false;
+        for (i, c) in line.char_indices() {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == quote {
+                close = Some(i);
+                break;
+            }
+        }
+        let inner = close.map(|i| line[..i].to_string());
+        let Some(inner) = inner.filter(|inner| !(quote == '`' && inner.contains("${"))) else {
+            self.pos += 1;
+            self.push(ERROR, start);
+            self.error(
+                start,
+                self.pos,
+                LexErrorKind::UnexpectedCharacter(quote.to_string()),
+            );
+            return;
+        };
+        self.pos = start + 1 + inner.len() + 1;
+        self.push(STRING, start);
+        let written = self.text[start..self.pos].to_string();
+        let mut text = String::new();
+        let mut chars = inner.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' if chars.peek() == Some(&quote) => {
+                    text.push(quote);
+                    chars.next();
+                }
+                '\\' => {
+                    text.push('\\');
+                    if let Some(next) = chars.next() {
+                        text.push(next);
+                    }
+                }
+                '"' => text.push_str("\\\""),
+                c => text.push(c),
+            }
+        }
+        let jadpo = format!("\"{text}\"");
+        self.habit(
+            start,
+            self.pos,
+            LexHabit {
+                habit: &habits::SINGLE_QUOTES,
+                written,
+                jadpo: jadpo.clone(),
+                edits: vec![TextEdit::replace(start as u32, self.pos as u32, jadpo)],
+                clean: false,
+                next: None,
+            },
+        );
     }
 
     fn string(&mut self) {
