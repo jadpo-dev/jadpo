@@ -477,3 +477,57 @@ fn a_decision_that_doesnt_fit_says_why_and_stays_open() {
         again.stdout
     );
 }
+
+#[test]
+fn a_query_sorted_by_text_reads_its_index() {
+    if skipped() {
+        println!("skipped: JADPO_SKIP_POSTGRES is set");
+        return;
+    }
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server.create_database("migrate_sorted").expect("database");
+    let root = folder("sorted");
+    write(&root, "app.jadpo", APP);
+    write(&root, "domains/planning/types/title.jadpo", "type Title = Text {\n    max_length: 80\n}\n");
+    write(
+        &root,
+        TODO,
+        "use planning/types { Title }\n\nentity Todo {\n    id: Uuid\n    title: Title\n}\n",
+    );
+    write(
+        &root,
+        "domains/planning/queries/by_title.jadpo",
+        "use planning/entities { Todo }\n\nquery by_title() -> List<Todo> {\n    from: Todo\n    order: [Todo.title asc]\n    limit: 10\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
+    let first = migrations(&root).remove(0);
+    let sql = fs::read_to_string(root.join(format!("database/migrations/{first}/postgres.sql")))
+        .expect("sql");
+    assert!(sql.contains("(\"title\" COLLATE \"C\", \"id\")"), "{sql}");
+    assert_eq!(jadpo(&root, &["migrate", "apply", "--url", &url]).code, 0);
+    // The query's order, as its plan writes it, read from the index.
+    use jadpo_runtime::{Database, SqlValue};
+    let store = jadpo_host_native::postgres(&url).expect("store");
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let plan = runtime.block_on(async {
+        let mut transaction = store.begin().await.expect("begin");
+        transaction.batch("SET LOCAL enable_seqscan = off").await.expect("set");
+        let rows = transaction
+            .query(
+                "EXPLAIN SELECT \"id\" FROM \"todo\" ORDER BY \"title\" COLLATE \"C\" ASC, \"id\" ASC LIMIT 11",
+                &[],
+            )
+            .await
+            .expect("explain");
+        transaction.commit().await.expect("commit");
+        rows.into_iter()
+            .filter_map(|row| match row.into_iter().next() {
+                Some(SqlValue::Text(line)) => Some(line),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    });
+    assert!(plan.contains("Scan using todo_title_id_sorted_idx"), "{plan}");
+    assert!(!plan.contains("Sort"), "{plan}");
+}

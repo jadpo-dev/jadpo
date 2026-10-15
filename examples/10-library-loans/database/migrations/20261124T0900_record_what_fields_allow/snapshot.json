@@ -76,7 +76,10 @@
           },
           "entity": "Book",
           "indexes": {
-            "book_title_id_idx": {
+            "book_title_id_sorted_idx": {
+              "collate_c": [
+                "title"
+              ],
               "columns": [
                 "title",
                 "id"

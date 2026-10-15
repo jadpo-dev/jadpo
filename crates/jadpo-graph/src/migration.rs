@@ -633,7 +633,21 @@ fn add_foreign_key(table: &str, name: &str, def: &Table) -> Statement {
 
 fn create_index(table: &str, name: &str, def: &Table) -> Statement {
     let index = def.indexes.get(name);
-    let columns = index.map(|i| idents(&i.columns)).unwrap_or_default();
+    let columns = index
+        .map(|i| {
+            i.columns
+                .iter()
+                .map(|column| {
+                    if i.collate.contains(column) {
+                        format!("{} COLLATE \"C\"", ident(column))
+                    } else {
+                        ident(column)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
     let partial = index
         .and_then(|i| i.predicate.as_ref())
         .map(|predicate| format!(" WHERE {predicate}"))
@@ -768,6 +782,7 @@ mod tests {
                     columns: vec!["old".into()],
                     reason: "index Todo.by_old".into(),
                     predicate: None,
+                    collate: Vec::new(),
                 },
             );
         }

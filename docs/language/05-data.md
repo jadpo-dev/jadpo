@@ -361,6 +361,10 @@ lifecycle needs is partial, holding only the records `visible:` lets queries
 see (`WHERE "deleted_at" IS NULL`), unless `visible:` reads `clock.now`,
 which changes as time passes; a reference's own index then stays, since
 deleting the record it points at still finds hidden records.
+Since chunk 3.10 a text field a query sorts by is indexed in code-point
+order (`"title" COLLATE "C"`), the order a query sorts text in (area 6),
+so the sorted read uses the index; its name ends `_sorted_idx`, apart from
+an index on the same columns that tests them with `==`.
 
 ## Caches
 

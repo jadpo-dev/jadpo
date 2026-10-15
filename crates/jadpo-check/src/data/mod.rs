@@ -1234,6 +1234,7 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
 fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mut Schema) {
     use queries::{Condition, Include, IncludeKind, OrderField};
     let queries = queries::query_models(db, project);
+    let lookup = Lookup::new(db, project);
     let mut wanted: Vec<(String, (Vec<String>, usize), String)> = Vec::new();
     fn equal_fields(filter: &[Condition], out: &mut Vec<String>) {
         for line in filter {
@@ -1319,10 +1320,32 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         // query, and so does a unique key all of whose columns it tests
         // for equality: at most one record matches each value.
         let tested = &born[..equal];
+        // The text columns it sorts by, after those it tests for
+        // equality, are kept in code-point order, as the query sorts
+        // them; an equality test compares under the column's own order.
+        let collate: Vec<String> = born[equal..]
+            .iter()
+            .zip(&fields[equal..])
+            .filter(|(_, name)| {
+                lookup.representation(&Ty::Field(entity.name.clone(), vec![(*name).clone()]))
+                    == Some(jadpo_std::Builtin::Text)
+            })
+            .map(|(column, _)| column.clone())
+            .collect();
+        let serves = |existing: &[String], sorted: &[String]| {
+            existing.len() >= born.len()
+                && existing[..born.len()] == born[..]
+                && born
+                    .iter()
+                    .all(|column| collate.contains(column) == sorted.contains(column))
+        };
         let covered = std::iter::once(&table.primary_key.columns)
-            .chain(table.indexes.values().map(|i| &i.columns))
             .chain(table.unique.values().map(|u| &u.columns))
-            .any(|existing| existing.len() >= born.len() && existing[..born.len()] == born[..])
+            .any(|existing| serves(existing, &[]))
+            || table
+                .indexes
+                .values()
+                .any(|index| serves(&index.columns, &index.collate))
             || std::iter::once(&table.primary_key.columns)
                 .chain(table.unique.values().map(|u| &u.columns))
                 .any(|key| key.iter().all(|column| tested.contains(column)));
@@ -1352,12 +1375,17 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         }
         let mut parts: Vec<&str> = vec![entity.table.as_str()];
         parts.extend(born.iter().map(String::as_str));
+        if !collate.is_empty() {
+            // Apart from an index on the same columns that tests them.
+            parts.push("sorted");
+        }
         table.indexes.insert(
             physical::object_name(&parts, "idx"),
             physical::Index {
                 columns: born,
                 reason: format!("query {query}"),
                 predicate,
+                collate,
             },
         );
     }
@@ -1437,6 +1465,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                         columns: vec![field.born.clone()],
                         reason: format!("reference {}.{}", entity.born, field.born),
                         predicate: None,
+                        collate: Vec::new(),
                     },
                 );
             }
@@ -1458,6 +1487,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 columns: index.fields.iter().map(|f| column(f)).collect(),
                 reason: format!("index {}.{}", entity.born, index.name),
                 predicate: None,
+                collate: Vec::new(),
             },
         );
     }
